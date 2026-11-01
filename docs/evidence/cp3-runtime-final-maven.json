@@ -1,0 +1,115 @@
+{
+  "status": "PASS_SCOPED_COMBINED_RUNTIME",
+  "source": {
+    "inputs": 318,
+    "archive": "docs/evidence/artifacts/cp3-runtime-source.tar.gz",
+    "sha256": "2fa8c5e6329f7838a8bb2bedc59bd965baaf5cfccfe47857cf76a258fc92ef07",
+    "manifest": "docs/evidence/cp3-runtime-source-manifest.json",
+    "manifestSha256": "11a0a44b26c6c8af35832e48e3ee66777df4b444e3c539ebdd95a3d396f6bce7",
+    "predecessorSha256": "5164fbff5abb660a01bbee15cd9b28f437502982b8fe3715a812e7892ef37c27",
+    "guardedChanges": [
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/CargoCachePartsTest.java",
+        "before": {
+          "sha256": "3d67c97de700cd4824f05b6756cc7494a4da6c64ded4f9647e2024982e57db1d",
+          "bytes": 12919,
+          "mode": "0644"
+        },
+        "after": {
+          "sha256": "ed60008bb2c41cc07cfc617096251af910af095fc8e0c072edaefe3ec4070183",
+          "bytes": 13112,
+          "mode": "0644"
+        }
+      }
+    ],
+    "parentSourceVerification": "All318 archive payload bytes/sizes/modes verified; exactly one test-only change, other317 unchanged"
+  },
+  "commands": {
+    "literal_script": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a195a3-7110-7302-b3dc-de315081b566/temp/linux-release-native-lJZ2HK/cache-child-successor-verification-command.sh",
+    "sha256": "92e22c0502dbc52a30c0a030f5eb3aba69fad737b7e323e24856579275e93aec",
+    "common_argv": [
+      "mvn",
+      "-B",
+      "-ntp",
+      "-e",
+      "-f",
+      "/home/runner/work/_temp/cp3-linux-release-lJZ2HK/integrated318-verification-8iRKCcae/source-cache-child-successor/tooling/cli/pom.xml",
+      "-Pruntime",
+      "-Dparallel=methods",
+      "-DthreadCount=8",
+      "-Dtooling.build.directory=/home/runner/work/_temp/cp3-linux-release-lJZ2HK/integrated318-verification-8iRKCcae/runtime-build",
+      "-Dmaven.repo.local=/home/runner/work/_temp/cp3-linux-release-lJZ2HK/maven",
+      "-Djava.io.tmpdir=/home/runner/work/_temp/cp3-linux-release-lJZ2HK/tmp",
+      "verify"
+    ],
+    "focused_addition": "-Dtest=CargoCachePartsTest"
+  },
+  "focused": {
+    "exit": 0,
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "parallel": "methods8",
+    "actual_named_module": "Surefire XML jdk.module.path and classpath retained; original Registry child boundary now passed"
+  },
+  "full": {
+    "exit": 0,
+    "suites": 128,
+    "tests": 1249,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 3,
+    "parallel": "methods8",
+    "runtime_packaging": "BUILD SUCCESS; module JAR and both native launcher hashes/mode755 retained",
+    "skips": [
+      {
+        "class": "com.holdmyspot.codexunleashed.scheduler.MacCargoNativeTest",
+        "method": "connectedNativeGate"
+      },
+      {
+        "class": "com.holdmyspot.codexunleashed.scheduler.WindowsCargoDistributionTest",
+        "method": "launchesPackagedConsoleWithExactArgumentsAndBinaryStreams"
+      },
+      {
+        "class": "com.holdmyspot.codexunleashed.scheduler.WindowsCargoTransportTest",
+        "method": "transfersBinaryFramesWithKernelPeerPid"
+      }
+    ],
+    "warnings": "Nonfatal original module-name/SLF4J warnings retained; no suppression"
+  },
+  "artifact": {
+    "path": "docs/evidence/artifacts/cp3-runtime-final-maven.tar.gz",
+    "sha256": "74f106b31c232c1a953158e5f54089ddc28046ed60469dec4bb744138c081f8b",
+    "bytes": 1175292,
+    "safeMembers": 277,
+    "regularPayloads": 276,
+    "nativeBodiesExported": false
+  },
+  "predecessor": "docs/evidence/cp3-integrated318-runtime-native.json",
+  "acceptedNativeLauncherReuse": "Predecessor corrected four-case native gate remains accepted: only CargoCachePartsTest changed; final runtime packaging also succeeded",
+  "parentRawVerification": {
+    "suites": 128,
+    "totals": {
+      "tests": 1249,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3
+    }
+  },
+  "remaining": [
+    "Guarded maintained integration and durable source/evidence commit before clean-checkout consumer",
+    "All remaining native, static, pressure, lifecycle, release, resumption, timing and activation gates in plan.md"
+  ],
+  "checkpoint3Complete": false,
+  "nativeLifecycle": {
+    "worker": "runnervm48cm3",
+    "run": 41299849786,
+    "live_ssh": 2880,
+    "original_ssh_handle": 32763,
+    "state": "SAME_ORIGINAL_WORKER_RETAINED_IDLE",
+    "native_dependencies": "Preserved, not rebuilt",
+    "useful_target_outputs": "Preserved42891383bytes, pristine fixed upstream",
+    "cleanup_owner": "/root/windows_history_integration"
+  }
+}

@@ -1,22 +1,16 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import java.io.IOException;
-import java.lang.foreign.Arena;
-import java.lang.foreign.FunctionDescriptor;
-import java.lang.foreign.Linker;
-import java.lang.foreign.MemoryLayout;
-import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
-import java.lang.invoke.MethodHandle;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.Set;
 
 /**
@@ -26,7 +20,7 @@ import java.util.Set;
  * <p>
  * The caller retains the Cargo lease until Cargo, wrappers, supervisors and compiler descendants have all
  * terminated and been reaped, including after failure. This owner starts no processes and cannot establish that
- * condition itself. It never replaces tokens that a terminated holder may have lost.
+ * condition itself. A lease accounts for mediated attempt borrows; unmediated native consumers remain untracked.
  */
 final class LinuxCargoJobserver implements AutoCloseable
 {
@@ -84,20 +78,22 @@ final class LinuxCargoJobserver implements AutoCloseable
 	 * preventing the workload from renaming the created child. Shared ancestor permissions are never changed.
 	 * Capacity is exactly one implicit slot plus {@code jobs - 1} explicit tokens. An oversized seed fails instead
 	 * of waiting for a consumer or silently reducing capacity.
+	 * @param scope borrowed native services, kept open until this jobserver and its consumers close
 	 * @param scratchParent absolute parent on the Linux JDK filesystem, with a lossless space-free real path without the auth-option marker
 	 * @param workloadGroup positive workload GID matching the credential-dropped compiler context
 	 * @param jobs positive initial capacity including Cargo's implicit slot
 	 * @return retained owner whose FIFO is ready for the workload group
-	 * @throws NullPointerException if {@code scratchParent} is null
+	 * @throws NullPointerException if {@code scope} or {@code scratchParent} is null
 	 * @throws IllegalArgumentException if a numeric input is nonpositive or the parent path is relative, unrepresentable or contains an auth-option marker
 	 * @throws UnsupportedOperationException if Linux LP64, unix attributes or POSIX permissions are unavailable
 	 * @throws IOException if setup or nonblocking seeding fails
 	 * @throws PreparationFailure if failed setup leaves owned path cleanup requiring retry
 	 */
-	static LinuxCargoJobserver create(Path scratchParent, int workloadGroup, int jobs) throws IOException
+	static LinuxCargoJobserver create(ToolingScope scope, Path scratchParent, int workloadGroup, int jobs) throws IOException
 	{
+		Objects.requireNonNull(scope, "scope");
 		Path parent = validate(scratchParent, workloadGroup, jobs);
-		return acquire(parent, workloadGroup, jobs, new NativeCalls());
+		return acquire(parent, workloadGroup, jobs, scope.getLinuxFifoBindings());
 	}
 
 	/**
@@ -332,6 +328,8 @@ final class LinuxCargoJobserver implements AutoCloseable
 	{
 		/** Complete immutable launch environment, retained only while this borrow is live. */
 		private final Map<String, String> environment;
+		/** Logical reservations for this invocation; every attempt retires before the native borrow is released. */
+		private final LinuxCargoTokens tokens = new LinuxCargoTokens(new TokenTransfer());
 		/** Indicates whether the invocation coordinator released this borrow. */
 		private boolean released = false;
 
@@ -342,6 +340,37 @@ final class LinuxCargoJobserver implements AutoCloseable
 		private CargoLease(Map<String, String> environment)
 		{
 			this.environment = environment;
+		}
+
+		/**
+		 * Retains token ownership for one whole compiler attempt authenticated by the invocation coordinator.
+		 * The coordinator must prevent new image starts and establish execution impossibility for every descendant
+		 * before closing the returned owner. Parent-only exit is insufficient. Different processes in the same
+		 * authenticated attempt may return its exact borrowed bytes.
+		 * @return new logical attempt capability borrowing this lease's native FIFO
+		 * @throws IllegalStateException if this lease was released
+		 * @throws IOException if an earlier uncertain transfer prevents further FIFO operations
+		 */
+		LinuxCargoTokens.Attempt retainAttempt() throws IOException
+		{
+			if (released)
+				throw new IllegalStateException("Cargo jobserver lease was released");
+			return tokens.retainAttempt();
+		}
+
+		/**
+		 * Observes the native endpoint retained by this live invocation lease.
+		 * The observation follows the descriptor's kernel object even after pathname aliases or replacement.
+		 * The caller must authenticate each process image separately before installing a token hook.
+		 * @return exact FIFO device components and unsigned inode bits
+		 * @throws IllegalStateException if this lease was released
+		 * @throws IOException if retained descriptor metadata is unavailable, incomplete or not a FIFO
+		 */
+		LinuxFifoBindings.Identity identity() throws IOException
+		{
+			if (released)
+				throw new IllegalStateException("Cargo jobserver lease was released");
+			return calls.identity(descriptor);
 		}
 
 		/**
@@ -359,13 +388,16 @@ final class LinuxCargoJobserver implements AutoCloseable
 		/**
 		 * Releases this borrow after all invocation consumers are terminal and reaped.
 		 * The coordinator must first prevent new starts and reconcile every retained native owner; root-only exit
-		 * is insufficient. This operation cannot discover consumer liveness. Repeated close has no effect.
+		 * is insufficient. Live logical attempts reject closure without releasing this borrow.
+		 * This operation cannot discover consumer liveness. Repeated successful close has no effect.
+		 * @throws IllegalStateException if a logical attempt remains live
 		 */
 		@Override
 		public void close()
 		{
 			if (released)
 				return;
+			tokens.close();
 			released = true;
 			lease = null;
 		}
@@ -402,6 +434,32 @@ final class LinuxCargoJobserver implements AutoCloseable
 	}
 
 	/**
+	 * Borrows this jobserver's retained descriptor for confirmed one-byte ledger transfers.
+	 * The Cargo lease prevents native owner closure until all logical attempts retire.
+	 */
+	private final class TokenTransfer implements LinuxCargoTokens.Transfer
+	{
+		/**
+		 * Borrows the enclosing jobserver's retained endpoint without acquiring native resources.
+		 */
+		private TokenTransfer() {}
+
+		@Override
+		public OptionalInt tryRead() throws IOException
+		{
+			return calls.tryRead(descriptor);
+		}
+
+		@Override
+		public void write(byte token) throws IOException
+		{
+			int written = calls.write(descriptor, new byte[] {token}, 1);
+			if (written != 1)
+				throw new IOException("FIFO token return did not confirm one byte: " + written);
+		}
+	}
+
+	/**
 	 * Narrow Linux FIFO access boundary; implementations return actual positive write progress or throw.
 	 */
 	interface Calls
@@ -420,6 +478,23 @@ final class LinuxCargoJobserver implements AutoCloseable
 		 * @throws IOException if open fails
 		 */
 		int open(Path path) throws IOException;
+		/**
+		 * Obtains the retained descriptor's actual FIFO identity independently of its pathname.
+		 * @param descriptor retained nonnegative native endpoint
+		 * @return exact kernel device components and unsigned inode bits
+		 * @throws IllegalArgumentException if {@code descriptor} is negative
+		 * @throws IOException if metadata fails, required fields are unavailable or the descriptor is not a FIFO
+		 */
+		LinuxFifoBindings.Identity identity(int descriptor) throws IOException;
+
+		/**
+		 * Reads one opaque byte from an owned nonblocking FIFO endpoint without waiting for another consumer.
+		 * Retries only EINTR, which reports interruption before any data was read.
+		 * @param descriptor retained read-write FIFO endpoint
+		 * @return unsigned byte in 0..255, or empty when EAGAIN establishes that no byte was transferred
+		 * @throws IOException if read fails, reaches EOF, or does not confirm exactly one byte
+		 */
+		OptionalInt tryRead(int descriptor) throws IOException;
 		/**
 		 * Writes bounded token bytes, retrying only an interrupted write that transferred no bytes.
 		 * @param descriptor retained owner endpoint
@@ -448,9 +523,10 @@ final class LinuxCargoJobserver implements AutoCloseable
 		private SharedSecrets() { }
 		/**
 		 * Uses actual native operations as the delegate of a focused fault fixture.
-		 * @return new resource-free native access
+		 * @param scope borrowed native services, retained open by the fixture through all operations
+		 * @return the scope's shared resource-free native access
 		 */
-		static Calls nativeCalls() { return new NativeCalls(); }
+		static Calls nativeCalls(ToolingScope scope) { return scope.getLinuxFifoBindings(); }
 		/**
 		 * Executes normal validated acquisition with controlled external access.
 		 * @param scratchParent existing caller-owned parent
@@ -466,138 +542,4 @@ final class LinuxCargoJobserver implements AutoCloseable
 		}
 	}
 
-	/**
-	 * Binds Linux LP64 libc without JNI or descriptor extraction from JDK internals.
-	 */
-	private static final class NativeCalls implements Calls
-	{
-		/** Linux open flags from asm-generic/fcntl.h; clients independently reopen their own blocking endpoints. */
-		private static final int OWNER_FLAGS = (02 | 04000) | 02000000;
-		/** Linux interrupted-system-call errno from asm-generic/errno-base.h. */
-		private static final int INTERRUPTED = 4;
-		/** Native ABI linker shared by these four resource-free bindings. */
-		private final Linker linker = Linker.nativeLinker();
-		/** Captured errno member supplied by the JDK linker rather than global errno lookup. */
-		private final long errnoOffset = Linker.Option.captureStateLayout()
-			.byteOffset(MemoryLayout.PathElement.groupElement("errno"));
-		/** Linux int mkfifo(const char *, mode_t), with uint32 mode_t. */
-		private final MethodHandle mkfifo = bind("mkfifo", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-			ValueLayout.ADDRESS, ValueLayout.JAVA_INT), false);
-		/** Linux int open(const char *, int, ...), supplying ignored promoted mode 0. */
-		private final MethodHandle open = bind("open", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-			ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT), true);
-		/** Linux ssize_t write(int, const void *, size_t), with LP64 word-sized count and result. */
-		private final MethodHandle write = bind("write", FunctionDescriptor.of(ValueLayout.JAVA_LONG,
-			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG), false);
-		/** Linux int close(int); Linux consumes the descriptor even when interrupted. */
-		private final MethodHandle close = bind("close", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-			ValueLayout.JAVA_INT), false);
-
-		/**
-		 * Resolves fixed native bindings without acquiring a descriptor or filesystem entry.
-		 */
-		private NativeCalls() { }
-
-		/**
-		 * Resolves one Linux symbol with same-call errno capture.
-		 * @param name required libc symbol
-		 * @param signature verified LP64 signature
-		 * @param variadic indicates whether the third argument is a promoted open vararg
-		 * @return native handle with captured call-state argument
-		 */
-		private MethodHandle bind(String name, FunctionDescriptor signature, boolean variadic)
-		{
-			MemorySegment symbol = linker.defaultLookup().find(name)
-				.orElseThrow(() -> new UnsupportedOperationException("Missing Linux libc symbol: " + name));
-			if (variadic)
-				return linker.downcallHandle(symbol, signature, Linker.Option.captureCallState("errno"),
-					Linker.Option.firstVariadicArg(2));
-			return linker.downcallHandle(symbol, signature, Linker.Option.captureCallState("errno"));
-		}
-
-		/**
-		 * Calls a bound operation, preserving its native result and same-invocation errno on failure.
-		 * @param operation bound native operation
-		 * @param arguments operation arguments after captured state
-		 * @return result and failure errno, with zero errno on success
-		 * @throws IOException if invocation fails before a native result can be obtained
-		 */
-		private NativeResult call(MethodHandle operation, Object... arguments) throws IOException
-		{
-			try (Arena arena = Arena.ofConfined())
-			{
-				MemorySegment state = arena.allocate(Linker.Option.captureStateLayout());
-				List<Object> values = new ArrayList<>();
-				values.add(state);
-				values.addAll(List.of(arguments));
-				long result = ((Number) operation.invokeWithArguments(values)).longValue();
-				int error = result == -1 ? state.get(ValueLayout.JAVA_INT, errnoOffset) : 0;
-				return new NativeResult(result, error);
-			}
-			catch (RuntimeException | Error failure) { throw failure; }
-			catch (Throwable failure) { throw new IOException("Linux FIFO native invocation failed", failure); }
-		}
-
-		@Override
-		public void createFifo(Path path, int mode) throws IOException
-		{
-			try (Arena arena = Arena.ofConfined())
-			{
-				requireSuccess("mkfifo " + path, call(mkfifo, arena.allocateFrom(path.toString()), mode));
-			}
-		}
-
-		@Override
-		public int open(Path path) throws IOException
-		{
-			try (Arena arena = Arena.ofConfined())
-			{
-				NativeResult result = call(open, arena.allocateFrom(path.toString()), OWNER_FLAGS, 0);
-				requireSuccess("open " + path, result);
-				return Math.toIntExact(result.value());
-			}
-		}
-
-		@Override
-		public int write(int descriptor, byte[] tokens, int count) throws IOException
-		{
-			try (Arena arena = Arena.ofConfined())
-			{
-				MemorySegment buffer = arena.allocateFrom(ValueLayout.JAVA_BYTE, tokens);
-				while (true)
-				{
-					NativeResult result = call(write, descriptor, buffer, (long) count);
-					if (result.value() == -1 && result.error() == INTERRUPTED)
-						continue;
-					requireSuccess("write FIFO tokens", result);
-					return Math.toIntExact(result.value());
-				}
-			}
-		}
-
-		@Override
-		public void close(int descriptor) throws IOException
-		{
-			requireSuccess("close FIFO descriptor " + descriptor, call(close, descriptor));
-		}
-
-		/**
-		 * Converts a failed libc return into an operation-specific diagnostic.
-		 * @param operation failed or successful native operation
-		 * @param result same-invocation status and errno
-		 * @throws IOException if libc returned -1
-		 */
-		private void requireSuccess(String operation, NativeResult result) throws IOException
-		{
-			if (result.value() == -1)
-				throw new IOException(operation + " failed with errno " + result.error());
-		}
-	}
-
-	/**
-	 * Preserves the native return and its errno only when the return indicated failure.
-	 * @param value native return value
-	 * @param error captured errno for -1, or zero on success
-	 */
-	private record NativeResult(long value, int error) { }
 }

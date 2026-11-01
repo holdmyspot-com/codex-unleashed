@@ -1,5 +1,8 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.foreign.Arena;
@@ -14,6 +17,7 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -51,7 +55,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 	/**
 	 * Retained native syscall boundary, confined to this reader's main thread.
 	 */
-	private final NativeCalls calls = new NativeCalls();
+	private final NativeCalls calls;
 	/**
 	 * Final private mountpoint through which libcgroup and residency reads resolve paths.
 	 */
@@ -107,12 +111,13 @@ public final class LinuxAuthorityReader implements AutoCloseable
 
 	/**
 	 * Retains path settings before acquiring handles.
+	 * @param scope invocation-owned shared values
 	 * @param cgroupRoot final private cgroup mountpoint
 	 * @param procRoot matching proc mountpoint
 	 * @param admissionParent scheduler admission group
 	 * @param helperGroup owned reader group
 	 */
-	private LinuxAuthorityReader(Path cgroupRoot, Path procRoot, Path admissionParent, Path helperGroup)
+	private LinuxAuthorityReader(ToolingScope scope, Path cgroupRoot, Path procRoot, Path admissionParent, Path helperGroup)
 	{
 		for (Path path : new Path[] {cgroupRoot, procRoot, admissionParent, helperGroup})
 		{
@@ -122,6 +127,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		}
 		if (!admissionParent.startsWith(cgroupRoot) || !helperGroup.startsWith(cgroupRoot))
 			throw new IllegalArgumentException("Reader admission and containment must be inside its cgroup mount");
+		this.calls = new NativeCalls(Objects.requireNonNull(scope, "scope"));
 		this.cgroupRoot = cgroupRoot;
 		this.procRoot = procRoot;
 		this.admissionParent = admissionParent;
@@ -130,6 +136,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 
 	/**
 	 * Acquires a nonrecursive clean mount and opens the accepted library only after final mount selection.
+	 * @param scope invocation-owned shared values
 	 * @param cgroupRoot configured cgroup mountpoint
 	 * @param procRoot matching proc mountpoint
 	 * @param admissionParent scheduler admission group
@@ -138,10 +145,10 @@ public final class LinuxAuthorityReader implements AutoCloseable
 	 * @return owned complete reader
 	 * @throws IOException if visibility, mount selection, native capabilities or a required observation is unavailable
 	 */
-	private static LinuxAuthorityReader open(Path cgroupRoot, Path procRoot, Path admissionParent, Path helperGroup,
+	private static LinuxAuthorityReader open(ToolingScope scope, Path cgroupRoot, Path procRoot, Path admissionParent, Path helperGroup,
 		Path nativeLibrary) throws IOException
 	{
-		LinuxAuthorityReader reader = new LinuxAuthorityReader(cgroupRoot, procRoot, admissionParent, helperGroup);
+		LinuxAuthorityReader reader = new LinuxAuthorityReader(scope, cgroupRoot, procRoot, admissionParent, helperGroup);
 		try
 		{
 			reader.calls.requireUnfiltered();
@@ -168,9 +175,9 @@ public final class LinuxAuthorityReader implements AutoCloseable
 			Path actual = reader.membership(pid);
 			if (!actual.equals(helperGroup))
 				throw new IOException("Reader proc membership does not map to its contained group: " + actual);
-			reader.library = Libcgroup.open(nativeLibrary);
+			reader.library = Libcgroup.open(scope, nativeLibrary);
 			reader.verifySelectedMount();
-			reader.budget = CgroupBudget.open(nativeLibrary);
+			reader.budget = CgroupBudget.open(scope, nativeLibrary);
 			reader.admission = reader.holdChain(admissionParent);
 			reader.verify();
 			return reader;
@@ -196,49 +203,52 @@ public final class LinuxAuthorityReader implements AutoCloseable
 	 */
 	public static void main(String[] arguments) throws Exception
 	{
-		if (arguments.length != 7)
-			throw new IllegalArgumentException("Expected seven authority-reader launch arguments");
-		Path directory = Path.of(arguments[0]);
-		NativeCalls bootstrap = new NativeCalls();
-		bootstrap.bindParent(Long.parseLong(arguments[6]));
-		if (System.in.read() != 1)
-			throw new IOException("Authority setup gate was not released by its parent");
-		bootstrap.requirePrivateNamespace(Path.of(arguments[2]), Long.parseLong(arguments[6]));
-		try (LinuxAuthorityReader reader = open(Path.of(arguments[1]), Path.of(arguments[2]), Path.of(arguments[3]),
-			Path.of(arguments[5]), Path.of(arguments[4])))
+		try (var scope = new DefaultToolingScope())
 		{
-			Properties ready = new Properties();
-			ready.setProperty("status", "ok");
-			LinuxAuthority.publish(directory.resolve(LinuxAuthority.READY_FILE), ready);
-			long sequence = 1;
-			while (true)
+			if (arguments.length != 7)
+				throw new IllegalArgumentException("Expected seven authority-reader launch arguments");
+			Path directory = Path.of(arguments[0]);
+			NativeCalls bootstrap = new NativeCalls(scope);
+			bootstrap.bindParent(Long.parseLong(arguments[6]));
+			if (System.in.read() != 1)
+				throw new IOException("Authority setup gate was not released by its parent");
+			bootstrap.requirePrivateNamespace(Path.of(arguments[2]), Long.parseLong(arguments[6]));
+			try (LinuxAuthorityReader reader = open(scope, Path.of(arguments[1]), Path.of(arguments[2]), Path.of(arguments[3]),
+				Path.of(arguments[5]), Path.of(arguments[4])))
 			{
-				Path request = directory.resolve("request-" + sequence + ".properties");
-				while (!Files.exists(request))
-					LinuxAuthority.pause();
-				Properties result;
-				try
+				Properties ready = new Properties();
+				ready.setProperty("status", "ok");
+				LinuxAuthority.publish(directory.resolve(LinuxAuthority.READY_FILE), ready);
+				long sequence = 1;
+				while (true)
 				{
-					result = reader.execute(LinuxAuthority.load(request));
-					result.setProperty("status", "ok");
+					Path request = directory.resolve("request-" + sequence + ".properties");
+					while (!Files.exists(request))
+						LinuxAuthority.pause();
+					Properties result;
+					try
+					{
+						result = reader.execute(LinuxAuthority.load(request));
+						result.setProperty("status", "ok");
+					}
+					catch (IOException | RuntimeException failure)
+					{
+						result = rejection(failure);
+						failure.printStackTrace(System.err);
+					}
+					LinuxAuthority.publish(directory.resolve("response-" + sequence + ".properties"), result);
+					sequence = Math.incrementExact(sequence);
 				}
-				catch (IOException | RuntimeException failure)
-				{
-					result = rejection(failure);
-					failure.printStackTrace(System.err);
-				}
-				LinuxAuthority.publish(directory.resolve("response-" + sequence + ".properties"), result);
-				sequence = Math.incrementExact(sequence);
 			}
-		}
-		catch (IOException | RuntimeException failure)
-		{
-			Properties result = new Properties();
-			result.setProperty("status", "unavailable");
-			result.setProperty("error", failure.toString());
-			if (!Files.exists(directory.resolve(LinuxAuthority.READY_FILE)))
-				LinuxAuthority.publish(directory.resolve(LinuxAuthority.READY_FILE), result);
-			throw failure;
+			catch (IOException | RuntimeException failure)
+			{
+				Properties result = new Properties();
+				result.setProperty("status", "unavailable");
+				result.setProperty("error", failure.toString());
+				if (!Files.exists(directory.resolve(LinuxAuthority.READY_FILE)))
+					LinuxAuthority.publish(directory.resolve(LinuxAuthority.READY_FILE), result);
+				throw failure;
+			}
 		}
 	}
 
@@ -263,6 +273,13 @@ public final class LinuxAuthorityReader implements AutoCloseable
 				result.setProperty("attempt." + index, Long.toString(attempt.sequence()));
 			}
 		}
+		else if (failure instanceof ChangedMembership changed)
+		{
+			result.setProperty("reason", LinuxAuthority.CHANGED_MEMBERS);
+			result.setProperty("count", "1");
+			result.setProperty("name.0", changed.attempt.name());
+			result.setProperty("attempt.0", Long.toString(changed.attempt.sequence()));
+		}
 		return result;
 	}
 
@@ -278,20 +295,39 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		{
 			return executeChecked(request);
 		}
-		catch (NativeFailure failure)
+		catch (NativeFailure | NoSuchFileException failure)
 		{
-			if (failure.errno == 2 && failure.getSuppressed().length == 0 &&
-				isObservation(request.getProperty("operation", "")))
-			{
-				try { verifyObservation(); }
-				catch (RemovedLeaf removed)
-				{
-					removed.addSuppressed(failure);
-					throw removed;
-				}
-			}
-			throw failure;
+			throw observationFailure(request.getProperty("operation", ""), failure, this::verifyObservation);
 		}
+	}
+
+	/**
+	 * Rechecks possible leaf deletion without treating a native error as completion authority.
+	 * A removed cgroup can fail native pathname acquisition with ENOENT, a held core-file read with ENODEV,
+	 * or Java residency pathname acquisition with {@link NoSuchFileException}.
+	 * Only complete authority verification may replace that failure with a verified missing-leaf rejection.
+	 * @param operation requested reader operation
+	 * @param failure original observation error, including any uncertain cleanup
+	 * @param verification complete global and registered-workload verification
+	 * @return verified missing-leaf rejection or the unchanged observation failure
+	 * @throws IOException if the complete verification discovers another authority failure
+	 */
+	private static IOException observationFailure(String operation, IOException failure, Check verification) throws IOException
+	{
+		boolean removedNativePath = failure instanceof NativeFailure nativeFailure &&
+			(nativeFailure.errno == 2 || nativeFailure.errno == 19);
+		boolean missingPath = removedNativePath || failure instanceof NoSuchFileException;
+		boolean canVerifyRemoval = missingPath && failure.getSuppressed().length == 0 && isObservation(operation);
+		if (canVerifyRemoval)
+		{
+			try { verification.verify(); }
+			catch (RemovedLeaf removed)
+			{
+				removed.addSuppressed(failure);
+				return removed;
+			}
+		}
+		return failure;
 	}
 
 	/**
@@ -326,6 +362,11 @@ public final class LinuxAuthorityReader implements AutoCloseable
 				register(request);
 				return result;
 			}
+            case "register-sandbox" ->
+            {
+                registerSandbox(request);
+                return result;
+            }
 			case "host" ->
 			{
 				verifyHostFiles();
@@ -349,7 +390,14 @@ public final class LinuxAuthorityReader implements AutoCloseable
 				Workload workload = workloads.get(attempt);
 				if (workload == null)
 					throw new IOException("Attempt is not registered: " + attempt);
-				LinuxResidency.Sample sample = LinuxResidency.read(cgroupRoot, procRoot, workload.directory());
+				LinuxResidency.Sample sample;
+				try { sample = LinuxResidency.read(cgroupRoot, procRoot, workload.directory()); }
+				catch (LinuxResidency.MembershipChanged changed)
+				{
+					// A fresh sample is permitted only after every retained authority check succeeds again.
+					verifyForOperation(operation);
+					throw new ChangedMembership(attempt, changed);
+				}
 				result.setProperty("resident", Long.toString(sample.residentBytes()));
 			}
 			case "verify" -> { }
@@ -423,17 +471,41 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		boolean immediateLeaf = workload.directory().equals(workload.leaf().getParent());
 		if (immediateLeaf && isLeafAbsent(workload.leaf()))
 		{
-			Held leaf = workload.chain().groups().getFirst();
-			if (!leaf.path().equals(workload.leaf()) || !leaf.identity().equals(calls.identity(leaf.descriptor())))
-				throw new IOException("Retained workload leaf identity changed: " + workload.leaf());
-			Chain chain = workload.chain();
-			verifyChain(new Chain(chain.groups().subList(1, chain.groups().size()),
-				chain.ancestors().subList(1, chain.ancestors().size())));
-			verifyTopology(workload, true);
+			verifyAbsentWorkload(workload);
 			throw new RemovedLeaf(attempt);
 		}
-		verifyChain(workload.chain());
-		verifyTopology(workload);
+		try
+		{
+			verifyChain(workload.chain());
+			verifyTopology(workload);
+		}
+		catch (IncompleteTopology failure)
+		{
+			if (immediateLeaf && isLeafAbsent(workload.leaf()))
+			{
+				verifyAbsentWorkload(workload);
+				RemovedLeaf removed = new RemovedLeaf(attempt);
+				removed.addSuppressed(failure);
+				throw removed;
+			}
+			throw failure;
+		}
+	}
+
+	/**
+	 * Rechecks retained ownership and every remaining path after native acquisition proves the immediate leaf absent.
+	 * @param workload the retained registered ownership whose immediate leaf was separately confirmed absent
+	 * @throws IOException if retained identity, ancestor ownership or remaining topology changed
+	 */
+	private void verifyAbsentWorkload(Workload workload) throws IOException
+	{
+		Held leaf = workload.chain().groups().getFirst();
+		if (!leaf.path().equals(workload.leaf()) || !leaf.identity().equals(calls.identity(leaf.descriptor())))
+			throw new IOException("Retained workload leaf identity changed: " + workload.leaf());
+		Chain chain = workload.chain();
+		verifyChain(new Chain(chain.groups().subList(1, chain.groups().size()),
+			chain.ancestors().subList(1, chain.ancestors().size())));
+		verifyTopology(workload, true);
 	}
 
 	/**
@@ -548,11 +620,194 @@ public final class LinuxAuthorityReader implements AutoCloseable
 			throw new IOException("Clean cgroup mount does not identify the actual complete hierarchy root");
 	}
 
+    /**
+     * Registers an independently host-authenticated sandbox root directly in its exclusive owned cgroup.
+     * This distinct private request carries exact retained kernel-peer and namespace facts; it does not relax the
+     * supervisor register operation. The root is revalidated before and after native handle acquisition.
+     * @param request exact host-issued sandbox ownership receipt
+     * @throws IOException if peer/root identity, namespace mapping, group topology or native handles differ
+     */
+    private void registerSandbox(Properties request) throws IOException
+    {
+        LinuxMeasurements.Attempt attempt = attempt(request);
+        if (workloads.containsKey(attempt)) throw new IOException("Attempt is already registered: " + attempt);
+        Path directory = Path.of(request.getProperty("directory"));
+        if (!directory.isAbsolute() || !directory.normalize().equals(directory) ||
+            !directory.startsWith(admissionParent) || directory.equals(admissionParent))
+            throw new IOException("Sandbox group must be a strict descendant of the admission parent");
+        long pid = validateSandbox(procRoot, request);
+        if (!membership(pid).equals(directory)) throw new IOException("Sandbox root is not in its exact direct owned group");
+        long peer = LinuxAuthority.number(request, "peer.pid");
+        if (membership(peer).startsWith(directory)) throw new IOException("Original sandbox waiter entered attempt containment");
+        Chain chain = holdChain(directory);
+        try
+        {
+            Workload workload = new Workload(directory, directory, chain);
+            verifyTopology(workload);
+            validateSandbox(procRoot, request);
+            if (!membership(pid).equals(directory) || membership(peer).startsWith(directory))
+                throw new IOException("Sandbox containment changed during reader registration");
+            verifyChain(chain);
+            workloads.put(attempt, workload);
+        }
+        catch (IOException | RuntimeException | Error failure)
+        {
+            try { chain.close(); }
+            catch (IOException cleanup) { failure.addSuppressed(cleanup); }
+            throw failure;
+        }
+    }
+
+    /**
+     * Independently checks the exact original peer/root births, credentials and pinned nested PID/mount mappings.
+     * The caller uses its verified host proc mount; no action-provided proc path or self-reported host PID is used.
+     * @param procRoot reader's independently authenticated host proc filesystem
+     * @param request exact host-issued previously authenticated sandbox facts
+     * @return authenticated controller-visible direct child PID
+     * @throws IOException if any fact is absent, changed, malformed or inconsistent
+     */
+    private static long validateSandbox(Path procRoot, Properties request) throws IOException
+    {
+        long root = positiveSandbox(request, "pid");
+        long peer = positiveSandbox(request, "peer.pid");
+        if (root == peer) throw new IOException("Sandbox root and original waiter must be distinct processes");
+        long uid = positiveSandbox(request, "peer.uid"), gid = positiveSandbox(request, "peer.gid");
+        if (uid > Integer.MAX_VALUE || gid > Integer.MAX_VALUE) throw new IOException("Sandbox credentials are out of range");
+        String pidNamespace = request.getProperty("namespace.pid");
+        String mountNamespace = request.getProperty("namespace.mount");
+        if (pidNamespace == null || mountNamespace == null || !pidNamespace.matches("pid:\\[[0-9]+\\]") ||
+            !mountNamespace.matches("mnt:\\[[0-9]+\\]"))
+            throw new IOException("Sandbox pinned namespace identity is malformed");
+        for (int pass = 0; pass < 2; pass++)
+        {
+            sandboxProcess(procRoot, peer, positiveSandbox(request, "peer.local"), positiveSandbox(request, "peer.birth"),
+                uid, gid, pidNamespace, mountNamespace, null);
+            sandboxProcess(procRoot, root, positiveSandbox(request, "root.local"), positiveSandbox(request, "root.birth"),
+                uid, gid, pidNamespace, mountNamespace, peer);
+        }
+        return root;
+    }
+
+    /**
+     * Checks one current proc identity against exact independently retained native facts.
+     * @param procRoot independently verified host proc mount
+     * @param pid actual host-visible process ID
+     * @param local expected innermost namespace process ID
+     * @param birth expected retained kernel birth ticks
+     * @param uid expected nonprivileged user credential in all four positions
+     * @param gid expected nonprivileged group credential in all four positions
+     * @param pidNamespace expected exact pinned PID namespace inode link
+     * @param mountNamespace expected exact pinned mount namespace inode link
+     * @param parent exact original parent, or null when the independently authenticated original waiter's parent is unchanged elsewhere
+     * @throws IOException if any current kernel fact differs or cannot be parsed
+     */
+    private static void sandboxProcess(Path procRoot, long pid, long local, long birth, long uid, long gid,
+        String pidNamespace, String mountNamespace, Long parent) throws IOException
+    {
+        Path process = procRoot.resolve(Long.toString(pid));
+        try
+        {
+            String stat = Files.readString(process.resolve("stat"));
+            String[] fields = stat.substring(stat.lastIndexOf(')') + 2).strip().split("\\s+");
+            if (Long.parseLong(fields[19]) != birth || (parent != null && Long.parseLong(fields[1]) != parent))
+                throw new IOException("Sandbox retained birth or direct parent changed");
+            String status = Files.readString(process.resolve("status"));
+            boolean user = false, group = false, mapping = false;
+            for (String line : status.lines().toList())
+            {
+                String[] values = line.strip().split("\\s+");
+                if (line.startsWith("Uid:") || line.startsWith("Gid:"))
+                {
+                    long expected = line.startsWith("Uid:") ? uid : gid;
+                    if (values.length != 5) throw new IOException("Sandbox credentials lack all four kernel fields");
+                    for (int index = 1; index < 5; index++)
+                        if (Long.parseLong(values[index]) != expected) throw new IOException("Sandbox workload credentials changed");
+                    if (line.startsWith("Uid:")) user = true; else group = true;
+                }
+                if (line.startsWith("NSpid:"))
+                {
+                    if (values.length < 2 || Long.parseLong(values[1]) != pid ||
+                        Long.parseLong(values[values.length - 1]) != local)
+                        throw new IOException("Sandbox host/local PID mapping changed");
+                    for (int index = 1; index < values.length; index++)
+                        if (Long.parseLong(values[index]) <= 0) throw new IOException("Sandbox PID mapping is nonpositive");
+                    mapping = true;
+                }
+            }
+            if (!user || !group || !mapping) throw new IOException("Sandbox proc identity lacks required credential or PID fields");
+            if (!Files.readSymbolicLink(process.resolve("ns/pid")).toString().equals(pidNamespace) ||
+                !Files.readSymbolicLink(process.resolve("ns/mnt")).toString().equals(mountNamespace))
+                throw new IOException("Sandbox pinned namespace changed");
+            String after = Files.readString(process.resolve("stat"));
+            if (!stat.equals(after)) throw new IOException("Sandbox proc identity changed during capture");
+        }
+        catch (IllegalArgumentException | IndexOutOfBoundsException failure)
+        {
+            throw new IOException("Sandbox proc identity is malformed", failure);
+        }
+    }
+
+    /**
+     * Requires a positive exact host-issued process or credential field.
+     * @param request private host-to-reader document
+     * @param name exact field name
+     * @return positive native fact
+     * @throws IOException if the field is absent, malformed or nonpositive
+     */
+    private static long positiveSandbox(Properties request, String name) throws IOException
+    {
+        long value = LinuxAuthority.number(request, name);
+        if (value <= 0) throw new IOException("Sandbox registration requires positive " + name);
+        return value;
+    }
+
 	/**
 	 * Gives focused tests typed access to native ABI selection and the held-directory classifier without changing mounts.
 	 */
 	static final class SharedSecrets
 	{
+        /**
+         * Exercises production sandbox identity validation using an isolated proc-shaped fixture.
+         * This method grants no native cgroup or reader authority.
+         * @param procRoot isolated complete proc-shaped fixture
+         * @param request exact expected independent host facts
+         * @return authenticated modeled host root PID
+         * @throws IOException if any supplied observation differs
+         */
+        static long sandboxIdentity(Path procRoot, Properties request) throws IOException
+        {
+            return validateSandbox(procRoot, request);
+        }
+
+		/**
+		 * Exercises real directory enumeration and native leaf acquisition without granting memory authority.
+		 * This fixture boundary checks topology and native absence only; retained cgroup identities and global
+		 * authority remain independently required by the production observation path.
+		 * @param scope invocation-owned native bindings
+		 * @param root retained filesystem root for the isolated directory fixture
+		 * @param directory expected outer workload directory below root
+		 * @param leaf expected workload leaf below directory
+		 * @return true only for the exact missing-leaf topology with independently verified native absence
+		 * @throws IOException if enumeration, acquisition, cleanup or another topology check fails
+		 */
+		static boolean requiresLeafRecheck(ToolingScope scope, Path root, Path directory, Path leaf) throws IOException
+		{
+			try (LinuxAuthorityReader reader = new LinuxAuthorityReader(scope, root, root, root, root))
+			{
+				reader.root = reader.calls.openDirectory(root);
+				try
+				{
+					reader.verifyTopology(new Workload(directory, leaf, new Chain(List.of(), List.of())));
+					return false;
+				}
+				catch (IncompleteTopology failure)
+				{
+					if (reader.isLeafAbsent(leaf)) return true;
+					throw failure;
+				}
+			}
+		}
+
 		/**
 		 * Exercises the production all-workload verification decision.
 		 * @param checks controlled workload observations
@@ -582,6 +837,36 @@ public final class LinuxAuthorityReader implements AutoCloseable
 			return new RemovedLeaf(attempt);
 		}
 		/**
+		 * Exercises native-failure recovery through the production complete-verification boundary.
+		 * @param operation requested reader operation
+		 * @param errno controlled native operation failure
+		 * @param cleanup whether native cleanup also failed and makes recovery unsafe
+		 * @param verification complete controlled authority verification
+		 * @return original native failure or verified removed-leaf rejection
+		 * @throws IOException if the complete authority verification fails differently
+		 */
+		static IOException observationFailure(String operation, int errno, boolean cleanup, Check verification) throws IOException
+		{
+			NativeFailure failure = new NativeFailure("controlled core read", errno);
+			if (cleanup) failure.addSuppressed(new IOException("controlled cleanup failure"));
+			return LinuxAuthorityReader.observationFailure(operation, failure, verification);
+		}
+
+
+		/**
+		 * Exercises observation-failure classification using the original Java or native failure.
+		 * @param operation requested reader operation
+		 * @param failure original observation failure, including uncertain cleanup
+		 * @param verification complete controlled authority verification
+		 * @return original failure or verified removed-leaf rejection
+		 * @throws IOException if the complete authority verification fails differently
+		 */
+		static IOException observationFailure(String operation, IOException failure, Check verification) throws IOException
+		{
+			return LinuxAuthorityReader.observationFailure(operation, failure, verification);
+		}
+
+		/**
 		 * Exercises the actual rejection serializer after controlled workload checks.
 		 * @param failure observation result to serialize
 		 * @return structured failed reply
@@ -609,12 +894,13 @@ public final class LinuxAuthorityReader implements AutoCloseable
 
 		/**
 		 * Runs the actual held-directory classifier on one owned descriptor; it never clones or changes a mount.
+		 * @param scope invocation-owned shared values
 		 * @param directory directory whose actual-root evidence is being checked
 		 * @throws IOException if this directory cannot establish actual-root evidence
 		 */
-		static void requireActualRoot(Path directory) throws IOException
+		static void requireActualRoot(ToolingScope scope, Path directory) throws IOException
 		{
-			try (LinuxAuthorityReader reader = new LinuxAuthorityReader(directory, directory, directory, directory))
+			try (LinuxAuthorityReader reader = new LinuxAuthorityReader(scope, directory, directory, directory, directory))
 			{
 				reader.root = reader.calls.openDirectory(directory);
 				reader.requireActualRoot();
@@ -755,6 +1041,24 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		void verify() throws IOException;
 	}
 
+	/** Carries an exact registered workload's observed membership churn after all authority checks succeeded. */
+	private static final class ChangedMembership extends IOException
+	{
+		/** Exact attempt whose residency sample was invalidated, without implying its completion. */
+		private final LinuxMeasurements.Attempt attempt;
+
+		/**
+		 * Retains verified membership evidence and its exact action correlation.
+		 * @param attempt registered workload whose process membership changed
+		 * @param cause independently verified sampler observation
+		 */
+		private ChangedMembership(LinuxMeasurements.Attempt attempt, LinuxResidency.MembershipChanged cause)
+		{
+			super("Registered workload membership changed: " + attempt, cause);
+			this.attempt = attempt;
+		}
+	}
+
 	/**
 	 * A verified missing registered leaf, awaiting all other authority checks.
 	 */
@@ -870,7 +1174,29 @@ public final class LinuxAuthorityReader implements AutoCloseable
 			}
 		}
 		if (!observed.equals(allowed))
+		{
+			Set<Path> withoutLeaf = new HashSet<>(allowed);
+			withoutLeaf.remove(workload.leaf());
+			if (!leafRemoved && observed.equals(withoutLeaf))
+				throw new IncompleteTopology(workload.directory());
 			throw new IOException("Registered workload cgroup topology is incomplete: " + workload.directory());
+		}
+	}
+
+	/**
+	 * Identifies the exact missing-leaf topology shape, requiring independent native absence and ownership checks.
+	 * Other I/O failures, including descriptor cleanup failures, never nominate this observation transition.
+	 */
+	private static final class IncompleteTopology extends IOException
+	{
+		/**
+		 * Records a complete topology enumeration that contained every expected group except the registered leaf.
+		 * @param directory the outer directory of the registered workload
+		 */
+		private IncompleteTopology(Path directory)
+		{
+			super("Registered workload cgroup topology is incomplete: " + directory);
+		}
 	}
 
 	/**
@@ -1096,7 +1422,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		/**
 		 * Linux-native linker and libc symbol lookup.
 		 */
-		private final Linker linker = Linker.nativeLinker();
+		private final Linker linker;
 		/**
 		 * Offset of captured errno in the JDK call-state layout.
 		 */
@@ -1104,61 +1430,51 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		/**
 		 * libc openat, used only for the initial configured mount directories.
 		 */
-		private final MethodHandle openat = bind("openat", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT), -1);
+		private final MethodHandle openat;
 		/**
 		 * Public libc nonrecursive mount-clone operation.
 		 */
-		private final MethodHandle openTree = bind("open_tree", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT), -1);
+		private final MethodHandle openTree;
 		/**
 		 * Public libc operation attaching the retained detached mount.
 		 */
-		private final MethodHandle moveMount = bind("move_mount", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT), -1);
+		private final MethodHandle moveMount;
 		/**
 		 * Public libc private-namespace detach operation.
 		 */
-		private final MethodHandle unmount = bind("umount2", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-			ValueLayout.ADDRESS, ValueLayout.JAVA_INT), -1);
+		private final MethodHandle unmount;
 		/**
 		 * Public libc mount operation used only to make the already separate namespace nonpropagating.
 		 */
-		private final MethodHandle mount = bind("mount", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-			ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS), -1);
+		private final MethodHandle mount;
 		/**
 		 * Public libc filesystem-type observation.
 		 */
-		private final MethodHandle statfs = bind("fstatfs", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-			ValueLayout.JAVA_INT, ValueLayout.ADDRESS), -1);
+		private final MethodHandle statfs;
 		/**
 		 * Public libc stable 256-byte statx ABI, including mount identity.
 		 */
-		private final MethodHandle statx = bind("statx", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS), -1);
+		private final MethodHandle statx;
 		/**
 		 * libc syscall, used only for openat2 because libc provides no named wrapper.
 		 */
-		private final MethodHandle syscall = bind("syscall", FunctionDescriptor.of(ValueLayout.JAVA_LONG,
-			ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG), 1);
+		private final MethodHandle syscall;
 		/**
 		 * Public libc descriptor read.
 		 */
-		private final MethodHandle read = bind("read", FunctionDescriptor.of(ValueLayout.JAVA_LONG,
-			ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG), -1);
+		private final MethodHandle read;
 		/**
 		 * Public libc single-attempt descriptor close.
 		 */
-		private final MethodHandle close = bind("close", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT), -1);
+		private final MethodHandle close;
 		/**
 		 * Public libc prctl for parent-death containment and seccomp capability checking.
 		 */
-		private final MethodHandle prctl = bind("prctl", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
-			ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG), 1);
+		private final MethodHandle prctl;
 		/**
 		 * Public libc direct parent identity, checked after installing the parent-death signal.
 		 */
-		private final MethodHandle getppid = bind("getppid", FunctionDescriptor.of(ValueLayout.JAVA_INT), -1);
+		private final MethodHandle getppid;
 
 		/**
 		 * Selects O_DIRECTORY and O_NOFOLLOW from the architecture's public fcntl ABI.
@@ -1181,14 +1497,38 @@ public final class LinuxAuthorityReader implements AutoCloseable
 
 		/**
 		 * Resolves the supported Linux ABI before native state changes.
+		 * @param scope invocation-owned shared values
 		 * @throws UnsupportedOperationException if the running ABI is outside Linux x64 or ARM64
 		 */
-		private NativeCalls()
+		private NativeCalls(ToolingScope scope)
 		{
 			String architecture = System.getProperty("os.arch");
 			boolean supported = switch (architecture) { case "amd64", "x86_64", "aarch64" -> true; default -> false; };
 			if (!System.getProperty("os.name").equals("Linux") || !supported)
 				throw new UnsupportedOperationException("Native authority supports Linux x64 and ARM64 only");
+			linker = scope.getNativeLinker();
+			openat = bind("openat", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+				ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT), -1);
+			openTree = bind("open_tree", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+				ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT), -1);
+			moveMount = bind("move_mount", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+				ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT), -1);
+			unmount = bind("umount2", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+				ValueLayout.ADDRESS, ValueLayout.JAVA_INT), -1);
+			mount = bind("mount", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+				ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS), -1);
+			statfs = bind("fstatfs", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+				ValueLayout.JAVA_INT, ValueLayout.ADDRESS), -1);
+			statx = bind("statx", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+				ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS), -1);
+			syscall = bind("syscall", FunctionDescriptor.of(ValueLayout.JAVA_LONG,
+				ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG), 1);
+			read = bind("read", FunctionDescriptor.of(ValueLayout.JAVA_LONG,
+				ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG), -1);
+			close = bind("close", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT), -1);
+			prctl = bind("prctl", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+				ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG), 1);
+			getppid = bind("getppid", FunctionDescriptor.of(ValueLayout.JAVA_INT), -1);
 		}
 
 		/**

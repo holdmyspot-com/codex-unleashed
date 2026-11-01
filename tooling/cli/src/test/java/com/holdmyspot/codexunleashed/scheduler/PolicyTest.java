@@ -8,10 +8,9 @@ import com.holdmyspot.codexunleashed.scheduler.Policy.Decision;
 import com.holdmyspot.codexunleashed.scheduler.Policy.Job;
 import com.holdmyspot.codexunleashed.scheduler.Policy.Observation;
 import com.holdmyspot.codexunleashed.scheduler.Policy.State;
+
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.expectThrows;
 
 /**
  * Exercises admission and retry decisions using explicit snapshots without claiming native process effects.
@@ -182,15 +181,15 @@ public final class PolicyTest
 	}
 
 	/**
-	 * Never kills for ordinary memory pressure without a monitor-confirmed swap-growth incident.
+	 * Reclaims the newest peer under current native memory pressure even without a swap-growth incident.
 	 */
 	@Test
-	public void requiresSwapRecoveryForTermination()
+	public void terminatesOnNativePhysicalPressure()
 	{
 		List<Job> jobs = List.of(new Job("a", State.RUNNING, 0, 10L, 10, 0L, null, 0),
 			new Job("b", State.RUNNING, 1, 10L, 10, 1L, null, 0));
 		assertDecision(Policy.chooseAction(new Budget(100, 2), jobs, new Observation(0, true, false, 0)),
-			Control.WAIT, null);
+			Control.TERMINATE, "b");
 	}
 
 	/**
@@ -215,16 +214,16 @@ public final class PolicyTest
 	@Test
 	public void rejectsInvalidRecords()
 	{
-		expectThrows(IllegalArgumentException.class, () -> new Budget(-1, 2));
-		expectThrows(IllegalArgumentException.class, () -> new Budget(0, 0));
-		expectThrows(IllegalArgumentException.class, () -> new Observation(-1, false, false, 0));
-		expectThrows(IllegalArgumentException.class, () -> new Observation(0, false, false, -1));
-		expectThrows(IllegalArgumentException.class, () -> new Job("a", State.READY, 0, -1L, 0, null, null, 0));
-		expectThrows(IllegalArgumentException.class, () -> new Job("a", State.RUNNING, 0, 10L, 0, null, null, 0));
-		expectThrows(IllegalArgumentException.class, () -> new Job("a", State.READY, 0, 10L, 1, null, null, 0));
-		expectThrows(IllegalArgumentException.class, () -> new Job("a", State.RETRY, 0, 10L, 0, null, null, 0));
-		expectThrows(IllegalArgumentException.class, () -> new Job("a", State.RUNNING, 0, 10L, 0, 0L, 0L, 0));
-		expectThrows(NullPointerException.class, () -> new Job("a", null, 0, 10L, 0, null, null, 0));
+		requireException(IllegalArgumentException.class, () -> new Budget(-1, 2));
+		requireException(IllegalArgumentException.class, () -> new Budget(0, 0));
+		requireException(IllegalArgumentException.class, () -> new Observation(-1, false, false, 0));
+		requireException(IllegalArgumentException.class, () -> new Observation(0, false, false, -1));
+		requireException(IllegalArgumentException.class, () -> new Job("a", State.READY, 0, -1L, 0, null, null, 0));
+		requireException(IllegalArgumentException.class, () -> new Job("a", State.RUNNING, 0, 10L, 0, null, null, 0));
+		requireException(IllegalArgumentException.class, () -> new Job("a", State.READY, 0, 10L, 1, null, null, 0));
+		requireException(IllegalArgumentException.class, () -> new Job("a", State.RETRY, 0, 10L, 0, null, null, 0));
+		requireException(IllegalArgumentException.class, () -> new Job("a", State.RUNNING, 0, 10L, 0, 0L, 0L, 0));
+		requireException(NullPointerException.class, () -> new Job("a", null, 0, 10L, 0, null, null, 0));
 	}
 
 	/**
@@ -237,16 +236,16 @@ public final class PolicyTest
 		Observation observation = new Observation(1000, false, false, 0);
 		List<Job> positions = List.of(new Job("a", State.READY, 0, 10L, 0, null, null, 0),
 			new Job("b", State.READY, 0, 10L, 0, null, null, 0));
-		expectThrows(IllegalArgumentException.class, () -> Policy.chooseAction(budget, positions, observation));
+		requireException(IllegalArgumentException.class, () -> Policy.chooseAction(budget, positions, observation));
 		List<Job> attempts = List.of(new Job("a", State.RUNNING, 0, 10L, 0, 0L, null, 0),
 			new Job("b", State.RUNNING, 1, 10L, 0, 0L, null, 0));
-		expectThrows(IllegalArgumentException.class, () -> Policy.chooseAction(budget, attempts, observation));
+		requireException(IllegalArgumentException.class, () -> Policy.chooseAction(budget, attempts, observation));
 		List<Job> denials = List.of(new Job("a", State.BLOCKED, 0, 10L, 0, 0L, 0L, 0),
 			new Job("b", State.BLOCKED, 1, 10L, 0, 1L, 0L, 0));
-		expectThrows(IllegalArgumentException.class, () -> Policy.chooseAction(budget, denials, observation));
+		requireException(IllegalArgumentException.class, () -> Policy.chooseAction(budget, denials, observation));
 		List<Job> names = List.of(new Job("a", State.READY, 0, 10L, 0, null, null, 0),
 			new Job("a", State.READY, 1, 10L, 0, null, null, 0));
-		expectThrows(IllegalArgumentException.class, () -> Policy.chooseAction(budget, names, observation));
+		requireException(IllegalArgumentException.class, () -> Policy.chooseAction(budget, names, observation));
 	}
 
 	/**
@@ -258,8 +257,8 @@ public final class PolicyTest
 	 */
 	private static void assertDecision(Decision decision, Control control, String jobName)
 	{
-		assertEquals(decision.control(), control);
-		assertEquals(decision.jobName(), jobName);
-		assertFalse(decision.reason().isEmpty());
+		requireThat(decision.control(), "decision.control()").isEqualTo(control);
+		requireThat(decision.jobName(), "decision.jobName()").isEqualTo(jobName);
+		requireThat(decision.reason().isEmpty(), "decision.reason().isEmpty()").isFalse();
 	}
 }

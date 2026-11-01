@@ -11,7 +11,8 @@ set -euo pipefail
 # CARGO_CACHE_PARTS=1 selects build-step groups under -parts-v2 tags, reading
 # earlier -parts-v1 groups or legacy archives on a miss. CARGO_CACHE_STAGE names
 # the step owning new outputs; an unset stage defaults to bootstrap. It requires
-# cargo-cache-parts.py and Python 3.11+. Unchanged groups require no archive uploads.
+# CODEX_SOURCE_CACHE_TOOL to name the bundled codex-tooling launcher. Unchanged
+# groups require no archive uploads.
 if [[ $# != 5 && $# != 6 ]]; then
   printf 'usage: %s <pull|push|pull-partial|push-partial> <repository> <tag> <target-directory> <upstream-tag> [compatible-seed-tag]\n' "$0" >&2
   exit 2
@@ -46,6 +47,7 @@ if [[ $# == 6 ]]; then
 fi
 
 if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
+  : "${CODEX_SOURCE_CACHE_TOOL:?Set the bundled codex-tooling launcher}"
   tag="$tag-parts-v2"
   if [[ -n "$seed_tag" ]]; then
     seed_tag="$seed_tag-parts-v2"
@@ -86,10 +88,9 @@ df -Pk "$target_directory" "$archive_directory"
 case "$operation" in
   pull)
     if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
-      script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
       for candidate in "$reference" "$repository:${tag/-parts-v2/-parts-v1}" "$repository:${tag/-parts-v2/}"; do
         set +e
-        python3 "$script_root/cargo-cache-parts.py" pull "$repository" "$candidate" "$candidate" "$target_directory" "$archive_directory"
+        bash "$CODEX_SOURCE_CACHE_TOOL" cargo-cache-parts pull "$repository" "$candidate" "$candidate" "$target_directory" "$archive_directory"
         result=$?
         set -e
         case "$result" in
@@ -124,7 +125,6 @@ case "$operation" in
       "$archive_tar" --format=pax --zstd -cf - -C "$target_directory" . > "$archive"
       du -sk "$archive"
     fi
-    script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
     (
       cd "$archive_directory"
       # Keep the release association used by the existing retention policy.
@@ -136,7 +136,7 @@ case "$operation" in
       # GHCR accepted a push but immediately returned not found for its tag.
       # Publish every alias from the local manifest without resolving that tag.
       if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
-        python3 "$script_root/cargo-cache-parts.py" push "$repository" "$publication_reference" "$reference" "$target_directory" "$archive_directory" --reuse-reference "$repository:${seed_tag:-$tag}"
+        bash "$CODEX_SOURCE_CACHE_TOOL" cargo-cache-parts push "$repository" "$publication_reference" "$reference" "$target_directory" "$archive_directory" --reuse-reference "$repository:${seed_tag:-$tag}"
       else
         oras push "$publication_reference" \
           --artifact-type application/vnd.codex-unleashed.cargo-target.v1 \

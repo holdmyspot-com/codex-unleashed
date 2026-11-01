@@ -77,16 +77,19 @@ public final class SourceInputCache
 	/**
 	 * Defines process and timestamp authorities without reading hidden configuration inside cache operations.
 	 *
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param workingDirectory the caller's process directory
 	 * @param temporaryDirectory existing owned subprocess capture storage
 	 * @param environment effective inherited environment with explicit caller overrides
 	 * @param clock timestamp authority for content changes
 	 */
-	public record Context(Path workingDirectory, Path temporaryDirectory, Map<String, String> environment, Clock clock)
+	public record Context(ToolingScope scope, Path workingDirectory, Path temporaryDirectory,
+		Map<String, String> environment, Clock clock)
 	{
 		/**
 		 * Copies the environment, makes the working directory absolute, and resolves a relative temporary directory against it.
 		 *
+		 * @param scope borrowed shared values; the caller retains ownership through all operations
 		 * @param workingDirectory the caller directory
 		 * @param temporaryDirectory capture storage
 		 * @param environment the effective environment
@@ -95,6 +98,7 @@ public final class SourceInputCache
 		 */
 		public Context
 		{
+			Objects.requireNonNull(scope, "scope");
 			workingDirectory = Objects.requireNonNull(workingDirectory, "workingDirectory").toAbsolutePath();
 			temporaryDirectory = workingDirectory.resolve(Objects.requireNonNull(temporaryDirectory, "temporaryDirectory"));
 			environment = Map.copyOf(environment);
@@ -141,13 +145,13 @@ public final class SourceInputCache
 			throw new IllegalArgumentException("At least one binary is required");
 		Inputs inputs = load(request, context, err);
 		Path pending = SourceInputSnapshots.pending(inputs.snapshot());
-		Optional<JsonNode> interrupted = read(pending);
+		Optional<JsonNode> interrupted = read(context.scope(), pending);
 		Path resumable = SourceInputSnapshots.resumable(inputs.snapshot());
-		Optional<JsonNode> previous = read(resumable);
+		Optional<JsonNode> previous = read(context.scope(), resumable);
 		Files.deleteIfExists(resumable);
 		if (previous.isEmpty())
-			previous = read(inputs.snapshot());
-		SourceInputSnapshots.write(pending, inputs.current());
+			previous = read(context.scope(), inputs.snapshot());
+		SourceInputSnapshots.write(context.scope(), pending, inputs.current());
 		Map<String, String> owners = inputs.metadata().binaryOwners(request.binaries());
 		Set<String> missing = new TreeSet<>(request.binaries());
 		missing.removeAll(owners.keySet());
@@ -179,7 +183,7 @@ public final class SourceInputCache
 			return;
 		}
 
-		Set<String> changed = SourceInputChanges.apply(inputs.current(), previous.orElseThrow(), interrupted,
+		Set<String> changed = SourceInputChanges.apply(context.scope(), inputs.current(), previous.orElseThrow(), interrupted,
 			context.clock());
 		long unchanged = inputs.current().files().keySet().stream().filter(name -> !changed.contains(name)).count();
 		out.println("Source contents changed in " + changed.size() + " files; Cargo determines affected units; " +
@@ -244,7 +248,7 @@ public final class SourceInputCache
 	{
 		SourceInputInventory.Snapshot current = inventory(inputs.current().root(), inputs.targetDirectory(), context);
 		V8BindingCache.checkpoint(request, context, inputs.targetDirectory());
-		SourceInputSnapshots.checkpoint(inputs.snapshot(), current);
+		SourceInputSnapshots.checkpoint(context.scope(), inputs.snapshot(), current);
 	}
 
 	/**
@@ -267,7 +271,7 @@ public final class SourceInputCache
 		Objects.requireNonNull(err, "err");
 		Inputs inputs = load(request, context, err);
 		V8BindingCache.record(request, context, inputs.targetDirectory());
-		int count = SourceInputSnapshots.record(inputs.snapshot(), inputs.current());
+		int count = SourceInputSnapshots.record(context.scope(), inputs.snapshot(), inputs.current());
 		out.println("Recorded " + count + " source file digests after successful compilation.");
 	}
 
@@ -289,7 +293,7 @@ public final class SourceInputCache
 		err.print(result.stderr());
 		if (result.status() != 0)
 			throw new IOException("Cargo metadata failed with status " + result.status() + ": " + result.stderr().strip());
-		SourceCacheMetadata metadata = SourceCacheMetadata.parse(result.stdout());
+		SourceCacheMetadata metadata = SourceCacheMetadata.parse(context.scope(), result.stdout());
 		Path target = context.workingDirectory().resolve(metadata.targetDirectory(workspace, context.environment()));
 		Path snapshot = request.profile().snapshotDirectory(target).
 			resolve(SourceCacheTargets.directoryName(request.target()) + ".json");
@@ -311,22 +315,23 @@ public final class SourceInputCache
 	{
 		Optional<Path> cargoHome = Optional.ofNullable(context.environment().get("CARGO_HOME")).
 			filter(value -> !value.isEmpty()).map(value -> context.workingDirectory().resolve(value));
-		return SourceInputInventory.read(workspace, target, cargoHome,
+		return SourceInputInventory.read(context.scope(), workspace, target, cargoHome,
 			context.temporaryDirectory(), context.environment());
 	}
 
 	/**
 	 * Reads a snapshot without validating its schema or source mappings.
 	 *
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param path the snapshot or pending filename
 	 * @return the parsed non-null document, or empty if the path is not a regular file or contains JSON null
 	 * @throws IOException if reading or JSON parsing fails
 	 */
-	private static Optional<JsonNode> read(Path path) throws IOException
+	private static Optional<JsonNode> read(ToolingScope scope, Path path) throws IOException
 	{
 		if (!Files.isRegularFile(path))
 			return Optional.empty();
-		JsonNode document = SourceInputSnapshots.read(path);
+		JsonNode document = SourceInputSnapshots.read(scope, path);
 		if (document.isNull())
 			return Optional.empty();
 		return Optional.of(document);

@@ -10,9 +10,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import tools.jackson.core.JacksonException;
-import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Persists schema-one source snapshots and records only unchanged prepared inputs.
@@ -23,8 +21,6 @@ public final class SourceInputSnapshots
 	static final String FILES = "files";
 	static final String MTIMES = "mtimes";
 	static final int CURRENT_SCHEMA = 1;
-	private static final JsonMapper JSON = JsonMapper.builder().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).
-		build();
 	private static final String REFUSED_RECORDING =
 		"Source inputs changed during the build or were not prepared; refusing cache snapshot.";
 
@@ -38,17 +34,19 @@ public final class SourceInputSnapshots
 	/**
 	 * Reads a complete UTF-8 snapshot without transforming its JSON value types.
 	 *
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param path the snapshot
 	 * @return its parsed document
 	 * @throws NullPointerException if the path is null
 	 * @throws IOException if reading or JSON parsing fails
 	 */
-	public static JsonNode read(Path path) throws IOException
+	public static JsonNode read(ToolingScope scope, Path path) throws IOException
 	{
+		Objects.requireNonNull(scope, "scope");
 		Objects.requireNonNull(path, "path");
 		try
 		{
-			JsonNode document = JSON.readTree(Files.readString(path));
+			JsonNode document = scope.getJsonMapper().readTree(Files.readString(path));
 			if (document == null || document.isMissingNode())
 				throw new IOException("Source-input snapshot is empty: " + path);
 			return document;
@@ -62,20 +60,22 @@ public final class SourceInputSnapshots
 	/**
 	 * Writes exact digests and integer nanoseconds through an owned sibling and atomic replacement.
 	 *
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param path the destination
 	 * @param snapshot the collected inputs
 	 * @throws NullPointerException if either argument is null
 	 * @throws IOException if parent creation, writing, atomic replacement, or cleanup fails
 	 */
-	public static void write(Path path, SourceInputInventory.Snapshot snapshot) throws IOException
+	public static void write(ToolingScope scope, Path path, SourceInputInventory.Snapshot snapshot) throws IOException
 	{
+		Objects.requireNonNull(scope, "scope");
 		Objects.requireNonNull(path, "path");
 		Objects.requireNonNull(snapshot, "snapshot");
 		Path destination = path.toAbsolutePath();
 		Files.createDirectories(destination.getParent());
 		Map<String, Object> document = Map.of(SCHEMA_VERSION, CURRENT_SCHEMA, FILES, snapshot.files(),
 			MTIMES, snapshot.mtimes());
-		String text = ArtifactJson.format(document);
+		String text = ArtifactJson.format(scope, document);
 		Path temporary = Files.createTempFile(destination.getParent(), ".source-input-snapshot-", ".tmp");
 		try
 		{
@@ -94,16 +94,17 @@ public final class SourceInputSnapshots
 	 * The caller must establish build success before invoking this method. If deletion fails after replacement,
 	 * the new successful snapshot remains written even though the method reports a failure.
 	 *
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param path the successful snapshot destination
 	 * @param current inputs collected after successful compilation
 	 * @return the number of recorded source files, including lockfiles
 	 * @throws NullPointerException if either argument is null
 	 * @throws IOException if preparation is missing, source inputs differ, or snapshot I/O fails
 	 */
-	public static int record(Path path, SourceInputInventory.Snapshot current) throws IOException
+	public static int record(ToolingScope scope, Path path, SourceInputInventory.Snapshot current) throws IOException
 	{
-		verifyPrepared(path, current);
-		write(path, current);
+		verifyPrepared(scope, path, current);
+		write(scope, path, current);
 		Files.delete(pending(path));
 		Files.deleteIfExists(resumable(path));
 		return current.files().size();
@@ -112,14 +113,15 @@ public final class SourceInputSnapshots
 	/**
 	 * Retains effective input timestamps after preparation without recording build success.
 	 *
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param path the successful snapshot path that identifies these inputs
 	 * @param current inputs collected after all preparation operations complete
 	 * @throws IOException if prepared contents drift or checkpoint writing fails
 	 */
-	public static void checkpoint(Path path, SourceInputInventory.Snapshot current) throws IOException
+	public static void checkpoint(ToolingScope scope, Path path, SourceInputInventory.Snapshot current) throws IOException
 	{
-		verifyPrepared(path, current);
-		write(resumable(path), current);
+		verifyPrepared(scope, path, current);
+		write(scope, resumable(path), current);
 	}
 
 	/**
@@ -138,18 +140,20 @@ public final class SourceInputSnapshots
 	/**
 	 * Compares current and pending source digests, ignoring paths whose basename is {@code Cargo.lock}.
 	 *
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param path the successful snapshot path
 	 * @param current content whose effective timestamps will be persisted
 	 * @throws IOException if prepared inputs are missing, malformed or changed
 	 */
-	private static void verifyPrepared(Path path, SourceInputInventory.Snapshot current) throws IOException
+	private static void verifyPrepared(ToolingScope scope, Path path, SourceInputInventory.Snapshot current) throws IOException
 	{
+		Objects.requireNonNull(scope, "scope");
 		Objects.requireNonNull(path, "path");
 		Objects.requireNonNull(current, "current");
 		Path pending = pending(path);
 		if (!Files.isRegularFile(pending))
 			throw new IOException(REFUSED_RECORDING);
-		JsonNode prepared = read(pending).path(FILES);
+		JsonNode prepared = read(scope, pending).path(FILES);
 		if (!prepared.isObject())
 			throw new IOException("Expected source file mapping in " + pending);
 		Map<String, JsonNode> preparedFiles = new LinkedHashMap<>();
@@ -159,7 +163,7 @@ public final class SourceInputSnapshots
 				preparedFiles.put(entry.getKey(), entry.getValue());
 		}
 		Map<String, JsonNode> currentFiles = new LinkedHashMap<>();
-		JsonNode digests = JSON.valueToTree(current.files());
+		JsonNode digests = scope.getJsonMapper().valueToTree(current.files());
 		for (Map.Entry<String, JsonNode> entry : digests.properties())
 		{
 			if (!isLockfile(entry.getKey()))

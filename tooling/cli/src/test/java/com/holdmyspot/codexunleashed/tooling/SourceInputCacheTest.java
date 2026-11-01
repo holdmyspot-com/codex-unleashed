@@ -21,10 +21,9 @@ import org.apache.commons.io.file.StandardDeleteOption;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
+
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Verifies actual Cargo freshness through source-cache preparation and successful-build recording.
@@ -65,7 +64,7 @@ public final class SourceInputCacheTest
 				PrintStream errors = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8))
 			{
 				SourceInputCache.prepare(request, fixture.context(), output, errors);
-				assertFalse(fixture.libraryFresh(fixture.command(build).stdout()));
+				requireThat(fixture.libraryFresh(fixture.command(build).stdout()), "fixture").isFalse();
 				SourceInputCache.record(request, fixture.context(), output, errors);
 
 				Path source = fixture.workspace.resolve("src/lib.rs");
@@ -73,33 +72,34 @@ public final class SourceInputCacheTest
 				Files.setLastModifiedTime(source, FileTime.from(before.toInstant().plusSeconds(100)));
 				SourceInputCache.prepare(request, fixture.context(), output, errors);
 				String unchanged = fixture.command(build).stdout();
-				assertTrue(fixture.libraryFresh(unchanged));
-				assertTrue(fixture.artifactFresh(unchanged, "cache-demo", "bin"));
+				requireThat(fixture.libraryFresh(unchanged), "fixture.libraryFresh(unchanged)").isTrue();
+				requireThat(fixture.artifactFresh(unchanged, "cache-demo", "bin"), "fixture").isTrue();
 				SourceInputCache.record(request, fixture.context(), output, errors);
 
 				Files.writeString(source, "pub fn value() -> u8 { 9 }\n");
 				Files.setLastModifiedTime(source, before);
 				SourceInputCache.prepare(request, fixture.context(), output, errors);
-				assertFalse(fixture.libraryFresh(fixture.command(build).stdout()));
+				requireThat(fixture.libraryFresh(fixture.command(build).stdout()), "fixture").isFalse();
 				Path executable = fixture.base.resolve("target").resolve(fixture.target).resolve("ci-test").
 					resolve(fixture.binary().getFileName());
-				assertEquals(fixture.command(List.of(executable.toString())).stdout().strip(), "9");
+				requireThat(fixture.command(List.of(executable.toString())).stdout().strip(), "fixture").isEqualTo("9");
 				SourceInputCache.record(request, fixture.context(), output, errors);
 
 				Path main = fixture.workspace.resolve("src/main.rs");
 				String validMain = Files.readString(main);
 				Files.writeString(main, "compile_error!(\"controlled ci-test failure\");\nfn main() {}\n");
 				SourceInputCache.prepare(request, fixture.context(), output, errors);
-				expectThrows(IOException.class, () -> fixture.command(build));
+				requireException(IOException.class, () -> fixture.command(build));
 				Files.writeString(main, validMain);
 				SourceInputCache.prepare(request, fixture.context(), output, errors);
-				assertTrue(fixture.libraryFresh(fixture.command(build).stdout()));
-				assertEquals(fixture.command(List.of(executable.toString())).stdout().strip(), "9");
+				requireThat(fixture.libraryFresh(fixture.command(build).stdout()), "fixture").isTrue();
+				requireThat(fixture.command(List.of(executable.toString())).stdout().strip(), "fixture").isEqualTo("9");
 				SourceInputCache.record(request, fixture.context(), output, errors);
 			}
 
-			assertEquals(Files.readString(fixture.snapshot()), releaseSnapshot);
-			assertEquals(Sha256.digest(fixture.binary()), releaseDigest);
+			requireThat(Files.readString(fixture.snapshot()), "Files.readString(fixture.snapshot())")
+				.isEqualTo(releaseSnapshot);
+			requireThat(Sha256.digest(fixture.binary()), "Sha256.digest(fixture.binary())").isEqualTo(releaseDigest);
 		}
 	}
 
@@ -115,28 +115,29 @@ public final class SourceInputCacheTest
 		{
 			fixture.initialize();
 			fixture.prepare();
-			assertTrue(Files.isRegularFile(SourceInputSnapshots.pending(fixture.snapshot())));
-			assertFalse(Files.exists(fixture.snapshot()));
-			assertFalse(fixture.libraryFresh(fixture.build()));
+			requireThat(Files.isRegularFile(SourceInputSnapshots.pending(fixture.snapshot())), "Files").isTrue();
+			requireThat(Files.exists(fixture.snapshot()), "Files.exists(fixture.snapshot())").isFalse();
+			requireThat(fixture.libraryFresh(fixture.build()), "fixture.libraryFresh(fixture.build())").isFalse();
 			fixture.record();
-			assertTrue(Files.isRegularFile(fixture.snapshot()));
-			assertFalse(Files.exists(SourceInputSnapshots.pending(fixture.snapshot())));
+			requireThat(Files.isRegularFile(fixture.snapshot()), "Files.isRegularFile(fixture.snapshot())").isTrue();
+			requireThat(Files.exists(SourceInputSnapshots.pending(fixture.snapshot())), "Files").isFalse();
 
 			Path source = fixture.workspace.resolve("src/lib.rs");
 			FileTime before = Files.getLastModifiedTime(source);
 			Files.setLastModifiedTime(source, FileTime.from(before.toInstant().plusSeconds(100)));
 			fixture.prepare();
 			String unchanged = fixture.build();
-			assertTrue(fixture.libraryFresh(unchanged));
-			assertTrue(fixture.artifactFresh(unchanged, "cache-demo", "bin"),
-				"unchanged source must retain completed executable compilation");
+			requireThat(fixture.libraryFresh(unchanged), "fixture.libraryFresh(unchanged)").isTrue();
+			requireThat(fixture.artifactFresh(unchanged, "cache-demo", "bin"), "fixture")
+				.withContext("unchanged source must retain completed executable compilation", "diagnostic")
+				.isTrue();
 			fixture.record();
 
 			Files.writeString(source, "pub fn value() -> u8 { 9 }\n");
 			Files.setLastModifiedTime(source, before);
 			fixture.prepare();
-			assertFalse(fixture.libraryFresh(fixture.build()));
-			assertEquals(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "9");
+			requireThat(fixture.libraryFresh(fixture.build()), "fixture.libraryFresh(fixture.build())").isFalse();
+			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("9");
 			fixture.record();
 
 			String valid = Files.readString(source);
@@ -144,36 +145,36 @@ public final class SourceInputCacheTest
 			Files.writeString(source, "compile_error!(\"interrupted build\");\n");
 			Files.setLastModifiedTime(source, successfulTime);
 			fixture.prepare();
-			expectThrows(IOException.class, fixture::build);
+			requireException(IOException.class, fixture::build);
 			Files.writeString(source, valid);
 			Files.setLastModifiedTime(source, successfulTime);
 			fixture.prepare();
 			fixture.build();
-			assertEquals(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "9");
+			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("9");
 			fixture.record();
 
 			Path included = fixture.workspace.resolve("src/included.rs");
 			Files.writeString(included, "pub fn value() -> u8 { 13 }\n");
 			Files.writeString(source, "include!(\"included.rs\");\n");
 			fixture.prepare();
-			assertFalse(fixture.libraryFresh(fixture.build()));
+			requireThat(fixture.libraryFresh(fixture.build()), "fixture.libraryFresh(fixture.build())").isFalse();
 			fixture.record();
 			FileTime includedTime = Files.getLastModifiedTime(included);
 			Files.writeString(included, "pub fn value() -> u8 { 17 }\n");
 			Files.setLastModifiedTime(included, includedTime);
 			fixture.prepare();
-			assertFalse(fixture.libraryFresh(fixture.build()));
-			assertEquals(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "17");
+			requireThat(fixture.libraryFresh(fixture.build()), "fixture.libraryFresh(fixture.build())").isFalse();
+			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("17");
 			fixture.record();
 
 			fixture.prepare();
 			fixture.build();
 			String successful = Files.readString(fixture.snapshot());
 			Files.writeString(source, "pub fn value() -> u8 { 11 }\n");
-			IOException failure = expectThrows(IOException.class, fixture::record);
-			assertTrue(failure.getMessage().contains("Source inputs changed during the build"));
-			assertEquals(Files.readString(fixture.snapshot()), successful);
-			assertTrue(Files.isRegularFile(SourceInputSnapshots.pending(fixture.snapshot())));
+			IOException failure = requireException(IOException.class, fixture::record);
+			requireThat(failure.getMessage().contains("Source inputs changed during the build"), "failure").isTrue();
+			requireThat(Files.readString(fixture.snapshot()), "Files.readString(fixture.snapshot())").isEqualTo(successful);
+			requireThat(Files.isRegularFile(SourceInputSnapshots.pending(fixture.snapshot())), "Files").isTrue();
 		}
 	}
 
@@ -192,24 +193,28 @@ public final class SourceInputCacheTest
 			String validExecutable = Files.readString(executableSource);
 			Files.writeString(executableSource, "compile_error!(\"controlled executable failure\");\nfn main() {}\n");
 			fixture.prepare();
-			expectThrows(IOException.class, fixture::build);
+			requireException(IOException.class, fixture::build);
 			Path dependencies = fixture.base.resolve("target").resolve(fixture.target).resolve("release/deps");
 			try (var outputs = Files.list(dependencies))
 			{
-				assertTrue(outputs.anyMatch(path -> path.getFileName().toString().startsWith("libcache_demo-") &&
-					path.toString().endsWith(".rlib")), "library compilation must finish before the controlled failure");
+				requireThat(outputs.anyMatch(path -> path.getFileName().toString().startsWith("libcache_demo-") &&
+					path.toString().endsWith(".rlib")), "actual").withContext("library compilation must finish before the controlled failure", "diagnostic").isTrue();
 			}
-			assertFalse(Files.exists(fixture.snapshot()));
+			requireThat(Files.exists(fixture.snapshot()), "Files.exists(fixture.snapshot())").isFalse();
 
 			Files.writeString(executableSource, validExecutable);
 			Path librarySource = fixture.workspace.resolve("src/lib.rs");
 			FileTime before = Files.getLastModifiedTime(librarySource);
 			Files.setLastModifiedTime(librarySource, FileTime.from(before.toInstant().plusSeconds(100)));
 			fixture.prepare();
-			assertTrue(fixture.libraryFresh(fixture.build()), "retry must retain unaffected partial library work");
-			assertFalse(Files.exists(fixture.snapshot()), "resumption must not claim successful recording");
+			requireThat(fixture.libraryFresh(fixture.build()), "fixture.libraryFresh(fixture.build())")
+				.withContext("retry must retain unaffected partial library work", "diagnostic")
+				.isTrue();
+			requireThat(Files.exists(fixture.snapshot()), "Files.exists(fixture.snapshot())")
+				.withContext("resumption must not claim successful recording", "diagnostic")
+				.isFalse();
 			fixture.record();
-			assertTrue(Files.isRegularFile(fixture.snapshot()));
+			requireThat(Files.isRegularFile(fixture.snapshot()), "Files.isRegularFile(fixture.snapshot())").isTrue();
 		}
 	}
 
@@ -236,7 +241,7 @@ public final class SourceInputCacheTest
 			Files.writeString(source, "fn main() { println!(\"cargo:rustc-env=CACHE_VALUE=9\"); }\n");
 			Files.setLastModifiedTime(source, before);
 
-			SourceInputCache.Context context = new SourceInputCache.Context(fixture.workspace, fixture.temporary,
+			SourceInputCache.Context context = new SourceInputCache.Context(fixture.scope, fixture.workspace, fixture.temporary,
 				fixture.environment, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC));
 			ByteArrayOutputStream preparation = new ByteArrayOutputStream();
 			try (PrintStream output = new PrintStream(preparation, true, StandardCharsets.UTF_8);
@@ -244,13 +249,13 @@ public final class SourceInputCacheTest
 			{
 				SourceInputCache.prepare(fixture.request(), context, output, errors);
 			}
-			assertFalse(fixture.artifactFresh(fixture.build(), "cache-demo", "bin"),
-				"content changes must rebuild even when the preparation clock moves backward: " +
-					preparation.toString(StandardCharsets.UTF_8));
-			assertEquals(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "9");
+			requireThat(fixture.artifactFresh(fixture.build(), "cache-demo", "bin"), "fixture")
+				.withContext("content changes must rebuild even when the preparation clock moves backward: " +
+					preparation.toString(StandardCharsets.UTF_8), "diagnostic").isFalse();
+			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("9");
 			fixture.record();
 			fixture.prepare();
-			assertTrue(fixture.artifactFresh(fixture.build(), "cache-demo", "bin"));
+			requireThat(fixture.artifactFresh(fixture.build(), "cache-demo", "bin"), "fixture").isTrue();
 		}
 	}
 
@@ -291,25 +296,25 @@ public final class SourceInputCacheTest
 			Files.writeString(source, "pub fn value() -> u8 { external_dependency::value() + 7 }\n");
 			Files.setLastModifiedTime(source, original);
 			fixture.prepare();
-			assertFalse(Files.exists(fixture.snapshot()));
+			requireThat(Files.exists(fixture.snapshot()), "Files.exists(fixture.snapshot())").isFalse();
 			String output = fixture.build();
-			assertTrue(fixture.libraryFresh(output, "external_dependency"));
-			assertFalse(fixture.libraryFresh(output));
-			assertEquals(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "9");
+			requireThat(fixture.libraryFresh(output, "external_dependency"), "fixture").isTrue();
+			requireThat(fixture.libraryFresh(output), "fixture.libraryFresh(output)").isFalse();
+			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("9");
 			fixture.record();
 			fixture.prepare();
 			output = fixture.build();
-			assertTrue(fixture.libraryFresh(output, "external_dependency"));
-			assertTrue(fixture.libraryFresh(output));
+			requireThat(fixture.libraryFresh(output, "external_dependency"), "fixture").isTrue();
+			requireThat(fixture.libraryFresh(output), "fixture.libraryFresh(output)").isTrue();
 			fixture.record();
 			FileTime successfulTime = Files.getLastModifiedTime(source);
 			Files.writeString(source, "pub fn value() -> u8 { external_dependency::value() + 9 }\n");
 			Files.setLastModifiedTime(source, successfulTime);
 			fixture.prepare();
 			output = fixture.build();
-			assertTrue(fixture.libraryFresh(output, "external_dependency"));
-			assertFalse(fixture.libraryFresh(output));
-			assertEquals(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "11");
+			requireThat(fixture.libraryFresh(output, "external_dependency"), "fixture").isTrue();
+			requireThat(fixture.libraryFresh(output), "fixture.libraryFresh(output)").isFalse();
+			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("11");
 		}
 	}
 
@@ -330,10 +335,10 @@ public final class SourceInputCacheTest
 			fixture.record();
 			fixture.prepare(Set.of("side-demo"));
 			String output = fixture.build();
-			assertTrue(fixture.libraryFresh(output, "side_demo"));
-			assertTrue(fixture.artifactFresh(output, fixture.siblingBinary, "bin"));
-			assertTrue(fixture.artifactFresh(output, "side-demo", "bin"));
-			assertTrue(fixture.artifactFresh(output, "cache-demo", "bin"));
+			requireThat(fixture.libraryFresh(output, "side_demo"), "fixture").isTrue();
+			requireThat(fixture.artifactFresh(output, fixture.siblingBinary, "bin"), "fixture").isTrue();
+			requireThat(fixture.artifactFresh(output, "side-demo", "bin"), "fixture").isTrue();
+			requireThat(fixture.artifactFresh(output, "cache-demo", "bin"), "fixture").isTrue();
 		}
 	}
 
@@ -363,15 +368,15 @@ public final class SourceInputCacheTest
 			fixture.prepare();
 			fixture.command(List.of("cargo", "build", "--offline", "--release", "--target", fixture.target,
 				"--package", "side-demo"));
-			expectThrows(IOException.class, fixture::build);
+			requireException(IOException.class, fixture::build);
 			Files.writeString(side, sideText);
 			Files.setLastModifiedTime(side, sideTime);
 			Files.writeString(root, rootText);
 			Files.setLastModifiedTime(root, rootTime);
 			fixture.prepare();
 			String output = fixture.build();
-			assertFalse(fixture.libraryFresh(output, "side_demo"));
-			assertEquals(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "7");
+			requireThat(fixture.libraryFresh(output, "side_demo"), "fixture").isFalse();
+			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("7");
 			fixture.record();
 		}
 	}
@@ -392,10 +397,10 @@ public final class SourceInputCacheTest
 			fixture.useCargoFixture(metadata, 7);
 			for (int attempt = 0; attempt < 2; attempt += 1)
 			{
-				IOException failure = expectThrows(IOException.class, fixture::prepare);
-				assertTrue(failure.getMessage().contains("Cargo clean failed with status 7"));
-				assertFalse(Files.exists(fixture.snapshot()));
-				assertTrue(Files.isRegularFile(SourceInputSnapshots.pending(fixture.snapshot())));
+				IOException failure = requireException(IOException.class, fixture::prepare);
+				requireThat(failure.getMessage().contains("Cargo clean failed with status 7"), "failure").isTrue();
+				requireThat(Files.exists(fixture.snapshot()), "Files.exists(fixture.snapshot())").isFalse();
+				requireThat(Files.isRegularFile(SourceInputSnapshots.pending(fixture.snapshot())), "Files").isTrue();
 			}
 		}
 	}
@@ -421,14 +426,14 @@ public final class SourceInputCacheTest
 			FileTime before = Files.getLastModifiedTime(source);
 			Files.setLastModifiedTime(source, FileTime.from(before.toInstant().plusSeconds(100)));
 			fixture.prepare();
-			assertTrue(fixture.artifactFresh(fixture.build(), "cache-demo", "bin"));
+			requireThat(fixture.artifactFresh(fixture.build(), "cache-demo", "bin"), "fixture").isTrue();
 			fixture.record();
 
 			Files.writeString(source, "fn main() { println!(\"9\"); }\n");
 			Files.setLastModifiedTime(source, before);
 			fixture.prepare();
-			assertFalse(fixture.artifactFresh(fixture.build(), "cache-demo", "bin"));
-			assertEquals(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "9");
+			requireThat(fixture.artifactFresh(fixture.build(), "cache-demo", "bin"), "fixture").isFalse();
+			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("9");
 		}
 	}
 
@@ -444,11 +449,11 @@ public final class SourceInputCacheTest
 		{
 			fixture.initialize();
 			fixture.useCargoFixture("{\"packages\":[]}", 0);
-			IOException failure = expectThrows(IOException.class, fixture::prepare);
-			assertTrue(failure.getMessage().contains("Binaries absent from Cargo metadata: cache-demo"));
-			assertEquals(Files.readAllLines(fixture.base.resolve("cargo-calls.jsonl")).size(), 1);
-			assertFalse(Files.exists(fixture.snapshot()));
-			assertTrue(Files.isRegularFile(SourceInputSnapshots.pending(fixture.snapshot())));
+			IOException failure = requireException(IOException.class, fixture::prepare);
+			requireThat(failure.getMessage().contains("Binaries absent from Cargo metadata: cache-demo"), "failure").isTrue();
+			requireThat(Files.readAllLines(fixture.base.resolve("cargo-calls.jsonl")).size(), "Files").isEqualTo(1);
+			requireThat(Files.exists(fixture.snapshot()), "Files.exists(fixture.snapshot())").isFalse();
+			requireThat(Files.isRegularFile(SourceInputSnapshots.pending(fixture.snapshot())), "Files").isTrue();
 		}
 	}
 
@@ -478,27 +483,31 @@ public final class SourceInputCacheTest
 				"[dependencies]\nv8 = { path = \"../v8\" }\n");
 			Files.writeString(fixture.workspace.resolve("src/lib.rs"), "pub fn value() -> u8 { v8::value() }\n");
 			fixture.prepare();
-			assertFalse(fixture.libraryFresh(fixture.build()));
+			requireThat(fixture.libraryFresh(fixture.build()), "fixture.libraryFresh(fixture.build())").isFalse();
 			fixture.record();
 
 			FileTime original = Files.getLastModifiedTime(binding);
 			Files.setLastModifiedTime(binding, FileTime.from(original.toInstant().plusSeconds(100)));
 			fixture.prepare();
-			assertTrue(fixture.libraryFresh(fixture.build()), "identical downloaded binding must reuse the library");
-			assertEquals(Files.getLastModifiedTime(binding), original);
+			requireThat(fixture.libraryFresh(fixture.build()), "fixture.libraryFresh(fixture.build())")
+				.withContext("identical downloaded binding must reuse the library", "diagnostic")
+				.isTrue();
+			requireThat(Files.getLastModifiedTime(binding), "Files.getLastModifiedTime(binding)").isEqualTo(original);
 			fixture.record();
 
 			Files.writeString(binding, "pub fn value() -> u8 { 9 }\n");
 			Files.setLastModifiedTime(binding, original);
 			fixture.prepare();
-			assertFalse(fixture.libraryFresh(fixture.build()), "changed binding bytes must rebuild despite the old mtime");
-			assertEquals(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "9");
+			requireThat(fixture.libraryFresh(fixture.build()), "fixture.libraryFresh(fixture.build())")
+				.withContext("changed binding bytes must rebuild despite the old mtime", "diagnostic")
+				.isFalse();
+			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("9");
 			fixture.record();
 
 			fixture.prepare();
 			fixture.build();
 			Files.writeString(binding, "pub fn value() -> u8 { 11 }\n");
-			expectThrows(IOException.class, fixture::record);
+			requireException(IOException.class, fixture::record);
 		}
 	}
 
@@ -507,6 +516,7 @@ public final class SourceInputCacheTest
 	 */
 	private static final class Fixture implements AutoCloseable
 	{
+		private final ToolingScope scope = new DefaultToolingScope();
 		private final Path base;
 		private final Path workspace;
 		private final Path temporary;
@@ -612,7 +622,7 @@ public final class SourceInputCacheTest
 		 */
 		private void useCargoFixture(String metadata, int cleanStatus) throws IOException
 		{
-			JsonMapper mapper = JsonMapper.builder().build();
+			JsonMapper mapper = scope.getLeaderJsonMapper();
 			String node = command(List.of("node", "-p", "process.execPath")).stdout().strip();
 			Path preload = base.resolve("cargo-fixture.cjs");
 			Files.writeString(preload, """
@@ -639,7 +649,7 @@ public final class SourceInputCacheTest
 		 */
 		private SourceInputCache.Context context()
 		{
-			return new SourceInputCache.Context(workspace, temporary, environment, Clock.systemUTC());
+			return new SourceInputCache.Context(scope, workspace, temporary, environment, Clock.systemUTC());
 		}
 
 		/**
@@ -743,7 +753,7 @@ public final class SourceInputCacheTest
 			List<JsonNode> artifacts = new ArrayList<>();
 			for (String line : output.lines().toList())
 			{
-				JsonNode value = JsonMapper.builder().build().readTree(line);
+				JsonNode value = scope.getLeaderJsonMapper().readTree(line);
 				if (value.path("reason").asString().equals("compiler-artifact") &&
 					value.path("target").path("name").asString().equals(name) &&
 					value.path("target").path("kind").path(0).asString().equals(kind))
@@ -800,6 +810,7 @@ public final class SourceInputCacheTest
 		@Override
 		public void close() throws IOException
 		{
+			scope.close();
 			PathUtils.deleteDirectory(base, new LinkOption[]{LinkOption.NOFOLLOW_LINKS},
 				StandardDeleteOption.OVERRIDE_READ_ONLY);
 		}

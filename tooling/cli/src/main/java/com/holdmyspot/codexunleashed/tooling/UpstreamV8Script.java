@@ -3,7 +3,6 @@ package com.holdmyspot.codexunleashed.tooling;
 import java.util.Objects;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
  * Extracts the unchanged Bash script from upstream's single-step V8 setup action.
@@ -11,11 +10,6 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  */
 public final class UpstreamV8Script
 {
-	/**
-	 * Parses YAML without replacing upstream's script or checksum verification.
-	 */
-	private static final YAMLMapper YAML = YAMLMapper.builder().build();
-
 	/**
 	 * Prevents construction.
 	 */
@@ -29,18 +23,20 @@ public final class UpstreamV8Script
 	 * Only an absent step environment or upstream's TARGET input binding is supported; other step semantics
 	 * must be integrated explicitly before execution.
 	 *
+	 * @param scope open caller-owned parser scope; remains open
 	 * @param action the YAML action document
 	 * @return the decoded Bash script
 	 * @throws NullPointerException if action is null
 	 * @throws IllegalArgumentException if YAML is malformed or the action has unsupported execution semantics
 	 */
-	public static String extract(String action)
+	public static String extract(ToolingScope scope, String action)
 	{
+		Objects.requireNonNull(scope, "scope may not be null");
 		Objects.requireNonNull(action, "action");
 		JsonNode document;
 		try
 		{
-			document = YAML.readTree(action);
+			document = scope.getYamlMapper().readTree(action);
 		}
 		catch (JacksonException failure)
 		{

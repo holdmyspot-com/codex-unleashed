@@ -1,5 +1,8 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -11,6 +14,12 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /** Exercises the production deferred FIFO with actual hook/batch interpretation and the real queue. */
 public final class LinuxAttemptsTest
 {
+	/** Shared immutable values owned through every hook's final close. */
+	private final ToolingScope scope = new DefaultToolingScope();
+
+	/** Releases shared values after all borrowers finish. */
+	@org.testng.annotations.AfterClass(alwaysRun = true)
+	public void closeScope() { scope.close(); }
 	/** Creates isolated coordinator tests. */
 	public LinuxAttemptsTest() {}
 
@@ -25,8 +34,8 @@ public final class LinuxAttemptsTest
 		var bWaits = new AllocationWaits();
 		var aConnection = new AllocationHooksTest.Connection();
 		var bConnection = new AllocationHooksTest.Connection();
-		var a = AllocationHooksTest.ready(aConnection, aWaits);
-		var b = AllocationHooksTest.ready(bConnection, bWaits);
+		var a = AllocationHooksTest.ready(scope, aConnection, aWaits);
+		var b = AllocationHooksTest.ready(scope, bConnection, bWaits);
 		Controller.Measurements measurements = new Controller.Measurements()
 		{
 			@Override public Controller.Memory readHost() { return new Controller.Memory(1000, 0, false); }
@@ -101,9 +110,9 @@ public final class LinuxAttemptsTest
     {
         var commands = new LinuxAttempts.Commands();
         var launch = AllocationHooksTest.launch(List.of("/missing-compiler", "", "λ"), java.util.Map.of("CARGO_MAKEFLAGS", "borrowed"));
-        var files = new LinuxProcessTree.StandardFiles(java.nio.file.Path.of("/missing-in"),
-            java.nio.file.Path.of("/missing-out"), java.nio.file.Path.of("/missing-err"));
-        var command = new LinuxAttempts.Command(launch, files);
+        var files = new LinuxProcessTree.StandardFiles(java.nio.file.Path.of("/missing-in").toAbsolutePath(),
+            java.nio.file.Path.of("/missing-out").toAbsolutePath(), java.nio.file.Path.of("/missing-err").toAbsolutePath());
+        var command = new LinuxAttempts.FilesCommand(launch, files);
         commands.register("first", command);
         requireException(IllegalArgumentException.class, () -> commands.register("first", command));
         requireException(IllegalArgumentException.class, () -> commands.register(" ", command));
@@ -119,8 +128,9 @@ public final class LinuxAttemptsTest
     @Test public void rejectsCrossThreadRegistrationBeforeMutation() throws InterruptedException
     {
         var commands = new LinuxAttempts.Commands();
-        var command = new LinuxAttempts.Command(AllocationHooksTest.launch(List.of("/missing"), java.util.Map.of()),
-            new LinuxProcessTree.StandardFiles(java.nio.file.Path.of("/in"), java.nio.file.Path.of("/out"), java.nio.file.Path.of("/err")));
+        var command = new LinuxAttempts.FilesCommand(AllocationHooksTest.launch(List.of("/missing"), java.util.Map.of()),
+            new LinuxProcessTree.StandardFiles(java.nio.file.Path.of("/in").toAbsolutePath(),
+                java.nio.file.Path.of("/out").toAbsolutePath(), java.nio.file.Path.of("/err").toAbsolutePath()));
         var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
         Thread thread = Thread.ofPlatform().start(() ->
         {

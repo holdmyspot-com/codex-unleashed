@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Objects;
@@ -41,6 +43,10 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 	private LinuxAuthority.Registration registration;
 	/** Instrumentation owner retained before start. */
 	private AllocationHooks hooks;
+	/** Whole-attempt token owner retained before any instrumented Cargo image is released. */
+	private LinuxCargoTokens.Attempt tokens;
+	/** Borrowed shared values retained through native cleanup. */
+	private final ToolingScope scope;
 	/** One-time start reservation made before any acquisition. */
 	private boolean startAttempted;
 	/** Active queue control blocks publication of this attempt's next batch. */
@@ -59,6 +65,7 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 	private JobQueue.Outcome<LinuxSupervisor.Result> outcome;
 
 	/** Validates resource-free identity/configuration and borrows build owners.
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param attempts peer coordinator
 	 * @param runtime started runtime
 	 * @param authority opened authority
@@ -68,9 +75,10 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 	 * @param command immutable workload configuration
 	 * @param timeout positive control bound
 	 */
-	LinuxAttempt(LinuxAttempts attempts, FridaRuntime runtime, LinuxAuthority authority, String name,
+	LinuxAttempt(ToolingScope scope, LinuxAttempts attempts, FridaRuntime runtime, LinuxAuthority authority, String name,
 		long attemptSequence, UUID identity, LinuxAttempts.Command command, Duration timeout)
 	{
+		this.scope = Objects.requireNonNull(scope, "scope");
 		this.attempts = Objects.requireNonNull(attempts, "attempts");
 		this.runtime = Objects.requireNonNull(runtime, "runtime");
 		this.authority = Objects.requireNonNull(authority, "authority");
@@ -105,11 +113,30 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 		controlling = true;
 		try
 		{
-			try { supervisor = LinuxSupervisor.prepareInstrumented(command.launch(), command.files(), timeout); }
+			try
+			{
+				supervisor = switch (command)
+				{
+					case LinuxAttempts.FilesCommand files ->
+						LinuxSupervisor.prepareInstrumented(files.launch(), files.files(), timeout);
+					case LinuxAttempts.BorrowedCommand borrowed ->
+						LinuxSupervisor.prepareInstrumentedBorrowed(borrowed.binding(name, sequence), timeout);
+					case LinuxAttempts.CargoCommand cargo ->
+						LinuxSupervisor.prepareInstrumentedBorrowed(cargo.command().binding(name, sequence), timeout);
+				};
+			}
 			catch (LinuxSupervisor.PreparationFailure cause) { preparationFailure = cause; throw cause; }
 			registration = authority.register(name, sequence, supervisor);
 			receipt("registered root=" + supervisor.rootPid() + " supervisor=" + supervisor.pid() + " group=" + supervisor.directory());
-			hooks = new AllocationHooks(identity, runtime, command.launch(), supervisor, waits, timeout, attempts::pumpAll);
+			Optional<AllocationHooks.CargoTokens> cargoTokens = Optional.empty();
+			if (command instanceof LinuxAttempts.CargoCommand cargo)
+			{
+				LinuxFifoBindings.Identity fifo = cargo.lease().identity();
+				tokens = cargo.lease().retainAttempt();
+				cargoTokens = Optional.of(new AllocationHooks.CargoTokens(fifo, tokens));
+			}
+			hooks = new AllocationHooks(scope, identity, runtime, command.launch(), supervisor, waits, timeout,
+				attempts::pumpAll, cargoTokens, attempts.routing());
 			hooks.start();
 		}
 		catch (IOException | RuntimeException cause) { throw failed("Start", cause); }
@@ -179,7 +206,9 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 	}
 
 	/** Observes only authentic complete collected results, preserving first faults.
-	 * @return accepted outcome, or empty while whole-tree collection is incomplete
+	 * After actual subtree zero and instrumentation closure, waits within the control timeout for the final
+	 * supervisor receipt so a removed collection leaf cannot be sampled as an active registered workload.
+	 * @return accepted outcome, or empty while whole-tree execution can still occur
 	 * @throws IOException if any retained fault prevents accepting an outcome
 	 */
 	@Override
@@ -199,9 +228,20 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 				pumpEvents();
 				return Optional.empty();
 			}
-			closeInstrumentation();
-			if (supervisor.observeCompletion() == false)
-				return Optional.empty();
+			Throwable tokenFailure = closeInstrumentation();
+			if (tokenFailure instanceof Error cause)
+				throw cause;
+			if (failure != null)
+				throw failure;
+			// COLLECT can remove its cgroup before publishing the final supervisor receipt.
+			// Finish that bounded handshake before the coordinator requests another registered-leaf sample.
+			long collectedAt = System.nanoTime();
+			while (supervisor.observeCompletion() == false)
+			{
+				if (System.nanoTime() - collectedAt >= timeout.toNanos())
+					throw new IOException("Attempt observation awaits collected whole-job statuses");
+				pause();
+			}
 			LinuxSupervisor.Result result = supervisor.result();
 			receipt("accepted-result " + result);
 			outcome = new JobQueue.Outcome<>(result, result.terminationRequested());
@@ -221,26 +261,93 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 	}
 
 	/** Closes instrumentation only after actual subtree zero, then publishes COLLECT.
+	 * @return the token retirement fault after collection, or null if token retirement succeeded
 	 * @throws IOException if zero or complete native destruction cannot be established
 	 */
-	private void closeInstrumentation() throws IOException
+	private Throwable closeInstrumentation() throws IOException
 	{
 		if (instrumentationClosed)
-			return;
+			return null;
 		stopGrants();
 		if (supervisor.observeExecutionImpossible() == false)
 			throw new IOException("Instrumentation retains ownership while workload can execute");
 		receipt("actual-zero group=" + supervisor.directory());
-		if (hooks != null)
-			hooks.close(supervisor::observeExecutionImpossible);
-		receipt("instrumentation-closed");
-		supervisor.finishInstrumentation();
-		instrumentationClosed = true;
-		receipt("collect-published");
+		Throwable tokenFailure = closeInstrumentationOwners(() ->
+		{
+			if (hooks != null)
+				hooks.close(supervisor::observeExecutionImpossible);
+			receipt("instrumentation-closed");
+		}, () ->
+		{
+			if (tokens != null) tokens.close();
+		}, () ->
+		{
+			supervisor.finishInstrumentation();
+			instrumentationClosed = true;
+			receipt("collect-published");
+		});
+		if (tokenFailure != null)
+			failed("Cargo token retirement", tokenFailure);
+		return tokenFailure;
 	}
 
-	/** Performs bounded complete cleanup without inventing a queue outcome.
+	/**
+	 * Runs instrumentation closure, logical token retirement and supervisor collection in their established order.
+	 * The caller must first establish whole-workload execution impossibility. Token retirement has no native
+	 * attachment ownership and must retire its logical owner even when it reports an exception or error.
+	 * A token retirement fault is returned only after collection succeeds. If checked collection also fails, the
+	 * original token fault is thrown with the collection fault suppressed. An unchecked collection failure keeps
+	 * its original type and identity, with the token fault suppressed instead.
+	 * The token operation may be empty when the invocation has no extra-token owner.
+	 * @param instrumentation closes native attachments completely; failure retains them and prevents later operations
+	 * @param tokens retires logical token ownership after attachments close
+	 * @param collect publishes COLLECT and records its actual acknowledgement
+	 * @return the original token retirement fault after successful collection, or null if retirement succeeded
+	 * @throws NullPointerException if an operation is null
+	 * @throws IOException if native attachment closure or collection fails
+	 * @throws RuntimeException if attachment closure or collection fails unexpectedly, or collection fails after an
+	 * unchecked token fault
+	 * @throws Error if attachment closure or collection fails fatally, or collection fails after a fatal token fault
+	 */
+	static Throwable closeInstrumentationOwners(Close instrumentation, Close tokens, Close collect) throws IOException
+	{
+		Objects.requireNonNull(instrumentation, "instrumentation");
+		Objects.requireNonNull(tokens, "tokens");
+		Objects.requireNonNull(collect, "collect");
+		instrumentation.close();
+		Throwable tokenFailure = null;
+		try { tokens.close(); }
+		catch (IOException | RuntimeException | Error cause) { tokenFailure = cause; }
+		try { collect.close(); }
+		catch (IOException cause)
+		{
+			if (tokenFailure == null)
+				throw cause;
+			if (tokenFailure != cause)
+				tokenFailure.addSuppressed(cause);
+			switch (tokenFailure)
+			{
+				case IOException original -> throw original;
+				case RuntimeException original -> throw original;
+				case Error original -> throw original;
+				default -> throw new IllegalStateException("Unexpected token retirement failure", tokenFailure);
+			}
+		}
+		catch (RuntimeException | Error cause)
+		{
+			boolean distinctTokenFailure = tokenFailure != null && tokenFailure != cause;
+			if (distinctTokenFailure)
+				cause.addSuppressed(tokenFailure);
+			throw cause;
+		}
+		return tokenFailure;
+	}
+
+	/**
+	 * Performs bounded complete cleanup without inventing a queue outcome.
+	 * A fatal logical token-retirement fault is deferred until dependent owner cleanup has been attempted.
 	 * @throws IOException if ownership remains unresolved or a genuine fault was retained
+	 * @throws Error if cleanup fails fatally or token retirement reported a fatal fault
 	 */
 	@Override
 	public void close() throws IOException
@@ -250,6 +357,7 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 			throw new IOException("Attempt cleanup remains unresolved", closeFailure);
 		if (closed)
 			return;
+		Throwable tokenFailure = null;
 		try
 		{
 			stopGrants();
@@ -268,7 +376,7 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 						pause();
 					}
 				}
-				closeInstrumentation();
+				tokenFailure = closeInstrumentation();
 				// The supervisor's close collects authentic receipts even after its sticky supervision fault.
 				// Unregister must precede removal of final owner storage and the next measurement batch.
 				long started = System.nanoTime();
@@ -299,9 +407,16 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 		catch (IOException | RuntimeException cause)
 		{
 			closeFailure = failed("Cleanup", cause);
+			if (tokenFailure instanceof Error fatal)
+			{
+				fatal.addSuppressed(cause);
+				throw fatal;
+			}
 			throw closeFailure;
 		}
 		catch (Error cause) { closeFailure = failed("Cleanup", cause); throw cause; }
+		if (tokenFailure instanceof Error cause)
+			throw cause;
 		if (failure != null)
 			throw failure;
 	}

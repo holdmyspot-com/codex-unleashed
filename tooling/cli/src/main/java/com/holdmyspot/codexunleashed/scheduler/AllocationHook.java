@@ -1,10 +1,14 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -12,9 +16,6 @@ import java.util.UUID;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
-import tools.jackson.core.StreamReadConstraints;
-import tools.jackson.core.StreamReadFeature;
-import tools.jackson.core.json.JsonFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -52,10 +53,13 @@ final class AllocationHook
 	/**
 	 * Bounded parser for generated controls and Frida error envelopes; normal frames still use the strict codec.
 	 */
-	private static final JsonMapper JSON = JsonMapper.builder(JsonFactory.builder()
-		.enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
-		.streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(4).maxStringLength(MAX_MESSAGE_CHARACTERS)
-			.maxDocumentLength(MAX_MESSAGE_CHARACTERS).build()).build()).build();
+	private final JsonMapper json;
+    /** Authenticated attempt correlation supplied to the strict decoder. */
+    private final UUID attempt;
+    /** Authenticated image PID supplied to the strict decoder. */
+    private final long pid;
+    /** First validated report for each observed native wait, retained independently of native ownership. */
+    private final List<Denial> denials = new ArrayList<>();
 	/**
 	 * Thread exclusively owning Java transitions and native operations.
 	 */
@@ -115,6 +119,7 @@ final class AllocationHook
 
 	/**
 	 * Creates a resource-free native owner; the caller retains manager lifetime and process verification responsibility.
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param attempt correlation identity unique to this workload attempt
 	 * @param installation positive generation never reused within the attempt
 	 * @param pid already verified positive unsigned-32-bit process identity
@@ -125,14 +130,15 @@ final class AllocationHook
 	 * @throws NullPointerException if a reference input is null
 	 * @throws IllegalArgumentException if an identity, source or duration is invalid
 	 */
-	AllocationHook(UUID attempt, long installation, long pid, FridaRuntime.Manager manager, AllocationWaits waits,
+	AllocationHook(ToolingScope scope, UUID attempt, long installation, long pid, FridaRuntime.Manager manager, AllocationWaits waits,
 		String program, Duration timeout)
 	{
-		this(attempt, installation, pid, new NativeConnection(manager, pid), waits, program, timeout, System::nanoTime);
+		this(scope, attempt, installation, pid, newNativeConnection(manager, pid), waits, program, timeout, System::nanoTime);
 	}
 
 	/**
 	 * Binds protocol and lifecycle decisions to an owned connection without acquiring native resources.
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param attempt correlation identity unique to this workload attempt
 	 * @param installation positive generation never reused within the attempt
 	 * @param pid verified positive unsigned-32-bit process identity
@@ -144,10 +150,13 @@ final class AllocationHook
 	 * @throws NullPointerException if a reference input is null
 	 * @throws IllegalArgumentException if an identity, source or duration is invalid
 	 */
-	AllocationHook(UUID attempt, long installation, long pid, Connection connection, AllocationWaits waits,
+	AllocationHook(ToolingScope scope, UUID attempt, long installation, long pid, Connection connection, AllocationWaits waits,
 		String program, Duration timeout, LongSupplier nanoTime)
 	{
-		AllocationMessages messages = new AllocationMessages(attempt, installation, pid);
+		this.json = Objects.requireNonNull(scope, "scope").getAllocationEnvelopeMapper();
+		AllocationMessages messages = new AllocationMessages(scope, attempt, installation, pid);
+        this.attempt = attempt;
+        this.pid = pid;
 		this.connection = Objects.requireNonNull(connection, "connection may not be null");
 		this.waits = Objects.requireNonNull(waits, "waits may not be null");
 		this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime may not be null");
@@ -165,9 +174,23 @@ final class AllocationHook
 		}
 		if (timeoutNanos <= 0)
 			throw new IllegalArgumentException("Allocation control timeout must be positive");
-		this.source = "const allocationIdentity = " + JSON.createObjectNode().put("attempt", attempt.toString())
+		this.source = "const allocationIdentity = " + json.createObjectNode().put("attempt", attempt.toString())
 			.put("installation", Long.toString(installation)).put("pid", Long.toString(pid)) + ";\n" + program;
-		this.permissions = new AllocationPermissions(messages, permission -> connection.post(JSON.readTree(permission)));
+		this.permissions = new AllocationPermissions(messages, permission -> connection.post(json.readTree(permission)));
+	}
+
+	/**
+	 * Creates an attachment and script transport without reserving or acquiring native resources.
+	 * The caller authenticates the held image before start and retains the manager through connection cleanup.
+	 * Successful construction transfers this resource-free connection to its retaining hook owner.
+	 * @param manager active native manager borrowed on the controller thread
+	 * @param pid process identity whose ownership and unsigned-32-bit range the hook validates before start
+	 * @return resource-free connection that enables child gating when started
+	 * @throws NullPointerException if {@code manager} is null
+	 */
+	static Connection newNativeConnection(FridaRuntime.Manager manager, long pid)
+	{
+		return new NativeConnection(manager, pid);
 	}
 
 	/**
@@ -242,14 +265,14 @@ final class AllocationHook
 					return;
 				if (frame.length() > MAX_MESSAGE_CHARACTERS)
 					throw new IOException("Native allocation message exceeds " + MAX_MESSAGE_CHARACTERS + " characters");
-				JsonNode envelope = JSON.readTree(frame);
+				JsonNode envelope = json.readTree(frame);
 				if (envelope != null && envelope.path("type").isString() && envelope.path("type").asString().equals("error"))
 					throw new IOException("Native allocation script error: " + envelope.path("description").asString() +
 						"; stack=" + envelope.path("stack").asString());
 				AllocationMessages.Event event = permissions.read(frame);
 				if (event instanceof AllocationMessages.Blocked blocked)
 				{
-					observed.add(blocked.identity());
+					if (observed.add(blocked.identity())) denials.add(new Denial(attempt, pid, blocked));
 					waits.blocked(blocked.identity());
 				}
 			}
@@ -264,6 +287,22 @@ final class AllocationHook
 			throw cause;
 		}
 	}
+
+    /**
+     * Copies genuine decoded denials without polling, granting or transferring native ownership.
+     * Receipts remain readable after stop, detachment and successful native closure.
+     * @return immutable first reports in native delivery order, empty before a validated denial
+     * @throws IllegalStateException if called off-thread
+     */
+    List<Denial> denials() { requireOwner(); return List.copyOf(denials); }
+
+    /**
+     * Retains exact decoder inputs and the immutable decoded frame; construction alone proves no native event.
+     * @param attempt authenticated unique attempt correlation
+     * @param pid authenticated original image PID
+     * @param blocked actual validated native report including installation, wait, thread, bytes and errno
+     */
+    record Denial(UUID attempt, long pid, AllocationMessages.Blocked blocked) {}
 
 	/**
 	 * Posts one observed wait selected by the caller's frozen AllocationWaits batch and awaits its exact accepted response.
@@ -329,6 +368,15 @@ final class AllocationHook
 			throw new IOException("Native allocation cleanup remains unresolved", closeFailure);
 		if (barrier.reached() == false)
 			throw new IOException("Native allocation cleanup requires whole-workload execution to be impossible");
+		closeConnection();
+	}
+
+	/**
+	 * Releases the connection once after an independently established lifetime boundary.
+	 * @throws IOException if destruction remains uncertain
+	 */
+	private void closeConnection() throws IOException
+	{
 		try
 		{
 			connection.close();
@@ -344,6 +392,34 @@ final class AllocationHook
 			closeFailure = new IOException("Native allocation cleanup did not complete", cause);
 			throw cause;
 		}
+	}
+
+	/**
+	 * Observes this exact image attachment without granting workload terminal authority.
+	 * @return true only when the retained connection independently reports detachment
+	 * @throws IOException if observation or earlier cleanup is uncertain
+	 * @throws IllegalStateException if called off-thread
+	 */
+	boolean detached() throws IOException
+	{
+		requireOwner();
+		if (closed || closeFailure != null) return false;
+		return connection.detached();
+	}
+
+	/**
+	 * Withdraws this image's controls and releases only its independently detached connection.
+	 * Borrowed workload waits and the whole-attempt lifetime remain owned by the caller.
+	 * @throws IOException if detachment is unproven or destruction is uncertain
+	 * @throws IllegalStateException if called off-thread
+	 */
+	void closeDetached() throws IOException
+	{
+		requireOwner();
+		if (closed) return;
+		stop();
+		if (!detached()) throw new IOException("Exact allocation attachment detachment is unproven", closeFailure);
+		closeConnection();
 	}
 
 	/**
@@ -479,6 +555,13 @@ final class AllocationHook
 		 * @throws IOException if owned native destruction fails; caller has already established the execution barrier
 		 */
 		void close() throws IOException;
+		/**
+		 * Observes whether this exact attachment has detached independently of workload completion.
+		 * Connections without a supported observation retain conservative ownership.
+		 * @return true only after independently observed attachment detachment
+		 * @throws IOException if the observation is unavailable or uncertain
+		 */
+		default boolean detached() throws IOException { return false; }
 	}
 
 	/**
@@ -561,6 +644,9 @@ final class AllocationHook
 
 		@Override
 		public void post(JsonNode permission) { script.post(permission); }
+
+		@Override
+		public boolean detached() { return session != null && session.detached(); }
 
 		@Override
 		public void close() throws IOException

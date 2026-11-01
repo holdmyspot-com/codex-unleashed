@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -329,10 +330,94 @@ public final class JobQueueCompletionFreeRetryTest
 	}
 
 	/**
+	 * Supplies insufficient, exact-fit, recovered, unmeasured, unexplained-abort and multi-action terminal cases.
+	 * @return independent measured-capacity diagnostic inputs
+	 */
+	@DataProvider(parallel = true)
+	public Object[][] capacityDiagnostics()
+	{
+		return new Object[][] {{200L, 150L, true, false, true}, {250L, 150L, true, false, false},
+			{300L, 150L, true, false, false}, {200L, 0L, true, false, false},
+			{200L, 150L, false, false, false}, {200L, 150L, true, true, false}};
+	}
+
+	/**
+	 * Identifies insufficient capacity only from fresh reclaimed availability and retained resident demand after actual
+	 * allocation waits. Exact fits, recovered capacity, missing demand, unexplained abortions and other unfinished
+	 * work retain generic recovery exhaustion. Every case keeps the original bounded retry and owner cleanup.
+	 * @param available available bytes after accepting and closing the second aborted owner
+	 * @param resident observed resident lower bound while the action is live
+	 * @param blocked whether actual allocation-wait notifications explain the abortions
+	 * @param peer whether another unfinished action prevents a single-action diagnosis
+	 * @param insufficient whether the final complete observations prove insufficient measured physical capacity
+	 * @throws IOException if valid fixture operations fail
+	 */
+	@Test(dataProvider = "capacityDiagnostics")
+	public void exhaustionDistinguishesMeasuredCapacity(long available, long resident, boolean blocked,
+		boolean peer, boolean insufficient) throws IOException
+	{
+		Fixture fixture = new Fixture();
+		fixture.headroom = 100;
+		try (var queue = fixture.queue())
+		{
+			queue.submit("unknown", null);
+			if (peer)
+				queue.submit("later", 1L);
+			queue.cycle();
+			for (long sequence = 0; sequence < 2; ++sequence)
+			{
+				fixture.residency = resident;
+				if (blocked)
+				{
+					queue.allocationBlocked("unknown", sequence, 0);
+					fixture.host = new Controller.Memory(50, 0, false);
+					requireThat(queue.cycle().control(), "insufficientLiveBudget")
+						.isEqualTo(Policy.Control.TERMINATE, "expected");
+				}
+				else
+					queue.cycle();
+				fixture.owner("unknown", sequence).outcome = new JobQueue.Outcome<>(137, true);
+				fixture.host = new Controller.Memory(available, 0, false);
+				if (sequence == 0)
+					queue.cycle();
+			}
+			IOException failure = requireException(IOException.class, queue::cycle);
+			requireThat(failure.getMessage().contains("Insufficient measured physical capacity"), "specificDiagnosis")
+				.isEqualTo(insufficient, "expected");
+			if (insufficient)
+			{
+				requireThat(failure.getMessage().contains("available bytes=200"), "freshAvailability").isTrue();
+				requireThat(failure.getMessage().contains("reserved headroom bytes=100"), "reservedBudget").isTrue();
+				requireThat(failure.getMessage().contains("usable bytes=100"), "remainingCapacity").isTrue();
+				requireThat(failure.getMessage().contains("observed resident lower bound bytes=150"), "remainingDemand")
+					.isTrue();
+			}
+			else
+				requireThat(failure.getMessage(), "genericExhaustion")
+					.isEqualTo("Automatic completion-free recovery is exhausted", "expected");
+			int reads = fixture.hostReads;
+			IOException latched = requireException(IOException.class, queue::cycle);
+			requireThat(latched.getMessage(), "stableTerminalDiagnostic").isEqualTo(failure.getMessage(), "original");
+			requireThat(fixture.hostReads, "noSamplingAfterTerminal").isEqualTo(reads, "before");
+			requireThat(fixture.acceptances, "completeBatchesForwarded").isEqualTo(reads, "hostReads");
+			requireThat(fixture.creations.size(), "boundedAttempts").isEqualTo(2, "expected");
+			requireThat(fixture.owner("unknown", 0).closes, "firstOwnerClosed").isEqualTo(1, "expected");
+			requireThat(fixture.owner("unknown", 1).closes, "secondOwnerClosed").isEqualTo(1, "expected");
+		}
+	}
+
+	/**
 	 * Supplies controlled host/tree values and resource-free owners at the production collaborator boundaries.
 	 */
 	private static final class Fixture implements Controller.Measurements
 	{
+		/** Creates an independent resource-free fixture for one test. */
+		private Fixture()
+		{
+		}
+
+		/** Reserved headroom supplied independently for this test fixture. */
+		private long headroom = 0;
 		/** Host bytes and pressure supplied to the controller. */
 		private Controller.Memory host = new Controller.Memory(1000, 0, false);
 		/** Stable accepted owners keyed by action and attempt sequence. */
@@ -349,6 +434,8 @@ public final class JobQueueCompletionFreeRetryTest
 		private Long failStartSequence = null;
 		/** Number of host-reader requests received from the controller. */
 		private int hostReads = 0;
+		/** Number of complete measurement batches accepted by this provider. */
+		private int acceptances = 0;
 
 		/**
 		 * Creates a resource-free queue whose measurements and owners belong to this fixture.
@@ -356,7 +443,7 @@ public final class JobQueueCompletionFreeRetryTest
 		 */
 		private JobQueue<Integer> queue()
 		{
-			return new JobQueue<>(new Policy.Budget(0, 3), this, (name, sequence) ->
+			return new JobQueue<>(new Policy.Budget(headroom, 3), this, (name, sequence) ->
 			{
 				Owner owner = new Owner();
 				if (failStartSequence != null && failStartSequence == sequence)
@@ -398,6 +485,12 @@ public final class JobQueueCompletionFreeRetryTest
 		}
 
 		@Override
+		public void acceptReadings()
+		{
+			++acceptances;
+		}
+
+		@Override
 		public long readResidentBytes(Policy.Job job) throws IOException
 		{
 			if (residentFailure != null)
@@ -411,6 +504,11 @@ public final class JobQueueCompletionFreeRetryTest
 	 */
 	private static final class Owner implements JobQueue.Attempt<Integer>
 	{
+		/** Creates an independent resource-free owner for one test. */
+		private Owner()
+		{
+		}
+
 		/** Accepted whole-job result, or null before the modeled native owner accepts completion/reaping. */
 		private JobQueue.Outcome<Integer> outcome = null;
 		/** Number of explicit owner-cleanup requests. */

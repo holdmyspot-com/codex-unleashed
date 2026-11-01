@@ -7,10 +7,9 @@ import com.holdmyspot.codexunleashed.scheduler.Policy.Control;
 import com.holdmyspot.codexunleashed.scheduler.Policy.Job;
 import com.holdmyspot.codexunleashed.scheduler.Policy.Observation;
 import com.holdmyspot.codexunleashed.scheduler.Policy.State;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
+
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Exercises swap-growth history and its use by the actual scheduling policy without claiming native effects.
@@ -31,9 +30,9 @@ public final class SwapRecoveryTest
     public void existingOccupancyIsNotGrowth()
     {
         var history = new SwapRecovery();
-        assertFalse(history.observe(100, true));
-        assertFalse(history.observe(100, true));
-        assertFalse(history.observe(90, true));
+        requireThat(history.observe(100, true), "history").isFalse();
+        requireThat(history.observe(100, true), "history").isFalse();
+        requireThat(history.observe(90, true), "history").isFalse();
     }
 
     /**
@@ -43,12 +42,12 @@ public final class SwapRecoveryTest
     public void pressureRetainsObservedGrowth()
     {
         var history = new SwapRecovery();
-        assertFalse(history.observe(0, false));
-        assertTrue(history.observe(100, true));
-        assertTrue(history.observe(100, true));
-        assertTrue(history.observe(90, true));
-        assertFalse(history.observe(90, false));
-        assertFalse(history.observe(90, true));
+        requireThat(history.observe(0, false), "history").isFalse();
+        requireThat(history.observe(100, true), "history").isTrue();
+        requireThat(history.observe(100, true), "history").isTrue();
+        requireThat(history.observe(90, true), "history").isTrue();
+        requireThat(history.observe(90, false), "history").isFalse();
+        requireThat(history.observe(90, true), "history").isFalse();
     }
 
     /**
@@ -58,10 +57,10 @@ public final class SwapRecoveryTest
     public void growthCanPrecedePressure()
     {
         var history = new SwapRecovery();
-        assertFalse(history.observe(100, false));
-        assertTrue(history.observe(101, false));
-        assertTrue(history.observe(101, true));
-        assertFalse(history.observe(101, false));
+        requireThat(history.observe(100, false), "history").isFalse();
+        requireThat(history.observe(101, false), "history").isTrue();
+        requireThat(history.observe(101, true), "history").isTrue();
+        requireThat(history.observe(101, false), "history").isFalse();
     }
 
     /**
@@ -71,11 +70,11 @@ public final class SwapRecoveryTest
     public void rejectedSamplePreservesHistory()
     {
         var history = new SwapRecovery();
-        expectThrows(IllegalArgumentException.class, () -> history.observe(-1, false));
-        assertFalse(history.observe(100, true));
-        assertTrue(history.observe(200, true));
-        expectThrows(IllegalArgumentException.class, () -> history.observe(-1, false));
-        assertTrue(history.observe(200, true));
+        requireException(IllegalArgumentException.class, () -> history.observe(-1, false));
+        requireThat(history.observe(100, true), "history").isFalse();
+        requireThat(history.observe(200, true), "history").isTrue();
+        requireException(IllegalArgumentException.class, () -> history.observe(-1, false));
+        requireThat(history.observe(200, true), "history").isTrue();
     }
 
     /**
@@ -86,16 +85,16 @@ public final class SwapRecoveryTest
     {
         var history = new SwapRecovery();
         var other = new SwapRecovery();
-        assertFalse(history.observe(0, false));
-        assertTrue(history.observe(Long.MAX_VALUE, true));
-        assertFalse(other.observe(Long.MAX_VALUE, true));
-        assertFalse(history.observe(Long.MAX_VALUE, false));
-        assertFalse(history.observe(0, false));
-        assertTrue(history.observe(1, true));
+        requireThat(history.observe(0, false), "history").isFalse();
+        requireThat(history.observe(Long.MAX_VALUE, true), "history").isTrue();
+        requireThat(other.observe(Long.MAX_VALUE, true), "other").isFalse();
+        requireThat(history.observe(Long.MAX_VALUE, false), "history").isFalse();
+        requireThat(history.observe(0, false), "history").isFalse();
+        requireThat(history.observe(1, true), "history").isTrue();
     }
 
     /**
-     * Lets policy stop recovery after pressure relief while occupancy remains high, and preserves retry ordering.
+     * Ends swap recovery after pressure relief while preserving retry order and later physical-pressure control.
      */
     @Test
     public void policyStopsRecoveryWithoutWaitingForSwapDecrease()
@@ -109,21 +108,24 @@ public final class SwapRecoveryTest
 
         var pressure = new Observation(10, true, history.observe(200, true), 0);
         var recovery = Policy.chooseAction(budget, live, pressure);
-        assertEquals(recovery.control(), Control.TERMINATE);
-        assertEquals(recovery.jobName(), "newest");
+        requireThat(recovery.control(), "recovery.control()").isEqualTo(Control.TERMINATE);
+        requireThat(recovery.jobName(), "recovery.jobName()").isEqualTo("newest");
 
         var retry = new Job("newest", State.RETRY, 1, 200L, 0, null, null, 1);
         var afterReap = List.of(oldest, retry);
         var beforeCompletion = new Observation(1_000, false, history.observe(200, false), 0);
-        assertEquals(Policy.chooseAction(budget, afterReap, beforeCompletion).control(), Control.WAIT);
+        requireThat(Policy.chooseAction(budget, afterReap, beforeCompletion).control(), "Policy")
+            .isEqualTo(Control.WAIT);
 
         var afterCompletion = new Observation(1_000, false, history.observe(200, false), 1);
         var resumed = Policy.chooseAction(budget, afterReap, afterCompletion);
-        assertEquals(resumed.control(), Control.START);
-        assertEquals(resumed.jobName(), "newest");
+        requireThat(resumed.control(), "resumed.control()").isEqualTo(Control.START);
+        requireThat(resumed.jobName(), "resumed.jobName()").isEqualTo("newest");
 
         var laterPressure = new Observation(10, true, history.observe(200, true), 1);
-        assertFalse(laterPressure.swapRecovery());
-        assertEquals(Policy.chooseAction(budget, live, laterPressure).control(), Control.WAIT);
+        requireThat(laterPressure.swapRecovery(), "laterPressure.swapRecovery()").isFalse();
+        var physicalRecovery = Policy.chooseAction(budget, live, laterPressure);
+        requireThat(physicalRecovery.control(), "physicalRecovery.control()").isEqualTo(Control.TERMINATE);
+        requireThat(physicalRecovery.jobName(), "physicalRecovery.jobName()").isEqualTo("newest");
     }
 }

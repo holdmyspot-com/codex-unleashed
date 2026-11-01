@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -46,25 +48,39 @@ public final class WindowsProcess implements AutoCloseable
     private final List<MemorySegment> unresolvedResidencyHandles = new ArrayList<>();
     /** First query-release failure, with later failed releases suppressed, or null before any failure. */
     private IOException residencyCleanupFailure = null;
+    /** Borrowed native access and confined result-storage owner, closed after every native handle. */
     private final Kernel kernel;
     /** Lifetime and temporary release records exist before the first native acquisition. */
     private final OwnedHandle jobHandle = new OwnedHandle("Job Object");
+    /** Owned directly created root-process handle retained until Job-zero cleanup. */
     private final OwnedHandle processHandle = new OwnedHandle("root process");
+    /** Owned primary-thread handle used for the single prepared-root release. */
     private final OwnedHandle threadHandle = new OwnedHandle("primary thread");
+    /** Owned NUL input used when the caller supplies no standard input. */
     private final OwnedHandle nullInputHandle = new OwnedHandle("NUL input");
+    /** Owned inheritable input duplicate used only during root creation. */
     private final OwnedHandle inputHandle = new OwnedHandle("input duplicate");
+    /** Owned inheritable output duplicate used only during root creation. */
     private final OwnedHandle outputHandle = new OwnedHandle("output duplicate");
+    /** Owned inheritable error duplicate used only during root creation. */
     private final OwnedHandle errorHandle = new OwnedHandle("error duplicate");
+    /** Temporary launch copies in reverse acquisition order. */
     private final OwnedHandle[] launchHandles = {errorHandle, outputHandle, inputHandle, nullInputHandle};
+    /** Lifetime native handles released after dependent identities and stream owners. */
     private final OwnedHandle[] lifetimeHandles = {threadHandle, processHandle, jobHandle};
+    /** Borrowed Job handle value whose ownership is retained by jobHandle. */
     private MemorySegment job = MemorySegment.NULL;
     /** Temporary attribute-list ownership, retained after an uncertain native destruction. */
     private MemorySegment attributes;
+    /** Indicates whether the native attribute list requires destruction. */
     private boolean attributesInitialized;
+    /** Reserves the one allowed native attribute destruction attempt. */
     private boolean attributesCloseAttempted;
+    /** First unresolved attribute-list destruction failure. */
     private IOException attributesCloseFailure;
     /** Checked ownership capsule allocated before any native resource is acquired. */
     private final PreparationFailure preparationFailure = new PreparationFailure(this);
+    /** Indicates whether process preparation failed and new acquisition is forbidden. */
     private boolean preparationFailed;
     /** A native creation call without an authoritative result prevents assuming that no process exists. */
     private boolean creationUncertain;
@@ -74,9 +90,11 @@ public final class WindowsProcess implements AutoCloseable
     private IOException cleanupFailure;
     /** Arena destruction has one attempt even if its Java result is uncertain. */
     private boolean kernelCloseAttempted;
+    /** Retains an uncertain native arena destruction result without retry. */
     private Throwable kernelCloseFailure;
     /** Root termination is never repeated after an ambiguous native effect. */
     private boolean terminationAttempted;
+    /** Retains the first failed or uncertain whole-Job termination result. */
     private Throwable terminationFailure;
     /** Accepted whole-Job result remains readable while terminal native cleanup is unresolved. */
     private Result completion;
@@ -84,6 +102,7 @@ public final class WindowsProcess implements AutoCloseable
     private final MemorySegment accounting;
     /** Reused native root exit-code storage. */
     private final MemorySegment exitCode;
+    /** Borrowed root-process handle used by legacy launch-release bookkeeping. */
     private MemorySegment process;
     /** Owned primary-thread handle, retained until process-owner cleanup. */
     private MemorySegment primaryThread;
@@ -95,10 +114,27 @@ public final class WindowsProcess implements AutoCloseable
     private Throwable rootReleaseFailure = null;
     /** Opaque process identities retained by this job owner, including unresolved failed releases. */
     private final List<Member> members = new ArrayList<>();
+    /** Retained child source identities, registered before any transfer effect and closed after streams at Job zero. */
+    private final List<CreatedSource> createdSources = new ArrayList<>();
+    /** Authenticated creation receipts borrowed by registration and ancestry consumers. */
+    private final Map<Long, WindowsCreationReceipt> creationReceipts = new HashMap<>();
+    /** First uncertain creation-source acquisition or release, permanently withdrawing further acquisition. */
+    private IOException createdSourceFailure;
+    /**
+     * Imported controller-local stream owners retained until their copies are released.
+     */
+    private final List<StandardStreams> standardStreams = new ArrayList<>();
+    /**
+     * First uncertain stream import or release; prevents further import authority.
+     */
+    private IOException streamCleanupFailure;
     /** First unresolved member-handle release, or null before any failed release. */
     private IOException memberCleanupFailure = null;
+    /** Unsigned DWORD identifier of the directly created root process. */
     private long pid;
+    /** Indicates whether this owner requested whole-Job abortion. */
     private boolean aborted;
+    /** Indicates whether all native resources were successfully destroyed. */
     private boolean closed;
     /** Close permanently withdraws new execution and acquisition authority, while poll remains usable. */
     private boolean closing;
@@ -133,6 +169,7 @@ public final class WindowsProcess implements AutoCloseable
      * Launch failure releases owned resources without closing the borrowed output. If cleanup remains unresolved,
      * a checked PreparationFailure retains the exact partial owner and native storage.
      *
+     * @param scope invocation-owned shared values, retained open until this owner closes
      * @param command nonempty argv whose first element is an absolute executable file
      * @param directory an existing absolute working directory
      * @param environment child names and values without NUL; names must be nonempty and may
@@ -144,19 +181,21 @@ public final class WindowsProcess implements AutoCloseable
      * @throws UnsupportedOperationException if the platform, width or required symbols are unsupported
      * @throws IOException if native acquisition, launch or cleanup fails
      */
-    public static WindowsProcess start(List<String> command, Path directory,
+    public static WindowsProcess start(ToolingScope scope, List<String> command, Path directory,
         Map<String,String> environment, MemorySegment output) throws IOException
     {
+        Objects.requireNonNull(scope, "scope may not be null");
         var arguments = validate(command, directory, environment, output);
-        return launch(arguments, directory, Map.copyOf(environment), output, new Kernel());
+        return launch(arguments, directory, Map.copyOf(environment), output, new Kernel(scope));
     }
 
     /**
      * Starts a direct command with separately borrowed standard handles.
      * Launch arguments, platform requirements and ownership follow
-     * {@link #start(List, Path, Map, MemorySegment)}. Each standard handle is duplicated
+     * {@link #start(ToolingScope, List, Path, Map, MemorySegment)}. Each standard handle is duplicated
      * separately for inheritance; the caller retains ownership of all three originals.
      *
+     * @param scope invocation-owned shared values, retained open until this owner closes
      * @param command nonempty argv whose first element is an absolute executable file
      * @param directory an existing absolute working directory
      * @param environment child names and values without NUL; names must be nonempty and may
@@ -170,21 +209,23 @@ public final class WindowsProcess implements AutoCloseable
      * @throws UnsupportedOperationException if the platform, width or required symbols are unsupported
      * @throws IOException if native acquisition, launch or cleanup fails
      */
-    public static WindowsProcess start(List<String> command, Path directory,
+    public static WindowsProcess start(ToolingScope scope, List<String> command, Path directory,
         Map<String,String> environment, MemorySegment input, MemorySegment output,
         MemorySegment error) throws IOException
     {
+        Objects.requireNonNull(scope, "scope may not be null");
         validateStandardHandle(input, "Input");
         validateStandardHandle(output, "Output");
         validateStandardHandle(error, "Error");
         var arguments = validate(command, directory, environment, output);
-        return launch(arguments, directory, Map.copyOf(environment), input, output, error, new Kernel());
+        return launch(arguments, directory, Map.copyOf(environment), input, output, error, new Kernel(scope));
     }
 
     /**
      * Creates a contained command with its primary thread suspended until {@link #releaseRoot()}.
-     * Launch validation and borrowed-handle ownership follow {@link #start(List, Path, Map, MemorySegment,
+     * Launch validation and borrowed-handle ownership follow {@link #start(ToolingScope, List, Path, Map, MemorySegment,
      * MemorySegment, MemorySegment)}. Suspension prevents primary-thread execution, not injected helper threads.
+     * @param scope invocation-owned shared values, retained open until this owner closes
      * @param command nonempty argv whose first element is an absolute executable file
      * @param directory an existing absolute working directory
      * @param environment explicit child environment
@@ -198,15 +239,16 @@ public final class WindowsProcess implements AutoCloseable
      * @throws UnsupportedOperationException if native Windows access is unavailable
      * @throws IOException if native acquisition, launch or cleanup fails
      */
-    public static WindowsProcess prepare(List<String> command, Path directory,
+    public static WindowsProcess prepare(ToolingScope scope, List<String> command, Path directory,
         Map<String,String> environment, MemorySegment input, MemorySegment output,
         MemorySegment error) throws IOException
     {
+        Objects.requireNonNull(scope, "scope may not be null");
         validateStandardHandle(input, "Input");
         validateStandardHandle(output, "Output");
         validateStandardHandle(error, "Error");
         var arguments = validate(command, directory, environment, output);
-        return launchPrepared(arguments, directory, Map.copyOf(environment), input, output, error, new Kernel());
+        return launchPrepared(arguments, directory, Map.copyOf(environment), input, output, error, new Kernel(scope));
     }
 
     /**
@@ -372,6 +414,7 @@ public final class WindowsProcess implements AutoCloseable
      */
     public static final class PreparationFailure extends IOException implements AutoCloseable
     {
+        /** Serialization identity for retained preparation failures. */
         private static final long serialVersionUID = 1L;
         /** Exclusive partial process owner, reserved before native acquisition. */
         private final WindowsProcess owner;
@@ -560,6 +603,322 @@ public final class WindowsProcess implements AutoCloseable
     }
 
     /**
+     * Reads an exact creation FILETIME without narrowing its unsigned bit pattern.
+     * @param handle retained process query handle
+     * @return unsigned creation FILETIME bits
+     * @throws IOException if the native process time query fails
+     */
+    private long creationBirth(MemorySegment handle) throws IOException
+    {
+        try (Arena query = Arena.ofConfined())
+        {
+            MemorySegment times = query.allocate(32, 8);
+            kernel.require("GetProcessTimes", kernel.integer("GetProcessTimes", handle, times, times.asSlice(8, 8),
+                times.asSlice(16, 8), times.asSlice(24, 8)));
+            return times.get(ValueLayout.JAVA_LONG, 0);
+        }
+    }
+
+    /**
+     * Retains an exact child source independently of its creator's original process handles.
+     * The returned owner remains borrowed from this process until all streams close at actual whole-Job zero.
+     * @param parent this owner's retained live creating member
+     * @param parentBirth nonzero unsigned creator FILETIME bits
+     * @param childPid unsigned nonzero created process identifier
+     * @param childBirth nonzero unsigned child FILETIME bits
+     * @param parentLocalHandle valid retained handle in the creator's handle table
+     * @return retained controller-local creation authority
+     * @throws IllegalArgumentException if native identifiers or handle bits are invalid
+     * @throws IOException if transfer, identity or native ownership cannot be established
+     */
+    CreatedSource retainCreatedSource(Member parent, long parentBirth, long childPid, long childBirth,
+        long parentLocalHandle) throws IOException
+    {
+        requireControllingThread();
+        requireOpen();
+        Objects.requireNonNull(parent, "parent");
+        if (parentBirth == 0 || childBirth == 0 || childPid <= 0 || childPid > 0xffff_ffffL ||
+            parentLocalHandle == 0 || parentLocalHandle == -1)
+            throw new IllegalArgumentException("Created source identifiers or native handle bits are invalid");
+        if (closing || aborted || preparationFailed) throw new IllegalStateException("Stopping process cannot acquire a created source");
+        if (createdSourceFailure != null) throw new IOException("Created source ownership remains uncertain", createdSourceFailure);
+        if (!members.contains(parent)) throw new IOException("Creation parent is not this owner's retained Job member");
+        parent.requireBirth(parentBirth);
+        MemorySegment creator = retainedCreationHandle(parent.pid(), parentBirth);
+        CreatedSource source = new CreatedSource(parent.pid(), parentBirth, childPid, childBirth, parentLocalHandle);
+        createdSources.add(source);
+        try
+        {
+            source.output.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL);
+            int result;
+            try
+            {
+                result = kernel.integer("DuplicateHandle", creator, MemorySegment.ofAddress(parentLocalHandle),
+                    kernel.pointer("GetCurrentProcess"), source.output, 0x101040, 0, 0);
+            }
+            catch (IOException | RuntimeException | Error cause)
+            {
+                source.child.value = source.output.get(ValueLayout.ADDRESS, 0);
+                throw cause;
+            }
+            source.child.value = source.output.get(ValueLayout.ADDRESS, 0);
+            kernel.require("DuplicateHandle(created source)", result);
+            kernel.requireHandle("DuplicateHandle(created source)", source.child.value);
+            source.requireLive();
+            parent.requireBirth(parentBirth);
+            return source;
+        }
+        catch (IOException | RuntimeException | Error cause)
+        {
+            createdSourceFailure = new IOException("Created source transfer remains retained without retry", cause);
+            throw cause;
+        }
+    }
+
+    /**
+     * Selects retained creation authority for the exact creator, without opening a PID-derived replacement.
+     * @param creatorPid creating process identifier
+     * @param creatorBirth original creation FILETIME bits
+     * @return borrowed original root handle or previously transferred descendant handle
+     * @throws IOException if no original creation authority matches the creator
+     */
+    private MemorySegment retainedCreationHandle(long creatorPid, long creatorBirth) throws IOException
+    {
+        if (creatorPid == pid)
+        {
+            requireLiveSource();
+            if (creationBirth(processHandle.value) != creatorBirth)
+                throw new IOException("Original root creation FILETIME differs");
+            return processHandle.value;
+        }
+        for (CreatedSource source : createdSources)
+        {
+            if (source.pid == creatorPid && source.birth == creatorBirth)
+            {
+                source.requireLive();
+                return source.child.value;
+            }
+        }
+        throw new IOException("Creator has no retained original creation authority: " + creatorPid);
+    }
+
+    /**
+     * Binds a successfully transferred original handle to the exact observer facts.
+     * @param source controller-local creation authority retained by this Job owner
+     * @param observation authenticated native observer facts
+     * @throws IOException if authority belongs elsewhere or its identity differs
+     */
+    void retainReceipt(CreatedSource source, WindowsAllocationHooks.Receipt observation) throws IOException
+    {
+        requireControllingThread();
+        Objects.requireNonNull(observation, "observation");
+        if (!createdSources.contains(source) || source.pid != observation.childPid() ||
+            source.birth != observation.childBirth() || source.parentPid != observation.parentPid() ||
+            source.parentBirth != observation.parentBirth() || source.creatorLocalHandle != observation.sourceHandle() ||
+            creationReceipts.containsKey(source.pid))
+            throw new IOException("Creation receipt differs from retained original authority");
+        source.requireLive();
+        creationReceipts.put(source.pid, new WindowsCreationReceipt(source, observation));
+    }
+
+    /**
+     * Finds original creation authority for a descendant without reopening its PID.
+     * @param childPid descendant identifier supplied by the native transport
+     * @return retained authority, or empty when the process has no authenticated receipt
+     */
+    Optional<WindowsCreationReceipt> creationReceipt(long childPid)
+    {
+        requireControllingThread();
+        requireOpen();
+        return Optional.ofNullable(creationReceipts.get(childPid));
+    }
+
+    /**
+     * Copies the retained receipt inventory for caller-thread delivery.
+     * @return immutable original creation authorities retained by this Job owner
+     */
+    List<WindowsCreationReceipt> creationReceipts()
+    {
+        requireControllingThread();
+        requireOpen();
+        return List.copyOf(creationReceipts.values());
+    }
+
+    /**
+     * Reads the directly created root's original birth through its retained handle.
+     * @return raw unsigned FILETIME bits
+     * @throws IOException if original creation authority is unavailable
+     */
+    long birth() throws IOException
+    {
+        requireControllingThread();
+        requireOpen();
+        if (creationUncertain || !processHandle.valid()) throw new IOException("Root has no original creation authority");
+        return creationBirth(processHandle.value);
+    }
+
+    /**
+     * Owns a child process identity transferred from its creating parent's retained handle.
+     * Stream imports borrow this exact identity; only the enclosing Job owner closes these process handles.
+     */
+    final class CreatedSource
+    {
+        /** Creating process whose original retained authority supplied this handle. */
+        private final long parentPid;
+        /** Creating process's original FILETIME bits at transfer. */
+        private final long parentBirth;
+        /** Creator-local retained handle used by the single native transfer. */
+        private final long creatorLocalHandle;
+        /** Expected unsigned created process identifier. */
+        private final long pid;
+        /** Expected raw unsigned creation FILETIME bits. */
+        private final long birth;
+        /** Controller-local child process authority retained through Job zero. */
+        private final OwnedHandle child = new OwnedHandle("created child process");
+        /** Native result storage reserved before any potentially uncertain duplication. */
+        private final MemorySegment output = kernel.arena.allocate(ValueLayout.ADDRESS);
+        /** Native exact Job membership result storage. */
+        private final MemorySegment inJob = kernel.arena.allocate(ValueLayout.JAVA_INT);
+        /** Native noninheritance result storage. */
+        private final MemorySegment flags = kernel.arena.allocate(ValueLayout.JAVA_INT);
+        /** Indicates that closure was attempted, so a partial close never repeats. */
+        private boolean closed;
+
+        /**
+         * Reserves storage before native creation-authority acquisition.
+         * @param parentPid original creator identifier
+         * @param parentBirth original creator FILETIME bits
+         * @param pid expected created process identifier
+         * @param birth expected unsigned creation FILETIME bits
+         * @param creatorLocalHandle original creator-local retained handle
+         */
+        private CreatedSource(long parentPid, long parentBirth, long pid, long birth, long creatorLocalHandle)
+        {
+            this.parentPid = parentPid;
+            this.parentBirth = parentBirth;
+            this.creatorLocalHandle = creatorLocalHandle;
+            this.pid = pid;
+            this.birth = birth;
+        }
+
+        /**
+         * Requires exact child PID, birth, liveness, Job membership and noninheritable retained authority.
+         * @throws IOException if any independent native identity observation differs
+         */
+        void requireLive() throws IOException
+        {
+            requireControllingThread();
+            requireOpen();
+            if (closed || !child.valid()) throw new IOException("Created source has no live retained authority");
+            requireLiveMember(child.value, inJob);
+            if (Integer.toUnsignedLong(kernel.integer("GetProcessId", child.value)) != pid || creationBirth(child.value) != birth)
+                throw new IOException("Created source PID or creation FILETIME differs");
+            kernel.require("GetHandleInformation", kernel.integer("GetHandleInformation", child.value, flags));
+            if ((flags.get(ValueLayout.JAVA_INT, 0) & 1) != 0) throw new IOException("Created source handle must be noninheritable");
+        }
+
+        /**
+         * Queries the exact retained child's executable path.
+         * @return absolute native executable path
+         * @throws IOException if identity or native image-name observation fails
+         */
+        Path executable() throws IOException
+        {
+            requireLive();
+            try (Arena query = Arena.ofConfined())
+            {
+                MemorySegment length = query.allocateFrom(ValueLayout.JAVA_INT, 32768);
+                MemorySegment path = query.allocate(65536, 2);
+                kernel.require("QueryFullProcessImageNameW", kernel.integer("QueryFullProcessImageNameW",
+                    child.value, 0, path, length));
+                int characters = length.get(ValueLayout.JAVA_INT, 0);
+                if (characters <= 0 || characters >= 32768) throw new IOException("Native executable path length is invalid");
+                char[] text = new char[characters];
+                for (int index = 0; index < characters; ++index)
+                    text[index] = path.getAtIndex(ValueLayout.JAVA_CHAR, index);
+                requireLive();
+                return Path.of(new String(text));
+            }
+        }
+
+        /**
+         * Imports three authenticated redirected file handles from this exact retained child.
+         * The child must keep approved handle values stable until acknowledgement; console handles are unsupported.
+         * @param input approved child-local standard input
+         * @param output approved child-local standard output
+         * @param error approved child-local standard error
+         * @return owned noninheritable controller-local copies, also retained by the Job owner
+         * @throws IOException if source identity, transfer or partial ownership cannot be established
+         */
+        StandardStreams importStandardStreams(MemorySegment input, MemorySegment output, MemorySegment error) throws IOException
+        {
+            validateStandardHandle(input, "Input");
+            validateStandardHandle(output, "Output");
+            validateStandardHandle(error, "Error");
+            if (closing || aborted || preparationFailed) throw new IllegalStateException("Stopping process cannot import created-source streams");
+            if (streamCleanupFailure != null || createdSourceFailure != null)
+                throw new IOException("Created-source stream ownership remains uncertain");
+            requireLive();
+            StandardStreams streams = new StandardStreams();
+            standardStreams.add(streams);
+            try
+            {
+                MemorySegment target = kernel.pointer("GetCurrentProcess");
+                streams.acquire(streams.input, child.value, target, input);
+                streams.acquire(streams.output, child.value, target, output);
+                streams.acquire(streams.error, child.value, target, error);
+                requireLive();
+                return streams;
+            }
+            catch (IOException | RuntimeException | Error cause)
+            {
+                try { streams.close(); }
+                catch (IOException | RuntimeException | Error cleanup) { cause.addSuppressed(cleanup); }
+                throw cause;
+            }
+        }
+
+        /**
+         * Attempts each retained process copy release once after streams have closed at Job zero.
+         * @throws IOException if any release is unresolved
+         */
+        private void close() throws IOException
+        {
+            if (closed) return;
+            closed = true;
+            IOException failure = null;
+            for (OwnedHandle handle : new OwnedHandle[] {child})
+            {
+                try { handle.close(); }
+                catch (IOException cause)
+                {
+                    if (failure == null) failure = cause;
+                    else failure.addSuppressed(cause);
+                }
+            }
+            if (failure != null) throw failure;
+        }
+    }
+
+    /**
+     * Closes every retained creation source after all stream owners, preserving independent failures.
+     * @throws IOException if any retained acquisition or release remains uncertain
+     */
+    private void closeCreatedSources() throws IOException
+    {
+        for (CreatedSource source : createdSources)
+        {
+            try { source.close(); }
+            catch (IOException cause)
+            {
+                if (createdSourceFailure == null) createdSourceFailure = cause;
+                else if (createdSourceFailure != cause) createdSourceFailure.addSuppressed(cause);
+            }
+        }
+        if (createdSourceFailure != null) throw new IOException("Created source ownership remains unresolved", createdSourceFailure);
+    }
+
+    /**
      * Retains a verified process identity while allowing later membership/liveness checks against the same handle.
      * A successful check is an observation, not authority to resume an arbitrary process. No native handle is exposed.
      */
@@ -604,6 +963,36 @@ public final class WindowsProcess implements AutoCloseable
             if (closed)
                 throw new IllegalStateException("Member identity is closed");
             requireLiveMember(handle, inJob);
+        }
+
+        /**
+         * Requires this retained live Job member to have the exact native creation time.
+         * @param expectedBirth nonzero unsigned FILETIME bits
+         * @throws IllegalArgumentException if the expected creation time is zero
+         * @throws IOException if identity, liveness or exact Job membership differs
+         */
+        void requireBirth(long expectedBirth) throws IOException
+        {
+            if (expectedBirth == 0) throw new IllegalArgumentException("Expected process creation FILETIME must be nonzero");
+            requireLive();
+            if (creationBirth(handle) != expectedBirth) throw new IOException("Retained process creation FILETIME differs: " + pid);
+            requireLive();
+        }
+
+        /**
+         * Seals actual native child state from this member's authenticated observer before resume.
+         * @param expectedBirth native birth reported by the observer
+         * @param state actual command line, directory and environment copied inside the held image
+         * @throws IOException if original identity or receipt ownership differs
+         */
+        void sealNativeState(long expectedBirth, WindowsCreationReceipt.NativeState state) throws IOException
+        {
+            requireBirth(expectedBirth);
+            WindowsCreationReceipt receipt = creationReceipts.get(pid);
+            if (pid == WindowsProcess.this.pid) return;
+            if (receipt == null || receipt.birth() != expectedBirth)
+                throw new IOException("Child native state has no matching original creation receipt");
+            receipt.seal(state);
         }
 
         /**
@@ -966,6 +1355,229 @@ public final class WindowsProcess implements AutoCloseable
     }
 
     /**
+     * Imports approved redirected standard handles from this directly created root process.
+     * The caller must authenticate this root as the intended source and ensure that it keeps all three handles
+     * open and unchanged until acknowledging the import. Numeric values alone do not authorize an import.
+     * Console handles cannot be imported across processes. The returned controller-local handles are borrowed
+     * by subsequent attempts; close their owner only after its final borrower finishes.
+     *
+     * @param input approved standard-input handle in this root's handle table
+     * @param output approved standard-output handle in this root's handle table
+     * @param error approved standard-error handle in this root's handle table
+     * @return ownership of three non-inheritable controller-local copies, also closed by this process owner
+     * @throws NullPointerException if a handle is null
+     * @throws IllegalArgumentException if a handle is closed, nonnative, NULL or INVALID_HANDLE_VALUE
+     * @throws IllegalStateException if this owner is closed, stopping, failed or called from another thread
+     * @throws IOException if source liveness, duplication or cleanup cannot be established
+     */
+    public StandardStreams importStandardStreams(MemorySegment input, MemorySegment output,
+        MemorySegment error) throws IOException
+    {
+        requireControllingThread();
+        requireOpen();
+        validateStandardHandle(input, "Input");
+        validateStandardHandle(output, "Output");
+        validateStandardHandle(error, "Error");
+        if (preparationFailed || closing || aborted)
+            throw new IllegalStateException("Failed preparation, termination or cleanup cannot import streams", preparationFailure);
+        if (streamCleanupFailure != null)
+            throw new IOException("Stream import stopped after unresolved ownership", streamCleanupFailure);
+        requireLiveSource();
+        var streams = new StandardStreams();
+        standardStreams.add(streams);
+        try
+        {
+            var target = kernel.pointer("GetCurrentProcess");
+            streams.acquire(streams.input, processHandle.value, target, input);
+            streams.acquire(streams.output, processHandle.value, target, output);
+            streams.acquire(streams.error, processHandle.value, target, error);
+            requireLiveSource();
+            return streams;
+        }
+        catch (IOException | RuntimeException | Error failure)
+        {
+            try { streams.close(); }
+            catch (IOException | RuntimeException | Error cleanup) { failure.addSuppressed(cleanup); }
+            throw failure;
+        }
+    }
+
+    /**
+     * Requires the directly created root's retained native identity to remain nonsignaled.
+     * @throws IOException if the root is absent, exited or native liveness cannot be established
+     */
+    private void requireLiveSource() throws IOException
+    {
+        if (creationUncertain || !processHandle.valid())
+            throw new IOException("Source process creation has no retained identity");
+        int status = kernel.integer("WaitForSingleObject", processHandle.value, 0);
+        if (status == -1)
+            throw kernel.failure("WaitForSingleObject(stream source)");
+        if (status != 258)
+            throw new IOException("Stream source must remain live; wait returned " + Integer.toUnsignedLong(status));
+    }
+
+    /**
+     * Owns three imported controller-local standard handles for consecutive attempts on the controlling thread.
+     */
+    public final class StandardStreams implements AutoCloseable
+    {
+        /**
+         * Controller-local input ownership, reserved before native duplication.
+         */
+        private final OwnedHandle input = new OwnedHandle("imported standard input");
+        /**
+         * Controller-local output ownership, reserved before native duplication.
+         */
+        private final OwnedHandle output = new OwnedHandle("imported standard output");
+        /**
+         * Controller-local error ownership, reserved before native duplication.
+         */
+        private final OwnedHandle error = new OwnedHandle("imported standard error");
+        /**
+         * Reverse acquisition order; aliases still have independently owned native duplicates.
+         */
+        private final OwnedHandle[] copies = {error, output, input};
+        /**
+         * Native result storage survives an uncertain invocation until its parent owner can reconcile ownership.
+         */
+        private final MemorySegment copy = kernel.arena.allocate(ValueLayout.ADDRESS);
+        /**
+         * Closing permanently withdraws borrowing authority, even if release fails.
+         */
+        private boolean closed;
+        /**
+         * First ambiguous duplication or close, retained without replay.
+         */
+        private IOException failure;
+        /**
+         * Reserves controller-local stream ownership.
+         */
+        private StandardStreams()
+        {
+        }
+
+        /**
+         * Acquires one non-inheritable copy from this owner's exact retained source identity.
+         * @param owned preallocated local ownership record
+         * @param sourceProcess exact retained process owning the approved source handle
+         * @param target controller process receiving the copy
+         * @param original approved source-process handle, stable through acknowledgement
+         * @throws IOException if duplication has a failed or uncertain result
+         */
+        private void acquire(OwnedHandle owned, MemorySegment sourceProcess, MemorySegment target, MemorySegment original) throws IOException
+        {
+            copy.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL);
+            int result;
+            try
+            {
+                result = kernel.integer("DuplicateHandle", sourceProcess, original, target, copy, 0, 0, 2);
+            }
+            catch (IOException | RuntimeException | Error cause)
+            {
+                owned.value = copy.get(ValueLayout.ADDRESS, 0);
+                failure = new IOException("Stream duplication has no authoritative native result", cause);
+                rememberStreamFailure(failure);
+                throw cause;
+            }
+            owned.value = copy.get(ValueLayout.ADDRESS, 0);
+            kernel.require("DuplicateHandle(stream import)", result);
+            kernel.requireHandle("DuplicateHandle(stream import)", owned.value);
+        }
+
+        /**
+         * Returns the borrowed controller-local standard-input handle.
+         * @return the live input copy
+         * @throws IllegalStateException if this stream owner or its process owner is closed
+         */
+        public MemorySegment input() { requireBorrowable(); return input.value; }
+
+        /**
+         * Returns the borrowed controller-local standard-output handle.
+         * @return the live output copy
+         * @throws IllegalStateException if this stream owner or its process owner is closed
+         */
+        public MemorySegment output() { requireBorrowable(); return output.value; }
+
+        /**
+         * Returns the borrowed controller-local standard-error handle.
+         * @return the live error copy
+         * @throws IllegalStateException if this stream owner or its process owner is closed
+         */
+        public MemorySegment error() { requireBorrowable(); return error.value; }
+
+        /**
+         * Rejects borrowing after either ownership boundary begins closing.
+         * @throws IllegalStateException if the owner is closed, stopping or accessed by another thread
+         */
+        private void requireBorrowable()
+        {
+            requireControllingThread();
+            requireOpen();
+            if (closed || closing)
+                throw new IllegalStateException("Imported standard streams are closed or stopping");
+        }
+
+        /**
+         * Releases imported copies once, preserving the source's originals and any uncertain release failure.
+         * @throws IllegalStateException if called from another thread
+         * @throws IOException if a native release remains unresolved
+         */
+        @Override
+        public void close() throws IOException
+        {
+            requireControllingThread();
+            if (closed)
+            {
+                if (failure != null)
+                    throw new IOException("Imported stream ownership remains unresolved", failure);
+                return;
+            }
+            closed = true;
+            for (var owned : copies)
+            {
+                try { owned.close(); }
+                catch (IOException cause)
+                {
+                    if (failure == null) failure = cause;
+                    else failure.addSuppressed(cause);
+                }
+            }
+            if (failure != null)
+            {
+                rememberStreamFailure(failure);
+                throw new IOException("Imported stream ownership remains unresolved", failure);
+            }
+            standardStreams.remove(this);
+        }
+    }
+
+    /**
+     * Retains the original stream ownership fault and permanently withdraws new import authority.
+     * @param failure unresolved acquisition or release failure
+     */
+    private void rememberStreamFailure(IOException failure)
+    {
+        if (streamCleanupFailure == null) streamCleanupFailure = failure;
+        else if (streamCleanupFailure != failure) streamCleanupFailure.addSuppressed(failure);
+    }
+
+    /**
+     * Closes remaining imported copies before releasing their native access and ownership records.
+     * @throws IOException if any native stream ownership remains unresolved
+     */
+    private void closeStandardStreams() throws IOException
+    {
+        for (var streams : List.copyOf(standardStreams))
+        {
+            try { streams.close(); }
+            catch (IOException ignored) { /* Each owner retained its failure for aggregation. */ }
+        }
+        if (streamCleanupFailure != null)
+            throw new IOException("Imported standard stream ownership remains unresolved", streamCleanupFailure);
+    }
+
+    /**
      * Establishes actual Job zero before destroying dependent native resources. A failed drain retains an open
      * owner for status reconciliation. Failed releases remain recorded and are never repeated; their native arena
      * stays open. Earlier cleanup faults remain visible even after later terminal observations permit safe cleanup.
@@ -989,6 +1601,18 @@ public final class WindowsProcess implements AutoCloseable
             try { closeLaunchResources(); }
             catch (IOException failure) { failedRelease = failure; }
             try { closeMembers(); }
+            catch (IOException failure)
+            {
+                if (failedRelease == null) failedRelease = failure;
+                else failedRelease.addSuppressed(failure);
+            }
+            try { closeStandardStreams(); }
+            catch (IOException failure)
+            {
+                if (failedRelease == null) failedRelease = failure;
+                else failedRelease.addSuppressed(failure);
+            }
+            try { closeCreatedSources(); }
             catch (IOException failure)
             {
                 if (failedRelease == null) failedRelease = failure;
@@ -1103,9 +1727,13 @@ public final class WindowsProcess implements AutoCloseable
     /** Owns one native handle with a release record reserved before its acquisition. */
     private final class OwnedHandle
     {
+        /** Diagnostic name for this independently owned handle. */
         private final String name;
+        /** Native handle bits, or NULL before acquisition and after successful release. */
         private MemorySegment value = MemorySegment.NULL;
+        /** Reserves native release once before invoking CloseHandle. */
         private boolean closeAttempted;
+        /** First failed or uncertain native handle release. */
         private Throwable failure;
 
         /**
@@ -1260,7 +1888,16 @@ public final class WindowsProcess implements AutoCloseable
      */
     private static final class Releases implements AutoCloseable
     {
+        /** Owned release actions in reverse registration order. */
         private final ArrayDeque<Release> callbacks = new ArrayDeque<>();
+
+        /**
+         * Creates an empty reverse-order launch cleanup owner.
+         */
+        private Releases()
+        {
+        }
+
 
         /**
          * Registers a release immediately after acquisition.
@@ -1311,43 +1948,57 @@ public final class WindowsProcess implements AutoCloseable
      */
     static class Kernel implements AutoCloseable
     {
+        /** Confined native storage retained through every owned handle release. */
         final Arena arena;
+        /** Bound Kernel32 operations indexed by their exact native export names. */
         private final Map<String,MethodHandle> functions = new HashMap<>();
+        /** Captured GetLastError storage reused by owner-thread native calls. */
         private final MemorySegment errors;
+        /** Byte offset of GetLastError in the captured call-state layout. */
         private final long errorOffset;
 
         /**
          * Acquires native access on 64-bit Windows, releasing its scope if binding fails.
+         * @param scope invocation-owned shared values
          * @throws UnsupportedOperationException if the platform or required symbols are unsupported
          */
-        Kernel()
+        Kernel(ToolingScope scope)
         {
             if (!System.getProperty("os.name", "").startsWith("Windows") || ValueLayout.ADDRESS.byteSize() != 8)
                 throw new UnsupportedOperationException("WindowsProcess requires native 64-bit Windows");
-            arena = Arena.ofConfined();
+            var linker = scope.getNativeLinker();
+            this.arena = Arena.ofConfined();
             try
             {
                 var lookup = SymbolLookup.libraryLookup("Kernel32.dll", arena);
-                errors = arena.allocate(Linker.Option.captureStateLayout());
-                errorOffset = Linker.Option.captureStateLayout().byteOffset(MemoryLayout.PathElement.groupElement("GetLastError"));
-                bind(lookup,"CreateJobObjectW",ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
-                bind(lookup,"SetInformationJobObject",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT);
-                bind(lookup,"QueryInformationJobObject",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
-                bind(lookup,"CloseHandle",ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
-                bind(lookup,"CreateFileW",ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
-                bind(lookup,"GetCurrentProcess",ValueLayout.ADDRESS);
-                bind(lookup,"DuplicateHandle",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT);
-                bind(lookup,"InitializeProcThreadAttributeList",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
-                bind(lookup,"UpdateProcThreadAttribute",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_LONG,ValueLayout.ADDRESS,ValueLayout.JAVA_LONG,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
-                bind(lookup,"DeleteProcThreadAttributeList",null,ValueLayout.ADDRESS);
-                bind(lookup,"CreateProcessW",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
-                bind(lookup,"TerminateJobObject",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT);
-                bind(lookup,"WaitForSingleObject",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT);
-                bind(lookup,"GetExitCodeProcess",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
-                bind(lookup,"ResumeThread",ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
-                bind(lookup,"OpenProcess",ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT);
-                bind(lookup,"IsProcessInJob",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
-                bind(lookup,"K32GetProcessMemoryInfo",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.JAVA_INT);
+                this.errors = arena.allocate(Linker.Option.captureStateLayout());
+                this.errorOffset = Linker.Option.captureStateLayout().byteOffset(MemoryLayout.PathElement.groupElement("GetLastError"));
+                bind(linker,lookup,"CreateJobObjectW",ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
+                bind(linker,lookup,"SetInformationJobObject",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT);
+                bind(linker,lookup,"QueryInformationJobObject",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
+                bind(linker,lookup,"CloseHandle",ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
+                bind(linker,lookup,"CreateFileW",ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
+                bind(linker,lookup,"GetCurrentProcess",ValueLayout.ADDRESS);
+                bind(linker,lookup,"GetCommandLineW",ValueLayout.ADDRESS);
+                bind(linker,lookup,"GetCurrentDirectoryW",ValueLayout.JAVA_INT,ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
+                bind(linker,lookup,"GetEnvironmentStringsW",ValueLayout.ADDRESS);
+                bind(linker,lookup,"FreeEnvironmentStringsW",ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
+                bind(linker,lookup,"DuplicateHandle",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT);
+                bind(linker,lookup,"InitializeProcThreadAttributeList",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
+                bind(linker,lookup,"UpdateProcThreadAttribute",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_LONG,ValueLayout.ADDRESS,ValueLayout.JAVA_LONG,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
+                bind(linker,lookup,"DeleteProcThreadAttributeList",null,ValueLayout.ADDRESS);
+                bind(linker,lookup,"CreateProcessW",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
+                bind(linker,lookup,"TerminateJobObject",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT);
+                bind(linker,lookup,"WaitForSingleObject",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT);
+                bind(linker,lookup,"GetExitCodeProcess",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
+                bind(linker,lookup,"ResumeThread",ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
+                bind(linker,lookup,"QueryFullProcessImageNameW",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
+                bind(linker,lookup,"GetProcessId",ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
+                bind(linker,lookup,"GetProcessTimes",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
+                bind(linker,lookup,"GetHandleInformation",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
+                bind(linker,lookup,"OpenProcess",ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT);
+                bind(linker,lookup,"IsProcessInJob",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
+                bind(linker,lookup,"K32GetProcessMemoryInfo",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.JAVA_INT);
             }
             catch (RuntimeException | Error failure)
             {
@@ -1371,16 +2022,17 @@ public final class WindowsProcess implements AutoCloseable
 
         /**
          * Binds a required native symbol using the Windows ABI and captured GetLastError.
+         * @param linker native linker borrowed from the invocation scope
          * @param lookup native library symbols
          * @param name the required symbol
          * @param result nullable native result layout; null means void
          * @param arguments native argument layouts
          */
-        private void bind(SymbolLookup lookup, String name, MemoryLayout result, MemoryLayout... arguments)
+        private void bind(Linker linker, SymbolLookup lookup, String name, MemoryLayout result, MemoryLayout... arguments)
         {
             var address = lookup.find(name).orElseThrow(() -> new UnsupportedOperationException("Missing Windows symbol: " + name));
             var descriptor = result == null ? FunctionDescriptor.ofVoid(arguments) : FunctionDescriptor.of(result,arguments);
-            functions.put(name, Linker.nativeLinker().downcallHandle(address,descriptor,Linker.Option.captureCallState("GetLastError")));
+            functions.put(name, linker.downcallHandle(address,descriptor,Linker.Option.captureCallState("GetLastError")));
         }
 
         /**

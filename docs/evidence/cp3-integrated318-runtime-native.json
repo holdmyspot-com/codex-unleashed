@@ -1,0 +1,60 @@
+{
+  "status": "native_launcher_pass_full_maven_fixture_errors",
+  "source": {
+    "inputs": 318,
+    "archive_sha256": "5164fbff5abb660a01bbee15cd9b28f437502982b8fe3715a812e7892ef37c27",
+    "manifest_sha256": "8d20ad8fa778a1d4b663b34368e7a995af0713500980191350381be49d31fd76",
+    "all_source_bytes_modes": "PASS verified318 exact, zero additions"
+  },
+  "focused": {
+    "strict_compile_private_doclint_exit": 0,
+    "testng_exit": 0,
+    "tests": 4,
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "parallel": "methods8",
+    "scope": "Actual Linux native bootstrap and both Java launcher receivers, separate stdout/stderr verified by exact corrected test"
+  },
+  "maven": {
+    "exit": 1,
+    "suites": 128,
+    "tests": 1249,
+    "failures": 0,
+    "errors": [
+      "CargoCachePartsTest.groupedPushReuseAndOverlayPull: firstPush expected0 actual1",
+      "CargoCachePartsTest.preservesFailuresWithoutPublication: missingReference expected3 actual1"
+    ],
+    "skipped": 3,
+    "parallel": "POM default unset; final successor gate must add -Dparallel=methods -DthreadCount=8",
+    "no_unchanged_rerun": true
+  },
+  "childDiagnostic": {
+    "cause": "Actual reconstructed original child prefix uses only java.class.path, omitting production named module path; replay exits1 NoClassDefFoundError DefaultToolingScope at Registry.main180",
+    "claim_limit": "Original test swallowed child stderr; separate replay with actual JVM properties and original immutable fixture argv plus fresh owned registry is retained, not misrepresented as original stderr"
+  },
+  "artifacts": [
+    {
+      "path": "docs/evidence/artifacts/cp3-integrated318-runtime-native.tar.gz",
+      "sha256": "a0fb3621ff42f4418eff17b73d84d6944a9d34861c59baafd47feb96f47d15e1",
+      "bytes": 160522,
+      "safeMembers": 293,
+      "regularPayloads": 289
+    },
+    {
+      "path": "docs/evidence/artifacts/cp3-integrated318-registry-child-replay.tar.gz",
+      "sha256": "42468a0e1a4c3277fce2a9ac9ce5040e78656198c83b2bd05a0ab3263963574e",
+      "bytes": 1104,
+      "safeMembers": 4,
+      "regularPayloads": 4
+    }
+  ],
+  "acceptance": {
+    "nativeFocusedLauncher": "passed at exact sealed318 Linux source",
+    "fullCombinedMaven": "failed; two test child dependency errors",
+    "checkpoint3": "incomplete",
+    "successor": "one test-only child classpath overlay; full named-module methods8 acceptance required"
+  },
+  "parentReview": "Verified artifact identities, safe inventories, exact CargoCachePartsTest raw XML errors and its actual JVM classpath/module-path split; original swallowed stderr distinguished from separate replay",
+  "cleanupOwner": "root integrator owns durable evidence; native owner retains original worker and useful outputs pending successor"
+}

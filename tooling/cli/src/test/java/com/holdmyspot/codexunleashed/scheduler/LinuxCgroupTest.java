@@ -7,10 +7,9 @@ import java.time.Duration;
 import java.util.Comparator;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertTrue;
+
 import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static org.testng.Assert.expectThrows;
 
 /**
  * Verifies that cgroup acquisition rejects invalid context before creating owned state.
@@ -52,7 +51,7 @@ public final class LinuxCgroupTest
 	{
 		Path parent = Path.of("unresolved-cgroup-parent").toAbsolutePath();
 
-		expectThrows(IllegalArgumentException.class, () -> LinuxCgroup.create(parent, timeout));
+		requireException(IllegalArgumentException.class, () -> LinuxCgroup.create(parent, timeout));
 	}
 
 	/**
@@ -61,8 +60,7 @@ public final class LinuxCgroupTest
 	@Test
 	public void rejectsRelativeParent()
 	{
-		expectThrows(IllegalArgumentException.class,
-			() -> LinuxCgroup.create(Path.of("relative-cgroup-parent"), VALID_TIMEOUT));
+		requireException(IllegalArgumentException.class, () -> LinuxCgroup.create(Path.of("relative-cgroup-parent"), VALID_TIMEOUT));
 	}
 
 	/**
@@ -71,7 +69,7 @@ public final class LinuxCgroupTest
 	@Test
 	public void rejectsNullParent()
 	{
-		expectThrows(NullPointerException.class, () -> LinuxCgroup.create(null, VALID_TIMEOUT));
+		requireException(NullPointerException.class, () -> LinuxCgroup.create(null, VALID_TIMEOUT));
 	}
 
 	/**
@@ -80,8 +78,7 @@ public final class LinuxCgroupTest
 	@Test
 	public void rejectsNullTimeout()
 	{
-		expectThrows(NullPointerException.class,
-			() -> LinuxCgroup.create(Path.of("unresolved-cgroup-parent").toAbsolutePath(), null));
+		requireException(NullPointerException.class, () -> LinuxCgroup.create(Path.of("unresolved-cgroup-parent").toAbsolutePath(), null));
 	}
 
 	/**
@@ -95,10 +92,12 @@ public final class LinuxCgroupTest
 		Path parent = Files.createTempDirectory("cgroup-unsupported-");
 		try
 		{
-			expectThrows(UnsupportedOperationException.class, () -> LinuxCgroup.create(parent, VALID_TIMEOUT));
+			requireException(UnsupportedOperationException.class, () -> LinuxCgroup.create(parent, VALID_TIMEOUT));
 			try (var entries = Files.list(parent))
 			{
-				assertTrue(entries.findAny().isEmpty(), "Rejected acquisition created filesystem state");
+				requireThat(entries.findAny().isEmpty(), "entries.findAny().isEmpty()")
+					.withContext("Rejected acquisition created filesystem state", "diagnostic")
+					.isTrue();
 			}
 		}
 		finally

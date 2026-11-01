@@ -1,7 +1,5 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
-import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.io.IOException;
 import java.io.ByteArrayInputStream;
@@ -14,8 +12,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import static org.testng.Assert.expectThrows;
-import static org.testng.Assert.assertEquals;
+
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /** Verifies the gate's post-release execution decision without acquiring native resources. */
 public final class LinuxProcessTreeTest {
@@ -26,7 +25,7 @@ public final class LinuxProcessTreeTest {
     @Test
     public void expiresAttachedGateWithoutExecutingWorkload() {
         long expiredDeadline = System.nanoTime();
-        expectThrows(IOException.class, () -> LinuxProcessTree.SharedSecrets.executeAfterRelease(
+        requireException(IOException.class, () -> LinuxProcessTree.SharedSecrets.executeAfterRelease(
             LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC,
             () -> { throw new AssertionError("Attached mode selected direct workload exec"); }, expiredDeadline));
     }
@@ -37,7 +36,7 @@ public final class LinuxProcessTreeTest {
         AtomicInteger executions = new AtomicInteger();
         LinuxProcessTree.SharedSecrets.executeAfterRelease(LinuxProcessTree.ExecutionMode.DIRECT_EXEC,
             executions::incrementAndGet, System.nanoTime());
-        assertEquals(executions.get(), 1);
+        requireThat(executions.get(), "executions.get()").isEqualTo(1);
     }
 
     /** An interrupted attached wait propagates interruption without falling back to native exec. */
@@ -46,7 +45,7 @@ public final class LinuxProcessTreeTest {
         boolean previouslyInterrupted = Thread.interrupted();
         try {
             Thread.currentThread().interrupt();
-            expectThrows(InterruptedException.class, () -> LinuxProcessTree.SharedSecrets.executeAfterRelease(
+            requireException(InterruptedException.class, () -> LinuxProcessTree.SharedSecrets.executeAfterRelease(
                 LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC,
                 () -> { throw new AssertionError("Interrupted attached mode selected direct workload exec"); },
                 System.nanoTime() + TimeUnit.MINUTES.toNanos(1)));
@@ -65,7 +64,7 @@ public final class LinuxProcessTreeTest {
         AtomicInteger executions = new AtomicInteger();
         LinuxProcessTree.SharedSecrets.executeAfterRelease(launch.executionMode(), executions::incrementAndGet,
             System.nanoTime());
-        assertEquals(executions.get(), 1);
+        requireThat(executions.get(), "executions.get()").isEqualTo(1);
     }
 
     /** Missing legacy XML mode selects direct exec. */
@@ -75,7 +74,7 @@ public final class LinuxProcessTreeTest {
         LinuxProcessTree.SharedSecrets.executeAfterRelease(
             LinuxProcessTree.ExecutionMode.readFrom(xmlRoundTrip(new Properties())), executions::incrementAndGet,
             System.nanoTime());
-        assertEquals(executions.get(), 1);
+        requireThat(executions.get(), "executions.get()").isEqualTo(1);
     }
 
     /**
@@ -104,12 +103,12 @@ public final class LinuxProcessTreeTest {
         LinuxProcessTree.ExecutionMode gateMode = LinuxProcessTree.ExecutionMode.readFrom(xmlRoundTrip(supervisor));
         AtomicInteger executions = new AtomicInteger();
         if (mode == LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC) {
-            expectThrows(IOException.class, () -> LinuxProcessTree.SharedSecrets.executeAfterRelease(gateMode,
+            requireException(IOException.class, () -> LinuxProcessTree.SharedSecrets.executeAfterRelease(gateMode,
                 executions::incrementAndGet, System.nanoTime()));
-            assertEquals(executions.get(), 0);
+            requireThat(executions.get(), "executions.get()").isEqualTo(0);
         } else {
             LinuxProcessTree.SharedSecrets.executeAfterRelease(gateMode, executions::incrementAndGet, System.nanoTime());
-            assertEquals(executions.get(), 1);
+            requireThat(executions.get(), "executions.get()").isEqualTo(1);
         }
     }
 
@@ -119,7 +118,7 @@ public final class LinuxProcessTreeTest {
         Properties values = new Properties();
         values.setProperty("execution.mode", "AUTOMATIC");
         Properties decoded = xmlRoundTrip(values);
-        expectThrows(IOException.class, () -> LinuxProcessTree.ExecutionMode.readFrom(decoded));
+        requireException(IOException.class, () -> LinuxProcessTree.ExecutionMode.readFrom(decoded));
     }
 
     /** An explicit empty XML mode is invalid rather than an absent legacy mode. */
@@ -128,14 +127,14 @@ public final class LinuxProcessTreeTest {
         Properties values = new Properties();
         values.setProperty("execution.mode", "");
         Properties decoded = xmlRoundTrip(values);
-        expectThrows(IOException.class, () -> LinuxProcessTree.ExecutionMode.readFrom(decoded));
+        requireException(IOException.class, () -> LinuxProcessTree.ExecutionMode.readFrom(decoded));
     }
 
     /** Missing explicit launch mode is rejected before any acquisition. */
     @Test
     public void rejectsNullExecutionMode() {
         Path parent = Path.of("unresolved-gate-context").toAbsolutePath();
-        expectThrows(NullPointerException.class, () -> new LinuxProcessTree.Launch(parent, parent,
+        requireException(NullPointerException.class, () -> new LinuxProcessTree.Launch(parent, parent,
             parent.resolve("java"), parent.resolve("classes"), List.of(parent.resolve("workload").toString()),
             Map.of(), parent, 1001, 1001, null));
     }

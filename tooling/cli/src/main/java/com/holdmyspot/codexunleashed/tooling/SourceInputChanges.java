@@ -13,7 +13,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Restores timestamps for identical sources and marks content changes or interrupted builds for Cargo.
@@ -34,6 +33,7 @@ public final class SourceInputChanges
 	 * and both snapshots must contain object-valued {@code files} mappings. An absent {@code mtimes} mapping
 	 * skips restoration. Timestamp updates already made remain in place if a later update fails.
 	 *
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param current current raw-file inventory
 	 * @param previous successful or completed-preparation input snapshot
 	 * @param interrupted optional inputs used by a build that did not record success
@@ -42,9 +42,10 @@ public final class SourceInputChanges
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the schema, mappings, paths, or filesystem timestamp operations fail
 	 */
-	public static Set<String> apply(SourceInputInventory.Snapshot current, JsonNode previous,
+	public static Set<String> apply(ToolingScope scope, SourceInputInventory.Snapshot current, JsonNode previous,
 		Optional<JsonNode> interrupted, Clock clock) throws IOException
 	{
+		Objects.requireNonNull(scope, "scope");
 		Objects.requireNonNull(current, "current");
 		Objects.requireNonNull(previous, "previous");
 		Objects.requireNonNull(interrupted, "interrupted");
@@ -55,14 +56,14 @@ public final class SourceInputChanges
 			supported = schema.decimalValue().compareTo(BigDecimal.valueOf(SourceInputSnapshots.CURRENT_SCHEMA)) == 0;
 		if (!supported)
 			throw new IOException("Unsupported source-input cache snapshot; refusing reuse.");
-		JsonNode now = JsonMapper.builder().build().valueToTree(current.files());
+		JsonNode now = scope.getJsonMapper().valueToTree(current.files());
 		Map<String, JsonNode> currentFiles = files(now);
 		Set<String> changed = differences(files(previous.path(SourceInputSnapshots.FILES)), currentFiles);
 		if (interrupted.isPresent())
 			changed.addAll(differences(files(interrupted.orElseThrow().path(SourceInputSnapshots.FILES)), currentFiles));
 		Path root = current.root().toRealPath();
-		restore(root, previous.path(SourceInputSnapshots.MTIMES), changed);
-		mark(root, changed, FileTime.from(clock.instant()));
+		restore(scope, root, previous.path(SourceInputSnapshots.MTIMES), changed);
+		mark(scope, root, changed, FileTime.from(clock.instant()));
 		return Set.copyOf(changed);
 	}
 
@@ -121,12 +122,13 @@ public final class SourceInputChanges
 	/**
 	 * Restores unchanged source and directory timestamps from the reusable input snapshot.
 	 *
+	 * @param scope borrowed shared native bindings, kept open through timestamp restoration
 	 * @param root the canonical checkout
 	 * @param times optional stored timestamps
 	 * @param changed names requiring new timestamps
 	 * @throws IOException if timestamps are malformed, escape the checkout, or cannot be restored
 	 */
-	private static void restore(Path root, JsonNode times, Set<String> changed) throws IOException
+	private static void restore(ToolingScope scope, Path root, JsonNode times, Set<String> changed) throws IOException
 	{
 		if (times.isMissingNode())
 			return;
@@ -139,19 +141,20 @@ public final class SourceInputChanges
 			if (!resolved.startsWith(root))
 				throw new IOException("Source-input cache path escapes checkout: " + entry.getKey());
 			if (!changed.contains(entry.getKey()) && Files.exists(path))
-				setTimes(path, SourceInputTimes.fileTime(entry.getValue()));
+				setTimes(scope, path, SourceInputTimes.fileTime(entry.getValue()));
 		}
 	}
 
 	/**
 	 * Marks changed files and all existing lexical ancestor directories within the checkout.
 	 *
+	 * @param scope borrowed shared native bindings, kept open through timestamp writes
 	 * @param root the checkout root
 	 * @param changed changed source names
 	 * @param now the current clock value
 	 * @throws IOException if paths escape the checkout or timestamp writes fail
 	 */
-	private static void mark(Path root, Set<String> changed, FileTime now) throws IOException
+	private static void mark(ToolingScope scope, Path root, Set<String> changed, FileTime now) throws IOException
 	{
 		Set<Path> directories = new LinkedHashSet<>();
 		for (String name : changed)
@@ -161,7 +164,7 @@ public final class SourceInputChanges
 			if (resolved.equals(root) || !resolved.startsWith(root))
 				throw new IOException("Source-input cache path escapes checkout: " + name);
 			if (Files.isRegularFile(path))
-				setTimes(path, now);
+				setTimes(scope, path, now);
 			Path parent = path.getParent();
 			while (parent != null && !parent.equals(root.getParent()))
 			{
@@ -171,18 +174,19 @@ public final class SourceInputChanges
 			}
 		}
 		for (Path directory : directories)
-			setTimes(directory, now);
+			setTimes(scope, directory, now);
 	}
 
 	/**
 	 * Restores or marks access and modification time together without altering creation time.
 	 *
+	 * @param scope borrowed shared native bindings, kept open through the write
 	 * @param path the file or directory
 	 * @param time its required timestamp
 	 * @throws IOException if the filesystem update fails
 	 */
-	private static void setTimes(Path path, FileTime time) throws IOException
+	private static void setTimes(ToolingScope scope, Path path, FileTime time) throws IOException
 	{
-		SourceInputTimes.setTimes(path, time);
+		SourceInputTimes.setTimes(scope, path, time);
 	}
 }

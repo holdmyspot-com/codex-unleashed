@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -20,6 +22,8 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	private final Thread owner = Thread.currentThread();
 	/** Correlation seed shared by this build's distinct attempt ordinals. */
 	private final UUID build;
+	/** Borrowed shared values for every attempt. */
+	private final ToolingScope scope;
 	/** Borrowed started native runtime. */
 	private final FridaRuntime runtime;
 	/** Borrowed opened measurement authority. */
@@ -28,6 +32,9 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	private final Commands commands = new Commands();
 	/** Positive native control deadline. */
 	private final Duration timeout;
+    /** Explicit build/invocation event routing; no queue or action admission authority. */
+    private final AllocationHooks.Routing routing;
+
 	/** Borrowed owners in creation order, retained after failed cleanup. */
 	private final Map<Long, LinuxAttempt> live = new LinkedHashMap<>();
 	/** Highest reserved ordinal, never reset after cleanup. */
@@ -37,6 +44,7 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 
 	/**
 	 * Validates and copies configuration without native calls or filesystem access.
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param build correlation seed
 	 * @param runtime borrowed started runtime
 	 * @param authority borrowed opened authority
@@ -45,15 +53,38 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	 * @throws NullPointerException if an input is null
 	 * @throws IllegalArgumentException if a name or timeout is invalid
 	 */
-	LinuxAttempts(UUID build, FridaRuntime runtime, LinuxAuthority authority, Map<String, Command> commands,
+	LinuxAttempts(ToolingScope scope, UUID build, FridaRuntime runtime, LinuxAuthority authority, Map<String, Command> commands,
 		Duration timeout)
+    {
+        this(scope, build, runtime, authority, commands, timeout, new AllocationHooks.Routing());
+    }
+
+    /** Borrows an explicit invocation dispatcher shared by all authentic attempt controllers.
+     * @param scope borrowed shared values
+     * @param build correlation seed
+     * @param runtime borrowed runtime
+     * @param authority borrowed memory authority
+     * @param commands immutable action mapping
+     * @param timeout bounded native control interval
+     * @param routing invocation-owned image event routing
+     */
+    LinuxAttempts(ToolingScope scope, UUID build, FridaRuntime runtime, LinuxAuthority authority, Map<String, Command> commands,
+        Duration timeout, AllocationHooks.Routing routing)
+
 	{
+		this.routing = Objects.requireNonNull(routing, "routing");
+		this.scope = Objects.requireNonNull(scope, "scope");
 		this.build = Objects.requireNonNull(build, "build");
 		this.runtime = Objects.requireNonNull(runtime, "runtime");
 		this.authority = Objects.requireNonNull(authority, "authority");
 		Map.copyOf(commands).forEach(this::register);
 		this.timeout = checkedTimeout(timeout);
 	}
+
+    /** Borrows this invocation's original-controller dispatcher without granting action authority.
+     * @return explicit shared routing owner
+     */
+    AllocationHooks.Routing routing() { requireOwner(); return routing; }
 
     /**
      * Appends an immutable action before queue submission, without acquiring resources.
@@ -82,7 +113,7 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 		if (command == null || attemptSequence <= lastSequence)
 			throw new IllegalArgumentException("Unknown action or reused attempt ordinal: " + name + "/" + attemptSequence);
 		UUID identity = attemptIdentity(build, attemptSequence);
-		LinuxAttempt attempt = new LinuxAttempt(this, runtime, authority, name, attemptSequence, identity, command, timeout);
+		LinuxAttempt attempt = new LinuxAttempt(scope, this, runtime, authority, name, attemptSequence, identity, command, timeout);
 		live.put(attemptSequence, attempt);
 		lastSequence = attemptSequence;
 		return attempt;
@@ -168,22 +199,112 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 			throw new IllegalStateException("Linux attempts belong to their constructing thread");
 	}
 
-	/** Immutable caller-owned workload inputs.
+	/** Immutable attached workload configuration; constructing it acquires no native owners. */
+	sealed interface Command permits FilesCommand, BorrowedCommand, CargoCommand
+	{
+		/** Returns the exact approved execution inputs.
+		 * @return immutable attached launch
+		 */
+		LinuxProcessTree.Launch launch();
+	}
+
+	/** Immutable caller-owned workload inputs with file-based standard streams.
 	 * @param launch copied validated launch
 	 * @param files caller-owned standard endpoints
 	 */
-	record Command(LinuxProcessTree.Launch launch, LinuxProcessTree.StandardFiles files)
+	record FilesCommand(LinuxProcessTree.Launch launch, LinuxProcessTree.StandardFiles files) implements Command
 	{
 		/** Validates attached execution without inspecting any filesystem paths.
 		 * @throws IllegalArgumentException if execution is not explicitly instrumented
 		 */
-		Command
+		FilesCommand
 		{
 			Objects.requireNonNull(launch, "launch");
 			Objects.requireNonNull(files, "files");
 			if (launch.executionMode() != LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC)
 				throw new IllegalArgumentException("Instrumented attempt requires attached leader execution");
 		}
+	}
+
+	/** Supplies an already authenticated stream receipt for one issued queue attempt.
+	 * The invocation retains listeners, wrapper endpoints and any partial acquisition through cleanup.
+	 * This boundary does not create registration authority or transfer their ownership to the attempt.
+	 */
+	@FunctionalInterface
+	interface Bindings
+	{
+		/** Selects a fresh receipt without starting the compiler or resending a prior transfer.
+		 * The producer maps this queue-wide ordinal to the retained Cargo action-local ordinal.
+		 * @param attemptSequence nonnegative queue-wide ordinal already issued by CargoSession
+		 * @return independently authenticated binding for the exact action and current retry
+		 * @throws IOException if authentication or receipt selection fails; the invocation retains cleanup responsibility
+		 */
+		LinuxBorrowedStreams.Binding forAttempt(long attemptSequence) throws IOException;
+	}
+
+	/** Immutable attached execution with invocation-owned stream registration across retries.
+	 * @param launch exact approved compiler execution
+	 * @param bindings borrowed provider of independently authenticated per-attempt receipts
+	 */
+	record BorrowedCommand(LinuxProcessTree.Launch launch, Bindings bindings) implements Command
+	{
+		/** Validates configuration without requesting a binding or acquiring native resources.
+		 * @throws NullPointerException if either input is null
+		 * @throws IllegalArgumentException if execution is not explicitly attached
+		 */
+		BorrowedCommand
+		{
+			Objects.requireNonNull(launch, "launch");
+			Objects.requireNonNull(bindings, "bindings");
+			if (launch.executionMode() != LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC)
+				throw new IllegalArgumentException("Borrowed attempt requires attached leader execution");
+		}
+
+		/** Selects the current receipt and rejects another action or execution before native preparation.
+		 * Construction of a Binding alone does not authenticate it; the invocation supplies that authority.
+		 * @param name registered Cargo action UUID text
+		 * @param attemptSequence nonnegative issued queue-wide ordinal
+		 * @return exact selected binding, with no transfer performed
+		 * @throws IllegalArgumentException if the ordinal is negative
+		 * @throws IOException if selection fails, returns no receipt or supplies another action or execution
+		 */
+		LinuxBorrowedStreams.Binding binding(String name, long attemptSequence) throws IOException
+		{
+			Objects.requireNonNull(name, "name");
+			if (attemptSequence < 0) throw new IllegalArgumentException("Attempt ordinal must be nonnegative");
+			LinuxBorrowedStreams.Binding binding = bindings.forAttempt(attemptSequence);
+			if (binding == null || name.equals(binding.actionId().toString()) == false)
+				throw new IOException("Borrowed stream receipt does not identify the registered action");
+			binding.requireExecution(launch);
+			return binding;
+		}
+	}
+
+	/**
+	 * Immutable borrowed compiler execution bound to its retained invocation jobserver lease.
+	 * The invocation authenticates each stream receipt and keeps this lease open across all retries and descendants.
+	 * Constructing or registering this command neither borrows an extra token nor transfers lease ownership.
+	 * @param command independently approved borrowed compiler execution and per-attempt stream receipt provider
+	 * @param lease live invocation lease borrowed until every attempt and descendant has been retired
+	 */
+	record CargoCommand(BorrowedCommand command, LinuxCargoJobserver.CargoLease lease) implements Command
+	{
+		/**
+		 * Retains immutable borrowed inputs without acquiring resources or selecting a stream receipt.
+		 * @throws NullPointerException if either input is null
+		 */
+		CargoCommand
+		{
+			Objects.requireNonNull(command, "command");
+			Objects.requireNonNull(lease, "lease");
+		}
+
+		/**
+		 * Returns the exact approved compiler launch without requesting a binding.
+		 * @return the borrowed command's immutable launch
+		 */
+		@Override
+		public LinuxProcessTree.Launch launch() { return command.launch(); }
 	}
 
 	/** Queue notification, distinct from native installation and allocation identities.

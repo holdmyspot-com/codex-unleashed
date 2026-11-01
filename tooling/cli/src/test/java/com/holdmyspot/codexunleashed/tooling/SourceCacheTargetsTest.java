@@ -2,9 +2,9 @@ package com.holdmyspot.codexunleashed.tooling;
 
 import java.util.List;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
+
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Checks target filename identity before the cache coordinator can create or remove files.
@@ -24,11 +24,13 @@ public final class SourceCacheTargetsTest
 	@Test
 	public void retainsTargetFilenameSemantics()
 	{
-		assertEquals(SourceCacheTargets.directoryName("x86_64-unknown-linux-gnu"), "x86_64-unknown-linux-gnu");
-		assertEquals(SourceCacheTargets.directoryName("custom.target.json"), "custom.target");
-		assertEquals(SourceCacheTargets.directoryName("custom.JSON"), "custom.JSON");
-		assertEquals(SourceCacheTargets.directoryName(".json"), ".json");
-		assertEquals(SourceCacheTargets.directoryName(".custom.json"), ".custom");
+		requireThat(SourceCacheTargets.directoryName("x86_64-unknown-linux-gnu"), "SourceCacheTargets")
+			.isEqualTo("x86_64-unknown-linux-gnu");
+		requireThat(SourceCacheTargets.directoryName("custom.target.json"), "SourceCacheTargets")
+			.isEqualTo("custom.target");
+		requireThat(SourceCacheTargets.directoryName("custom.JSON"), "SourceCacheTargets").isEqualTo("custom.JSON");
+		requireThat(SourceCacheTargets.directoryName(".json"), "SourceCacheTargets").isEqualTo(".json");
+		requireThat(SourceCacheTargets.directoryName(".custom.json"), "SourceCacheTargets").isEqualTo(".custom");
 	}
 
 	/**
@@ -40,9 +42,8 @@ public final class SourceCacheTargetsTest
 		for (String target : List.of("", ".", "..", "../outside", "../outside.json", "/outside", "nested/target",
 			"./target", "target/", "..json", "...json", "nul\u0000target"))
 		{
-			IllegalArgumentException failure = expectThrows(IllegalArgumentException.class,
-				() -> SourceCacheTargets.directoryName(target));
-			assertTrue(failure.getMessage().startsWith("Invalid Cargo target directory name: "));
+			IllegalArgumentException failure = requireException(IllegalArgumentException.class, () -> SourceCacheTargets.directoryName(target));
+			requireThat(failure.getMessage().startsWith("Invalid Cargo target directory name: "), "failure").isTrue();
 		}
 	}
 }

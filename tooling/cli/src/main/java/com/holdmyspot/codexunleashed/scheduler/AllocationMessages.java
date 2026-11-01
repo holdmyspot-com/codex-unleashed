@@ -1,15 +1,13 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+
 import java.io.IOException;
 import java.math.BigInteger;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import tools.jackson.core.JacksonException;
-import tools.jackson.core.StreamReadConstraints;
-import tools.jackson.core.StreamReadFeature;
-import tools.jackson.core.json.JsonFactory;
-import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -48,11 +46,7 @@ final class AllocationMessages
 	private static final Set<String> GRANTED_FIELDS = Set.of("protocol", "version", "attempt", "installation", "pid", "event",
 		"wait", "status");
 	/** Immutable parser enforcing JSON grammar, duplicate rejection, trailing-token rejection and bounded parsing. */
-	private static final JsonMapper JSON = JsonMapper.builder(JsonFactory.builder()
-		.enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
-		.streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(4).maxStringLength(128)
-			.maxNumberLength(20).maxDocumentLength(MAX_MESSAGE_CHARACTERS).build()).build())
-		.enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
+	private final JsonMapper json;
 
 	/** Canonical attempt identity supplied by the owning adapter. */
 	private final String attempt;
@@ -63,14 +57,16 @@ final class AllocationMessages
 
 	/**
 	 * Retains one already verified installation's identities without acquiring resources.
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param attempt nonnull identity unique to this workload attempt
 	 * @param installation positive generation never reused within the attempt
 	 * @param pid verified process identity in the range 1 through 4294967295
 	 * @throws NullPointerException if {@code attempt} is null
 	 * @throws IllegalArgumentException if the installation or process identity is outside its range
 	 */
-	AllocationMessages(UUID attempt, long installation, long pid)
+	AllocationMessages(ToolingScope scope, UUID attempt, long installation, long pid)
 	{
+		this.json = Objects.requireNonNull(scope, "scope").getAllocationMessageMapper();
 		Objects.requireNonNull(attempt, "attempt may not be null");
 		if (installation <= 0)
 			throw new IllegalArgumentException("Allocation installation identity must be positive");
@@ -96,7 +92,7 @@ final class AllocationMessages
 		JsonNode envelope;
 		try
 		{
-			envelope = JSON.readTree(message);
+			envelope = json.readTree(message);
 		}
 		catch (JacksonException cause)
 		{
@@ -162,7 +158,7 @@ final class AllocationMessages
 		Objects.requireNonNull(wait, "wait may not be null");
 		if (wait.installation() != installation)
 			throw new IllegalArgumentException("Allocation permission belongs to another script installation");
-		return JSON.createObjectNode().put("type", "allocation-control").put("version", VERSION).put("attempt", attempt)
+		return json.createObjectNode().put("type", "allocation-control").put("version", VERSION).put("attempt", attempt)
 			.put("installation", Long.toString(installation)).put("pid", Long.toString(pid)).put("operation", "grant")
 			.put("wait", Long.toString(wait.sequence()));
 	}

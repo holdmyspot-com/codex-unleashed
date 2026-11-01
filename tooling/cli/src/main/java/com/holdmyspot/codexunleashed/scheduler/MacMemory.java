@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -77,16 +78,18 @@ public final class MacMemory
 	 * A successful zero swap capacity is retained. Every acquired host-port send right is released before return,
 	 * including when another query fails; cleanup failure prevents a successful return.
 	 *
+	 * @param scope invocation-owned shared values, retained open for this read
 	 * @return a complete host-memory sample
 	 * @throws UnsupportedOperationException if the platform or a required native symbol is unsupported
 	 * @throws IOException if acquisition, native cleanup, counter validation or exact arithmetic fails
 	 */
-	public static Sample read() throws IOException
+	public static Sample read(ToolingScope scope) throws IOException
 	{
+		Objects.requireNonNull(scope, "scope may not be null");
 		if (!System.getProperty("os.name", "").startsWith("Mac"))
 			throw new UnsupportedOperationException("MacMemory requires macOS");
 
-		return read(new SystemCalls());
+		return read(new SystemCalls(scope));
 	}
 
 	/**
@@ -205,14 +208,18 @@ public final class MacMemory
 	 */
 	private static final class SystemCalls implements NativeCalls
 	{
+		/** Native linker borrowed from the invocation scope. */
+		private final Linker linker;
 		/** System-library lookup initialized by the first binding and confined to one read. */
 		private SymbolLookup library;
 
 		/**
 		 * Creates the native operations for one read.
+		 * @param scope invocation-owned shared values
 		 */
-		private SystemCalls()
+		private SystemCalls(ToolingScope scope)
 		{
+			linker = scope.getNativeLinker();
 		}
 
 		@Override
@@ -238,7 +245,7 @@ public final class MacMemory
 		{
 			if (library == null)
 				library = SymbolLookup.libraryLookup("/usr/lib/libSystem.B.dylib", arena);
-			return MacMemory.bind(library, name, descriptor);
+			return MacMemory.bind(linker, library, name, descriptor);
 		}
 	}
 
@@ -269,17 +276,18 @@ public final class MacMemory
 	/**
 	 * Binds a required macOS system-library function with its accepted native ABI.
 	 *
+	 * @param linker the native linker borrowed from the invocation scope
 	 * @param library the library lookup owned by the current call's native scope
 	 * @param name the required native symbol
 	 * @param descriptor the function's native return and argument layouts
 	 * @return the bound native function
 	 * @throws UnsupportedOperationException if the required symbol is absent
 	 */
-	private static MethodHandle bind(SymbolLookup library, String name, FunctionDescriptor descriptor)
+	private static MethodHandle bind(Linker linker, SymbolLookup library, String name, FunctionDescriptor descriptor)
 	{
 		var symbol = library.find(name).orElseThrow(() ->
 			new UnsupportedOperationException("Required macOS native symbol is absent: " + name));
-		return Linker.nativeLinker().downcallHandle(symbol, descriptor);
+		return linker.downcallHandle(symbol, descriptor);
 	}
 
 	/**

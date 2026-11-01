@@ -1,0 +1,17 @@
+{
+  "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsCargoDistributionTest.java",
+  "beforeSha256": "6623693b79c7ff42ac206734865d317be7f33dcab58f50f7394ba18bee2ca2e6",
+  "productionBehaviorChange": false,
+  "afterSha256": "d9e2c1316ec90a3082fb2942e3db6a09d0dbcf3661846e611465ef46a3c53a24",
+  "changedLines": [
+    125,
+    146
+  ],
+  "change": "Remove trailing indentation from two empty text-block lines; line count unchanged.",
+  "compiledClassesIdentical": {
+    "com/holdmyspot/codexunleashed/scheduler/WindowsCargoDistributionTest.class": "52d75c1cc816a79b530485ac57beecd8fd02e48cb8565e3df7a4c47b9e64219a"
+  },
+  "behavioralVerification": "Compiled test bytes identical, including the normalized embedded fixture source. Existing test/native acceptance remains applicable; no unchanged suite rerun.",
+  "compile": "JDK27 javac --release 27 -Xlint:all,-processing -Werror -Xdoclint:all/private; both exits zero.",
+  "sourceBaseManifest": "docs/evidence/cp3-runtime-source-manifest.json"
+}

@@ -1,5 +1,8 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 import java.io.IOException;
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -18,6 +21,13 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public final class AllocationPermissionsTest
 {
+    /** Shared immutable values owned by this test class. */
+    private final ToolingScope scope = new DefaultToolingScope();
+
+    /** Releases the scope after every borrower in this class has finished. */
+    @org.testng.annotations.AfterClass(alwaysRun = true)
+    public void closeScope() { scope.close(); }
+
 	/** Actual attempt UUID from the retained two-thread native protocol receipt. */
 	private static final UUID ATTEMPT = UUID.fromString("8e24a611-ec3e-486e-b4d2-261f85599c47");
 	/** Exact ready envelope observed in the retained native receipt. */
@@ -488,7 +498,7 @@ public final class AllocationPermissionsTest
 	 * @param poster borrowed controlled post collaborator
 	 * @return resource-free production owner
 	 */
-	private static AllocationPermissions owner(AllocationPermissions.Poster poster)
+	private AllocationPermissions owner(AllocationPermissions.Poster poster)
 	{
 		return new AllocationPermissions(codec(), poster);
 	}
@@ -497,9 +507,9 @@ public final class AllocationPermissionsTest
 	 * Creates the real codec with the retained native attempt, generation and process identity.
 	 * @return resource-free codec for the actual receipt envelopes
 	 */
-	private static AllocationMessages codec()
+	private AllocationMessages codec()
 	{
-		return new AllocationMessages(ATTEMPT, 1, 3216);
+		return new AllocationMessages(scope, ATTEMPT, 1, 3216);
 	}
 
 	/**

@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+
 import java.io.IOException;
 import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
@@ -43,30 +45,33 @@ final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Re
 
     /**
      * Borrows a started runtime and measurement adapter without acquiring native resources.
+     * @param scope borrowed shared values; the caller retains ownership through all operations
      * @param build build correlation seed
      * @param runtime borrowed started Frida runtime
      * @param measurements borrowed Windows measurement adapter
      * @param commands stable-name command mapping with distinct original positions
      * @param timeout positive representable control interval
      */
-    WindowsAttempts(UUID build, FridaRuntime runtime, WindowsMeasurements measurements,
+    WindowsAttempts(ToolingScope scope, UUID build, FridaRuntime runtime, WindowsMeasurements measurements,
         Map<String, Command> commands, Duration timeout)
     {
-        this(build, commands, timeout, nativeResources(runtime, measurements));
+        this(build, commands, timeout, nativeResources(scope, runtime, measurements));
     }
 
     /**
      * Supplies native resource-free acquisition plans after validating borrowed owners.
+     * @param scope borrowed shared values; the caller retains ownership through all operations
      * @param runtime borrowed started Frida runtime
      * @param measurements borrowed Windows measurement adapter
      * @return resource-free native acquisition-plan factory
      */
-    private static ResourcesFactory nativeResources(FridaRuntime runtime, WindowsMeasurements measurements)
+    private static ResourcesFactory nativeResources(ToolingScope scope, FridaRuntime runtime, WindowsMeasurements measurements)
     {
+        Objects.requireNonNull(scope, "scope");
         Objects.requireNonNull(runtime, "runtime");
         Objects.requireNonNull(measurements, "measurements");
         return (command, sequence, identity, timeout) ->
-            new WindowsAttempt.NativeResources(runtime, measurements, command, sequence, identity, timeout);
+            new WindowsAttempt.NativeResources(scope, runtime, measurements, command, sequence, identity, timeout);
     }
 
     /**

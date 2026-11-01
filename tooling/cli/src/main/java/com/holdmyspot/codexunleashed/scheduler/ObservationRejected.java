@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Rejects a complete memory batch after a trusted ownership change was independently established.
+ * Rejects a memory batch after a trusted ownership change or incomplete native inventory was independently established.
  * Reconcile authentic owners and obtain a fresh complete batch before selecting another control.
  * This exception conveys neither a measurement nor a completion or control acknowledgement.
  */
@@ -14,7 +14,7 @@ public final class ObservationRejected extends IOException
 {
     /** Measurement boundary that rejected the batch. */
     private final Operation operation;
-    /** Independently established change that invalidated the observation. */
+    /** Independently established condition that invalidated the observation. */
     private final Reason reason;
     /** Exact registered attempts affected by the change. */
     private final List<Attempt> attempts;
@@ -27,11 +27,12 @@ public final class ObservationRejected extends IOException
         /** Complete-batch acceptance. */ ACCEPT
     }
 
-    /** Trusted changes which invalidate a batch without supplying substitute values. */
+    /** Trusted conditions which invalidate a batch without supplying substitute values. */
     public enum Reason
     {
         /** Registered Linux leaves disappeared and every retained owner proved execution impossible. */ COMPLETED_LEAVES,
-        /** Complete Windows Job observations established membership churn. */ MEMBERSHIP_CHANGED
+        /** Complete native ownership observations established process membership churn. */ MEMBERSHIP_CHANGED,
+        /** Native observations establish incomplete process or executable-region inventory. */ INCOMPLETE_INVENTORY
     }
 
     /**
@@ -54,7 +55,7 @@ public final class ObservationRejected extends IOException
      * Retains an independently verified observation rejection.
      * Only measurement providers may issue this retry permission after successful observation cleanup.
      * @param operation failed measurement boundary
-     * @param reason verified ownership change
+     * @param reason verified ownership change or incomplete inventory
      * @param attempts nonempty distinct exact registered attempts
      * @param cause retained diagnostic cause
      */
@@ -74,8 +75,8 @@ public final class ObservationRejected extends IOException
      */
     public Operation operation() { return operation; }
     /**
-     * Returns the independently verified ownership change.
-     * @return ownership change which invalidated this batch
+     * Returns the independently verified rejection condition.
+     * @return condition which invalidated this batch
      */
     public Reason reason() { return reason; }
     /**

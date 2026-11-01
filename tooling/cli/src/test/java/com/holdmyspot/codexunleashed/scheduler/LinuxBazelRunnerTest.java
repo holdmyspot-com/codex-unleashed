@@ -1,0 +1,503 @@
+package com.holdmyspot.codexunleashed.scheduler;
+
+import buildbarn.runner.RunnerGrpc;
+import buildbarn.runner.RunnerOuterClass.CheckReadinessRequest;
+import buildbarn.runner.RunnerOuterClass.RunRequest;
+import buildbarn.runner.RunnerOuterClass.RunResponse;
+import com.google.common.util.concurrent.ListenableFuture;
+import io.grpc.ManagedChannel;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
+import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
+import io.grpc.netty.shaded.io.netty.handler.ssl.ApplicationProtocolConfig;
+import io.grpc.netty.shaded.io.netty.handler.ssl.ApplicationProtocolNames;
+import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
+import io.grpc.netty.shaded.io.netty.handler.ssl.SslProvider;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.security.KeyStore;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.locks.LockSupport;
+import java.util.function.BooleanSupplier;
+import java.util.stream.Stream;
+import org.testng.annotations.Test;
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+/**
+ * Exercises the actual loopback mTLS Runner protocol and immutable original request boundary.
+ * Every test issues private credentials and owns its server, channels and filesystem state.
+ */
+public final class LinuxBazelRunnerTest
+{
+    /**
+     * Creates independently owned protocol tests.
+     */
+    public LinuxBazelRunnerTest() {}
+
+    /**
+     * Rejects traversal and ambiguous path spellings while preserving the documented empty cwd.
+     * @throws IOException if an accepted path cannot be validated
+     */
+    @Test
+    public void preservesExactRelativePathContract() throws IOException
+    {
+        for (String value : new String[]{"../outside", "a/../b", "/etc/passwd", "a//b", "./a", "a/", ".", ""})
+            requireException(IOException.class, () -> LinuxBazelRunner.relative(value, false));
+        requireThat(LinuxBazelRunner.relative("build/input", false), "workerInput").isEqualTo(Path.of("build/input"));
+        requireThat(LinuxBazelRunner.relative("", true), "rootCwd").isEqualTo(Path.of(""));
+    }
+
+    /**
+     * Real authenticated wire admission retains generated-tool argv, environment and empty cwd exactly.
+     * @throws Exception if TLS, filesystem or wire operations fail
+     */
+    @Test
+    public void authenticatedWirePreservesOriginalReadyInputs() throws Exception
+    {
+        try (Fixture fixture = Fixture.open())
+        {
+            fixture.readiness();
+            Files.createDirectory(fixture.input.resolve("generated"));
+            Files.writeString(fixture.input.resolve("generated/tool"), "generated-image");
+            Files.writeString(fixture.input.resolve("parameters"), "--exact=a/../b");
+            List<String> arguments = List.of("./generated/tool", "@parameters", "a/../b", "", " spaced argument ");
+            Map<String, String> environment = Map.of("A", "a/../b", "EMPTY", "", "PATH", "/explicit");
+            RunRequest request = fixture.request().clearArguments().addAllArguments(arguments)
+                .putAllEnvironmentVariables(environment).setWorkingDirectory("").build();
+            ListenableFuture<RunResponse> response = fixture.run(request);
+            LinuxBazelRunner.Ready ready = fixture.ready();
+            requireThat(ready.request().getArgumentsList(), "exactArgv").isEqualTo(arguments);
+            requireThat(ready.request().getEnvironmentVariablesMap(), "exactEnvironment").isEqualTo(environment);
+            requireThat(ready.directory(), "emptyCwdMeansInputRoot").isEqualTo(fixture.input);
+            String original = BazelWorkIdentity.identify(fixture.input, arguments, environment, ready.directory(), "platform");
+            Files.writeString(fixture.input.resolve("generated/tool"), "different-image");
+            requireThat(BazelWorkIdentity.identify(fixture.input, arguments, environment, ready.directory(),
+                "platform").equals(original), "readyGeneratedImageChangeInvalidates").isFalse();
+            requireThat(ready.complete(0), "authenticResultAccepted").isTrue();
+            requireThat(response.get(20, TimeUnit.SECONDS).getExitCode(), "originalWireResult").isEqualTo(0L);
+        }
+    }
+
+    /**
+     * Invalid request roots, stream collisions, environment and cwd links are rejected on the real wire.
+     * @throws Exception if fixture setup or wire operations fail
+     */
+    @Test
+    public void wireRejectsPathsLinksAndInvalidLaunchValues() throws Exception
+    {
+        try (Fixture fixture = Fixture.open())
+        {
+            fixture.readiness();
+            Files.createSymbolicLink(fixture.build.resolve("linked-input"), Path.of("slot/input"));
+            Files.createSymbolicLink(fixture.input.resolve("linked-cwd"), Path.of("."));
+            List<RunRequest> invalid = List.of(
+                fixture.request().setInputRootDirectory("../outside").build(),
+                fixture.request().setInputRootDirectory("linked-input").build(),
+                fixture.request().setWorkingDirectory("linked-cwd").build(),
+                fixture.request().setStderrPath("slot/stdout").build(),
+                fixture.request().setStdoutPath("slot/input/output").build(),
+                fixture.request().setTemporaryDirectory("slot/input").build(),
+                fixture.request().clearArguments().build(),
+                fixture.request().putEnvironmentVariables("INVALID=NAME", "value").build());
+            for (RunRequest request : invalid)
+            {
+                requireThat(failure(fixture.run(request)), "invalidWireRequest").isEqualTo(Status.Code.INVALID_ARGUMENT);
+                requireThat(fixture.runner.poll().isEmpty(), "invalidRequestNotQueued").isTrue();
+            }
+        }
+    }
+
+    /**
+     * A second authenticated request cannot acquire another active action's input or temporary root.
+     * @throws Exception if fixture or real wire operations fail
+     */
+    @Test
+    public void rejectsOverlappingActiveRoots() throws Exception
+    {
+        try (Fixture fixture = Fixture.open())
+        {
+            fixture.readiness();
+            ListenableFuture<RunResponse> original = fixture.run(fixture.request().build());
+            LinuxBazelRunner.Ready ready = fixture.ready();
+            requireThat(failure(fixture.run(fixture.request().build())), "duplicateOriginalRootRejected")
+                .isEqualTo(Status.Code.INVALID_ARGUMENT);
+            requireThat(fixture.runner.poll().isEmpty(), "overlapNeverQueued").isTrue();
+            requireThat(ready.complete(0), "originalStillOwnsResult").isTrue();
+            requireThat(original.get(20, TimeUnit.SECONDS).getExitCode(), "originalResult").isEqualTo(0L);
+            ListenableFuture<RunResponse> reused = fixture.run(fixture.request().build());
+            LinuxBazelRunner.Ready next = fixture.ready();
+            requireThat(next.sequence() > ready.sequence(), "rootReusedForNewOriginalIdentity").isTrue();
+            next.complete(0);
+            requireThat(reused.get(20, TimeUnit.SECONDS).getExitCode(), "reusedRootResult").isEqualTo(0L);
+        }
+    }
+
+    /**
+     * Cancellation revokes publication immediately while the original root claim waits for owned cleanup.
+     * @throws Exception if fixture or real wire operations fail
+     */
+    @Test
+    public void cancellationRetainsRootClaimUntilOriginalCleanup() throws Exception
+    {
+        try (Fixture fixture = Fixture.open())
+        {
+            fixture.readiness();
+            ListenableFuture<RunResponse> original = fixture.run(fixture.request().build());
+            LinuxBazelRunner.Ready ready = fixture.ready();
+            original.cancel(true);
+            await(() -> !ready.publicationAllowed());
+            requireThat(failure(fixture.run(fixture.request().build())), "cancelDidNotInventCleanup")
+                .isEqualTo(Status.Code.INVALID_ARGUMENT);
+            ready.releaseClaim();
+            ListenableFuture<RunResponse> reused = fixture.run(fixture.request().build());
+            fixture.ready().complete(0);
+            requireThat(reused.get(20, TimeUnit.SECONDS).getExitCode(), "cleanupReleasedOriginalRoot").isEqualTo(0L);
+        }
+    }
+
+    /**
+     * Another clientAuth leaf signed by the same trusted CA cannot act as the exact authorized worker.
+     * @throws Exception if certificate issuance or wire operations fail
+     */
+    @Test
+    public void rejectsDifferentValidClientLeafFromSameAuthority() throws Exception
+    {
+        try (Fixture fixture = Fixture.open())
+        {
+            fixture.readiness();
+            List<Path> wrong = fixture.issueOtherWorker();
+            try (Client client = fixture.client(wrong.getFirst(), wrong.getLast()))
+            {
+                StatusRuntimeException failure = requireException(StatusRuntimeException.class,
+                    () -> RunnerGrpc.newBlockingStub(client.channel).checkReadiness(
+                        CheckReadinessRequest.newBuilder().setPath("slot").build()));
+                requireThat(failure.getStatus().getCode(), "exactLeafRejected").isEqualTo(Status.Code.UNAUTHENTICATED);
+                requireThat(failure.getStatus().getDescription(), "reachedExactLeafValidation")
+                    .isEqualTo("Wrong invocation worker identity");
+            }
+            requireThat(fixture.runner.poll().isEmpty(), "wrongWorkerNeverQueued").isTrue();
+        }
+    }
+
+    /**
+     * Obtains the application-level status from a completed rejected wire request.
+     * @param response original future
+     * @return actual gRPC rejection status
+     * @throws InterruptedException if waiting is interrupted
+     * @throws TimeoutException if the wire boundary does not return
+     */
+    static Status.Code failure(ListenableFuture<RunResponse> response) throws InterruptedException, TimeoutException
+    {
+        try
+        {
+            response.get(20, TimeUnit.SECONDS);
+            throw new IllegalStateException("Request unexpectedly returned an action result");
+        }
+        catch (ExecutionException rejected) { return Status.fromThrowable(rejected.getCause()).getCode(); }
+    }
+
+    /**
+     * Waits for a transport event without asserting elapsed-time performance.
+     * @param condition event predicate
+     * @throws IOException if the event does not arrive within the fixture's escape bound
+     */
+    static void await(BooleanSupplier condition) throws IOException
+    {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+        while (!condition.getAsBoolean())
+        {
+            if (System.nanoTime() >= deadline) throw new IOException("Wire fixture event did not arrive");
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+        }
+    }
+
+    /**
+     * Owns one actual channel and joins its transport on cleanup.
+     */
+    static final class Client implements AutoCloseable
+    {
+        /** Actual per-test mTLS channel. */
+        final ManagedChannel channel;
+
+        /**
+         * Transfers channel cleanup ownership.
+         * @param channel newly created channel
+         */
+        private Client(ManagedChannel channel) { this.channel = channel; }
+
+        @Override public void close() throws IOException
+        {
+            channel.shutdownNow();
+            try
+            {
+                if (!channel.awaitTermination(20, TimeUnit.SECONDS))
+                    throw new IOException("Wire fixture channel failed to terminate");
+            }
+            catch (InterruptedException interrupted)
+            {
+                Thread.currentThread().interrupt();
+                throw new IOException("Wire fixture channel cleanup interrupted", interrupted);
+            }
+        }
+    }
+
+    /**
+     * Owns private invocation credentials, real Runner listener and worker-visible directory fixtures.
+     */
+    static final class Fixture implements AutoCloseable
+    {
+        /** Fresh root removed only after all channels and the server terminate. */
+        final Path root;
+        /** Trusted worker build root used by real protocol validation. */
+        final Path build;
+        /** Worker-owned real input directory whose visible bytes assertions inspect. */
+        final Path input;
+        /** Worker-owned temporary directory separate from its input root. */
+        final Path temporary;
+        /** Private server/worker credentials, issued by the production backend operation. */
+        final LinuxBazelBackend.Credentials credentials;
+        /** Actual per-test protocol listener. */
+        final LinuxBazelRunner runner;
+        /** Exact authorized client channel. */
+        private final Client client;
+
+        /**
+         * Retains successfully acquired fixture resources.
+         * @param root fresh private fixture root
+         * @param build trusted worker root
+         * @param input worker input directory
+         * @param temporary worker temporary directory
+         * @param credentials production-issued private identities
+         * @param runner started real listener
+         * @param client exact authorized channel
+         */
+        private Fixture(Path root, Path build, Path input, Path temporary,
+            LinuxBazelBackend.Credentials credentials, LinuxBazelRunner runner, Client client)
+        {
+            this.root = root;
+            this.build = build;
+            this.input = input;
+            this.temporary = temporary;
+            this.credentials = credentials;
+            this.runner = runner;
+            this.client = client;
+        }
+
+        /**
+         * Creates a complete real wire fixture with immediate acquisition-failure cleanup.
+         * @return independently owned fixture
+         * @throws IOException if credentials, directories or server startup fails
+         */
+        static Fixture open() throws IOException
+        {
+            Path root = Files.createTempDirectory("bazel-runner-wire-");
+            LinuxBazelRunner runner = null;
+            try
+            {
+                Path build = Files.createDirectory(root.resolve("worker-builds"));
+                Path slot = Files.createDirectory(build.resolve("slot"));
+                Path input = Files.createDirectory(slot.resolve("input"));
+                Path temporary = Files.createDirectory(slot.resolve("temporary"));
+                Files.createDirectory(slot.resolve("logs"));
+                LinuxBazelBackend.Credentials credentials = LinuxBazelBackend.Credentials.generate(root.resolve("credentials"),
+                    Path.of(System.getProperty("java.home")).resolve("bin/keytool"));
+                runner = new LinuxBazelRunner(build, new LinuxBazelRunner.Credentials(credentials.certificateAuthority(),
+                    credentials.serverCertificate(), credentials.serverKey(), credentials.workerCertificate()));
+                runner.start();
+                Client client = connect(runner.endpoint(), credentials, credentials.workerCertificate(), credentials.workerKey());
+                return new Fixture(root, build, input, temporary, credentials, runner, client);
+            }
+            catch (IOException | RuntimeException | Error failure)
+            {
+                if (runner != null)
+                    try { runner.close(); } catch (IOException cleanup) { failure.addSuppressed(cleanup); }
+                try { remove(root); } catch (IOException cleanup) { failure.addSuppressed(cleanup); }
+                throw failure;
+            }
+        }
+
+        /**
+         * Proves real mTLS readiness before an action request or deliberate deadline begins.
+         */
+        void readiness()
+        {
+            RunnerGrpc.newBlockingStub(client.channel).withDeadlineAfter(20, TimeUnit.SECONDS)
+                .checkReadiness(CheckReadinessRequest.newBuilder().setPath("slot").build());
+        }
+
+        /**
+         * Supplies valid original paths and a generated command placeholder for one independently owned request.
+         * @return mutable protocol builder for the caller's scenario
+         */
+        RunRequest.Builder request()
+        {
+            return RunRequest.newBuilder().addArguments("./generated-tool").setInputRootDirectory("slot/input")
+                .setTemporaryDirectory("slot/temporary").setServerLogsDirectory("slot/logs")
+                .setStdoutPath("slot/stdout").setStderrPath("slot/stderr");
+        }
+
+        /**
+         * Sends an original asynchronous Run over the exact authorized client channel.
+         * @param request exact protocol request
+         * @return future retained through retries/cancellation until the real response or transport outcome
+         */
+        ListenableFuture<RunResponse> run(RunRequest request)
+        {
+            return RunnerGrpc.newFutureStub(client.channel).run(request);
+        }
+
+        /**
+         * Sends an original Run with a real transport deadline after readiness has established its channel.
+         * @param request exact protocol request
+         * @return original future whose deadline may expire before native cleanup is allowed to finish
+         */
+        ListenableFuture<RunResponse> deadlineRun(RunRequest request)
+        {
+            return RunnerGrpc.newFutureStub(client.channel).withDeadlineAfter(500, TimeUnit.MILLISECONDS).run(request);
+        }
+
+        /**
+         * Transfers the actual dynamically enqueued original RPC to the scenario's coordinator thread.
+         * @return next original Ready object
+         * @throws IOException if admission never arrives
+         */
+        LinuxBazelRunner.Ready ready() throws IOException
+        {
+            LinuxBazelRunner.Ready[] found = new LinuxBazelRunner.Ready[1];
+            await(() ->
+            {
+                found[0] = runner.poll().orElse(null);
+                return found[0] != null;
+            });
+            return found[0];
+        }
+
+        /**
+         * Opens an additional same-CA channel with caller-selected leaf material.
+         * @param certificate clientAuth leaf certificate
+         * @param key matching PKCS8 key
+         * @return owned actual mTLS channel
+         * @throws IOException if TLS setup fails
+         */
+        Client client(Path certificate, Path key) throws IOException
+        {
+            return connect(runner.endpoint(), credentials, certificate, key);
+        }
+
+        /**
+         * Issues a second valid clientAuth leaf under this fixture's actual CA for exact-leaf rejection.
+         * @return certificate followed by its PKCS8 key
+         * @throws IOException if JDK issuance or PEM writing fails
+         * @throws GeneralSecurityException if the private key cannot be exported
+         */
+        List<Path> issueOtherWorker() throws IOException, GeneralSecurityException
+        {
+            Path directory = credentials.certificateAuthority().getParent();
+            Path password = directory.resolve("store-password");
+            Path store = directory.resolve("other-worker.p12");
+            keytool("-genkeypair", "-alias", "other-worker", "-dname", "CN=other-worker", "-keyalg", "EC",
+                "-groupname", "secp256r1", "-validity", "1", "-keystore", store.toString(), "-storetype", "PKCS12",
+                "-storepass:file", password.toString());
+            Path request = directory.resolve("other-worker.csr");
+            keytool("-certreq", "-alias", "other-worker", "-keystore", store.toString(), "-storepass:file",
+                password.toString(), "-file", request.toString());
+            Path certificate = directory.resolve("other-worker-cert.pem");
+            keytool("-gencert", "-rfc", "-alias", "ca", "-keystore", directory.resolve("ca.p12").toString(),
+                "-storepass:file", password.toString(), "-infile", request.toString(), "-outfile", certificate.toString(),
+                "-validity", "1", "-ext", "KU=digitalSignature", "-ext", "EKU=clientAuth");
+            char[] secret = Files.readString(password).toCharArray();
+            try
+            {
+                KeyStore keys = KeyStore.getInstance("PKCS12");
+                try (InputStream input = Files.newInputStream(store)) { keys.load(input, secret); }
+                byte[] encoded = keys.getKey("other-worker", secret).getEncoded();
+                Path key = directory.resolve("other-worker-key.pem");
+                Files.writeString(key, "-----BEGIN PRIVATE KEY-----\n" +
+                    Base64.getMimeEncoder(64, new byte[]{'\n'}).encodeToString(encoded) + "\n-----END PRIVATE KEY-----\n");
+                java.util.Arrays.fill(encoded, (byte) 0);
+                return List.of(certificate, key);
+            }
+            finally { java.util.Arrays.fill(secret, '\0'); }
+        }
+
+        /**
+         * Invokes the real JDK certificate operation without a shell or password argv disclosure.
+         * @param arguments exact supported keytool arguments
+         * @throws IOException if issuance fails or is interrupted
+         */
+        private void keytool(String... arguments) throws IOException
+        {
+            List<String> command = new ArrayList<>();
+            command.add(Path.of(System.getProperty("java.home")).resolve("bin/keytool").toString());
+            command.addAll(List.of(arguments));
+            Path log = root.resolve("other-worker-keytool.log");
+            Process process = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log.toFile()).start();
+            try
+            {
+                if (process.waitFor() != 0) throw new IOException("Fixture clientAuth issuance failed: " + Files.readString(log));
+            }
+            catch (InterruptedException interrupted)
+            {
+                process.destroyForcibly();
+                try { process.waitFor(); } catch (InterruptedException again) { interrupted.addSuppressed(again); }
+                Thread.currentThread().interrupt();
+                throw new IOException("Fixture clientAuth issuance interrupted", interrupted);
+            }
+        }
+
+        /**
+         * Connects an actual channel using the fixture CA and one supplied client leaf.
+         * @param endpoint actual listener address
+         * @param credentials invocation CA and server identity
+         * @param certificate selected client certificate
+         * @param key matching client PKCS8 key
+         * @return owned actual channel
+         * @throws IOException if client TLS configuration fails
+         */
+        private static Client connect(String endpoint, LinuxBazelBackend.Credentials credentials,
+            Path certificate, Path key) throws IOException
+        {
+            return new Client(NettyChannelBuilder.forTarget(endpoint).overrideAuthority("localhost")
+                .sslContext(GrpcSslContexts.forClient().sslProvider(SslProvider.JDK)
+                    .applicationProtocolConfig(new ApplicationProtocolConfig(ApplicationProtocolConfig.Protocol.ALPN,
+                        ApplicationProtocolConfig.SelectorFailureBehavior.NO_ADVERTISE,
+                        ApplicationProtocolConfig.SelectedListenerFailureBehavior.ACCEPT, ApplicationProtocolNames.HTTP_2))
+                    .trustManager(credentials.certificateAuthority().toFile()).keyManager(certificate.toFile(), key.toFile())
+                    .build()).build());
+        }
+
+        @Override public void close() throws IOException
+        {
+            try { client.close(); }
+            finally
+            {
+                try { runner.close(); }
+                finally { remove(root); }
+            }
+        }
+
+        /**
+         * Deletes only this fixture's private tree after transport cleanup.
+         * @param root owned fixture root
+         * @throws IOException if fixture cleanup fails
+         */
+        private static void remove(Path root) throws IOException
+        {
+            try (Stream<Path> paths = Files.walk(root))
+            {
+                for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
+            }
+        }
+    }
+}

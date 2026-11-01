@@ -10,6 +10,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public final class PolicyBlockedRecoveryTest
 {
+	/** Creates independent blocked-recovery checks. */
+	public PolicyBlockedRecoveryTest()
+	{
+	}
+
 	/**
 	 * Preserves the oldest denial and selects its newest eligible peer when admission is one byte short.
 	 */
@@ -79,10 +84,10 @@ public final class PolicyBlockedRecoveryTest
 	}
 
 	/**
-	 * Retains normal waiting when a peer without an allocation wait may complete.
+	 * Waits for ordinary admission capacity and reclaims a blocked peer during physical pressure or swap recovery.
 	 */
 	@Test
-	public void doesNotReclaimForBlockedAdmissionWhilePeerIsRunning()
+	public void reclaimsBlockedPeerOnlyDuringPressure()
 	{
 		List<Policy.Job> jobs = List.of(
 			blocked("oldest", 0, 0, 0, 500L, 100),
@@ -92,7 +97,7 @@ public final class PolicyBlockedRecoveryTest
 		requireDecision(Policy.chooseAction(budget, jobs, new Policy.Observation(499, false, false, 0)),
 			Policy.Control.WAIT, null);
 		requireDecision(Policy.chooseAction(budget, jobs, new Policy.Observation(1000, true, false, 0)),
-			Policy.Control.WAIT, null);
+			Policy.Control.TERMINATE, "oldest");
 		requireDecision(Policy.chooseAction(budget, jobs, new Policy.Observation(1000, false, true, 0)),
 			Policy.Control.TERMINATE, "oldest");
 	}

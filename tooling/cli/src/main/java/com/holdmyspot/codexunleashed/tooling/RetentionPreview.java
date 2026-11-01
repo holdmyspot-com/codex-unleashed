@@ -14,7 +14,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import tools.jackson.core.JacksonException;
-import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -27,17 +26,6 @@ public final class RetentionPreview
 	 * The read-only private-cache retention command.
 	 */
 	public static final String NAME = "preview-ghcr-retention";
-
-	/**
-	 * Upstream release tags eligible for stable-release retention: {@code rust-v<major>.<minor>.<patch>} with decimal components.
-	 */
-	private static final Pattern STABLE_TAG = Pattern.compile("rust-v[0-9]+\\.[0-9]+\\.[0-9]+");
-
-	/**
-	 * Parses exactly one inventory document and rejects trailing JSON values.
-	 */
-	private static final JsonMapper JSON = JsonMapper.builder().
-		enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
 
 	/**
 	 * Prevents construction.
@@ -58,6 +46,7 @@ public final class RetentionPreview
 	 * are unmanaged. IDs retain inventory order. This preview neither authorizes deletion
 	 * nor accounts for writers that change the registry after collection.
 	 *
+	 * @param scope open caller-owned shared values; remains open
 	 * @param arguments command arguments, which must be empty
 	 * @param in complete inventory JSON; remains open
 	 * @param out complete preview, written only after inventory validation
@@ -66,8 +55,9 @@ public final class RetentionPreview
 	 * @throws NullPointerException if an argument is null
 	 * @throws IOException if input cannot be read or does not satisfy the inventory contract
 	 */
-	public static int run(String[] arguments, InputStream in, PrintStream out, PrintStream err) throws IOException
+	public static int run(ToolingScope scope, String[] arguments, InputStream in, PrintStream out, PrintStream err) throws IOException
 	{
+		Objects.requireNonNull(scope, "scope may not be null");
 		Objects.requireNonNull(arguments, "arguments");
 		Objects.requireNonNull(in, "in");
 		Objects.requireNonNull(out, "out");
@@ -78,10 +68,11 @@ public final class RetentionPreview
 			return 2;
 		}
 
+		JsonMapper json = scope.getJsonMapper();
 		JsonNode document;
 		try
 		{
-			document = JSON.readTree(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+			document = json.readTree(new String(in.readAllBytes(), StandardCharsets.UTF_8));
 		}
 		catch (JacksonException failure)
 		{
@@ -90,7 +81,7 @@ public final class RetentionPreview
 		if (document == null || !document.isObject())
 			throw new IOException("Retention inventory must be a JSON object");
 
-		List<String> retained = selectRetainedReferences(document);
+		List<String> retained = selectRetainedReferences(document, scope.getStableReleaseTagPattern());
 		List<BigInteger> retainedIds = new ArrayList<>();
 		List<BigInteger> obsoleteIds = new ArrayList<>();
 		List<BigInteger> unmanagedIds = new ArrayList<>();
@@ -117,7 +108,7 @@ public final class RetentionPreview
 				unmanagedIds.add(value);
 		}
 
-		out.println(JSON.writeValueAsString(Map.of("retained_releases", retained,
+		out.println(json.writeValueAsString(Map.of("retained_releases", retained,
 			"retained_version_ids", retainedIds, "obsolete_version_ids", obsoleteIds,
 			"unmanaged_version_ids", unmanagedIds, "dry_run", true)));
 		return 0;
@@ -127,10 +118,11 @@ public final class RetentionPreview
 	 * Selects numeric stable releases and adds explicitly protected baseline references.
 	 *
 	 * @param document complete inventory
+	 * @param stableTag shared immutable stable-release selector
 	 * @return up to two distinct stable tags in descending numeric version order, followed by additional protected references in inventory order
 	 * @throws IOException if fields are malformed or no stable published release exists
 	 */
-	private static List<String> selectRetainedReferences(JsonNode document) throws IOException
+	private static List<String> selectRetainedReferences(JsonNode document, Pattern stableTag) throws IOException
 	{
 		Set<String> stable = new LinkedHashSet<>();
 		for (JsonNode release : array(document, "releases"))
@@ -142,7 +134,7 @@ public final class RetentionPreview
 			if (!validRecord)
 				throw new IOException("Release records require string tag_name and boolean draft/prerelease fields");
 			boolean stableRelease = !draft.booleanValue() && !prerelease.booleanValue() &&
-				STABLE_TAG.matcher(tag.stringValue()).matches();
+				stableTag.matcher(tag.stringValue()).matches();
 			if (stableRelease)
 				stable.add(tag.stringValue());
 		}
@@ -153,7 +145,7 @@ public final class RetentionPreview
 		Set<String> retained = new LinkedHashSet<>(ordered.subList(0, Math.min(2, ordered.size())));
 		for (String reference : strings(array(document, "protected_upstream_refs")))
 		{
-			boolean supportedReference = reference.equals("main") || STABLE_TAG.matcher(reference).matches();
+			boolean supportedReference = reference.equals("main") || stableTag.matcher(reference).matches();
 			if (!supportedReference)
 				throw new IOException("Protected reference must be a stable upstream tag or main: " + reference);
 			retained.add(reference);

@@ -9,10 +9,9 @@ import java.util.Map;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
+
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Verifies snapshot compatibility, conditional successful recording, and owned write cleanup.
@@ -39,16 +38,16 @@ public final class SourceInputSnapshotsTest
 			BigInteger time = new BigInteger("18446744073709551616123");
 			SourceInputInventory.Snapshot snapshot = new SourceInputInventory.Snapshot(fixture.root,
 				Map.of("nested/é.rs", "digest"), Map.of(".", time, "nested/é.rs", time.negate()));
-			SourceInputSnapshots.write(fixture.snapshot, snapshot);
-			JsonNode document = SourceInputSnapshots.read(fixture.snapshot);
-			assertEquals(document.path("schema_version").intValue(), 1);
-			assertEquals(document.path("files").path("nested/é.rs").stringValue(), "digest");
-			assertEquals(document.path("mtimes").path(".").bigIntegerValue(), time);
-			assertEquals(document.path("mtimes").path("nested/é.rs").bigIntegerValue(), time.negate());
-			assertTrue(Files.readString(fixture.snapshot).contains("\\u00e9"));
+			SourceInputSnapshots.write(fixture.scope, fixture.snapshot, snapshot);
+			JsonNode document = SourceInputSnapshots.read(fixture.scope, fixture.snapshot);
+			requireThat(document.path("schema_version").intValue(), "document").isEqualTo(1);
+			requireThat(document.path("files").path("nested/é.rs").stringValue(), "document").isEqualTo("digest");
+			requireThat(document.path("mtimes").path(".").bigIntegerValue(), "document").isEqualTo(time);
+			requireThat(document.path("mtimes").path("nested/é.rs").bigIntegerValue(), "document").isEqualTo(time.negate());
+			requireThat(Files.readString(fixture.snapshot).contains("\\u00e9"), "Files").isTrue();
 			try (Stream<Path> files = Files.list(fixture.snapshot.getParent()))
 			{
-				assertEquals(files.count(), 1L);
+				requireThat(files.count(), "files.count()").isEqualTo(1L);
 			}
 		}
 	}
@@ -63,11 +62,13 @@ public final class SourceInputSnapshotsTest
 	{
 		try (Fixture fixture = new Fixture())
 		{
-			SourceInputSnapshots.write(fixture.pending(), fixture.inputs(Map.of("src/lib.rs", "same")));
+			SourceInputSnapshots.write(fixture.scope, fixture.pending(), fixture.inputs(Map.of("src/lib.rs", "same")));
 			Map<String, String> files = Map.of("src/lib.rs", "same", "Cargo.lock", "new", "nested/Cargo.lock", "newer");
-			assertEquals(SourceInputSnapshots.record(fixture.snapshot, fixture.inputs(files)), 3);
-			assertFalse(Files.exists(fixture.pending()));
-			assertEquals(SourceInputSnapshots.read(fixture.snapshot).path("files").size(), 3);
+			requireThat(SourceInputSnapshots.record(fixture.scope, fixture.snapshot, fixture.inputs(files)), "SourceInputSnapshots")
+				.isEqualTo(3);
+			requireThat(Files.exists(fixture.pending()), "Files.exists(fixture.pending())").isFalse();
+			requireThat(SourceInputSnapshots.read(fixture.scope, fixture.snapshot).path("files").size(), "SourceInputSnapshots")
+				.isEqualTo(3);
 		}
 	}
 
@@ -83,20 +84,20 @@ public final class SourceInputSnapshotsTest
 		{
 			SourceInputInventory.Snapshot inputs = fixture.inputs(Map.of("source.rs", "prepared"));
 			Path resumable = SourceInputSnapshots.resumable(fixture.snapshot);
-			expectThrows(IOException.class, () -> SourceInputSnapshots.checkpoint(fixture.snapshot, inputs));
-			assertFalse(Files.exists(resumable));
-			SourceInputSnapshots.write(fixture.pending(), inputs);
-			SourceInputSnapshots.checkpoint(fixture.snapshot, inputs);
-			assertFalse(Files.exists(fixture.snapshot));
-			assertTrue(Files.isRegularFile(fixture.pending()));
+			requireException(IOException.class, () -> SourceInputSnapshots.checkpoint(fixture.scope, fixture.snapshot, inputs));
+			requireThat(Files.exists(resumable), "Files.exists(resumable)").isFalse();
+			SourceInputSnapshots.write(fixture.scope, fixture.pending(), inputs);
+			SourceInputSnapshots.checkpoint(fixture.scope, fixture.snapshot, inputs);
+			requireThat(Files.exists(fixture.snapshot), "Files.exists(fixture.snapshot)").isFalse();
+			requireThat(Files.isRegularFile(fixture.pending()), "Files.isRegularFile(fixture.pending())").isTrue();
 			String checkpoint = Files.readString(resumable);
-			expectThrows(IOException.class, () -> SourceInputSnapshots.checkpoint(fixture.snapshot,
+			requireException(IOException.class, () -> SourceInputSnapshots.checkpoint(fixture.scope, fixture.snapshot,
 				fixture.inputs(Map.of("source.rs", "drifted"))));
-			assertEquals(Files.readString(resumable), checkpoint);
-			SourceInputSnapshots.record(fixture.snapshot, inputs);
-			assertTrue(Files.isRegularFile(fixture.snapshot));
-			assertFalse(Files.exists(resumable));
-			assertFalse(Files.exists(fixture.pending()));
+			requireThat(Files.readString(resumable), "Files.readString(resumable)").isEqualTo(checkpoint);
+			SourceInputSnapshots.record(fixture.scope, fixture.snapshot, inputs);
+			requireThat(Files.isRegularFile(fixture.snapshot), "Files.isRegularFile(fixture.snapshot)").isTrue();
+			requireThat(Files.exists(resumable), "Files.exists(resumable)").isFalse();
+			requireThat(Files.exists(fixture.pending()), "Files.exists(fixture.pending())").isFalse();
 		}
 	}
 
@@ -112,19 +113,19 @@ public final class SourceInputSnapshotsTest
 		{
 			Files.createDirectories(fixture.snapshot.getParent());
 			Files.writeString(fixture.snapshot, "existing successful inputs");
-			IOException missing = expectThrows(IOException.class,
-				() -> SourceInputSnapshots.record(fixture.snapshot, fixture.inputs(Map.of("source.rs", "first"))));
-			assertTrue(missing.getMessage().contains("were not prepared"));
-			SourceInputSnapshots.write(fixture.pending(),
+			IOException missing = requireException(IOException.class, () -> SourceInputSnapshots.record(fixture.scope, fixture.snapshot, fixture.inputs(Map.of("source.rs", "first"))));
+			requireThat(missing.getMessage().contains("were not prepared"), "missing").isTrue();
+			SourceInputSnapshots.write(fixture.scope, fixture.pending(),
 				fixture.inputs(Map.of("source.rs", "first", "removed.rs", "old", "unchanged.rs", "same")));
-			IOException changed = expectThrows(IOException.class,
-				() -> SourceInputSnapshots.record(fixture.snapshot,
+			IOException changed = requireException(IOException.class, () -> SourceInputSnapshots.record(fixture.scope, fixture.snapshot,
 					fixture.inputs(Map.of("source.rs", "second", "added.rs", "new", "unchanged.rs", "same"))));
-			assertTrue(changed.getMessage().contains("Source inputs changed during the build"));
-			assertTrue(changed.getMessage().contains("Differing paths: [added.rs, removed.rs, source.rs]"),
-				changed.getMessage());
-			assertEquals(Files.readString(fixture.snapshot), "existing successful inputs");
-			assertTrue(Files.isRegularFile(fixture.pending()));
+			requireThat(changed.getMessage().contains("Source inputs changed during the build"), "changed").isTrue();
+			requireThat(changed.getMessage().contains("Differing paths: [added.rs, removed.rs, source.rs]"), "changed")
+				.withContext(changed.getMessage(), "diagnostic")
+				.isTrue();
+			requireThat(Files.readString(fixture.snapshot), "Files.readString(fixture.snapshot)")
+				.isEqualTo("existing successful inputs");
+			requireThat(Files.isRegularFile(fixture.pending()), "Files.isRegularFile(fixture.pending())").isTrue();
 		}
 	}
 
@@ -140,12 +141,11 @@ public final class SourceInputSnapshotsTest
 		{
 			Files.createDirectories(fixture.snapshot);
 			Files.writeString(fixture.snapshot.resolve("keep"), "existing output");
-			expectThrows(IOException.class,
-				() -> SourceInputSnapshots.write(fixture.snapshot, fixture.inputs(Map.of("source.rs", "hash"))));
-			assertEquals(Files.readString(fixture.snapshot.resolve("keep")), "existing output");
+			requireException(IOException.class, () -> SourceInputSnapshots.write(fixture.scope, fixture.snapshot, fixture.inputs(Map.of("source.rs", "hash"))));
+			requireThat(Files.readString(fixture.snapshot.resolve("keep")), "Files").isEqualTo("existing output");
 			try (Stream<Path> files = Files.list(fixture.snapshot.getParent()))
 			{
-				assertEquals(files.count(), 1L);
+				requireThat(files.count(), "files.count()").isEqualTo(1L);
 			}
 		}
 	}
@@ -164,8 +164,8 @@ public final class SourceInputSnapshotsTest
 			for (String text : new String[]{"{", "{} {}", "", " "})
 			{
 				Files.writeString(fixture.snapshot, text);
-				expectThrows(IOException.class, () -> SourceInputSnapshots.read(fixture.snapshot));
-				assertEquals(Files.readString(fixture.snapshot), text);
+				requireException(IOException.class, () -> SourceInputSnapshots.read(fixture.scope, fixture.snapshot));
+				requireThat(Files.readString(fixture.snapshot), "Files.readString(fixture.snapshot)").isEqualTo(text);
 			}
 		}
 	}
@@ -175,6 +175,7 @@ public final class SourceInputSnapshotsTest
 	 */
 	private static final class Fixture implements AutoCloseable
 	{
+		private final ToolingScope scope = new DefaultToolingScope();
 		private final Path root = Files.createTempDirectory("source-input-snapshots-");
 		private final Path snapshot = root.resolve("cache/target.json");
 
@@ -216,6 +217,7 @@ public final class SourceInputSnapshotsTest
 		@Override
 		public void close() throws IOException
 		{
+			scope.close();
 			try (Stream<Path> files = Files.walk(root))
 			{
 				for (Path file : files.sorted(Comparator.reverseOrder()).toList())

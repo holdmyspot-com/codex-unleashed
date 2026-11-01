@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -44,10 +45,13 @@ public final class WindowsMeasurements implements Controller.Measurements
 
     /**
      * Creates measurements using native Windows host acquisition.
+     * @param scope invocation-owned shared values, retained open through sampling
+     * @throws NullPointerException if {@code scope} is null
      */
-    public WindowsMeasurements()
+    public WindowsMeasurements(ToolingScope scope)
     {
-        this(WindowsMemory::read);
+        Objects.requireNonNull(scope, "scope may not be null");
+        this.host = () -> WindowsMemory.read(scope);
     }
 
     /**

@@ -20,7 +20,113 @@ public final class SchedulerCoordinatorTest
     /** Creates coordinator lifecycle checks. */
     public SchedulerCoordinatorTest() {}
 
-    /** Root exit cannot finish an invocation before all owned action outcomes are delivered. */
+    /**
+     * Durable events preserve native fields and bracket submission, blocked control, delivery and final cleanup.
+     * @throws IOException if modeled coordination or durable recording fails
+     */
+    @Test
+    public void durableEventsPreservePayloadsAndBoundaryOrder() throws IOException
+    {
+        var session = new Model();
+        session.blockFirst = true;
+        List<Object> payloads = new ArrayList<>();
+        Thread owner = Thread.currentThread();
+        new SchedulerCoordinator<>(session, new Policy.Budget(0, 2), () -> {}, (event, payload) ->
+        {
+            requireThat(Thread.currentThread(), "observerOwnerThread").isEqualTo(owner);
+            requireThat(payload instanceof Policy.Decision decision && decision.control() == Policy.Control.WAIT,
+                "waitNoise").isFalse();
+            payloads.add(payload);
+            String suffix = payload instanceof JobQueue.Completion<?> completion ? ":" + completion.name() + ":" +
+                completion.attemptSequence() : payload instanceof SchedulerCoordinator.Submission submission ?
+                ":" + submission.name() : "";
+            session.events.add("observe:" + event + suffix);
+        }).run();
+        requireThat(session.events.indexOf("observe:submission:A"), "submissionBeforeLaunch")
+            .isLessThan(session.events.indexOf("start:A:0"));
+        requireThat(session.events.indexOf("observe:blocked"), "blockedBeforeControl")
+            .isLessThan(session.events.indexOf("resume:A:0:9"));
+        requireThat(session.events.indexOf("start:A:0"), "decisionAfterSuccessfulControl")
+            .isLessThan(session.events.indexOf("observe:decision"));
+        requireThat(session.events.indexOf("observe:completion-before:A:0"), "beforeOriginalDelivery")
+            .isLessThan(session.events.indexOf("deliver:A:0"));
+        requireThat(session.events.indexOf("deliver:A:0"), "afterOriginalDelivery")
+            .isLessThan(session.events.indexOf("observe:completion-after:A:0"));
+        requireThat(session.events.getLast(), "terminalAfterCleanup").isEqualTo("observe:terminal");
+        requireThat(session.events.get(session.events.size() - 2), "allOwnersClosedFirst").isEqualTo("session-close");
+        requireThat(payloads.getLast(), "authenticRootStatus").isEqualTo(23);
+        var blocked = (SchedulerCoordinator.Blocked) payloads.stream().filter(SchedulerCoordinator.Blocked.class::isInstance)
+            .findFirst().orElseThrow();
+        requireThat(blocked, "completeBlockedCorrelation").isEqualTo(new SchedulerCoordinator.Blocked("A", 0, 9));
+        List<Object> completions = payloads.stream().filter(JobQueue.Completion.class::isInstance).toList();
+        requireThat(completions.size(), "twoObservationsPerCompletion").isEqualTo(4);
+        for (int index = 0; index < completions.size(); index += 2)
+            requireThat(completions.get(index + 1), "sameNativeCompletionAfterDelivery").isEqualTo(completions.get(index));
+    }
+
+    /** A recorder fault with unresolved native cleanup retains the session and preserves its original cause. */
+    @Test
+    public void observerFailureRetainsUnresolvedCleanup()
+    {
+        var session = new Model();
+        session.failClose = true;
+        var original = new IOException("durable decision unavailable");
+        IOException failure = requireException(IOException.class, () -> new SchedulerCoordinator<>(session,
+            new Policy.Budget(0, 2), () -> {}, (event, payload) ->
+            { if (event.equals("decision")) throw original; }).run());
+        requireThat(failure, "originalRecorderFault").isEqualTo(original);
+        requireThat(session.events.contains("stop-input"), "producerStopped").isTrue();
+        requireThat(session.events.contains("close:A:0"), "queueOwnerCleanupAttempted").isTrue();
+        requireThat(session.events.contains("session-close"), "unresolvedDependenciesRetained").isFalse();
+        requireThat(failure.getSuppressed().length > 0, "cleanupFailureRetained").isTrue();
+    }
+
+    /** Completion observation failures preserve at-most-once uncertain delivery and clean all resolved owners. */
+    @Test
+    public void completionObserverFailureNeverResends()
+    {
+        for (String boundary : List.of("completion-before", "completion-after"))
+        {
+            var session = new Model();
+            var coordinator = new SchedulerCoordinator<>(session, new Policy.Budget(0, 2), () -> {}, (event, payload) ->
+            { if (event.equals(boundary)) throw new IOException(boundary); });
+            requireThat(requireException(IOException.class, coordinator::run).getMessage(), "originalCompletionFault")
+                .isEqualTo(boundary);
+            requireThat(session.delivered.size(), "atMostOneDeliveryAtBoundary")
+                .isEqualTo(boundary.equals("completion-before") ? 0 : 1);
+            requireThat(coordinator.acceptedAttempts().isEmpty(), "authenticPayloadRetained").isFalse();
+            requireThat(session.events.getLast(), "resolvedSessionClosed").isEqualTo("session-close");
+            requireThat(session.events.contains("stop-input"), "noFurtherAdmission").isTrue();
+        }
+    }
+
+    /**
+     * Empty discovery WAIT loops do not generate decision noise and a terminal record fault follows complete cleanup.
+     */
+    @Test
+    public void terminalObservationFollowsCleanupWithoutWaitNoise()
+    {
+        var session = new Model();
+        session.seeded = true;
+        session.rootEarly = true;
+        session.discoveryDelay = 3;
+        List<String> records = new ArrayList<>();
+        IOException failure = requireException(IOException.class, () -> new SchedulerCoordinator<>(session,
+            new Policy.Budget(0, 2), () -> {}, (event, payload) ->
+            {
+                records.add(event);
+                requireThat(session.events.getLast(), "terminalAfterResolvedCleanup").isEqualTo("session-close");
+                throw new IOException("terminal unavailable");
+            }).run());
+        requireThat(failure.getMessage(), "terminalRecorderFault").isEqualTo("terminal unavailable");
+        requireThat(records, "terminalOnlyNoWaitNoise").isEqualTo(List.of("terminal"));
+        requireThat(session.events.stream().filter("session-close"::equals).count(), "singleOuterClose").isEqualTo(1L);
+    }
+
+    /**
+     * Root exit cannot finish an invocation before all owned action outcomes are delivered.
+     * @throws IOException if modeled coordination fails
+     */
     @Test
     public void retainsActionsAfterRootExit() throws IOException
     {
@@ -34,7 +140,10 @@ public final class SchedulerCoordinatorTest
             session.events.indexOf("deliver:A:0"));
     }
 
-    /** Native peer service queues a denial; the coordinator delivers it after the control returns. */
+    /**
+     * Native peer service queues a denial; the coordinator delivers it after the control returns.
+     * @throws IOException if modeled coordination fails
+     */
     @Test
     public void defersBlockedDeliveryAndPreservesRetryOrder() throws IOException
     {
@@ -73,7 +182,10 @@ public final class SchedulerCoordinatorTest
         requireThat(session.events.contains("stop-input"), "producerstopped").isTrue();
     }
 
-    /** Unknown demand remains distinct from a supplied zero estimate. */
+    /**
+     * Unknown demand remains distinct from a supplied zero estimate.
+     * @throws IOException if modeled coordination fails
+     */
     @Test
     public void preservesUnknownEstimates() throws IOException
     {
@@ -133,7 +245,10 @@ public final class SchedulerCoordinatorTest
         requireThat(session.events.stream().filter(event -> event.equals("close:A:0")).count(), "singleClose").isEqualTo(1L);
     }
 
-    /** A terminal root with open discovery waits; one coordinator cannot be reused. */
+    /**
+     * A terminal root with open discovery waits; one coordinator cannot be reused.
+     * @throws IOException if modeled coordination fails
+     */
     @Test
     public void waitsForDiscoveryAndRejectsReuse() throws IOException
     {
@@ -197,6 +312,20 @@ public final class SchedulerCoordinatorTest
         requireThat(session.hostReads, "exactRejectionBound").isEqualTo(32);
         requireThat(waits[0], "boundedRetryWaits").isEqualTo(31);
         requireThat(session.maximumLive, "noAdmissionDuringRejections").isEqualTo(0);
+    }
+
+    /** Every incomplete inventory consumes the unchanged finite recovery budget without admitting work. */
+    @Test public void boundsIncompleteInventories()
+    {
+        var session = new Model();
+        session.rejectEveryHost = true;
+        session.rejectionReason = ObservationRejected.Reason.INCOMPLETE_INVENTORY;
+        var failure = requireException(IOException.class, () -> new SchedulerCoordinator<>(session,
+            new Policy.Budget(0, 2), () -> {}).run());
+        var rejected = (ObservationRejected) failure.getCause();
+        requireThat(rejected.reason(), "retainedIncompleteReason").isEqualTo(ObservationRejected.Reason.INCOMPLETE_INVENTORY);
+        requireThat(session.hostReads, "unchangedFiniteBound").isEqualTo(32);
+        requireThat(session.maximumLive, "noAdmissionFromPartialInventory").isEqualTo(0);
     }
 
     /**
@@ -277,26 +406,47 @@ public final class SchedulerCoordinatorTest
     /** Controlled session; no native or external build-tool behavior is represented as accepted evidence. */
     private static final class Model implements SchedulerCoordinator.Session<Integer>
     {
+        /** Ordered lifecycle events for boundary assertions. */
         private final List<String> events = new ArrayList<>();
+        /** Natural native outcomes already delivered to the original action protocol. */
         private final List<String> delivered = new ArrayList<>();
+        /** All accepted native attempt receipts, including aborted attempts. */
         private final List<String> observed = new ArrayList<>();
+        /** Copied newly discovered submissions awaiting coordinator admission. */
         private final ArrayDeque<SchedulerCoordinator.Submission> inputs = new ArrayDeque<>();
+        /** Copied allocation notifications delivered outside native control calls. */
         private final ArrayDeque<SchedulerCoordinator.Blocked> blocked = new ArrayDeque<>();
+        /** Modeled native owners retained until successful close. */
         private final Map<Long, Owner> owners = new LinkedHashMap<>();
+        /** Whether initial action discovery has occurred. */
         private boolean seeded;
+        /** Whether the authentic root status arrives before action completion. */
         private boolean rootEarly;
+        /** Whether the first native owner reports a blocked allocation. */
         private boolean blockFirst;
+        /** Whether the resumed first attempt reports an aborted result. */
         private boolean abortFirst;
+        /** Whether memory acquisition fails for action B. */
         private boolean failSecondTree;
+        /** Whether publication fails after its modeled visible effect. */
         private boolean failDelivery;
+        /** Whether native owners retain unresolved cleanup. */
         private boolean failClose;
+        /** Whether producer service fails before discovery. */
         private boolean failPump;
+        /** Whether stopping producer admission fails. */
         private boolean failStop;
+        /** Whether closing outer dependencies fails. */
         private boolean failOuter;
+        /** Whether discovered actions lack memory estimates. */
         private boolean unknown;
+        /** Largest number of simultaneously retained modeled owners. */
         private int maximumLive;
+        /** Number of fresh complete host measurement attempts. */
         private int hostReads;
+        /** Remaining service calls before discovery may close. */
         private int discoveryDelay;
+        /** Whether a later complete host read fails after authentic owner progress. */
         private boolean failAfterCompletion;
         /** Rejects one batch after the queue has accepted the first authentic outcome. */
         private boolean rejectAfterCompletion;
@@ -304,6 +454,8 @@ public final class SchedulerCoordinatorTest
         private boolean completeOnRejection;
         /** Rejects every host batch to exercise bounded recovery. */
         private boolean rejectEveryHost;
+        /** Independently established reason retained by the modeled provider. */
+        private ObservationRejected.Reason rejectionReason = ObservationRejected.Reason.COMPLETED_LEAVES;
         /** First host observation rejected through the end of this invocation. */
         private int rejectHostAfter = Integer.MAX_VALUE;
         /** Rejects live-tree sampling while keeping modeled owners active. */
@@ -313,6 +465,9 @@ public final class SchedulerCoordinatorTest
         /** Nonmeasurement boundary that fails with an accidentally typed exception. */
         private String typedFault = "";
 
+        /** Creates an independent modeled invocation with no acquired owners. */
+        private Model() {}
+
         /**
          * Models a provider's independently established churn; it supplies no sample or completion.
          * @return controlled rejection for the measurement boundary under test
@@ -320,7 +475,7 @@ public final class SchedulerCoordinatorTest
         private ObservationRejected rejection()
         {
             return new ObservationRejected(ObservationRejected.Operation.HOST,
-                ObservationRejected.Reason.COMPLETED_LEAVES,
+                rejectionReason,
                 List.of(new ObservationRejected.Attempt("A", 0)), new IOException("trusted churn"));
         }
 
@@ -401,13 +556,23 @@ public final class SchedulerCoordinatorTest
         /** Modeled exclusive owner retained until its successful cleanup. */
         private final class Owner implements JobQueue.Attempt<Integer>
         {
+            /** Original logical action name of this exclusive owner. */
             private final String name;
+            /** Original native attempt ordinal of this owner. */
             private final long sequence;
+            /** Number of authentic modeled outcome polls. */
             private int polls;
+            /** Whether this owner awaits an allocation response. */
             private boolean waiting;
+            /** Whether the exact blocked allocation has been resumed. */
             private boolean resumed;
             /** Authentic modeled owner completion, independent of measurement values. */
             private boolean completed;
+            /**
+             * Creates a resource-free owner for one original action attempt.
+             * @param name original logical action name
+             * @param sequence original attempt ordinal
+             */
             private Owner(String name, long sequence) { this.name = name; this.sequence = sequence; }
             @Override public void start() throws IOException
             {

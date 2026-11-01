@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+
 import java.io.*;
 import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;
@@ -14,7 +16,7 @@ import java.util.*;
 /**
  * Borrows a registered wrapper's standard streams without reopening their files.
  * The controller must authenticate registration before supplying a binding; construction grants no authority.
- * This owner supports Linux x64 glibc only. Each listener and pending installation has one operation thread.
+ * Descriptor borrowing and control sockets support Linux x64 and ARM64 glibc. Each listener and pending installation has one operation thread.
  */
 public final class LinuxBorrowedStreams {
     /** Creates the owner before acquiring its native resources. */
@@ -322,12 +324,13 @@ public final class LinuxBorrowedStreams {
     }
     /**
      * Binds a private wrapper endpoint; binding alone does not authorize a transfer.
+     * @param scope invocation-owned shared values, retained open through listener cleanup
      * @param privateDirectory wrapper-owned0700 endpoint directory
      * @param actionId registered compiler action identity
      * @return the validated operation result
      * @throws java.io.IOException if validation, native access or owned cleanup fails
      */
-    public static Listener listen(Path privateDirectory, UUID actionId) throws IOException {
+    public static Listener listen(ToolingScope scope, Path privateDirectory, UUID actionId) throws IOException {
         Objects.requireNonNull(actionId, "actionId may not be null");
         if (!privateDirectory.isAbsolute()) throw new IllegalArgumentException("Endpoint directory must be absolute");
         if (!Files.getPosixFilePermissions(privateDirectory).equals(PosixFilePermissions.fromString("rwx------")))
@@ -335,9 +338,10 @@ public final class LinuxBorrowedStreams {
         Peer wrapper = Peer.current();
         if (((Number) Files.getAttribute(privateDirectory, "unix:uid")).intValue() != wrapper.uid())
             throw new IOException("Wrapper must own its endpoint directory");
-        TerminalContext terminal = context(new int[] {0, 1, 2});
+        NativeBindings bindings = Objects.requireNonNull(scope, "scope").getLinuxBorrowedStreamBindings();
+        TerminalContext terminal = context(bindings, new int[] {0, 1, 2});
         Path endpoint = privateDirectory.resolve("streams.sock");
-        Native.Listener transport = Native.Listener.open(endpoint);
+        NativeBindings.Listener transport = bindings.open(endpoint, 1);
         try { return new Listener(transport, wrapper, actionId, endpoint, terminal); }
         catch (RuntimeException | Error failure) {
             try { transport.close(); } catch (IOException cleanup) { failure.addSuppressed(cleanup); }
@@ -388,18 +392,20 @@ public final class LinuxBorrowedStreams {
     }
     /**
      * Authenticates the registered wrapper and acquires its three descriptor references.
+     * @param scope invocation-owned shared values
      * @param binding authenticated action, peer and launch receipt
      * @param timeout positive bounded control timeout
      * @return the validated result retained by this operation
      * @throws java.io.IOException if validation, native access or owned cleanup fails
      */
-    private static Pending receive(Binding binding, Duration timeout) throws IOException {
-        Native.Received received = Native.receive(binding.endpoint, timeout, binding);
+    private static Pending receive(ToolingScope scope, Binding binding, Duration timeout) throws IOException {
+        NativeBindings bindings = Objects.requireNonNull(scope, "scope").getLinuxBorrowedStreamBindings();
+        NativeBindings.Received received = bindings.receive(binding.endpoint, timeout, binding);
         try {
             return new Pending(new Installation() {
                 @Override public void validate(TerminalContext expected) throws IOException {
                     binding.wrapper.requireLive();
-                    if (!expected.equals(context(Arrays.copyOf(received.owned.fds, 3))))
+                    if (!expected.equals(context(bindings, Arrays.copyOf(received.owned.fds, 3))))
                         throw new IOException("Borrowed terminal context is incompatible with this trusted gate");
                 }
                 @Override public void install() throws IOException { received.install(); }
@@ -412,41 +418,45 @@ public final class LinuxBorrowedStreams {
     }
     /**
      * Imports and installs only inside the dedicated trusted gate, before readiness publication.
+     * @param scope invocation-owned shared values
      * @param binding controller-authenticated registration receipt
      * @param timeout positive bounded handoff deadline
      * @throws java.io.IOException if validation, native access or owned cleanup fails
      */
-    static void installBeforeReady(Binding binding, Duration timeout) throws IOException {
-        try (Pending pending = receive(binding, timeout)) { pending.installBeforeReady(binding.terminal); }
+    static void installBeforeReady(ToolingScope scope, Binding binding, Duration timeout) throws IOException {
+        try (Pending pending = receive(scope, binding, timeout)) { pending.installBeforeReady(binding.terminal); }
     }
     /**
      * Captures session, foreground and semantic terminal attributes without changing them.
+     * @param bindings immutable native functions borrowed from the invocation scope
      * @param descriptors three borrowed descriptor references
      * @return the validated result retained by this operation
      * @throws java.io.IOException if validation, native access or owned cleanup fails
+     * @throws UnsupportedOperationException if descriptor borrowing is unverified on this architecture
      */
-    private static TerminalContext context(int[] descriptors) throws IOException {
+    private static TerminalContext context(NativeBindings bindings, int[] descriptors) throws IOException {
+        bindings.requireDescriptorAbi();
         List<Terminal> streams = new ArrayList<>();
         for (int fd : descriptors) {
-            Native.Outcome tty = Native.call("isatty", fd);
+            NativeBindings.Outcome tty = bindings.call("isatty", fd);
             if (tty.value() == 0) {
                 if (tty.errno() != 25) throw new IOException("Descriptor is unavailable for terminal inspection");
                 streams.add(new Terminal(false, "", 0, 0, List.of()));
             } else {
                 try (Arena arena = Arena.ofConfined()) {
                     MemorySegment attributes = arena.allocate(60, 4);
-                    Native.require("tcgetattr", fd, attributes);
+                    bindings.require("tcgetattr", fd, attributes);
                     List<Integer> semantic = new ArrayList<>();
                     for (int offset = 0; offset < 16; offset += 4) semantic.add(attributes.get(ValueLayout.JAVA_INT, offset));
                     semantic.add(Byte.toUnsignedInt(attributes.get(ValueLayout.JAVA_BYTE, 16)));
                     for (int offset = 17; offset < 49; offset++) semantic.add(Byte.toUnsignedInt(attributes.get(ValueLayout.JAVA_BYTE, offset)));
                     semantic.add(attributes.get(ValueLayout.JAVA_INT, 52)); semantic.add(attributes.get(ValueLayout.JAVA_INT, 56));
                     String device = Files.getAttribute(Path.of("/proc/self/fd", Integer.toString(fd)), "unix:rdev").toString();
-                    streams.add(new Terminal(true, device, Native.require("tcgetsid", fd), Native.require("tcgetpgrp", fd), semantic));
+                    streams.add(new Terminal(true, device, bindings.require("tcgetsid", fd), bindings.require("tcgetpgrp", fd), semantic));
                 }
             }
         }
-        return new TerminalContext(Native.require("getsid", 0), Native.require("getpgrp"), streams);
+        return new TerminalContext(bindings.require("getsid", 0), bindings.require("getpgrp"), streams);
     }
     /**
      * Validates a positive duration and computes its monotonic deadline.
@@ -571,9 +581,15 @@ public final class LinuxBorrowedStreams {
         int size;
         /** Native once-only descriptor close boundary. */
         private final CloseDescriptor closer;
-        /** Creates the owner before acquiring its native resources. */
-        Descriptors(){
-            this(new Native.CloseOperation());
+        /** Native functions borrowed from the invocation scope; empty for controlled close-only fixtures. */
+        private final Map<String,MethodHandle> calls;
+        /**
+         * Creates captured-error storage before acquiring any descriptors.
+         * @param bindings immutable native functions retained open by the caller
+         */
+        Descriptors(NativeBindings bindings){
+            this.closer=bindings.new CloseOperation();
+            this.calls=bindings.CALLS;
         }
         /**
          * Creates the owner before acquiring its native resources.
@@ -581,6 +597,7 @@ public final class LinuxBorrowedStreams {
          */
         Descriptors(CloseDescriptor closer){
             this.closer=Objects.requireNonNull(closer);
+            this.calls=Map.of();
         }
         /**
          * Records an acquired descriptor in preallocated ownership storage.
@@ -615,7 +632,7 @@ public final class LinuxBorrowedStreams {
                     else failure.addSuppressed(e);
                 }
             }
-            if(closer instanceof Native.CloseOperation nativeClose)nativeClose.releaseStorage();
+            if(closer instanceof NativeBindings.CloseOperation nativeClose)nativeClose.releaseStorage();
             if(failure!=null)throw failure;
         }
         /**
@@ -629,16 +646,16 @@ public final class LinuxBorrowedStreams {
          */
         int acquire(String name,int first,int second,int third)throws IOException {
             try(var a=Arena.ofConfined()){
-                var state=a.allocate(Native.ERRORS);
+                var state=a.allocate(NativeBindings.ERRORS);
                 int fd;
                 try{
-                    fd=(int)Native.CALLS.get(name).invokeExact(state,first,second,third);
+                    fd=(int)calls.get(name).invokeExact(state,first,second,third);
                 }
                 catch(Throwable t){
                     throw new IOException(name,t);
                 }
                 if(fd>=0)return add(fd);
-                throw new IOException(name+" errno="+state.get(ValueLayout.JAVA_INT,Native.ERRNO));
+                throw new IOException(name+" errno="+state.get(ValueLayout.JAVA_INT,NativeBindings.ERRNO));
             }
         }
         /**
@@ -647,18 +664,18 @@ public final class LinuxBorrowedStreams {
          * @return the validated result retained by this operation
          * @throws java.io.IOException if validation, native access or owned cleanup fails
          */
-        Native.Outcome accept(int server)throws IOException {
+        NativeBindings.Outcome accept(int server)throws IOException {
             try(var a=Arena.ofConfined()){
-                var state=a.allocate(Native.ERRORS);
+                var state=a.allocate(NativeBindings.ERRORS);
                 int fd;
                 try{
-                    fd=(int)Native.CALLS.get("accept4").invokeExact(state,server,MemorySegment.NULL,MemorySegment.NULL,524288|2048);
+                    fd=(int)calls.get("accept4").invokeExact(state,server,MemorySegment.NULL,MemorySegment.NULL,524288|2048);
                 }
                 catch(Throwable t){
                     throw new IOException("accept4",t);
                 }
                 if(fd>=0)add(fd);
-                return new Native.Outcome(fd,state.get(ValueLayout.JAVA_INT,Native.ERRNO));
+                return new NativeBindings.Outcome(fd,state.get(ValueLayout.JAVA_INT,NativeBindings.ERRNO));
             }
         }
     }
@@ -695,70 +712,118 @@ public final class LinuxBorrowedStreams {
             }
         }
     }
-    /** Implements the verified Linux x64 glibc descriptor transport ABI. */
-    private static final class Native {
-        /** Creates the owner before acquiring its native resources. */
-        private Native() {
+    /**
+     * Typed access to native entry behavior that ordinary callers cannot reach before receiving descriptors.
+     */
+    static final class SharedSecrets {
+        /**
+         * Prevents construction of this test access facade.
+         */
+        private SharedSecrets() { }
+        /**
+         * Captures the standard descriptor context through the production operation.
+         * @param bindings invocation-owned native functions
+         * @return captured context
+         * @throws IOException if inspection fails
+         * @throws UnsupportedOperationException if descriptor borrowing is unverified on this architecture
+         */
+        static TerminalContext context(NativeBindings bindings) throws IOException {
+            return LinuxBorrowedStreams.context(bindings, new int[] {0, 1, 2});
         }
+        /**
+         * Creates an empty installation owner without receiving any descriptors.
+         * @param bindings invocation-owned native functions
+         * @return empty owner that must be closed by the caller
+         */
+        static NativeBindings.Received pending(NativeBindings bindings) {
+            return bindings.new Received();
+        }
+    }
+    /**
+     * Immutable Linux glibc functions for x64 and ARM64 descriptor transport and control sockets; descriptors remain operation-owned.
+     */
+    public static final class NativeBindings {
         /** Rejects unverified platforms before resolving native operations. */
-        static final Linker LINKER=checkedLinker();
+        private final Linker LINKER;
         /**
          * Rejects unverified platforms before resolving native operations.
+         * @param scope invocation-owned shared values
          * @return the validated result retained by this operation
          */
-        static Linker checkedLinker() {
-            if (!System.getProperty("os.name").equals("Linux") || !Set.of("amd64","x86_64").contains(System.getProperty("os.arch")))
-            throw new UnsupportedOperationException("Borrowed stream ABI is verified only on Linux x64");
-            var linker=Linker.nativeLinker();
+        static Linker checkedLinker(ToolingScope scope) {
+            if (!System.getProperty("os.name").equals("Linux") || !Set.of("amd64","x86_64","aarch64").contains(System.getProperty("os.arch")))
+            throw new UnsupportedOperationException("Control socket ABI is verified only on Linux x64 or ARM64");
+            var linker=scope.getNativeLinker();
             if (linker.defaultLookup().find("gnu_get_libc_version").isEmpty() || linker.canonicalLayouts().get("long").byteSize()!=8 || ValueLayout.ADDRESS.byteSize()!=8)
             throw new UnsupportedOperationException("Borrowed streams require verified glibc LP64");
             return linker;
         }
+        /**
+         * Rejects descriptor and terminal operations outside the verified Linux x64 and ARM64 ABIs before native effects.
+         * @throws UnsupportedOperationException if descriptor borrowing is unverified on this architecture
+         */
+        private void requireDescriptorAbi() {
+            if (!Set.of("amd64", "x86_64", "aarch64").contains(System.getProperty("os.arch")))
+                throw new UnsupportedOperationException("Descriptor borrowing and terminal inspection are verified only on Linux x64 or ARM64");
+        }
         /** Default libc symbol lookup for this process. */
-        static final SymbolLookup LIB=LINKER.defaultLookup();
+        private final SymbolLookup LIB;
         /** Exact libc downcall handles indexed by symbol name. */
-        static final Map<String,MethodHandle> CALLS=new HashMap<>();
+        private final Map<String,MethodHandle> CALLS;
         /** Native captured-error memory layout. */
         static final MemoryLayout ERRORS=Linker.Option.captureStateLayout();
         /** Offset of captured errno in that layout. */
         static final long ERRNO=ERRORS.byteOffset(MemoryLayout.PathElement.groupElement("errno"));
         /**
-         * Binds an exact libc signature with captured errno.
+         * Binds an exact libc signature with captured errno. The third argument of {@code fcntl} is variadic.
          * @param name native libc symbol name
          * @param result native return layout
-         * @param args exact native argument layouts or values
+         * @param args exact native argument layouts
          * @return the validated result retained by this operation
          */
-        static MethodHandle bind(String name,MemoryLayout result,MemoryLayout...args) {
-            return LINKER.downcallHandle(LIB.find(name).orElseThrow(),FunctionDescriptor.of(result,args),Linker.Option.captureCallState("errno"));
+        private MethodHandle bind(String name,MemoryLayout result,MemoryLayout...args) {
+            var options = name.equals("fcntl")
+                ? new Linker.Option[]{Linker.Option.captureCallState("errno"), Linker.Option.firstVariadicArg(2)}
+                : new Linker.Option[]{Linker.Option.captureCallState("errno")};
+            return LINKER.downcallHandle(LIB.find(name).orElseThrow(),FunctionDescriptor.of(result,args),options);
         }
-        static {
+        /**
+         * Resolves immutable functions without acquiring sockets or descriptor ownership.
+         * @param scope invocation-owned shared values
+         * @throws UnsupportedOperationException if the platform or libc ABI is unverified
+         * @throws NullPointerException if scope is null
+         */
+        public NativeBindings(ToolingScope scope) {
+            LINKER=checkedLinker(Objects.requireNonNull(scope, "scope"));
+            LIB=LINKER.defaultLookup();
+            var calls=new HashMap<String,MethodHandle>();
             var I=ValueLayout.JAVA_INT;
             var L=ValueLayout.JAVA_LONG;
             var P=ValueLayout.ADDRESS;
-            CALLS.put("getsockopt",bind("getsockopt",I,I,I,I,P,P));
-            CALLS.put("read",bind("read",L,I,P,L));
-            CALLS.put("send",bind("send",L,I,P,L,I));
-            CALLS.put("socket",bind("socket",I,I,I,I));
-            CALLS.put("bind",bind("bind",I,I,P,I));
-            CALLS.put("listen",bind("listen",I,I,I));
-            CALLS.put("accept4",bind("accept4",I,I,P,P,I));
-            CALLS.put("connect",bind("connect",I,I,P,I));
-            CALLS.put("close",bind("close",I,I));
-            CALLS.put("poll",bind("poll",I,P,L,I));
-            CALLS.put("sendmsg",bind("sendmsg",L,I,P,I));
-            CALLS.put("recvmsg",bind("recvmsg",L,I,P,I));
-            CALLS.put("dup2",bind("dup2",I,I,I));
-            CALLS.put("fcntl",bind("fcntl",I,I,I,I));
-            CALLS.put("isatty",bind("isatty",I,I));
-            CALLS.put("getsid",bind("getsid",I,I));
-            CALLS.put("getpgrp",bind("getpgrp",I));
-            CALLS.put("tcgetsid",bind("tcgetsid",I,I));
-            CALLS.put("tcgetpgrp",bind("tcgetpgrp",I,I));
-            CALLS.put("tcgetattr",bind("tcgetattr",I,I,P));
+            calls.put("getsockopt",bind("getsockopt",I,I,I,I,P,P));
+            calls.put("read",bind("read",L,I,P,L));
+            calls.put("send",bind("send",L,I,P,L,I));
+            calls.put("socket",bind("socket",I,I,I,I));
+            calls.put("bind",bind("bind",I,I,P,I));
+            calls.put("listen",bind("listen",I,I,I));
+            calls.put("accept4",bind("accept4",I,I,P,P,I));
+            calls.put("connect",bind("connect",I,I,P,I));
+            calls.put("close",bind("close",I,I));
+            calls.put("poll",bind("poll",I,P,L,I));
+            calls.put("sendmsg",bind("sendmsg",L,I,P,I));
+            calls.put("recvmsg",bind("recvmsg",L,I,P,I));
+            calls.put("dup2",bind("dup2",I,I,I));
+            calls.put("fcntl",bind("fcntl",I,I,I,I));
+            calls.put("isatty",bind("isatty",I,I));
+            calls.put("getsid",bind("getsid",I,I));
+            calls.put("getpgrp",bind("getpgrp",I));
+            calls.put("tcgetsid",bind("tcgetsid",I,I));
+            calls.put("tcgetpgrp",bind("tcgetpgrp",I,I));
+            calls.put("tcgetattr",bind("tcgetattr",I,I,P));
+            CALLS=Map.copyOf(calls);
         }
         /** Preallocates captured errno storage before any descriptor can be acquired by its owner. */
-        static final class CloseOperation implements CloseDescriptor {
+        final class CloseOperation implements CloseDescriptor {
             /** Confined captured-error storage allocated before descriptor acquisition. */
             private final Arena arena=Arena.ofConfined();
             /** Preallocated captured errno memory for descriptor close. */
@@ -807,7 +872,7 @@ public final class LinuxBorrowedStreams {
          * @return the validated result retained by this operation
          * @throws java.io.IOException if validation, native access or owned cleanup fails
          */
-        static Outcome call(String name,Object...args)throws IOException {
+        Outcome call(String name,Object...args)throws IOException {
             try(var arena=Arena.ofConfined()) {
                 var state=arena.allocate(ERRORS);
                 var values=new ArrayList<Object>();
@@ -830,7 +895,7 @@ public final class LinuxBorrowedStreams {
          * @return the validated result retained by this operation
          * @throws java.io.IOException if validation, native access or owned cleanup fails
          */
-        static int require(String name,Object...args)throws IOException {
+        int require(String name,Object...args)throws IOException {
             var r=call(name,args);
             if(r.value()<0)throw new IOException(name+" errno="+r.errno());
             return Math.toIntExact(r.value());
@@ -851,19 +916,31 @@ public final class LinuxBorrowedStreams {
          * @param deadline monotonic operation deadline
          * @throws java.io.IOException if validation, native access or owned cleanup fails
          */
-        static void ready(int fd,short event,long deadline)throws IOException {
+        void ready(int fd,short event,long deadline)throws IOException {
+            while(true){
+                if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("Stream handoff interrupted before release");
+                long left=deadline-System.nanoTime();
+                if(left<=0)throw new IOException("Control deadline before release");
+                if(poll(fd,event,(int)Math.min(25,Math.max(1,left/1000000))))return;
+            }
+        }
+        /**
+         * Polls one owned descriptor for a bounded slice without treating idle time as a failed transfer.
+         * @param fd native descriptor retained by its owner
+         * @param event required readiness event
+         * @param timeout maximum wait in milliseconds, supplied by the owning wait operation
+         * @return whether readiness, closure or a descriptor error requires the caller to attempt its native operation
+         * @throws IOException if interrupted or native polling fails
+         */
+        boolean poll(int fd,short event,int timeout)throws IOException {
+            if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("Stream handoff interrupted before release");
             try(var a=Arena.ofConfined()){
                 var poll=a.allocate(8,4);
                 poll.set(ValueLayout.JAVA_INT,0,fd);
                 poll.set(ValueLayout.JAVA_SHORT,4,event);
-                while(true){
-                    if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("Stream handoff interrupted before release");
-                    long left=deadline-System.nanoTime();
-                    if(left<=0)throw new IOException("Control deadline before release");
-                    var r=call("poll",poll,1L,(int)Math.min(25,Math.max(1,left/1000000)));
-                    if(r.value()>0)return;
-                    if(r.value()<0&&r.errno()!=4)throw new IOException("poll errno="+r.errno());
-                }
+                var r=call("poll",poll,1L,timeout);
+                if(r.value()<0&&r.errno()!=4)throw new IOException("poll errno="+r.errno());
+                return r.value()>0;
             }
         }
         /**
@@ -880,10 +957,159 @@ public final class LinuxBorrowedStreams {
             MemorySegment.copy(b,0,s,ValueLayout.JAVA_BYTE,2,b.length);
             return s;
         }
+        /**
+         * Acquires a listening socket and retains any partial cleanup ownership.
+         * @param endpoint owned pathname Unix socket endpoint
+         * @param backlog positive number of pending peer connections
+         * @return the validated result retained by this operation
+         * @throws java.io.IOException if validation, native access or owned cleanup fails
+         */
+        Listener open(Path endpoint, int backlog)throws IOException {
+            Listener owner=new Listener(endpoint);
+            try(var a=Arena.ofConfined()) {
+                int fd=owner.owned.acquire("socket",1,1|524288|2048,0);
+                var address=address(a,endpoint);
+                owner.bindOwned(fd,address,2+endpoint.toString().getBytes(StandardCharsets.UTF_8).length+1);
+                owner.endpointIdentity=Files.readAttributes(endpoint,java.nio.file.attribute.BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS).fileKey();
+                require("listen",fd,backlog);
+                return owner;
+            }
+            catch(IOException|RuntimeException|Error e){
+                try{
+                    owner.close();
+                }
+                catch(IOException cleanup){
+                    throw new CleanupFailure(e,cleanup,owner);
+                }
+                throw e;
+            }
+        }
+        /**
+         * Connects to an already published local control listener and retains the socket before peer inspection.
+         * @param endpoint trusted absolute socket pathname
+         * @return owned socket with independently captured kernel peer credentials
+         * @throws IOException if connection, peer capture or cleanup fails
+         */
+        Socket connect(Path endpoint) throws IOException {
+            Socket socket = new Socket();
+            try (var arena = Arena.ofConfined()) {
+                socket.descriptor = socket.owned.acquire("socket", 1, 1 | 524288 | 2048, 0);
+                var address = address(arena, endpoint);
+                require("connect", socket.descriptor, address,
+                    2 + endpoint.toString().getBytes(StandardCharsets.UTF_8).length + 1);
+                socket.peer = peer(socket.descriptor);
+                return socket;
+            }
+            catch (IOException | RuntimeException | Error failure) {
+                try { socket.close(); }
+                catch (IOException cleanup) { throw new CleanupFailure(failure, cleanup, socket); }
+                throw failure;
+            }
+        }
+
+        /** Owns one native stream socket; payload framing and peer authorization belong to its caller. */
+        final class Socket implements AutoCloseable {
+            /** Preallocated descriptor and captured-errno ownership, acquired before any native socket. */
+            private final Descriptors owned = new Descriptors(NativeBindings.this);
+            /** Connected descriptor, or -1 before acquisition. */
+            private int descriptor = -1;
+            /** Stable kernel peer receipt captured before publication. */
+            private Peer peer;
+            /** Whether irreversible descriptor cleanup has begun. */
+            private boolean closeAttempted;
+            /** Whether descriptor and native argument storage cleanup completed successfully. */
+            private boolean closed;
+            /** Sticky cleanup failure prevents replay or a false successful second close. */
+            private Throwable closeFailure;
+
+            /** Allocates ownership storage before a socket can be acquired. */
+            private Socket() {}
+
+            /**
+             * Returns the original captured peer without granting application authorization.
+             * @return stable peer PID, birth ticks and credentials
+             */
+            Peer peer() { return peer; }
+
+            /**
+             * Waits interruptibly until data, closure or an error is available for the sole socket reader.
+             * No frame deadline runs while this peer is idle; the caller starts its transfer bound after readiness.
+             * @throws IOException if interrupted or native polling fails
+             * @throws IllegalStateException if descriptor cleanup has begun
+             */
+            void awaitReadable() throws IOException {
+                requireOpen();
+                while(!poll(descriptor,(short)1,25)) { }
+            }
+
+            /**
+             * Checks readiness without waiting for an idle peer or starting a complete-frame deadline.
+             * Data, closure and native error readiness all require the caller to consume or diagnose the frame.
+             * @return true when the sole socket reader can advance, or false when the peer is idle
+             * @throws IOException if native readiness polling fails
+             * @throws IllegalStateException if descriptor cleanup has begun
+             */
+            boolean readable() throws IOException {
+                requireOpen();
+                return poll(descriptor, (short) 1, 0);
+            }
+
+            /**
+             * Reads the complete caller-sized buffer using the existing bounded native transfer.
+             * @param bytes destination whose complete size must be received
+             * @param deadline monotonic deadline shared by the caller's complete operation
+             * @throws IOException if the peer disconnects or transfer fails
+             */
+            void read(byte[] bytes, long deadline) throws IOException {
+                requireOpen();
+                transfer(descriptor, bytes, false, deadline);
+            }
+
+            /**
+             * Sends the complete caller-sized buffer without closing or duplicating it.
+             * @param bytes complete bytes to send
+             * @param deadline monotonic deadline shared by the caller's complete operation
+             * @throws IOException if the peer disconnects or transfer fails
+             */
+            void write(byte[] bytes, long deadline) throws IOException {
+                requireOpen();
+                transfer(descriptor, bytes, true, deadline);
+            }
+
+            /** Rejects use once descriptor cleanup has begun. */
+            private void requireOpen() {
+                if (closeAttempted) throw new IllegalStateException("Native control socket cleanup has begun");
+            }
+
+            /**
+             * Reports successful cleanup without retrying native effects.
+             * @return whether all owned descriptor cleanup completed
+             */
+            boolean isClosed() { return closed; }
+
+            /**
+             * Consumes native descriptor cleanup once and retains an unresolved failure on every later call.
+             * @throws IOException if cleanup fails or an earlier cleanup remains unresolved
+             */
+            @Override public void close() throws IOException {
+                if (closed) return;
+                if (closeAttempted) throw new IOException("Earlier native control socket cleanup did not complete", closeFailure);
+                closeAttempted = true;
+                try {
+                    owned.close();
+                    closed = true;
+                }
+                catch (IOException | RuntimeException | Error failure) {
+                    closeFailure = failure;
+                    throw failure;
+                }
+            }
+        }
+
         /** Retains the state required by this owned native operation. */
-        public static final class Listener implements Transfer {
+        public final class Listener implements Transfer {
             /** Creates the owner before acquiring its native resources. */
-            private final Descriptors owned=new Descriptors();
+            private final Descriptors owned=new Descriptors(NativeBindings.this);
             /** Exclusively owned Unix socket pathname. */
             private final Path endpoint;
             /** Whether this owner successfully created its endpoint pathname. */
@@ -896,32 +1122,6 @@ public final class LinuxBorrowedStreams {
              */
             private Listener(Path endpoint){
                 this.endpoint=Objects.requireNonNull(endpoint);
-            }
-            /**
-             * Acquires a listening socket and retains any partial cleanup ownership.
-             * @param endpoint owned pathname Unix socket endpoint
-             * @return the validated result retained by this operation
-             * @throws java.io.IOException if validation, native access or owned cleanup fails
-             */
-            public static Listener open(Path endpoint)throws IOException {
-                Listener owner=new Listener(endpoint);
-                try(var a=Arena.ofConfined()) {
-                    int fd=owner.owned.acquire("socket",1,1|524288|2048,0);
-                    var address=address(a,endpoint);
-                    owner.bindOwned(fd,address,2+endpoint.toString().getBytes(StandardCharsets.UTF_8).length+1);
-                    owner.endpointIdentity=Files.readAttributes(endpoint,java.nio.file.attribute.BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS).fileKey();
-                    require("listen",fd,1);
-                    return owner;
-                }
-                catch(IOException|RuntimeException|Error e){
-                    try{
-                        owner.close();
-                    }
-                    catch(IOException cleanup){
-                        throw new CleanupFailure(e,cleanup,owner);
-                    }
-                    throw e;
-                }
             }
             /**
              * Records successful pathname binding before publishing a Java result.
@@ -947,10 +1147,47 @@ public final class LinuxBorrowedStreams {
                     throw new IOException("Native socket bind failed with errno="+state.get(ValueLayout.JAVA_INT,ERRNO));
                 }
             }
+            /**
+             * Polls one control connection without waiting when no peer is ready.
+             * Stream descriptor handoff continues to use its separate authenticated transfer operation.
+             * @return owned native socket, or empty when accept is interrupted or would block
+             * @throws IOException if acceptance, peer capture or cleanup fails
+             * @throws IllegalStateException if this listener has closed its native descriptor
+             */
+            Optional<Socket> accept() throws IOException {
+                if (owned.size == 0) throw new IllegalStateException("Native listener is closed");
+                Socket socket = new Socket();
+                try {
+                    var result = socket.owned.accept(owned.fds[0]);
+                    if (result.value() < 0) {
+                        if (result.errno() != 4 && result.errno() != 11)
+                            throw new IOException("Native control accept failed with errno=" + result.errno());
+                        socket.close();
+                        return Optional.empty();
+                    }
+                    socket.descriptor = Math.toIntExact(result.value());
+                    socket.peer = peer(socket.descriptor);
+                    return Optional.of(socket);
+                }
+                catch (IOException | RuntimeException | Error failure) {
+                    try { socket.close(); }
+                    catch (IOException cleanup) { throw new CleanupFailure(failure, cleanup, socket); }
+                    throw failure;
+                }
+            }
+
+            /**
+             * Sends the authorized standard descriptor references to one authenticated gate.
+             * @param timeout positive bounded handoff deadline
+             * @param binding authenticated action, peer and launch receipt
+             * @throws UnsupportedOperationException if descriptor borrowing is unverified on this architecture
+             * @throws IOException if authentication, transfer or cleanup fails
+             */
             public void sendBorrowed(Duration timeout, Binding binding)throws IOException {
+                requireDescriptorAbi();
                 long end=deadline(timeout);
                 int server=owned.fds[0];
-                try(var accepted=new Descriptors()) {
+                try(var accepted=new Descriptors(NativeBindings.this)) {
                     int socket;
                     while(true){
                         ready(server,(short)1,end);
@@ -1016,7 +1253,7 @@ public final class LinuxBorrowedStreams {
          * @return the validated result retained by this operation
          * @throws java.io.IOException if validation, native access or owned cleanup fails
          */
-        static Peer peer(int fd)throws IOException {
+        Peer peer(int fd)throws IOException {
             try(var a=Arena.ofConfined()) {
                 var credentials=a.allocate(12,4);
                 var length=a.allocate(ValueLayout.JAVA_INT);
@@ -1039,7 +1276,7 @@ public final class LinuxBorrowedStreams {
          * @return the validated result retained by this operation
          * @throws java.io.IOException if validation, native access or owned cleanup fails
          */
-        static byte[] readFrame(int fd,long end)throws IOException {
+        byte[] readFrame(int fd,long end)throws IOException {
             byte[] actual=new byte[FRAME_BYTES];
             transfer(fd,actual,false,end);
             return actual;
@@ -1052,7 +1289,7 @@ public final class LinuxBorrowedStreams {
          * @param end monotonic deadline in nanoseconds
          * @throws java.io.IOException if validation, native access or owned cleanup fails
          */
-        static void exchange(int fd,byte[] expected,boolean initiator,long end)throws IOException {
+        void exchange(int fd,byte[] expected,boolean initiator,long end)throws IOException {
             if(initiator)transfer(fd,expected,true,end);
             byte[] actual=new byte[FRAME_BYTES];
             transfer(fd,actual,false,end);
@@ -1067,7 +1304,7 @@ public final class LinuxBorrowedStreams {
          * @param end monotonic deadline in nanoseconds
          * @throws java.io.IOException if validation, native access or owned cleanup fails
          */
-        static void transfer(int fd,byte[] bytes,boolean sending,long end)throws IOException {
+        void transfer(int fd,byte[] bytes,boolean sending,long end)throws IOException {
             try(var a=Arena.ofConfined()) {
                 var buffer=a.allocate(bytes.length);
                 if(sending)MemorySegment.copy(bytes,0,buffer,ValueLayout.JAVA_BYTE,0,bytes.length);
@@ -1107,8 +1344,10 @@ public final class LinuxBorrowedStreams {
          * @param header bounded ancillary message layout
          * @return the validated result retained by this operation
          * @throws java.io.IOException if validation, native access or owned cleanup fails
+         * @throws UnsupportedOperationException if descriptor borrowing is unverified on this architecture
          */
-        static Outcome receiveOwned(Descriptors owned,int fd,MemorySegment header)throws IOException {
+        Outcome receiveOwned(Descriptors owned,int fd,MemorySegment header)throws IOException {
+            requireDescriptorAbi();
             try(var a=Arena.ofConfined()){
                 var state=a.allocate(ERRORS);
                 long answer;
@@ -1140,10 +1379,12 @@ public final class LinuxBorrowedStreams {
          * @param binding authenticated action, peer and launch receipt
          * @return the validated result retained by this operation
          * @throws java.io.IOException if validation, native access or owned cleanup fails
+         * @throws UnsupportedOperationException if descriptor borrowing is unverified on this architecture
          */
-        public static Received receive(Path endpoint,Duration timeout,Binding binding)throws IOException {
+        public Received receive(Path endpoint,Duration timeout,Binding binding)throws IOException {
+            requireDescriptorAbi();
             var result=new Received();
-            try(var socket=new Descriptors();var a=Arena.ofConfined()) {
+            try(var socket=new Descriptors(NativeBindings.this);var a=Arena.ofConfined()) {
                 int fd=socket.acquire("socket",1,1|524288|2048,0);
                 var address=address(a,endpoint);
                 // Local cooperative listener is published before this call, so AF_UNIX connect needs no path polling.
@@ -1181,9 +1422,9 @@ public final class LinuxBorrowedStreams {
             }
         }
         /** Owns the imported references until installation or terminal cleanup. */
-        public static final class Received implements AutoCloseable {
+        public final class Received implements AutoCloseable {
             /** Creates the owner before acquiring its native resources. */
-            private final Descriptors owned=new Descriptors();
+            private final Descriptors owned=new Descriptors(NativeBindings.this);
             /** Whether installation has begun, including an unsuccessful attempt. */
             private boolean installed;
             /** Retains the state required by this owned native operation. */
@@ -1192,8 +1433,10 @@ public final class LinuxBorrowedStreams {
             /**
              * Installs the pending descriptors in the dedicated gate.
              * @throws java.io.IOException if validation, native access or owned cleanup fails
+             * @throws UnsupportedOperationException if descriptor borrowing is unverified on this architecture
              */
             public void install()throws IOException {
+                requireDescriptorAbi();
                 if(installed||owned.size!=3)throw new IllegalStateException("not a pending triple");
                 installed=true;
                 int[] original=Arrays.copyOf(owned.fds,3);

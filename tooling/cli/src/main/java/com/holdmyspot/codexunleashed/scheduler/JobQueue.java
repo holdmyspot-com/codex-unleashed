@@ -26,6 +26,12 @@ final class JobQueue<R> implements AutoCloseable
 {
 	/** Selects controls from fresh measurements and immutable owned-state projections. */
 	private final Controller controller;
+	/** Reserved physical headroom used only to explain a measured terminal capacity shortage. */
+	private final Policy.Budget budget;
+	/** Latest host reading; valid for diagnostics only during a control from that complete accepted batch. */
+	private Controller.Memory sampledHost = null;
+	/** Latched terminal explanation, initially the generic bounded-recovery diagnostic. */
+	private String retryFailureMessage = "Automatic completion-free recovery is exhausted";
 	/** Borrowed resource-free factory; ownership of each returned attempt transfers to this queue. */
 	private final AttemptFactory<R> attempts;
 	/** Stable action identities retained in original submission order, including finished names. */
@@ -61,10 +67,30 @@ final class JobQueue<R> implements AutoCloseable
 	 */
 	JobQueue(Policy.Budget budget, Controller.Measurements measurements, AttemptFactory<R> attempts)
 	{
-		Objects.requireNonNull(budget, "budget may not be null");
+		this.budget = Objects.requireNonNull(budget, "budget may not be null");
 		Objects.requireNonNull(measurements, "measurements may not be null");
 		this.attempts = Objects.requireNonNull(attempts, "attempts may not be null");
-		controller = new Controller(budget, measurements, this::apply);
+		controller = new Controller(budget, new Controller.Measurements()
+		{
+			@Override
+			public Controller.Memory readHost() throws IOException
+			{
+				sampledHost = measurements.readHost();
+				return sampledHost;
+			}
+
+			@Override
+			public long readResidentBytes(Policy.Job job) throws IOException
+			{
+				return measurements.readResidentBytes(job);
+			}
+
+			@Override
+			public void acceptReadings() throws IOException
+			{
+				measurements.acceptReadings();
+			}
+		}, this::apply);
 	}
 
 	/**
@@ -103,7 +129,8 @@ final class JobQueue<R> implements AutoCloseable
 	 * count after every natural completion in the successful observation batch, plus one. Neither threshold substitutes
 	 * for accepted whole-job completion and successful owner cleanup. With no live attempts, one retry per action may
 	 * precede its completion threshold, subject to fresh admission checks. A second such retry permanently stops automatic
-	 * scheduling before attempt acquisition. WAIT issues no Attempt request.
+	 * scheduling before attempt acquisition. A sole action with an allocation wait receives a measured capacity diagnostic
+	 * only when its retained resident lower bound exceeds fresh usable bytes after cleanup. WAIT issues no Attempt request.
 	 *
 	 * @return the selected request, including WAIT when no control is eligible
 	 * @throws IllegalStateException if closing or a factory previously violated its contract
@@ -118,7 +145,7 @@ final class JobQueue<R> implements AutoCloseable
 		if (fatalFailure != null)
 			throw fatalFailure;
 		if (retryFailure != null)
-			throw new IOException("Automatic completion-free recovery is exhausted", retryFailure);
+			throw new IOException(retryFailureMessage, retryFailure);
 		reconcile();
 		return controller.cycle(jobs(), completions);
 	}
@@ -253,6 +280,32 @@ final class JobQueue<R> implements AutoCloseable
 	}
 
 	/**
+	 * Explains a sole allocation-blocked action whose retained resident lower bound exceeds freshly measured usable
+	 * physical capacity after whole-job cleanup. Other exhausted recoveries keep their generic diagnostic. This runs
+	 * only inside a selected control, after Controller has accepted the complete batch and published retained demand;
+	 * it does not sample memory, alter demand, infer an allocation size or change the selected control.
+	 *
+	 * @param entry action about to exhaust its one completion-free retry
+	 * @return a measured capacity explanation, or the existing generic terminal explanation
+	 */
+	private String exhaustionDiagnostic(Entry entry)
+	{
+		long unfinished = entries.values().stream().filter(candidate -> candidate.finished == false).count();
+		Controller.MemoryDemand demand = controller.memoryDemands().get(new Controller.Action(entry.name,
+			entry.position));
+		if (unfinished != 1 || entry.waitSequence < 0 || entry.owner != null || sampledHost == null || demand == null)
+			return retryFailureMessage;
+		long usable = Math.max(0, sampledHost.availableBytes() - budget.headroomBytes());
+		if (demand.residentLowerBoundBytes() <= usable)
+			return retryFailureMessage;
+		return "Insufficient measured physical capacity for action " + entry.name + " at original position " +
+			entry.position + ": available bytes=" + sampledHost.availableBytes() + ", reserved headroom bytes=" +
+			budget.headroomBytes() + ", usable bytes=" + usable + ", observed resident lower bound bytes=" +
+			demand.residentLowerBoundBytes() + ". The action's one completion-free retry is exhausted; " +
+			"remaining demand may exceed the observed lower bound";
+	}
+
+	/**
 	 * Applies Controller's single selected effect after reserving its identity or termination threshold.
 	 *
 	 * @param decision selected start, resume or terminate request
@@ -270,10 +323,11 @@ final class JobQueue<R> implements AutoCloseable
 				boolean retriesWithoutCompletion = entry.state == Policy.State.RETRY && completions < entry.retryAfter;
 				if (retriesWithoutCompletion && entry.retriedWithoutCompletion)
 				{
+					retryFailureMessage = exhaustionDiagnostic(entry);
 					retryFailure = new IOException("Action " + entry.name + " at original position " + entry.position +
 						" has used its one completion-free retry; accepted completions=" + completions +
 						", required completions=" + entry.retryAfter + ". Automatic recovery has stopped");
-					throw new IOException("Automatic completion-free recovery is exhausted", retryFailure);
+					throw new IOException(retryFailureMessage, retryFailure);
 				}
 				long successor = Math.incrementExact(nextAttempt);
 				if (retriesWithoutCompletion)
@@ -457,7 +511,7 @@ final class JobQueue<R> implements AutoCloseable
 		if (accountingFailure != null)
 			throw new IllegalStateException("Completion accounting is unresolved", accountingFailure);
 		if (retryFailure != null)
-			throw new IllegalStateException("Automatic completion-free recovery is exhausted", retryFailure);
+			throw new IllegalStateException(retryFailureMessage, retryFailure);
 		for (Entry entry : entries.values())
 		{
 			if (entry.cleanupFailure != null)

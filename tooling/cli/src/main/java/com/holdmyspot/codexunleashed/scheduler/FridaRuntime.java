@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -117,16 +119,21 @@ final class FridaRuntime implements AutoCloseable
 	/** Reads the optional borrowed executable path, which the callback copies immediately. */
 	private MethodHandle childPath = null;
 	/** Native unsigned long layout; IDs use its exact bits, never signed ordering. */
-	private final ValueLayout signalIdLayout = (ValueLayout) Linker.nativeLinker().canonicalLayouts().get("long");
+	private final ValueLayout signalIdLayout;
+	/** Borrowed platform service; every native handle and arena retains its existing explicit owner. */
+	private final Linker linker;
 
 	/**
 	 * Retains the explicit trusted producer path without acquiring resources.
+	 * @param scope shared platform services borrowed through runtime cleanup
 	 * @param producer native library file selected by the caller; relative paths use the process working directory
 	 * @throws NullPointerException if {@code producer} is null
 	 */
-	FridaRuntime(Path producer)
+	FridaRuntime(ToolingScope scope, Path producer)
 	{
 		this.producer = Objects.requireNonNull(producer, "producer may not be null");
+		linker = Objects.requireNonNull(scope, "scope").getNativeLinker();
+		signalIdLayout = (ValueLayout) linker.canonicalLayouts().get("long");
 	}
 
 	/**
@@ -164,7 +171,7 @@ final class FridaRuntime implements AutoCloseable
 		findLocalDevice = function("frida_device_manager_get_device_by_type_sync",
 			FunctionDescriptor.of(ADDRESS, ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ADDRESS, ADDRESS));
 		unref = function("frida_unref", FunctionDescriptor.ofVoid(ADDRESS));
-		String glibPrefix = System.getProperty("os.name", "").startsWith("Windows") ? "" : "_frida_";
+		String glibPrefix = System.getProperty("os.name", "").startsWith("Linux") ? "_frida_" : "";
 		errorFree = function(glibPrefix + "g_error_free", FunctionDescriptor.ofVoid(ADDRESS));
 		quarkToString = function(glibPrefix + "g_quark_to_string", FunctionDescriptor.of(ADDRESS, ValueLayout.JAVA_INT));
 		attach = function("frida_device_attach_sync",
@@ -532,6 +539,18 @@ final class FridaRuntime implements AutoCloseable
 						throw new IOException("Frida attachment returned NULL without a native error");
 				}
 				started = true;
+			}
+
+			/**
+			 * Observes the retained attachment's supported native detached state without releasing authority.
+			 * Unstarted, closed and uncertain owners cannot establish this observation.
+			 * @return true only when the native session reports detached
+			 * @throws IllegalStateException if the attachment or manager is inactive
+			 */
+			boolean detached()
+			{
+				requireSession();
+				return (int) invoke(isDetached, handle) != 0;
 			}
 
 			/**
@@ -904,7 +923,7 @@ final class FridaRuntime implements AutoCloseable
 	 */
 	private long registerSignal(MemorySegment object, String signal, MethodHandle callback, FunctionDescriptor descriptor) throws IOException
 	{
-		MemorySegment stub = Linker.nativeLinker().upcallStub(callback, descriptor, libraryArena);
+		MemorySegment stub = linker.upcallStub(callback, descriptor, libraryArena);
 		try (Arena arena = Arena.ofConfined())
 		{
 			Number id = (Number) invoke(connect, object, arena.allocateFrom(signal), stub, MemorySegment.NULL, MemorySegment.NULL, 0);
@@ -1051,6 +1070,8 @@ final class FridaRuntime implements AutoCloseable
 	 */
 	static final class NativeFailure extends IOException
 	{
+		/** Serialization version of the retained native failure record. */
+		private static final long serialVersionUID = 1L;
 		/** Native operation that returned the error. */
 		private final String operation;
 		/** Native error-domain name, copied before the GError was freed. */
@@ -1137,7 +1158,7 @@ final class FridaRuntime implements AutoCloseable
 	{
 		MemorySegment symbol = library.find(name).orElseThrow(() ->
 			new IOException("Frida producer lacks required export " + name + ": " + producer));
-		return Linker.nativeLinker().downcallHandle(symbol, descriptor);
+		return linker.downcallHandle(symbol, descriptor);
 	}
 
 	/**

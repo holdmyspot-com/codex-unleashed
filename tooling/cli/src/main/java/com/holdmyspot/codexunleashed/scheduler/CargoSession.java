@@ -30,6 +30,8 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
     private final Registration registration;
     /** Root Cargo, wrappers, transport and invocation-wide dependency owner. */
     private final Invocation invocation;
+    /** Receives only validated consumed native outcomes for successful completed-work profiling. */
+    private final OutcomeObserver<R> outcomeObserver;
     /** Stable requests retained even after completion or uncertain publication. */
     private final Map<String, Pending<R>> requests = new LinkedHashMap<>();
     /** Fully registered submissions in original acceptance order. */
@@ -67,6 +69,22 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
     CargoSession(JobQueue.AttemptFactory<R> factory, Controller.Measurements measurements,
         Registration registration, Invocation invocation)
     {
+        this(factory, measurements, registration, invocation, completion -> {});
+    }
+
+    /**
+     * Retains an observer of validated whole-tree outcomes without acquiring resources.
+     * @param factory shared platform attempt factory
+     * @param measurements complete invocation observations
+     * @param registration appends exact platform launch inputs
+     * @param invocation root, wrappers and dependency owner
+     * @param outcomeObserver observes consumed native outcomes before final wrapper response publication
+     * @throws NullPointerException if an input is null
+     */
+    CargoSession(JobQueue.AttemptFactory<R> factory, Controller.Measurements measurements,
+        Registration registration, Invocation invocation, OutcomeObserver<R> outcomeObserver)
+    {
+        this.outcomeObserver = Objects.requireNonNull(outcomeObserver, "outcomeObserver");
         this.factory = Objects.requireNonNull(factory, "factory");
         this.measurements = Objects.requireNonNull(measurements, "measurements");
         this.registration = Objects.requireNonNull(registration, "registration");
@@ -100,14 +118,19 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
     }
 
     /**
-     * Marks an authenticated wrapper disappearance as whole-session failure; no queue cancellation API is invented.
+     * Accepts an authenticated wrapper disappearance after successful final-response publication.
+     * Earlier disappearance fails the whole session, including after an aborted attempt; the invocation still owns
+     * reaping and endpoint cleanup in either case. An uncertain publication remains fatal and is never resent.
      * @param name registered wrapper's stable action name
-     * @throws IOException always, after retaining the fault and preventing new work
+     * @throws IllegalArgumentException if {@code name} is not registered
+     * @throws IOException if final publication has not succeeded or the session is already failed or stopping
      */
     void wrapperDisconnected(String name) throws IOException
     {
         requireActive();
-        if (!requests.containsKey(name)) throw new IllegalArgumentException("Unknown compiler wrapper");
+        Pending<R> pending = requests.get(name);
+        if (pending == null) throw new IllegalArgumentException("Unknown compiler wrapper");
+        if (pending.responseDelivered) return;
         throw failed("Compiler wrapper disconnected: " + name, null);
     }
 
@@ -179,10 +202,13 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
         if (pending.responseAttempted) throw new IllegalArgumentException("Compiler request already answered");
         completed.add(completion.attemptSequence());
         outcomes.add(completion);
+        try { outcomeObserver.accepted(completion); }
+        catch (IOException | RuntimeException | Error cause) { throw failed("Compiler outcome observation failed", cause); }
         if (completion.outcome().aborted()) return;
         pending.responseAttempted = true;
         try { pending.response.send(completion.outcome().result()); }
         catch (IOException | RuntimeException | Error cause) { throw failed("Compiler final response is uncertain", cause); }
+        pending.responseDelivered = true;
     }
 
     @Override public boolean inputClosed()
@@ -213,7 +239,20 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
         requireOwner();
         if (closed) return;
         if (invocation.hasOpenAttempts()) throw new IOException("Cargo attempts still retain outer dependencies");
-        if (closeAttempted) throw new IOException("Cargo outer cleanup remains uncertain", fault);
+        if (closeAttempted)
+        {
+            try
+            {
+                if (invocation.isClosed())
+                {
+                    closed = true;
+                    return;
+                }
+            }
+            catch (IOException | RuntimeException cause) { throw failed("Cargo outer cleanup observation failed", cause); }
+            catch (Error cause) { failed("Cargo outer cleanup observation failed", cause); throw cause; }
+            throw new IOException("Cargo outer cleanup remains uncertain", fault);
+        }
         stopping = true;
         closeAttempted = true;
         try { invocation.close(); }
@@ -258,6 +297,21 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
      * @param actionSequence positive ordinal for this action only
      */
     record Attempt(CargoCompilerRequest request, long globalSequence, long actionSequence) {}
+
+    /**
+     * Receives already accepted consumed whole-tree outcomes; it cannot grant native control authority.
+     * @param <R> unchanged native whole-tree result
+     */
+    @FunctionalInterface
+    interface OutcomeObserver<R>
+    {
+        /**
+         * Observes one consumed native outcome, including aborted attempts.
+         * @param completion exact validated outcome
+         * @throws IOException if the outcome observer cannot complete its work
+         */
+        void accepted(JobQueue.Completion<R> completion) throws IOException;
+    }
 
     /** Resource-free append-only platform command registration. */
     @FunctionalInterface
@@ -315,6 +369,13 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
          * Unresolved cleanup must retain its owners and outer dependencies.
          * @throws IOException if complete cleanup cannot be established */
         @Override void close() throws IOException;
+        /** Observes whether every consumer and outer dependency has completed cleanup.
+         * This operation releases no resources and repeats no potentially effective operation. After a failed
+         * close, the invocation retains responsibility for resolving its pending cleanup. A true result permits
+         * session closure without clearing any earlier operational failure; false includes uncertain cleanup.
+         * @return whether all owned consumers are reaped and every outer dependency is closed
+         * @throws IOException if complete cleanup cannot be observed */
+        boolean isClosed() throws IOException;
     }
     /**
      * Retains a request and its borrowed endpoint across every attempt.
@@ -330,6 +391,8 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
         private long attempts;
         /** Set before fallible publication, preventing every resend. */
         private boolean responseAttempted;
+        /** Indicates whether final publication returned successfully, allowing the wrapper to leave normally. */
+        private boolean responseDelivered;
         /**
          * Retains registration inputs without acquiring resources.
          * @param request immutable invocation

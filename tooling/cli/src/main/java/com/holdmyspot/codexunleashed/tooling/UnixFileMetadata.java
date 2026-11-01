@@ -17,11 +17,31 @@ import java.time.Instant;
  */
 public final class UnixFileMetadata
 {
+	/** Platform whose immutable ABI was selected when this invocation acquired the service. */
+	private final String operatingSystem = System.getProperty("os.name");
+	/** Linux invoker, or null when this service belongs to another platform. */
+	private final LinuxReader linuxReader;
+	/** Darwin invoker, or null when this service belongs to another platform. */
+	private final DarwinReader darwinReader;
+	/** Darwin no-follow invoker, or null on other platforms. */
+	private final DarwinReader darwinNoFollowReader;
+
 	/**
-	 * Prevents construction.
+	 * Borrows the platform linker and resolves only the current platform's metadata signature.
+	 * @param scope invocation-owned shared services, kept open until all operations finish
 	 */
-	private UnixFileMetadata()
+	UnixFileMetadata(ToolingScope scope)
 	{
+		Linker linker = scope.getNativeLinker();
+		linuxReader = operatingSystem.equals("Linux") ? MethodHandleProxies.asInterfaceInstance(LinuxReader.class,
+			Binding.bind(linker, "statx", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+				ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS))) : null;
+		darwinReader = operatingSystem.equals("Mac OS X") ? MethodHandleProxies.asInterfaceInstance(DarwinReader.class,
+			Binding.bind(linker, Darwin.symbol(linker, true), FunctionDescriptor.of(ValueLayout.JAVA_INT,
+				ValueLayout.ADDRESS, ValueLayout.ADDRESS))) : null;
+		darwinNoFollowReader = operatingSystem.equals("Mac OS X") ? MethodHandleProxies.asInterfaceInstance(DarwinReader.class,
+			Binding.bind(linker, Darwin.symbol(linker, false), FunctionDescriptor.of(ValueLayout.JAVA_INT,
+				ValueLayout.ADDRESS, ValueLayout.ADDRESS))) : null;
 	}
 
 	/**
@@ -66,8 +86,9 @@ public final class UnixFileMetadata
 	 */
 	private static final class Binding
 	{
-		private static final Linker LINKER = Linker.nativeLinker();
+		/** Layout of the errno state captured by the supported native linker. */
 		private static final MemoryLayout STATE = Linker.Option.captureStateLayout();
+		/** Byte offset of the captured errno value. */
 		private static final long ERRNO_OFFSET = STATE.byteOffset(MemoryLayout.PathElement.groupElement("errno"));
 
 		/**
@@ -81,15 +102,16 @@ public final class UnixFileMetadata
 		 * Binds a fixed signature selected by the platform-specific reader.
 		 *
 		 * @param name the native function
+		 * @param linker platform linker borrowed from the invocation scope
 		 * @param descriptor its verified C signature
 		 * @return a handle with captured errno
 		 */
 		// FFM downcalls intrinsically require native access. The named module receives explicit permission;
 		// fixed platform signatures and bounded native buffers retain the restriction's safety obligations.
 		@SuppressWarnings("restricted")
-		private static MethodHandle bind(String name, FunctionDescriptor descriptor)
+		private static MethodHandle bind(Linker linker, String name, FunctionDescriptor descriptor)
 		{
-			return LINKER.downcallHandle(LINKER.defaultLookup().find(name).
+			return linker.downcallHandle(linker.defaultLookup().find(name).
 				orElseThrow(() -> new UnsupportedOperationException("The Unix runtime does not provide " + name)),
 				descriptor, Linker.Option.captureCallState("errno"));
 		}
@@ -100,13 +122,14 @@ public final class UnixFileMetadata
 	 */
 	private static final class Linux
 	{
+		/** Linux STATX_MTIME attribute request and availability bit. */
 		private static final int MODIFIED = 0x40;
+		/** Size in bytes of the selected platform metadata ABI. */
 		private static final long BUFFER_SIZE = 0x100;
+		/** Byte offset of modification-time epoch seconds in this ABI. */
 		private static final long SECONDS_OFFSET = 0x70;
+		/** Byte offset of the modification-time fractional nanoseconds. */
 		private static final long NANOS_OFFSET = SECONDS_OFFSET + Long.BYTES;
-		private static final LinuxReader READER = MethodHandleProxies.asInterfaceInstance(LinuxReader.class,
-			Binding.bind("statx", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
-				ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS)));
 
 		/**
 		 * Prevents construction.
@@ -121,11 +144,12 @@ public final class UnixFileMetadata
 	 */
 	private static final class Darwin
 	{
+		/** Size in bytes of the selected platform metadata ABI. */
 		private static final long BUFFER_SIZE = 144;
+		/** Byte offset of modification-time epoch seconds in this ABI. */
 		private static final long SECONDS_OFFSET = 48;
+		/** Byte offset of the modification-time fractional nanoseconds. */
 		private static final long NANOS_OFFSET = SECONDS_OFFSET + Long.BYTES;
-		private static final DarwinReader READER = MethodHandleProxies.asInterfaceInstance(DarwinReader.class,
-			Binding.bind(symbol(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS)));
 
 		/**
 		 * Prevents construction.
@@ -137,13 +161,16 @@ public final class UnixFileMetadata
 		/**
 		 * Uses the explicit inode64 alias where Darwin exposes it, or the sole 64-bit stat ABI otherwise.
 		 *
-		 * @return Darwin's stat symbol
+		 * @param linker platform linker borrowed from the invocation scope
+		 * @param followLinks whether to query the referenced file rather than the link itself
+		 * @return Darwin's stat or lstat symbol
 		 */
-		private static String symbol()
+		private static String symbol(Linker linker, boolean followLinks)
 		{
-			if (Binding.LINKER.defaultLookup().find("stat$INODE64").isPresent())
-				return "stat$INODE64";
-			return "stat";
+			String base = followLinks ? "stat" : "lstat";
+			if (linker.defaultLookup().find(base + "$INODE64").isPresent())
+				return base + "$INODE64";
+			return base;
 		}
 	}
 
@@ -154,11 +181,23 @@ public final class UnixFileMetadata
 	 * @return its exact modification timestamp
 	 * @throws IOException if native metadata is unavailable or cannot be read
 	 */
-	static Instant lastModified(Path path) throws IOException
+	Instant lastModified(Path path) throws IOException
+	{
+		return lastModified(path, true);
+	}
+
+	/**
+	 * Preserves native timestamp precision while selecting stat or lstat semantics explicitly.
+	 *
+	 * @param path the source, directory or symbolic link
+	 * @param followLinks true to query the referenced file, false to query the link itself
+	 * @return its exact modification timestamp
+	 * @throws IOException if native metadata is unavailable or cannot be read
+	 */
+	Instant lastModified(Path path, boolean followLinks) throws IOException
 	{
 		// WORKAROUND: JDK UnixFileAttributes converts timestamps outside the jlong nanosecond range to microseconds.
 		// Remove this native lookup when the unchanged far-future inventory test passes through Files metadata APIs.
-		String operatingSystem = System.getProperty("os.name");
 		try (Arena arena = Arena.ofConfined())
 		{
 			MemorySegment state = arena.allocate(Binding.STATE);
@@ -166,7 +205,7 @@ public final class UnixFileMetadata
 			if (operatingSystem.equals("Linux"))
 			{
 				MemorySegment data = arena.allocate(Linux.BUFFER_SIZE, Long.BYTES);
-				check(Linux.READER.invoke(state, 0, name, 0, Linux.MODIFIED, data), state, path);
+				check(linuxReader.invoke(state, 0, name, followLinks ? 0 : 0x100, Linux.MODIFIED, data), state, path);
 				if ((data.get(ValueLayout.JAVA_INT, 0) & Linux.MODIFIED) == 0)
 					throw new IOException("Native metadata does not provide modification time for " + path);
 				return Instant.ofEpochSecond(data.get(ValueLayout.JAVA_LONG, Linux.SECONDS_OFFSET),
@@ -175,7 +214,7 @@ public final class UnixFileMetadata
 			if (operatingSystem.equals("Mac OS X"))
 			{
 				MemorySegment data = arena.allocate(Darwin.BUFFER_SIZE, Long.BYTES);
-				check(Darwin.READER.invoke(state, name, data), state, path);
+				check((followLinks ? darwinReader : darwinNoFollowReader).invoke(state, name, data), state, path);
 				return Instant.ofEpochSecond(data.get(ValueLayout.JAVA_LONG, Darwin.SECONDS_OFFSET),
 					data.get(ValueLayout.JAVA_LONG, Darwin.NANOS_OFFSET));
 			}

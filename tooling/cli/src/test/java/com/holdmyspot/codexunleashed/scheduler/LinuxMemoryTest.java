@@ -6,9 +6,9 @@ import java.nio.file.Path;
 import org.apache.commons.io.FileUtils;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
+
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Exercises Linux host-counter interpretation using isolated files representing the proc filesystem.
@@ -36,8 +36,8 @@ public final class LinuxMemoryTest
 			writeCounters(procRoot, "MemTotal: 8192 kB\nMemFree: 1 kB\nMemAvailable: 4096 kB\n" +
 				"SwapTotal: 2048 kB\nSwapFree: 512 kB\n", "pswpout 123\n",
 				"some avg10=0.00 avg60=0.00 avg300=0.00 total=456\n");
-			assertEquals(LinuxMemory.read(procRoot),
-				new LinuxMemory.Sample(8388608, 4194304, 2097152, 1572864, 123, 456));
+			requireThat(LinuxMemory.read(procRoot), "LinuxMemory.read(procRoot)")
+				.isEqualTo(new LinuxMemory.Sample(8388608, 4194304, 2097152, 1572864, 123, 456));
 		}
 		finally
 		{
@@ -58,7 +58,8 @@ public final class LinuxMemoryTest
 		{
 			writeCounters(procRoot, "MemTotal: 1 kB\nMemAvailable: 0 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n",
 				"pswpout 0\n", "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\n");
-			assertEquals(LinuxMemory.read(procRoot), new LinuxMemory.Sample(1024, 0, 0, 0, 0, 0));
+			requireThat(LinuxMemory.read(procRoot), "LinuxMemory.read(procRoot)")
+				.isEqualTo(new LinuxMemory.Sample(1024, 0, 0, 0, 0, 0));
 		}
 		finally
 		{
@@ -113,8 +114,10 @@ public final class LinuxMemoryTest
 			else
 				Files.writeString(source, contents);
 
-			IOException failure = expectThrows(IOException.class, () -> LinuxMemory.read(procRoot));
-			assertTrue(failure.getMessage().contains(diagnostic), failure.getMessage());
+			IOException failure = requireException(IOException.class, () -> LinuxMemory.read(procRoot));
+			requireThat(failure.getMessage().contains(diagnostic), "failure.getMessage().contains(diagnostic)")
+				.withContext(failure.getMessage(), "diagnostic")
+				.isTrue();
 		}
 		finally
 		{
@@ -128,7 +131,7 @@ public final class LinuxMemoryTest
 	@Test
 	public void rejectsNullRoot()
 	{
-		expectThrows(NullPointerException.class, () -> LinuxMemory.read(null));
+		requireException(NullPointerException.class, () -> LinuxMemory.read(null));
 	}
 
 	/**

@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Owns a retained Linux memory reader in a private mount namespace.
  * The caller needs cgroup-v2 delegation and CAP_SYS_ADMIN in the mount's owning user namespace. Workload supervisors
- * are borrowed: register each gated attempt before releasing it, retain its group through sampling, and unregister
+ * and authenticated sandbox containment are borrowed: register each gated attempt before releasing it, retain its group through sampling, and unregister
  * only after its workload has stopped. Calls and workload-group topology changes must be single-thread confined.
  * Untrusted mount or syscall filtering, concurrent renaming, and migration outside registered trees are unsupported.
  */
@@ -41,6 +41,8 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 	 * Reader rejection reason for verified missing immediate workload leaves.
 	 */
 	static final String MISSING_LEAF = "registered-leaf-removed";
+	/** Reader-verified process membership churn invalidating a registered workload's residency sample. */
+	static final String CHANGED_MEMBERS = "registered-membership-changed";
 
 	/**
 	 * Reads the owning supervisor's genuine retained execution-impossible barrier.
@@ -265,24 +267,95 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 	{
 		LinuxMeasurements.Attempt attempt = new LinuxMeasurements.Attempt(name, sequence);
 		Objects.requireNonNull(supervisor, "supervisor");
+		return register(attempt, supervisor.directory(), supervisor.rootPid(), supervisor::observeExecutionImpossible);
+	}
+
+	/**
+	 * Retains an authenticated sandbox child's host cgroup in the native reader without acquiring child wait authority.
+	 * The caller retains containment until workload termination, then closes registration before another batch.
+	 * @param name nonblank stable action name
+	 * @param sequence nonnegative attempt ordinal
+	 * @param containment authenticated live child containment, borrowed until registration removal succeeds
+	 * @return registration retaining the actual containment and its genuine populated-zero barrier
+	 * @throws NullPointerException if an input is null
+	 * @throws IllegalArgumentException if attempt identity is invalid or already registered
+	 * @throws IOException if child identity, containment, authority or actual ancestry cannot be verified
+	 */
+	Registration register(String name, long sequence, LinuxBazelContainment containment) throws IOException
+	{
+		LinuxMeasurements.Attempt attempt = new LinuxMeasurements.Attempt(name, sequence);
+		Objects.requireNonNull(containment, "containment");
+		containment.requireContained();
+		return registerSandbox(attempt, containment);
+	}
+
+	/**
+	 * Publishes one concrete retained workload owner through the existing native registration protocol.
+	 * The bound barrier retains its authentic supervisor or sandbox containment through registration removal.
+	 * @param attempt validated action attempt identity
+	 * @param directory actual group retained by the concrete owner
+	 * @param rootPid actual root process retained by the concrete owner
+	 * @param zeroBarrier bound operation on that concrete owner, retaining its lifetime
+	 * @return acknowledged native registration
+	 * @throws IllegalArgumentException if the attempt is already registered
+	 * @throws IOException if the authority or native registration cannot be verified
+	 */
+	private Registration register(LinuxMeasurements.Attempt attempt, Path directory, long rootPid,
+		ZeroBarrier zeroBarrier) throws IOException
+	{
 		requireOpen();
 		if (registrations.containsKey(attempt))
 			throw new IllegalArgumentException("Attempt is already registered: " + attempt);
 		long nextGeneration = Math.incrementExact(generation);
 		Properties request = operation("register");
-		request.setProperty("name", name);
-		request.setProperty("attempt", Long.toString(sequence));
-		request.setProperty("directory", supervisor.directory().toString());
-		request.setProperty("pid", Long.toString(supervisor.rootPid()));
+		request.setProperty("name", attempt.name());
+		request.setProperty("attempt", Long.toString(attempt.sequence()));
+		request.setProperty("directory", directory.toString());
+		request.setProperty("pid", Long.toString(rootPid));
 		request(request);
-		Registration registration = new Registration(attempt, supervisor);
+		Registration registration = new Registration(attempt, zeroBarrier);
 		registrations.put(attempt, registration);
 		generation = nextGeneration;
 		return registration;
 	}
 
+    /**
+     * Registers the exact authenticated sandbox root in its direct owned group using a distinct private operation.
+     * The legacy supervisor operation and its same-namespace/outer-leaf topology requirements remain unchanged.
+     * @param attempt stable queue identity
+     * @param containment original host-owned authenticated sandbox capability
+     * @return acknowledged registration borrowing this exact containment through actual zero
+     * @throws IOException if native identity or reader acknowledgement cannot be established
+     */
+    private Registration registerSandbox(LinuxMeasurements.Attempt attempt, LinuxBazelContainment containment)
+        throws IOException
+    {
+        requireOpen();
+        if (registrations.containsKey(attempt)) throw new IllegalArgumentException("Attempt is already registered: " + attempt);
+        long nextGeneration = Math.incrementExact(generation);
+        Properties request = operation("register-sandbox");
+        request.setProperty("name", attempt.name());
+        request.setProperty("attempt", Long.toString(attempt.sequence()));
+        request.setProperty("directory", containment.directory().toString());
+        request.setProperty("pid", Long.toString(containment.rootPid()));
+        containment.registrationFields().forEach(request::setProperty);
+        request(request);
+        Registration registration = new Registration(attempt, containment::observeExecutionImpossible);
+        registrations.put(attempt, registration);
+        generation = nextGeneration;
+        return registration;
+    }
+
+    /**
+     * Supplies successful complete reader-process and owned-storage cleanup evidence for failed registration owners.
+     * An uncertain registration may retain a reader FD without returning a Registration. Only this terminal flag,
+     * published after actual reader wait and owned group cleanup, permits its caller to remove borrowed containment.
+     * @return true only after complete original reader cleanup succeeded
+     */
+    boolean isClosed() { return closed; }
+
 	/**
-	 * Owns one registry entry while borrowing its workload supervisor.
+	 * Owns one registry entry while borrowing its concrete workload owner through a bound zero-barrier operation.
 	 */
 	public final class Registration implements AutoCloseable
 	{
@@ -291,28 +364,28 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 		 */
 		private final LinuxMeasurements.Attempt attempt;
 		/**
-		 * Borrowed workload owner retained to prevent accidental lifetime loss.
+		 * Bound genuine zero-barrier operation retaining the borrowed supervisor or authenticated sandbox containment.
 		 */
-		private final LinuxSupervisor supervisor;
+		private final ZeroBarrier zeroBarrier;
 		/**
 		 * Indicates whether the native reader acknowledged removal of this registration.
 		 */
 		private boolean removed;
 
 		/**
-		 * Retains the acknowledged attempt and borrowed supervisor.
+		 * Retains the acknowledged attempt and its concrete borrowed workload owner.
 		 * @param attempt exact registry identity
-		 * @param supervisor borrowed workload owner
+		 * @param zeroBarrier bound operation retaining the actual borrowed workload owner
 		 */
-		private Registration(LinuxMeasurements.Attempt attempt, LinuxSupervisor supervisor)
+		private Registration(LinuxMeasurements.Attempt attempt, ZeroBarrier zeroBarrier)
 		{
 			this.attempt = attempt;
-			this.supervisor = supervisor;
+			this.zeroBarrier = zeroBarrier;
 		}
 
 		/**
 		 * Removes the reader's retained group handle after the caller has stopped this attempt, including when the
-		 * supervisor already removed the finished inner group. Close before the next measurement batch.
+		 * workload owner already removed the finished group. Close before the next measurement batch.
 		 * A failed request retains ownership and prevents sampling until authority cleanup.
 		 * @throws IOException if removal cannot be acknowledged
 		 */
@@ -407,9 +480,14 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 		// A complete rejection leaves authority retained for a new batch. Only an unacknowledged exchange poisons it.
 		Map<LinuxMeasurements.Attempt, ZeroBarrier> barriers = new HashMap<>();
 		for (Registration registration : registrations.values())
-			barriers.put(registration.attempt, registration.supervisor::observeExecutionImpossible);
+			barriers.put(registration.attempt, registration.zeroBarrier);
 		try
 		{
+			if (CHANGED_MEMBERS.equals(result.getProperty("reason")) &&
+				(!"resident".equals(values.getProperty("operation")) ||
+				!Objects.equals(values.getProperty("name"), result.getProperty("name.0")) ||
+				!Objects.equals(values.getProperty("attempt"), result.getProperty("attempt.0"))))
+				throw new IOException("Membership rejection differs from the requested resident attempt");
 			requireSuccess(result, values.getProperty("operation", ""), barriers);
 		}
 		catch (IOException failure)
@@ -473,6 +551,26 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 			case "unavailable" ->
 			{
 				String diagnostic = "Memory authority observation unavailable: " + response.getProperty("error");
+				if (CHANGED_MEMBERS.equals(response.getProperty("reason")))
+				{
+					LinuxMeasurements.Attempt attempt;
+					try
+					{
+						if (!operation.equals("resident") || !response.stringPropertyNames().equals(
+							Set.of("status", "reason", "error", "count", "name.0", "attempt.0")) ||
+							!"1".equals(response.getProperty("count")))
+							throw new IllegalArgumentException("Membership rejection fields or operation differ");
+						attempt = new LinuxMeasurements.Attempt(response.getProperty("name.0"), number(response, "attempt.0"));
+						if (!barriers.containsKey(attempt))
+							throw new IllegalArgumentException("Membership rejection names an unregistered attempt");
+					}
+					catch (IllegalArgumentException | NullPointerException failure)
+					{
+						throw new IOException("Membership rejection has invalid attempt metadata", failure);
+					}
+					throw new ObservationRejected(ObservationRejected.Operation.RESIDENT, ObservationRejected.Reason.MEMBERSHIP_CHANGED,
+						java.util.List.of(new ObservationRejected.Attempt(attempt.name(), attempt.sequence())), new IOException(diagnostic));
+				}
 				if (!MISSING_LEAF.equals(response.getProperty("reason")))
 					throw new IOException(diagnostic);
 				ObservationRejected.Operation observation = switch (operation)

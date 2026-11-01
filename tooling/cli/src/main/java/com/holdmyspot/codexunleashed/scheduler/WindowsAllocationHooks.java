@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -11,6 +13,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.function.LongSupplier;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /** Owns one manager and every root/descendant installation for an authoritative Windows Job.
  * Held SPAWN events require opaque live membership, not a PID crawl. Unexpected origins stay held.
@@ -31,7 +39,27 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
     /** Every acquired opaque member identity, retained until instrumentation destruction. */
     private final List<Member> members = new ArrayList<>();
     /** Copied held-child notifications awaiting a bounded transition round. */
-    private final ArrayDeque<FridaRuntime.Child> children = new ArrayDeque<>();
+    private final ArrayDeque<PendingChild> children = new ArrayDeque<>();
+    /** Observers registered before acquisition, retained through actual Job zero. */
+    private final Map<Long, Observer> observers = new LinkedHashMap<>();
+    /** Transferred creation authority awaiting its matching held SPAWN event. */
+    private final Map<Long, CreatedChild> createdChildren = new LinkedHashMap<>();
+    /** Child PIDs already delivered by Frida, including consumed events. */
+    private final Set<Long> deliveredChildren = new HashSet<>();
+    /** Child PIDs reserved before their single possibly uncertain native continuation request. */
+    private final Set<Long> resumeAttempts = new HashSet<>();
+    /** Original child continuations whose native manager call returned successfully. */
+    private final Set<Long> resumeCompletions = new HashSet<>();
+    /** Monotonic observation source, controlled by modeled tests. */
+    private final LongSupplier ticker;
+    /** Maximum receipt join interval in nanoseconds. */
+    private final long joinTimeoutNanos;
+    /** Next observer rotation offset for bounded fair polling. */
+    private int observerCursor;
+    /** Maximum unmatched held notifications or source receipts per attempt. */
+    private static final int MAX_PENDING = 1024;
+    /** Maximum callback or observer frames copied in one round. */
+    private static final int FRAME_BUDGET = 32;
     /** Distinct owned manager retained before native startup. */
     private Manager manager;
     /** Next positive generation, reserved with checked arithmetic before acquisition. */
@@ -51,6 +79,7 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
 
     /**
      * Borrows native owners without acquiring a manager, process handle or session.
+     * @param scope borrowed shared values; the caller retains ownership through all operations
      * @param identity unique attempt correlation UUID
      * @param runtime borrowed started Frida runtime
      * @param process authoritative owned Job, borrowed by instrumentation
@@ -58,10 +87,64 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
      * @param timeout positive representable control interval
      * @param peers owner-thread peer pump without queue reentry
      */
-    WindowsAllocationHooks(UUID identity, FridaRuntime runtime, WindowsProcess process, AllocationWaits waits,
+    WindowsAllocationHooks(ToolingScope scope, UUID identity, FridaRuntime runtime, WindowsProcess process, AllocationWaits waits,
         Duration timeout, AllocationHook.Pump peers)
     {
-        this(new NativeBackend(identity, runtime, process, waits, WindowsAttempts.checkedTimeout(timeout)), peers);
+        this(nativeBackend(scope, identity, runtime, process, waits, timeout), peers);
+    }
+
+    /**
+     * Composes an additional per-image protocol before any root or descendant can resume.
+     * @param scope borrowed Pouch values
+     * @param identity exact attempt identity
+     * @param runtime borrowed started Frida runtime
+     * @param process authoritative prepared Job owner
+     * @param waits attempt allocation batches
+     * @param timeout positive native-control interval
+     * @param peers owner-thread peer service
+     * @param imageHooks additional resource-free image hook factory, or null when absent
+     */
+    WindowsAllocationHooks(ToolingScope scope, UUID identity, FridaRuntime runtime, WindowsProcess process,
+        AllocationWaits waits, Duration timeout, AllocationHook.Pump peers, ImageHooks imageHooks)
+    {
+        this(new NativeBackend(scope, identity, runtime, process, waits, WindowsAttempts.checkedTimeout(timeout),
+            true, imageHooks), peers);
+    }
+
+    /**
+     * Creates root Cargo observation without reporting root allocations as compiler-attempt waits.
+     * @param scope borrowed Pouch values
+     * @param identity invocation identity
+     * @param runtime borrowed started runtime
+     * @param process prepared root Cargo Job
+     * @param timeout positive native-control interval
+     * @param imageHooks additional per-image token protocol, or null when absent
+     * @return resource-free creation-only adapter
+     */
+    static Backend creationBackend(ToolingScope scope, UUID identity, FridaRuntime runtime,
+        WindowsProcess process, Duration timeout, ImageHooks imageHooks)
+    {
+        return new NativeBackend(scope, identity, runtime, process, new AllocationWaits(),
+            WindowsAttempts.checkedTimeout(timeout), false, imageHooks);
+    }
+
+    /**
+     * Creates a native-operation adapter without acquiring managers, process handles or sessions.
+     * The caller retains the borrowed owners through every coordinator operation and cleanup.
+     * @param scope borrowed shared values
+     * @param identity unique attempt correlation UUID
+     * @param runtime borrowed started Frida runtime
+     * @param process authoritative owned Job borrowed by instrumentation
+     * @param waits shared root and descendant allocation batches
+     * @param timeout positive representable control interval
+     * @return resource-free adapter for the maintained native operations
+     * @throws NullPointerException if a required argument is null
+     * @throws IllegalArgumentException if the interval is nonpositive or cannot fit nanoseconds
+     */
+    static Backend nativeBackend(ToolingScope scope, UUID identity, FridaRuntime runtime, WindowsProcess process,
+        AllocationWaits waits, Duration timeout)
+    {
+        return new NativeBackend(scope, identity, runtime, process, waits, WindowsAttempts.checkedTimeout(timeout), true, null);
     }
 
     /**
@@ -71,8 +154,22 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
      */
     WindowsAllocationHooks(Backend backend, AllocationHook.Pump peers)
     {
+        this(backend, peers, System::nanoTime);
+    }
+
+    /**
+     * Supplies a deterministic monotonic clock without acquiring native resources.
+     * @param backend resource-free operation adapter
+     * @param peers owner-thread peer service
+     * @param ticker monotonic nanosecond observation source
+     * @throws IllegalArgumentException if the join interval is nonpositive or cannot fit nanoseconds
+     */
+    WindowsAllocationHooks(Backend backend, AllocationHook.Pump peers, LongSupplier ticker)
+    {
         this.backend = Objects.requireNonNull(backend, "backend");
         this.peers = Objects.requireNonNull(peers, "peers");
+        this.ticker = Objects.requireNonNull(ticker, "ticker");
+        this.joinTimeoutNanos = WindowsAttempts.checkedTimeout(backend.joinTimeout()).toNanos();
     }
 
     @Override
@@ -88,6 +185,7 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
             Member root = retainMember(backend.rootPid());
             manager = backend.manager();
             manager.start();
+            observe(root);
             Hook hook = install(root);
             hook.awaitReady(peers);
             root.requireLive();
@@ -106,41 +204,194 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
         if (stopped || closed || manager == null) return;
         try
         {
-            // Bound callback draining even if new children keep arriving.
-            for (int copied = 0; copied < 32; ++copied)
+            for (int copied = 0; copied < FRAME_BUDGET; ++copied)
             {
-                var child = manager.pollChild();
+                Optional<FridaRuntime.Child> child = manager.pollChild();
                 if (child.isEmpty()) break;
-                children.addLast(child.get());
+                enqueue(child.get());
             }
+            if (!advancing) pollObservers();
             for (Hook hook : List.copyOf(installations.values())) hook.pump();
-            if (advance == false || advancing || children.isEmpty()) return;
-            advancing = true;
-            try { advanceChild(children.removeFirst()); }
-            finally { advancing = false; }
+            if (advancing) return;
+            for (PendingChild child : children)
+            {
+                if (!createdChildren.containsKey(child.event().pid()) &&
+                    ticker.getAsLong() - child.firstObservedNanos() >= joinTimeoutNanos)
+                    throw new IOException("Held child creation receipt timed out: " + child.event().pid());
+            }
+            if (!advance || children.isEmpty()) return;
+            for (PendingChild pending : List.copyOf(children))
+            {
+                CreatedChild created = createdChildren.get(pending.event().pid());
+                if (created == null) continue;
+                children.remove(pending);
+                createdChildren.remove(pending.event().pid());
+                advancing = true;
+                try { advanceChild(pending.event(), created); }
+                finally { advancing = false; }
+                break;
+            }
         }
         catch (IOException | RuntimeException cause) { throw failed("Instrumentation delivery", cause); }
         catch (Error cause) { failed("Instrumentation delivery", cause); throw cause; }
     }
 
     /**
-     * Uses only previously retained parent context; a terminal root may still own a held living child.
-     * @param event copied held-child notification
-     * @throws IOException if origin, identity, attachment, readiness or resume cannot be established
+     * Copies one supported event while preserving the suspended child's missing-authority state.
+     * @param event held SPAWN notification
+     * @throws IOException if the event is malformed, repeated, unowned or exceeds the bound
      */
-    private void advanceChild(FridaRuntime.Child event) throws IOException
+    private void enqueue(FridaRuntime.Child event) throws IOException
     {
         if (event.origin() != 2 || event.pid() <= 0 || event.parentPid() <= 0 ||
             event.path() == null || event.path().isBlank() || images.containsKey(event.pid()) ||
-            images.containsKey(event.parentPid()) == false)
+            !images.containsKey(event.parentPid()) || !deliveredChildren.add(event.pid()))
             throw new IOException("Unsupported or unowned held child: " + event);
-        Member member = retainMember(event.pid());
+        if (children.size() >= MAX_PENDING) throw new IOException("Too many unmatched held child events");
+        children.addLast(new PendingChild(event, ticker.getAsLong()));
+    }
+
+    /**
+     * Polls observers fairly within one total frame budget, without reentering native transitions.
+     * @throws IOException if a frame or source transfer fails
+     */
+    private void pollObservers() throws IOException
+    {
+        List<Map.Entry<Long, Observer>> sources = List.copyOf(observers.entrySet());
+        if (sources.isEmpty()) return;
+        int empty = 0;
+        for (int copied = 0; copied < FRAME_BUDGET && empty < sources.size(); ++copied)
+        {
+            Map.Entry<Long, Observer> entry = sources.get(observerCursor % sources.size());
+            observerCursor = (observerCursor + 1) % sources.size();
+            Optional<Receipt> receipt = entry.getValue().pollReceipt();
+            if (receipt.isEmpty()) { ++empty; continue; }
+            empty = 0;
+            advancing = true;
+            try { retainReceipt(entry.getValue(), receipt.get()); }
+            finally { advancing = false; }
+        }
+    }
+
+    /**
+     * Registers observer ownership before startup and validates readiness before child gating.
+     * @param parent exact retained process member
+     * @return retained ready observer
+     * @throws IOException if observer acquisition or readiness fails
+     */
+    private Observer observe(Member parent) throws IOException
+    {
+        if (observers.containsKey(parent.pid())) throw new IOException("Process observer already exists: " + parent.pid());
+        Observer observer = backend.observer(parent, manager);
+        observers.put(parent.pid(), observer);
+        observer.start();
+        observer.awaitReady(peers);
+        return observer;
+    }
+
+    /**
+     * Transfers exact source authority before acknowledging parent-local handle release.
+     * @param observer producing retained observer
+     * @param receipt exact retained source frame
+     * @throws IOException if source identity, uniqueness, transfer or acknowledgement fails
+     */
+    private void retainReceipt(Observer observer, Receipt receipt) throws IOException
+    {
+        if (observers.get(receipt.parentPid()) != observer || images.containsKey(receipt.childPid()) ||
+            createdChildren.containsKey(receipt.childPid()))
+            throw new IOException("Creation receipt has an unowned parent or repeated child: " + receipt.childPid());
+        if (createdChildren.size() >= MAX_PENDING) throw new IOException("Too many unmatched creation receipts");
+        Member parent = images.get(receipt.parentPid());
+        Member member = backend.createdMember(parent, receipt);
+        members.add(member);
+        createdChildren.put(receipt.childPid(), new CreatedChild(receipt, member));
+        observer.release(receipt, peers);
+    }
+
+    /**
+     * Installs a child's observer and allocation hook before its single authorized resume.
+     * @param event copied held SPAWN notification
+     * @param created validated transferred creation authority
+     * @throws IOException if identity, readiness or resume cannot be established
+     */
+    private void advanceChild(FridaRuntime.Child event, CreatedChild created) throws IOException
+    {
+        if (event.parentPid() != created.receipt().parentPid() || event.pid() != created.member().pid())
+            throw new IOException("Held child differs from retained creation authority: " + event);
+        Member member = created.member();
         member.requireLive();
+        observe(member);
         Hook hook = install(member);
         hook.awaitReady(peers);
         member.requireLive();
-        member.requireLive();
+        if (!resumeAttempts.add(event.pid())) throw new IOException("Held child continuation was already attempted: " + event.pid());
         manager.resume(event.pid());
+        resumeCompletions.add(event.pid());
+    }
+
+    /**
+     * Retains one validated receipt and its query identity until the matching event is consumed.
+     * @param receipt transferred creation authority
+     * @param member exact retained child identity
+     */
+    private record CreatedChild(Receipt receipt, Member member) {}
+
+    /**
+     * Retains a copied event and its bounded receipt-wait start.
+     * @param event held SPAWN notification
+     * @param firstObservedNanos monotonic enqueue observation
+     */
+    private record PendingChild(FridaRuntime.Child event, long firstObservedNanos) {}
+
+    /**
+     * Describes an exact child handle retained in the creating parent's handle table.
+     * @param generation observer UUID
+     * @param sequence positive observer-local receipt ordinal
+     * @param parentPid creating process identifier
+     * @param parentBirth raw unsigned parent creation FILETIME bits
+     * @param childPid created process identifier
+     * @param childBirth raw unsigned child creation FILETIME bits
+     * @param sourceHandle parent-local retained process handle bits
+     * @param launch immutable native creation facts, or null for legacy modeled receipts
+     */
+    record Receipt(UUID generation, long sequence, long parentPid, long parentBirth, long childPid,
+        long childBirth, long sourceHandle, WindowsCreationReceipt.Launch launch)
+    {
+        /**
+         * Creates identity-only facts for callers that do not authorize a compiler registration.
+         * @param generation observer UUID
+         * @param sequence positive observer-local sequence
+         * @param parentPid creator process identifier
+         * @param parentBirth creator FILETIME bits
+         * @param childPid descendant process identifier
+         * @param childBirth descendant FILETIME bits
+         * @param sourceHandle creator-local retained process handle bits
+         */
+        Receipt(UUID generation, long sequence, long parentPid, long parentBirth, long childPid,
+            long childBirth, long sourceHandle)
+        {
+            this(generation, sequence, parentPid, parentBirth, childPid, childBirth, sourceHandle, null);
+        }
+
+        /**
+         * Validates a reusable creation-authority value before it enters owner state.
+         * @param generation observer UUID
+         * @param sequence positive safe JavaScript integer
+         * @param parentPid unsigned nonzero DWORD
+         * @param parentBirth nonzero unsigned FILETIME bits
+         * @param childPid unsigned nonzero DWORD
+         * @param childBirth nonzero unsigned FILETIME bits
+         * @param sourceHandle valid parent-local handle bits
+         * @param launch native launch facts, or null when unavailable to identity-only callers
+         */
+        Receipt
+        {
+            Objects.requireNonNull(generation, "generation");
+            if (sequence <= 0 || sequence > 9007199254740991L || parentPid <= 0 || parentPid > 0xffff_ffffL ||
+                childPid <= 0 || childPid > 0xffff_ffffL || parentBirth == 0 || childBirth == 0 ||
+                sourceHandle == 0 || sourceHandle == -1)
+                throw new IllegalArgumentException("Creation receipt fields are outside their native ranges");
+        }
     }
 
     /** Retains the opaque identity acquired from the exact owned Job.
@@ -216,6 +467,13 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
                 { cleanup = merge(cleanup, new IOException("Retained native owner cleanup failed", cause)); }
             }
             if (cleanup != null) throw cleanup;
+            for (Observer observer : observers.values())
+            {
+                try { observer.close(barrier); }
+                catch (IOException | RuntimeException cause)
+                { cleanup = merge(cleanup, new IOException("Creation observer cleanup failed", cause)); }
+            }
+            if (cleanup != null) throw cleanup;
             if (manager != null) manager.close();
             for (Member member : members)
             {
@@ -283,6 +541,27 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
          * @return owned root PID
          */
         long rootPid();
+        /**
+         * Returns the positive representable receipt join interval.
+         * @return maximum monotonic wait for a matching creation receipt
+         */
+        Duration joinTimeout();
+        /**
+         * Creates resource-free observer ownership before native acquisition.
+         * @param parent exact retained creating process
+         * @param manager borrowed attempt manager
+         * @return observer retained before startup
+         * @throws IOException if the packaged observer cannot be read
+         */
+        Observer observer(Member parent, Manager manager) throws IOException;
+        /**
+         * Transfers and verifies one exact child identity before source acknowledgement.
+         * @param parent retained creator identity
+         * @param receipt retained native source authority
+         * @return exact child query member
+         * @throws IOException if transfer or identity validation fails
+         */
+        Member createdMember(Member parent, Receipt receipt) throws IOException;
         /** Opens a verified live member of the exact owned Job.
          * @param pid native held process PID
          * @return opaque member identity
@@ -306,6 +585,35 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
          * @throws IOException if release has an uncertain result
          */
         void releaseRoot() throws IOException;
+    }
+    /** Owns one creating-process observer through actual whole-Job zero. */
+    interface Observer
+    {
+        /** Starts the retained observer once.
+         * @throws IOException if native acquisition fails
+         */
+        void start() throws IOException;
+        /** Awaits authenticated observer readiness.
+         * @param peers owner-thread peer service
+         * @throws IOException if readiness or peer delivery fails
+         */
+        void awaitReady(AllocationHook.Pump peers) throws IOException;
+        /** Copies at most one validated creation receipt.
+         * @return next receipt, or empty when none is available
+         * @throws IOException if a frame or state is invalid
+         */
+        Optional<Receipt> pollReceipt() throws IOException;
+        /** Attempts parent-local release once and awaits its exact acknowledgement.
+         * @param receipt transferred creation authority
+         * @param peers owner-thread peer service
+         * @throws IOException if post or acknowledgement is uncertain
+         */
+        void release(Receipt receipt, AllocationHook.Pump peers) throws IOException;
+        /** Destroys retained observer resources at actual whole-Job zero.
+         * @param barrier authoritative execution barrier
+         * @throws IOException if the barrier or destruction fails
+         */
+        void close(AllocationHook.ExecutionBarrier barrier) throws IOException;
     }
     /** Owns an opaque native handle independently verified against this exact Job. */
     interface Member extends AutoCloseable
@@ -340,6 +648,72 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
         void resume(long pid) throws IOException;
         @Override void close() throws IOException;
     }
+    /**
+     * Composes a resource-free additional image protocol with the original native manager.
+     */
+    @FunctionalInterface
+    interface ImageHooks
+    {
+        /**
+         * Creates ownership before its native attachment or script is started.
+         * @param installation exact reserved image generation
+         * @param pid exact retained live image identifier
+         * @param manager original manager that alone resumes this image
+         * @return resource-free hook retained before startup, or null when this image needs no additional protocol
+         * @throws IOException if packaged protocol acquisition fails
+         */
+        Hook create(long installation, long pid, FridaRuntime.Manager manager) throws IOException;
+    }
+
+    /**
+     * Joins allocation and optional token readiness while retaining every partial image owner.
+     * @param allocation allocation protocol, or null in creation-only mode
+     * @param additional additional image protocol, or null when absent
+     */
+    private record ImageProtocols(Hook allocation, Hook additional) implements Hook
+    {
+        @Override public void start() throws IOException
+        {
+            if (additional != null) additional.start();
+            if (allocation != null) allocation.start();
+        }
+        @Override public void awaitReady(AllocationHook.Pump peers) throws IOException
+        {
+            if (additional != null) additional.awaitReady(peers);
+            if (allocation != null) allocation.awaitReady(peers);
+        }
+        @Override public void pump() throws IOException
+        {
+            if (additional != null) additional.pump();
+            if (allocation != null) allocation.pump();
+        }
+        @Override public void grant(AllocationWaits.Wait wait, AllocationHook.Pump peers) throws IOException
+        {
+            if (allocation == null) throw new IOException("Creation-only images cannot receive allocation grants");
+            allocation.grant(wait, peers);
+        }
+        @Override public void stop()
+        {
+            if (additional != null) additional.stop();
+            if (allocation != null) allocation.stop();
+        }
+        @Override public void close(AllocationHook.ExecutionBarrier barrier) throws IOException
+        {
+            IOException failure = null;
+            if (allocation != null)
+            {
+                try { allocation.close(barrier); }
+                catch (IOException cause) { failure = cause; }
+            }
+            if (additional != null)
+            {
+                try { additional.close(barrier); }
+                catch (IOException cause) { failure = merge(failure, cause); }
+            }
+            if (failure != null) throw failure;
+        }
+    }
+
     /** Owns one generation of an allocation script and its attachment session. */
     interface Hook
     {
@@ -371,6 +745,444 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
         void close(AllocationHook.ExecutionBarrier barrier) throws IOException;
     }
 
+    /**
+     * Owns a creating-process attachment and validates its exact retained-handle protocol.
+     * Native callback transport remains in FridaRuntime; all parsing and control runs on the owner thread.
+     */
+    private static final class NativeObserver implements Observer
+    {
+        /** Owned Pouch scope for complete process-state frames, retained through native destruction. */
+        private final WindowsCreationObserver.MessageScope messages = new WindowsCreationObserver.MessageScope();
+        /** Immutable bounded parser borrowed from this observer's owned Pouch scope. */
+        private final JsonMapper json;
+        /** Unique canonical UUID expected in every frame. */
+        private final UUID generation;
+        /** Retained exact creator identity; this observer never closes it. */
+        private final WindowsProcess.Member parent;
+        /** Borrowed manager retaining the attachment's device. */
+        private final FridaRuntime.Manager manager;
+        /** Packaged source with its single UUID placeholder substituted. */
+        private final String program;
+        /** Positive representable native-control interval in nanoseconds. */
+        private final long timeoutNanos;
+        /** Attachment reserved before native startup. */
+        private FridaRuntime.Manager.Session session;
+        /** Script reserved before native startup. */
+        private FridaRuntime.Manager.Session.Script script;
+        /** Copied receipts that arrived while awaiting an acknowledgement. */
+        private final ArrayDeque<Receipt> queued = new ArrayDeque<>();
+        /** Parent-local sequences already reserved for one release attempt. */
+        private final Set<Long> releaseAttempts = new HashSet<>();
+        /** Creator creation time bound by readiness. */
+        private long parentBirth;
+        /** Exact module spelling from readiness, compared case-insensitively. */
+        private String module;
+        /** Exact native hook address bound by readiness. */
+        private String address;
+        /** Last accepted strictly increasing receipt sequence. */
+        private long sequence;
+        /** Outstanding one-shot release awaiting acknowledgement, or zero. */
+        private long awaitingRelease;
+        /** Last acknowledged release, never accepted twice. */
+        private long released;
+        /** Indicates that the single ready frame was accepted. */
+        private boolean ready;
+        /** Indicates that startup has already been attempted. */
+        private boolean started;
+        /** Indicates that native destruction has been attempted. */
+        private boolean closed;
+        /** First protocol or transport fault, permanently retained. */
+        private IOException failure;
+        /** First uncertain native observer destruction, retained without retry. */
+        private IOException closeFailure;
+
+        /**
+         * Borrows native services without acquiring a session or script.
+         * @param generation unique observer identity
+         * @param parent retained exact creating process
+         * @param manager borrowed started manager
+         * @param program substituted observer source
+         * @param timeout positive representable native-control interval
+         */
+        NativeObserver(UUID generation, WindowsProcess.Member parent,
+            FridaRuntime.Manager manager, String program, Duration timeout)
+        {
+            this.json = messages.json();
+            this.generation = Objects.requireNonNull(generation, "generation");
+            this.parent = Objects.requireNonNull(parent, "parent");
+            this.manager = Objects.requireNonNull(manager, "manager");
+            this.program = Objects.requireNonNull(program, "program");
+            this.timeoutNanos = WindowsAttempts.checkedTimeout(timeout).toNanos();
+        }
+
+        @Override public void start() throws IOException
+        {
+            requireCertain();
+            if (started) throw new IllegalStateException("Creation observer cannot start twice");
+            started = true;
+            try
+            {
+                parent.requireLive();
+                session = manager.newSession(parent.pid());
+                session.start();
+                script = session.newScript(program);
+                script.start();
+            }
+            catch (IOException | RuntimeException cause) { throw failed(cause); }
+        }
+
+        @Override public void awaitReady(AllocationHook.Pump peers) throws IOException
+        {
+            requireCertain();
+            long began = System.nanoTime();
+            try
+            {
+                while (!ready)
+                {
+                    if (System.nanoTime() - began >= timeoutNanos) throw new IOException("Creation observer readiness timed out");
+                    receive();
+                    peers.pump();
+                }
+            }
+            catch (IOException | RuntimeException cause) { throw failed(cause); }
+        }
+
+        @Override public Optional<Receipt> pollReceipt() throws IOException
+        {
+            requireCertain();
+            try
+            {
+                if (queued.isEmpty()) receive();
+                return Optional.ofNullable(queued.pollFirst());
+            }
+            catch (IOException | RuntimeException cause) { throw failed(cause); }
+        }
+
+        @Override public void release(Receipt receipt, AllocationHook.Pump peers) throws IOException
+        {
+            requireCertain();
+            try
+            {
+                if (!generation.equals(receipt.generation()) || awaitingRelease != 0 ||
+                    !releaseAttempts.add(receipt.sequence()))
+                    throw new IOException("Creation release does not identify one unused observer receipt");
+                awaitingRelease = receipt.sequence();
+                ObjectNode request = json.createObjectNode();
+                request.put("type", "release");
+                ObjectNode payload = request.putObject("payload");
+                payload.put("generation", generation.toString());
+                payload.put("sequence", receipt.sequence());
+                script.post(request);
+                long began = System.nanoTime();
+                while (released != receipt.sequence())
+                {
+                    if (System.nanoTime() - began >= timeoutNanos) throw new IOException("Creation source release acknowledgement timed out");
+                    receive();
+                    peers.pump();
+                }
+                awaitingRelease = 0;
+            }
+            catch (IOException | RuntimeException cause) { throw failed(cause); }
+        }
+
+        /**
+         * Parses at most one copied frame and advances only this observer's protocol state.
+         * @throws IOException if frame syntax, shape, correlation or ordering is invalid
+         */
+        private void receive() throws IOException
+        {
+            if (script == null) throw new IOException("Creation observer script has not started");
+            Optional<String> message = script.pollMessage();
+            if (message.isEmpty()) return;
+            if (message.get().length() > WindowsCreationObserver.MessageScope.MAX_CHARACTERS) throw new IOException("Creation observer message exceeds its bound");
+            JsonNode envelope;
+            try { envelope = json.readTree(message.get()); }
+            catch (tools.jackson.core.JacksonException cause) { throw new IOException("Creation observer JSON is invalid", cause); }
+            fields(envelope, "type", "payload");
+            if (!text(envelope, "type").equals("send")) throw new IOException("Creation observer requires a send envelope");
+            JsonNode body = envelope.get("payload");
+            if (body == null || !body.isObject()) throw new IOException("Creation observer payload must be an object");
+            if (!text(body, "generation").equals(generation.toString())) throw new IOException("Creation observer generation differs");
+            switch (text(body, "kind"))
+            {
+                case "ready" ->
+                {
+                    fields(body, "kind", "generation", "parentPid", "parentBirth", "module", "address", "boundary", "pointerSize", "state");
+                    if (ready || sequence != 0) throw new IOException("Creation observer readiness is repeated or late");
+                    if (integer(body, "parentPid", 0xffff_ffffL) != parent.pid() ||
+                        integer(body, "pointerSize", 8) != 8 ||
+                        !text(body, "boundary").equals("private-pinned-CreateProcessInternalW"))
+                        throw new IOException("Creation observer readiness has a different native boundary");
+                    parentBirth = unsigned(body, "parentBirth");
+                    parent.requireBirth(parentBirth);
+                    JsonNode nativeState = body.get("state");
+                    fields(nativeState, "commandLine", "directory", "environment");
+                    JsonNode entries = nativeState.get("environment");
+                    if (!entries.isArray()) throw new IOException("Native child environment must be an array");
+                    List<String> environment = new ArrayList<>();
+                    for (JsonNode entry : entries)
+                    {
+                        if (!entry.isString()) throw new IOException("Native child environment entry must be text");
+                        environment.add(entry.stringValue());
+                    }
+                    parent.sealNativeState(parentBirth, new WindowsCreationReceipt.NativeState(
+                        text(nativeState, "commandLine"), text(nativeState, "directory"), environment));
+                    session.enableChildGating();
+                    module = text(body, "module");
+                    if (!Set.of("kernelbase.dll", "kernel32.dll").contains(module.toLowerCase(java.util.Locale.ROOT)))
+                        throw new IOException("Creation observer module is unsupported");
+                    address = text(body, "address");
+                    pointer(body, "address");
+                    ready = true;
+                }
+                case "retained" ->
+                {
+                    fields(body, "kind", "generation", "sequence", "parentPid", "parentBirth", "childPid", "childBirth",
+                        "sourceHandle", "originalHandle", "originalThread", "originalFlags", "module", "address",
+                        "requiredRights", "originalHandlesUntouched", "launch");
+                    long ordinal = integer(body, "sequence", 9007199254740991L);
+                    if (!ready || ordinal <= sequence || integer(body, "parentPid", 0xffff_ffffL) != parent.pid() ||
+                        unsigned(body, "parentBirth") != parentBirth || !module.equalsIgnoreCase(text(body, "module")) ||
+                        !address.equals(text(body, "address")) || !text(body, "requiredRights").equals("0x101040") ||
+                        !body.path("originalHandlesUntouched").isBoolean() || !body.path("originalHandlesUntouched").booleanValue())
+                        throw new IOException("Creation receipt has invalid order, creator or native authority");
+                    pointer(body, "originalHandle");
+                    pointer(body, "originalThread");
+                    nonnegativeInteger(body, "originalFlags", 0xffff_ffffL);
+                    Receipt receipt = new Receipt(generation, ordinal, parent.pid(), parentBirth,
+                        integer(body, "childPid", 0xffff_ffffL), unsigned(body, "childBirth"), pointer(body, "sourceHandle"), launch(body.get("launch")));
+                    if (queued.size() >= MAX_PENDING) throw new IOException("Too many queued creation receipts");
+                    sequence = ordinal;
+                    queued.addLast(receipt);
+                }
+                case "released", "rejected-release" ->
+                {
+                    fields(body, "kind", "generation", "sequence");
+                    long ordinal = integer(body, "sequence", 9007199254740991L);
+                    if (awaitingRelease == 0 || ordinal != awaitingRelease || released == ordinal)
+                        throw new IOException("Creation release acknowledgement has no matching attempt");
+                    if (text(body, "kind").equals("rejected-release")) throw new IOException("Native creator rejected source release");
+                    released = ordinal;
+                }
+                case "failure" ->
+                {
+                    fields(body, "kind", "generation", "message");
+                    String diagnostic = text(body, "message");
+                    if (diagnostic.isBlank()) throw new IOException("Creation failure message is blank");
+                    throw new IOException("Native creation observer failed: " + diagnostic);
+                }
+                default -> throw new IOException("Unknown creation observer frame kind");
+            }
+        }
+
+        /**
+         * Reads native launch facts without replacing them with a connecting wrapper's claims.
+         * @param node copied native launch object
+         * @return immutable launch facts
+         * @throws IOException if a required native fact is absent or malformed
+         */
+        private static WindowsCreationReceipt.Launch launch(JsonNode node) throws IOException
+        {
+            fields(node, "application", "commandLine", "directory", "environment", "inheritedEnvironment",
+                "inheritedDirectory", "standardHandles", "input", "output", "error");
+            JsonNode entries = node.get("environment");
+            if (!entries.isArray()) throw new IOException("Native creation environment must be an array");
+            List<String> environment = new ArrayList<>();
+            for (JsonNode entry : entries)
+            {
+                if (!entry.isString()) throw new IOException("Native environment entry must be text");
+                environment.add(entry.stringValue());
+            }
+            return new WindowsCreationReceipt.Launch(nullableText(node, "application"), nullableText(node, "commandLine"),
+                text(node, "directory"), environment, condition(node, "inheritedEnvironment"),
+                condition(node, "inheritedDirectory"), condition(node, "standardHandles"),
+                handleBits(node, "input"), handleBits(node, "output"), handleBits(node, "error"));
+        }
+
+        /**
+         * Reads a native argument whose omitted form remains distinct from an empty string.
+         * @param node launch object
+         * @param name native argument name
+         * @return exact text, or null for the omitted native argument
+         * @throws IOException if the value has another type
+         */
+        private static String nullableText(JsonNode node, String name) throws IOException
+        {
+            if (node.get(name).isNull()) return null;
+            return text(node, name);
+        }
+
+        /**
+         * Reads one noncoerced native launch condition.
+         * @param node launch object
+         * @param name condition name
+         * @return native condition
+         * @throws IOException if the value is not boolean
+         */
+        private static boolean condition(JsonNode node, String name) throws IOException
+        {
+            if (!node.get(name).isBoolean()) throw new IOException("Native launch condition must be boolean: " + name);
+            return node.get(name).booleanValue();
+        }
+
+        /**
+         * Reads raw native standard-handle bits, including NULL and INVALID_HANDLE_VALUE.
+         * @param node launch object
+         * @param name standard-handle name
+         * @return raw unsigned handle bits
+         * @throws IOException if the native pointer text is invalid
+         */
+        private static long handleBits(JsonNode node, String name) throws IOException
+        {
+            String value = text(node, name);
+            if (!value.startsWith("0x")) throw new IOException("Native handle requires hexadecimal text: " + name);
+            try { return Long.parseUnsignedLong(value.substring(2), 16); }
+            catch (NumberFormatException cause) { throw new IOException("Invalid native handle: " + name, cause); }
+        }
+
+        /**
+         * Requires an exact object field set.
+         * @param node received object
+         * @param names permitted required fields
+         * @throws IOException if shape or keys differ
+         */
+        private static void fields(JsonNode node, String... names) throws IOException
+        {
+            if (node == null || !node.isObject() || !Set.copyOf(node.propertyNames()).equals(Set.of(names)))
+                throw new IOException("Creation observer frame has missing or unexpected fields");
+        }
+
+        /**
+         * Reads a textual JSON scalar without coercion.
+         * @param node received object
+         * @param name required member
+         * @return exact string value
+         * @throws IOException if absent or not textual
+         */
+        private static String text(JsonNode node, String name) throws IOException
+        {
+            JsonNode value = node.get(name);
+            if (value == null || !value.isString()) throw new IOException("Creation observer field must be text: " + name);
+            return value.stringValue();
+        }
+
+        /**
+         * Reads a positive bounded exact JSON integer.
+         * @param node received object
+         * @param name required member
+         * @param maximum inclusive upper bound
+         * @return exact positive value
+         * @throws IOException if type or range differs
+         */
+        private static long integer(JsonNode node, String name, long maximum) throws IOException
+        {
+            long value = nonnegativeInteger(node, name, maximum);
+            if (value == 0) throw new IOException("Creation observer field must be positive: " + name);
+            return value;
+        }
+
+        /**
+         * Reads an exact nonnegative bounded JSON integer.
+         * @param node received object
+         * @param name required member
+         * @param maximum inclusive upper bound
+         * @return exact integer value
+         * @throws IOException if type or range differs
+         */
+        private static long nonnegativeInteger(JsonNode node, String name, long maximum) throws IOException
+        {
+            JsonNode value = node.get(name);
+            if (value == null || !value.isIntegralNumber() || value.bigIntegerValue().signum() < 0 ||
+                value.bigIntegerValue().compareTo(java.math.BigInteger.valueOf(maximum)) > 0)
+                throw new IOException("Creation observer integer is outside its range: " + name);
+            return value.longValue();
+        }
+
+        /**
+         * Reads canonical nonzero unsigned decimal FILETIME bits.
+         * @param node received object
+         * @param name required member
+         * @return raw unsigned bits
+         * @throws IOException if syntax or range differs
+         */
+        private static long unsigned(JsonNode node, String name) throws IOException
+        {
+            String value = text(node, name);
+            try
+            {
+                long bits = Long.parseUnsignedLong(value);
+                if (bits == 0 || !Long.toUnsignedString(bits).equals(value)) throw new NumberFormatException("Noncanonical FILETIME");
+                return bits;
+            }
+            catch (NumberFormatException cause) { throw new IOException("Invalid creation FILETIME: " + name, cause); }
+        }
+
+        /**
+         * Reads nonzero native pointer bits, excluding INVALID_HANDLE_VALUE.
+         * @param node received object
+         * @param name required member
+         * @return raw unsigned pointer bits
+         * @throws IOException if syntax or value differs
+         */
+        private static long pointer(JsonNode node, String name) throws IOException
+        {
+            String value = text(node, name);
+            if (!value.matches("0x[0-9a-fA-F]{1,16}")) throw new IOException("Invalid native pointer syntax: " + name);
+            try
+            {
+                long bits = Long.parseUnsignedLong(value.substring(2), 16);
+                if (bits == 0 || bits == -1) throw new NumberFormatException("Invalid native pointer value");
+                return bits;
+            }
+            catch (NumberFormatException cause) { throw new IOException("Invalid native pointer: " + name, cause); }
+        }
+
+        /**
+         * Retains one fault and prevents subsequent effects.
+         * @param cause original protocol or transport failure
+         * @return sticky contextual failure
+         */
+        private IOException failed(Throwable cause)
+        {
+            if (failure == null) failure = new IOException("Creation observer authority failed", cause);
+            return failure;
+        }
+
+        /**
+         * Rejects operation after failure or destruction.
+         * @throws IOException if authority has failed
+         */
+        private void requireCertain() throws IOException
+        {
+            if (failure != null) throw new IOException("Creation observer retains a failure", failure);
+            if (closed) throw new IOException("Creation observer is closed");
+        }
+
+        @Override public void close(AllocationHook.ExecutionBarrier barrier) throws IOException
+        {
+            if (!barrier.reached()) throw new IOException("Creation observer requires actual whole-Job zero");
+            if (closeFailure != null) throw new IOException("Creation observer destruction remains unresolved", closeFailure);
+            if (closed) return;
+            closed = true;
+            try
+            {
+                if (script != null) script.close();
+                if (session != null) session.close();
+            }
+            catch (IOException | RuntimeException cause)
+            {
+                closeFailure = new IOException("Creation observer destruction failed", cause);
+                throw closeFailure;
+            }
+            catch (Error cause)
+            {
+                closeFailure = new IOException("Creation observer destruction failed", cause);
+                throw cause;
+            }
+            finally { messages.close(); }
+        }
+    }
+
     /** Loads only the accepted Windows program and delegates to existing authoritative native owners. */
     private static final class NativeBackend implements Backend
     {
@@ -378,6 +1190,8 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
         private final UUID identity;
         /** Borrowed started Frida runtime; this adapter never closes it. */
         private final FridaRuntime runtime;
+        /** Borrowed immutable shared values. */
+        private final ToolingScope scope;
         /** Borrowed authoritative Windows Job; the attempt retains it through instrumentation destruction. */
         private final WindowsProcess process;
         /** Attempt-wide allocation batches shared by root and descendant installations. */
@@ -386,18 +1200,30 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
         private final Duration timeout;
         /** Accepted Windows resource text, loaded only after this owner is retained. */
         private String program;
+        /** Packaged observer source loaded once before individual UUID substitution. */
+        private String observerProgram;
+        /** Indicates whether this Job owns queued compiler allocation controls. */
+        private final boolean allocations;
+        /** Optional independently owned protocol required before each image can resume. */
+        private final ImageHooks imageHooks;
 
         /**
          * Borrows native services without acquiring any manager, member or session.
+         * @param scope borrowed shared values; the caller retains ownership through all operations
          * @param identity unique attempt correlation UUID
          * @param runtime borrowed started Frida runtime
          * @param process authoritative owned Job, borrowed by instrumentation
          * @param waits shared root and descendant allocation batches
          * @param timeout positive representable control interval
+         * @param allocations indicates whether compiler allocation controls are installed
+         * @param imageHooks additional per-image protocol, or null when absent
          */
-        NativeBackend(UUID identity, FridaRuntime runtime, WindowsProcess process, AllocationWaits waits, Duration timeout)
+        NativeBackend(ToolingScope scope, UUID identity, FridaRuntime runtime, WindowsProcess process, AllocationWaits waits, Duration timeout, boolean allocations, ImageHooks imageHooks)
         {
+            this.allocations = allocations;
+            this.imageHooks = imageHooks;
             this.identity = Objects.requireNonNull(identity, "identity");
+            this.scope = Objects.requireNonNull(scope, "scope");
             this.runtime = Objects.requireNonNull(runtime, "runtime");
             this.process = Objects.requireNonNull(process, "process");
             this.waits = Objects.requireNonNull(waits, "waits");
@@ -407,27 +1233,72 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
         @Override public Member member(long pid) throws IOException
         {
             NativeMember bridge = new NativeMember();
+            bridge.process = process;
             bridge.member = process.openMember(pid);
             return bridge;
         }
         @Override public Manager manager()
         {
             NativeManager bridge = new NativeManager();
+            bridge.runtime = runtime;
             bridge.manager = runtime.newManager();
             return bridge;
         }
         @Override public Hook hook(long generation, Member member, Manager manager) throws IOException
         {
-            if (program == null)
+            Hook allocation = null;
+            if (allocations)
             {
-                try (var input = WindowsAllocationHooks.class.getResourceAsStream("windows-allocation-hook.js"))
+                if (program == null)
                 {
-                    if (input == null) throw new IOException("Packaged Windows allocation program is missing");
-                    program = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+                    try (java.io.InputStream input = WindowsAllocationHooks.class.getResourceAsStream("windows-allocation-hook.js"))
+                    {
+                        if (input == null) throw new IOException("Packaged Windows allocation program is missing");
+                        program = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+                    }
                 }
+                allocation = new NativeHook(new AllocationHook(scope, identity, generation, member.pid(),
+                    ((NativeManager) manager).manager, waits, program, timeout));
             }
-            return new NativeHook(new AllocationHook(identity, generation, member.pid(),
-                ((NativeManager) manager).manager, waits, program, timeout));
+            Hook additional = null;
+            if (imageHooks != null)
+                additional = imageHooks.create(generation, member.pid(), ((NativeManager) manager).manager);
+            return new ImageProtocols(allocation, additional);
+        }
+        @Override public Duration joinTimeout() { return timeout; }
+        @Override public Observer observer(Member parent, Manager manager) throws IOException
+        {
+            if (!(parent instanceof NativeMember member) || !(manager instanceof NativeManager nativeManager) ||
+                member.process != process || nativeManager.runtime != runtime)
+                throw new IOException("Creation observer requires this backend's retained native owners");
+            if (observerProgram == null)
+            {
+                try (java.io.InputStream input = WindowsAllocationHooks.class.getResourceAsStream("windows-creation-observer.js"))
+                {
+                    if (input == null) throw new IOException("Packaged Windows creation observer is missing");
+                    observerProgram = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+                }
+                String placeholder = "__OBSERVER_GENERATION__";
+                if (observerProgram.indexOf(placeholder) < 0 ||
+                    observerProgram.indexOf(placeholder) != observerProgram.lastIndexOf(placeholder))
+                    throw new IOException("Creation observer requires exactly one generation placeholder");
+            }
+            UUID generation = UUID.randomUUID();
+            return new NativeObserver(generation, member.member, nativeManager.manager,
+                observerProgram.replace("__OBSERVER_GENERATION__", generation.toString()), timeout);
+        }
+        @Override public Member createdMember(Member parent, Receipt receipt) throws IOException
+        {
+            if (!(parent instanceof NativeMember creator) || creator.process != process)
+                throw new IOException("Creation transfer requires this backend's retained creator");
+            NativeMember bridge = new NativeMember();
+            bridge.process = process;
+            bridge.source = process.retainCreatedSource(creator.member, receipt.parentBirth(), receipt.childPid(),
+                receipt.childBirth(), receipt.sourceHandle());
+            process.retainReceipt(bridge.source, receipt);
+            bridge.member = process.openMember(receipt.childPid());
+            bridge.member.requireBirth(receipt.childBirth());
+            return bridge;
         }
         @Override public void releaseRoot() throws IOException { process.releaseRoot(); }
     }
@@ -436,6 +1307,10 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
     {
         /** Opaque native identity handle retained by the authoritative Job owner. */
         private WindowsProcess.Member member;
+        /** Exact authoritative process owner used to reject cross-backend bridge reuse. */
+        private WindowsProcess process;
+        /** Borrowed created-source authority retained by the process owner until Job zero. */
+        private WindowsProcess.CreatedSource source;
         /** Allocates the bridge before opening its native identity handle. */
         private NativeMember() {}
         @Override public long pid() { return member.pid(); }
@@ -447,6 +1322,8 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
     {
         /** Distinct owned manager retained before native startup. */
         private FridaRuntime.Manager manager;
+        /** Exact borrowed runtime used to reject cross-backend manager reuse. */
+        private FridaRuntime runtime;
         /** Allocates the bridge before obtaining its resource-free manager owner. */
         private NativeManager() {}
         @Override public void start() throws IOException { manager.start(); }

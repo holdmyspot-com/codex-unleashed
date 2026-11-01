@@ -16,9 +16,9 @@ import java.util.Set;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
+
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Verifies content-based change marking, interrupted-build protection, and timestamp confinement.
@@ -51,17 +51,19 @@ public final class SourceInputChangesTest
 			JsonNode previous = fixture.previous(Map.of("src/unchanged.rs", "same", "src/changed.rs", "old",
 				"src/deleted.rs", "deleted"), Map.of(".", fixture.nanos(BEFORE), "src", fixture.nanos(BEFORE),
 				"src/unchanged.rs", fixture.nanos(BEFORE), "src/changed.rs", fixture.nanos(BEFORE)));
-			Set<String> result = SourceInputChanges.apply(fixture.current(Map.of("src/unchanged.rs", "same",
+			Set<String> result = SourceInputChanges.apply(fixture.scope, fixture.current(Map.of("src/unchanged.rs", "same",
 				"src/changed.rs", "new")), previous, Optional.empty(), CLOCK);
-			assertEquals(result, Set.of("src/changed.rs", "src/deleted.rs"));
+			requireThat(result, "result").isEqualTo(Set.of("src/changed.rs", "src/deleted.rs"));
 			Instant expectedBefore = NativeTimestampRange.expected(fixture.root, BEFORE);
 			Instant expectedNow = NativeTimestampRange.expected(fixture.root, NOW);
-			assertEquals(Files.getLastModifiedTime(unchanged).toInstant(), expectedBefore);
-			assertEquals(Files.readAttributes(unchanged, BasicFileAttributes.class).lastAccessTime().toInstant(),
-				expectedBefore);
-			assertEquals(Files.getLastModifiedTime(changed).toInstant(), expectedNow);
-			assertEquals(Files.getLastModifiedTime(changed.getParent()).toInstant(), expectedNow);
-			assertEquals(Files.getLastModifiedTime(fixture.root).toInstant(), expectedNow);
+			requireThat(Files.getLastModifiedTime(unchanged).toInstant(), "Files.getLastModifiedTime(unchanged).toInstant()")
+				.isEqualTo(expectedBefore);
+			requireThat(Files.readAttributes(unchanged, BasicFileAttributes.class).lastAccessTime().toInstant(), "Files")
+				.isEqualTo(expectedBefore);
+			requireThat(Files.getLastModifiedTime(changed).toInstant(), "Files.getLastModifiedTime(changed).toInstant()")
+				.isEqualTo(expectedNow);
+			requireThat(Files.getLastModifiedTime(changed.getParent()).toInstant(), "Files").isEqualTo(expectedNow);
+			requireThat(Files.getLastModifiedTime(fixture.root).toInstant(), "Files").isEqualTo(expectedNow);
 		}
 	}
 
@@ -78,9 +80,10 @@ public final class SourceInputChangesTest
 			Path source = fixture.file("source.rs");
 			JsonNode previous = fixture.previous(Map.of("source.rs", "successful"), Map.of());
 			JsonNode interrupted = fixture.previous(Map.of("source.rs", "partially-built"), Map.of());
-			assertEquals(SourceInputChanges.apply(fixture.current(Map.of("source.rs", "successful")), previous,
-				Optional.of(interrupted), CLOCK), Set.of("source.rs"));
-			assertEquals(Files.getLastModifiedTime(source).toInstant(), NativeTimestampRange.expected(fixture.root, NOW));
+			requireThat(SourceInputChanges.apply(fixture.scope, fixture.current(Map.of("source.rs", "successful")), previous,
+				Optional.of(interrupted), CLOCK), "actual").isEqualTo(Set.of("source.rs"));
+			requireThat(Files.getLastModifiedTime(source).toInstant(), "Files.getLastModifiedTime(source).toInstant()")
+				.isEqualTo(NativeTimestampRange.expected(fixture.root, NOW));
 		}
 	}
 
@@ -97,14 +100,14 @@ public final class SourceInputChangesTest
 			for (String schema : new String[]{"1", "1.0", "true"})
 			{
 				JsonNode previous = fixture.document("{\"schema_version\":" + schema + ",\"files\":{}}");
-				assertEquals(SourceInputChanges.apply(fixture.current(Map.of()), previous, Optional.empty(), CLOCK), Set.of());
+				requireThat(SourceInputChanges.apply(fixture.scope, fixture.current(Map.of()), previous, Optional.empty(), CLOCK), "actual")
+					.isEqualTo(Set.of());
 			}
 			for (String schema : new String[]{"0", "false", "\"1\"", "null"})
 			{
 				JsonNode previous = fixture.document("{\"schema_version\":" + schema + ",\"files\":{}}");
-				IOException failure = expectThrows(IOException.class,
-					() -> SourceInputChanges.apply(fixture.current(Map.of()), previous, Optional.empty(), CLOCK));
-				assertTrue(failure.getMessage().contains("Unsupported source-input cache snapshot"));
+				IOException failure = requireException(IOException.class, () -> SourceInputChanges.apply(fixture.scope, fixture.current(Map.of()), previous, Optional.empty(), CLOCK));
+				requireThat(failure.getMessage().contains("Unsupported source-input cache snapshot"), "failure").isTrue();
 			}
 		}
 	}
@@ -123,10 +126,9 @@ public final class SourceInputChangesTest
 			Files.writeString(outside, "unrelated input");
 			FileTime timestamp = Files.getLastModifiedTime(outside);
 			JsonNode previous = fixture.previous(Map.of(), Map.of("../outside", fixture.nanos(BEFORE)));
-			IOException failure = expectThrows(IOException.class,
-				() -> SourceInputChanges.apply(fixture.current(Map.of()), previous, Optional.empty(), CLOCK));
-			assertTrue(failure.getMessage().contains("Source-input cache path escapes checkout"));
-			assertEquals(Files.getLastModifiedTime(outside), timestamp);
+			IOException failure = requireException(IOException.class, () -> SourceInputChanges.apply(fixture.scope, fixture.current(Map.of()), previous, Optional.empty(), CLOCK));
+			requireThat(failure.getMessage().contains("Source-input cache path escapes checkout"), "failure").isTrue();
+			requireThat(Files.getLastModifiedTime(outside), "Files.getLastModifiedTime(outside)").isEqualTo(timestamp);
 		}
 	}
 
@@ -145,9 +147,9 @@ public final class SourceInputChangesTest
 			FileTime timestamp = Files.getLastModifiedTime(outside);
 			Files.createSymbolicLink(fixture.root.resolve("source.rs"), outside);
 			JsonNode previous = fixture.previous(Map.of("source.rs", "before"), Map.of());
-			expectThrows(IOException.class, () -> SourceInputChanges.apply(fixture.current(Map.of("source.rs", "after")),
+			requireException(IOException.class, () -> SourceInputChanges.apply(fixture.scope, fixture.current(Map.of("source.rs", "after")),
 				previous, Optional.empty(), CLOCK));
-			assertEquals(Files.getLastModifiedTime(outside), timestamp);
+			requireThat(Files.getLastModifiedTime(outside), "Files.getLastModifiedTime(outside)").isEqualTo(timestamp);
 		}
 	}
 
@@ -166,15 +168,15 @@ public final class SourceInputChangesTest
 			{
 				JsonNode previous = fixture.document("{\"schema_version\":1,\"files\":{\"source.rs\":\"same\"}," +
 					"\"mtimes\":{\"source.rs\":" + value + ",\"missing\":\"unused timestamp\"}}");
-				assertEquals(SourceInputChanges.apply(fixture.current(Map.of("source.rs", "same")), previous,
-					Optional.empty(), CLOCK), Set.of());
+				requireThat(SourceInputChanges.apply(fixture.scope, fixture.current(Map.of("source.rs", "same")), previous,
+					Optional.empty(), CLOCK), "actual").isEqualTo(Set.of());
 				Instant expected = Instant.EPOCH;
 				if (value.equals("-1"))
 					expected = Instant.ofEpochSecond(-1, 999_999_999);
 				else if (value.equals("true"))
 					expected = Instant.ofEpochSecond(0, 1);
-				assertEquals(Files.getLastModifiedTime(source).toInstant(),
-					NativeTimestampRange.expected(fixture.root, expected));
+				requireThat(Files.getLastModifiedTime(source).toInstant(), "Files.getLastModifiedTime(source).toInstant()")
+					.isEqualTo(NativeTimestampRange.expected(fixture.root, expected));
 			}
 		}
 	}
@@ -192,7 +194,7 @@ public final class SourceInputChangesTest
 			Files.createSymbolicLink(fixture.root.resolve("source.rs"), fixture.base.resolve("missing-outside"));
 			JsonNode previous = fixture.previous(Map.of("source.rs", "same"),
 				Map.of("source.rs", fixture.nanos(BEFORE)));
-			expectThrows(IOException.class, () -> SourceInputChanges.apply(fixture.current(Map.of("source.rs", "same")),
+			requireException(IOException.class, () -> SourceInputChanges.apply(fixture.scope, fixture.current(Map.of("source.rs", "same")),
 				previous, Optional.empty(), CLOCK));
 		}
 	}
@@ -202,6 +204,7 @@ public final class SourceInputChangesTest
 	 */
 	private static final class Fixture implements AutoCloseable
 	{
+		private final ToolingScope scope = new DefaultToolingScope();
 		private final Path base = Files.createTempDirectory("source-input-changes-");
 		private final Path root = Files.createDirectory(base.resolve("checkout"));
 
@@ -251,8 +254,8 @@ public final class SourceInputChangesTest
 		private JsonNode previous(Map<String, String> files, Map<String, BigInteger> times) throws IOException
 		{
 			Path stored = base.resolve("previous.json");
-			SourceInputSnapshots.write(stored, new SourceInputInventory.Snapshot(root, files, times));
-			return SourceInputSnapshots.read(stored);
+			SourceInputSnapshots.write(scope, stored, new SourceInputInventory.Snapshot(root, files, times));
+			return SourceInputSnapshots.read(scope, stored);
 		}
 
 		/**
@@ -266,7 +269,7 @@ public final class SourceInputChangesTest
 		{
 			Path stored = base.resolve("document.json");
 			Files.writeString(stored, text);
-			return SourceInputSnapshots.read(stored);
+			return SourceInputSnapshots.read(scope, stored);
 		}
 
 		/**
@@ -289,6 +292,7 @@ public final class SourceInputChangesTest
 		@Override
 		public void close() throws IOException
 		{
+			scope.close();
 			try (Stream<Path> files = Files.walk(base))
 			{
 				for (Path file : files.sorted(Comparator.reverseOrder()).toList())

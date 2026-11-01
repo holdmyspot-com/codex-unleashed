@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 import java.io.*;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -12,18 +14,33 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class LinuxBorrowedStreamsTest {
     /** Creates focused owner checks. */
     public LinuxBorrowedStreamsTest() { }
+    /**
+     * Creates resource-free approved execution inputs with host-absolute fixture paths.
+     * @param arguments fixture executable path followed by arguments, copied without changing later arguments
+     * @param environment copied workload environment
+     * @return immutable launch for authorization checks without native acquisition
+     */
     private static LinuxProcessTree.Launch launch(List<String> arguments, Map<String,String> environment) {
-        Path path = Path.of("/approved");
-        return new LinuxProcessTree.Launch(path,path,path,path,arguments,environment,path,1000,1000,
+        Path path = Path.of("/approved").toAbsolutePath();
+        var command = new ArrayList<>(arguments);
+        command.set(0, Path.of(command.getFirst()).toAbsolutePath().toString());
+        return new LinuxProcessTree.Launch(path,path,path,path,command,environment,path,1000,1000,
             LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC);
     }
     private static LinuxBorrowedStreams.TerminalContext terminal() {
         var stream = new LinuxBorrowedStreams.Terminal(false,"",0,0,List.of());
         return new LinuxBorrowedStreams.TerminalContext(1,1,List.of(stream,stream,stream));
     }
+    /**
+     * Creates a controlled binding without opening its socket or acquiring native ownership.
+     * @param sequence action-local attempt ordinal
+     * @param secret copied authentication capability
+     * @param launch approved execution
+     * @return immutable binding for modeled authorization checks
+     */
     private static LinuxBorrowedStreams.Binding binding(long sequence, byte[] secret, LinuxProcessTree.Launch launch) {
         return new LinuxBorrowedStreams.Binding(new UUID(1,1),sequence,new LinuxBorrowedStreams.Peer(1,1,1000,1000),
-            Path.of("/owned/streams.sock"),secret,terminal(),launch);
+            Path.of("/owned/streams.sock").toAbsolutePath(),secret,terminal(),launch);
     }
     /** A partial native install failure consumes installation before any retry can stage descriptors. */
     @Test public void partialInstallCannotBeRetried() throws Exception {
@@ -72,7 +89,7 @@ public final class LinuxBorrowedStreamsTest {
     @Test public void authorizesExecutionButRejectsAnotherCommandOrEnvironment()throws Exception {
         var approved=launch(List.of("/compiler","","argument space"),Map.of("EMPTY","","VALUE","one"));
         byte[] secret=new byte[32];var binding=binding(1,secret,approved);secret[0]=7;
-        Path changed=Path.of("/derived");
+        Path changed=Path.of("/derived").toAbsolutePath();
         binding.requireExecution(new LinuxProcessTree.Launch(changed,changed,approved.javaExecutable(),approved.classPath(),
             approved.command(),approved.environment(),approved.directory(),1000,1000,approved.executionMode()));
         requireException(IOException.class,()->binding.requireExecution(launch(List.of("/compiler","changed"),approved.environment())));
@@ -84,7 +101,7 @@ public final class LinuxBorrowedStreamsTest {
     /** Every execution field is checked, while environment iteration order does not grant a different command. */
     @Test public void rejectsChangesToExecutionIdentityAndPaths()throws Exception {
         var approved=launch(List.of("/compiler"),Map.of("A","1","B","2"));var binding=binding(1,new byte[32],approved);
-        Path a=approved.directory();Path different=Path.of("/changed");
+        Path a=approved.directory();Path different=Path.of("/changed").toAbsolutePath();
         List<LinuxProcessTree.Launch> changes=List.of(
             new LinuxProcessTree.Launch(a,a,different,a,approved.command(),approved.environment(),a,1000,1000,approved.executionMode()),
             new LinuxProcessTree.Launch(a,a,a,different,approved.command(),approved.environment(),a,1000,1000,approved.executionMode()),
@@ -123,7 +140,8 @@ public final class LinuxBorrowedStreamsTest {
     }
     /** A listener requires installed registration and consumes a failed transfer before accepting a later retry. */
     @Test public void listenerRequiresExplicitAuthorizationAndRejectsReplay()throws Exception {
-        var peer=LinuxBorrowedStreams.Peer.current();var action=new UUID(1,1);var endpoint=Path.of("/owned/streams.sock");
+        LinuxCargoJobserverTest.requireLinux();
+        var peer=LinuxBorrowedStreams.Peer.current();var action=new UUID(1,1);var endpoint=Path.of("/owned/streams.sock").toAbsolutePath();
         int[] transfers={0};
         var transport=new LinuxBorrowedStreams.Transfer() {
             public void sendBorrowed(Duration timeout,LinuxBorrowedStreams.Binding binding)throws IOException{transfers[0]++;throw new IOException("fixture disconnect");}
@@ -147,12 +165,15 @@ public final class LinuxBorrowedStreamsTest {
     /** Launch mismatch is rejected by tree preparation before root authority or native acquisition. */
     @Test public void treeRejectsMismatchedBindingBeforeAcquisition()throws Exception {
         var approved=launch(List.of("/compiler"),Map.of());var binding=binding(1,new byte[32],approved);
-        requireException(IOException.class,()->LinuxProcessTree.prepareBorrowed(launch(List.of("/other"),Map.of()),binding));
+        try (var scope = new DefaultToolingScope()) {
+            requireException(IOException.class,()->LinuxProcessTree.prepareBorrowed(scope, launch(List.of("/other"),Map.of()),binding));
+        }
     }
 
     /** Already-signalled cancellation consumes authorization without invoking the native transport. */
     @Test public void interruptionPreventsTransferAndRetainsInterruptFlag() throws Exception {
-        var peer=LinuxBorrowedStreams.Peer.current();var action=new UUID(1,1);var endpoint=Path.of("/owned/streams.sock");
+        LinuxCargoJobserverTest.requireLinux();
+        var peer=LinuxBorrowedStreams.Peer.current();var action=new UUID(1,1);var endpoint=Path.of("/owned/streams.sock").toAbsolutePath();
         int[] transfers={0};
         var transport=new LinuxBorrowedStreams.Transfer() {
             public void sendBorrowed(Duration timeout,LinuxBorrowedStreams.Binding binding){transfers[0]++;}

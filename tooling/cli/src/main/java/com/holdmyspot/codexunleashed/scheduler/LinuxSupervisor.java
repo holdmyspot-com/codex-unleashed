@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -514,9 +516,8 @@ public final class LinuxSupervisor implements AutoCloseable
 			owner.outer = LinuxCgroup.create(launch.cgroupParent(), timeout);
 			owner.scratch = Files.createTempDirectory(launch.scratchParent().toRealPath(), "java-supervisor-");
 			owner.writeLaunch();
-			ProcessBuilder builder = new ProcessBuilder(launch.javaExecutable().toString(),
-				"--enable-native-access=ALL-UNNAMED", "-cp", launch.classPath().toString(),
-				LinuxSupervisor.class.getName(), owner.scratch.toString());
+			ProcessBuilder builder = new ProcessBuilder(LinuxProcessTree.javaCommand(launch,
+				LinuxSupervisor.class, owner.scratch.toString()));
 			builder.environment().clear();
 			builder.directory(launch.directory().toFile());
 			builder.redirectErrorStream(true);
@@ -1171,131 +1172,134 @@ public final class LinuxSupervisor implements AutoCloseable
 	 */
 	public static void main(String[] args) throws Exception
 	{
-		if (args.length != 1)
-			throw new IllegalArgumentException("Dedicated supervisor requires its private attempt directory");
-		Path scratch = Path.of(args[0]);
-		if (scratch.isAbsolute() == false)
-			throw new IllegalArgumentException("Supervisor attempt directory must be absolute");
-		Properties configuration = read(scratch, Phase.LAUNCH, null);
-		String attempt = required(configuration, ATTEMPT);
-		if (System.in.read() != 1)
-			throw new IOException("Controller did not grant contained supervisor startup");
-		AtomicReference<IOException> controllerFailure = new AtomicReference<>();
-		Thread.ofPlatform().daemon(true).name("supervisor-controller-input").start(() ->
+		try (var scope = new DefaultToolingScope())
 		{
-			try
+			if (args.length != 1)
+				throw new IllegalArgumentException("Dedicated supervisor requires its private attempt directory");
+			Path scratch = Path.of(args[0]);
+			if (scratch.isAbsolute() == false)
+				throw new IllegalArgumentException("Supervisor attempt directory must be absolute");
+			Properties configuration = read(scratch, Phase.LAUNCH, null);
+			String attempt = required(configuration, ATTEMPT);
+			if (System.in.read() != 1)
+				throw new IOException("Controller did not grant contained supervisor startup");
+			AtomicReference<IOException> controllerFailure = new AtomicReference<>();
+			Thread.ofPlatform().daemon(true).name("supervisor-controller-input").start(() ->
 			{
-				int value = System.in.read();
-				controllerFailure.set(new IOException("Controller input ended or changed: " + value));
-			}
-			catch (IOException failure) { controllerFailure.set(failure); }
-		});
-		Result result;
-		long rootPid;
-		boolean managed = readInstrumentationMode(configuration);
-		LinuxProcessTree.Launch launch = readLaunch(scratch, configuration);
-		LinuxProcessTree.StandardFiles files = LinuxProcessTree.StandardFiles.readFrom(configuration);
-		LinuxBorrowedStreams.Binding streams = LinuxBorrowedStreams.readFrom(configuration);
-		if (streams != null && files != null) throw new IOException("Borrowed streams conflict with path redirects");
-		LinuxProcessTree tree = streams != null ? LinuxProcessTree.prepareBorrowed(launch, streams) :
-			(files == null ? LinuxProcessTree.prepare(launch) : LinuxProcessTree.prepare(launch, files));
-		boolean collectionAuthorized = false;
-		Throwable supervisionFailure = null;
-		try
-		{
-			rootPid = tree.rootPid();
-			Control control = new Control(scratch, attempt, rootPid, tree.group(), managed);
-			Properties ready = new Properties();
-			ready.setProperty(ROOT_PID, Long.toString(rootPid));
-			ready.setProperty("action.group", tree.group().toString());
-			ready.setProperty("gate.scratch", tree.scratch().toString());
-			ready.setProperty("instrumentation.managed", Boolean.toString(managed));
-			publish(scratch, Phase.READY, attempt, ready);
-			boolean released = false;
-			boolean terminationRequested = false;
-			while (true)
-			{
-				IOException lost = controllerFailure.get();
-				if (lost != null)
-					throw new IOException("Controller connection was lost; terminating the owned workload", lost);
-				String operation = "read-termination";
 				try
 				{
-					if (terminationRequested == false && control.readTerminationRequest())
+					int value = System.in.read();
+					controllerFailure.set(new IOException("Controller input ended or changed: " + value));
+				}
+				catch (IOException failure) { controllerFailure.set(failure); }
+			});
+			Result result;
+			long rootPid;
+			boolean managed = readInstrumentationMode(configuration);
+			LinuxProcessTree.Launch launch = readLaunch(scratch, configuration);
+			LinuxProcessTree.StandardFiles files = LinuxProcessTree.StandardFiles.readFrom(configuration);
+			LinuxBorrowedStreams.Binding streams = LinuxBorrowedStreams.readFrom(configuration);
+			if (streams != null && files != null) throw new IOException("Borrowed streams conflict with path redirects");
+			LinuxProcessTree tree = streams != null ? LinuxProcessTree.prepareBorrowed(scope, launch, streams) :
+				(files == null ? LinuxProcessTree.prepare(scope, launch) : LinuxProcessTree.prepare(scope, launch, files));
+			boolean collectionAuthorized = false;
+			Throwable supervisionFailure = null;
+			try
+			{
+				rootPid = tree.rootPid();
+				Control control = new Control(scratch, attempt, rootPid, tree.group(), managed);
+				Properties ready = new Properties();
+				ready.setProperty(ROOT_PID, Long.toString(rootPid));
+				ready.setProperty("action.group", tree.group().toString());
+				ready.setProperty("gate.scratch", tree.scratch().toString());
+				ready.setProperty("instrumentation.managed", Boolean.toString(managed));
+				publish(scratch, Phase.READY, attempt, ready);
+				boolean released = false;
+				boolean terminationRequested = false;
+				while (true)
+				{
+					IOException lost = controllerFailure.get();
+					if (lost != null)
+						throw new IOException("Controller connection was lost; terminating the owned workload", lost);
+					String operation = "read-termination";
+					try
 					{
-						operation = "request-action-kill";
-						if (managed)
-							tree.requestTermination();
-						else
-							tree.terminate();
-						terminationRequested = true;
-					}
-					else if (released == false && terminationRequested == false &&
-						Files.exists(file(scratch, Phase.RELEASE)))
-					{
-						operation = "release-action";
-						read(scratch, Phase.RELEASE, attempt);
-						tree.release();
-						released = true;
-						publish(scratch, Phase.RELEASED, attempt, new Properties());
-					}
-					operation = "read-collection";
-					if (control.collectionRequested())
-					{
-						operation = "verify-collection-zero";
-						if (managed && control.observeExecutionImpossible() == false)
-							throw new IOException("Collection acknowledgement preceded actual zero population");
-						collectionAuthorized = true;
-						operation = "collect-process-statuses";
-						if (tree.observeCompletion())
+						if (terminationRequested == false && control.readTerminationRequest())
 						{
-							if (released == false && tree.terminationRequested() == false)
-								throw new IOException("Trusted gate ended before workload release");
-							result = new Result(tree.awaitRootExit(), tree.adoptedExits(), tree.terminationRequested());
-							break;
+							operation = "request-action-kill";
+							if (managed)
+								tree.requestTermination();
+							else
+								tree.terminate();
+							terminationRequested = true;
+						}
+						else if (released == false && terminationRequested == false &&
+							Files.exists(file(scratch, Phase.RELEASE)))
+						{
+							operation = "release-action";
+							read(scratch, Phase.RELEASE, attempt);
+							tree.release();
+							released = true;
+							publish(scratch, Phase.RELEASED, attempt, new Properties());
+						}
+						operation = "read-collection";
+						if (control.collectionRequested())
+						{
+							operation = "verify-collection-zero";
+							if (managed && control.observeExecutionImpossible() == false)
+								throw new IOException("Collection acknowledgement preceded actual zero population");
+							collectionAuthorized = true;
+							operation = "collect-process-statuses";
+							if (tree.observeCompletion())
+							{
+								if (released == false && tree.terminationRequested() == false)
+									throw new IOException("Trusted gate ended before workload release");
+								result = new Result(tree.awaitRootExit(), tree.adoptedExits(), tree.terminationRequested());
+								break;
+							}
 						}
 					}
-				}
-				catch (IOException failure)
-				{
-					if (managed == false)
-						throw failure;
-					if (Files.exists(file(scratch, Phase.FAULT)) == false)
+					catch (IOException failure)
 					{
-						Properties fault = new Properties();
-						fault.setProperty(ROOT_PID, Long.toString(rootPid));
-						fault.setProperty("action.group", tree.group().toString());
-						fault.setProperty("operation", operation);
-						fault.setProperty("message", failure.toString());
-						publish(scratch, Phase.FAULT, attempt, fault);
-						failure.printStackTrace();
+						if (managed == false)
+							throw failure;
+						if (Files.exists(file(scratch, Phase.FAULT)) == false)
+						{
+							Properties fault = new Properties();
+							fault.setProperty(ROOT_PID, Long.toString(rootPid));
+							fault.setProperty("action.group", tree.group().toString());
+							fault.setProperty("operation", operation);
+							fault.setProperty("message", failure.toString());
+							publish(scratch, Phase.FAULT, attempt, fault);
+							failure.printStackTrace();
+						}
 					}
+					pause();
 				}
-				pause();
 			}
+			catch (Exception | Error failure)
+			{
+				supervisionFailure = failure;
+				throw failure;
+			}
+			finally
+			{
+				if (managed == false || collectionAuthorized || controllerFailure.get() != null)
+					closeOwned(tree, supervisionFailure);
+			}
+			Properties values = new Properties();
+			values.setProperty(ROOT_PID, Long.toString(rootPid));
+			values.setProperty(ROOT_EXIT, Integer.toString(result.rootExit()));
+			values.setProperty(TERMINATION, Boolean.toString(result.terminationRequested()));
+			if (managed)
+			{
+				values.setProperty("action.group", tree.group().toString());
+				values.setProperty("instrumentation.closed", "true");
+			}
+			for (var entry : result.adoptedExits().entrySet())
+				values.setProperty(ADOPTED_PREFIX + entry.getKey(), entry.getValue().toString());
+			publish(scratch, Phase.RESULT, attempt, values);
 		}
-		catch (Exception | Error failure)
-		{
-			supervisionFailure = failure;
-			throw failure;
-		}
-		finally
-		{
-			if (managed == false || collectionAuthorized || controllerFailure.get() != null)
-				closeOwned(tree, supervisionFailure);
-		}
-		Properties values = new Properties();
-		values.setProperty(ROOT_PID, Long.toString(rootPid));
-		values.setProperty(ROOT_EXIT, Integer.toString(result.rootExit()));
-		values.setProperty(TERMINATION, Boolean.toString(result.terminationRequested()));
-		if (managed)
-		{
-			values.setProperty("action.group", tree.group().toString());
-			values.setProperty("instrumentation.closed", "true");
-		}
-		for (var entry : result.adoptedExits().entrySet())
-			values.setProperty(ADOPTED_PREFIX + entry.getKey(), entry.getValue().toString());
-		publish(scratch, Phase.RESULT, attempt, values);
 	}
 	/**
 	 * Closes the retained process owner at the permitted cleanup boundary.

@@ -1,7 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
-import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -10,8 +10,9 @@ import java.util.List;
 import java.util.Map;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.expectThrows;
+
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Verifies supervisor input rejection before resource acquisition and immutable accepted outcomes.
@@ -42,8 +43,8 @@ public final class LinuxSupervisorTest
 	@Test(dataProvider = "invalidTimeouts")
 	public void rejectsInvalidTimeoutBeforeAcquisition(Duration timeout)
 	{
-		expectThrows(IllegalArgumentException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), timeout));
-		expectThrows(IllegalArgumentException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), unresolvedFiles(), timeout));
+		requireException(IllegalArgumentException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), timeout));
+		requireException(IllegalArgumentException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), unresolvedFiles(), timeout));
 	}
 
 	/**
@@ -52,8 +53,8 @@ public final class LinuxSupervisorTest
 	@Test
 	public void rejectsNullLaunch()
 	{
-		expectThrows(NullPointerException.class, () -> LinuxSupervisor.prepare(null, Duration.ofSeconds(1)));
-		expectThrows(NullPointerException.class, () -> LinuxSupervisor.prepare(null, unresolvedFiles(), Duration.ofSeconds(1)));
+		requireException(NullPointerException.class, () -> LinuxSupervisor.prepare(null, Duration.ofSeconds(1)));
+		requireException(NullPointerException.class, () -> LinuxSupervisor.prepare(null, unresolvedFiles(), Duration.ofSeconds(1)));
 	}
 
 	/**
@@ -62,16 +63,19 @@ public final class LinuxSupervisorTest
 	@Test
 	public void rejectsNullTimeout()
 	{
-		expectThrows(NullPointerException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), null));
-		expectThrows(NullPointerException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), unresolvedFiles(), null));
+		requireException(NullPointerException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), null));
+		requireException(NullPointerException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), unresolvedFiles(), null));
 	}
 
 	/** Rejects absent explicit endpoints before resolving the nonexistent cgroup parent. */
 	@Test
 	public void rejectsNullStandardFilesBeforeAcquisition()
 	{
-		expectThrows(NullPointerException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), null, Duration.ofSeconds(1)));
-		expectThrows(NullPointerException.class, () -> LinuxProcessTree.prepare(unresolvedLaunch(), null));
+		requireException(NullPointerException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), null, Duration.ofSeconds(1)));
+		try (var scope = new DefaultToolingScope())
+		{
+			requireException(NullPointerException.class, () -> LinuxProcessTree.prepare(scope, unresolvedLaunch(), null));
+		}
 	}
 
 	/**
@@ -85,8 +89,8 @@ public final class LinuxSupervisorTest
 		LinuxSupervisor.Result result = new LinuxSupervisor.Result(7, children, true);
 
 		children.clear();
-		assertEquals(result.adoptedExits(), Map.of(42L, -9));
-		expectThrows(UnsupportedOperationException.class, () -> result.adoptedExits().clear());
+		requireThat(result.adoptedExits(), "result.adoptedExits()").isEqualTo(Map.of(42L, -9));
+		requireException(UnsupportedOperationException.class, () -> result.adoptedExits().clear());
 	}
 
 	/**
@@ -95,10 +99,10 @@ public final class LinuxSupervisorTest
 	@Test
 	public void rejectsInvalidProcessOutcomes()
 	{
-		expectThrows(IllegalArgumentException.class, () -> new LinuxSupervisor.Result(-1, Map.of(), false));
-		expectThrows(IllegalArgumentException.class, () -> new LinuxSupervisor.Result(256, Map.of(), false));
-		expectThrows(IllegalArgumentException.class, () -> new LinuxSupervisor.Result(0, Map.of(0L, 0), false));
-		expectThrows(NullPointerException.class, () -> new LinuxSupervisor.Result(0, null, false));
+		requireException(IllegalArgumentException.class, () -> new LinuxSupervisor.Result(-1, Map.of(), false));
+		requireException(IllegalArgumentException.class, () -> new LinuxSupervisor.Result(256, Map.of(), false));
+		requireException(IllegalArgumentException.class, () -> new LinuxSupervisor.Result(0, Map.of(0L, 0), false));
+		requireException(NullPointerException.class, () -> new LinuxSupervisor.Result(0, null, false));
 	}
 
 	/**

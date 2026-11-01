@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.LinkOption;
 import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.FileTime;
 import java.time.DateTimeException;
@@ -15,7 +16,9 @@ import tools.jackson.databind.JsonNode;
  */
 final class SourceInputTimes
 {
+	/** Number of nanoseconds per second for range-boundary checks. */
 	private static final long NANOS_PER_SECOND = 1_000_000_000L;
+	/** Exact integer conversion factor without signed-long overflow. */
 	private static final BigInteger INTEGER_NANOS_PER_SECOND = BigInteger.valueOf(NANOS_PER_SECOND);
 
 	/**
@@ -40,11 +43,12 @@ final class SourceInputTimes
 	/**
 	 * Sets access and modification time to the supplied timestamp without changing creation time.
 	 *
+	 * @param scope borrowed shared native bindings, kept open until the operation finishes
 	 * @param path the file or directory
 	 * @param time the required timestamp
 	 * @throws IOException if the filesystem update fails
 	 */
-	static void setTimes(Path path, FileTime time) throws IOException
+	static void setTimes(ToolingScope scope, Path path, FileTime time) throws IOException
 	{
 		Instant instant = time.toInstant();
 		BigInteger nanos = nanos(instant);
@@ -53,9 +57,9 @@ final class SourceInputTimes
 		boolean outsideLong = nanos.compareTo(BigInteger.valueOf(Long.MIN_VALUE)) < 0 ||
 			nanos.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0;
 		if (unix && (negativeFraction || outsideLong))
-			UnixFileTimes.set(path, instant);
+			scope.getUnixFileTimes().set(path, instant);
 		else if (isWindows(path) && (negativeFraction || outsideLong))
-			WindowsFileTimes.set(path, instant);
+			scope.getWindowsFileTimes().set(path, instant);
 		else
 			Files.getFileAttributeView(path, BasicFileAttributeView.class).setTimes(time, time, null);
 	}
@@ -63,21 +67,38 @@ final class SourceInputTimes
 	/**
 	 * Reads modification time while preserving native timestamp precision beyond signed-long epoch nanoseconds.
 	 *
+	 * @param scope borrowed shared native bindings, kept open until the operation finishes
 	 * @param path the source or ancestor directory
 	 * @return its precise native timestamp
 	 * @throws IOException if timestamp lookup fails
 	 */
-	static Instant lastModified(Path path) throws IOException
+	static Instant lastModified(ToolingScope scope, Path path) throws IOException
 	{
-		Instant result = Files.getLastModifiedTime(path).toInstant();
+		return lastModified(scope, path, new LinkOption[0]);
+	}
+
+	/**
+	 * Reads exact modification time without changing the caller's symbolic-link query semantics.
+	 * The no-follow option also applies to the native precision lookup when the JDK rounds out-of-range times.
+	 *
+	 * @param scope borrowed shared native bindings, kept open until the operation finishes
+	 * @param path the source, directory or symbolic link
+	 * @param options no options to follow links, or NOFOLLOW_LINKS to query the link itself
+	 * @return its precise native timestamp
+	 * @throws IOException if timestamp lookup fails
+	 */
+	static Instant lastModified(ToolingScope scope, Path path, LinkOption... options) throws IOException
+	{
+		Instant result = Files.getLastModifiedTime(path, options).toInstant();
+		boolean followLinks = !java.util.Arrays.asList(options).contains(LinkOption.NOFOLLOW_LINKS);
 		long seconds = result.getEpochSecond();
 		// Include boundary seconds because JDK microsecond rounding can cross the signed-long nanosecond boundary.
 		if (seconds <= Long.MIN_VALUE / NANOS_PER_SECOND || seconds >= Long.MAX_VALUE / NANOS_PER_SECOND)
 		{
 			if (isUnix(path))
-				return UnixFileMetadata.lastModified(path);
+				return scope.getUnixFileMetadata().lastModified(path, followLinks);
 			if (isWindows(path))
-				return WindowsFileTimes.lastModified(path);
+				return scope.getWindowsFileTimes().lastModified(path, followLinks);
 		}
 		return result;
 	}

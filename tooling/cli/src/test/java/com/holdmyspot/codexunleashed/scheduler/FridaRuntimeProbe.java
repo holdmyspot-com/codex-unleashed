@@ -1,5 +1,8 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 import java.io.IOException;
 import java.nio.file.Path;
 
@@ -31,7 +34,7 @@ public final class FridaRuntimeProbe
 			throw new IllegalArgumentException("Expected one verified Frida producer path");
 		Path producer = Path.of(args[0]);
 
-		try (var runtime = new FridaRuntime(producer))
+		try (ToolingScope scope = new DefaultToolingScope(); var runtime = new FridaRuntime(scope, producer))
 		{
 			runtime.start();
 			try (var first = runtime.newManager(); var second = runtime.newManager())
@@ -65,7 +68,7 @@ public final class FridaRuntimeProbe
 		}
 		System.out.println("native_runtime_shutdown=returned");
 
-		try (var runtime = new FridaRuntime(producer))
+		try (ToolingScope scope = new DefaultToolingScope(); var runtime = new FridaRuntime(scope, producer))
 		{
 			try
 			{

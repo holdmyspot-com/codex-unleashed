@@ -1,5 +1,8 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayDeque;
@@ -20,6 +23,13 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public final class AllocationHookTest
 {
+    /** Shared immutable values owned by this test class. */
+    private final ToolingScope scope = new DefaultToolingScope();
+
+    /** Releases the scope after every borrower in this class has finished. */
+    @org.testng.annotations.AfterClass(alwaysRun = true)
+    public void closeScope() { scope.close(); }
+
 	/**
 	 * Correlation UUID copied from the accepted native protocol receipt.
 	 */
@@ -32,6 +42,81 @@ public final class AllocationHookTest
 	 */
 	public AllocationHookTest()
 	{
+	}
+
+    /**
+     * Retains exact decoded denial fields through duplicate delivery and native retirement without granting permission.
+     * @throws Exception if the retained read-only inspection contract is absent or protocol setup fails
+     */
+    @Test public void retainsDecodedDenialAfterClosure() throws Exception
+    {
+        try (var localScope = new DefaultToolingScope())
+        {
+            var connection = new Connection();
+            var hook = new AllocationHook(localScope, ATTEMPT, 1, 3216, connection,
+                new AllocationWaits(), "", Duration.ofSeconds(1), System::nanoTime);
+            connection.frames.add(ready());
+            hook.start(); hook.awaitReady(() -> {});
+            requireThat(hook.denials().isEmpty(), "noInventedDenial").isTrue();
+            connection.frames.add(blocked(1)); connection.frames.add(blocked(1)); hook.pump();
+            var snapshot = hook.denials();
+            requireThat(snapshot.size(), "oneOriginalDecodedWait").isEqualTo(1);
+            var receipt = snapshot.getFirst();
+            requireThat(receipt.attempt(), "originalAttemptUuid").isEqualTo(ATTEMPT);
+            requireThat(receipt.pid(), "originalPid").isEqualTo(3216L);
+            AllocationMessages.Blocked decoded = receipt.blocked();
+            requireThat(decoded.identity(), "originalNativeWait").isEqualTo(nativeWait(1));
+            requireThat(decoded.thread(), "actualDecodedThread").isEqualTo(new java.math.BigInteger("3262"));
+            requireThat(decoded.bytes(), "actualDecodedBytes").isEqualTo(new java.math.BigInteger("268435456"));
+            requireThat(decoded.error(), "actualDecodedErrno").isEqualTo(12L);
+            requireException(UnsupportedOperationException.class, snapshot::clear);
+            connection.frames.add(blocked(2)); hook.pump(); hook.close(() -> true);
+            requireThat(snapshot.size(), "immutableEarlierSnapshot").isEqualTo(1);
+            requireThat(hook.denials().size(), "receiptsSurviveNativeClosure").isEqualTo(2);
+            requireThat(connection.posts.isEmpty(), "inspectionNeverPostsPermission").isTrue();
+        }
+    }
+
+	/**
+	 * Allows exact-session retirement only after observed detach, without claiming workload completion.
+	 * @throws IOException if accepted independent cleanup fails
+	 */
+	@Test public void exactDetachedCleanupKeepsWholeWorkloadBarrier() throws IOException
+	{
+		try (var localScope = new DefaultToolingScope())
+		{
+			var connection = new Connection();
+			var hook = new AllocationHook(localScope, ATTEMPT, 1, 3216, connection,
+				new AllocationWaits(), "", Duration.ofSeconds(1), System::nanoTime);
+			hook.start();
+			requireException(IOException.class, hook::closeDetached);
+			requireThat(connection.closes, "liveSessionRetained").isEqualTo(0);
+			connection.detached = true;
+			hook.closeDetached();
+			hook.closeDetached();
+			hook.close(() -> false);
+			requireThat(connection.closes, "exactSessionReleasedOnlyOnce").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Retains uncertain detached release rather than repeating native destruction.
+	 * @throws IOException if controlled setup fails
+	 */
+	@Test public void detachedFailureRetainsCleanupAuthority() throws IOException
+	{
+		try (var localScope = new DefaultToolingScope())
+		{
+			var connection = new Connection();
+			var hook = new AllocationHook(localScope, ATTEMPT, 1, 3216, connection,
+				new AllocationWaits(), "", Duration.ofSeconds(1), System::nanoTime);
+			hook.start();
+			connection.detached = true;
+			connection.closeFailure = new IOException("Unknown native release");
+			requireException(IOException.class, hook::closeDetached);
+			requireException(IOException.class, () -> hook.close(() -> true));
+			requireThat(connection.closes, "uncertainReleaseNotRepeated").isEqualTo(1);
+		}
 	}
 
 	/**
@@ -455,7 +540,7 @@ public final class AllocationHookTest
 	 * @return ready owner whose cleanup remains with the test
 	 * @throws IOException if valid readiness is rejected
 	 */
-	private static AllocationHook readyHook(Connection connection) throws IOException
+	private AllocationHook readyHook(Connection connection) throws IOException
 	{
 		AllocationHook hook = hook(connection, new AllocationWaits());
 		connection.frames.add(ready());
@@ -470,10 +555,10 @@ public final class AllocationHookTest
 	 * @param waits real attempt-wide native wait collection
 	 * @return unstarted hook owner
 	 */
-	private static AllocationHook hook(Connection connection, AllocationWaits waits)
+	private AllocationHook hook(Connection connection, AllocationWaits waits)
 	{
 		long[] now = {0};
-		return new AllocationHook(ATTEMPT, 1, 3216, connection, waits, "", Duration.ofNanos(3), () -> now[0]++);
+		return new AllocationHook(scope, ATTEMPT, 1, 3216, connection, waits, "", Duration.ofNanos(3), () -> now[0]++);
 	}
 
 	/**
@@ -553,6 +638,8 @@ public final class AllocationHookTest
 		 * Number of destruction requests made by the actual Java owner.
 		 */
 		private int closes;
+		/** Independent exact-session detach observation. */
+		private boolean detached;
 		/**
 		 * Controlled unchecked acquisition failure after the start boundary is invoked.
 		 */
@@ -580,6 +667,7 @@ public final class AllocationHookTest
 		@Override public void start(String source) throws IOException { if (startError != null) throw startError; if (startFailure != null) throw startFailure; }
 		@Override public Optional<String> pollMessage() throws IOException { if (readError != null) throw readError; if (readFailure != null) throw readFailure; return Optional.ofNullable(frames.poll()); }
 		@Override public void post(JsonNode permission) throws IOException { posts.add(permission); if (postError != null) throw postError; if (postFailure != null) throw postFailure; onPost.accept(permission); }
+		@Override public boolean detached() { return detached; }
 		@Override public void close() throws IOException { closes++; if (closeError != null) throw closeError; if (closeFailure != null) throw closeFailure; }
 	}
 }

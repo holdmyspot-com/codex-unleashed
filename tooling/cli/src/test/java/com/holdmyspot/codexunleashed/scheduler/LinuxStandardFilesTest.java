@@ -14,10 +14,9 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
+
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Verifies standard-file validation, XML handoff and actual JDK stream redirection.
@@ -63,24 +62,35 @@ public final class LinuxStandardFilesTest
             builder.redirectErrorStream(true);
 
             files.redirect(builder);
-            assertEquals(Files.size(output), 700L, "Configuring redirects must not open their endpoints");
-            assertEquals(Files.size(error), 700L, "Configuring redirects must not truncate their endpoints");
+            requireThat(Files.size(output), "Files.size(output)")
+                .withContext("Configuring redirects must not open their endpoints", "diagnostic")
+                .isEqualTo(700L);
+            requireThat(Files.size(error), "Files.size(error)")
+                .withContext("Configuring redirects must not truncate their endpoints", "diagnostic")
+                .isEqualTo(700L);
             Process child = builder.start();
             try
             {
                 child.getOutputStream().close();
-                assertTrue(child.waitFor(10, TimeUnit.SECONDS), "Stream fixture must finish");
-                assertEquals(child.exitValue(), 7);
-                assertEquals(Files.readAllBytes(error), new byte[] {0, 13, 10, (byte) 255, 42});
-                assertEquals(Files.readAllBytes(output), payload);
-                assertEquals(Files.readAllBytes(input), payload, "The input endpoint remains caller-owned");
+                requireThat(child.waitFor(10, TimeUnit.SECONDS), "child")
+                    .withContext("Stream fixture must finish", "diagnostic")
+                    .isTrue();
+                requireThat(child.exitValue(), "child.exitValue()").isEqualTo(7);
+                requireThat(Files.readAllBytes(error), "Files.readAllBytes(error)")
+                    .isEqualTo(new byte[] {0, 13, 10, (byte) 255, 42});
+                requireThat(Files.readAllBytes(output), "Files.readAllBytes(output)").isEqualTo(payload);
+                requireThat(Files.readAllBytes(input), "Files.readAllBytes(input)")
+                    .withContext("The input endpoint remains caller-owned", "diagnostic")
+                    .isEqualTo(payload);
             }
             finally
             {
                 if (child.isAlive())
                 {
                     child.destroyForcibly();
-                    assertTrue(child.waitFor(10, TimeUnit.SECONDS), "Stream fixture must be reaped");
+                    requireThat(child.waitFor(10, TimeUnit.SECONDS), "child")
+                        .withContext("Stream fixture must be reaped", "diagnostic")
+                        .isTrue();
                 }
             }
         }
@@ -95,16 +105,21 @@ public final class LinuxStandardFilesTest
 
     /**
      * Supplies unresolved endpoints with XML-sensitive characters and an aliased endpoint.
-     * @return valid endpoints whose construction does not require filesystem inspection
+     * Unix filesystems also exercise angle brackets, tabs and newlines, which Windows paths reject.
+     * @return endpoints valid on the host whose construction does not require filesystem inspection
      */
     @DataProvider
     public Object[][] endpointPaths()
     {
         Path parent = unresolvedEndpoint();
-        return new Object[][] {
-            {new LinuxProcessTree.StandardFiles(parent.resolve("in &<>\t\nΩ"), parent.resolve("output"), parent.resolve("error"))},
-            {new LinuxProcessTree.StandardFiles(parent, parent, parent)}
-        };
+        var cases = new ArrayList<Object[]>();
+        cases.add(new Object[] {new LinuxProcessTree.StandardFiles(parent.resolve("in &' Ω"),
+            parent.resolve("output"), parent.resolve("error"))});
+        cases.add(new Object[] {new LinuxProcessTree.StandardFiles(parent, parent, parent)});
+        if (parent.getFileSystem().getSeparator().equals("/"))
+            cases.add(new Object[] {new LinuxProcessTree.StandardFiles(parent.resolve("in &<>\t\nΩ"),
+                parent.resolve("output"), parent.resolve("error"))});
+        return cases.toArray(Object[][]::new);
     }
 
     /**
@@ -117,12 +132,12 @@ public final class LinuxStandardFilesTest
     {
         Properties values = new Properties();
         files.writeTo(values);
-        assertEquals(values.stringPropertyNames(), Set.copyOf(STREAM_KEYS));
+        requireThat(values.stringPropertyNames(), "values.stringPropertyNames()").isEqualTo(Set.copyOf(STREAM_KEYS));
 
         var restored = LinuxProcessTree.StandardFiles.readFrom(xmlRoundTrip(values));
-        assertEquals(restored.input(), files.input());
-        assertEquals(restored.output(), files.output());
-        assertEquals(restored.error(), files.error());
+        requireThat(restored.input(), "restored.input()").isEqualTo(files.input());
+        requireThat(restored.output(), "restored.output()").isEqualTo(files.output());
+        requireThat(restored.error(), "restored.error()").isEqualTo(files.error());
     }
 
     /**
@@ -134,7 +149,7 @@ public final class LinuxStandardFilesTest
     {
         Properties values = new Properties();
         values.setProperty("uid", "1001");
-        assertNull(LinuxProcessTree.StandardFiles.readFrom(xmlRoundTrip(values)));
+        requireThat(LinuxProcessTree.StandardFiles.readFrom(xmlRoundTrip(values)), "LinuxProcessTree").isNull();
     }
 
     /**
@@ -173,7 +188,7 @@ public final class LinuxStandardFilesTest
     public void rejectsInvalidEndpointProperties(Properties values) throws IOException
     {
         Properties decoded = xmlRoundTrip(values);
-        expectThrows(IOException.class, () -> LinuxProcessTree.StandardFiles.readFrom(decoded));
+        requireException(IOException.class, () -> LinuxProcessTree.StandardFiles.readFrom(decoded));
     }
 
     /**
@@ -202,7 +217,7 @@ public final class LinuxStandardFilesTest
         Path[] paths = {endpoint, endpoint, endpoint};
         paths[position] = invalid;
         Class<? extends RuntimeException> failure = invalid == null ? NullPointerException.class : IllegalArgumentException.class;
-        expectThrows(failure, () -> new LinuxProcessTree.StandardFiles(paths[0], paths[1], paths[2]));
+        requireException(failure, () -> new LinuxProcessTree.StandardFiles(paths[0], paths[1], paths[2]));
     }
 
     /**

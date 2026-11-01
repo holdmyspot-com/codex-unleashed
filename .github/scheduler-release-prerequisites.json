@@ -1,0 +1,40 @@
+{
+  "scope": "Candidate prerequisites; release execution and acceptance are separate and unrun. Bazel has no supported public activation.",
+  "targets": {
+    "x86_64-unknown-linux-musl": {
+      "cargoNativeReady": true,
+      "unmet": [],
+      "releaseThroughScheduler": "unrun"
+    },
+    "aarch64-unknown-linux-musl": {
+      "cargoNativeReady": true,
+      "unmet": [],
+      "releaseThroughScheduler": "unrun"
+    },
+    "aarch64-apple-darwin": {
+      "cargoNativeReady": false,
+      "unmet": [
+        "ordinary descriptor close FAILED_UNWAIVED"
+      ],
+      "releaseThroughScheduler": "unrun"
+    },
+    "x86_64-apple-darwin": {
+      "cargoNativeReady": false,
+      "unmet": [
+        "ordinary descriptor close FAILED_UNWAIVED",
+        "physical pressure recovery UNMET at safe 6GiB bound"
+      ],
+      "releaseThroughScheduler": "unrun"
+    },
+    "x86_64-pc-windows-msvc": {
+      "cargoNativeReady": true,
+      "unmet": [],
+      "releaseThroughScheduler": "unrun"
+    },
+    "aarch64-pc-windows-msvc": {
+      "cargoNativeReady": true,
+      "unmet": [],
+      "releaseThroughScheduler": "unrun"
+    }
+  }
+}

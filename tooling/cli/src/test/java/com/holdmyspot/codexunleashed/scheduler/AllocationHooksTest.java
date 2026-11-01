@@ -1,5 +1,8 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -12,7 +15,6 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -34,18 +36,18 @@ public final class AllocationHooksTest
 			requireThat(AllocationHooks.credentialsMatch(invalid, 2, 3), "incomplete").isEqualTo(false, "expected");
 	}
 
-	/** Root correlation is exact and unsupported fork inheritance stays held.
+	/** Root correlation is exact and known child origins require independent image verification.
 	 * @throws IOException if valid root/known origin is rejected
 	 */
 	@Test
-	public void validatesRootAndRejectsForkInheritance() throws IOException
+	public void validatesRootAndKnownChildOrigins() throws IOException
 	{
 		AllocationHooks.verifyRootEvent(new FridaRuntime.Child(5, 5, 1, "/worker"), 5, "/worker");
 		for (var event : List.of(new FridaRuntime.Child(6, 5, 1, "/worker"),
 			new FridaRuntime.Child(5, 6, 1, "/worker"), new FridaRuntime.Child(5, 5, 0, "/worker"),
 			new FridaRuntime.Child(5, 5, 1, "/different")))
 			requireException(IOException.class, () -> AllocationHooks.verifyRootEvent(event, 5, "/worker"));
-		requireException(IOException.class, () -> AllocationHooks.verifyOrigin(0));
+		AllocationHooks.verifyOrigin(0);
 		requireException(IOException.class, () -> AllocationHooks.verifyOrigin(9));
 		AllocationHooks.verifyOrigin(1);
 		AllocationHooks.verifyOrigin(2);
@@ -69,14 +71,19 @@ public final class AllocationHooksTest
 	@Test
 	public void preservesLeaderArguments() throws IOException
 	{
-		var launch = launch(List.of("/worker", "a b", "quote\"", "é", ""), Map.of("VALUE", "$(x)\n'\""));
-		String result = AllocationHooks.leaderProgram("__LAUNCH__", launch);
-		JsonNode node = JsonMapper.builder().build().readTree(result);
-		requireThat(node.path("command").get(1).asString(), "space").isEqualTo("a b", "expected");
-		requireThat(node.path("command").get(4).asString(), "empty").isEqualTo("", "expected");
-		requireThat(node.path("environment").path("VALUE").asString(), "literalEnvironment").isEqualTo("$(x)\n'\"", "expected");
-		requireException(IOException.class, () -> AllocationHooks.leaderProgram("", launch));
-		requireException(IOException.class, () -> AllocationHooks.leaderProgram("__LAUNCH____LAUNCH__", launch));
+		try (var scope = new DefaultToolingScope())
+		{
+			var launch = launch(List.of("/worker", "a b", "quote\"", "é", ""), Map.of("VALUE", "$(x)\n'\""));
+			String result = AllocationHooks.leaderProgram(scope, "__LAUNCH__", launch);
+			JsonNode node = scope.getLeaderJsonMapper().readTree(result);
+			requireThat(node.path("command").get(0).asString(), "executable")
+				.isEqualTo(launch.command().getFirst(), "hostAbsoluteFixtureExecutable");
+			requireThat(node.path("command").get(1).asString(), "space").isEqualTo("a b", "expected");
+			requireThat(node.path("command").get(4).asString(), "empty").isEqualTo("", "expected");
+			requireThat(node.path("environment").path("VALUE").asString(), "literalEnvironment").isEqualTo("$(x)\n'\"", "expected");
+			requireException(IOException.class, () -> AllocationHooks.leaderProgram(scope, "", launch));
+			requireException(IOException.class, () -> AllocationHooks.leaderProgram(scope, "__LAUNCH____LAUNCH__", launch));
+		}
 	}
 
 	/** New routing never posts to another generation or resends an uncertain permission.
@@ -85,45 +92,51 @@ public final class AllocationHooksTest
 	@Test
 	public void routesExactGenerationWithoutResend() throws IOException
 	{
-		Connection connection = new Connection();
-		AllocationWaits waits = new AllocationWaits();
-		AllocationHook hook = ready(connection, waits);
-		try
+		try (var scope = new DefaultToolingScope())
 		{
-			connection.frames.add(frame("blocked", 1));
-			hook.pump();
-			requireException(IOException.class, () -> AllocationHooks.installation(Map.of(1L, hook), new AllocationWaits.Wait(2, 1)));
-			requireThat(connection.posts.size(), "wrongGenerationNoPost").isEqualTo(0, "expected");
-			connection.postFailure = new IOException("Retained uncertain post");
-			requireException(IOException.class, () -> AllocationHooks.installation(Map.of(1L, hook),
-				new AllocationWaits.Wait(1, 1)).grant(new AllocationWaits.Wait(1, 1), () -> {}));
-			requireException(IOException.class, () -> hook.grant(new AllocationWaits.Wait(1, 1), () -> {}));
-			requireThat(connection.posts.size(), "noResend").isEqualTo(1, "expected");
+			Connection connection = new Connection();
+			AllocationWaits waits = new AllocationWaits();
+			AllocationHook hook = ready(scope, connection, waits);
+			try
+			{
+				connection.frames.add(frame("blocked", 1));
+				hook.pump();
+				requireException(IOException.class, () -> AllocationHooks.installation(Map.of(1L, hook), new AllocationWaits.Wait(2, 1)));
+				requireThat(connection.posts.size(), "wrongGenerationNoPost").isEqualTo(0, "expected");
+				connection.postFailure = new IOException("Retained uncertain post");
+				requireException(IOException.class, () -> AllocationHooks.installation(Map.of(1L, hook),
+					new AllocationWaits.Wait(1, 1)).grant(new AllocationWaits.Wait(1, 1), () -> {}));
+				requireException(IOException.class, () -> hook.grant(new AllocationWaits.Wait(1, 1), () -> {}));
+				requireThat(connection.posts.size(), "noResend").isEqualTo(1, "expected");
+			}
+			finally { hook.close(() -> true); }
 		}
-		finally { hook.close(() -> true); }
 	}
 
-	/** Creates immutable resource-free launch inputs.
-	 * @param argv workload arguments
+	/** Creates immutable resource-free launch inputs with a host-absolute fixture executable.
+	 * @param argv fixture executable path followed by workload arguments, copied without changing later arguments
 	 * @param environment workload environment
 	 * @return configured attached launch
 	 */
 	static LinuxProcessTree.Launch launch(List<String> argv, Map<String, String> environment)
 	{
-		return new LinuxProcessTree.Launch(Path.of("/groups"), Path.of("/scratch"), Path.of("/java"),
-			Path.of("/tool.jar"), argv, environment, Path.of("/work"), 2, 3,
+		var command = new ArrayList<>(argv);
+		command.set(0, Path.of(command.getFirst()).toAbsolutePath().toString());
+		return new LinuxProcessTree.Launch(Path.of("/groups").toAbsolutePath(), Path.of("/scratch").toAbsolutePath(), Path.of("/java").toAbsolutePath(),
+			Path.of("/tool.jar").toAbsolutePath(), command, environment, Path.of("/work").toAbsolutePath(), 2, 3,
 			LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC);
 	}
 
 	/** Starts the real hook consumer over receipt-shaped copied frames.
+	 * @param scope borrowed mapper values retained by the test owner
 	 * @param connection copied-frame transport
 	 * @param waits actual batch owner
 	 * @return ready hook owned by caller
 	 * @throws IOException if real readiness fails
 	 */
-	static AllocationHook ready(Connection connection, AllocationWaits waits) throws IOException
+	static AllocationHook ready(ToolingScope scope, Connection connection, AllocationWaits waits) throws IOException
 	{
-		AllocationHook hook = new AllocationHook(IDENTITY, 1, 3216, connection, waits, "", Duration.ofSeconds(1), System::nanoTime);
+		AllocationHook hook = new AllocationHook(scope, IDENTITY, 1, 3216, connection, waits, "", Duration.ofSeconds(1), System::nanoTime);
 		connection.frames.add(frame("ready", 0));
 		hook.start();
 		hook.awaitReady(() -> {});

@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Objects;
@@ -417,6 +419,8 @@ final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
     {
         /** Borrowed started Frida runtime; this adapter never closes it. */
         private final FridaRuntime runtime;
+        /** Borrowed invocation values retained through instrumentation disposal. */
+        private final ToolingScope scope;
         /** Borrowed measurement adapter; registrations do not transfer process ownership. */
         private final WindowsMeasurements measurements;
         /** Copied stable action and workload inputs; standard handles remain borrowed. */
@@ -427,6 +431,8 @@ final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
         private final UUID identity;
         /** Positive bounded native control interval. */
         private final Duration timeout;
+        /** Optional Cargo protocol installed through the same original native manager before any image resumes. */
+        private final WindowsAllocationHooks.ImageHooks imageHooks;
         /** Checked capsule retaining the partially acquired native owner after preparation fails. */
         private WindowsProcess.PreparationFailure preparationFailure;
         /** Measurement registration retained through STOPPING and actual whole-Job zero. */
@@ -434,6 +440,7 @@ final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
 
         /**
          * Borrows native services and copied inputs without acquiring process or instrumentation owners.
+         * @param scope borrowed shared values; the caller retains ownership through all operations
          * @param runtime borrowed started Frida runtime
          * @param measurements borrowed Windows measurement adapter
          * @param command copied stable action and workload inputs
@@ -441,15 +448,35 @@ final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
          * @param identity unique attempt correlation UUID
          * @param timeout positive representable control interval
          */
-        NativeResources(FridaRuntime runtime, WindowsMeasurements measurements, WindowsAttempts.Command command,
+        NativeResources(ToolingScope scope, FridaRuntime runtime, WindowsMeasurements measurements, WindowsAttempts.Command command,
             long sequence, UUID identity, Duration timeout)
         {
+            this(scope, runtime, measurements, command, sequence, identity, timeout, null);
+        }
+
+        /**
+         * Composes an optional image protocol without acquiring a native owner.
+         * @param scope borrowed shared values retained through cleanup
+         * @param runtime borrowed started native runtime
+         * @param measurements borrowed native measurement adapter
+         * @param command immutable action launch and borrowed standard handles
+         * @param sequence reserved global queue ordinal
+         * @param identity unique attempt correlation
+         * @param timeout positive bounded control interval
+         * @param imageHooks optional protocol sharing each image's original native manager
+         */
+        NativeResources(ToolingScope scope, FridaRuntime runtime, WindowsMeasurements measurements,
+            WindowsAttempts.Command command, long sequence, UUID identity, Duration timeout,
+            WindowsAllocationHooks.ImageHooks imageHooks)
+        {
+            this.scope = scope;
             this.runtime = runtime;
             this.measurements = measurements;
             this.command = command;
             this.sequence = sequence;
             this.identity = identity;
             this.timeout = timeout;
+            this.imageHooks = imageHooks;
         }
 
         @Override public Process prepare() throws IOException
@@ -458,7 +485,7 @@ final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
             NativeProcess bridge = new NativeProcess();
             try
             {
-                bridge.process = WindowsProcess.prepare(command.arguments(), command.directory(), command.environment(),
+                bridge.process = WindowsProcess.prepare(scope, command.arguments(), command.directory(), command.environment(),
                     command.input(), command.output(), command.error());
                 return bridge;
             }
@@ -471,7 +498,7 @@ final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
         }
         @Override public Hooks hooks(Process process, AllocationWaits waits, AllocationHook.Pump peers)
         {
-            return new WindowsAllocationHooks(identity, runtime, ((NativeProcess) process).process, waits, timeout, peers);
+            return new WindowsAllocationHooks(scope, identity, runtime, ((NativeProcess) process).process, waits, timeout, peers, imageHooks);
         }
         @Override public void close()
         {

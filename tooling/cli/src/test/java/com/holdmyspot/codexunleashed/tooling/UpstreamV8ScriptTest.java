@@ -8,7 +8,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Verifies unchanged V8 script extraction through the public tooling command.
@@ -30,8 +31,11 @@ public final class UpstreamV8ScriptTest
 	{
 		String block = "runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: |\n        echo ready\n";
 		String flow = "{runs: {using: composite, steps: [{shell: bash, run: \"echo ready\\n\"}]}}";
-		assertEquals(UpstreamV8Script.extract(block), "echo ready\n");
-		assertEquals(UpstreamV8Script.extract(flow), "echo ready\n");
+		try (ToolingScope scope = new DefaultToolingScope())
+		{
+			requireThat(UpstreamV8Script.extract(scope, block), "blockScript").isEqualTo("echo ready\n");
+			requireThat(UpstreamV8Script.extract(scope, flow), "flowScript").isEqualTo("echo ready\n");
+		}
 	}
 
 	/**
@@ -68,7 +72,10 @@ public final class UpstreamV8ScriptTest
 	@Test(dataProvider = "unsupportedActions", expectedExceptions = IllegalArgumentException.class)
 	public void rejectsUnsupportedActions(String action)
 	{
-		UpstreamV8Script.extract(action);
+		try (ToolingScope scope = new DefaultToolingScope())
+		{
+			UpstreamV8Script.extract(scope, action);
+		}
 	}
 
 	/**
@@ -77,8 +84,11 @@ public final class UpstreamV8ScriptTest
 	@Test
 	public void acceptsUpstreamTargetBinding()
 	{
-		assertEquals(UpstreamV8Script.extract("runs: {using: composite, steps: [{shell: bash, " +
-			"env: {TARGET: '${{ inputs.target }}'}, run: echo}]}"), "echo");
+		try (ToolingScope scope = new DefaultToolingScope())
+		{
+			requireThat(UpstreamV8Script.extract(scope, "runs: {using: composite, steps: [{shell: bash, " +
+				"env: {TARGET: '${{ inputs.target }}'}, run: echo}]}"), "script").isEqualTo("echo");
+		}
 	}
 
 	/**
@@ -100,8 +110,11 @@ public final class UpstreamV8ScriptTest
 			{
 				int status = Main.run(new String[]{"upstream-v8-script", action.toString()},
 					InputStream.nullInputStream(), out, err);
-				assertEquals(status, 0, diagnostics.toString(StandardCharsets.UTF_8));
-				assertEquals(output.toString(StandardCharsets.UTF_8), "echo ready\n");
+				requireThat(status, "status")
+					.withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic")
+					.isEqualTo(0);
+				requireThat(output.toString(StandardCharsets.UTF_8), "output.toString(StandardCharsets.UTF_8)")
+					.isEqualTo("echo ready\n");
 			}
 		}
 		finally

@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -220,10 +221,13 @@ public final class WindowsCargoJobserverTest
 	public void validatesBeforeAcquisition() throws Exception
 	{
 		Model calls = new Model();
-		for (int jobs : List.of(0, -1))
+		try (var scope = new DefaultToolingScope())
 		{
-			requireException(IllegalArgumentException.class, () -> WindowsCargoJobserver.SharedSecrets.create(jobs, calls));
-			requireException(IllegalArgumentException.class, () -> WindowsCargoJobserver.create(jobs));
+			for (int jobs : List.of(0, -1))
+			{
+				requireException(IllegalArgumentException.class, () -> WindowsCargoJobserver.SharedSecrets.create(jobs, calls));
+				requireException(IllegalArgumentException.class, () -> WindowsCargoJobserver.create(scope, jobs));
+			}
 		}
 		requireException(NullPointerException.class, () -> WindowsCargoJobserver.SharedSecrets.create(1, null));
 		requireThat(calls.creates, "nativeCreates").isEqualTo(0, "expected");

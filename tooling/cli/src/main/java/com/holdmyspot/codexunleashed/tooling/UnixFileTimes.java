@@ -17,11 +17,16 @@ import java.time.Instant;
  */
 public final class UnixFileTimes
 {
+	/** Immutable native binding borrowed by operations within this service's invocation scope. */
+	private final Binding binding;
+
 	/**
-	 * Prevents construction.
+	 * Borrows the platform linker and resolves the immutable Unix timestamp binding.
+	 * @param scope invocation-owned shared services, kept open until all operations finish
 	 */
-	private UnixFileTimes()
+	UnixFileTimes(ToolingScope scope)
 	{
+		binding = new Binding(scope.getNativeLinker());
 	}
 
 	/**
@@ -48,17 +53,21 @@ public final class UnixFileTimes
 	 */
 	private static final class Binding
 	{
-		private static final Linker LINKER = Linker.nativeLinker();
-		private static final MemoryLayout TIMESPEC = timespec();
+		private final Linker linker;
+		private final MemoryLayout timespec;
 		private static final MemoryLayout STATE = Linker.Option.captureStateLayout();
 		private static final long ERRNO_OFFSET = STATE.byteOffset(MemoryLayout.PathElement.groupElement("errno"));
-		private static final Setter SETTER = bind();
+		private final Setter setter;
 
 		/**
-		 * Prevents construction.
+		 * Resolves signatures without acquiring a library or native handle lifetime.
+		 * @param linker platform linker borrowed from the enclosing invocation scope
 		 */
-		private Binding()
+		private Binding(Linker linker)
 		{
+			this.linker = linker;
+			timespec = timespec();
+			setter = bind();
 		}
 
 		/**
@@ -67,9 +76,9 @@ public final class UnixFileTimes
 		 * @return a pair of native C longs
 		 * @throws UnsupportedOperationException if the platform has a different C long size
 		 */
-		private static MemoryLayout timespec()
+		private MemoryLayout timespec()
 		{
-			MemoryLayout cLong = LINKER.canonicalLayouts().get("long");
+			MemoryLayout cLong = linker.canonicalLayouts().get("long");
 			if (cLong.byteSize() != Long.BYTES)
 				throw new UnsupportedOperationException("Exact Unix timestamps require a 64-bit C long");
 			return MemoryLayout.structLayout(cLong.withName("seconds"), cLong.withName("nanos"));
@@ -83,9 +92,9 @@ public final class UnixFileTimes
 		// The public FFM API intrinsically marks downcalls restricted. The launcher grants this module native access;
 		// the fixed signature, 64-bit layouts and confined allocations are checked and exercised by timestamp tests.
 		@SuppressWarnings("restricted")
-		private static Setter bind()
+		private Setter bind()
 		{
-			MethodHandle handle = LINKER.downcallHandle(LINKER.defaultLookup().find("utimensat").
+			MethodHandle handle = linker.downcallHandle(linker.defaultLookup().find("utimensat").
 				orElseThrow(() -> new UnsupportedOperationException("The Unix runtime does not provide utimensat")),
 				FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
 					ValueLayout.ADDRESS, ValueLayout.JAVA_INT), Linker.Option.captureCallState("errno"));
@@ -100,7 +109,7 @@ public final class UnixFileTimes
 	 * @param instant the required timestamp
 	 * @throws IOException if the native filesystem operation fails
 	 */
-	static void set(Path path, Instant instant) throws IOException
+	void set(Path path, Instant instant) throws IOException
 	{
 		// WORKAROUND: JDK 27's UnixNativeDispatcher divides signed epoch nanoseconds using C truncation,
 		// producing an invalid negative tv_nsec, and UnixFileAttributeViews retries with the time clamped to zero.
@@ -108,16 +117,16 @@ public final class UnixFileTimes
 		// Remove this adapter when unchanged negative-fraction and out-of-long-range tests pass through Files APIs.
 		try (Arena arena = Arena.ofConfined())
 		{
-			MemorySegment times = arena.allocate(MemoryLayout.sequenceLayout(2, Binding.TIMESPEC));
+			MemorySegment times = arena.allocate(MemoryLayout.sequenceLayout(2, binding.timespec));
 			for (int index = 0; index < 2; index += 1)
 			{
-				long offset = index * Binding.TIMESPEC.byteSize();
+				long offset = index * binding.timespec.byteSize();
 				times.set(ValueLayout.JAVA_LONG, offset, instant.getEpochSecond());
 				times.set(ValueLayout.JAVA_LONG, offset + Long.BYTES, instant.getNano());
 			}
 			MemorySegment state = arena.allocate(Binding.STATE);
 			MemorySegment name = arena.allocateFrom(path.toAbsolutePath().toString());
-			int status = Binding.SETTER.invoke(state, 0, name, times, 0);
+			int status = binding.setter.invoke(state, 0, name, times, 0);
 			if (status != 0)
 				throw new IOException("Cannot set exact Unix timestamp for " + path + ": errno=" +
 					state.get(ValueLayout.JAVA_INT, Binding.ERRNO_OFFSET));

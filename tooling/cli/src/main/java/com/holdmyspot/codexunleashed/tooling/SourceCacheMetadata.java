@@ -11,9 +11,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import tools.jackson.core.JacksonException;
-import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Interprets Cargo metadata only when the requested cache operation consumes its fields.
@@ -21,8 +19,6 @@ import tools.jackson.databind.json.JsonMapper;
 public final class SourceCacheMetadata
 {
 	private static final Set<String> LIBRARY_KINDS = Set.of("lib", "rlib", "dylib", "cdylib", "staticlib", "proc-macro");
-	private static final JsonMapper JSON = JsonMapper.builder().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).
-		build();
 	private final JsonNode document;
 
 	/**
@@ -38,17 +34,19 @@ public final class SourceCacheMetadata
 	/**
 	 * Reads Cargo's metadata JSON without imposing fields unused by record-only operations.
 	 *
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param text complete Cargo output
 	 * @return the metadata view
 	 * @throws NullPointerException if text is null
 	 * @throws IOException if the output is not exactly one JSON object
 	 */
-	public static SourceCacheMetadata parse(String text) throws IOException
+	public static SourceCacheMetadata parse(ToolingScope scope, String text) throws IOException
 	{
+		Objects.requireNonNull(scope, "scope");
 		Objects.requireNonNull(text, "text");
 		try
 		{
-			JsonNode document = JSON.readTree(text);
+			JsonNode document = scope.getJsonMapper().readTree(text);
 			if (document == null || !document.isObject())
 				throw new IOException("Cargo metadata must be a JSON object");
 			return new SourceCacheMetadata(document);

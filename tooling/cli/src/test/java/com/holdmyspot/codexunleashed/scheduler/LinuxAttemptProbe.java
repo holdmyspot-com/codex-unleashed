@@ -1,5 +1,8 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -8,7 +11,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import tools.jackson.databind.json.JsonMapper;
 
 /** Explicit opt-in native driver for the actual Linux factory, queue and measurement authority.
  * It requires a disposable privileged Linux host and a root-only impossible-allocation fixture.
@@ -44,7 +46,8 @@ public final class LinuxAttemptProbe
 		// Work directory is explicitly prepared by the disposable-host setup for the workload identity.
 		Path work = scratch.resolve("work");
 		if (Files.isDirectory(work) == false) throw new IOException("Owned workload directory must already exist");
-		FridaRuntime runtime = new FridaRuntime(frida);
+		ToolingScope scope = new DefaultToolingScope();
+		FridaRuntime runtime = new FridaRuntime(scope, frida);
 		LinuxAuthority authority = null;
 		LinuxAttempts attempts = null;
 		JobQueue<LinuxSupervisor.Result> queue = null;
@@ -64,8 +67,8 @@ public final class LinuxAttemptProbe
 			if (host.availableBytes() < 536870912L) throw new IOException("Native gate requires 512 MiB verified headroom");
 			var launch = new LinuxProcessTree.Launch(admission, scratch, java, jar, List.of(fixture.toString()),
 				Map.of("PATH", "/usr/bin:/bin"), work, uid, gid, LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC);
-			var command = new LinuxAttempts.Command(launch, new LinuxProcessTree.StandardFiles(input, output, error));
-			attempts = new LinuxAttempts(UUID.randomUUID(), runtime, authority, Map.of("fixture", command), timeout);
+			var command = new LinuxAttempts.FilesCommand(launch, new LinuxProcessTree.StandardFiles(input, output, error));
+			attempts = new LinuxAttempts(scope, UUID.randomUUID(), runtime, authority, Map.of("fixture", command), timeout);
 			queue = new JobQueue<>(new Policy.Budget(268435456L, 1), measurements, attempts);
 			queue.submit("fixture", 268435456L);
 			long began = System.nanoTime();
@@ -92,7 +95,7 @@ public final class LinuxAttemptProbe
 			receipt.put("job", job);
 			receipt.put("residentBytes", resident);
 			receipt.put("descendantsBefore", observeDescendants());
-			Files.writeString(scratch.resolve("before.json"), JsonMapper.builder().build().writeValueAsString(receipt));
+			Files.writeString(scratch.resolve("before.json"), scope.getJsonMapper().writeValueAsString(receipt));
 			queue.close();
 			if (queue.completedAttempts().isEmpty() == false || attempts.hasOpenAttempts())
 				throw new IOException("Unfinished close invented completion or retained an owner");
@@ -121,8 +124,9 @@ public final class LinuxAttemptProbe
 			try { receipt.put("descendantsAfter", observeDescendants()); }
 			catch (Throwable cause) { first = combine(first, cause); }
 			receipt.put("failure", first == null ? "" : first.toString());
-			try { Files.writeString(scratch.resolve("result.json"), JsonMapper.builder().build().writeValueAsString(receipt)); }
+			try { Files.writeString(scratch.resolve("result.json"), scope.getJsonMapper().writeValueAsString(receipt)); }
 			catch (Throwable cause) { first = combine(first, cause); }
+			scope.close();
 		}
 		if (first instanceof Error fatal) throw fatal;
 		if (first instanceof Exception failure) throw failure;

@@ -1,9 +1,10 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
-import java.lang.foreign.Linker;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
@@ -46,11 +47,12 @@ final class Libcgroup implements AutoCloseable {
         this.mountEnd = mountEnd;
     }
 
-    static Libcgroup open(Path library) throws IOException {
+    static Libcgroup open(ToolingScope scope, Path library) throws IOException {
+        Objects.requireNonNull(scope, "scope");
         Objects.requireNonNull(library, "library");
         var arena = Arena.ofConfined();
         try {
-            var linker = Linker.nativeLinker();
+            var linker = scope.getNativeLinker();
             var lookup = SymbolLookup.libraryLookup(library, arena);
             var init = linker.downcallHandle(lookup.find("cgroup_init").orElseThrow(),
                 FunctionDescriptor.of(ValueLayout.JAVA_INT));

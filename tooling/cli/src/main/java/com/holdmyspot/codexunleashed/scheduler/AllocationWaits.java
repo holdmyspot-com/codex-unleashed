@@ -25,6 +25,8 @@ final class AllocationWaits
 	private final Set<Wait> seen = new LinkedHashSet<>();
 	/** Unselected identities in first-accepted order; native publication may reorder their sequence numbers. */
 	private final Set<Wait> pending = new LinkedHashSet<>();
+	/** Installations whose old image cannot execute again, retained to reject late copied reports. */
+	private final Set<Long> retired = new LinkedHashSet<>();
 	/** Frozen batch retained until every continuation succeeds; retained after uncertain partial effects. */
 	private List<Wait> selected = List.of();
 	/** Next per-attempt queue wait sequence, beginning at zero; successor checked before publication. */
@@ -54,7 +56,7 @@ final class AllocationWaits
 	boolean blocked(Wait wait)
 	{
 		Objects.requireNonNull(wait, "wait may not be null");
-		if (stopped || seen.add(wait) == false)
+		if (stopped || retired.contains(wait.installation()) || seen.add(wait) == false)
 			return false;
 		pending.add(wait);
 		return true;
@@ -131,6 +133,29 @@ final class AllocationWaits
 		{
 			resuming = false;
 		}
+	}
+
+	/**
+	 * Withdraws one installation after the adapter independently proves that its old image cannot execute again.
+	 * Removes unselected native waits and ignores future reports from that installation. An already published queue
+	 * wait remains valid: its continuation may acknowledge an empty batch, preserving the queue's sequence contract.
+	 * Retained history and uncertain selected effects are never discarded. Native resource ownership is unchanged.
+	 *
+	 * @param installation positive installation whose image was replaced by a verified held exec
+	 * @throws IllegalArgumentException if the installation is nonpositive
+	 * @throws IllegalStateException if stopped or called from a continuation
+	 * @throws IOException if a previous continuation has an unresolved native effect
+	 */
+	void retireInstallation(long installation) throws IOException
+	{
+		if (installation <= 0)
+			throw new IllegalArgumentException("Retired installation must be positive");
+		requireOutsideContinuation();
+		if (stopped)
+			throw new IllegalStateException("Allocation continuation authority has stopped");
+		requireCertain();
+		retired.add(installation);
+		pending.removeIf(wait -> wait.installation() == installation);
 	}
 
 	/**

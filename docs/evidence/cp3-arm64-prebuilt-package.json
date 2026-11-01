@@ -1,0 +1,266 @@
+{
+  "task_contract": "acknowledged",
+  "status": "COMPLETE_REAL_ARM64_PRODUCER_TO_ACTUAL_PREBUILT_MAVEN_PACKAGE_ACCEPTANCE",
+  "scope": "Independent immutable318 review, real remote ARM64 seven-binary production build, compiler-free direct and actual Maven-profile packaging, installed entrypoint boundaries and complete infrastructure cleanup only.",
+  "source": {
+    "archiveSha256": "5164fbff5abb660a01bbee15cd9b28f437502982b8fe3715a812e7892ef37c27",
+    "manifestSha256": "8d20ad8fa778a1d4b663b34368e7a995af0713500980191350381be49d31fd76",
+    "inputs": 318,
+    "threeDeterminingPathHashes": {
+      "tooling/cli/src/build/java/com/holdmyspot/codexunleashed/distribution/BazelBackendMain.java": "93e2234b8275bc7f2ac27f894e59ef35a1a69137274f342d2afb730e618d4eff",
+      "tooling/cli/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java": "1468f3b03f7d67fea7ab9597721c88e0b71c2038eda1307e57190044e300c0a2",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelBackend.java": "ac9b9fa305f1ce219c101b2f8b967b1bc75f0fed1601e4840f24f7a0127613b3"
+    },
+    "allBytesAndModesUnchangedBeforeCleanup": true,
+    "productionEdits": 0,
+    "sourceCorrectionsRequired": [],
+    "unrelatedTestFixtureSuccessorAbsorbed": false,
+    "fridaPin": "17.24.3",
+    "schedulerActivation": false
+  },
+  "review": {
+    "producer": "Stages exact packaged Linux launcher C; compiles both launchers on authentic ARM64 using existing gcc producer; manifest pins launcher/source/header inputs, hashes and ELF identity.",
+    "consumer": "LinuxBazelBackend validates exact seven-name set, regular nonsymlink executable hashes and little-endian ELF64 ARM64 identity.",
+    "package": "Explicit Linux ARM64 --bazel-backend copies the validated native launchers and backend; actual runtime,bazel-native-backend Maven profile uses the same path; .complete exists only after packaging.",
+    "requiredSourceCorrection": null
+  },
+  "runner": {
+    "provider": "GitHub Actions standard ubuntu-24.04-arm",
+    "run": 41314315260,
+    "job": 124871034247,
+    "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/41314315260/job/124871034247",
+    "headSha": "2b83c058f989fdd4b7c0034685cac5f60416a9eb",
+    "workflow": "baseline-linux-focused-runtime.yml",
+    "actualArchitecture": "aarch64",
+    "soleSshOwnerExecSession": 87659,
+    "connectedBeforeChangedCommands": true,
+    "providerConclusion": "failure",
+    "providerConclusionReason": "Deliberate withholding of focused-runtime/client-ready fails workflow readiness and skips unrelated native commands; changed acceptance commands run through authenticated SSH. Native acceptance verdict is independent.",
+    "providerPostSteps": [
+      {
+        "number": 46,
+        "name": "Post Connect before the changed remote commands",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "number": 47,
+        "name": "Post Cache Cargo downloads",
+        "status": "completed",
+        "conclusion": "skipped"
+      },
+      {
+        "number": 48,
+        "name": "Post Own build state through later remote-session cleanup",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "number": 49,
+        "name": "Post Retrieve pristine selected upstream",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "number": 50,
+        "name": "Post Retrieve restart inputs",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "number": 51,
+        "name": "Complete job",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "gates": {
+    "immutableSourceBytesModesAndArchive": "PASS",
+    "mavenApplicationPackageWithTestsSkipped": "PASS",
+    "realSevenBinaryProducer": "PASS",
+    "allSevenArm64ElfAndHashes": "PASS",
+    "upstreamSourceGuardsAndBeforeAfter": "PASS",
+    "directCompilerFreePrebuiltDistribution": "PASS_ON_SECOND_INVOCATION_AFTER_SETUP_PATH_REPAIR",
+    "directInstalledPublicEntrypoints": "PASS_BOTH_EXACT_OUTPUT_EXIT0",
+    "directCargoWrapperGuard": "PASS_EXPECTED125",
+    "bundledSevenBinaryValidator": "PASS",
+    "actualMavenRuntimeBazelNativeBackendProfile": "PASS_COMPILERS_DENIED_AND_UNUSED",
+    "profileInstalledPublicEntrypoints": "PASS_BOTH_EXACT_OUTPUT_EXIT0",
+    "profileCargoWrapperGuard": "PASS_EXPECTED125",
+    "sourceBytesModesUnchangedAfterAcceptance": "PASS",
+    "rawExportClosure": "PASS_251_SAFE_REGULAR_MEMBERS_250_PAYLOAD_HASHES",
+    "remoteOwnedScratchCleanup": "PASS_AFTER_READONLY_CACHE_REMOVAL_REPAIR",
+    "sshExit": "PASS_EXIT0",
+    "providerCleanup": "PASS_ALL_REQUIRED_POSTS_SUCCESS",
+    "clientCredentialsRetired": "PASS",
+    "remainingLiveHandles": []
+  },
+  "actualNativeOutcome": {
+    "task_contract": "acknowledged",
+    "state": "PASS_REAL_ARM64_PRODUCER_TO_COMPILER_FREE_PACKAGE",
+    "sourceInputs": 318,
+    "sourceManifestSha256": "8d20ad8fa778a1d4b663b34368e7a995af0713500980191350381be49d31fd76",
+    "architecture": "aarch64",
+    "backendManifestSha256": "d72b8b6f291d7ac9969c2370e2b74f3a290cd2fc494080b1c2dafb9328d40cc5",
+    "applicationSha256": "d1c1040f7fa45a42e092ebcc7d8729224292aa16c220ca726551ba453f45f86d",
+    "packagedApplicationSha256": "451ecdac97b8324bf18ecbadeeb4df2e176b82a8b1497a58d0846ad6fa8eb9af",
+    "sevenNativeExecutables": {
+      "bb_worker": {
+        "sha256": "79d1eaad035f6e745300d462e46f8bda3646fb12b937b5afe93eaf319a68e3c4",
+        "path": "bb_worker"
+      },
+      "bb_scheduler": {
+        "sha256": "a665e35a1769c4b16fc7a2daa93ef5ab62bd9dd96656475d17f5c4d6847551af",
+        "path": "bb_scheduler"
+      },
+      "bb_storage": {
+        "sha256": "8795cbeb4f5f198a945ad0c95becdd20e0d19f2f065788dac57c214ebeab3193",
+        "path": "bb_storage"
+      },
+      "linux-bazel-action-owner": {
+        "sha256": "43b88f20ece8bc6bb36c5436912939a525dfcfc1d96a39f33abdbbc14d252514",
+        "path": "linux-bazel-action-owner"
+      },
+      "linux-bazel-action-waiter": {
+        "sha256": "b90b84a36e3220e7f11540232e915e8c0e0a1b2ba9d675d9786d173c15ee9fe2",
+        "path": "linux-bazel-action-waiter"
+      },
+      "codex-tooling": {
+        "sha256": "55bd7a6ebec80979bc8018f9f6aeb8676caa016128c06dcadcb7de132117f211",
+        "path": "codex-tooling"
+      },
+      "codex-cargo-wrapper-linux": {
+        "sha256": "8bf5630872b5bc70144ea5068dcc100493b69c675eb59bc61e3148dd7c1ad3d1",
+        "path": "codex-cargo-wrapper-linux"
+      }
+    },
+    "javaSha256": "92a412ba836ebcc9a8a97aaa801427e308a555f52c0ab3167b00829c5109f26b",
+    "javaRuntimeModulesSha256": "93236660116a357b983f3c242268e675e1c5f260055d3ef238bed9d1ade191c7",
+    "all318SourceInputsUnchanged": true,
+    "nativeLaunchersCopiedExactly": true,
+    "compilerDenialSentinelAbsent": true,
+    "actualEntrypoints": [
+      "codex-tooling: upstream-v8-script exit0 exact output",
+      "codex-tooling-bazel: upstream-v8-script exit0 exact output",
+      "codex-cargo-wrapper-linux: missing context fails125"
+    ],
+    "schedulerActivation": false,
+    "unrun": [
+      "static-image instrumentation",
+      "native product CLOSE",
+      "required Bazel release consumer",
+      "full release"
+    ],
+    "retainedForCleanup": "/home/runner/work/_temp/bazel-prebuilt-4Pxgqj"
+  },
+  "actualMavenProfileOutcome": {
+    "task_contract": "acknowledged",
+    "state": "PASS_ACTUAL_MAVEN_ARM64_PREBUILT_PROFILE",
+    "sourceManifestSha256": "8d20ad8fa778a1d4b663b34368e7a995af0713500980191350381be49d31fd76",
+    "sourceInputs": 318,
+    "runtime": "/home/runner/work/_temp/bazel-prebuilt-4Pxgqj/java-build/runtime",
+    "nativeManifestSha256": "d72b8b6f291d7ac9969c2370e2b74f3a290cd2fc494080b1c2dafb9328d40cc5",
+    "packagedApplicationSha256": "451ecdac97b8324bf18ecbadeeb4df2e176b82a8b1497a58d0846ad6fa8eb9af",
+    "runtimeModuleImageSha256": "93236660116a357b983f3c242268e675e1c5f260055d3ef238bed9d1ade191c7",
+    "nativeLaunchers": {
+      "codex-tooling": "55bd7a6ebec80979bc8018f9f6aeb8676caa016128c06dcadcb7de132117f211",
+      "codex-cargo-wrapper-linux": "8bf5630872b5bc70144ea5068dcc100493b69c675eb59bc61e3148dd7c1ad3d1"
+    },
+    "copiedSevenNativeHashesMatchProducer": true,
+    "compilerDeniedAndUnused": true,
+    "actualNativeEntrypointsPassed": true,
+    "scope": "producer, actual Maven profile package and entrypoint boundary only; no scheduler/static attach/full release acceptance",
+    "activation": false
+  },
+  "originalFailuresPreserved": [
+    {
+      "receipt": "commands/compiler-free-distribution/0001/{result.json,stderr}",
+      "exit": 1,
+      "cause": "The acceptance invocation used PATH=compiler-deny only; jlink could not execute required objcopy.",
+      "repair": "Prepend compiler-denying shims to /usr/bin:/bin; no source edit, compiler denial remains active; packaging0002 passes."
+    },
+    {
+      "receipt": "cleanup-client.json",
+      "exit": 1,
+      "cause": "Unprivileged rmtree encountered read-only Go dependency cache link after source identity and owned command PID/birth checks had passed.",
+      "repair": "Authenticate exact existing owned nonsymlink root and remove only that path via sudo -n rm -rf --; absence verified. No process termination, no product CLOSE claim."
+    }
+  ],
+  "evidence": {
+    "nativeArchive": {
+      "path": "arm64-prebuilt-evidence.tar.gz",
+      "bytes": 220134815,
+      "sha256": "22a203a498d6991a7c02420c1afa29dffe65364374ef8d36fef9cf8300baed8e",
+      "safeUniqueRegularMembers": 251,
+      "payloadHashes": 250,
+      "manifestSha256": "085baf67d32d27e9d64521afb8a1e8a871804ebb78fe2b444b118ee368b2ea87"
+    },
+    "validator": {
+      "path": "validate-export.py",
+      "argv": [
+        "python3",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a194d5-811e-7373-97ea-48cbc20e760b/temp/bazel-arm-prebuilt-acceptance-kfme1dt5/validate-export.py",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a194d5-811e-7373-97ea-48cbc20e760b/temp/bazel-arm-prebuilt-acceptance-kfme1dt5/arm64-prebuilt-evidence.tar.gz"
+      ],
+      "result": "export-validation.json"
+    },
+    "exactCommandsAndOutputs": "native archive commands/*/[attempt]/{started.json,result.json,stdout,stderr} and native-build/commands/*; export-validation.json embeds exact outer argv/env overrides/results.",
+    "sourceGuardReceipt": "source-guard-validation.json",
+    "providerRawLog": "provider-terminal.log",
+    "clientCredentialReceipt": "credentials-retired.json",
+    "allOriginalFailuresKept": true,
+    "localNativeBinaryExtraction": false
+  },
+  "qualityReuse": {
+    "sourceEdited": false,
+    "rootScopedJavaChecks": "Root strict compile/private Javadoc and14 method-parallel backend checks reused only for original unchanged source identities.",
+    "mavenTests": "Intentionally skipped for native producer/package acceptance; no full suite pass claim.",
+    "unrelatedFullMavenFixtureSuccessor": "Not absorbed; root owns that verification."
+  },
+  "unpassedGates": {
+    "staticImageInstrumentation": "Previously failed; unchanged and not retried here.",
+    "nativeProductClose": "Previously failed/unpassed; not exercised or accepted here.",
+    "actualRequiredBazelReleaseConsumer": "UNRUN",
+    "fullRelease": "UNRUN",
+    "schedulerActivation": "DISABLED"
+  },
+  "cleanup": {
+    "remoteRoot": "/home/runner/work/_temp/bazel-prebuilt-4Pxgqj",
+    "remoteRootAbsent": true,
+    "systemWideProcessScan": false,
+    "processesTerminated": [],
+    "namespaceOrCgroupSettingsChanged": false,
+    "sshExit": 0,
+    "providerStatus": "completed",
+    "providerRequiredPostSteps": "success",
+    "privateKeyPubKeyKnownHostsSocketRetired": true,
+    "remainingLiveHandles": []
+  },
+  "parentAcceptance": {
+    "state": "PASS_SCOPED_ARM64_PREBUILT_PACKAGE",
+    "reportSha256": "966bb20d263b48a8a0e84ed5538f685e443db0c0992b3aeac6a183c4ac242aa1",
+    "nativeArchiveHashAndSafeInventory": "verified without binary extraction",
+    "controlSupplement": {
+      "path": "docs/evidence/artifacts/cp3-arm64-prebuilt-control.tar.gz",
+      "sha256": "ce917344e251679ab9c0e96d367e396ae5586d468998f310023fed43fd9d1891",
+      "bytes": 119625
+    },
+    "retainedNativeArchive": {
+      "path": ".cat/sessions/01a194d5-811e-7373-97ea-48cbc20e760b/temp/bazel-arm-prebuilt-acceptance-kfme1dt5/arm64-prebuilt-evidence.tar.gz",
+      "sha256": "22a203a498d6991a7c02420c1afa29dffe65364374ef8d36fef9cf8300baed8e",
+      "bytes": 220134815,
+      "owner": "root integrator",
+      "lastConsumer": "Retain until the connected Bazel/release integration no longer needs these validated prebuilt outputs; no later clean-checkout dependency is established by this temporary location"
+    },
+    "sourceApplicability": "The accepted final runtime successor changes only CargoCachePartsTest; all ARM64 producer/package determining production sources remain byte-identical",
+    "doesNotPass": [
+      "static instrumentation",
+      "product CLOSE",
+      "actual required Bazel release",
+      "full release",
+      "checkpoint3"
+    ],
+    "sourceIntegration": "Root owns pending guarded maintained integration"
+  }
+}

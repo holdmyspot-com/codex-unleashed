@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+
 import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.file.Path;
@@ -70,8 +72,8 @@ public final class CgroupBudget implements AutoCloseable {
         this.nativeReader = nativeReader;
     }
 
-    public static CgroupBudget open(Path library) throws IOException {
-        return new CgroupBudget(Libcgroup.open(library));
+    public static CgroupBudget open(ToolingScope scope, Path library) throws IOException {
+        return new CgroupBudget(Libcgroup.open(scope, library));
     }
 
     public Sample read(long hostAvailableBytes, List<Ancestor> ancestors,

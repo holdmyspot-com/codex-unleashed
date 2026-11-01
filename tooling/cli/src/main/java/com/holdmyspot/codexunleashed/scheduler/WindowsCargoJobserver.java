@@ -1,6 +1,8 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import java.io.IOException;
+import java.io.Serial;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -68,20 +70,23 @@ final class WindowsCargoJobserver implements AutoCloseable
 	 * Creates a same-user, non-inherited semaphore before any Cargo consumer starts.
 	 * Capacity is one implicit slot plus {@code jobs - 1} semaphore tokens. Windows LONG bounds are
 	 * represented exactly by positive Java int. An existing generated name is rejected without changing its count.
+	 * @param scope borrowed native services, kept open until this jobserver and its consumers close
 	 * @param jobs positive invocation capacity including its implicit slot
 	 * @return sole owner of the new named pool
 	 * @throws IllegalArgumentException if jobs is nonpositive
+	 * @throws NullPointerException if scope is null
 	 * @throws UnsupportedOperationException if native 64-bit Windows or required FFM symbols are unavailable
 	 * @throws IOException if creation or cleanup fails
 	 * @throws PreparationFailure if failed acquisition retains an unresolved cleanup failure
 	 */
-	static WindowsCargoJobserver create(int jobs) throws IOException
+	static WindowsCargoJobserver create(ToolingScope scope, int jobs) throws IOException
 	{
+		Objects.requireNonNull(scope, "scope");
 		validateJobs(jobs);
 		if (!System.getProperty("os.name", "").startsWith("Windows") ||
 			ValueLayout.ADDRESS.byteSize() != Long.BYTES)
 			throw new UnsupportedOperationException("Named Cargo jobserver ownership requires native 64-bit Windows");
-		return acquire(jobs, new NativeCalls());
+		return acquire(jobs, new NativeCalls(scope));
 	}
 
 	/**
@@ -282,6 +287,10 @@ final class WindowsCargoJobserver implements AutoCloseable
 		private final Map<String, String> environment;
 		/** Indicates whether the coordinator released this lease. */
 		private boolean released = false;
+		/** Live controller ledgers that must retire before the invocation borrow ends. */
+		private int tokenLedgers = 0;
+		/** First uncertain token operation; later operations must never replay it. */
+		private IOException tokenFailure = null;
 
 		/**
 		 * Retains a validated complete environment.
@@ -303,6 +312,120 @@ final class WindowsCargoJobserver implements AutoCloseable
 		}
 
 		/**
+		 * Retains controller accounting before its first possible native reservation.
+		 * @throws IllegalStateException if the lease is released or used off-thread
+		 */
+		void retainTokenLedger()
+		{
+			environment();
+			++tokenLedgers;
+		}
+
+		/**
+		 * Releases one completely retired token ledger.
+		 * @throws IllegalStateException if no ledger remains or accessed off-thread
+		 */
+		void releaseTokenLedger()
+		{
+			environment();
+			if (tokenLedgers == 0)
+				throw new IllegalStateException("No retained token ledger remains");
+			--tokenLedgers;
+		}
+
+		/**
+		 * Tries one atomic zero-time semaphore reservation for an already retained ledger.
+		 * @return true on acquisition, or false when no explicit capacity is available
+		 * @throws IllegalStateException if no ledger is retained, released, or used off-thread
+		 * @throws IOException if this or an earlier native token operation is uncertain
+		 */
+		boolean tryAcquireToken() throws IOException
+		{
+			requireTokenAuthority();
+			try { return calls.tryAcquire(handle); }
+			catch (IOException | RuntimeException | Error cause)
+			{
+				tokenFailure = new IOException("Cargo semaphore acquisition failed; its count is uncertain", cause);
+				throw tokenFailure;
+			}
+		}
+
+		/**
+		 * Returns one definitely owned explicit token without retrying an uncertain effect.
+		 * @throws IllegalStateException if no ledger is retained, released, or used off-thread
+		 * @throws IOException if this or an earlier native token operation is uncertain
+		 */
+		void returnToken() throws IOException
+		{
+			requireTokenAuthority();
+			try { calls.release(handle, 1); }
+			catch (IOException | RuntimeException | Error cause)
+			{
+				tokenFailure = new IOException("Cargo semaphore return failed; its count is uncertain", cause);
+				throw tokenFailure;
+			}
+		}
+
+		/**
+		 * Returns the invocation's named semaphore identity without parsing MAKEFLAGS.
+		 * @return retained pool name
+		 * @throws IllegalStateException if released or called off-thread
+		 */
+		String semaphoreName() { environment(); return name; }
+
+		/**
+		 * Observes available explicit capacity by temporarily owning and restoring only actual acquisitions.
+		 * Consumers may run concurrently, so the observation is approximate, as is Rust jobserver's available probe.
+		 * No synthetic token is introduced. A failed wait or restore permanently poisons count authority.
+		 * @return count of actual acquisitions observed and restored by this probe
+		 * @throws IllegalStateException if no ledger remains, released, or called off-thread
+		 * @throws IOException if acquisition or restoration fails
+		 */
+		int availableTokens() throws IOException
+		{
+			requireTokenAuthority();
+			int observed = 0;
+			try
+			{
+				while (calls.tryAcquire(handle)) ++observed;
+			}
+			catch (IOException | RuntimeException | Error cause)
+			{
+				tokenFailure = new IOException("Cargo semaphore availability observation failed", cause);
+				if (observed > 0)
+				{
+					try { calls.release(handle, observed); }
+					catch (IOException | RuntimeException | Error cleanup) { tokenFailure.addSuppressed(cleanup); }
+				}
+				throw tokenFailure;
+			}
+			if (observed > 0)
+			{
+				try { calls.release(handle, observed); }
+				catch (IOException | RuntimeException | Error cause)
+				{
+					tokenFailure = new IOException("Cargo semaphore availability restoration failed", cause);
+					throw tokenFailure;
+				}
+			}
+			return observed;
+		}
+
+		/**
+		 * Checks the live borrow before any count-changing operation.
+		 * @throws IllegalStateException if no ledger is retained, released, or used off-thread
+		 * @throws IOException if a previous native effect is uncertain
+		 */
+		private void requireTokenAuthority() throws IOException
+		{
+			environment();
+			if (tokenLedgers == 0)
+				throw new IllegalStateException("Token operations require a retained controller ledger");
+			if (tokenFailure != null)
+				throw tokenFailure;
+		}
+
+		/**
 		 * Releases after every consumer is terminal/reaped and no further starts are possible.
 		 * This is the coordinator's assertion, not a process-liveness check. Repeated release has no effect.
 		 * @throws IllegalStateException if called from another thread
@@ -313,6 +436,8 @@ final class WindowsCargoJobserver implements AutoCloseable
 			requireController();
 			if (released)
 				return;
+			if (tokenLedgers > 0)
+				throw new IllegalStateException("Controller token ledgers still retain the Cargo lease");
 			released = true;
 			lease = null;
 		}
@@ -321,6 +446,9 @@ final class WindowsCargoJobserver implements AutoCloseable
 	/** Reports an observed quiescent capacity mismatch without claiming which consumer lost or added tokens. */
 	static final class CapacityMismatch extends IOException
 	{
+		/** Serialization version for the immutable count discrepancy. */
+		@Serial
+		private static final long serialVersionUID = 1L;
 		/** Expected explicit tokens, excluding the implicit Cargo slot. */
 		private final int expectedTokens;
 		/** Actual tokens observed and restored before cleanup. */
@@ -338,16 +466,28 @@ final class WindowsCargoJobserver implements AutoCloseable
 			this.observedTokens = observedTokens;
 		}
 
-		/** @return expected explicit tokens, excluding the implicit slot */
+		/**
+		 * Returns the invocation's initial explicit token capacity.
+		 * @return expected explicit tokens, excluding the implicit slot
+		 */
 		int expectedTokens() { return expectedTokens; }
-		/** @return tokens actually observed, without inferring an individual consumer's borrow */
+		/**
+		 * Returns the actual count observed during quiescent close.
+		 * @return observed tokens, without inferring an individual consumer's borrow
+		 */
 		int observedTokens() { return observedTokens; }
 	}
 
 	/** Retains a failed acquisition and its terminal unresolved cleanup owner; close never retries a raw handle. */
 	static final class PreparationFailure extends IOException implements AutoCloseable
 	{
+		/** Serialization version inherited from the checked failure API. */
+		@Serial
+		private static final long serialVersionUID = 1L;
 		/** Owner preserving its original cleanup outcome and handle-release accounting. */
+		// Native cleanup authority cannot be serialized. Keeping it non-transient deliberately rejects serialization
+		// rather than producing a deserialized exception whose close silently loses its live owner.
+		@SuppressWarnings("serial")
 		private final WindowsCargoJobserver owner;
 
 		/**
@@ -470,9 +610,13 @@ final class WindowsCargoJobserver implements AutoCloseable
 		/** BOOL CloseHandle(HANDLE). */
 		private final MethodHandle close;
 
-		/** Acquires bindings with same-call error capture, releasing the library scope if any binding fails. */
-		private NativeCalls()
+		/** Acquires bindings with same-call error capture, releasing the library scope if any binding fails.
+		 * @param scope borrowed shared native linker, retained open through this adapter's operations */
+		// JDK FFM is the supported Windows semaphore boundary; Java has no named-semaphore ownership API.
+		@SuppressWarnings("restricted")
+		private NativeCalls(ToolingScope scope)
 		{
+			Linker linker = scope.getNativeLinker();
 			this.arena = Arena.ofConfined();
 			try
 			{
@@ -480,14 +624,14 @@ final class WindowsCargoJobserver implements AutoCloseable
 				this.errors = arena.allocate(Linker.Option.captureStateLayout());
 				this.errorOffset = Linker.Option.captureStateLayout()
 					.byteOffset(MemoryLayout.PathElement.groupElement("GetLastError"));
-				this.create = bind(library, "CreateSemaphoreExW", FunctionDescriptor.of(ValueLayout.ADDRESS,
+				this.create = bind(linker, library, "CreateSemaphoreExW", FunctionDescriptor.of(ValueLayout.ADDRESS,
 					ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
 					ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-				this.wait = bind(library, "WaitForSingleObject", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+				this.wait = bind(linker, library, "WaitForSingleObject", FunctionDescriptor.of(ValueLayout.JAVA_INT,
 					ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-				this.release = bind(library, "ReleaseSemaphore", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+				this.release = bind(linker, library, "ReleaseSemaphore", FunctionDescriptor.of(ValueLayout.JAVA_INT,
 					ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-				this.close = bind(library, "CloseHandle", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+				this.close = bind(linker, library, "CloseHandle", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
 			}
 			catch (RuntimeException | Error failure)
 			{
@@ -521,16 +665,19 @@ final class WindowsCargoJobserver implements AutoCloseable
 
 		/**
 		 * Binds one documented signature using the platform ABI and captured GetLastError.
+		 * @param linker borrowed shared native linker
 		 * @param library retained Kernel32 symbols
 		 * @param name required native symbol
 		 * @param signature Windows-width signature
 		 * @return binding whose leading argument is captured call-state storage
 		 */
-		private MethodHandle bind(SymbolLookup library, String name, FunctionDescriptor signature)
+		// This boundary binds only documented Win32 semaphore operations under the retained library scope.
+		@SuppressWarnings("restricted")
+		private static MethodHandle bind(Linker linker, SymbolLookup library, String name, FunctionDescriptor signature)
 		{
 			MemorySegment address = library.find(name)
 				.orElseThrow(() -> new UnsupportedOperationException("Missing Windows semaphore symbol: " + name));
-			return Linker.nativeLinker().downcallHandle(address, signature, Linker.Option.captureCallState("GetLastError"));
+			return linker.downcallHandle(address, signature, Linker.Option.captureCallState("GetLastError"));
 		}
 
 		/**

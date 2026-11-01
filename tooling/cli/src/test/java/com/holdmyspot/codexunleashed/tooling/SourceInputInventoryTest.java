@@ -12,9 +12,8 @@ import java.util.Set;
 import org.apache.commons.io.file.PathUtils;
 import org.apache.commons.io.file.StandardDeleteOption;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Verifies raw source inventories with real Git and the defined filesystem fallback.
@@ -50,17 +49,18 @@ public final class SourceInputInventoryTest
 			Files.setLastModifiedTime(source, FileTime.from(timestamp));
 			Files.writeString(fixture.root.resolve("included.rs"), "untracked input");
 			Files.writeString(fixture.root.resolve("ignored"), "ignored input");
-			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(source.getParent(), fixture.target,
+			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, source.getParent(), fixture.target,
 				Optional.of(fixture.cargo), fixture.temporary, fixture.environment());
-			assertEquals(snapshot.root(), fixture.root.toRealPath());
-			assertEquals(snapshot.files().keySet(), Set.of(".gitignore", "workspace/src/lib.rs", "included.rs"));
-			assertEquals(snapshot.files().get("workspace/src/lib.rs"), Sha256.digest(source));
-			assertEquals(snapshot.mtimes().get("workspace/src/lib.rs"),
-				SourceInputTimes.nanos(NativeTimestampRange.expected(fixture.root, timestamp)));
-			assertTrue(snapshot.mtimes().containsKey("."));
-			assertTrue(snapshot.mtimes().containsKey("workspace/src"));
-			assertFalse(snapshot.files().containsKey("target/output"));
-			assertFalse(snapshot.files().containsKey("cargo/download"));
+			requireThat(snapshot.root(), "snapshot.root()").isEqualTo(fixture.root.toRealPath());
+			requireThat(snapshot.files().keySet(), "snapshot.files().keySet()")
+				.isEqualTo(Set.of(".gitignore", "workspace/src/lib.rs", "included.rs"));
+			requireThat(snapshot.files().get("workspace/src/lib.rs"), "snapshot").isEqualTo(Sha256.digest(source));
+			requireThat(snapshot.mtimes().get("workspace/src/lib.rs"), "snapshot")
+				.isEqualTo(SourceInputTimes.nanos(NativeTimestampRange.expected(fixture.root, timestamp)));
+			requireThat(snapshot.mtimes().containsKey("."), "snapshot").isTrue();
+			requireThat(snapshot.mtimes().containsKey("workspace/src"), "snapshot").isTrue();
+			requireThat(snapshot.files().containsKey("target/output"), "snapshot").isFalse();
+			requireThat(snapshot.files().containsKey("cargo/download"), "snapshot").isFalse();
 		}
 	}
 
@@ -78,11 +78,11 @@ public final class SourceInputInventoryTest
 			Files.writeString(source, "source");
 			for (String directory : new String[]{".git", "node_modules", "nested/target"})
 				Files.writeString(Files.createDirectories(fixture.root.resolve(directory)).resolve("excluded"), "ignored");
-			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.root, fixture.target,
+			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, fixture.root, fixture.target,
 				Optional.of(fixture.cargo), fixture.temporary, fixture.environment());
-			assertEquals(snapshot.root(), fixture.root.toRealPath());
-			assertEquals(snapshot.files(), Map.of("src/lib.rs", Sha256.digest(source)));
-			assertTrue(snapshot.mtimes().containsKey("src"));
+			requireThat(snapshot.root(), "snapshot.root()").isEqualTo(fixture.root.toRealPath());
+			requireThat(snapshot.files(), "snapshot.files()").isEqualTo(Map.of("src/lib.rs", Sha256.digest(source)));
+			requireThat(snapshot.mtimes().containsKey("src"), "snapshot").isTrue();
 		}
 	}
 
@@ -98,9 +98,9 @@ public final class SourceInputInventoryTest
 		{
 			SystemCommands.run(java.util.List.of("git", "init", "-q", fixture.root.toString()));
 			SystemCommands.run(java.util.List.of("git", "-C", fixture.root.toString(), "add", "cargo", "target"));
-			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.root, fixture.target,
+			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, fixture.root, fixture.target,
 				Optional.of(fixture.cargo), fixture.temporary, fixture.environment());
-			assertEquals(snapshot.files().keySet(), Set.of("cargo/download"));
+			requireThat(snapshot.files().keySet(), "snapshot.files().keySet()").isEqualTo(Set.of("cargo/download"));
 		}
 	}
 
@@ -117,11 +117,11 @@ public final class SourceInputInventoryTest
 			Path source = fixture.root.resolve("source.rs");
 			Files.writeString(source, "source");
 			Instant required = Instant.parse("2300-01-01T00:00:00.123456789Z");
-			SourceInputTimes.setTimes(source, FileTime.from(required));
-			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.root, fixture.target,
+			SourceInputTimes.setTimes(fixture.scope, source, FileTime.from(required));
+			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, fixture.root, fixture.target,
 				Optional.of(fixture.cargo), fixture.temporary, fixture.environment());
-			assertEquals(snapshot.mtimes().get("source.rs"),
-				SourceInputTimes.nanos(NativeTimestampRange.expected(fixture.root, required)));
+			requireThat(snapshot.mtimes().get("source.rs"), "snapshot")
+				.isEqualTo(SourceInputTimes.nanos(NativeTimestampRange.expected(fixture.root, required)));
 		}
 	}
 
@@ -130,6 +130,8 @@ public final class SourceInputInventoryTest
 	 */
 	private static final class Fixture implements AutoCloseable
 	{
+		/** Shared native bindings owned until inventory and timestamp operations finish. */
+		private final ToolingScope scope = new DefaultToolingScope();
 		private final Path base = Files.createTempDirectory("source-input-inventory-");
 		private final Path root = Files.createDirectory(base.resolve("checkout"));
 		private final Path target = Files.createDirectory(root.resolve("target"));
@@ -165,6 +167,7 @@ public final class SourceInputInventoryTest
 		@Override
 		public void close() throws IOException
 		{
+			scope.close();
 			PathUtils.deleteDirectory(base, new LinkOption[]{LinkOption.NOFOLLOW_LINKS},
 				StandardDeleteOption.OVERRIDE_READ_ONLY);
 		}

@@ -38,7 +38,8 @@ if (allocationIdentity.pid !== Process.id.toString())
 const libc = Process.findModuleByName('libc.so.6');
 if (libc === null)
   throw new Error('Allocation hook requires loaded glibc libc.so.6');
-const mallocAddress = libc.getExportByName('malloc');
+/** Follow the target's global allocator binding, including executable interposition used by rustc. */
+const mallocAddress = Module.getGlobalExportByName('malloc');
 /* Preallocated bound validated against actual native sizeof before initialization or listener attachment. */
 const registryBytes = 16384;
 const backing = Memory.alloc(registryBytes);

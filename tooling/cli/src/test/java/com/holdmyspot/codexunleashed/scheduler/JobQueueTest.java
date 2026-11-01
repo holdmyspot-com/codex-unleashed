@@ -5,13 +5,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.testng.annotations.Test;
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertSame;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Exercises real queue decisions with the documented Attempt contract supplied in process; no native behavior is claimed.
@@ -40,24 +36,29 @@ public final class JobQueueTest
 			queue.submit("A", 10L);
 			queue.submit("B", 10L);
 
-			assertEquals(queue.cycle().control(), Policy.Control.START, "Earliest submitted action must start");
-			assertEquals(fixture.events, List.of("create:A:0", "start:A:0"));
-			assertEquals(queue.jobs().getFirst().startedAt(), Long.valueOf(0));
+			requireThat(queue.cycle().control(), "queue.cycle().control()")
+				.withContext("Earliest submitted action must start", "diagnostic")
+				.isEqualTo(Policy.Control.START);
+			requireThat(fixture.events, "fixture.events").isEqualTo(List.of("create:A:0", "start:A:0"));
+			requireThat(queue.jobs().getFirst().startedAt(), "queue.jobs().getFirst().startedAt()")
+				.isEqualTo(Long.valueOf(0));
 
-			assertEquals(queue.cycle().control(), Policy.Control.WAIT);
+			requireThat(queue.cycle().control(), "queue.cycle().control()").isEqualTo(Policy.Control.WAIT);
 		}
-		assertEquals(fixture.attempt("A", 0).closes, 1);
+		requireThat(fixture.attempt("A", 0).closes, "fixture").isEqualTo(1);
 		Fixture failing = new Fixture(1);
 		failing.failStart = true;
 		var queue = failing.queue();
 		queue.submit("A", 10L);
-		expectThrows(IOException.class, queue::cycle);
+		requireException(IOException.class, queue::cycle);
 		queue.close();
-		assertEquals(failing.attempt("A", 0).closes, 1, "Attempt must be retained before fallible start");
+		requireThat(failing.attempt("A", 0).closes, "failing")
+			.withContext("Attempt must be retained before fallible start", "diagnostic")
+			.isEqualTo(1);
 	}
 
 	/**
-	 * Resumes the oldest global denial with unchanged attempt and live-slot ownership, without bypassing an unaffordable wait.
+	 * Waits for capacity while a peer is running, then resumes the oldest denial without another slot.
 	 *
 	 * @throws IOException if a valid controlled lifecycle is rejected
 	 */
@@ -75,23 +76,26 @@ public final class JobQueueTest
 			queue.cycle();
 
 			queue.cycle();
-			assertTrue(queue.allocationBlocked("B", 1, 40));
-			assertTrue(queue.allocationBlocked("A", 0, 90));
+			requireThat(queue.allocationBlocked("B", 1, 40), "queue").isTrue();
 			var before = queue.jobs();
-			assertEquals(before.get(1).blockedAt(), Long.valueOf(0));
+			requireThat(before.get(1).blockedAt(), "before.get(1).blockedAt()").isEqualTo(Long.valueOf(0));
 			fixture.memory = new Controller.Memory(0, 0, false);
 
-			assertEquals(queue.cycle().control(), Policy.Control.WAIT, "Unaffordable oldest denial cannot be bypassed");
-			assertEquals(fixture.owners.size(), 2);
-			assertEquals(fixture.latestAttempt("A").resumes, 0);
+			requireThat(queue.cycle().control(), "unaffordableDenialWithRunningPeer").isEqualTo(Policy.Control.WAIT);
+			requireThat(fixture.owners.size(), "fixture.owners.size()").isEqualTo(2);
+			requireThat(fixture.latestAttempt("A").resumes, "fixture").isEqualTo(0);
 			fixture.calm();
+			requireThat(queue.allocationBlocked("A", 0, 90), "laterPeerDenial").isTrue();
 			var decision = queue.cycle();
-			assertEquals(decision.control(), Policy.Control.RESUME);
-			assertEquals(decision.jobName(), "B");
-			assertEquals(queue.jobs().get(1).startedAt(), before.get(1).startedAt());
-			assertEquals(queue.jobs().get(1).position(), 1);
-			assertEquals(fixture.latestAttempt("B").resumes, 1);
-			assertEquals(fixture.owners.size(), 2, "Resume retains its live slot and owner");
+			requireThat(decision.control(), "decision.control()").isEqualTo(Policy.Control.RESUME);
+			requireThat(decision.jobName(), "decision.jobName()").isEqualTo("B");
+			requireThat(queue.jobs().get(1).startedAt(), "queue.jobs().get(1).startedAt()")
+				.isEqualTo(before.get(1).startedAt());
+			requireThat(queue.jobs().get(1).position(), "queue.jobs().get(1).position()").isEqualTo(1);
+			requireThat(fixture.latestAttempt("B").resumes, "fixture").isEqualTo(1);
+			requireThat(fixture.owners.size(), "fixture.owners.size()")
+				.withContext("Resume retains its live slot and owner", "diagnostic")
+				.isEqualTo(2);
 		}
 	}
 
@@ -110,20 +114,21 @@ public final class JobQueueTest
 			queue.submit("A", 10L);
 
 			queue.cycle();
-			assertTrue(queue.allocationBlocked("A", 0, 5));
+			requireThat(queue.allocationBlocked("A", 0, 5), "queue").isTrue();
 			var blocked = queue.jobs();
-			assertFalse(queue.allocationBlocked("A", 0, 5));
-			assertFalse(queue.allocationBlocked("A", 0, 4));
-			expectThrows(IllegalStateException.class, () -> queue.allocationBlocked("A", 0, 6));
-			assertEquals(queue.jobs(), blocked);
+			requireThat(queue.allocationBlocked("A", 0, 5), "queue").isFalse();
+			requireThat(queue.allocationBlocked("A", 0, 4), "queue").isFalse();
+			requireException(IllegalStateException.class, () -> queue.allocationBlocked("A", 0, 6));
+			requireThat(queue.jobs(), "queue.jobs()").isEqualTo(blocked);
 
-			assertEquals(queue.cycle().control(), Policy.Control.RESUME);
-			assertFalse(queue.allocationBlocked("A", 0, 5));
-			assertFalse(queue.allocationBlocked("A", 0, 1));
-			assertFalse(queue.allocationBlocked("A", 99, 6));
-			assertEquals(queue.jobs().getFirst().state(), Policy.State.RUNNING);
-			assertTrue(queue.allocationBlocked("A", 0, 6));
-			assertEquals(queue.jobs().getFirst().blockedAt(), Long.valueOf(1));
+			requireThat(queue.cycle().control(), "queue.cycle().control()").isEqualTo(Policy.Control.RESUME);
+			requireThat(queue.allocationBlocked("A", 0, 5), "queue").isFalse();
+			requireThat(queue.allocationBlocked("A", 0, 1), "queue").isFalse();
+			requireThat(queue.allocationBlocked("A", 99, 6), "queue").isFalse();
+			requireThat(queue.jobs().getFirst().state(), "queue.jobs().getFirst().state()").isEqualTo(Policy.State.RUNNING);
+			requireThat(queue.allocationBlocked("A", 0, 6), "queue").isTrue();
+			requireThat(queue.jobs().getFirst().blockedAt(), "queue.jobs().getFirst().blockedAt()")
+				.isEqualTo(Long.valueOf(1));
 		}
 	}
 
@@ -149,18 +154,19 @@ public final class JobQueueTest
 			queue.allocationBlocked("A", 0, 8);
 			fixture.pressure();
 
-			assertEquals(queue.cycle().jobName(), "A");
-			assertEquals(fixture.attempt("A", 0).terminates, 1);
+			requireThat(queue.cycle().jobName(), "queue.cycle().jobName()").isEqualTo("A");
+			requireThat(fixture.attempt("A", 0).terminates, "fixture").isEqualTo(1);
 			fixture.attempt("A", 0).finish(true, 137);
 			fixture.attempt("B", 1).finish(false, 0);
 			fixture.calm();
 
-			assertEquals(queue.cycle().jobName(), "A");
-			assertEquals(queue.jobs().getFirst().position(), 0);
-			assertEquals(queue.jobs().getFirst().startedAt(), Long.valueOf(2));
-			assertEquals(fixture.attempt("A", 0).closes, 1);
-			assertFalse(queue.allocationBlocked("A", 0, 99));
-			assertTrue(queue.allocationBlocked("A", 2, 0));
+			requireThat(queue.cycle().jobName(), "queue.cycle().jobName()").isEqualTo("A");
+			requireThat(queue.jobs().getFirst().position(), "queue.jobs().getFirst().position()").isEqualTo(0);
+			requireThat(queue.jobs().getFirst().startedAt(), "queue.jobs().getFirst().startedAt()")
+				.isEqualTo(Long.valueOf(2));
+			requireThat(fixture.attempt("A", 0).closes, "fixture").isEqualTo(1);
+			requireThat(queue.allocationBlocked("A", 0, 99), "queue").isFalse();
+			requireThat(queue.allocationBlocked("A", 2, 0), "queue").isTrue();
 		}
 	}
 
@@ -180,19 +186,21 @@ public final class JobQueueTest
 			for (int i = 0;i<4;i++)queue.cycle();
 			fixture.pressure();
 
-			assertEquals(queue.cycle().jobName(), "D");
+			requireThat(queue.cycle().jobName(), "queue.cycle().jobName()").isEqualTo("D");
 			fixture.latestAttempt("A").finish(true, 9);
 			fixture.latestAttempt("B").finish(false, 0);
 			fixture.latestAttempt("D").finish(true, 137);
 			fixture.calm();
 
-			assertEquals(queue.cycle().control(), Policy.Control.WAIT);
-			assertEquals(queue.jobs().getFirst().retryAfter(), 2);
-			assertEquals(queue.jobs().get(2).retryAfter(), 1);
-			assertEquals(fixture.owners.size(), 4, "Older ineligible A must block eligible D and READY work");
+			requireThat(queue.cycle().control(), "queue.cycle().control()").isEqualTo(Policy.Control.WAIT);
+			requireThat(queue.jobs().getFirst().retryAfter(), "queue.jobs().getFirst().retryAfter()").isEqualTo(2);
+			requireThat(queue.jobs().get(2).retryAfter(), "queue.jobs().get(2).retryAfter()").isEqualTo(1);
+			requireThat(fixture.owners.size(), "fixture.owners.size()")
+				.withContext("Older ineligible A must block eligible D and READY work", "diagnostic")
+				.isEqualTo(4);
 			fixture.latestAttempt("C").finish(false, 0);
 
-			assertEquals(queue.cycle().jobName(), "A");
+			requireThat(queue.cycle().jobName(), "queue.cycle().jobName()").isEqualTo("A");
 		}
 	}
 
@@ -217,23 +225,23 @@ public final class JobQueueTest
 			queue.cycle();
 			fixture.pressure();
 
-			assertEquals(queue.cycle().control(), Policy.Control.TERMINATE);
+			requireThat(queue.cycle().control(), "queue.cycle().control()").isEqualTo(Policy.Control.TERMINATE);
 			fixture.calm();
 			// Empty input models the native owner withholding whole-job completion while descendants remain.
 
-			assertEquals(queue.cycle().control(), Policy.Control.WAIT);
-			assertEquals(queue.jobs().get(1).state(), Policy.State.STOPPING);
-			assertFalse(queue.allocationBlocked("B", 1, 0));
-			assertEquals(fixture.latestAttempt("B").terminates, 1);
-			assertEquals(fixture.owners.size(), 2);
+			requireThat(queue.cycle().control(), "queue.cycle().control()").isEqualTo(Policy.Control.WAIT);
+			requireThat(queue.jobs().get(1).state(), "queue.jobs().get(1).state()").isEqualTo(Policy.State.STOPPING);
+			requireThat(queue.allocationBlocked("B", 1, 0), "queue").isFalse();
+			requireThat(fixture.latestAttempt("B").terminates, "fixture").isEqualTo(1);
+			requireThat(fixture.owners.size(), "fixture.owners.size()").isEqualTo(2);
 			fixture.latestAttempt("B").finish(true, 137);
 
-			assertEquals(queue.cycle().control(), Policy.Control.WAIT);
-			assertEquals(fixture.attempt("B", 1).closes, 1);
-			assertEquals(queue.jobs().get(1).state(), Policy.State.RETRY);
+			requireThat(queue.cycle().control(), "queue.cycle().control()").isEqualTo(Policy.Control.WAIT);
+			requireThat(fixture.attempt("B", 1).closes, "fixture").isEqualTo(1);
+			requireThat(queue.jobs().get(1).state(), "queue.jobs().get(1).state()").isEqualTo(Policy.State.RETRY);
 			fixture.latestAttempt("A").finish(false, 0);
 
-			assertEquals(queue.cycle().jobName(), "B");
+			requireThat(queue.cycle().jobName(), "queue.cycle().jobName()").isEqualTo("B");
 		}
 	}
 
@@ -261,13 +269,13 @@ public final class JobQueueTest
 			fixture.calm();
 			fixture.latestAttempt("A").finish(false, 7);
 
-			assertEquals(queue.cycle().control(), Policy.Control.WAIT);
-			assertEquals(queue.completions(), 1);
-			assertEquals(queue.jobs().getFirst().state(), Policy.State.STOPPING);
+			requireThat(queue.cycle().control(), "queue.cycle().control()").isEqualTo(Policy.Control.WAIT);
+			requireThat(queue.completions(), "queue.completions()").isEqualTo(1);
+			requireThat(queue.jobs().getFirst().state(), "queue.jobs().getFirst().state()").isEqualTo(Policy.State.STOPPING);
 			fixture.latestAttempt("B").finish(true, 137);
 
-			assertEquals(queue.cycle().jobName(), "B");
-			assertEquals(fixture.latestAttempt("B").sequence, 2);
+			requireThat(queue.cycle().jobName(), "queue.cycle().jobName()").isEqualTo("B");
+			requireThat(fixture.latestAttempt("B").sequence, "fixture").isEqualTo(2);
 		}
 	}
 
@@ -295,13 +303,15 @@ public final class JobQueueTest
 			fixture.latestAttempt("A").finish(true, 0);
 			fixture.latestAttempt("B").finish(false, 0);
 
-			assertEquals(queue.cycle().control(), Policy.Control.WAIT);
-			assertEquals(queue.completions(), 1);
-			assertEquals(queue.jobs().getFirst().retryAfter(), 2, "Same-batch natural completion precedes unexpected-abort baseline");
+			requireThat(queue.cycle().control(), "queue.cycle().control()").isEqualTo(Policy.Control.WAIT);
+			requireThat(queue.completions(), "queue.completions()").isEqualTo(1);
+			requireThat(queue.jobs().getFirst().retryAfter(), "queue.jobs().getFirst().retryAfter()")
+				.withContext("Same-batch natural completion precedes unexpected-abort baseline", "diagnostic")
+				.isEqualTo(2);
 			fixture.latestAttempt("C").finish(false, 0);
 
-			assertEquals(queue.cycle().jobName(), "A");
-			assertEquals(queue.completions(), 2);
+			requireThat(queue.cycle().jobName(), "queue.cycle().jobName()").isEqualTo("A");
+			requireThat(queue.completions(), "queue.completions()").isEqualTo(2);
 		}
 	}
 
@@ -322,16 +332,18 @@ public final class JobQueueTest
 		fixture.latestAttempt("A").outcome = outcome;
 		queue.cycle();
 		queue.cycle();
-		assertEquals(queue.completions(), 1);
-		assertTrue(queue.jobs().isEmpty());
-		assertEquals(queue.completedAttempts().size(), 1);
-		assertSame(queue.completedAttempts().getFirst().outcome().result(), result);
-		assertEquals(fixture.latestAttempt("A").polls, 1);
+		requireThat(queue.completions(), "queue.completions()").isEqualTo(1);
+		requireThat(queue.jobs().isEmpty(), "queue.jobs().isEmpty()").isTrue();
+		requireThat(queue.completedAttempts().size(), "queue.completedAttempts().size()").isEqualTo(1);
+		requireThat(queue.completedAttempts().getFirst().outcome().result(), "queue")
+			.isReferenceEqualTo(result, "expected");
+		requireThat(fixture.latestAttempt("A").polls, "fixture").isEqualTo(1);
 		var saved = queue.completedAttempts();
 		queue.close();
-		assertEquals(queue.completions(), 1);
-		assertEquals(queue.completedAttempts(), saved);
-		assertSame(queue.completedAttempts().getFirst().outcome(), outcome);
+		requireThat(queue.completions(), "queue.completions()").isEqualTo(1);
+		requireThat(queue.completedAttempts(), "queue.completedAttempts()").isEqualTo(saved);
+		requireThat(queue.completedAttempts().getFirst().outcome(), "queue.completedAttempts().getFirst().outcome()")
+			.isReferenceEqualTo(outcome, "expected");
 	}
 
 	/**
@@ -357,10 +369,12 @@ public final class JobQueueTest
 				var original = fixture.latestAttempt("B").outcome;
 				fixture.calm();
 				queue.cycle();
-				assertSame(queue.completedAttempts().getFirst().outcome(), original);
-				assertEquals(queue.completions(), aborted?0L : 1L);
-				assertEquals(queue.jobs().stream().anyMatch(j -> j.name().equals("B")), aborted);
-				if (aborted)assertEquals(queue.jobs().get(1).state(), Policy.State.RETRY);
+				requireThat(queue.completedAttempts().getFirst().outcome(), "queue.completedAttempts().getFirst().outcome()")
+					.isReferenceEqualTo(original, "expected");
+				requireThat(queue.completions(), "queue.completions()").isEqualTo(aborted?0L : 1L);
+				requireThat(queue.jobs().stream().anyMatch(j -> j.name().equals("B")), "queue").isEqualTo(aborted);
+				if (aborted)requireThat(queue.jobs().get(1).state(), "queue.jobs().get(1).state()")
+					.isEqualTo(Policy.State.RETRY);
 			}
 		}
 	}
@@ -378,31 +392,35 @@ public final class JobQueueTest
 		var queue = fixture.queue();
 		queue.submit("A", 10L);
 		queue.submit("B", 10L);
-		var failure = expectThrows(IOException.class, queue::cycle);
-		assertSame(failure.getCause(), fixture.latestAttempt("A").startFailure);
-		assertTrue(fixture.latestAttempt("A").held);
-		expectThrows(IllegalStateException.class, queue::jobs);
-		assertSame(expectThrows(IOException.class, queue::cycle), failure);
-		assertSame(expectThrows(IOException.class, queue::cycle), failure);
-		assertEquals(fixture.latestAttempt("A").starts, 1);
-		assertEquals(fixture.owners.size(), 1);
-		assertEquals(fixture.latestAttempt("A").polls, 2);
+		var failure = requireException(IOException.class, queue::cycle);
+		requireThat(failure.getCause(), "failure.getCause()")
+			.isReferenceEqualTo(fixture.latestAttempt("A").startFailure, "expected");
+		requireThat(fixture.latestAttempt("A").held, "fixture").isTrue();
+		requireException(IllegalStateException.class, queue::jobs);
+		requireThat(requireException(IOException.class, queue::cycle), "requireException")
+			.isReferenceEqualTo(failure, "expected");
+		requireThat(requireException(IOException.class, queue::cycle), "requireException")
+			.isReferenceEqualTo(failure, "expected");
+		requireThat(fixture.latestAttempt("A").starts, "fixture").isEqualTo(1);
+		requireThat(fixture.owners.size(), "fixture.owners.size()").isEqualTo(1);
+		requireThat(fixture.latestAttempt("A").polls, "fixture").isEqualTo(2);
 		queue.close();
 		queue.close();
-		assertFalse(fixture.latestAttempt("A").held);
-		assertEquals(fixture.latestAttempt("A").closes, 1);
-		assertEquals(queue.completions(), 0);
+		requireThat(fixture.latestAttempt("A").held, "fixture").isFalse();
+		requireThat(fixture.latestAttempt("A").closes, "fixture").isEqualTo(1);
+		requireThat(queue.completions(), "queue.completions()").isEqualTo(0);
 		Fixture recovered = new Fixture(1);
 		recovered.failStart = true;
 
 		try (var reconciledQueue = recovered.queue())
 		{
 			reconciledQueue.submit("A", 10L);
-			expectThrows(IOException.class, reconciledQueue::cycle);
+			requireException(IOException.class, reconciledQueue::cycle);
 			recovered.latestAttempt("A").finish(false, 7);
-			assertEquals(reconciledQueue.cycle().control(), Policy.Control.WAIT);
-			assertEquals(reconciledQueue.completions(), 1);
-			assertTrue(reconciledQueue.jobs().isEmpty());
+			requireThat(reconciledQueue.cycle().control(), "reconciledQueue.cycle().control()")
+				.isEqualTo(Policy.Control.WAIT);
+			requireThat(reconciledQueue.completions(), "reconciledQueue.completions()").isEqualTo(1);
+			requireThat(reconciledQueue.jobs().isEmpty(), "reconciledQueue.jobs().isEmpty()").isTrue();
 		}
 	}
 
@@ -425,18 +443,18 @@ public final class JobQueueTest
 			queue.submit("B", 10L);
 			var actionA = fixture.latestAttempt("A");
 			actionA.resumeFailure = new IOException("partial continuation");
-			var failure = expectThrows(IOException.class, queue::cycle);
-			assertSame(failure.getCause(), actionA.resumeFailure);
-			expectThrows(IOException.class, queue::cycle);
-			expectThrows(IllegalStateException.class, () -> queue.allocationBlocked("A", 0, 5));
-			expectThrows(IllegalStateException.class, () -> queue.submit("C", 1L));
-			assertEquals(actionA.resumes, 1);
-			assertEquals(actionA.terminates, 0);
-			assertEquals(fixture.owners.size(), 1);
+			var failure = requireException(IOException.class, queue::cycle);
+			requireThat(failure.getCause(), "failure.getCause()").isReferenceEqualTo(actionA.resumeFailure, "expected");
+			requireException(IOException.class, queue::cycle);
+			requireException(IllegalStateException.class, () -> queue.allocationBlocked("A", 0, 5));
+			requireException(IllegalStateException.class, () -> queue.submit("C", 1L));
+			requireThat(actionA.resumes, "actionA.resumes").isEqualTo(1);
+			requireThat(actionA.terminates, "actionA.terminates").isEqualTo(0);
+			requireThat(fixture.owners.size(), "fixture.owners.size()").isEqualTo(1);
 			actionA.finish(false, 0);
 
-			assertEquals(queue.cycle().jobName(), "B");
-			assertEquals(actionA.closes, 1);
+			requireThat(queue.cycle().jobName(), "queue.cycle().jobName()").isEqualTo("B");
+			requireThat(actionA.closes, "actionA.closes").isEqualTo(1);
 		}
 	}
 
@@ -461,18 +479,19 @@ public final class JobQueueTest
 			var actionB = fixture.latestAttempt("B");
 			actionB.terminateFailure = new IOException("partial termination");
 			fixture.pressure();
-			var failure = expectThrows(IOException.class, queue::cycle);
-			assertSame(failure.getCause(), actionB.terminateFailure);
+			var failure = requireException(IOException.class, queue::cycle);
+			requireThat(failure.getCause(), "failure.getCause()").isReferenceEqualTo(actionB.terminateFailure, "expected");
 			fixture.calm();
 			fixture.latestAttempt("A").finish(false, 0);
-			assertSame(expectThrows(IOException.class, queue::cycle), failure);
-			assertEquals(queue.completions(), 1);
-			assertEquals(actionB.terminates, 1);
+			requireThat(requireException(IOException.class, queue::cycle), "requireException")
+				.isReferenceEqualTo(failure, "expected");
+			requireThat(queue.completions(), "queue.completions()").isEqualTo(1);
+			requireThat(actionB.terminates, "actionB.terminates").isEqualTo(1);
 			actionB.finish(true, 137);
 
-			assertEquals(queue.cycle().jobName(), "B");
-			assertEquals(fixture.latestAttempt("B").sequence, 2);
-			assertEquals(actionB.closes, 1);
+			requireThat(queue.cycle().jobName(), "queue.cycle().jobName()").isEqualTo("B");
+			requireThat(fixture.latestAttempt("B").sequence, "fixture").isEqualTo(2);
+			requireThat(actionB.closes, "actionB.closes").isEqualTo(1);
 		}
 	}
 
@@ -499,21 +518,22 @@ public final class JobQueueTest
 			var actionB = fixture.latestAttempt("B");
 			actionA.finish(false, 7);
 			actionB.pollFailure = new IOException("whole-job read unavailable");
-			var failure = expectThrows(IOException.class, queue::cycle);
-			assertSame(failure.getCause(), actionB.pollFailure);
-			assertEquals(actionA.closes, 0);
-			assertEquals(fixture.owners.size(), 2);
-			expectThrows(IllegalStateException.class, queue::jobs);
-			assertSame(queue.completedAttempts().getFirst().outcome(), actionA.outcome);
-			assertEquals(queue.completions(), 0);
+			var failure = requireException(IOException.class, queue::cycle);
+			requireThat(failure.getCause(), "failure.getCause()").isReferenceEqualTo(actionB.pollFailure, "expected");
+			requireThat(actionA.closes, "actionA.closes").isEqualTo(0);
+			requireThat(fixture.owners.size(), "fixture.owners.size()").isEqualTo(2);
+			requireException(IllegalStateException.class, queue::jobs);
+			requireThat(queue.completedAttempts().getFirst().outcome(), "queue.completedAttempts().getFirst().outcome()")
+				.isReferenceEqualTo(actionA.outcome, "expected");
+			requireThat(queue.completions(), "queue.completions()").isEqualTo(0);
 			int polls = actionA.polls;
 			actionB.pollFailure = null;
 
-			assertEquals(queue.cycle().jobName(), "C");
-			assertEquals(actionA.polls, polls);
-			assertEquals(actionA.closes, 1);
-			assertEquals(queue.completions(), 1);
-			assertEquals(queue.completedAttempts().size(), 1);
+			requireThat(queue.cycle().jobName(), "queue.cycle().jobName()").isEqualTo("C");
+			requireThat(actionA.polls, "actionA.polls").isEqualTo(polls);
+			requireThat(actionA.closes, "actionA.closes").isEqualTo(1);
+			requireThat(queue.completions(), "queue.completions()").isEqualTo(1);
+			requireThat(queue.completedAttempts().size(), "queue.completedAttempts().size()").isEqualTo(1);
 		}
 	}
 
@@ -535,21 +555,24 @@ public final class JobQueueTest
 		var actionB = fixture.latestAttempt("B");
 		actionB.finish(true, 137);
 		actionB.closeFailure = new IOException("owner cleanup incomplete");
-		var failure = expectThrows(IOException.class, queue::cycle);
-		assertSame(failure.getCause(), actionB.closeFailure);
-		assertSame(queue.completedAttempts().getFirst().outcome(), actionB.outcome);
-		expectThrows(IllegalStateException.class, queue::jobs);
-		expectThrows(IOException.class, queue::cycle);
-		assertEquals(actionB.closes, 1);
-		assertEquals(fixture.owners.size(), 2);
-		var closeFailure = expectThrows(IOException.class, queue::close);
-		assertSame(closeFailure.getCause(), actionB.closeFailure);
-		assertEquals(actionA.closes, 1);
-		assertEquals(actionB.closes, 1);
+		var failure = requireException(IOException.class, queue::cycle);
+		requireThat(failure.getCause(), "failure.getCause()").isReferenceEqualTo(actionB.closeFailure, "expected");
+		requireThat(queue.completedAttempts().getFirst().outcome(), "queue.completedAttempts().getFirst().outcome()")
+			.isReferenceEqualTo(actionB.outcome, "expected");
+		requireException(IllegalStateException.class, queue::jobs);
+		requireException(IOException.class, queue::cycle);
+		requireThat(actionB.closes, "actionB.closes").isEqualTo(1);
+		requireThat(fixture.owners.size(), "fixture.owners.size()").isEqualTo(2);
+		var closeFailure = requireException(IOException.class, queue::close);
+		requireThat(closeFailure.getCause(), "closeFailure.getCause()")
+			.isReferenceEqualTo(actionB.closeFailure, "expected");
+		requireThat(actionA.closes, "actionA.closes").isEqualTo(1);
+		requireThat(actionB.closes, "actionB.closes").isEqualTo(1);
 		actionB.closeFailure = null;
-		assertSame(expectThrows(IOException.class, queue::close).getCause(), closeFailure);
-		assertEquals(actionB.closes, 1);
-		assertEquals(queue.completions(), 0);
+		requireThat(requireException(IOException.class, queue::close).getCause(), "requireException")
+			.isReferenceEqualTo(closeFailure, "expected");
+		requireThat(actionB.closes, "actionB.closes").isEqualTo(1);
+		requireThat(queue.completions(), "queue.completions()").isEqualTo(0);
 	}
 
 	/**
@@ -573,21 +596,23 @@ public final class JobQueueTest
 		var actionC = fixture.latestAttempt("C");
 		actionA.closeFailure = new IOException("A cleanup");
 		actionC.closeFailure = new IOException("C cleanup");
-		var failure = expectThrows(IOException.class, queue::close);
-		assertSame(failure.getCause(), actionA.closeFailure);
-		assertEquals(failure.getSuppressed().length, 1);
-		assertSame(failure.getSuppressed()[0].getCause(), actionC.closeFailure);
-		assertTrue(failure.getMessage().contains("A attempt 0"));
-		assertTrue(failure.getSuppressed()[0].getMessage().contains("C attempt 2"));
-		assertEquals(List.of(actionA.closes, actionB.closes, actionC.closes), List.of(1, 1, 1));
-		assertEquals(queue.completions(), 0);
-		assertTrue(queue.completedAttempts().isEmpty());
-		expectThrows(IllegalStateException.class, queue::cycle);
-		expectThrows(IllegalStateException.class, queue::jobs);
-		expectThrows(IllegalStateException.class, () -> queue.submit("D", 1L));
-		expectThrows(IllegalStateException.class, () -> queue.allocationBlocked("A", 0, 0));
-		assertSame(expectThrows(IOException.class, queue::close).getCause(), failure);
-		assertEquals(List.of(actionA.closes, actionB.closes, actionC.closes), List.of(1, 1, 1));
+		var failure = requireException(IOException.class, queue::close);
+		requireThat(failure.getCause(), "failure.getCause()").isReferenceEqualTo(actionA.closeFailure, "expected");
+		requireThat(failure.getSuppressed().length, "failure.getSuppressed().length").isEqualTo(1);
+		requireThat(failure.getSuppressed()[0].getCause(), "failure.getSuppressed()[0].getCause()")
+			.isReferenceEqualTo(actionC.closeFailure, "expected");
+		requireThat(failure.getMessage().contains("A attempt 0"), "failure").isTrue();
+		requireThat(failure.getSuppressed()[0].getMessage().contains("C attempt 2"), "failure").isTrue();
+		requireThat(List.of(actionA.closes, actionB.closes, actionC.closes), "List").isEqualTo(List.of(1, 1, 1));
+		requireThat(queue.completions(), "queue.completions()").isEqualTo(0);
+		requireThat(queue.completedAttempts().isEmpty(), "queue.completedAttempts().isEmpty()").isTrue();
+		requireException(IllegalStateException.class, queue::cycle);
+		requireException(IllegalStateException.class, queue::jobs);
+		requireException(IllegalStateException.class, () -> queue.submit("D", 1L));
+		requireException(IllegalStateException.class, () -> queue.allocationBlocked("A", 0, 0));
+		requireThat(requireException(IOException.class, queue::close).getCause(), "requireException")
+			.isReferenceEqualTo(failure, "expected");
+		requireThat(List.of(actionA.closes, actionB.closes, actionC.closes), "List").isEqualTo(List.of(1, 1, 1));
 	}
 
 	/**
@@ -606,7 +631,7 @@ public final class JobQueueTest
 		var owner = fixture.latestAttempt("A");
 		owner.closeFailure = new IOException("owner cleanup incomplete");
 
-		var failure = expectThrows(IOException.class, () ->
+		var failure = requireException(IOException.class, () ->
 		{
 			try (queue)
 			{
@@ -614,13 +639,14 @@ public final class JobQueueTest
 			}
 		});
 
-		assertSame(failure.getCause(), owner.closeFailure);
-		assertTrue(failure.getMessage().contains("A attempt 0"));
-		assertEquals(failure.getSuppressed().length, 1);
-		assertSame(failure.getSuppressed()[0].getCause(), failure);
-		assertEquals(owner.closes, 1);
-		assertEquals(queue.completions(), 0);
-		assertTrue(queue.completedAttempts().isEmpty());
+		requireThat(failure.getCause(), "failure.getCause()").isReferenceEqualTo(owner.closeFailure, "expected");
+		requireThat(failure.getMessage().contains("A attempt 0"), "failure").isTrue();
+		requireThat(failure.getSuppressed().length, "failure.getSuppressed().length").isEqualTo(1);
+		requireThat(failure.getSuppressed()[0].getCause(), "failure.getSuppressed()[0].getCause()")
+			.isReferenceEqualTo(failure, "expected");
+		requireThat(owner.closes, "owner.closes").isEqualTo(1);
+		requireThat(queue.completions(), "queue.completions()").isEqualTo(0);
+		requireThat(queue.completedAttempts().isEmpty(), "queue.completedAttempts().isEmpty()").isTrue();
 	}
 
 	/**
@@ -640,21 +666,23 @@ public final class JobQueueTest
 			queue.submit("C", 10L);
 			var ready = queue.jobs();
 			fixture.hostFailure = new IOException("host unavailable");
-			assertSame(expectThrows(IOException.class, queue::cycle), fixture.hostFailure);
-			assertEquals(queue.jobs(), ready);
-			assertTrue(fixture.owners.isEmpty());
+			requireThat(requireException(IOException.class, queue::cycle), "requireException")
+				.isReferenceEqualTo(fixture.hostFailure, "expected");
+			requireThat(queue.jobs(), "queue.jobs()").isEqualTo(ready);
+			requireThat(fixture.owners.isEmpty(), "fixture.owners.isEmpty()").isTrue();
 			fixture.hostFailure = null;
 
 			queue.cycle();
 			var running = queue.jobs();
 			fixture.residentFailure = new IOException("resident unavailable");
-			assertSame(expectThrows(IOException.class, queue::cycle), fixture.residentFailure);
-			assertEquals(queue.jobs(), running);
-			assertEquals(fixture.owners.size(), 1);
+			requireThat(requireException(IOException.class, queue::cycle), "requireException")
+				.isReferenceEqualTo(fixture.residentFailure, "expected");
+			requireThat(queue.jobs(), "queue.jobs()").isEqualTo(running);
+			requireThat(fixture.owners.size(), "fixture.owners.size()").isEqualTo(1);
 			fixture.residentFailure = null;
 
-			assertEquals(queue.cycle().jobName(), "B");
-			assertEquals(queue.jobs().get(1).position(), 1);
+			requireThat(queue.cycle().jobName(), "queue.cycle().jobName()").isEqualTo("B");
+			requireThat(queue.jobs().get(1).position(), "queue.jobs().get(1).position()").isEqualTo(1);
 		}
 	}
 
@@ -671,44 +699,44 @@ public final class JobQueueTest
 		JobQueue.AttemptFactory<Result> factory = (name, sequence) -> {
 			throw new AssertionError("Invalid construction must not call factory");
 		};
-		expectThrows(NullPointerException.class, () -> new JobQueue<>(null, fixture, factory));
-		expectThrows(NullPointerException.class, () -> new JobQueue<>(budget, null, factory));
-		expectThrows(NullPointerException.class, () -> new JobQueue<>(budget, fixture, null));
-		expectThrows(NullPointerException.class, () -> new JobQueue.Outcome<Result>(null, false));
+		requireException(NullPointerException.class, () -> new JobQueue<>(null, fixture, factory));
+		requireException(NullPointerException.class, () -> new JobQueue<>(budget, null, factory));
+		requireException(NullPointerException.class, () -> new JobQueue<>(budget, fixture, null));
+		requireException(NullPointerException.class, () -> new JobQueue.Outcome<Result>(null, false));
 		var outcome = new JobQueue.Outcome<>(new Result(0, List.of()), false);
-		expectThrows(NullPointerException.class, () -> new JobQueue.Completion<Result>(null, 0, outcome));
-		expectThrows(IllegalArgumentException.class, () -> new JobQueue.Completion<>("", 0, outcome));
-		expectThrows(IllegalArgumentException.class, () -> new JobQueue.Completion<>("A", -1, outcome));
-		expectThrows(NullPointerException.class, () -> new JobQueue.Completion<Result>("A", 0, null));
+		requireException(NullPointerException.class, () -> new JobQueue.Completion<Result>(null, 0, outcome));
+		requireException(IllegalArgumentException.class, () -> new JobQueue.Completion<>("", 0, outcome));
+		requireException(IllegalArgumentException.class, () -> new JobQueue.Completion<>("A", -1, outcome));
+		requireException(NullPointerException.class, () -> new JobQueue.Completion<Result>("A", 0, null));
 
 		try (var queue = fixture.queue())
 		{
-			expectThrows(NullPointerException.class, () -> queue.submit(null, 0L));
-			expectThrows(IllegalArgumentException.class, () -> queue.submit("", 0L));
-			expectThrows(IllegalArgumentException.class, () -> queue.submit("A", -1L));
+			requireException(NullPointerException.class, () -> queue.submit(null, 0L));
+			requireException(IllegalArgumentException.class, () -> queue.submit("", 0L));
+			requireException(IllegalArgumentException.class, () -> queue.submit("A", -1L));
 			queue.submit("A", null);
 			var ready = queue.jobs();
-			expectThrows(IllegalArgumentException.class, () -> queue.submit("A", 1L));
-			expectThrows(NullPointerException.class, () -> queue.allocationBlocked(null, 0, 0));
+			requireException(IllegalArgumentException.class, () -> queue.submit("A", 1L));
+			requireException(NullPointerException.class, () -> queue.allocationBlocked(null, 0, 0));
 			for (String name : List.of("", "unknown"))
-				expectThrows(IllegalArgumentException.class, () -> queue.allocationBlocked(name, 0, 0));
-			expectThrows(IllegalArgumentException.class, () -> queue.allocationBlocked("A", -1, 0));
-			expectThrows(IllegalArgumentException.class, () -> queue.allocationBlocked("A", 0, -1));
-			assertFalse(queue.allocationBlocked("A", 0, 0));
-			assertTrue(fixture.owners.isEmpty());
-			assertEquals(ready.getFirst().position(), 0);
-			expectThrows(UnsupportedOperationException.class, () -> ready.clear());
+				requireException(IllegalArgumentException.class, () -> queue.allocationBlocked(name, 0, 0));
+			requireException(IllegalArgumentException.class, () -> queue.allocationBlocked("A", -1, 0));
+			requireException(IllegalArgumentException.class, () -> queue.allocationBlocked("A", 0, -1));
+			requireThat(queue.allocationBlocked("A", 0, 0), "queue").isFalse();
+			requireThat(fixture.owners.isEmpty(), "fixture.owners.isEmpty()").isTrue();
+			requireThat(ready.getFirst().position(), "ready.getFirst().position()").isEqualTo(0);
+			requireException(UnsupportedOperationException.class, () -> ready.clear());
 
 			queue.cycle();
-			assertEquals(ready.getFirst().state(), Policy.State.READY);
+			requireThat(ready.getFirst().state(), "ready.getFirst().state()").isEqualTo(Policy.State.READY);
 			fixture.latestAttempt("A").finish(false, 0);
 
 			queue.cycle();
-			assertFalse(queue.allocationBlocked("A", 0, 1));
-			expectThrows(IllegalArgumentException.class, () -> queue.submit("A", 1L));
+			requireThat(queue.allocationBlocked("A", 0, 1), "queue").isFalse();
+			requireException(IllegalArgumentException.class, () -> queue.submit("A", 1L));
 			var completed = queue.completedAttempts();
-			expectThrows(UnsupportedOperationException.class, () -> completed.clear());
-			assertEquals(completed.size(), 1);
+			requireException(UnsupportedOperationException.class, () -> completed.clear());
+			requireThat(completed.size(), "completed.size()").isEqualTo(1);
 		}
 	}
 
@@ -734,15 +762,16 @@ public final class JobQueueTest
 				throw original;
 			});
 			queue.submit("A", 10L);
-			var failure = expectThrows(IllegalStateException.class, queue::cycle);
-			assertTrue(failure.getMessage().contains("A attempt 0"));
+			var failure = requireException(IllegalStateException.class, queue::cycle);
+			requireThat(failure.getMessage().contains("A attempt 0"), "failure").isTrue();
 			if (returnsNull == false)
-				assertSame(failure.getCause(), original);
-			assertSame(expectThrows(IllegalStateException.class, queue::cycle), failure);
-			expectThrows(IllegalStateException.class, queue::jobs);
-			assertEquals(calls[0], 1);
+				requireThat(failure.getCause(), "failure.getCause()").isReferenceEqualTo(original, "expected");
+			requireThat(requireException(IllegalStateException.class, queue::cycle), "requireException")
+				.isReferenceEqualTo(failure, "expected");
+			requireException(IllegalStateException.class, queue::jobs);
+			requireThat(calls[0], "calls[0]").isEqualTo(1);
 			queue.close();
-			assertTrue(queue.completedAttempts().isEmpty());
+			requireThat(queue.completedAttempts().isEmpty(), "queue.completedAttempts().isEmpty()").isTrue();
 		}
 	}
 

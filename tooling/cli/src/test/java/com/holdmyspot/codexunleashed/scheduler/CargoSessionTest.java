@@ -21,6 +21,33 @@ public final class CargoSessionTest
     /** Creates focused session tests. */
     public CargoSessionTest() {}
 
+    /**
+     * Accepted native outcomes reach profiling once, before a final wrapper response can fail.
+     * @throws IOException if modeled native registration or cleanup fails
+     */
+    @Test
+    public void notifiesAcceptedOutcomeBeforeFinalResponse() throws IOException
+    {
+        Harness h = new Harness();
+        List<JobQueue.Completion<WindowsProcess.Result>> observed = new ArrayList<>();
+        CargoSession<WindowsProcess.Result> session = new CargoSession<>(h.factory, h.measurements,
+            (request, position) -> h.factory.register(request.name(), new WindowsAttempts.Command(
+                new Controller.Action(request.name(), position), request.arguments(), request.directory(),
+                request.environment(), MemorySegment.NULL, MemorySegment.NULL, MemorySegment.NULL)), h, observed::add);
+        session.registerAuthenticated(h.a, result -> { throw new IOException("uncertain response"); });
+        JobQueue.Attempt<WindowsProcess.Result> attempt = session.attempts().create(h.a.name(), 0);
+        try
+        {
+            JobQueue.Completion<WindowsProcess.Result> completion = new JobQueue.Completion<>(h.a.name(), 0,
+                new JobQueue.Outcome<>(new WindowsProcess.Result(0, false), false));
+            requireException(IOException.class, () -> session.acceptOutcome(completion));
+            requireThat(observed, "acceptedBeforeResponseFailure").isEqualTo(List.of(completion));
+            requireException(IOException.class, () -> session.acceptOutcome(completion));
+            requireThat(observed.size(), "notNotifiedTwice").isEqualTo(1);
+        }
+        finally { attempt.close(); session.close(); }
+    }
+
     /** Late arrivals share one queue, lease and response lifetime through an ordered retry.
      * @throws IOException if valid modeled composition fails */
     @Test public void admitsLateDiscoveryAndPreservesOriginalRetryPosition() throws IOException
@@ -71,6 +98,118 @@ public final class CargoSessionTest
         requireThat(h.responses.isEmpty(), "noInventedCompilerStatus").isTrue();
         requireThat(h.factory.hasOpenAttempts(), "allQueueOwnersReaped").isFalse();
         requireThat(h.events, "leaseAfterWrapperBarrier").isEqualTo(List.of("wrappers-reaped", "lease-closed", "runtime-closed"));
+    }
+
+    /** A wrapper may leave after successful final publication without cancelling another action.
+     * @throws IOException if valid modeled composition fails */
+    @Test public void wrapperExitAfterFinalResponsePreservesPeerProgress() throws IOException
+    {
+        var h = new Harness();
+        h.exitAfterResponse = true;
+        requireThat(h.coordinator().run(), "actualCargoStatus").isEqualTo(101);
+        requireThat(h.started, "peerAndRetryComplete").isEqualTo(List.of(h.a.name(), h.b.name(), h.a.name()));
+        requireThat(h.responses.size(), "oneFinalResponsePerWrapper").isEqualTo(2);
+        requireThat(h.stopCalls, "normalWrapperExitDoesNotStopProducer").isEqualTo(0);
+        requireThat(h.closeCalls, "outerOwnershipStillClosed").isEqualTo(1);
+    }
+
+    /** Aborted outcomes leave the wrapper responsible for its retained request.
+     * @throws IOException if setup fails */
+    @Test public void wrapperExitAfterAbortRemainsFatal() throws IOException
+    {
+        var h = new Harness();
+        h.session.registerAuthenticated(h.a, h.responses::add);
+        var attempt = h.session.attempts().create(h.a.name(), 0);
+        try
+        {
+            h.session.acceptOutcome(new JobQueue.Completion<>(h.a.name(), 0,
+                new JobQueue.Outcome<>(new WindowsProcess.Result(137, true), true)));
+            requireException(IOException.class, () -> h.session.wrapperDisconnected(h.a.name()));
+            requireThat(h.responses.isEmpty(), "abortDoesNotAnswerWrapper").isTrue();
+            requireThat(h.session.acceptedOutcomes().size(), "abortReceiptRetained").isEqualTo(1);
+        }
+        finally { attempt.close(); h.session.close(); }
+    }
+
+    /** Consumed, unknown and mismatched attempt receipts cannot answer a retained wrapper.
+     * @throws IOException if setup fails */
+    @Test public void rejectsUnissuedMismatchedAndConsumedOutcomes() throws IOException
+    {
+        var h = new Harness();
+        h.session.registerAuthenticated(h.a, h.responses::add);
+        var attempt = h.session.attempts().create(h.a.name(), 0);
+        try
+        {
+            var result = new JobQueue.Outcome<>(new WindowsProcess.Result(7, false), false);
+            requireException(IllegalArgumentException.class,
+                () -> h.session.acceptOutcome(new JobQueue.Completion<>(h.a.name(), 1, result)));
+            requireException(IllegalArgumentException.class,
+                () -> h.session.acceptOutcome(new JobQueue.Completion<>(h.b.name(), 0, result)));
+            requireThat(h.session.acceptedOutcomes().isEmpty(), "rejectedReceiptsNotRecorded").isTrue();
+            requireThat(h.responses.isEmpty(), "rejectedReceiptsNotPublished").isTrue();
+
+            var accepted = new JobQueue.Completion<>(h.a.name(), 0, result);
+            h.session.acceptOutcome(accepted);
+            requireException(IllegalArgumentException.class, () -> h.session.acceptOutcome(accepted));
+            h.session.wrapperDisconnected(h.a.name());
+            h.session.wrapperDisconnected(h.a.name());
+            requireThat(h.responses.size(), "oneFinalResponse").isEqualTo(1);
+            requireThat(h.session.acceptedOutcomes().size(), "oneAcceptedReceipt").isEqualTo(1);
+        }
+        finally { attempt.close(); h.session.close(); }
+    }
+
+    /** Uncertain outer cleanup retains the invocation without blindly repeating any release operation.
+     * @throws IOException if setup fails */
+    @Test public void partialOuterCloseRetainsOriginalFailureWithoutReplay() throws IOException
+    {
+        var h = new Harness();
+        h.failClose = true;
+        IOException first = requireException(IOException.class, h.session::close);
+        IOException repeated = requireException(IOException.class, h.session::close);
+        requireThat(repeated.getCause(), "retainedOriginalFailure").isReferenceEqualTo(first, "first");
+        requireThat(h.closeCalls, "uncertainOuterCleanupNotReplayed").isEqualTo(1);
+        requireException(IOException.class, () -> h.session.registerAuthenticated(h.a, h.responses::add));
+    }
+
+    /** A retained owner can finish cleanup after the failed call without replaying it through the session.
+     * @throws IOException if reconciliation fails */
+    @Test public void completedOuterCleanupReconcilesWithoutReplayingClose() throws IOException
+    {
+        var h = new Harness();
+        h.failClose = true;
+        IOException first = requireException(IOException.class, h.session::close);
+        h.completeOuterCleanup();
+        h.session.close();
+        h.session.close();
+        requireThat(h.closeCalls, "onePotentiallyEffectiveClose").isEqualTo(1);
+        requireThat(h.closeObservations, "oneTerminalObservation").isEqualTo(1);
+        requireThat(h.events, "allOuterDependenciesClosed").isEqualTo(List.of("wrappers-reaped", "lease-closed", "runtime-closed"));
+        IOException stopped = requireException(IOException.class,
+            () -> h.session.registerAuthenticated(h.a, h.responses::add));
+        requireThat(stopped, "originalFailureRemainsSticky").isReferenceEqualTo(first, "first");
+    }
+
+    /** An observation fault retains both the original failure and the owner's unresolved lifetime.
+     * @throws IOException if eventual reconciliation fails */
+    @Test public void failedOuterCleanupObservationRetainsFailureAndOwnership() throws IOException
+    {
+        var h = new Harness();
+        h.failClose = true;
+        IOException first = requireException(IOException.class, h.session::close);
+        IOException observation = new IOException("modeled cleanup observation unavailable");
+        h.closeObservationFailure = observation;
+        IOException observed = requireException(IOException.class, h.session::close);
+        requireThat(observed, "originalCloseFailure").isReferenceEqualTo(first, "first");
+        requireThat(List.of(first.getSuppressed()), "retainedObservationFailure").isEqualTo(List.of(observation));
+        h.closeObservationFailure = null;
+        IOException pending = requireException(IOException.class, h.session::close);
+        requireThat(pending.getCause(), "incompleteOwnerStillRetained").isReferenceEqualTo(first, "first");
+        requireThat(h.closeCalls, "noCloseReplayAfterObservationFault").isEqualTo(1);
+        requireThat(h.events, "noPrematureOuterRelease").isEqualTo(List.of());
+        h.completeOuterCleanup();
+        h.session.close();
+        requireThat(h.closeObservations, "failedPendingAndCompletedObservations").isEqualTo(3);
     }
 
     /** Partial command registration reserves identity, exposes no submission and prevents uncertain repetition.
@@ -165,9 +304,13 @@ public final class CargoSessionTest
         /** Model event-loop round. */
         private int round;
         /** Stop and close attempt counts. */
-        private int stopCalls, closeCalls;
+        private int stopCalls, closeCalls, closeObservations;
+        /** Read-only cleanup observations remain separate from potentially effective close calls. */
+        private boolean outerClosed;
+        /** Selected observation failure without changing cleanup state. */
+        private IOException closeObservationFailure;
         /** Fault modes selected by each focused test. */
-        private boolean failResponse, disconnect;
+        private boolean failResponse, disconnect, exitAfterResponse, failClose;
         /** Physical host/tree measurements for actual controller decisions. */
         private final Controller.Measurements measurements = new Controller.Measurements()
         {
@@ -231,7 +374,11 @@ public final class CargoSessionTest
                 current.get(a.name()).result = new WindowsProcess.Result(37, true);
             }
             if (round == 4) current.get(b.name()).result = new WindowsProcess.Result(23, false);
-            if (round == 5) current.get(a.name()).result = new WindowsProcess.Result(0xFFFFFFFFL, false);
+            if (round == 5)
+            {
+                if (exitAfterResponse) session.wrapperDisconnected(b.name());
+                current.get(a.name()).result = new WindowsProcess.Result(0xFFFFFFFFL, false);
+            }
             factory.pumpAll();
         }
         @Override public Optional<SchedulerCoordinator.Blocked> pollBlocked()
@@ -242,11 +389,24 @@ public final class CargoSessionTest
         @Override public OptionalInt pollToolResult() { return round >= 5 ? OptionalInt.of(101) : OptionalInt.empty(); }
         @Override public boolean hasOpenAttempts() { return factory.hasOpenAttempts(); }
         @Override public void stopAccepting() { ++stopCalls; }
-        @Override public void close()
+        @Override public void close() throws IOException
         {
             requireThat(factory.hasOpenAttempts(), "nativeBarrierBeforeWrappers").isFalse();
             ++closeCalls;
+            if (failClose) throw new IOException("partial outer cleanup");
+            completeOuterCleanup();
+        }
+        /** Models the retained invocation owner finishing its remaining cleanup phases. */
+        private void completeOuterCleanup()
+        {
             events.addAll(List.of("wrappers-reaped", "lease-closed", "runtime-closed"));
+            outerClosed = true;
+        }
+        @Override public boolean isClosed() throws IOException
+        {
+            ++closeObservations;
+            if (closeObservationFailure != null) throw closeObservationFailure;
+            return outerClosed;
         }
     }
 }

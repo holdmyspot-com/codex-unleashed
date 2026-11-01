@@ -6,9 +6,8 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Exercises the read-only retention preview through the supported command dispatcher.
@@ -57,15 +56,21 @@ public final class RetentionPreviewTest
 		{
 			int status = Main.run(new String[]{"preview-ghcr-retention"},
 				new ByteArrayInputStream(inventory.getBytes(StandardCharsets.UTF_8)), out, err);
-			assertEquals(status, 0, diagnostics.toString(StandardCharsets.UTF_8));
+			requireThat(status, "status")
+				.withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic")
+				.isEqualTo(0);
 		}
-		JsonNode result = JsonMapper.builder().build().readTree(output.toString(StandardCharsets.UTF_8));
-		assertEquals(result.path("retained_releases").toString(),
-			"[\"rust-v0.10.0\",\"rust-v0.9.0\",\"rust-v0.1.0\",\"main\"]");
-		assertEquals(result.path("retained_version_ids").toString(), "[1,2,6,7]");
-		assertEquals(result.path("obsolete_version_ids").toString(), "[3,5,8]");
-		assertEquals(result.path("unmanaged_version_ids").toString(), "[4]");
-		assertTrue(result.path("dry_run").asBoolean());
+		JsonNode result;
+		try (ToolingScope scope = new DefaultToolingScope())
+		{
+			result = scope.getLeaderJsonMapper().readTree(output.toString(StandardCharsets.UTF_8));
+		}
+		requireThat(result.path("retained_releases").toString(), "result")
+			.isEqualTo("[\"rust-v0.10.0\",\"rust-v0.9.0\",\"rust-v0.1.0\",\"main\"]");
+		requireThat(result.path("retained_version_ids").toString(), "result").isEqualTo("[1,2,6,7]");
+		requireThat(result.path("obsolete_version_ids").toString(), "result").isEqualTo("[3,5,8]");
+		requireThat(result.path("unmanaged_version_ids").toString(), "result").isEqualTo("[4]");
+		requireThat(result.path("dry_run").asBoolean(), "result").isTrue();
 	}
 
 	/**
@@ -112,10 +117,11 @@ public final class RetentionPreviewTest
 		{
 			int status = Main.run(new String[]{"preview-ghcr-retention"},
 				new ByteArrayInputStream(inventory.getBytes(StandardCharsets.UTF_8)), out, err);
-			assertEquals(status, 1);
+			requireThat(status, "status").isEqualTo(1);
 		}
-		assertEquals(output.size(), 0);
-		assertTrue(diagnostics.toString(StandardCharsets.UTF_8).contains(expectedDiagnostic),
-			diagnostics.toString(StandardCharsets.UTF_8));
+		requireThat(output.size(), "output.size()").isEqualTo(0);
+		requireThat(diagnostics.toString(StandardCharsets.UTF_8).contains(expectedDiagnostic), "diagnostics")
+			.withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic")
+			.isTrue();
 	}
 }

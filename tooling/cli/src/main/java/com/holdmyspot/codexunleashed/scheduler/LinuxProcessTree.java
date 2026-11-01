@@ -1,5 +1,8 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -371,13 +374,14 @@ public final class LinuxProcessTree implements AutoCloseable {
 
     /**
      * Stores immutable launch context; acquisition and failed acquisition cleanup belong to prepare.
+     * @param scope invocation-owned shared values, retained open through native cleanup
      * @param launch immutable workload and containment inputs
      * @throws NullPointerException if {@code launch} is null
      * @throws IOException if native binding initialization fails
      */
-    private LinuxProcessTree(Launch launch) throws IOException {
+    private LinuxProcessTree(ToolingScope scope, Launch launch) throws IOException {
         this.launch = Objects.requireNonNull(launch, "launch");
-        nativeCalls = new NativeCalls();
+        nativeCalls = new NativeCalls(scope);
     }
 
     /**
@@ -386,47 +390,51 @@ public final class LinuxProcessTree implements AutoCloseable {
      * On failure, cleanup attempts to terminate and reap owned work and remove acquired storage; cleanup failures
      * are suppressed on the preparation failure and can leave work or storage behind.
      * @throws IOException if native authority, process creation, containment or readiness fails
+     * @param scope invocation-owned shared values, retained open through native cleanup
      * @param launch immutable workload and containment inputs
      * @return the prepared owner with execution still gated
      */
-    public static LinuxProcessTree prepare(Launch launch) throws IOException {
-        return prepareOwned(launch, null);
+    public static LinuxProcessTree prepare(ToolingScope scope, Launch launch) throws IOException {
+        return prepareOwned(scope, launch, null);
     }
 
     /**
      * Acquires the existing gated lifecycle for legacy or explicit standard-stream endpoints.
+     * @param scope invocation-owned shared values, retained open through native cleanup
      * @param launch immutable workload and containment inputs
      * @param files caller-owned endpoints, or null for legacy piped input and merged workload logging
      * @return the prepared owner with execution still gated
      * @throws IOException if native authority, process creation, containment or readiness fails
      */
-    private static LinuxProcessTree prepareOwned(Launch launch, StandardFiles files) throws IOException {
-        return prepareOwned(launch, files, null);
+    private static LinuxProcessTree prepareOwned(ToolingScope scope, Launch launch, StandardFiles files) throws IOException {
+        return prepareOwned(scope, launch, files, null);
     }
 
     /**
      * Prepares an authenticated borrowed descriptor path without changing legacy redirects.
+     * @param scope invocation-owned shared values
      * @param launch launch whose execution fields must match authorization
      * @param streams complete stream binding or descriptor context
      * @return the validated operation result
      * @throws java.io.IOException if validation, native access or owned cleanup fails
      */
-    static LinuxProcessTree prepareBorrowed(Launch launch, LinuxBorrowedStreams.Binding streams) throws IOException {
+    static LinuxProcessTree prepareBorrowed(ToolingScope scope, Launch launch, LinuxBorrowedStreams.Binding streams) throws IOException {
         Objects.requireNonNull(streams, "streams may not be null").requireExecution(launch);
-        return prepareOwned(launch, null, streams);
+        return prepareOwned(scope, launch, null, streams);
     }
 
     /**
      * Retains the state required by this owned native operation.
+     * @param scope invocation-owned shared values
      * @param launch immutable approved execution inputs
      * @param files legacy redirect endpoints, or absent for other modes
      * @param streams authenticated borrowed-stream receipt, or absent for legacy modes
      * @return the validated result retained by this operation
      * @throws java.io.IOException if validation, native access or owned cleanup fails
      */
-    private static LinuxProcessTree prepareOwned(Launch launch, StandardFiles files,
+    private static LinuxProcessTree prepareOwned(ToolingScope scope, Launch launch, StandardFiles files,
         LinuxBorrowedStreams.Binding streams) throws IOException {
-        LinuxProcessTree tree = new LinuxProcessTree(launch);
+        LinuxProcessTree tree = new LinuxProcessTree(scope, launch);
         tree.borrowedStreams = streams;
         try {
             if (tree.nativeCalls.uid() != 0) throw new IOException("This candidate requires an elevated standalone supervisor");
@@ -435,9 +443,8 @@ public final class LinuxProcessTree implements AutoCloseable {
             tree.group = Files.createTempDirectory(launch.cgroupParent(), "java-owner-");
             tree.writeConfiguration();
 
-            ProcessBuilder builder = new ProcessBuilder(launch.javaExecutable().toString(),
-                "--enable-native-access=ALL-UNNAMED", "-cp", launch.classPath().toString(),
-                LinuxProcessTree.class.getName(), "--gate", tree.scratch.toString());
+            ProcessBuilder builder = new ProcessBuilder(javaCommand(launch, LinuxProcessTree.class,
+                "--gate", tree.scratch.toString()));
             builder.directory(launch.directory().toFile());
             builder.environment().clear();
             if (files == null) {
@@ -477,19 +484,20 @@ public final class LinuxProcessTree implements AutoCloseable {
 
     /**
      * Prepares a gated workload with caller-owned standard-stream endpoints.
-     * Containment, release and failed-acquisition cleanup follow {@link #prepare(Launch)}.
+     * Containment, release and failed-acquisition cleanup follow {@link #prepare(ToolingScope, Launch)}.
      * The trusted gate opens the endpoints before release and inherits them through exec.
      * The caller must arrange FIFO peers so redirected opens can complete. Output truncation may occur
      * even if preparation later fails; the owner never deletes the endpoints.
+     * @param scope invocation-owned shared values, retained open through native cleanup
      * @param launch immutable workload and containment inputs
      * @param files nonnull standard-stream endpoints
      * @return the prepared owner with execution still gated
      * @throws NullPointerException if launch or files is null, before resource acquisition
      * @throws IOException if native authority, process creation, containment or readiness fails
      */
-    public static LinuxProcessTree prepare(Launch launch, StandardFiles files) throws IOException {
+    public static LinuxProcessTree prepare(ToolingScope scope, Launch launch, StandardFiles files) throws IOException {
         Objects.requireNonNull(files, "files may not be null");
-        return prepareOwned(launch, files);
+        return prepareOwned(scope, launch, files);
     }
 
     /**
@@ -758,27 +766,69 @@ public final class LinuxProcessTree implements AutoCloseable {
     }
 
     /**
+     * Launches a trusted Java entry point with the caller's runtime dependency closure.
+     * Named modules retain their module path, while linked runtimes resolve their bundled modules without one.
+     * Class-path callers retain their dependencies alongside the explicitly approved owner location.
+     * Workload arguments, environment, credentials and native execution policy are not changed here.
+     * @param launch approved Java executable and owner class location
+     * @param entryPoint trusted entry point in this tooling runtime
+     * @param arguments arguments following the trusted entry point
+     * @return a new command containing the matching native-access grant and absolute runtime search paths
+     * @throws NullPointerException if a required input or argument is null
+     */
+    static List<String> javaCommand(Launch launch, Class<?> entryPoint, String... arguments) {
+        List<String> command = new ArrayList<>();
+        command.add(launch.javaExecutable().toString());
+        Module module = entryPoint.getModule();
+        if (module.isNamed()) {
+            command.add("--enable-native-access=" + module.getName());
+            String modulePath = module.getLayer().configuration().modules().stream()
+                .map(resolved -> resolved.reference().location())
+                .flatMap(java.util.Optional::stream)
+                .filter(location -> location.getScheme().equals("file"))
+                .map(location -> Path.of(location).toString()).distinct().sorted()
+                .collect(java.util.stream.Collectors.joining(java.io.File.pathSeparator));
+            if (!modulePath.isEmpty())
+                command.addAll(List.of("--module-path", modulePath));
+            command.addAll(List.of("--module", module.getName() + "/" + entryPoint.getName()));
+        } else {
+            List<String> classPath = new ArrayList<>();
+            classPath.add(launch.classPath().toString());
+            for (String location : System.getProperty("java.class.path").split(
+                java.util.regex.Pattern.quote(java.io.File.pathSeparator), -1))
+                classPath.add(Path.of(location).toAbsolutePath().toString());
+            command.addAll(List.of("--enable-native-access=ALL-UNNAMED", "-cp",
+                String.join(java.io.File.pathSeparator, classPath), entryPoint.getName()));
+        }
+        command.addAll(List.of(arguments));
+        return command;
+    }
+
+    /**
      * Runs only the trusted helper. Workload execution follows release and identity drop, either directly or
      * through controller-driven leader-thread exec within the attached mode's 30-second replacement interval.
      * @param args the gate selector and absolute owned scratch directory
      * @throws Exception if configuration, release, credential drop or native execution fails
      */
     public static void main(String[] args) throws Exception {
-        if (args.length != 2 || args[0].equals("--gate") == false)
-            throw new IllegalArgumentException("Expected --gate and the owned scratch directory");
-        Path scratch = Path.of(args[1]);
-        Properties values = new Properties();
-        try (InputStream input = Files.newInputStream(scratch.resolve("launch.xml"))) { values.loadFromXML(input); }
-        LinuxBorrowedStreams.Binding streams = LinuxBorrowedStreams.readFrom(values);
-        if (streams == null) {
-            runConfiguredGate(scratch, values, null);
-            return;
-        }
-        try { runConfiguredGate(scratch, values, streams); }
-        catch (Throwable failure) {
-            try { Files.writeString(scratch.resolve("streams-failure.txt"), String.valueOf(failure), StandardOpenOption.CREATE_NEW); }
-            catch (Throwable diagnosticFailure) { /* The controller still owns terminal collection. */ }
-            Runtime.getRuntime().halt(125);
+        try (var scope = new DefaultToolingScope())
+        {
+            if (args.length != 2 || args[0].equals("--gate") == false)
+                throw new IllegalArgumentException("Expected --gate and the owned scratch directory");
+            Path scratch = Path.of(args[1]);
+            Properties values = new Properties();
+            try (InputStream input = Files.newInputStream(scratch.resolve("launch.xml"))) { values.loadFromXML(input); }
+            LinuxBorrowedStreams.Binding streams = LinuxBorrowedStreams.readFrom(values);
+            if (streams == null) {
+                runConfiguredGate(scope, scratch, values, null);
+                return;
+            }
+            try { runConfiguredGate(scope, scratch, values, streams); }
+            catch (Throwable failure) {
+                try { Files.writeString(scratch.resolve("streams-failure.txt"), String.valueOf(failure), StandardOpenOption.CREATE_NEW); }
+                catch (Throwable diagnosticFailure) { /* The controller still owns terminal collection. */ }
+                Runtime.getRuntime().halt(125);
+            }
         }
     }
 
@@ -806,12 +856,13 @@ public final class LinuxProcessTree implements AutoCloseable {
 
     /**
      * Installs borrowed descriptors before readiness, then uses the existing release/exec protocol.
+     * @param scope invocation-owned shared values
      * @param scratch private trusted-gate state directory
      * @param values protected configuration properties
      * @param streams complete stream binding or descriptor context
      * @throws java.lang.Exception if validation, native access or owned cleanup fails
      */
-    private static void runConfiguredGate(Path scratch, Properties values, LinuxBorrowedStreams.Binding streams)
+    private static void runConfiguredGate(ToolingScope scope, Path scratch, Properties values, LinuxBorrowedStreams.Binding streams)
         throws Exception {
         ExecutionMode mode = ExecutionMode.readFrom(values);
         if (streams != null) {
@@ -832,7 +883,7 @@ public final class LinuxProcessTree implements AutoCloseable {
                 approvedCommand, approvedEnvironment, Path.of("").toAbsolutePath(),
                 Integer.parseInt(values.getProperty("uid")), Integer.parseInt(values.getProperty("gid")), mode);
             streams.requireExecution(actual);
-            publishBorrowedReady(scratch, () -> LinuxBorrowedStreams.installBeforeReady(streams, java.time.Duration.ofSeconds(10)));
+            publishBorrowedReady(scratch, () -> LinuxBorrowedStreams.installBeforeReady(scope, streams, java.time.Duration.ofSeconds(10)));
         } else {
             Files.writeString(scratch.resolve("ready"), Long.toString(ProcessHandle.current().pid()), StandardOpenOption.CREATE_NEW);
         }
@@ -848,7 +899,7 @@ public final class LinuxProcessTree implements AutoCloseable {
         for (String key : values.stringPropertyNames()) {
             if (key.startsWith("environment.")) environment.put(key.substring("environment.".length()), values.getProperty(key));
         }
-        NativeCalls calls = new NativeCalls();
+        NativeCalls calls = new NativeCalls(scope);
         calls.dropIdentity(Integer.parseInt(values.getProperty("uid")), Integer.parseInt(values.getProperty("gid")));
         executeAfterRelease(mode, () -> calls.exec(command, environment),
             System.nanoTime() + EXTERNAL_EXEC_WAIT_NANOS);
@@ -861,7 +912,7 @@ public final class LinuxProcessTree implements AutoCloseable {
         /**
          * JDK Linux-native ABI linker used to resolve and call libc operations.
          */
-        private final Linker linker = Linker.nativeLinker();
+        private final Linker linker;
         /**
          * Byte offset of errno in the JDK per-invocation captured-call-state layout.
          */
@@ -869,44 +920,55 @@ public final class LinuxProcessTree implements AutoCloseable {
         /**
          * Linux prctl binding used to enable child-subreaper adoption before launching work.
          */
-        private final MethodHandle prctl = bind("prctl", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
-            ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG), true);
+        private final MethodHandle prctl;
         /**
          * Linux waitpid binding used only after Java has collected its direct root status.
          */
-        private final MethodHandle waitpid = bind("waitpid", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-            ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT), false);
+        private final MethodHandle waitpid;
         /**
          * Linux getuid binding for the calling process real user identity.
          */
-        private final MethodHandle getuid = bind("getuid", FunctionDescriptor.of(ValueLayout.JAVA_INT), false);
+        private final MethodHandle getuid;
         /**
          * Linux getgid binding for verifying the workload real group identity.
          */
-        private final MethodHandle getgid = bind("getgid", FunctionDescriptor.of(ValueLayout.JAVA_INT), false);
+        private final MethodHandle getgid;
         /**
          * Linux setgroups binding for removing privileged supplementary memberships.
          */
-        private final MethodHandle setgroups = bind("setgroups", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-            ValueLayout.JAVA_LONG, ValueLayout.ADDRESS), false);
+        private final MethodHandle setgroups;
         /**
          * Linux setgid binding for dropping the trusted gate to the workload group.
          */
-        private final MethodHandle setgid = bind("setgid", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT), false);
+        private final MethodHandle setgid;
         /**
          * Linux setuid binding for dropping the trusted gate to the workload user.
          */
-        private final MethodHandle setuid = bind("setuid", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT), false);
+        private final MethodHandle setuid;
         /**
          * Linux execve binding that replaces the trusted gate without changing its PID.
          */
-        private final MethodHandle execve = bind("execve", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS), false);
+        private final MethodHandle execve;
 
         /**
          * Resolves the required libc bindings without starting processes or changing native state.
+         * @param scope invocation-owned shared values
          */
-        private NativeCalls() { }
+        private NativeCalls(ToolingScope scope) {
+            linker = Objects.requireNonNull(scope, "scope").getNativeLinker();
+            prctl = bind("prctl", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG), true);
+            waitpid = bind("waitpid", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT), false);
+            getuid = bind("getuid", FunctionDescriptor.of(ValueLayout.JAVA_INT), false);
+            getgid = bind("getgid", FunctionDescriptor.of(ValueLayout.JAVA_INT), false);
+            setgroups = bind("setgroups", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                ValueLayout.JAVA_LONG, ValueLayout.ADDRESS), false);
+            setgid = bind("setgid", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT), false);
+            setuid = bind("setuid", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT), false);
+            execve = bind("execve", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS), false);
+        }
 
         /**
          * Binds a libc symbol with captured errno; prctl's trailing arguments are C varargs.

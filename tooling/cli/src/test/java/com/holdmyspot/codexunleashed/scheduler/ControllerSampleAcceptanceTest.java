@@ -36,7 +36,7 @@ public final class ControllerSampleAcceptanceTest
 		readings.failTree = "";
 		controller.cycle(jobs, 0);
 
-		requireThat(readings.events, "completeReadOrder").isEqualTo(List.of("host", "A", "B", "accept"), "expected");
+		requireThat(readings.events, "completeReadOrder").isEqualTo(List.of("host", "A", "B", "accept", "control"), "expected");
 		controller.cycle(jobs, 0);
 		requireThat(readings.pressures, "activitySinceAcceptedBaseline").isEqualTo(List.of(true, true, false), "expected");
 	}

@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -9,6 +10,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
+import java.util.Objects;
 import oshi.driver.common.windows.perfmon.PagingFile;
 import oshi.ffm.util.platform.windows.PerfCounterQueryFFM;
 
@@ -58,27 +60,30 @@ public final class WindowsMemory
      * The owned notification handle is closed before return, including after acquisition failure;
      * cleanup failure prevents success and is suppressed when another failure already exists.
      *
+     * @param scope invocation-owned shared values, retained open for this read
      * @return a complete host-memory sample
      * @throws UnsupportedOperationException if the platform, process width or required symbol is unsupported
      * @throws IOException if acquisition, counter validation, exact arithmetic or native cleanup fails
      */
-    public static Sample read() throws IOException
+    public static Sample read(ToolingScope scope) throws IOException
     {
+        Objects.requireNonNull(scope, "scope may not be null");
         if (!System.getProperty("os.name", "").startsWith("Windows"))
             throw new UnsupportedOperationException("WindowsMemory requires Windows");
         if (ValueLayout.ADDRESS.byteSize() != 8)
             throw new UnsupportedOperationException("WindowsMemory requires a 64-bit process");
 
+        var linker = scope.getNativeLinker();
         try (Arena arena = Arena.ofConfined())
         {
             var library = SymbolLookup.libraryLookup("Kernel32.dll", arena);
-            var getInfo = bind(library, "K32GetPerformanceInfo",
+            var getInfo = bind(linker, library, "K32GetPerformanceInfo",
                 FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-            var create = bind(library, "CreateMemoryResourceNotification",
+            var create = bind(linker, library, "CreateMemoryResourceNotification",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-            var query = bind(library, "QueryMemoryResourceNotification",
+            var query = bind(linker, library, "QueryMemoryResourceNotification",
                 FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-            var close = bind(library, "CloseHandle",
+            var close = bind(linker, library, "CloseHandle",
                 FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
             var errorLayout = Linker.Option.captureStateLayout();
             var errors = arena.allocate(errorLayout);
@@ -130,17 +135,18 @@ public final class WindowsMemory
     /**
      * Binds a required Windows symbol with captured last-error state.
      *
+     * @param linker the native linker borrowed from the invocation scope
      * @param library the library lookup owned by this call's native scope
      * @param name the required native symbol
      * @param descriptor the function's native return and argument layouts
      * @return the bound native function
      * @throws UnsupportedOperationException if the required symbol is absent
      */
-    private static MethodHandle bind(SymbolLookup library, String name, FunctionDescriptor descriptor)
+    private static MethodHandle bind(Linker linker, SymbolLookup library, String name, FunctionDescriptor descriptor)
     {
         var symbol = library.find(name).orElseThrow(() ->
             new UnsupportedOperationException("Required Windows native symbol is absent: " + name));
-        return Linker.nativeLinker().downcallHandle(symbol, descriptor, Linker.Option.captureCallState("GetLastError"));
+        return linker.downcallHandle(symbol, descriptor, Linker.Option.captureCallState("GetLastError"));
     }
 
     /**

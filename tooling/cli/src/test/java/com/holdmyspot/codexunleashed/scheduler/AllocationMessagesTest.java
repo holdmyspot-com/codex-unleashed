@@ -1,5 +1,8 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 import java.io.IOException;
 import java.math.BigInteger;
 import java.util.Set;
@@ -12,6 +15,13 @@ import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireEx
 /** Checks allocation message values and rejections without native acquisition or grant effects. */
 public final class AllocationMessagesTest
 {
+    /** Shared immutable values owned by this test class. */
+    private final ToolingScope scope = new DefaultToolingScope();
+
+    /** Releases the scope after every borrower in this class has finished. */
+    @org.testng.annotations.AfterClass(alwaysRun = true)
+    public void closeScope() { scope.close(); }
+
 	/** Deterministic attempt identity shared only by the messages in these codec tests. */
 	private static final UUID ATTEMPT = UUID.fromString("12345678-90ab-4cde-8fab-0123456789ab");
 
@@ -27,7 +37,7 @@ public final class AllocationMessagesTest
 	@Test
 	public void acceptsMatchingReadiness() throws IOException
 	{
-		var messages = new AllocationMessages(ATTEMPT, 9, 42);
+		var messages = new AllocationMessages(scope, ATTEMPT, 9, 42);
 		requireThat(messages.read(frame("ready", "")), "event").isEqualTo(new AllocationMessages.Ready(), "expected");
 	}
 
@@ -38,7 +48,7 @@ public final class AllocationMessagesTest
 	@Test
 	public void preservesUnsignedBlockedMetadata() throws IOException
 	{
-		var messages = new AllocationMessages(ATTEMPT, 9, 42);
+		var messages = new AllocationMessages(scope, ATTEMPT, 9, 42);
 		var maximum = new BigInteger("18446744073709551615");
 		var expected = new AllocationMessages.Blocked(new AllocationWaits.Wait(9, Long.MAX_VALUE), maximum,
 			maximum, 4294967295L);
@@ -53,7 +63,7 @@ public final class AllocationMessagesTest
 	@Test
 	public void preservesGrantAcknowledgementStates() throws IOException
 	{
-		var messages = new AllocationMessages(ATTEMPT, 9, 42);
+		var messages = new AllocationMessages(scope, ATTEMPT, 9, 42);
 		for (var status : AllocationMessages.GrantStatus.values())
 		{
 			var expected = new AllocationMessages.Granted(new AllocationWaits.Wait(9, 3), status);
@@ -66,7 +76,7 @@ public final class AllocationMessagesTest
 	@Test
 	public void rejectsOtherInstallationIdentities()
 	{
-		var messages = new AllocationMessages(ATTEMPT, 9, 42);
+		var messages = new AllocationMessages(scope, ATTEMPT, 9, 42);
 		String valid = frame("ready", "");
 		for (String invalid : new String[]{
 			valid.replace(ATTEMPT.toString(), "00000000-0000-0000-0000-000000000002"),
@@ -81,7 +91,7 @@ public final class AllocationMessagesTest
 	@Test
 	public void rejectsIncorrectShapesAndVersions()
 	{
-		var messages = new AllocationMessages(ATTEMPT, 9, 42);
+		var messages = new AllocationMessages(scope, ATTEMPT, 9, 42);
 		String ready = frame("ready", "");
 		for (String invalid : new String[]{"", "null", "[]", "{}",
 			ready.replace("\"send\"", "\"error\""),
@@ -101,7 +111,7 @@ public final class AllocationMessagesTest
 	@Test
 	public void rejectsInvalidNativeMagnitudes()
 	{
-		var messages = new AllocationMessages(ATTEMPT, 9, 42);
+		var messages = new AllocationMessages(scope, ATTEMPT, 9, 42);
 		String blocked = frame("blocked", ",\"wait\":\"1\",\"thread\":\"2\",\"bytes\":\"3\",\"error\":\"0\"");
 		for (String value : new String[]{"0", "-1", "+1", "01", " 1", "1.0", "١", "9223372036854775808"})
 		{
@@ -122,7 +132,7 @@ public final class AllocationMessagesTest
 	@Test
 	public void rejectsMalformedAndOversizedMessages()
 	{
-		var messages = new AllocationMessages(ATTEMPT, 9, 42);
+		var messages = new AllocationMessages(scope, ATTEMPT, 9, 42);
 		String ready = frame("ready", "");
 		for (String invalid : new String[]{"{broken}", ready + " {}", ready.replace("\"version\":1", "\"version\":1,\"version\":1"),
 			frame("ready", ",\"extra\":\"" + "x".repeat(129) + "\""), " ".repeat(8193) + ready,
@@ -148,7 +158,7 @@ public final class AllocationMessagesTest
 	@Test
 	public void serializesOnlyMatchingPermissions()
 	{
-		var messages = new AllocationMessages(ATTEMPT, 9, 42);
+		var messages = new AllocationMessages(scope, ATTEMPT, 9, 42);
 		var wait = new AllocationWaits.Wait(9, 7);
 		var first = messages.permission(wait);
 		requireThat(Set.copyOf(first.propertyNames()), "fields").isEqualTo(Set.of("type", "version", "attempt", "installation", "pid", "operation", "wait"), "expected");
@@ -168,11 +178,11 @@ public final class AllocationMessagesTest
 	@Test
 	public void validatesLocalArguments()
 	{
-		requireException(NullPointerException.class, () -> new AllocationMessages(null, 1, 1));
-		requireException(IllegalArgumentException.class, () -> new AllocationMessages(ATTEMPT, 0, 1));
-		requireException(IllegalArgumentException.class, () -> new AllocationMessages(ATTEMPT, 1, 0));
-		requireException(IllegalArgumentException.class, () -> new AllocationMessages(ATTEMPT, 1, 4294967296L));
-		var messages = new AllocationMessages(ATTEMPT, 1, 1);
+		requireException(NullPointerException.class, () -> new AllocationMessages(scope, null, 1, 1));
+		requireException(IllegalArgumentException.class, () -> new AllocationMessages(scope, ATTEMPT, 0, 1));
+		requireException(IllegalArgumentException.class, () -> new AllocationMessages(scope, ATTEMPT, 1, 0));
+		requireException(IllegalArgumentException.class, () -> new AllocationMessages(scope, ATTEMPT, 1, 4294967296L));
+		var messages = new AllocationMessages(scope, ATTEMPT, 1, 1);
 		requireException(NullPointerException.class, () -> messages.read(null));
 	}
 

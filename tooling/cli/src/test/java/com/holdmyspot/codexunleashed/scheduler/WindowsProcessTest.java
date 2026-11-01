@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -13,10 +15,7 @@ import java.util.HashSet;
 import java.util.Set;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
+
 import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -25,6 +24,507 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public final class WindowsProcessTest
 {
+	/**
+	 * Imports from the retained root handle into non-inheritable controller-local ownership.
+	 * @throws IOException if the modeled import unexpectedly fails
+	 */
+	@Test
+	public void importsFromRetainedSource() throws IOException
+	{
+		var kernel = new ImportKernel();
+		try (var source = launchSeparate(kernel))
+		{
+			kernel.importPhase = true;
+			try (var streams = source.importStandardStreams(MemorySegment.ofAddress(71),
+				MemorySegment.ofAddress(72), MemorySegment.ofAddress(73)))
+			{
+				requireThat(streams.input().address(), "streams.input()").isEqualTo(201L);
+				requireThat(streams.output().address(), "streams.output()").isEqualTo(202L);
+				requireThat(streams.error().address(), "streams.error()").isEqualTo(203L);
+				requireThat(kernel.importedOriginals, "kernel.importedOriginals").isEqualTo(List.of(71L, 72L, 73L));
+			}
+			requireThat(kernel.importCloses, "kernel.importCloses").isEqualTo(List.of(203L, 202L, 201L));
+			kernel.importPhase = false;
+		}
+	}
+
+	/**
+	 * Rejects an exited retained source before acquiring a controller-local copy.
+	 * @throws IOException if setup or cleanup unexpectedly fails
+	 */
+	@Test
+	public void rejectsExitedImportSource() throws IOException
+	{
+		var kernel = new ImportKernel();
+		try (var source = launchSeparate(kernel))
+		{
+			kernel.importPhase = true;
+			kernel.live = false;
+			requireException(IOException.class, () -> source.importStandardStreams(MemorySegment.ofAddress(71),
+				MemorySegment.ofAddress(72), MemorySegment.ofAddress(73)));
+			requireThat(kernel.importedOriginals.isEmpty(), "kernel.importedOriginals.isEmpty()").isTrue();
+			kernel.importPhase = false;
+		}
+	}
+
+	/**
+	 * Supplies each partial acquisition boundary with its expected owned-copy cleanup.
+	 * @return failed duplicate position and prior copies released in reverse order
+	 */
+	@DataProvider
+	public Object[][] partialImports()
+	{
+		return new Object[][] {{2, List.of(201L)}, {3, List.of(202L, 201L)}};
+	}
+
+	/**
+	 * Releases only acquired controller copies when a later stream import fails.
+	 * @param failedDuplicate one-based native acquisition to reject
+	 * @param closedCopies copies that must be released
+	 * @throws IOException if setup or source cleanup unexpectedly fails
+	 */
+	@Test(dataProvider = "partialImports")
+	public void collectsPartialImports(int failedDuplicate, List<Long> closedCopies) throws IOException
+	{
+		var kernel = new ImportKernel();
+		try (var source = launchSeparate(kernel))
+		{
+			kernel.importPhase = true;
+			kernel.failedDuplicate = failedDuplicate;
+			requireException(IOException.class, () -> source.importStandardStreams(MemorySegment.ofAddress(71),
+				MemorySegment.ofAddress(72), MemorySegment.ofAddress(73)));
+			requireThat(kernel.importCloses, "kernel.importCloses").isEqualTo(closedCopies);
+			kernel.importPhase = false;
+		}
+	}
+
+	/**
+	 * Keeps invocation-owned imports available after each independent prepared attempt closes.
+	 * @throws IOException if setup or cleanup unexpectedly fails
+	 */
+	@Test
+	public void retainsImportsAcrossAttempts() throws IOException
+	{
+		var kernel = new ImportKernel();
+		try (var source = launchSeparate(kernel))
+		{
+			kernel.importPhase = true;
+			try (var streams = source.importStandardStreams(MemorySegment.ofAddress(71),
+				MemorySegment.ofAddress(72), MemorySegment.ofAddress(72)))
+			{
+				for (int attempt = 0; attempt < 2; ++attempt)
+				{
+					var target = new RecordingKernel();
+					try (var process = WindowsProcess.launchPrepared(List.of("compiler"), Path.of("."), Map.of(),
+						streams.input(), streams.output(), streams.error(), target))
+					{
+						process.releaseRoot();
+						requireThat(target.originals, "target.originals").isEqualTo(List.of(201L, 202L, 203L));
+					}
+					requireThat(kernel.importCloses.isEmpty(), "kernel.importCloses.isEmpty()").isTrue();
+				}
+			}
+			kernel.importPhase = false;
+		}
+	}
+
+	/**
+	 * Retains ambiguous duplication output, collects its known copy and refuses native replay.
+	 * The modeled owner retains a fault; the test separately closes only its in-memory arena after verification.
+	 * @throws IOException if initial modeled launch fails
+	 */
+	@Test
+	public void retainsUncertainImportWithoutReplay() throws IOException
+	{
+		var kernel = new ImportKernel();
+		try
+		{
+			var source = launchSeparate(kernel);
+			kernel.importPhase = true;
+			kernel.uncertainDuplicate = 1;
+			requireException(IllegalStateException.class, () -> source.importStandardStreams(MemorySegment.ofAddress(71),
+				MemorySegment.ofAddress(72), MemorySegment.ofAddress(73)));
+			requireException(IOException.class, () -> source.importStandardStreams(MemorySegment.ofAddress(71),
+				MemorySegment.ofAddress(72), MemorySegment.ofAddress(73)));
+			requireThat(kernel.importedOriginals, "kernel.importedOriginals").isEqualTo(List.of(71L));
+			requireThat(kernel.importCloses, "kernel.importCloses").isEqualTo(List.of(201L));
+			requireException(IOException.class, source::close);
+			requireThat(kernel.importCloses.stream().filter(value -> value == 201).count(), "copyReleaseCount").isEqualTo(1L);
+		}
+		finally { kernel.close(); }
+	}
+
+	/**
+	 * Withdraws borrowing and acquisition after an uncertain close, without repeating that native release.
+	 * @throws IOException if initial launch or import fails
+	 */
+	@Test
+	public void retainsUncertainImportCloseWithoutReplay() throws IOException
+	{
+		var kernel = new ImportKernel();
+		try
+		{
+			var source = launchSeparate(kernel);
+			kernel.importPhase = true;
+			var streams = source.importStandardStreams(MemorySegment.ofAddress(71),
+				MemorySegment.ofAddress(72), MemorySegment.ofAddress(73));
+			kernel.failedClose = 202;
+			requireException(IOException.class, streams::close);
+			requireException(IOException.class, streams::close);
+			requireException(IllegalStateException.class, streams::input);
+			requireThat(kernel.importCloses, "kernel.importCloses").isEqualTo(List.of(203L, 202L, 201L));
+			requireException(IOException.class, () -> source.importStandardStreams(MemorySegment.ofAddress(71),
+				MemorySegment.ofAddress(72), MemorySegment.ofAddress(73)));
+			requireThat(kernel.importedOriginals.size(), "duplicateCallCount").isEqualTo(3);
+			requireException(IOException.class, source::close);
+			requireThat(kernel.importCloses.stream().filter(value -> value == 202).count(), "failedReleaseCount").isEqualTo(1L);
+		}
+		finally { kernel.close(); }
+	}
+
+	/**
+	 * Rejects a closed source identity before consulting foreign handle numbers.
+	 * @throws IOException if setup or native cleanup unexpectedly fails
+	 */
+	@Test
+	public void rejectsClosedImportSource() throws IOException
+	{
+		var kernel = new ImportKernel();
+		var source = launchSeparate(kernel);
+		source.close();
+		requireException(IllegalStateException.class, () -> source.importStandardStreams(MemorySegment.ofAddress(71),
+			MemorySegment.ofAddress(72), MemorySegment.ofAddress(73)));
+		requireThat(kernel.importedOriginals.isEmpty(), "kernel.importedOriginals.isEmpty()").isTrue();
+	}
+
+    /**
+     * Rejects a query-only Job member that has no retained original creation authority.
+     * @throws IOException if modeled process setup or cleanup fails
+     */
+    @Test
+    public void queryOnlyParentCannotAuthorizeOriginalHandleTransfer() throws IOException
+    {
+        CreatedKernel kernel = new CreatedKernel();
+        try (WindowsProcess process = prepareSeparate(kernel))
+        {
+            WindowsProcess.Member queryOnlyParent = process.openMember(77);
+            requireException(IOException.class, () -> process.retainCreatedSource(queryOnlyParent,
+                10077, 88, 10088, 900));
+            requireThat(kernel.transfers, "unauthorizedTransferCount").isEqualTo(0);
+        }
+    }
+
+    /**
+     * Rejects observer facts that replace the actual creator of retained original authority.
+     * @throws IOException if modeled setup or cleanup fails
+     */
+    @Test
+    public void receiptCannotReplaceOriginalCreator() throws IOException
+    {
+        CreatedKernel kernel = new CreatedKernel();
+        try (WindowsProcess process = prepareSeparate(kernel))
+        {
+            WindowsProcess.Member parent = process.openMember(42);
+            WindowsProcess.CreatedSource source = process.retainCreatedSource(parent, 10042, 88, 10088, 900);
+            WindowsAllocationHooks.Receipt changedCreator = new WindowsAllocationHooks.Receipt(
+                java.util.UUID.randomUUID(), 1, 77, 10077, 88, 10088, 900);
+            requireException(IOException.class, () -> process.retainReceipt(source, changedCreator));
+            requireThat(process.creationReceipt(88).isEmpty(), "invalidReceiptWasNotPublished").isTrue();
+        }
+    }
+
+    /**
+     * Retains authentic launch and native image facts before the descendant may resume or exit.
+     * @throws IOException if modeled setup or native interpretation fails
+     */
+    @Test
+    public void receiptRetainsOriginalLaunchAndImage() throws IOException
+    {
+        CreatedKernel kernel = new CreatedKernel();
+        try (WindowsProcess process = prepareSeparate(kernel))
+        {
+            WindowsProcess.Member parent = process.openMember(42);
+            WindowsProcess.CreatedSource source = process.retainCreatedSource(parent, 10042, 88, 10088, 900);
+            WindowsCreationReceipt.Launch launch = new WindowsCreationReceipt.Launch(null, "wrapper.exe \"\"", "C:\\work",
+                List.of("PATH=C:\\tools", "=C:=C:\\work", "EMPTY="), true, false, true, 71, 72, 73);
+            process.retainReceipt(source, new WindowsAllocationHooks.Receipt(java.util.UUID.randomUUID(),
+                1, 42, 10042, 88, 10088, 900, launch));
+            WindowsCreationReceipt receipt = process.creationReceipt(88).orElseThrow();
+            requireThat(receipt.launch(), "originalLaunchFacts").isEqualTo(launch);
+            requireThat(receipt.executable(), "nativeImageBeforeResume").isEqualTo(Path.of("native-wrapper.exe"));
+            requireThat(receipt.parentPid(), "originalCreator").isEqualTo(42L);
+            requireThat(receipt.birth(), "originalBirth").isEqualTo(10088L);
+            requireException(IOException.class, receipt::state);
+            WindowsProcess.Member child = process.openMember(88);
+            WindowsCreationReceipt.NativeState actual = new WindowsCreationReceipt.NativeState(
+                "native-wrapper.exe actual", "C:\\actual", List.of("ACTUAL=value"));
+            child.sealNativeState(10088, actual);
+            requireThat(receipt.state(), "authenticatedActualChildState").isEqualTo(actual);
+            requireThat(receipt.launch().directory(), "creatorSnapshotRetainedSeparately").isEqualTo("C:\\work");
+            requireException(IOException.class, () -> child.sealNativeState(10088, actual));
+        }
+    }
+
+    /**
+     * Imports approved redirected handles from exact retained child authority and closes copies before sources.
+     * @throws IOException if modeled setup or native decisions fail
+     */
+    @Test
+    public void createdSourceImportsRedirectedHandlesWithoutClosingOriginals() throws IOException
+    {
+        CreatedKernel kernel = new CreatedKernel();
+        try (WindowsProcess process = prepareSeparate(kernel))
+        {
+            WindowsProcess.Member parent = process.openMember(42);
+            WindowsProcess.CreatedSource child = process.retainCreatedSource(parent, 10042, 88, 10088, 900);
+            try (WindowsProcess.StandardStreams streams = child.importStandardStreams(MemorySegment.ofAddress(71),
+                MemorySegment.ofAddress(72), MemorySegment.ofAddress(73)))
+            {
+                requireThat(streams.input().address(), "importedInput").isEqualTo(5001L);
+                requireThat(kernel.imported, "approvedOriginals").isEqualTo(List.of(71L, 72L, 73L));
+                requireThat(kernel.closedHandles.contains(900L), "parentOriginalRemainsBorrowed").isFalse();
+            }
+            requireThat(kernel.closedHandles.contains(4088L), "sourceLivesThroughStreamClose").isFalse();
+        }
+        requireThat(kernel.closedHandles.indexOf(5001L) < kernel.closedHandles.indexOf(4088L), "streamsBeforeSource").isTrue();
+        requireThat(kernel.closedHandles.indexOf(4088L) < kernel.closedHandles.indexOf(20L), "childCopyBeforeRoot").isTrue();
+        requireThat(kernel.closedHandles.contains(71L), "sourceStreamOriginalRemainsBorrowed").isFalse();
+    }
+
+    /**
+     * Wrong child birth or PID is rejected after transfer without authorizing stream import.
+     * @throws IOException if modeled setup fails
+     */
+    @Test
+    public void siblingHandleOrReusedPidBirthIsRejected() throws IOException
+    {
+        for (String fault : List.of("birth", "pid", "inheritable", "foreign"))
+        {
+            CreatedKernel kernel = new CreatedKernel();
+            WindowsProcess process = prepareSeparate(kernel);
+            try
+            {
+                WindowsProcess.Member parent = process.openMember(42);
+                kernel.fault = fault;
+                requireException(IOException.class, () -> process.retainCreatedSource(parent, 10042, 88, 10088, 900));
+                requireThat(kernel.imported.isEmpty(), "invalidAuthorityCannotImport").isTrue();
+                requireException(IOException.class, process::close);
+                requireThat(kernel.closedHandles.stream().filter(value -> value == 4088).count(), "retainedChildClosedOnce").isEqualTo(1L);
+            }
+            finally { kernel.close(); }
+        }
+    }
+
+    /**
+     * A lost duplication result retains its output owner and prevents a second acquisition attempt.
+     * @throws IOException if modeled setup fails
+     */
+    @Test
+    public void uncertainDuplicateRetainsOwnerAndNeverRetries() throws IOException
+    {
+        CreatedKernel kernel = new CreatedKernel();
+        WindowsProcess process = prepareSeparate(kernel);
+        try
+        {
+            WindowsProcess.Member parent = process.openMember(42);
+            kernel.fault = "uncertain";
+            requireException(IllegalStateException.class, () -> process.retainCreatedSource(parent, 10042, 88, 10088, 900));
+            requireException(IOException.class, () -> process.retainCreatedSource(parent, 10042, 88, 10088, 900));
+            requireThat(kernel.transfers, "singleUncertainTransfer").isEqualTo(1);
+            requireThat(kernel.closedHandles.contains(4088L), "outputRetainedUntilJobZero").isFalse();
+            requireException(IOException.class, process::close);
+            requireThat(kernel.closedHandles.stream().filter(value -> value == 4088).count(), "uncertainOutputClosedOnce").isEqualTo(1L);
+        }
+        finally { kernel.close(); }
+    }
+
+    /**
+     * A partial redirected-stream transfer closes only acquired copies and preserves source authority.
+     * @throws IOException if modeled setup fails
+     */
+    @Test
+    public void createdSourcePartialStreamFailureRetainsCopies() throws IOException
+    {
+        CreatedKernel kernel = new CreatedKernel();
+        try (WindowsProcess process = prepareSeparate(kernel))
+        {
+            WindowsProcess.Member parent = process.openMember(42);
+            WindowsProcess.CreatedSource child = process.retainCreatedSource(parent, 10042, 88, 10088, 900);
+            kernel.fault = "second-stream";
+            requireException(IOException.class, () -> child.importStandardStreams(MemorySegment.ofAddress(71),
+                MemorySegment.ofAddress(72), MemorySegment.ofAddress(73)));
+            requireThat(kernel.closedHandles.contains(5001L), "partialCopyReleased").isTrue();
+            requireThat(kernel.closedHandles.contains(4088L), "sourceStillRetained").isFalse();
+        }
+    }
+
+    /** Models exact native identity replies; native ABI and Frida scheduling require separate architecture gates. */
+    private static final class CreatedKernel extends RecordingKernel
+    {
+        /** Fault injected at one transfer or identity boundary, or empty for normal replies. */
+        private String fault = "";
+        /** Number of attempted parent-local to controller-local process transfers. */
+        private int transfers;
+        /** Indicates the modeled Job termination made every process unable to execute. */
+        private boolean terminated;
+        /** Approved foreign stream originals sent by production import. */
+        private final List<Long> imported = new ArrayList<>();
+
+        /** Reserves isolated native storage through the existing modeled kernel. */
+        private CreatedKernel() {}
+
+        @Override Object call(String name, Object... arguments)
+        {
+            switch (name)
+            {
+                case "OpenProcess":
+                {
+                    int rights = (int) arguments[0];
+                    long pid = Integer.toUnsignedLong((int) arguments[2]);
+                    requireThat(arguments[1], "nonInheritedProcess").isEqualTo(0);
+                    return MemorySegment.ofAddress(pid + (1000));
+                }
+                case "IsProcessInJob":
+                {
+                    long handle = ((MemorySegment) arguments[0]).address();
+                    requireThat(((MemorySegment) arguments[1]).address(), "exactJob").isEqualTo(10L);
+                    ((MemorySegment) arguments[2]).set(ValueLayout.JAVA_INT, 0,
+                        fault.equals("foreign") && handle == 4088 ? 0 : 1);
+                    return 1;
+                }
+                case "GetProcessId": return fault.equals("pid") && ((MemorySegment) arguments[0]).address() == 4088 ? 99 :
+                    ((((MemorySegment) arguments[0]).address() == 4088 || ((MemorySegment) arguments[0]).address() == 1088) ? 88 : (((MemorySegment) arguments[0]).address() == 1077 ? 77 : 42));
+                case "GetProcessTimes":
+                {
+                    long handle = ((MemorySegment) arguments[0]).address();
+                    long birth = (handle == 4088 || handle == 1088) ? 10088 : (handle == 1077 ? 10077 : 10042);
+                    if (fault.equals("birth") && handle == 4088) ++birth;
+                    ((MemorySegment) arguments[1]).set(ValueLayout.JAVA_LONG, 0, birth);
+                    return 1;
+                }
+                case "QueryFullProcessImageNameW":
+                {
+                    requireThat(((MemorySegment) arguments[0]).address(), "originalImageHandle").isEqualTo(4088L);
+                    char[] text = "native-wrapper.exe".toCharArray();
+                    for (int index = 0; index < text.length; ++index)
+                        ((MemorySegment) arguments[2]).setAtIndex(ValueLayout.JAVA_CHAR, index, text[index]);
+                    ((MemorySegment) arguments[3]).set(ValueLayout.JAVA_INT, 0, text.length);
+                    return 1;
+                }
+                case "GetHandleInformation":
+                    ((MemorySegment) arguments[1]).set(ValueLayout.JAVA_INT, 0, fault.equals("inheritable") ? 1 : 0);
+                    return 1;
+                case "TerminateJobObject": terminated = true; return 1;
+                case "WaitForSingleObject":
+                    if (terminated) return 0;
+                    if (((MemorySegment) arguments[0]).address() >= 1000 || ((MemorySegment) arguments[0]).address() == 20) return 258;
+                    return super.call(name, arguments);
+                case "DuplicateHandle":
+                {
+                    long source = ((MemorySegment) arguments[0]).address();
+                    if (source == 20)
+                    {
+                        ++transfers;
+                        requireThat(((MemorySegment) arguments[1]).address(), "parentRetainedCopy").isEqualTo(900L);
+                        requireThat(arguments[4], "exactTransferRights").isEqualTo(0x101040);
+                        requireThat(arguments[5], "nonInheritedTransfer").isEqualTo(0);
+                        requireThat(arguments[6], "explicitRightsTransfer").isEqualTo(0);
+                        ((MemorySegment) arguments[3]).set(ValueLayout.ADDRESS, 0, MemorySegment.ofAddress(4088));
+                        if (fault.equals("uncertain")) throw new IllegalStateException("Lost authoritative transfer result");
+                        return 1;
+                    }
+                    if (source == 4088)
+                    {
+                        imported.add(((MemorySegment) arguments[1]).address());
+                        requireThat(arguments[5], "nonInheritedStream").isEqualTo(0);
+                        requireThat(arguments[6], "sameAccessStream").isEqualTo(2);
+                        if (fault.equals("second-stream") && imported.size() == 2) return 0;
+                        ((MemorySegment) arguments[3]).set(ValueLayout.ADDRESS, 0, MemorySegment.ofAddress(5000 + imported.size()));
+                        return 1;
+                    }
+                    return super.call(name, arguments);
+                }
+                default: return super.call(name, arguments);
+            }
+        }
+    }
+
+	/**
+	 * Models documented DuplicateHandle source/target selection and partial BOOL failure using the existing seam.
+	 * The native platform probe separately proves redirected-file transfer and original-handle preservation.
+	 */
+	private static final class ImportKernel extends RecordingKernel
+	{
+		/**
+		 * Indicates whether calls belong to import rather than initial local launch.
+		 */
+		private boolean importPhase;
+		/**
+		 * Indicates whether the retained source has a nonsignaled process handle.
+		 */
+		private boolean live = true;
+		/**
+		 * One-based acquisition that returns a documented failed BOOL, or zero for success.
+		 */
+		private int failedDuplicate;
+		/**
+		 * One-based duplicate that writes its output and then loses the Java invocation result.
+		 */
+		private int uncertainDuplicate;
+		/**
+		 * Controller-local copy whose native close returns a failed BOOL; zero allows all releases.
+		 */
+		private long failedClose;
+		/**
+		 * Foreign original values supplied to source-aware duplication.
+		 */
+		private final List<Long> importedOriginals = new ArrayList<>();
+		/**
+		 * Imported local copies supplied to release.
+		 */
+		private final List<Long> importCloses = new ArrayList<>();
+
+		/**
+		 * Creates confined native storage without loading Windows libraries.
+		 */
+		private ImportKernel()
+		{
+		}
+
+		@Override
+		Object call(String name, Object... arguments)
+		{
+			if (!importPhase)
+				return super.call(name, arguments);
+			return switch (name)
+			{
+				case "WaitForSingleObject" -> live ? 258 : 0;
+				case "TerminateJobObject" -> {
+					live = false;
+					yield super.call(name, arguments);
+				}
+				case "DuplicateHandle" -> {
+					requireThat(((MemorySegment) arguments[0]).address(), "retainedSource").isEqualTo(20L);
+					requireThat(((MemorySegment) arguments[2]).address(), "controllerTarget").isEqualTo(-1L);
+					requireThat(arguments[5], "nonInheritableCopy").isEqualTo(0);
+					requireThat(arguments[6], "preserveOriginalAccess").isEqualTo(2);
+					importedOriginals.add(((MemorySegment) arguments[1]).address());
+					if (importedOriginals.size() == failedDuplicate)
+						yield 0;
+					((MemorySegment) arguments[3]).set(ValueLayout.ADDRESS, 0,
+						MemorySegment.ofAddress(200 + importedOriginals.size()));
+					if (importedOriginals.size() == uncertainDuplicate)
+						throw new IllegalStateException("Modeled invocation lost its authoritative duplicate result");
+					yield 1;
+				}
+				case "CloseHandle" -> {
+					importCloses.add(((MemorySegment) arguments[0]).address());
+					yield ((MemorySegment) arguments[0]).address() == failedClose ? 0 : 1;
+				}
+				default -> super.call(name, arguments);
+			};
+		}
+	}
 	/**
 	 * Creates process-owner contract tests.
 	 */
@@ -60,8 +560,8 @@ public final class WindowsProcessTest
 	{
 		var result = new WindowsProcess.Result(rootExit, aborted);
 
-		assertEquals(result.rootExit(), rootExit);
-		assertEquals(result.aborted(), aborted);
+		requireThat(result.rootExit(), "result.rootExit()").isEqualTo(rootExit);
+		requireThat(result.aborted(), "result.aborted()").isEqualTo(aborted);
 	}
 
 	/**
@@ -86,7 +586,7 @@ public final class WindowsProcessTest
 	@Test(dataProvider = "invalidStatuses")
 	public void rejectsOutOfRangeStatus(long rootExit)
 	{
-		expectThrows(IllegalArgumentException.class, () -> new WindowsProcess.Result(rootExit, false));
+		requireException(IllegalArgumentException.class, () -> new WindowsProcess.Result(rootExit, false));
 	}
 
 	/**
@@ -99,17 +599,17 @@ public final class WindowsProcessTest
 		var kernel = new RecordingKernel();
 		try (var process = launchSeparate(kernel))
 		{
-			assertEquals(kernel.originals, List.of(31L, 32L, 33L));
-			assertEquals(kernel.inherited, List.of(101L, 102L, 103L));
-			assertEquals(kernel.standardHandles, List.of(101L, 102L, 103L));
-			assertEquals(kernel.closedHandles, List.of(103L, 102L, 101L));
-			assertFalse(kernel.calls.contains("CreateFileW"));
-			assertEquals(kernel.jobList, List.of(10L));
-			assertEquals(kernel.creationFlags, 0x80400);
-			assertEquals(process.pid(), 42L);
+			requireThat(kernel.originals, "kernel.originals").isEqualTo(List.of(31L, 32L, 33L));
+			requireThat(kernel.inherited, "kernel.inherited").isEqualTo(List.of(101L, 102L, 103L));
+			requireThat(kernel.standardHandles, "kernel.standardHandles").isEqualTo(List.of(101L, 102L, 103L));
+			requireThat(kernel.closedHandles, "kernel.closedHandles").isEqualTo(List.of(103L, 102L, 101L));
+			requireThat(kernel.calls.contains("CreateFileW"), "kernel").isFalse();
+			requireThat(kernel.jobList, "kernel.jobList").isEqualTo(List.of(10L));
+			requireThat(kernel.creationFlags, "kernel.creationFlags").isEqualTo(0x80400);
+			requireThat(process.pid(), "process.pid()").isEqualTo(42L);
 		}
-		assertEquals(kernel.closedHandles, List.of(103L, 102L, 101L, 21L, 20L, 10L));
-		assertFalse(kernel.arena.scope().isAlive());
+		requireThat(kernel.closedHandles, "kernel.closedHandles").isEqualTo(List.of(103L, 102L, 101L, 21L, 20L, 10L));
+		requireThat(kernel.arena.scope().isAlive(), "kernel.arena.scope().isAlive()").isFalse();
 	}
 
 	/**
@@ -123,12 +623,12 @@ public final class WindowsProcessTest
 		try (var process = WindowsProcess.launch(List.of("compiler"), Path.of("."), Map.of(),
 			MemorySegment.ofAddress(32), kernel))
 		{
-			assertEquals(kernel.originals, List.of(11L, 32L));
-			assertEquals(kernel.inherited, List.of(101L, 102L));
-			assertEquals(kernel.standardHandles, List.of(101L, 102L, 102L));
-			assertEquals(kernel.closedHandles, List.of(102L, 101L, 11L));
+			requireThat(kernel.originals, "kernel.originals").isEqualTo(List.of(11L, 32L));
+			requireThat(kernel.inherited, "kernel.inherited").isEqualTo(List.of(101L, 102L));
+			requireThat(kernel.standardHandles, "kernel.standardHandles").isEqualTo(List.of(101L, 102L, 102L));
+			requireThat(kernel.closedHandles, "kernel.closedHandles").isEqualTo(List.of(102L, 101L, 11L));
 		}
-		assertFalse(kernel.closedHandles.contains(32L));
+		requireThat(kernel.closedHandles.contains(32L), "kernel.closedHandles.contains(32L)").isFalse();
 	}
 
 	/**
@@ -159,11 +659,11 @@ public final class WindowsProcessTest
 		var kernel = new RecordingKernel();
 		kernel.duplicateFailure = duplicateFailure;
 		kernel.createFailure = createFailure;
-		expectThrows(IOException.class, () -> {
+		requireException(IOException.class, () -> {
 			try (var process = launchSeparate(kernel)) { }
 		});
-		assertEquals(kernel.closedHandles, closedHandles);
-		assertFalse(kernel.arena.scope().isAlive());
+		requireThat(kernel.closedHandles, "kernel.closedHandles").isEqualTo(closedHandles);
+		requireThat(kernel.arena.scope().isAlive(), "kernel.arena.scope().isAlive()").isFalse();
 	}
 
 	/**
@@ -321,19 +821,30 @@ public final class WindowsProcessTest
 	/** Models actual Java lifecycle decisions only; no native Windows process or handle is acquired. */
 	private static final class FailedPreparationKernel extends RecordingKernel
 	{
+		/** Indicates whether temporary native attribute destruction fails after process creation. */
 		private final boolean failPreparation;
 		/** Exact original fault allocated before the modeled native acquisition. */
 		private final IllegalStateException postCreateFailure =
 			new IllegalStateException("modeled post-CreateProcess temporary cleanup failure");
+		/** Indicates whether the modeled root has been created. */
 		private boolean created;
+		/** Indicates whether whole-Job status observation fails. */
 		private boolean statusFailure;
+		/** Modeled active process count in the owned Job. */
 		private int active = 1;
+		/** Modeled unsigned root exit status. */
 		private long rootExit;
+		/** Indicates whether releasing a lifetime handle fails. */
 		private boolean failLifetimeClose = true;
+		/** Indicates whether releasing a launch-only copy fails. */
 		private boolean failTemporaryClose;
+		/** Indicates whether native close loses its authoritative result. */
 		private boolean throwOnClose;
+		/** Number of attempted native attribute-list destructions. */
 		private int attributeDestructions;
+		/** Modeled acquired handles whose native close has not succeeded. */
 		private final Set<Long> liveHandles = new HashSet<>();
+		/** Native handle release attempts whose results failed or were uncertain. */
 		private final List<Long> failedCloses = new ArrayList<>();
 
 		/**
@@ -434,15 +945,20 @@ public final class WindowsProcessTest
 		Class<? extends RuntimeException> failure = handle == null ? NullPointerException.class :
 			IllegalArgumentException.class;
 		var kernel = new RecordingKernel();
-		expectThrows(failure, () -> {
+		requireException(failure, () -> {
 			try (var process = WindowsProcess.launch(List.of("compiler"), Path.of("."), Map.of(),
 				handles[0], handles[1], handles[2], kernel)) { }
 		});
-		assertTrue(kernel.calls.isEmpty(), "Validation must precede native acquisition");
-		assertFalse(kernel.arena.scope().isAlive());
-		expectThrows(failure, () -> WindowsProcess.start(
-			List.of(Path.of(System.getProperty("java.home"), "release").toString()),
-			Path.of(System.getProperty("java.home")), Map.of(), handles[0], handles[1], handles[2]));
+		requireThat(kernel.calls.isEmpty(), "kernel.calls.isEmpty()")
+			.withContext("Validation must precede native acquisition", "diagnostic")
+			.isTrue();
+		requireThat(kernel.arena.scope().isAlive(), "kernel.arena.scope().isAlive()").isFalse();
+		try (var scope = new DefaultToolingScope())
+		{
+			requireException(failure, () -> WindowsProcess.start(scope,
+				List.of(Path.of(System.getProperty("java.home"), "release").toString()),
+				Path.of(System.getProperty("java.home")), Map.of(), handles[0], handles[1], handles[2]));
+		}
 	}
 
 	/**
@@ -1212,7 +1728,9 @@ public final class WindowsProcessTest
 					originals.add(((MemorySegment)arguments[1]).address());
 					if (originals.size() == duplicateFailure)
 						yield 0;
-					assertEquals(arguments[5], 1, "Copies must be inheritable");
+					requireThat(arguments[5], "arguments[5]")
+						.withContext("Copies must be inheritable", "diagnostic")
+						.isEqualTo(1);
 					((MemorySegment)arguments[3]).set(ValueLayout.ADDRESS, 0,
 						MemorySegment.ofAddress(100 + originals.size()));
 					yield 1;
@@ -1229,11 +1747,15 @@ public final class WindowsProcessTest
 					yield 1;
 				}
 				case "CreateProcessW" -> {
-					assertTrue(closedHandles.isEmpty(), "Parent copies must survive process creation");
+					requireThat(closedHandles.isEmpty(), "closedHandles.isEmpty()")
+						.withContext("Parent copies must survive process creation", "diagnostic")
+						.isTrue();
 					creationFlags = (int)arguments[5];
-					assertEquals(arguments[4], 1, "Explicit handle inheritance must be enabled");
+					requireThat(arguments[4], "arguments[4]")
+						.withContext("Explicit handle inheritance must be enabled", "diagnostic")
+						.isEqualTo(1);
 					var startup = (MemorySegment)arguments[8];
-					assertEquals(startup.get(ValueLayout.JAVA_INT, 60), 0x100);
+					requireThat(startup.get(ValueLayout.JAVA_INT, 60), "startup").isEqualTo(0x100);
 					for (long offset : new long[] {80, 88, 96})
 						standardHandles.add(startup.get(ValueLayout.ADDRESS, offset).address());
 					var info = (MemorySegment)arguments[9];

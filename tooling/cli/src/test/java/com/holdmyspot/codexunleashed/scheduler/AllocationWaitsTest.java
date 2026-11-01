@@ -213,6 +213,75 @@ public final class AllocationWaitsTest
 		requireThat(waits.poll(), "queueWait").isEqualTo(OptionalLong.empty());
 	}
 
+	/**
+	 * Retires only an exec-replaced image's unselected waits while preserving a peer's grant and late-report rejection.
+	 *
+	 * @throws IOException if valid retirement or continuation fails
+	 */
+	@Test
+	public void retirementPreservesOtherInstallations() throws IOException
+	{
+		var waits = new AllocationWaits();
+		var old = new AllocationWaits.Wait(1, 1);
+		var peer = new AllocationWaits.Wait(2, 1);
+		var granted = new ArrayList<AllocationWaits.Wait>();
+		waits.blocked(old);
+		waits.blocked(peer);
+		requireThat(waits.poll(), "published").isEqualTo(OptionalLong.of(0));
+		waits.retireInstallation(1);
+		waits.retireInstallation(1);
+		requireThat(waits.blocked(new AllocationWaits.Wait(1, 2)), "lateOldImageReport").isFalse();
+		waits.resume(0, granted::add);
+		requireThat(granted, "granted").isEqualTo(List.of(peer));
+		requireThat(waits.poll(), "remaining").isEqualTo(OptionalLong.empty());
+	}
+
+	/**
+	 * A published queue wait survives retirement even when its native batch becomes empty; later images get new sequences.
+	 *
+	 * @throws IOException if valid empty acknowledgement or later continuation fails
+	 */
+	@Test
+	public void retirementKeepsPublishedQueueSequence() throws IOException
+	{
+		var waits = new AllocationWaits();
+		var granted = new ArrayList<AllocationWaits.Wait>();
+		waits.blocked(new AllocationWaits.Wait(1, 1));
+		requireThat(waits.poll(), "published").isEqualTo(OptionalLong.of(0));
+		waits.retireInstallation(1);
+		waits.resume(0, granted::add);
+		requireThat(granted, "retiredGrants").isEmpty();
+		var replacement = new AllocationWaits.Wait(2, 1);
+		waits.blocked(replacement);
+		requireThat(waits.poll(), "replacementSequence").isEqualTo(OptionalLong.of(1));
+		waits.resume(1, granted::add);
+		requireThat(granted, "replacementGrant").isEqualTo(List.of(replacement));
+	}
+
+	/**
+	 * Retirement cannot alter a selected continuation or clear the uncertainty left by a partial native effect.
+	 *
+	 * @throws IOException if preparing a valid selection fails
+	 */
+	@Test
+	public void retirementCannotEraseUncertainEffects() throws IOException
+	{
+		var waits = new AllocationWaits();
+		waits.blocked(new AllocationWaits.Wait(1, 1));
+		waits.poll();
+		var nativeFailure = new IOException("Acknowledgement lost before exec observation");
+		var failure = requireException(IOException.class, () -> waits.resume(0, wait ->
+		{
+			requireException(IllegalStateException.class, () -> waits.retireInstallation(1));
+			throw nativeFailure;
+		}));
+		requireThat(requireException(IOException.class, () -> waits.retireInstallation(1)).getCause(), "retainedFailure")
+			.isReferenceEqualTo(failure, "originalFailure");
+		requireException(IOException.class, () -> waits.resume(0, _ -> {}));
+		waits.stop();
+		requireException(IllegalStateException.class, () -> waits.retireInstallation(1));
+	}
+
 	/** Validates native identity values without merging installations or accepting absent reports. */
 	@Test
 	public void rejectsInvalidNativeIdentity()
@@ -222,5 +291,7 @@ public final class AllocationWaitsTest
 		requireException(IllegalArgumentException.class, () -> new AllocationWaits.Wait(-1, 1));
 		requireException(IllegalArgumentException.class, () -> new AllocationWaits.Wait(1, -1));
 		requireException(NullPointerException.class, () -> new AllocationWaits().blocked(null));
+		requireException(IllegalArgumentException.class, () -> new AllocationWaits().retireInstallation(0));
+		requireException(IllegalArgumentException.class, () -> new AllocationWaits().retireInstallation(-1));
 	}
 }

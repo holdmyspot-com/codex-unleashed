@@ -212,7 +212,7 @@ public final class Policy
 	 * Selects one control without mutating the supplied snapshot.
 	 * <p>
 	 * Stopping trees prevent further controls. Current pressure or an active swap-growth incident prevents admission;
-	 * the swap incident also permits terminating the newest live attempt while protecting the oldest running attempt.
+	 * either condition permits terminating the newest live attempt while protecting the oldest running attempt.
 	 * Otherwise the oldest blocked denial precedes retries in original submission order, which precede new work.
 	 * If every live attempt has an allocation wait and the oldest denial cannot resume, termination selects the newest
 	 * other blocked attempt, or that denial itself when it is the only live attempt. This conservative recovery may
@@ -313,14 +313,14 @@ public final class Policy
 	 */
 	private static Decision choosePressureControl(List<Job> running, List<Job> live, Observation observation)
 	{
-		if (observation.swapRecovery() && !running.isEmpty())
+		if ((observation.memoryPressure() || observation.swapRecovery()) && !running.isEmpty())
 		{
 			Job oldest = running.stream().min(Comparator.comparingLong(Job::startedAt)).orElseThrow();
 			Job newest = live.stream().filter(job -> job.equals(oldest) == false).
 				max(Comparator.comparingLong(Job::startedAt)).orElse(null);
 			if (newest != null)
 				return new Decision(Control.TERMINATE, newest.name(),
-					"Relieve observed swap pressure; retain the oldest running job");
+					"Relieve observed memory pressure; retain the oldest running job");
 		}
 		return waitFor("Memory pressure or active swap growth prevents admission");
 	}

@@ -6,10 +6,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertSame;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
+
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Exercises admission requests at the controller's measurement and process-control boundaries.
@@ -43,10 +42,12 @@ public final class ControllerTest
 
 		Policy.Decision decision = controller.cycle(jobs, 0);
 
-		assertEquals(decision.control(), Policy.Control.START);
-		assertEquals(decision.jobName(), "earlier");
-		assertEquals(controls, List.of(decision));
-		assertEquals(jobs.get(1).residentBytes(), 0L, "The caller's lifecycle snapshot stays unchanged");
+		requireThat(decision.control(), "decision.control()").isEqualTo(Policy.Control.START);
+		requireThat(decision.jobName(), "decision.jobName()").isEqualTo("earlier");
+		requireThat(controls, "controls").isEqualTo(List.of(decision));
+		requireThat(jobs.get(1).residentBytes(), "jobs.get(1).residentBytes()")
+			.withContext("The caller's lifecycle snapshot stays unchanged", "diagnostic")
+			.isEqualTo(0L);
 	}
 
 	/**
@@ -65,18 +66,18 @@ public final class ControllerTest
 			new Policy.Job("running", Policy.State.RUNNING, 0, 900L, 900, 0L, null, 0),
 			new Policy.Job("earlier", Policy.State.READY, 1, 200L, 0, null, null, 0));
 
-		IOException failure = expectThrows(IOException.class, () -> controller.cycle(jobs, 0));
-		assertEquals(failure.getMessage(), "Owned residency unavailable for running");
-		assertTrue(controls.isEmpty());
-		assertEquals(readings.residentRequests, List.of("running"));
+		IOException failure = requireException(IOException.class, () -> controller.cycle(jobs, 0));
+		requireThat(failure.getMessage(), "failure.getMessage()").isEqualTo("Owned residency unavailable for running");
+		requireThat(controls.isEmpty(), "controls.isEmpty()").isTrue();
+		requireThat(readings.residentRequests, "readings.residentRequests").isEqualTo(List.of("running"));
 
 		readings.residency.put("running", 300L);
 		Policy.Decision decision = controller.cycle(jobs, 0);
-		assertEquals(decision.control(), Policy.Control.START);
-		assertEquals(decision.jobName(), "earlier");
-		assertEquals(controls, List.of(decision));
-		assertEquals(readings.residentRequests, List.of("running", "running"));
-		assertEquals(jobs.get(1).residentBytes(), 900L);
+		requireThat(decision.control(), "decision.control()").isEqualTo(Policy.Control.START);
+		requireThat(decision.jobName(), "decision.jobName()").isEqualTo("earlier");
+		requireThat(controls, "controls").isEqualTo(List.of(decision));
+		requireThat(readings.residentRequests, "readings.residentRequests").isEqualTo(List.of("running", "running"));
+		requireThat(jobs.get(1).residentBytes(), "jobs.get(1).residentBytes()").isEqualTo(900L);
 	}
 
 	/**
@@ -97,16 +98,16 @@ public final class ControllerTest
 			new Policy.Job("oldest-denial", Policy.State.BLOCKED, 2, 200L, 100, 1L, 0L, 0),
 			new Policy.Job("running", Policy.State.RUNNING, 0, 100L, 100, 0L, null, 0));
 
-		expectThrows(IOException.class, () -> controller.cycle(jobs, 0));
-		assertTrue(controls.isEmpty());
+		requireException(IOException.class, () -> controller.cycle(jobs, 0));
+		requireThat(controls.isEmpty(), "controls.isEmpty()").isTrue();
 
 		readings.residency.put("oldest-denial", 100L);
 		Policy.Decision decision = controller.cycle(jobs, 0);
-		assertEquals(decision.control(), Policy.Control.RESUME);
-		assertEquals(decision.jobName(), "oldest-denial");
-		assertEquals(controls, List.of(decision));
-		assertEquals(readings.residentRequests,
-			List.of("newer-denial", "oldest-denial", "newer-denial", "oldest-denial", "running"));
+		requireThat(decision.control(), "decision.control()").isEqualTo(Policy.Control.RESUME);
+		requireThat(decision.jobName(), "decision.jobName()").isEqualTo("oldest-denial");
+		requireThat(controls, "controls").isEqualTo(List.of(decision));
+		requireThat(readings.residentRequests, "readings.residentRequests")
+			.isEqualTo(List.of("newer-denial", "oldest-denial", "newer-denial", "oldest-denial", "running"));
 	}
 
 	/**
@@ -124,19 +125,19 @@ public final class ControllerTest
 		List<Policy.Job> jobs = List.of(
 			new Policy.Job("newest", Policy.State.RUNNING, 1, 100L, 100, 1L, null, 0),
 			new Policy.Job("oldest", Policy.State.RUNNING, 0, 100L, 100, 0L, null, 0));
-		assertEquals(controller.cycle(jobs, 0).control(), Policy.Control.WAIT);
+		requireThat(controller.cycle(jobs, 0).control(), "controller").isEqualTo(Policy.Control.WAIT);
 
 		readings.host = new Controller.Memory(1000, 20, false);
 		readings.residency.remove("oldest");
-		expectThrows(IOException.class, () -> controller.cycle(jobs, 0));
-		assertTrue(controls.isEmpty());
+		requireException(IOException.class, () -> controller.cycle(jobs, 0));
+		requireThat(controls.isEmpty(), "controls.isEmpty()").isTrue();
 
 		readings.host = new Controller.Memory(1000, 15, false);
 		readings.residency.put("oldest", 100L);
 		Policy.Decision decision = controller.cycle(jobs, 0);
-		assertEquals(decision.control(), Policy.Control.TERMINATE);
-		assertEquals(decision.jobName(), "newest");
-		assertEquals(controls, List.of(decision));
+		requireThat(decision.control(), "decision.control()").isEqualTo(Policy.Control.TERMINATE);
+		requireThat(decision.jobName(), "decision.jobName()").isEqualTo("newest");
+		requireThat(controls, "controls").isEqualTo(List.of(decision));
 	}
 
 	/**
@@ -155,14 +156,15 @@ public final class ControllerTest
 		List<Policy.Job> jobs = List.of(new Policy.Job("ready", Policy.State.READY, 0, 100L, 0,
 			null, null, 0));
 
-		assertSame(expectThrows(IOException.class, () -> controller.cycle(jobs, 0)), unavailable);
-		assertTrue(controls.isEmpty());
-		assertTrue(readings.residentRequests.isEmpty());
+		requireThat(requireException(IOException.class, () -> controller.cycle(jobs, 0)), "requireException")
+			.isReferenceEqualTo(unavailable, "expected");
+		requireThat(controls.isEmpty(), "controls.isEmpty()").isTrue();
+		requireThat(readings.residentRequests.isEmpty(), "readings.residentRequests.isEmpty()").isTrue();
 
 		readings.hostFailure = null;
-		assertEquals(controller.cycle(jobs, 0).control(), Policy.Control.START);
-		assertEquals(readings.hostRequests, 2);
-		assertEquals(controls.size(), 1);
+		requireThat(controller.cycle(jobs, 0).control(), "controller").isEqualTo(Policy.Control.START);
+		requireThat(readings.hostRequests, "readings.hostRequests").isEqualTo(2);
+		requireThat(controls.size(), "controls.size()").isEqualTo(1);
 	}
 
 	/**
@@ -176,11 +178,11 @@ public final class ControllerTest
 		Controller controller = new Controller(new Policy.Budget(100, 2), readings, controls::add);
 		Policy.Job ready = new Policy.Job("ready", Policy.State.READY, 0, 100L, 0, null, null, 0);
 
-		expectThrows(IllegalArgumentException.class, () -> controller.cycle(List.of(ready, ready), 0));
-		expectThrows(IllegalArgumentException.class, () -> controller.cycle(List.of(ready), -1));
-		assertEquals(readings.hostRequests, 0);
-		assertTrue(readings.residentRequests.isEmpty());
-		assertTrue(controls.isEmpty());
+		requireException(IllegalArgumentException.class, () -> controller.cycle(List.of(ready, ready), 0));
+		requireException(IllegalArgumentException.class, () -> controller.cycle(List.of(ready), -1));
+		requireThat(readings.hostRequests, "readings.hostRequests").isEqualTo(0);
+		requireThat(readings.residentRequests.isEmpty(), "readings.residentRequests.isEmpty()").isTrue();
+		requireThat(controls.isEmpty(), "controls.isEmpty()").isTrue();
 	}
 
 	/**
@@ -196,9 +198,10 @@ public final class ControllerTest
 			new Policy.Job("running", Policy.State.RUNNING, 0, 100L, 100, 0L, null, 0),
 			new Policy.Job("ready", Policy.State.READY, 1, 100L, 0, null, null, 0));
 
-		IOException failure = expectThrows(IOException.class, () -> controller.cycle(jobs, 0));
-		assertEquals(failure.getMessage(), "Negative resident bytes for action running: -1");
-		assertTrue(controls.isEmpty());
+		IOException failure = requireException(IOException.class, () -> controller.cycle(jobs, 0));
+		requireThat(failure.getMessage(), "failure.getMessage()")
+			.isEqualTo("Negative resident bytes for action running: -1");
+		requireThat(controls.isEmpty(), "controls.isEmpty()").isTrue();
 	}
 
 	/**
@@ -218,10 +221,11 @@ public final class ControllerTest
 		List<Policy.Job> jobs = List.of(new Policy.Job("ready", Policy.State.READY, 0, 100L, 0,
 			null, null, 0));
 
-		assertSame(expectThrows(IOException.class, () -> controller.cycle(jobs, 0)), failedEffect);
-		assertEquals(controls.size(), 1);
-		assertEquals(controls.getFirst().control(), Policy.Control.START);
-		assertEquals(controls.getFirst().jobName(), "ready");
+		requireThat(requireException(IOException.class, () -> controller.cycle(jobs, 0)), "requireException")
+			.isReferenceEqualTo(failedEffect, "expected");
+		requireThat(controls.size(), "controls.size()").isEqualTo(1);
+		requireThat(controls.getFirst().control(), "controls.getFirst().control()").isEqualTo(Policy.Control.START);
+		requireThat(controls.getFirst().jobName(), "controls.getFirst().jobName()").isEqualTo("ready");
 	}
 
 	/**

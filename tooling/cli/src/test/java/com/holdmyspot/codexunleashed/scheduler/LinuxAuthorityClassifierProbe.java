@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -38,13 +40,13 @@ public final class LinuxAuthorityClassifierProbe
 			() -> LinuxAuthorityReader.SharedSecrets.openFlags("unsupported", true));
 		System.out.println("open_flags=x64_and_arm64_verified; unsupported_architecture=rejected");
 		Path directory = Files.createTempDirectory(Path.of(arguments[0]), "classifier-");
-		try
+		try (var scope = new DefaultToolingScope())
 		{
 			Files.writeString(directory.resolve("cgroup.procs"), "");
 			Files.writeString(directory.resolve("cgroup.controllers"), "memory\n");
 			requireThat(openFixtureDescriptors(directory), "fixtureDescriptorsBeforeRead").isEqualTo(0L, "expected");
 			IOException failure = requireException(IOException.class,
-				() -> LinuxAuthorityReader.SharedSecrets.requireActualRoot(directory));
+				() -> LinuxAuthorityReader.SharedSecrets.requireActualRoot(scope, directory));
 			requireThat(failure.getMessage().contains("filesystem magic"), "ordinaryFilesystemRejected").isTrue();
 			requireThat(openFixtureDescriptors(directory), "fixtureDescriptorsAfterRejectedRead").isEqualTo(0L, "expected");
 			System.out.println("ordinary_filesystem=UNAVAILABLE; native_classifier_invoked=true; owned_descriptors_after=0");

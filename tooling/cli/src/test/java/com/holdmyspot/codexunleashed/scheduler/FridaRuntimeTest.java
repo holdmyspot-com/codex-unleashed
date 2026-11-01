@@ -1,12 +1,15 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicReference;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertTrue;
+
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static org.testng.Assert.expectThrows;
 
 /**
  * Exercises Java ownership guards without loading or simulating the native Frida runtime.
@@ -14,11 +17,34 @@ import static org.testng.Assert.expectThrows;
  */
 public final class FridaRuntimeTest
 {
+
 	/**
 	 * Creates ownership tests.
 	 */
 	public FridaRuntimeTest()
 	{
+	}
+
+	/**
+	 * Reads the actual supported session observation and rejects inactive or uncertain ownership.
+	 * @throws Exception if controlled ownership setup fails
+	 */
+	@Test public void detachedObservationRequiresAcquiredCertainSession() throws Exception
+	{
+		try (var fixture = new ScriptCleanup())
+		{
+			requireException(IllegalStateException.class, fixture.session::detached);
+			ScriptCleanup.set(fixture.runtime, "initialized", true);
+			ScriptCleanup.set(fixture.manager, "started", true);
+			ScriptCleanup.set(fixture.session, "started", true);
+			ScriptCleanup.set(fixture.session, "handle", fixture.arena.allocate(8));
+			fixture.bind("isDetached", "detached", int.class, java.lang.foreign.MemorySegment.class);
+			requireThat(fixture.session.detached(), "attachedNativeObservation").isFalse();
+			fixture.detached = true;
+			requireThat(fixture.session.detached(), "detachedNativeObservation").isTrue();
+			ScriptCleanup.set(fixture.session, "closeFailure", new IOException("Uncertain reference release"));
+			requireException(IllegalStateException.class, fixture.session::detached);
+		}
 	}
 
 	/**
@@ -28,14 +54,17 @@ public final class FridaRuntimeTest
 	@Test
 	public void closesUnstartedOwnerWithoutAcquiringNativeResources() throws IOException
 	{
-		var runtime = new FridaRuntime(Path.of("unused-native-producer"));
+		try (var scope = new DefaultToolingScope())
+		{
+		var runtime = new FridaRuntime(scope, Path.of("unused-native-producer"));
 
-		expectThrows(IllegalStateException.class, runtime::newManager);
+		requireException(IllegalStateException.class, runtime::newManager);
 		runtime.close();
 		runtime.close();
 
-		expectThrows(IllegalStateException.class, runtime::start);
-		expectThrows(IllegalStateException.class, runtime::newManager);
+		requireException(IllegalStateException.class, runtime::start);
+		requireException(IllegalStateException.class, runtime::newManager);
+		}
 	}
 
 	/**
@@ -46,16 +75,17 @@ public final class FridaRuntimeTest
 	@Test
 	public void rejectsOtherThreadWithoutChangingOwnership() throws IOException, InterruptedException
 	{
-		try (var runtime = new FridaRuntime(Path.of("unused-native-producer")))
+		try (var scope = new DefaultToolingScope();
+			var runtime = new FridaRuntime(scope, Path.of("unused-native-producer")))
 		{
 			var result = new AtomicReference<Throwable>();
 			Thread caller = Thread.ofPlatform().start(() ->
 			{
 				try
 				{
-					expectThrows(IllegalStateException.class, runtime::start);
-					expectThrows(IllegalStateException.class, runtime::newManager);
-					expectThrows(IllegalStateException.class, runtime::close);
+					requireException(IllegalStateException.class, runtime::start);
+					requireException(IllegalStateException.class, runtime::newManager);
+					requireException(IllegalStateException.class, runtime::close);
 				}
 				catch (Throwable failure)
 				{
@@ -64,10 +94,15 @@ public final class FridaRuntimeTest
 			});
 			caller.join();
 
-			assertTrue(result.get() == null, "Other-thread operation failed its rejection assertion: " + result.get());
+			requireThat(result.get() == null, "result")
+				.withContext("Other-thread operation failed its rejection assertion: " + result.get(), "diagnostic")
+				.isTrue();
 		}
 	}
-	/** An asynchronous target exit between the destroyed check and unload still releases owned references. */
+	/**
+	 * Releases owned references after a target exits between the destroyed check and unload.
+	 * @throws Exception if controlled native operation setup or cleanup fails
+	 */
 	@Test
 	public void reconcilesDestroyedScriptDuringUnload() throws Exception
 	{
@@ -82,7 +117,15 @@ public final class FridaRuntimeTest
 		}
 	}
 
-	/** Only the exact pinned error with a confirmed destroyed state permits reference retirement. */
+	/**
+	 * Permits retirement only for the exact pinned error and confirmed destroyed state.
+	 * @param domain native error domain
+	 * @param code native error code
+	 * @param destroyed independently observed post-failure destroyed state
+	 * @param observationFails whether the post-state is unavailable
+	 * @param unrefFails whether native reference release is uncertain
+	 * @throws Exception if controlled native operation setup fails
+	 */
 	@Test(dataProvider = "unreconciledScriptFailures")
 	public void retainsUnreconciledScriptFailure(String domain, int code, boolean destroyed,
 		boolean observationFails, boolean unrefFails) throws Exception
@@ -107,7 +150,10 @@ public final class FridaRuntimeTest
 		}
 	}
 
-	/** Supplies distinct error-domain, code, post-state and uncertain cleanup boundaries. */
+	/**
+	 * Supplies distinct error-domain, code, post-state and uncertain cleanup boundaries.
+	 * @return independent failure cases
+	 */
 	@org.testng.annotations.DataProvider
 	public Object[][] unreconciledScriptFailures()
 	{
@@ -120,7 +166,12 @@ public final class FridaRuntimeTest
 		};
 	}
 
-	/** Captures checked cleanup failure without accepting a successful close. */
+	/**
+	 * Captures checked cleanup failure without accepting successful close.
+	 * @param owner retained resource being closed
+	 * @return actual cleanup failure
+	 * @throws Exception if a different checked failure occurs
+	 */
 	private static IOException closeFailure(AutoCloseable owner) throws Exception
 	{
 		try { owner.close(); }
@@ -131,26 +182,47 @@ public final class FridaRuntimeTest
 	/** Models native operation results; this is ownership evidence, not a native ABI gate. */
 	private static final class ScriptCleanup implements AutoCloseable
 	{
+		/** Borrowed immutable services owned by this fixture. */
+		final ToolingScope scope = new DefaultToolingScope();
+		/** Owned memory for controlled native records. */
 		final java.lang.foreign.Arena arena = java.lang.foreign.Arena.ofConfined();
-		final FridaRuntime runtime = new FridaRuntime(Path.of("unused-native-producer"));
+		/** Actual Java lifecycle owner without native acquisition. */
+		final FridaRuntime runtime = new FridaRuntime(scope, Path.of("unused-native-producer"));
+		/** Controlled native manager retained for observation guards. */
+		final FridaRuntime.Manager manager;
+		/** Controlled exact session whose supported native observation is tested. */
+		final FridaRuntime.Manager.Session session;
+		/** Independently supplied native detached result. */
+		boolean detached;
+		/** Exact retained script owner under test. */
 		final FridaRuntime.Manager.Session.Script script;
+		/** Actual session registration retaining the script. */
 		final java.util.Set<?> scriptSet;
+		/** Counts independently observed lifecycle operations. */
 		int observations, unloads, unrefs, freedErrors;
+		/** Controlled native error domain. */
 		String domain = "frida-error-quark";
+		/** Controlled native error code. */
 		int code = 6;
+		/** Controlled exact post-failure script state. */
 		boolean destroyedAfterFailure = true;
+		/** Independent observation and destruction failures. */
 		boolean observationFails, unrefFails;
 
+		/**
+		 * Creates exact Java owners and controlled native bindings.
+		 * @throws Exception if reflection or method-handle setup fails
+		 */
 		ScriptCleanup() throws Exception
 		{
 			var managerType = FridaRuntime.Manager.class;
 			var managerConstructor = managerType.getDeclaredConstructor(FridaRuntime.class);
 			managerConstructor.setAccessible(true);
-			var manager = managerConstructor.newInstance(runtime);
+			manager = managerConstructor.newInstance(runtime);
 			var sessionType = FridaRuntime.Manager.Session.class;
 			var sessionConstructor = sessionType.getDeclaredConstructor(managerType, long.class);
 			sessionConstructor.setAccessible(true);
-			var session = sessionConstructor.newInstance(manager, 123L);
+			session = sessionConstructor.newInstance(manager, 123L);
 			var constructor = FridaRuntime.Manager.Session.Script.class.getDeclaredConstructor(sessionType, String.class);
 			constructor.setAccessible(true);
 			script = constructor.newInstance(session, "send('unused')");
@@ -170,6 +242,13 @@ public final class FridaRuntimeTest
 			bind("quarkToString", "quark", java.lang.foreign.MemorySegment.class, int.class);
 		}
 
+		/**
+		 * Configures one controlled lifecycle field.
+		 * @param target actual owner
+		 * @param name exact field name
+		 * @param value controlled field value
+		 * @throws Exception if the field cannot be configured
+		 */
 		private static void set(Object target, String name, Object value) throws Exception
 		{
 			var field = target.getClass().getDeclaredField(name);
@@ -177,12 +256,32 @@ public final class FridaRuntimeTest
 			field.set(target, value);
 		}
 
+		/**
+		 * Binds one external native operation to a controlled result.
+		 * @param field runtime binding name
+		 * @param method controlled operation
+		 * @param result return type
+		 * @param arguments argument types
+		 * @throws Exception if binding fails
+		 */
 		private void bind(String field, String method, Class<?> result, Class<?>... arguments) throws Exception
 		{
 			set(runtime, field, java.lang.invoke.MethodHandles.lookup().findVirtual(ScriptCleanup.class, method,
 				java.lang.invoke.MethodType.methodType(result, arguments)).bindTo(this));
 		}
 
+		/**
+		 * Supplies only the supported native session observation, without claiming process completion.
+		 * @param ignored retained session description
+		 * @return independently controlled detached flag
+		 */
+		private int detached(java.lang.foreign.MemorySegment ignored) { return detached ? 1 : 0; }
+
+		/**
+		 * Supplies independently controlled destruction observations.
+		 * @param ignored retained script
+		 * @return exact controlled destroyed flag
+		 */
 		private int destroyed(java.lang.foreign.MemorySegment ignored)
 		{
 			if (observations++ == 0) return 0;
@@ -190,6 +289,12 @@ public final class FridaRuntimeTest
 			return destroyedAfterFailure ? 1 : 0;
 		}
 
+		/**
+		 * Supplies the exact pinned unload failure.
+		 * @param owner retained script
+		 * @param cancellable unused cancellation description
+		 * @param error output native error record
+		 */
 		private void unload(java.lang.foreign.MemorySegment owner, java.lang.foreign.MemorySegment cancellable,
 			java.lang.foreign.MemorySegment error)
 		{
@@ -201,10 +306,23 @@ public final class FridaRuntimeTest
 			error.set(java.lang.foreign.ValueLayout.ADDRESS, 0, fields);
 		}
 
+		/**
+		 * Supplies the native error domain.
+		 * @param ignored controlled native quark
+		 * @return allocated error domain
+		 */
 		private java.lang.foreign.MemorySegment quark(int ignored) { return arena.allocateFrom(domain); }
+		/**
+		 * Records independent reference release.
+		 * @param ignored retained reference
+		 */
 		private void unref(java.lang.foreign.MemorySegment ignored) { unrefs++; if (unrefFails) throw new IllegalStateException("native reference release uncertain"); }
+		/**
+		 * Records native error retirement.
+		 * @param ignored retained error
+		 */
 		private void freeError(java.lang.foreign.MemorySegment ignored) { freedErrors++; }
-		@Override public void close() { arena.close(); }
+		@Override public void close() { try { arena.close(); } finally { scope.close(); } }
 	}
 
 }

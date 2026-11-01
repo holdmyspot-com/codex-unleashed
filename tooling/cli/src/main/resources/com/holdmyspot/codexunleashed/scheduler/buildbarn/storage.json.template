@@ -1,0 +1,40 @@
+{
+  "grpcServers": [
+    "@STORAGE_SERVER@"
+  ],
+  "maximumMessageSizeBytes": 67108864,
+  "contentAddressableStorage": {
+    "backend": "@CAS_LOCAL@",
+    "getAuthorizer": {
+      "allow": {}
+    },
+    "putAuthorizer": {
+      "allow": {}
+    },
+    "findMissingAuthorizer": {
+      "allow": {}
+    }
+  },
+  "actionCache": {
+    "backend": {
+      "completenessChecking": {
+        "backend": "@AC_LOCAL@",
+        "maximumTotalTreeSizeBytes": 67108864
+      }
+    },
+    "getAuthorizer": {
+      "allow": {}
+    },
+    "putAuthorizer": {
+      "allow": {}
+    }
+  },
+  "schedulers": {
+    "": {
+      "endpoint": "@SCHEDULER_CLIENT@"
+    }
+  },
+  "executeAuthorizer": {
+    "allow": {}
+  }
+}

@@ -65,6 +65,7 @@ public final class SourceInputInventory
 	 * If Git root discovery exits unsuccessfully, walks the workspace instead, without following directory links,
 	 * and prunes {@code .git}, {@code target}, {@code node_modules}, and the explicit cache directories.
 	 *
+	 * @param scope borrowed shared native bindings, kept open through inventory
 	 * @param workspace the source workspace
 	 * @param targetDirectory compiled outputs to exclude
 	 * @param cargoHome optional downloads to exclude from untracked or fallback inputs
@@ -74,9 +75,10 @@ public final class SourceInputInventory
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if Git startup, inventory, hashing, timestamps, or capture cleanup fails
 	 */
-	public static Snapshot read(Path workspace, Path targetDirectory, Optional<Path> cargoHome,
+	public static Snapshot read(ToolingScope scope, Path workspace, Path targetDirectory, Optional<Path> cargoHome,
 		Path temporaryDirectory, Map<String, String> environment) throws IOException
 	{
+		Objects.requireNonNull(scope, "scope");
 		Objects.requireNonNull(workspace, "workspace");
 		Objects.requireNonNull(targetDirectory, "targetDirectory");
 		Objects.requireNonNull(cargoHome, "cargoHome");
@@ -97,7 +99,7 @@ public final class SourceInputInventory
 			paths = gitPaths(root, excluded, temporaryDirectory, overrides);
 		else
 			paths = fallbackPaths(root, excluded);
-		return snapshot(root, paths, SourceInputPaths.resolve(targetDirectory));
+		return snapshot(scope, root, paths, SourceInputPaths.resolve(targetDirectory));
 	}
 
 	/**
@@ -179,13 +181,14 @@ public final class SourceInputInventory
 	/**
 	 * Hashes regular files outside the compiled target and includes their lexical in-repository ancestors.
 	 *
+	 * @param scope borrowed shared native bindings, kept open through inventory
 	 * @param root the source root
 	 * @param paths source candidates
 	 * @param target the canonical compiled target
 	 * @return the immutable inventory
 	 * @throws IOException if hashing or timestamp access fails
 	 */
-	private static Snapshot snapshot(Path root, List<Path> paths, Path target) throws IOException
+	private static Snapshot snapshot(ToolingScope scope, Path root, List<Path> paths, Path target) throws IOException
 	{
 		Map<String, String> digests = new LinkedHashMap<>();
 		Set<Path> timestamps = new LinkedHashSet<>();
@@ -205,7 +208,7 @@ public final class SourceInputInventory
 		Map<String, BigInteger> mtimes = new LinkedHashMap<>();
 		for (Path path : timestamps)
 		{
-			Instant value = SourceInputTimes.lastModified(path);
+			Instant value = SourceInputTimes.lastModified(scope, path);
 			mtimes.put(relative(root, path), SourceInputTimes.nanos(value));
 		}
 		return new Snapshot(root, digests, mtimes);

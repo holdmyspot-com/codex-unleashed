@@ -144,7 +144,9 @@ jobs:
           git -C upstream diff --exit-code HEAD
           test -z "$(git -C upstream status --porcelain)"
           shasum -a 256 .github/workflows/baseline-macos-focused-runtime.yml > "$evidence/wrappers.txt"
-          shasum -a 256 .github/scripts/ghcr-cargo-target-cache.sh .github/scripts/cargo-cache-parts.py .github/scripts/verify-cargo-lock.py > "$evidence/helpers-transport-only.txt"
+          shasum -a 256 .github/scripts/ghcr-cargo-target-cache.sh \
+            tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/{Main,CargoCacheKeys,CargoCacheParts,VerifyCargoLock}.java \
+            > "$evidence/helpers-transport-only.txt"
           cp "$evidence/helpers-transport-only.txt" "$evidence/helpers.txt"
           git ls-files -z -- tooling/cli/pom.xml tooling/cli/src/main tooling/cli/src/build .github/actions/focused-runtime-cache-setup | LC_ALL=C sort -z | xargs -0 shasum -a 256 >> "$evidence/helpers.txt"
           {
@@ -157,8 +159,8 @@ jobs:
             env | LC_ALL=C sort | grep -E '^(RUSTFLAGS|RUSTDOCFLAGS|RUSTC|RUSTC_WRAPPER|CARGO_INCREMENTAL|CARGO_PROFILE_[A-Z0-9_]+|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CC|CXX|AR|CFLAGS|CXXFLAGS|SDKROOT|MACOSX_DEPLOYMENT_TARGET)='
             shasum -a 256 upstream/codex-rs/Cargo.lock upstream/codex-rs/rust-toolchain.toml upstream/codex-rs/Cargo.toml
           } > "$evidence/compiler.txt"
-          python3 .github/scripts/cargo-cache-keys.py "$TARGET" "$evidence/upstream-commit" "$evidence/wrappers.txt" "$evidence/helpers.txt" "$evidence/compiler.txt" | tee "$evidence/keys.txt" >> "$GITHUB_OUTPUT"
-          python3 .github/scripts/cargo-cache-keys.py "$TARGET" "$evidence/upstream-commit" "$evidence/wrappers.txt" "$evidence/helpers-transport-only.txt" "$evidence/compiler.txt" | sed -n 's/^seed_tag=/legacy_seed_tag=/p' >> "$GITHUB_OUTPUT"
+          bash "$CODEX_SOURCE_CACHE_TOOL" cargo-cache-keys "$TARGET" "$evidence/upstream-commit" "$evidence/wrappers.txt" "$evidence/helpers.txt" "$evidence/compiler.txt" | tee "$evidence/keys.txt" >> "$GITHUB_OUTPUT"
+          bash "$CODEX_SOURCE_CACHE_TOOL" cargo-cache-keys "$TARGET" "$evidence/upstream-commit" "$evidence/wrappers.txt" "$evidence/helpers-transport-only.txt" "$evidence/compiler.txt" | sed -n 's/^seed_tag=/legacy_seed_tag=/p' >> "$GITHUB_OUTPUT"
 
       - name: Restore verified or partial compiled state
         id: restore
@@ -216,7 +218,7 @@ jobs:
           git -C upstream status --porcelain=v1 --untracked-files=all > "$evidence/source-status.txt"
           test -z "$(git -C upstream ls-files --others --exclude-standard)"
           (cd upstream/codex-rs && cargo metadata --no-deps --format-version 1) > "$evidence/workspace.json"
-          python3 .github/scripts/verify-cargo-lock.py "$evidence/upstream-Cargo.lock" upstream/codex-rs/Cargo.lock "$evidence/workspace.json" | tee "$evidence/dependencies.json"
+          bash "$CODEX_SOURCE_CACHE_TOOL" verify-cargo-lock "$evidence/upstream-Cargo.lock" upstream/codex-rs/Cargo.lock "$evidence/workspace.json" | tee "$evidence/dependencies.json"
 
       - name: Record successful test-profile inputs
         id: record

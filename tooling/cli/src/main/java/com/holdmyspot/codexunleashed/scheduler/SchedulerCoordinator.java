@@ -25,6 +25,8 @@ final class SchedulerCoordinator<R>
     private final Policy.Budget budget;
     /** Bounded idle operation; it must not call back into this coordinator. */
     private final Idle idle;
+    /** Owner-thread durable event boundary; failures use ordinary retained cleanup. */
+    private final Observer observer;
     /** Prevents reuse after any attempted invocation. */
     private boolean attempted;
     /** Accepted payloads retained even if a later measurement, protocol or cleanup operation fails. */
@@ -38,6 +40,20 @@ final class SchedulerCoordinator<R>
      */
     SchedulerCoordinator(Session<R> session, Policy.Budget budget, Idle idle)
     {
+        this(session, budget, idle, (event, payload) -> {});
+    }
+
+    /**
+     * Configures a coordinator with an invocation-owned durable observation boundary.
+     * Records run synchronously on the constructing thread and must not reenter the coordinator.
+     * @param session caller-retained protocol and outer resource owner
+     * @param budget physical reserve and concurrency ceiling
+     * @param idle bounded idle operation
+     * @param observer durable event recorder; failure aborts through normal retained cleanup
+     */
+    SchedulerCoordinator(Session<R> session, Policy.Budget budget, Idle idle, Observer observer)
+    {
+        this.observer = Objects.requireNonNull(observer, "observer");
         this.session = Objects.requireNonNull(session, "session");
         this.budget = Objects.requireNonNull(budget, "budget");
         this.idle = Objects.requireNonNull(idle, "idle");
@@ -73,6 +89,7 @@ final class SchedulerCoordinator<R>
                 while (notification.isPresent())
                 {
                     Blocked blocked = notification.orElseThrow();
+                    observer.record("blocked", blocked);
                     queue.allocationBlocked(blocked.name(), blocked.attemptSequence(), blocked.waitSequence());
                     notification = session.pollBlocked();
                 }
@@ -80,6 +97,7 @@ final class SchedulerCoordinator<R>
                 while (input.isPresent())
                 {
                     Submission submission = input.orElseThrow();
+                    observer.record("submission", submission);
                     queue.submit(submission.name(), submission.peakBytes());
                     input = session.pollSubmission();
                 }
@@ -93,10 +111,14 @@ final class SchedulerCoordinator<R>
                     continue;
                 }
                 rejectedObservations = 0;
+                if (decision.control() != Policy.Control.WAIT) observer.record("decision", decision);
                 var outcomes = queue.completedAttempts();
                 while (delivered < outcomes.size())
                 {
-                    session.acceptOutcome(outcomes.get(delivered));
+                    JobQueue.Completion<R> completion = outcomes.get(delivered);
+                    observer.record("completion-before", completion);
+                    session.acceptOutcome(completion);
+                    observer.record("completion-after", completion);
                     delivered = Math.incrementExact(delivered);
                 }
                 OptionalInt root = session.pollToolResult();
@@ -132,6 +154,7 @@ final class SchedulerCoordinator<R>
             if (session.hasOpenAttempts())
                 throw new IOException("Attempt cleanup remains unresolved; retain the session and its dependencies");
             session.close();
+            if (failure == null) observer.record("terminal", result);
         }
         catch (IOException | RuntimeException | Error cause) { failure = append(failure, cause); }
         if (failure instanceof IOException cause) throw cause;
@@ -198,6 +221,23 @@ final class SchedulerCoordinator<R>
             if (name.isBlank() || attemptSequence < 0 || waitSequence < 0)
                 throw new IllegalArgumentException("Blocked notification requires an action and nonnegative ordinals");
         }
+    }
+
+    /**
+     * Synchronous owner-thread observation boundary for durable invocation records.
+     * Event payloads retain the exact immutable submission, blocked, decision and native completion records.
+     * The terminal payload is the authentic integer root status after all cleanup has succeeded.
+     */
+    @FunctionalInterface
+    interface Observer
+    {
+        /**
+         * Records one event before its associated boundary is allowed to proceed.
+         * @param event submission, blocked, decision, completion-before, completion-after or terminal
+         * @param payload exact original immutable payload, or authentic terminal root status
+         * @throws IOException if the event cannot be durably recorded
+         */
+        void record(String event, Object payload) throws IOException;
     }
 
     /** Bounded cooperative wait after policy WAIT or a rejected memory observation. */

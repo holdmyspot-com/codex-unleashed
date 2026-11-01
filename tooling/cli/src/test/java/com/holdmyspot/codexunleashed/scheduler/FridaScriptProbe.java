@@ -1,12 +1,14 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Exercises real Linux attachment and script messages against a disposable Java target with an independent parent.
@@ -73,7 +75,7 @@ public final class FridaScriptProbe
 			target = ProcessHandle.of(targetPid).orElseThrow();
 			require(target.parent().orElseThrow().pid() == supervisor.pid(), "Target's real parent is not the independent owner");
 			System.out.println("owned_target_pid=" + target.pid() + "; independent_supervisor_pid=" + supervisor.pid());
-			try (var runtime = new FridaRuntime(producer))
+			try (ToolingScope scope = new DefaultToolingScope(); var runtime = new FridaRuntime(scope, producer))
 			{
 				runtime.start();
 				try (var manager = runtime.newManager())
@@ -115,8 +117,8 @@ public final class FridaScriptProbe
 						{
 							first.start();
 							second.start();
-							expect(first, "first-ready");
-							expect(second, "second-ready");
+							expect(scope, first, "first-ready");
+							expect(scope, second, "second-ready");
 							try
 							{
 								session.close();
@@ -129,8 +131,8 @@ public final class FridaScriptProbe
 							first.close();
 							first.close();
 							String token = UUID.randomUUID() + "\0\"\\\n☃";
-							second.post(JsonMapper.builder().build().createObjectNode().put("type", "ping").put("token", token));
-							expect(second, token);
+							second.post(scope.getLeaderJsonMapper().createObjectNode().put("type", "ping").put("token", token));
+							expect(scope, second, token);
 							System.out.println("script_survives_peer_close=true");
 						}
 						try (var binary = session.newScript("send('binary', new Uint8Array([1,2]).buffer);"))
@@ -231,11 +233,12 @@ public final class FridaScriptProbe
 
 	/**
 	 * Waits at most ten seconds for a genuine script message and checks its decoded type and payload.
+	 * @param scope borrowed shared parser, kept open through message decoding
 	 * @param script loaded script receiving the message
 	 * @param payload expected text, including characters which JSON must escape
 	 * @throws Exception if copying, parsing or equality fails, or the message does not arrive
 	 */
-	private static void expect(FridaRuntime.Manager.Session.Script script, String payload) throws Exception
+	private static void expect(ToolingScope scope, FridaRuntime.Manager.Session.Script script, String payload) throws Exception
 	{
 		long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
 		while (true)
@@ -243,7 +246,7 @@ public final class FridaScriptProbe
 			var message = script.pollMessage();
 			if (message.isPresent())
 			{
-				var value = JsonMapper.builder().build().readTree(message.get());
+				var value = scope.getLeaderJsonMapper().readTree(message.get());
 				require(value.path("type").asString().equals("send") && value.path("payload").asString().equals(payload),
 					"Unexpected native message: " + message.get());
 				System.out.println("matched_message=" + message.get());

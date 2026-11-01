@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -8,7 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.testng.SkipException;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -25,15 +27,6 @@ public final class LinuxCargoJobserverTest
 	public LinuxCargoJobserverTest() { }
 
 	/**
-	 * Limits actual FIFO operations to the Linux platform this owner supports.
-	 */
-	@BeforeClass
-	public void requireLinuxForNativeFixtures()
-	{
-		requireLinux();
-	}
-
-	/**
 	 * Rejects native fixture execution on another operating system without weakening production validation.
 	 */
 	static void requireLinux()
@@ -43,14 +36,57 @@ public final class LinuxCargoJobserverTest
 	}
 
 	/**
+	 * Supplies a controlled zero-progress return and a controlled exception before the actual native write.
+	 * @return one flag per case: true for zero progress, false for the controlled exception
+	 */
+	@DataProvider
+	public Object[][] returnFaults() { return new Object[][] {{true}, {false}}; }
+
+	/**
+	 * A transfer fault leaves the lease retained until its logical attempt retires, without replaying uncertain I/O.
+	 * The controlled native boundary models zero progress or a pre-write exception; no operating-system fault is claimed.
+	 * @param zeroProgress indicates whether the controlled write returns zero instead of throwing its retained exception
+	 * @throws Exception if actual fixture setup or owned native cleanup fails
+	 */
+	@Test(dataProvider = "returnFaults")
+	public void retiresFailedTransferBeforeLeaseRelease(boolean zeroProgress) throws Exception
+	{
+		requireLinux();
+		try (var fixture = new Fixture())
+		{
+			var faults = new Faults(fixture.scope);
+			try (var owner = LinuxCargoJobserver.SharedSecrets.create(fixture.directory, fixture.group, 2, faults);
+				var lease = owner.retainCargo(Map.of()); var attempt = lease.retainAttempt())
+			{
+				requireThat(attempt.tryBorrow().getAsInt(), "borrowedByte").isEqualTo((int) '+', "seedByte");
+				faults.zeroWrite = zeroProgress;
+				faults.failWrite = !zeroProgress;
+				IOException failure = requireException(IOException.class, () -> attempt.returnToken((byte) '+'));
+				if (!zeroProgress)
+					requireThat(failure, "originalTransferFault").isReferenceEqualTo(faults.writeFailure, "controlledFault");
+				requireException(IllegalStateException.class, lease::close);
+				int writesAtFault = faults.writes;
+				requireException(IOException.class, attempt::close);
+				requireThat(attempt.isClosed(), "retiredDespiteFault").isTrue();
+				lease.close();
+				attempt.close();
+				lease.close();
+				requireThat(faults.writes, "noUncertainWriteReplay").isEqualTo(writesAtFault, "atFault");
+			}
+			requireThat(faults.closes, "nativeDescriptorReleasedOnce").isEqualTo(1, "oneClose");
+		}
+	}
+
+	/**
 	 * Keeps the root environment immutable and refuses cleanup while its single invocation is retained.
 	 * @throws Exception if native setup or cleanup fails
 	 */
 	@Test
 	public void retainsOneInvocationAndAnImmutableEnvironment() throws Exception
 	{
+		requireLinux();
 		try (Fixture fixture = new Fixture();
-			LinuxCargoJobserver owner = LinuxCargoJobserver.create(fixture.directory, fixture.group, 2))
+			LinuxCargoJobserver owner = LinuxCargoJobserver.create(fixture.scope, fixture.directory, fixture.group, 2))
 		{
 			Map<String, String> original = new HashMap<>(Map.of("marker", "original"));
 			LinuxCargoJobserver.CargoLease lease = owner.retainCargo(original);
@@ -82,8 +118,9 @@ public final class LinuxCargoJobserverTest
 	@Test
 	public void rejectsConflictingOrNullEnvironmentBeforeRetention() throws Exception
 	{
+		requireLinux();
 		try (Fixture fixture = new Fixture();
-			LinuxCargoJobserver owner = LinuxCargoJobserver.create(fixture.directory, fixture.group, 1))
+			LinuxCargoJobserver owner = LinuxCargoJobserver.create(fixture.scope, fixture.directory, fixture.group, 1))
 		{
 			for (String variable : List.of("CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS"))
 				for (String value : List.of("", "-j8"))
@@ -106,20 +143,21 @@ public final class LinuxCargoJobserverTest
 	@Test
 	public void rejectsInvalidInputsBeforeAcquisition() throws Exception
 	{
+		requireLinux();
 		try (Fixture fixture = new Fixture())
 		{
-			requireException(NullPointerException.class, () -> LinuxCargoJobserver.create(null, fixture.group, 1));
+			requireException(NullPointerException.class, () -> LinuxCargoJobserver.create(fixture.scope, null, fixture.group, 1));
 			requireException(IllegalArgumentException.class,
-				() -> LinuxCargoJobserver.create(Path.of("relative"), fixture.group, 1));
+				() -> LinuxCargoJobserver.create(fixture.scope, Path.of("relative"), fixture.group, 1));
 			for (int value : List.of(0, -1))
 			{
 				requireException(IllegalArgumentException.class,
-					() -> LinuxCargoJobserver.create(fixture.directory, value, 1));
+					() -> LinuxCargoJobserver.create(fixture.scope, fixture.directory, value, 1));
 				requireException(IllegalArgumentException.class,
-					() -> LinuxCargoJobserver.create(fixture.directory, fixture.group, value));
+					() -> LinuxCargoJobserver.create(fixture.scope, fixture.directory, fixture.group, value));
 			}
 			Path spaced = Files.createDirectory(fixture.directory.resolve("with space"));
-			requireException(IllegalArgumentException.class, () -> LinuxCargoJobserver.create(spaced, fixture.group, 1));
+			requireException(IllegalArgumentException.class, () -> LinuxCargoJobserver.create(fixture.scope, spaced, fixture.group, 1));
 			Files.delete(spaced);
 			try (var children = Files.list(fixture.directory))
 			{
@@ -135,12 +173,13 @@ public final class LinuxCargoJobserverTest
 	@Test
 	public void rejectsAnAuthMarkerInsideTheParentPath() throws Exception
 	{
+		requireLinux();
 		try (Fixture fixture = new Fixture())
 		{
 			Path ambiguous = Files.createDirectory(fixture.directory.resolve("--jobserver-auth=fifo:other"));
 			requireException(IllegalArgumentException.class, () ->
 			{
-				try (var owner = LinuxCargoJobserver.create(ambiguous, fixture.group, 1))
+				try (var owner = LinuxCargoJobserver.create(fixture.scope, ambiguous, fixture.group, 1))
 				{
 					// A returned owner is closed even when the rejection under test is absent.
 				}
@@ -156,9 +195,10 @@ public final class LinuxCargoJobserverTest
 	@Test
 	public void retainsPartialOwnerAndOriginalSetupFailure() throws Exception
 	{
+		requireLinux();
 		try (Fixture fixture = new Fixture())
 		{
-			Faults calls = new Faults();
+			Faults calls = new Faults(fixture.scope);
 			calls.failWrite = true;
 			calls.blockCleanup = true;
 			LinuxCargoJobserver.PreparationFailure failure = requireException(LinuxCargoJobserver.PreparationFailure.class,
@@ -183,9 +223,10 @@ public final class LinuxCargoJobserverTest
 	@Test
 	public void retriesPathCleanupWithoutClosingDescriptorAgain() throws Exception
 	{
+		requireLinux();
 		try (Fixture fixture = new Fixture())
 		{
-			Faults calls = new Faults();
+			Faults calls = new Faults(fixture.scope);
 			LinuxCargoJobserver owner = LinuxCargoJobserver.SharedSecrets.create(fixture.directory, fixture.group, 1, calls);
 			calls.failClose = true;
 			calls.blocker = Files.writeString(calls.fifo.getParent().resolve("fixture-blocker"), "owned by test");
@@ -207,9 +248,10 @@ public final class LinuxCargoJobserverTest
 	@Test
 	public void rejectsZeroProgressAndCleansOwnedResources() throws Exception
 	{
+		requireLinux();
 		try (Fixture fixture = new Fixture())
 		{
-			Faults calls = new Faults();
+			Faults calls = new Faults(fixture.scope);
 			calls.zeroWrite = true;
 			requireException(IOException.class,
 				() -> LinuxCargoJobserver.SharedSecrets.create(fixture.directory, fixture.group, 2, calls));
@@ -226,9 +268,10 @@ public final class LinuxCargoJobserverTest
 	@Test
 	public void establishesOwnerAccessAfterRestrictiveCreation() throws Exception
 	{
+		requireLinux();
 		try (Fixture fixture = new Fixture())
 		{
-			Faults calls = new Faults();
+			Faults calls = new Faults(fixture.scope);
 			calls.restrictCreation = true;
 			try (var owner = LinuxCargoJobserver.SharedSecrets.create(fixture.directory, fixture.group, 2, calls);
 				var lease = owner.retainCargo(Map.of()))
@@ -254,6 +297,8 @@ public final class LinuxCargoJobserverTest
 	 */
 	static final class Fixture implements AutoCloseable
 	{
+		/** Shared native services closed after test-owned endpoints and consumers. */
+		final ToolingScope scope = new DefaultToolingScope();
 		/** Exclusive local parent, removed after every owner created by the test is closed. */
 		final Path directory;
 		/** Current numeric group, allowing a local test without privileged credential changes. */
@@ -282,6 +327,7 @@ public final class LinuxCargoJobserverTest
 		@Override
 		public void close() throws IOException
 		{
+			scope.close();
 			try (var paths = Files.walk(directory))
 			{
 				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
@@ -296,7 +342,7 @@ public final class LinuxCargoJobserverTest
 	private static final class Faults implements LinuxCargoJobserver.Calls
 	{
 		/** Actual native implementation used for all unaffected operations and resource release. */
-		private final LinuxCargoJobserver.Calls actual = LinuxCargoJobserver.SharedSecrets.nativeCalls();
+		private final LinuxCargoJobserver.Calls actual;
 		/** Test-owned error returned by the controlled write boundary. */
 		private final IOException writeFailure = new IOException("Controlled native write failure");
 		/** Test-owned error reported after the real descriptor has been closed. */
@@ -317,11 +363,14 @@ public final class LinuxCargoJobserverTest
 		private Path blocker = null;
 		/** Number of actual native close attempts made through this boundary. */
 		private int closes = 0;
+		/** Number of requested writes, including initial seeding and controlled failed returns. */
+		private int writes = 0;
 
 		/**
 		 * Creates controlled external access without acquiring native resources.
+		 * @param scope borrowed native linker, retained open by the enclosing fixture
 		 */
-		private Faults() { }
+		private Faults(ToolingScope scope) { actual = LinuxCargoJobserver.SharedSecrets.nativeCalls(scope); }
 
 		@Override
 		public void createFifo(Path path, int mode) throws IOException
@@ -335,8 +384,15 @@ public final class LinuxCargoJobserverTest
 		public int open(Path path) throws IOException { return actual.open(path); }
 
 		@Override
+		public LinuxFifoBindings.Identity identity(int descriptor) throws IOException { return actual.identity(descriptor); }
+
+		@Override
+		public java.util.OptionalInt tryRead(int descriptor) throws IOException { return actual.tryRead(descriptor); }
+
+		@Override
 		public int write(int descriptor, byte[] tokens, int count) throws IOException
 		{
+			++writes;
 			if (failWrite)
 			{
 				if (blockCleanup)

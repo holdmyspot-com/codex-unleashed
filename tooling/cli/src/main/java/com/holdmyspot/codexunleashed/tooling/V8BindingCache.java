@@ -49,19 +49,19 @@ final class V8BindingCache
 		if (state == null)
 			return false;
 		Path pending = SourceInputSnapshots.pending(state.snapshot());
-		Optional<JsonNode> interrupted = read(pending);
+		Optional<JsonNode> interrupted = read(context.scope(), pending);
 		Path resumable = SourceInputSnapshots.resumable(state.snapshot());
-		Optional<JsonNode> previous = read(resumable);
+		Optional<JsonNode> previous = read(context.scope(), resumable);
 		Files.deleteIfExists(resumable);
 		if (previous.isEmpty())
-			previous = read(state.snapshot());
-		SourceInputSnapshots.write(pending, state.current());
+			previous = read(context.scope(), state.snapshot());
+		SourceInputSnapshots.write(context.scope(), pending, state.current());
 		if (previous.isEmpty())
 		{
 			out.println("V8 binding snapshot absent; rebuilding its cached package.");
 			return true;
 		}
-		int changed = SourceInputChanges.apply(state.current(), previous.orElseThrow(), interrupted,
+		int changed = SourceInputChanges.apply(context.scope(), state.current(), previous.orElseThrow(), interrupted,
 			context.clock()).size();
 		out.println("V8 binding content changes: " + changed + "; unchanged input timestamps restored.");
 		return false;
@@ -80,7 +80,7 @@ final class V8BindingCache
 	{
 		State state = load(request, context, targetDirectory);
 		if (state != null)
-			SourceInputSnapshots.checkpoint(state.snapshot(), state.current());
+			SourceInputSnapshots.checkpoint(context.scope(), state.snapshot(), state.current());
 	}
 
 	/**
@@ -97,7 +97,7 @@ final class V8BindingCache
 	{
 		State state = load(request, context, targetDirectory);
 		if (state != null)
-			SourceInputSnapshots.record(state.snapshot(), state.current());
+			SourceInputSnapshots.record(context.scope(), state.snapshot(), state.current());
 	}
 
 	/**
@@ -124,8 +124,8 @@ final class V8BindingCache
 		String name = binding.getFileName().toString();
 		SourceInputInventory.Snapshot current = new SourceInputInventory.Snapshot(root,
 			Map.of(name, Sha256.digest(binding)),
-			Map.of(name, SourceInputTimes.nanos(SourceInputTimes.lastModified(binding)),
-				".", SourceInputTimes.nanos(SourceInputTimes.lastModified(root))));
+			Map.of(name, SourceInputTimes.nanos(SourceInputTimes.lastModified(context.scope(), binding)),
+				".", SourceInputTimes.nanos(SourceInputTimes.lastModified(context.scope(), root))));
 		Path snapshot = request.profile().snapshotDirectory(targetDirectory).resolve("v8-binding-" +
 			SourceCacheTargets.directoryName(request.target()) + ".json");
 		return new State(snapshot, current);
@@ -134,15 +134,16 @@ final class V8BindingCache
 	/**
 	 * Reads existing non-null state using the same snapshot contract as checkout inputs.
 	 *
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param path a successful or pending snapshot
 	 * @return its document, or empty for an absent file or JSON null
 	 * @throws IOException if reading or parsing fails
 	 */
-	private static Optional<JsonNode> read(Path path) throws IOException
+	private static Optional<JsonNode> read(ToolingScope scope, Path path) throws IOException
 	{
 		if (!Files.isRegularFile(path))
 			return Optional.empty();
-		JsonNode document = SourceInputSnapshots.read(path);
+		JsonNode document = SourceInputSnapshots.read(scope, path);
 		if (document.isNull())
 			return Optional.empty();
 		return Optional.of(document);

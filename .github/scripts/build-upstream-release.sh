@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Build the selected native upstream release bundles with default features.
 # Run from codex-rs with TARGET, CARGO_TARGET_DIR and RUNNER_TEMP configured.
+# RELEASE_CARGO_COMMAND optionally selects an executable adapter for compilations;
+# it receives the original Cargo arguments and must return the collected Cargo status.
 # Cargo failures propagate; logs and toolchain identity go to baseline-evidence.
 set -euo pipefail
 
@@ -27,10 +29,30 @@ checkpoint() {
   fi
 }
 
+# Compile through the explicitly configured adapter or the ordinary Cargo command.
+# Arguments:
+#   Original Cargo arguments, forwarded individually without shell interpretation.
+# Environment:
+#   RELEASE_CARGO_COMMAND: optional executable path; empty or unset selects Cargo.
+#   PATH: command search path when the selected executable is not absolute.
+# Output:
+#   Forwards the selected command's standard output and standard error.
+# Side effects:
+#   Runs one compilation in the caller's working directory and environment.
+# Exit status:
+#   The selected command's status, including adapter failure without fallback.
+compile() {
+  if [[ -n "${RELEASE_CARGO_COMMAND:-}" ]]; then
+    "$RELEASE_CARGO_COMMAND" "$@"
+  else
+    cargo "$@"
+  fi
+}
+
 case "$TARGET" in
   *-linux-musl)
     started=$SECONDS
-    cargo build --target "$TARGET" --release --timings --bin bwrap 2>&1 | tee "$evidence/bwrap-build.log"
+    compile build --target "$TARGET" --release --timings --bin bwrap 2>&1 | tee "$evidence/bwrap-build.log"
     helper="$CARGO_TARGET_DIR/$TARGET/release/bwrap"
     strip --preserve-dates --strip-debug --strip-unneeded "$helper"
     CODEX_BWRAP_SHA256="$(sha256sum "$helper" | cut -d ' ' -f 1)"
@@ -53,7 +75,7 @@ esac
 
 for binary in "${binaries[@]}"; do
   started=$SECONDS
-  cargo build --target "$TARGET" --release --timings --bin "$binary" 2>&1 | tee "$evidence/cargo-build-$binary.log"
+  compile build --target "$TARGET" --release --timings --bin "$binary" 2>&1 | tee "$evidence/cargo-build-$binary.log"
   printf 'binary=%s build_seconds=%s\n' "$binary" "$((SECONDS-started))" | tee -a "$evidence/build-stage-timings.log"
   checkpoint "$binary"
 done

@@ -30,6 +30,7 @@ public final class SourceCacheCommand
 	 * Prepares or records release inputs by default, with optional ci-test profile selection before the workspace.
 	 * Recording remains the first option when selected; positional binary arguments are ignored during recording.
 	 *
+	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param arguments command arguments without the command name
 	 * @param out progress output
 	 * @param err diagnostics
@@ -37,8 +38,9 @@ public final class SourceCacheCommand
 	 * @throws NullPointerException if an argument or output stream is null
 	 * @throws IOException if preparation or recording fails
 	 */
-	public static int run(String[] arguments, PrintStream out, PrintStream err) throws IOException
+	public static int run(ToolingScope scope, String[] arguments, PrintStream out, PrintStream err) throws IOException
 	{
+		Objects.requireNonNull(scope, "scope");
 		Objects.requireNonNull(arguments, "arguments");
 		Objects.requireNonNull(out, "out");
 		Objects.requireNonNull(err, "err");
@@ -79,7 +81,7 @@ public final class SourceCacheCommand
 			return 2;
 		}
 
-		SourceInputCache.Context context = new SourceInputCache.Context(Path.of("").toAbsolutePath(),
+		SourceInputCache.Context context = new SourceInputCache.Context(scope, Path.of("").toAbsolutePath(),
 			Path.of(System.getProperty("java.io.tmpdir")), System.getenv(), Clock.systemUTC());
 		if (record)
 			SourceInputCache.record(request, context, out, err);

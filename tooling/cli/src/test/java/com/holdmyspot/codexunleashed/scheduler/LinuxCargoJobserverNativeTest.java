@@ -1,18 +1,12 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import java.io.IOException;
-import java.lang.foreign.Arena;
-import java.lang.foreign.FunctionDescriptor;
-import java.lang.foreign.Linker;
-import java.lang.foreign.MemoryLayout;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
-import java.lang.invoke.MethodHandle;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Map;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
@@ -30,12 +24,44 @@ public final class LinuxCargoJobserverNativeTest
 	public LinuxCargoJobserverNativeTest() { }
 
 	/**
-	 * Limits these real FIFO operations to the supported Linux platform.
+	 * Borrows one immutable native binding set per scope while keeping other scopes independent.
 	 */
-	@BeforeClass
-	public void requireLinuxForNativeFixtures()
+	@Test
+	public void sharesBindingsWithinScope()
 	{
 		LinuxCargoJobserverTest.requireLinux();
+		try (var first = new DefaultToolingScope(); var second = new DefaultToolingScope())
+		{
+			var bindings = LinuxCargoJobserver.SharedSecrets.nativeCalls(first);
+			requireThat(LinuxCargoJobserver.SharedSecrets.nativeCalls(first), "sharedNativeBindings")
+				.isReferenceEqualTo(bindings, "sameScope");
+			requireThat(LinuxCargoJobserver.SharedSecrets.nativeCalls(second) == bindings, "independentScopes").isFalse();
+			first.close();
+			requireException(IllegalStateException.class, () -> LinuxCargoJobserver.SharedSecrets.nativeCalls(first));
+		}
+	}
+
+	/**
+	 * A live logical attempt prevents releasing the Cargo lease and deleting its native FIFO.
+	 * This local fixture has no compiler process; actual descendant barriers remain a separate native gate.
+	 * @throws Exception if native fixture setup or owned cleanup fails
+	 */
+	@Test
+	public void retainsLeaseUntilAttemptRetires() throws Exception
+	{
+		LinuxCargoJobserverTest.requireLinux();
+		try (var fixture = new LinuxCargoJobserverTest.Fixture();
+			var owner = LinuxCargoJobserver.create(fixture.scope, fixture.directory, fixture.group, 1);
+			var lease = owner.retainCargo(Map.of()); var attempt = lease.retainAttempt())
+		{
+			requireException(IllegalStateException.class, lease::close);
+			requireException(IllegalStateException.class, owner::close);
+			requireThat(lease.environment().containsKey("MAKEFLAGS"), "leaseRemainsUsable").isTrue();
+			requireThat(attempt.tryBorrow().isEmpty(), "implicitOnlyCapacity").isTrue();
+			attempt.close();
+			lease.close();
+			requireException(IllegalStateException.class, lease::retainAttempt);
+		}
 	}
 
 	/**
@@ -53,8 +79,9 @@ public final class LinuxCargoJobserverNativeTest
 	@Test(dataProvider = "capacities")
 	public void seedsExactExplicitCapacityAndRetainsPoolAcrossPeers(int jobs) throws Exception
 	{
+		LinuxCargoJobserverTest.requireLinux();
 		try (var fixture = new LinuxCargoJobserverTest.Fixture();
-			var owner = LinuxCargoJobserver.create(fixture.directory, fixture.group, jobs))
+			var owner = LinuxCargoJobserver.create(fixture.scope, fixture.directory, fixture.group, jobs))
 		{
 			Path fifo;
 			Path directory;
@@ -68,13 +95,13 @@ public final class LinuxCargoJobserverNativeTest
 				requireThat(Files.getPosixFilePermissions(directory), "directoryAccess")
 					.isEqualTo(PosixFilePermissions.fromString("rwx--x---"), "expected");
 				requireThat(Files.getAttribute(fifo, "unix:gid"), "workloadGroup").isEqualTo(fixture.group, "expected");
-				try (Peer first = new Peer(fifo))
+				try (Peer first = new Peer(fixture.scope, fifo))
 				{
 					requireThat(first.drain(), "initialExplicitTokens").isEqualTo(jobs - 1, "expected");
 					first.release();
 					requireException(IllegalStateException.class, owner::close);
 				}
-				try (Peer second = new Peer(fifo))
+				try (Peer second = new Peer(fixture.scope, fifo))
 				{
 					requireThat(second.drain(), "returnedTokenAcrossPeerGap").isEqualTo(1, "expected");
 					requireThat(second.drain(), "noReseeding").isEqualTo(0, "expected");
@@ -89,16 +116,68 @@ public final class LinuxCargoJobserverNativeTest
 	}
 
 	/**
+	 * Supplies distinct and repeated opaque bytes without changing the FIFO's configured capacity.
+	 * @return pairs of unsigned token bytes
+	 */
+	@DataProvider
+	public Object[][] opaqueBytes() { return new Object[][] {{0x51, 0xa5}, {0xa5, 0xa5}}; }
+
+	/**
+	 * Returns and reclaims exact opaque bytes through separate logical owners and an independent native endpoint.
+	 * Closing one logical attempt cannot reclaim its live peer's reservation or release the invocation lease.
+	 * @param first first unsigned token byte
+	 * @param second second unsigned token byte, possibly equal to the first
+	 * @throws Exception if native fixture setup, observation or cleanup fails
+	 */
+	@Test(dataProvider = "opaqueBytes")
+	public void recoversExactBytesThroughLease(int first, int second) throws Exception
+	{
+		LinuxCargoJobserverTest.requireLinux();
+		try (var fixture = new LinuxCargoJobserverTest.Fixture();
+			var owner = LinuxCargoJobserver.create(fixture.scope, fixture.directory, fixture.group, 3);
+			var lease = owner.retainCargo(Map.of()); var a = lease.retainAttempt(); var b = lease.retainAttempt())
+		{
+			var calls = LinuxCargoJobserver.SharedSecrets.nativeCalls(fixture.scope);
+			int observer = calls.open(LinuxCargoJobserverTest.fifo(lease.environment()));
+			try
+			{
+				requireThat(calls.tryRead(observer).getAsInt(), "firstSeed").isEqualTo((int) '+', "seedByte");
+				requireThat(calls.tryRead(observer).getAsInt(), "secondSeed").isEqualTo((int) '+', "seedByte");
+				requireThat(calls.tryRead(observer).isEmpty(), "initialCapacity").isTrue();
+				requireThat(calls.write(observer, new byte[] {(byte) first, (byte) second}, 2), "opaqueSeed")
+					.isEqualTo(2, "unchangedCapacity");
+				requireThat(a.tryBorrow().getAsInt(), "firstBorrow").isEqualTo(first, "originalFirst");
+				requireThat(b.tryBorrow().getAsInt(), "secondBorrow").isEqualTo(second, "originalSecond");
+				requireThat(a.tryBorrow().isEmpty(), "noExtraGrant").isTrue();
+				a.returnToken((byte) first);
+				a.close();
+				requireException(IllegalStateException.class, lease::close);
+				requireThat(calls.tryRead(observer).getAsInt(), "returnedFirst").isEqualTo(first, "originalFirst");
+				requireThat(calls.tryRead(observer).isEmpty(), "livePeerNotReclaimed").isTrue();
+				requireThat(calls.write(observer, new byte[] {(byte) first}, 1), "restoreObservedByte")
+					.isEqualTo(1, "oneByte");
+				b.close();
+				lease.close();
+				requireThat(calls.tryRead(observer).getAsInt(), "finalFirst").isEqualTo(first, "originalFirst");
+				requireThat(calls.tryRead(observer).getAsInt(), "reclaimedSecond").isEqualTo(second, "originalSecond");
+				requireThat(calls.tryRead(observer).isEmpty(), "noDuplicateReturn").isTrue();
+			}
+			finally { calls.close(observer); }
+		}
+	}
+
+	/**
 	 * Fails oversized setup through nonblocking write without starting a consumer or retaining its partial pool.
 	 * @throws Exception if fixture setup or cleanup fails
 	 */
 	@Test
 	public void capacityExhaustionFailsAndCleansPartialPool() throws Exception
 	{
+		LinuxCargoJobserverTest.requireLinux();
 		try (var fixture = new LinuxCargoJobserverTest.Fixture())
 		{
 			IOException failure = requireException(IOException.class,
-				() -> LinuxCargoJobserver.create(fixture.directory, fixture.group, Integer.MAX_VALUE));
+				() -> LinuxCargoJobserver.create(fixture.scope, fixture.directory, fixture.group, Integer.MAX_VALUE));
 			requireThat(failure.getMessage().contains("2147483646"), "requestedExplicitTokensReported").isTrue();
 			requireThat(failure.getCause().getMessage().contains("errno 11"), "capacityFailureReported").isTrue();
 			try (var paths = Files.list(fixture.directory))
@@ -115,24 +194,21 @@ public final class LinuxCargoJobserverNativeTest
 	private static final class Peer implements AutoCloseable
 	{
 		/** Actual Linux open/write/close access for this independently owned endpoint. */
-		private final LinuxCargoJobserver.Calls calls = LinuxCargoJobserver.SharedSecrets.nativeCalls();
-		/** LP64 native read operation with same-call errno capture. */
-		private final MethodHandle read = Linker.nativeLinker().downcallHandle(
-			Linker.nativeLinker().defaultLookup().find("read").orElseThrow(),
-			FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG),
-			Linker.Option.captureCallState("errno"));
-		/** Exact offset of the JDK-captured errno integer. */
-		private final long errnoOffset = Linker.Option.captureStateLayout()
-			.byteOffset(MemoryLayout.PathElement.groupElement("errno"));
+		private final LinuxCargoJobserver.Calls calls;
 		/** Test-owned endpoint, or -1 after its one close attempt. */
 		private int descriptor;
 
 		/**
 		 * Opens the actual owner-produced pathname without borrowing its descriptor.
+		 * @param scope borrowed native services, kept open until the endpoint closes
 		 * @param fifo owner-produced FIFO path
 		 * @throws IOException if open fails
 		 */
-		private Peer(Path fifo) throws IOException { this.descriptor = calls.open(fifo); }
+		private Peer(ToolingScope scope, Path fifo) throws IOException
+		{
+			this.calls = LinuxCargoJobserver.SharedSecrets.nativeCalls(scope);
+			this.descriptor = calls.open(fifo);
+		}
 
 		/**
 		 * Reads every currently available token until Linux reports EAGAIN.
@@ -142,29 +218,9 @@ public final class LinuxCargoJobserverNativeTest
 		private int drain() throws IOException
 		{
 			int tokens = 0;
-			try (Arena arena = Arena.ofConfined())
-			{
-				MemorySegment state = arena.allocate(Linker.Option.captureStateLayout());
-				MemorySegment buffer = arena.allocate(1);
-				while (true)
-				{
-					long count = (long) read.invokeExact(state, descriptor, buffer, 1L);
-					if (count == 1)
-					{
-						tokens++;
-						continue;
-					}
-					int error = state.get(ValueLayout.JAVA_INT, errnoOffset);
-					if (count == -1 && error == 11)
-						return tokens;
-					if (count == -1 && error == 4)
-						continue;
-					throw new IOException("Peer read returned " + count + " errno " + error);
-				}
-			}
-			catch (RuntimeException | Error failure) { throw failure; }
-			catch (IOException failure) { throw failure; }
-			catch (Throwable failure) { throw new IOException("Native peer invocation failed", failure); }
+			while (calls.tryRead(descriptor).isPresent())
+				++tokens;
+			return tokens;
 		}
 
 		/**

@@ -1,6 +1,10 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -13,6 +17,143 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public final class LinuxAuthorityObservationTest
 {
+
+	/**
+	 * Java residency lookup failure nominates a removed leaf only after complete authority verification;
+	 * its structured rejection still requires the registered owner's authentic zero observation.
+	 * @throws IOException if the test-owned directory cannot be created or removed
+	 */
+	@Test
+	public void classifiesJavaResidencyRemovalThroughCompleteAuthority() throws IOException
+	{
+		Path directory = Files.createTempDirectory("authority-observation-");
+		try
+		{
+			NoSuchFileException missing = requireException(NoSuchFileException.class,
+				() -> LinuxResidency.read(directory, directory, directory.resolve("completed-leaf")));
+			LinuxMeasurements.Attempt attempt = new LinuxMeasurements.Attempt("compile", 7);
+			// The callback models the reader's full native authority check reporting this exact absent leaf.
+			IOException removed = LinuxAuthorityReader.SharedSecrets.removedLeaf(attempt);
+			IOException result = LinuxAuthorityReader.SharedSecrets.observationFailure("resident", missing,
+				() -> { throw removed; });
+			Properties reply = LinuxAuthorityReader.SharedSecrets.rejection(result);
+			requireThat(reply.getProperty("reason"), "javaRemovalHasStructuredRejection").isEqualTo(LinuxAuthority.MISSING_LEAF);
+			requireThat(result.getSuppressed()[0] == missing, "originalJavaLookupFailureRetained").isTrue();
+			IOException rejected = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(
+				reply, "resident", Map.of(attempt, () -> true)));
+			requireThat(rejected instanceof ObservationRejected, "authenticZeroPermitsReconciliation").isTrue();
+			IOException live = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(
+				reply, "resident", Map.of(attempt, () -> false)));
+			requireThat(live instanceof ObservationRejected, "missingPathDoesNotProveZero").isFalse();
+		}
+		finally { Files.delete(directory); }
+	}
+
+	/**
+	 * Java missing paths cannot recover from live leaves, changed authority or uncertain cleanup.
+	 * @throws IOException if a controlled healthy verification fails unexpectedly
+	 */
+	@Test
+	public void preservesJavaLookupAuthorityFailures() throws IOException
+	{
+		for (String operation : List.of("host", "resident", "verify"))
+		{
+			IOException missing = new NoSuchFileException("completed-leaf");
+			IOException live = LinuxAuthorityReader.SharedSecrets.observationFailure(operation, missing, () -> { });
+			requireThat(live == missing, "liveLeafRetainsOriginalJavaFailure").isTrue();
+			IOException trust = new IOException("Another workload identity changed");
+			IOException observed = requireException(IOException.class, () -> LinuxAuthorityReader.SharedSecrets.observationFailure(
+				operation, missing, () -> { throw trust; }));
+			requireThat(observed == trust, "changedAuthorityDefeatsJavaAbsence").isTrue();
+			missing.addSuppressed(new IOException("Uncertain descriptor cleanup"));
+			IOException uncertain = LinuxAuthorityReader.SharedSecrets.observationFailure(operation, missing,
+				() -> { throw new AssertionError("Uncertain cleanup prevents recovery"); });
+			requireThat(uncertain == missing, "uncertainCleanupRemainsFatal").isTrue();
+		}
+	}
+
+	/**
+	 * Mutation requests and Java access or generic I/O failures never enter absent-leaf recovery.
+	 * @throws IOException if an excluded verification is incorrectly invoked
+	 */
+	@Test
+	public void excludesJavaMutationAndAccessFailures() throws IOException
+	{
+		for (String operation : List.of("register", "unregister", "terminate", "unknown"))
+		{
+			IOException missing = new NoSuchFileException("completed-leaf");
+			IOException result = LinuxAuthorityReader.SharedSecrets.observationFailure(operation, missing,
+				() -> { throw new AssertionError("Mutations must not recover missing paths"); });
+			requireThat(result == missing, "mutationKeepsOriginalJavaFailure").isTrue();
+		}
+		for (IOException failure : List.of(new AccessDeniedException("completed-leaf"), new IOException("unknown I/O failure")))
+		{
+			IOException result = LinuxAuthorityReader.SharedSecrets.observationFailure("resident", failure,
+				() -> { throw new AssertionError("Access and unknown failures must not recover"); });
+			requireThat(result == failure, "unrelatedJavaFailureRetained").isTrue();
+		}
+	}
+
+	/**
+	 * Both missing-path and removed-core errors require complete verification before missing-leaf classification.
+	 * @throws IOException if the controlled complete verification fails unexpectedly
+	 */
+	@Test
+	public void rechecksRemovedCoreFilesWithCompleteAuthority() throws IOException
+	{
+		for (int errno : new int[] {2, 19})
+			for (String operation : List.of("host", "resident", "verify"))
+			{
+				var removed = LinuxAuthorityReader.SharedSecrets.removedLeaf(new LinuxMeasurements.Attempt("compile", 7));
+				var result = LinuxAuthorityReader.SharedSecrets.observationFailure(operation, errno, false,
+					() -> { throw removed; });
+				requireThat(result == removed, "completeVerifiedRemoval").isTrue();
+				requireThat(result.getSuppressed().length, "originalNativeFaultRetained").isEqualTo(1);
+				requireThat(LinuxAuthorityReader.SharedSecrets.rejection(result).getProperty("reason"),
+					"verifiedMissingLeafOnly").isEqualTo(LinuxAuthority.MISSING_LEAF);
+			}
+	}
+
+	/**
+	 * A live leaf, invalid authority or uncertain cleanup cannot turn native failure into a recoverable observation.
+	 * @throws IOException if a controlled healthy verification fails unexpectedly
+	 */
+	@Test
+	public void preservesAuthorityFailuresAfterRemovedCoreRead() throws IOException
+	{
+		for (int errno : new int[] {2, 19})
+		{
+			var live = LinuxAuthorityReader.SharedSecrets.observationFailure("host", errno, false, () -> { });
+			requireThat(LinuxAuthorityReader.SharedSecrets.rejection(live).containsKey("reason"), "liveLeafIsNotMissing").isFalse();
+			var trust = new IOException("Authority changed during recheck");
+			var observed = requireException(IOException.class, () -> LinuxAuthorityReader.SharedSecrets.observationFailure(
+				"host", errno, false, () -> { throw trust; }));
+			requireThat(observed == trust, "authorityFailureRetained").isTrue();
+			var uncertain = LinuxAuthorityReader.SharedSecrets.observationFailure("host", errno, true,
+				() -> { throw new AssertionError("Uncertain cleanup must prevent rechecking"); });
+			requireThat(uncertain.getSuppressed().length, "uncertainCleanupRetained").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Mutations and unrelated native failures retain failure without attempting observation recovery.
+	 * @throws IOException if an excluded verification is incorrectly invoked
+	 */
+	@Test
+	public void neverRechecksMutationsOrUnrelatedNativeErrors() throws IOException
+	{
+		for (int errno : new int[] {2, 19})
+			for (String operation : List.of("register", "unregister", "terminate", "unknown"))
+			{
+				var result = LinuxAuthorityReader.SharedSecrets.observationFailure(operation, errno, false,
+					() -> { throw new AssertionError("Mutation must not recheck"); });
+				requireThat(LinuxAuthorityReader.SharedSecrets.rejection(result).containsKey("reason"), "mutationRemainsFailure").isFalse();
+			}
+		for (int errno : new int[] {5, 13, 116})
+			LinuxAuthorityReader.SharedSecrets.observationFailure("host", errno, false,
+				() -> { throw new AssertionError("Unrelated native failure must not recheck"); });
+	}
+
 	/** Every removed leaf must independently prove retained zero before one batch can be retried. */
 	@Test
 	public void acknowledgesMultipleCompletedLeaves()
@@ -61,6 +202,27 @@ public final class LinuxAuthorityObservationTest
 	 * Creates independent observation-decision checks.
 	 */
 	public LinuxAuthorityObservationTest() { }
+
+	/** Complete reader-verified membership churn permits a fresh sample without claiming workload completion. */
+	@Test
+	public void acknowledgesVerifiedMembershipChurn()
+	{
+		var attempt = new LinuxMeasurements.Attempt("compile", 7);
+		var reply = removed(attempt);
+		reply.setProperty("reason", "registered-membership-changed");
+		var failure = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(
+			reply, "resident", Map.of(attempt, () -> { throw new IOException("No zero observation is required"); })));
+		requireThat(failure instanceof ObservationRejected, "verifiedMembershipRetry").isTrue();
+		var rejected = (ObservationRejected) failure;
+		requireThat(rejected.reason(), "reason").isEqualTo(ObservationRejected.Reason.MEMBERSHIP_CHANGED);
+		requireThat(rejected.attempts(), "exactAttempt").isEqualTo(List.of(new ObservationRejected.Attempt("compile", 7)));
+		assertOrdinary(reply, "host", attempt);
+		assertOrdinary(reply, "verify", attempt);
+		var unknown = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(reply, "resident", Map.of()));
+		requireThat(unknown instanceof ObservationRejected, "unknownAttempt").isFalse();
+		reply.setProperty("extra", "untrusted");
+		assertOrdinary(reply, "resident", attempt);
+	}
 
 	/**
 	 * Exact acknowledged missing leaf plus retained zero grants observation retry only.

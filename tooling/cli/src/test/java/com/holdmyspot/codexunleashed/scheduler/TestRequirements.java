@@ -3,7 +3,7 @@ package com.holdmyspot.codexunleashed.scheduler;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /** Checks exception outcomes with Requirements while TestNG supplies only test discovery and execution. */
-final class TestRequirements
+public final class TestRequirements
 {
 	/** Prevents construction of this resource-free group of test operations. */
 	private TestRequirements()
@@ -20,7 +20,7 @@ final class TestRequirements
 	 * @throws NullPointerException if an argument is null or the operation throws nothing
 	 * @throws IllegalArgumentException if the thrown exception has another type
 	 */
-	static <T extends Throwable> T requireException(Class<T> expected, Operation operation)
+	public static <T extends Throwable> T requireException(Class<T> expected, Operation operation)
 	{
 		requireThat(expected, "expected").isNotNull();
 		requireThat(operation, "operation").isNotNull();
@@ -39,7 +39,7 @@ final class TestRequirements
 
 	/** Executes a test operation that may return normally or throw any exception or error. */
 	@FunctionalInterface
-	interface Operation
+	public interface Operation
 	{
 		/**
 		 * Executes the test operation once.

@@ -5,8 +5,8 @@ import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Verifies source-cache command dispatch and argument failures before Cargo or cache writes.
@@ -31,8 +31,9 @@ public final class SourceCacheCommandTest
 		{
 			int status = Main.run(new String[]{"clean-cached-release-binaries", "missing-workspace", "../outside",
 				"codex"}, InputStream.nullInputStream(), err, err);
-			assertEquals(status, 2);
-			assertTrue(diagnostics.toString(StandardCharsets.UTF_8).contains("Invalid Cargo target directory name"));
+			requireThat(status, "status").isEqualTo(2);
+			requireThat(diagnostics.toString(StandardCharsets.UTF_8).contains("Invalid Cargo target directory name"), "actual")
+				.isTrue();
 		}
 	}
 
@@ -47,8 +48,11 @@ public final class SourceCacheCommandTest
 		{
 			int status = Main.run(new String[]{"clean-cached-release-binaries", "--profile", "ci-test",
 				"missing-workspace", "../outside", "codex"}, InputStream.nullInputStream(), err, err);
-			assertEquals(status, 2, diagnostics.toString(StandardCharsets.UTF_8));
-			assertTrue(diagnostics.toString(StandardCharsets.UTF_8).contains("Invalid Cargo target directory name"));
+			requireThat(status, "status")
+				.withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic")
+				.isEqualTo(2);
+			requireThat(diagnostics.toString(StandardCharsets.UTF_8).contains("Invalid Cargo target directory name"), "actual")
+				.isTrue();
 		}
 	}
 
@@ -63,8 +67,11 @@ public final class SourceCacheCommandTest
 		{
 			int status = Main.run(new String[]{"clean-cached-release-binaries", "--profile", "../outside",
 				"missing-workspace", "native-target", "codex"}, InputStream.nullInputStream(), err, err);
-			assertEquals(status, 2, diagnostics.toString(StandardCharsets.UTF_8));
-			assertTrue(diagnostics.toString(StandardCharsets.UTF_8).contains("Unsupported Cargo cache profile"));
+			requireThat(status, "status")
+				.withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic")
+				.isEqualTo(2);
+			requireThat(diagnostics.toString(StandardCharsets.UTF_8).contains("Unsupported Cargo cache profile"), "diagnostics")
+				.isTrue();
 		}
 	}
 
@@ -79,8 +86,8 @@ public final class SourceCacheCommandTest
 		{
 			int status = Main.run(new String[]{"clean-cached-release-binaries", "--record-source-inputs",
 				"missing-workspace", "native-target", "ignored-binary"}, InputStream.nullInputStream(), err, err);
-			assertEquals(status, 1);
-			assertTrue(diagnostics.toString(StandardCharsets.UTF_8).contains("ERROR:"));
+			requireThat(status, "status").isEqualTo(1);
+			requireThat(diagnostics.toString(StandardCharsets.UTF_8).contains("ERROR:"), "diagnostics").isTrue();
 		}
 	}
 }
