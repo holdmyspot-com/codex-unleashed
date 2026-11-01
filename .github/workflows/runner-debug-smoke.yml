@@ -55,10 +55,6 @@ jobs:
     timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
-    concurrency:
-      group: ${{ github.workflow }}-${{ matrix.target }}
-      cancel-in-progress: false
-      queue: max
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
