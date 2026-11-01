@@ -1,0 +1,40 @@
+{
+  "scope": "Independent x86-64 debug jobs may overlap after removing the unnecessary target-wide concurrency group.",
+  "workflowCommit": "7c224099484588511cce4777f99021fb0bfd4d0f",
+  "successorRunCommit": "d00272e6407d027187faabae76e1f68c948e8579",
+  "workflowSha256": "15b2e125f4f973426079f780d6db1650b7d929cb131cf18a4b0e0f85e2f128c5",
+  "sourceCheck": {
+    "command": "actionlint .github/workflows/runner-debug-smoke.yml",
+    "result": "passed"
+  },
+  "providerSource": "GitHub Actions jobs API for the exact job identities below",
+  "providerJobs": [
+    {
+      "id": 124908745841,
+      "run_id": 41326921894,
+      "name": "Debug - x86_64-unknown-linux-musl",
+      "status": "completed",
+      "conclusion": "failure",
+      "started_at": "2026-11-01T16:42:43Z",
+      "completed_at": "2026-11-01T17:12:06Z"
+    },
+    {
+      "id": 124918564988,
+      "run_id": 41330206940,
+      "name": "Debug - x86_64-unknown-linux-musl",
+      "status": "in_progress",
+      "conclusion": null,
+      "started_at": "2026-11-01T17:11:51Z",
+      "completed_at": null
+    }
+  ],
+  "intervalOverlapSeconds": 15.0,
+  "gate": "passed for simultaneous independent native jobs",
+  "limits": "Job overlap establishes capacity and removal of this serialization. It does not establish overlap of expensive product checks, terminal adoption success, or CP3 completion.",
+  "pressureProviderConclusion": "The debug workflow deliberately fails exit17 before the owned session. Its overall failure is separate from the native pressure acceptance and post-cleanup results.",
+  "priorQueuedRun": {
+    "runId": 41328901332,
+    "disposition": "Owner reports cancellation before a native step; replaced solely to consume the corrected workflow."
+  },
+  "productionInput": "bd9cd937f1c2c23b7dab640e093e8184aa181034 remains the integration source baseline."
+}
