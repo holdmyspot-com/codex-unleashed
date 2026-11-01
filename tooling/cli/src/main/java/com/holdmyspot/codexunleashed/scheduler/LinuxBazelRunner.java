@@ -1,73 +1,25 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
-import buildbarn.runner.RunnerGrpc;
-import buildbarn.runner.RunnerOuterClass.CheckReadinessRequest;
 import buildbarn.runner.RunnerOuterClass.RunRequest;
-import buildbarn.runner.RunnerOuterClass.RunResponse;
-import com.google.protobuf.Empty;
-import io.grpc.Grpc;
-import io.grpc.Metadata;
-import io.grpc.Server;
-import io.grpc.ServerCall;
-import io.grpc.ServerCallHandler;
-import io.grpc.ServerInterceptor;
-import io.grpc.Status;
-import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder;
-import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
-import io.grpc.netty.shaded.io.netty.channel.MultiThreadIoEventLoopGroup;
-import io.grpc.netty.shaded.io.netty.channel.nio.NioIoHandler;
-import io.grpc.netty.shaded.io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.grpc.netty.shaded.io.netty.handler.ssl.ClientAuth;
-import io.grpc.netty.shaded.io.netty.handler.ssl.ApplicationProtocolConfig;
-import io.grpc.netty.shaded.io.netty.handler.ssl.ApplicationProtocolNames;
-import io.grpc.netty.shaded.io.netty.handler.ssl.SslContextBuilder;
-import io.grpc.netty.shaded.io.netty.handler.ssl.SslProvider;
-import io.grpc.stub.ServerCallStreamObserver;
-import io.grpc.stub.StreamObserver;
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
-import java.security.cert.CertificateFactory;
 import java.util.List;
-import java.util.Map;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
-import javax.net.ssl.SSLSession;
 
 /**
- * Accepts the pinned Buildbarn ready-action protocol over mutually authenticated loopback TLS.
- * RPC threads enqueue immutable requests; only the scheduler thread creates native owners or touches its queue.
- * Cancellation withdraws publication authority while the producer retains the independent native cleanup lease.
+ * Applies Linux pathname and directory authority to the shared authenticated Runner service.
+ * Native workspace acquisition remains with the coordinator after immutable admission.
  */
 final class LinuxBazelRunner implements AutoCloseable
 {
+    /** Sole common transport and publication authority. */
+    private final BazelRunner<NativeAdmission> runner;
     /** Trusted worker directory, outside all action roots. */
     private final Path buildRoot;
-    /** Invocation-private server and exact allowed client identities. */
-    private final Credentials credentials;
-    /** Accepted requests in actual discovery order. */
-    private final ConcurrentLinkedQueue<Ready> requests = new ConcurrentLinkedQueue<>();
-    /** Overlapping original roots remain exclusive until terminal authenticated cleanup. */
-    private final RootClaims rootClaims = new RootClaims();
-    /** Monotonic logical identities within this invocation. */
-    private final AtomicLong sequence = new AtomicLong();
-    /** New RPC admission authority. */
-    private final AtomicBoolean accepting = new AtomicBoolean(true);
-    /** Sole actual bound server, retained through failed cleanup. */
-    private Server server;
-    /** Explicit portable transport owner, retained even when listener acquisition fails. */
-    private MultiThreadIoEventLoopGroup transport;
 
     /**
      * Retains host-owned configuration without opening a listener.
@@ -77,93 +29,35 @@ final class LinuxBazelRunner implements AutoCloseable
     LinuxBazelRunner(Path buildRoot, Credentials credentials)
     {
         this.buildRoot = Objects.requireNonNull(buildRoot, "buildRoot").toAbsolutePath().normalize();
-        this.credentials = Objects.requireNonNull(credentials, "credentials");
+        Objects.requireNonNull(credentials, "credentials");
+        this.runner = new BazelRunner<>(new NativeBoundary(), new BazelRunner.Credentials(credentials.authority(),
+            credentials.serverCertificate(), credentials.serverPrivateKey(), credentials.workerCertificate()));
     }
 
     /**
      * Starts one JDK TLS listener on a kernel-selected loopback port.
      * @throws IOException if identity material or listener setup fails
      */
-    void start() throws IOException
-    {
-        if (server != null || !accepting.get()) throw new IllegalStateException("Runner starts once");
-        requireDirectory(buildRoot);
-        byte[] client = certificate(credentials.workerCertificate());
-        var tls = GrpcSslContexts.configure(SslContextBuilder.forServer(credentials.serverCertificate().toFile(),
-            credentials.serverPrivateKey().toFile()), SslProvider.JDK)
-            .applicationProtocolConfig(new ApplicationProtocolConfig(ApplicationProtocolConfig.Protocol.ALPN,
-                ApplicationProtocolConfig.SelectorFailureBehavior.NO_ADVERTISE,
-                ApplicationProtocolConfig.SelectedListenerFailureBehavior.ACCEPT, ApplicationProtocolNames.HTTP_2))
-            .trustManager(credentials.authority().toFile()).clientAuth(ClientAuth.REQUIRE).build();
-        transport = new MultiThreadIoEventLoopGroup(2, NioIoHandler.newFactory());
-        server = NettyServerBuilder.forAddress(new InetSocketAddress("127.0.0.1", 0))
-            .channelType(NioServerSocketChannel.class).bossEventLoopGroup(transport).workerEventLoopGroup(transport)
-            .sslContext(tls).maxInboundMessageSize(16 * 1024 * 1024)
-            .intercept(new ClientIdentity(client)).addService(new Service()).build();
-        server.start();
-    }
+    void start() throws IOException { runner.start(); }
 
     /**
      * Returns the bound loopback endpoint without a transport scheme.
      * @return numeric loopback host and port
      */
-    String endpoint()
-    {
-        if (server == null) throw new IllegalStateException("Runner has not started");
-        return "127.0.0.1:" + server.getPort();
-    }
+    String endpoint() { return runner.endpoint(); }
 
     /**
-     * Transfers the oldest RPC to the constructing coordinator without executing it.
-     * @return the next original ready request, if any
+     * Transfers the oldest authenticated request without executing it.
+     * @return next original Linux ready request, if any
      */
-    Optional<Ready> poll()
-    {
-        Ready ready;
-        while ((ready = requests.poll()) != null)
-        {
-            if (ready.publicationAllowed()) return Optional.of(ready);
-            ready.releaseClaim();
-        }
-        return Optional.empty();
-    }
+    Optional<Ready> poll() { return runner.poll().map(Ready::new); }
 
     /**
-     * Withdraws future RPCs and fails undiscovered requests without discarding live cleanup owners.
+     * Withdraws future RPCs while preserving live native cleanup leases.
      */
-    void stopAccepting()
-    {
-        accepting.set(false);
-        Ready request;
-        while ((request = requests.poll()) != null)
-        {
-            request.fail(new IOException("Bazel invocation stopped accepting ready actions"));
-            request.releaseClaim();
-        }
-    }
+    void stopAccepting() { runner.stopAccepting(); }
 
-    /**
-     * Stops the owned transport; native actions must have been collected by the producer first.
-     * @throws IOException if the listener cannot be joined
-     */
-    @Override public void close() throws IOException
-    {
-        stopAccepting();
-        if (server != null) server.shutdownNow();
-        if (transport != null) transport.shutdownGracefully(0, 10, TimeUnit.SECONDS);
-        try
-        {
-            if (server != null && !server.awaitTermination(10, TimeUnit.SECONDS))
-                throw new IOException("Runner listener termination remains unresolved");
-            if (transport != null && !transport.awaitTermination(10, TimeUnit.SECONDS))
-                throw new IOException("Runner transport termination remains unresolved");
-        }
-        catch (InterruptedException cause)
-        {
-            Thread.currentThread().interrupt();
-            throw new IOException("Interrupted while joining Runner listener", cause);
-        }
-    }
+    @Override public void close() throws IOException { runner.close(); }
 
     /**
      * Validates the protocol's relative pathname without substituting any action argument.
@@ -222,21 +116,6 @@ final class LinuxBazelRunner implements AutoCloseable
     }
 
     /**
-     * Reads one exact pinned leaf certificate encoding.
-     * @param path certificate PEM path
-     * @return DER bytes
-     * @throws IOException if certificate parsing fails
-     */
-    private static byte[] certificate(Path path) throws IOException
-    {
-        try (var input = Files.newInputStream(path))
-        {
-            return CertificateFactory.getInstance("X.509").generateCertificate(input).getEncoded();
-        }
-        catch (GeneralSecurityException cause) { throw new IOException("Invalid Runner certificate", cause); }
-    }
-
-    /**
      * Invocation-private JDK TLS inputs.
      * @param authority trusted invocation CA
      * @param serverCertificate loopback server identity
@@ -245,92 +124,82 @@ final class LinuxBazelRunner implements AutoCloseable
      */
     record Credentials(Path authority, Path serverCertificate, Path serverPrivateKey, Path workerCertificate) {}
 
-    /** Exclusive host pathname ownership for original authenticated requests. */
-    private static final class RootClaims
+    /**
+     * Linux-only interpretation of worker paths and directory identity authority.
+     */
+    private final class NativeBoundary implements BazelRunner.Boundary<NativeAdmission>
     {
-        /** Exact original request and its independent worker-visible roots and streams. */
-        private final Map<Ready, List<Path>> owners = new LinkedHashMap<>();
-
-        /** Creates an empty registry owned by this exact invocation. */
-        private RootClaims() {}
-
         /**
-         * Reserves disjoint worker-visible paths before a request can reach the coordinator.
-         * @param ready original authenticated request
-         * @throws IOException if any active path overlaps another original request
+         * Creates the validation boundary without acquiring native resources.
          */
-        synchronized void acquire(Ready ready) throws IOException
+        private NativeBoundary() {}
+
+        @Override public void validateRoot() throws IOException { requireDirectory(buildRoot); }
+
+        @Override public void checkReadiness(String path) throws IOException { resolve(path, true); }
+
+        @Override public NativeAdmission admit(RunRequest request) throws IOException
         {
-            List<Path> paths = new ArrayList<>(List.of(ready.inputRoot(), ready.temporaryDirectory()));
-            paths.addAll(ready.streams());
-            for (List<Path> existing : owners.values())
-                for (Path path : paths)
-                    for (Path original : existing)
-                        if (path.startsWith(original) || original.startsWith(path))
-                            throw new IOException("Worker request overlaps an active original root or stream");
-            owners.put(ready, List.copyOf(paths));
+            Path input = resolve(request.getInputRootDirectory(), true);
+            Path temporary = resolve(request.getTemporaryDirectory(), true);
+            Path cwd = input;
+            for (Path component : relative(request.getWorkingDirectory(), true))
+            {
+                cwd = cwd.resolve(component);
+                requireDirectory(cwd);
+            }
+            resolve(request.getServerLogsDirectory(), true);
+            Path stdout = resolve(request.getStdoutPath(), false);
+            Path stderr = resolve(request.getStderrPath(), false);
+            if (input.startsWith(temporary) || temporary.startsWith(input) || stdout.equals(stderr) ||
+                stdout.startsWith(input) || stderr.startsWith(input) || stdout.startsWith(temporary) ||
+                stderr.startsWith(temporary))
+                throw new IOException("Worker input, temporary and stream paths must be independent");
+            return new NativeAdmission(buildRoot, input, temporary, cwd, List.of(stdout, stderr));
         }
-
-        /**
-         * Releases only the exact original request's paths after its execution authority is retired.
-         * @param ready exact original owner
-         */
-        synchronized void release(Ready ready) { owners.remove(ready); }
     }
 
-    /** Original RPC and publication authority, independent of any particular native retry. */
-    static final class Ready
+    /**
+     * Original admitted Linux directories and their stable identities, independent of RPC state.
+     */
+    private static final class NativeAdmission implements BazelRunner.Admission
     {
-        /** Original logical Run sequence. */
-        private final long sequence;
-        /** Original path lease survives cancellation until native cleanup retires it. */
-        private final RootClaims claims;
-        /** Exact original protocol fields. */
-        private final RunRequest request;
         /** Original worker-visible input root. */
         private final Path inputRoot;
         /** Original worker-visible temporary directory. */
         private final Path temporaryDirectory;
         /** Trusted worker build root retained from authenticated admission. */
         private final Path admittedBuildRoot;
-        /** Admission directory object identities in build/input/temporary order. */
+        /** Admission directory identities in build/input/temporary order. */
         private final List<Object> admittedKeys;
         /** Exact absolute action-visible cwd. */
         private final Path directory;
-        /** Original worker log destinations, never opened by an action. */
+        /** Original stdout and stderr destinations. */
         private final List<Path> streams;
-        /** Original RPC observer retained until terminal publication. */
-        private final ServerCallStreamObserver<RunResponse> observer;
-        /** Cancellation/terminal publication share one synchronization boundary. */
-        private boolean terminal;
 
         /**
-         * Retains validated original fields and installs cancellation before queue publication.
-         * @param claims original host pathname registry
+         * Captures original admitted directory identities without acquiring a native owner.
          * @param buildRoot trusted worker build root
-         * @param sequence original unique Run ordinal
-         * @param request exact protocol request
-         * @param inputRoot absolute original input directory
-         * @param temporaryDirectory absolute original temporary directory
-         * @param directory absolute original cwd
+         * @param inputRoot original input directory
+         * @param temporaryDirectory original temporary directory
+         * @param directory original action cwd
          * @param streams original stdout and stderr paths
-         * @param observer original response authority
-         * @throws IOException if admission directory identities cannot be captured
+         * @throws IOException if stable directory identities cannot be captured
          */
-        private Ready(RootClaims claims, Path buildRoot, long sequence, RunRequest request, Path inputRoot, Path temporaryDirectory, Path directory,
-            List<Path> streams, ServerCallStreamObserver<RunResponse> observer) throws IOException
+        private NativeAdmission(Path buildRoot, Path inputRoot, Path temporaryDirectory, Path directory,
+            List<Path> streams) throws IOException
         {
-            this.claims = claims;
             this.admittedBuildRoot = buildRoot;
             this.admittedKeys = List.of(directoryKey(buildRoot), directoryKey(inputRoot), directoryKey(temporaryDirectory));
-            this.sequence = sequence;
-            this.request = request;
             this.inputRoot = inputRoot;
             this.temporaryDirectory = temporaryDirectory;
             this.directory = directory;
             this.streams = List.copyOf(streams);
-            this.observer = observer;
-            observer.setOnCancelHandler(this::cancel);
+        }
+
+        @Override public List<Path> claimedPaths()
+        {
+            return List.of(inputRoot, temporaryDirectory, streams.get(0), streams.get(1));
         }
 
         /**
@@ -389,200 +258,105 @@ final class LinuxBazelRunner implements AutoCloseable
             return key;
         }
 
-        /** Withdraws publication while leaving native cleanup with its existing owner. */
-        private synchronized void cancel() { terminal = true; }
+    }
+
+    /**
+     * Linux facade preserving producer signatures while delegating all RPC state to the common service.
+     */
+    static final class Ready
+    {
+        /** Sole original request and publication authority. */
+        private final BazelRunner.Ready<NativeAdmission> ready;
 
         /**
-         * Returns whether the original RPC still permits successful output promotion.
-         * @return true only before cancellation or a terminal response
+         * Retains the shared original ready request.
+         * @param ready immutable authenticated request authority
          */
-        synchronized boolean publicationAllowed() { return !terminal && !observer.isCancelled(); }
+        private Ready(BazelRunner.Ready<NativeAdmission> ready) { this.ready = ready; }
 
         /**
-         * Publishes an authentic final result after output promotion and whole-attempt cleanup.
-         * @param exitCode original ordinary action exit status
-         * @return whether the original RPC accepted the terminal result
+         * Opens a workspace anchored to the original admitted directory objects.
+         * @param ownedRoot absent private retry directory on the original input filesystem
+         * @return private workspace for the original directories
+         * @throws IOException if identity verification or workspace acquisition fails
          */
-        synchronized boolean complete(int exitCode)
-        {
-            if (!publicationAllowed()) { terminal = true; return false; }
-            terminal = true;
-            try
-            {
-                observer.onNext(RunResponse.newBuilder().setExitCode(exitCode).build());
-                observer.onCompleted();
-            }
-            finally { releaseClaim(); }
-            return true;
-        }
+        LinuxBazelWorkspace openWorkspace(Path ownedRoot) throws IOException { return ready.admission().openWorkspace(ownedRoot); }
 
         /**
-         * Serializes the final authenticated promotion and response against cancellation notification.
-         * The publication itself must recheck {@link #publicationAllowed()} during its rollback-capable transaction.
-         * @param publication frozen output transaction after native zero and original waiter acknowledgement
+         * Returns whether original RPC authority still permits output promotion.
+         * @return whether publication remains authorized
+         */
+        boolean publicationAllowed() { return ready.publicationAllowed(); }
+
+        /**
+         * Publishes an authentic final result after promotion and cleanup.
+         * @param exitCode authentic original ordinary action exit status
+         * @return whether the original RPC accepted the result
+         */
+        boolean complete(int exitCode) { return ready.complete(exitCode); }
+
+        /**
+         * Serializes authenticated promotion against cancellation notification.
+         * The transaction must recheck {@link #publicationAllowed()} before its final commit.
+         * @param publication rollback-capable original output transaction
          * @param exitCode authentic original ordinary result
          * @return whether publication completed before cancellation
-         * @throws IOException if promotion fails; no response is invented
+         * @throws IOException if promotion fails
          */
-        synchronized boolean publish(Publication publication, int exitCode) throws IOException
-        {
-            if (!publicationAllowed()) return false;
-            publication.commit();
-            return complete(exitCode);
-        }
+        boolean publish(Publication publication, int exitCode) throws IOException { return ready.publish(publication, exitCode); }
 
         /**
-         * Reports a host failure without inventing an action exit or releasing its cleanup lease.
+         * Reports host failure without releasing its independent native cleanup lease.
          * @param cause original host failure
          */
-        synchronized void fail(Throwable cause)
-        {
-            if (terminal) return;
-            terminal = true;
-            if (!observer.isCancelled()) observer.onError(Status.INTERNAL.withDescription("Owned action failed")
-                .withCause(cause).asRuntimeException());
-        }
+        void fail(Throwable cause) { ready.fail(cause); }
 
         /**
-         * Retires the original path lease after native execution, mappings and publication can no longer use it.
-         * Cancellation and generic failure alone do not establish this barrier.
+         * Retires original path ownership only after native cleanup is complete.
          */
-        void releaseClaim() { claims.release(this); }
+        void releaseClaim() { ready.releaseClaim(); }
 
         /**
          * Returns the original invocation-local Run ordinal.
          * @return original invocation-local Run ordinal
          */
-        long sequence() { return sequence; }
+        long sequence() { return ready.sequence(); }
+
         /**
-         * Returns the immutable original Runner request.
-         * @return immutable original Runner protocol request
+         * Returns the immutable original protocol request.
+         * @return immutable original protocol request
          */
-        RunRequest request() { return request; }
+        RunRequest request() { return ready.request(); }
+
         /**
          * Returns the original worker input root.
          * @return original worker input root
          */
-        Path inputRoot() { return inputRoot; }
+        Path inputRoot() { return ready.admission().inputRoot; }
+
         /**
          * Returns the original action temporary directory.
          * @return original action temporary directory
          */
-        Path temporaryDirectory() { return temporaryDirectory; }
+        Path temporaryDirectory() { return ready.admission().temporaryDirectory; }
+
         /**
-         * Returns the original absolute action working directory.
+         * Returns the original absolute action cwd.
          * @return original absolute action cwd
          */
-        Path directory() { return directory; }
+        Path directory() { return ready.admission().directory; }
+
         /**
-         * Returns the original stdout and stderr locations.
-         * @return original stdout and stderr locations
+         * Returns the original stdout and stderr paths.
+         * @return original stdout and stderr paths
          */
-        List<Path> streams() { return streams; }
+        List<Path> streams() { return ready.admission().streams; }
+
     }
 
-    /** Final output transaction owned by the coordinator, never by an RPC thread. */
+    /**
+     * Original coordinator-owned transaction delegated to the common publication authority.
+     */
     @FunctionalInterface
-    interface Publication
-    {
-        /**
-         * Commits authenticated output or rolls back before throwing.
-         * @throws IOException if publication authority or filesystem finalization fails
-         */
-        void commit() throws IOException;
-    }
-
-    /** Rejects even another CA-signed client when it is not the exact invocation worker certificate. */
-    private static final class ClientIdentity implements ServerInterceptor
-    {
-        /** Exact authorized leaf DER bytes. */
-        private final byte[] expected;
-
-        /**
-         * Retains exact worker identity.
-         * @param expected authorized DER bytes
-         */
-        private ClientIdentity(byte[] expected) { this.expected = expected.clone(); }
-
-        @Override public <Q, R> ServerCall.Listener<Q> interceptCall(ServerCall<Q, R> call, Metadata headers,
-            ServerCallHandler<Q, R> next)
-        {
-            SSLSession session = call.getAttributes().get(Grpc.TRANSPORT_ATTR_SSL_SESSION);
-            try
-            {
-                if (session != null && MessageDigest.isEqual(expected, session.getPeerCertificates()[0].getEncoded()))
-                    return next.startCall(call, headers);
-            }
-            catch (GeneralSecurityException | javax.net.ssl.SSLPeerUnverifiedException cause)
-            {
-                call.close(Status.UNAUTHENTICATED.withCause(cause), new Metadata());
-                return new ServerCall.Listener<>() {};
-            }
-            call.close(Status.UNAUTHENTICATED.withDescription("Wrong invocation worker identity"), new Metadata());
-            return new ServerCall.Listener<>() {};
-        }
-    }
-
-    /** Supported pinned Buildbarn service; it grants no native execution authority on RPC threads. */
-    private final class Service extends RunnerGrpc.RunnerImplBase
-    {
-        /** Creates the service backed by the invocation's request queue. */
-        private Service() {}
-
-        @Override public void checkReadiness(CheckReadinessRequest request, StreamObserver<Empty> observer)
-        {
-            try
-            {
-                if (!accepting.get()) throw new IOException("Runner admission stopped");
-                resolve(request.getPath(), true);
-                observer.onNext(Empty.getDefaultInstance());
-                observer.onCompleted();
-            }
-            catch (IOException | RuntimeException cause)
-            {
-                observer.onError(Status.FAILED_PRECONDITION.withCause(cause).asRuntimeException());
-            }
-        }
-
-        @Override public void run(RunRequest request, StreamObserver<RunResponse> observer)
-        {
-            try
-            {
-                if (!accepting.get()) throw new IOException("Runner admission stopped");
-                if (request.getArgumentsCount() == 0 || request.getArgumentsList().stream().anyMatch(v -> v.indexOf(0) >= 0)
-                    || request.getEnvironmentVariablesMap().entrySet().stream().anyMatch(e ->
-                        e.getKey().isEmpty() || e.getKey().contains("=") || e.getKey().indexOf(0) >= 0 || e.getValue().indexOf(0) >= 0))
-                    throw new IOException("Invalid native argv or environment");
-                Path input = resolve(request.getInputRootDirectory(), true);
-                Path temporary = resolve(request.getTemporaryDirectory(), true);
-                Path cwd = input;
-                for (Path component : relative(request.getWorkingDirectory(), true))
-                {
-                    cwd = cwd.resolve(component);
-                    requireDirectory(cwd);
-                }
-                resolve(request.getServerLogsDirectory(), true);
-                Path stdout = resolve(request.getStdoutPath(), false);
-                Path stderr = resolve(request.getStderrPath(), false);
-                if (input.startsWith(temporary) || temporary.startsWith(input) || stdout.equals(stderr) ||
-                    stdout.startsWith(input) || stderr.startsWith(input) || stdout.startsWith(temporary) ||
-                    stderr.startsWith(temporary))
-                    throw new IOException("Worker input, temporary and stream paths must be independent");
-                var ready = new Ready(rootClaims, buildRoot, sequence.getAndIncrement(), request, input, temporary, cwd,
-                    List.of(stdout, stderr),
-                    (ServerCallStreamObserver<RunResponse>) observer);
-                rootClaims.acquire(ready);
-                requests.add(ready);
-                if (!accepting.get() && requests.remove(ready))
-                {
-                    ready.fail(new IOException("Runner admission stopped"));
-                    ready.releaseClaim();
-                }
-            }
-            catch (IOException | RuntimeException cause)
-            {
-                observer.onError(Status.INVALID_ARGUMENT.withCause(cause).asRuntimeException());
-            }
-        }
-    }
+    interface Publication extends BazelRunner.Publication {}
 }

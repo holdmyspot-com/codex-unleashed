@@ -21,6 +21,21 @@ public final class MainTest
     public MainTest() {}
 
     /**
+     * The public native-reuse command reports its own argument error through the borrowed diagnostic stream.
+     */
+    @Test
+    public void dispatchesNativeReuseValidation()
+    {
+        ByteArrayOutputStream errors = new ByteArrayOutputStream();
+        try (PrintStream out = new PrintStream(new ByteArrayOutputStream()); PrintStream err = new PrintStream(errors))
+        {
+            int status = Main.run(new String[]{"validate-release-native"}, new ByteArrayInputStream(new byte[0]), out, err);
+            requireThat(status, "status").isEqualTo(1);
+            requireThat(errors.toString(), "nativeReuseDiagnostic").contains("Expected native output, producer-support, host and architecture");
+        }
+    }
+
+    /**
      * Reports missing Linux launch authorization as invalid command input before native construction.
      */
     @Test public void missingLinuxConfigurationIsInvalidInput()

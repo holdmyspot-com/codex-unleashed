@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Properties;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 import org.testng.annotations.Test;
@@ -20,6 +21,131 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public final class PrepareReleaseSchedulerNativeTest
 {
+    /**
+     * Actual receipt construction accepts unchanged products without inspecting application packaging.
+     * @throws Exception if fixture creation, validation or cleanup fails
+     */
+    @Test
+    public void reusesNativeInputsAcrossApplicationChanges() throws Exception
+    {
+        try (Tree tree = new Tree())
+        {
+            Path support = Files.createDirectory(tree.root.resolve("support"));
+            Path output = fixtureProducts(tree.root, support, "Linux", "x86_64");
+            PrepareReleaseSchedulerNative.validateReuse(output, support, "Linux", "amd64");
+            Files.writeString(tree.root.resolve("application.java"), "changed application packaging input");
+            PrepareReleaseSchedulerNative.validateReuse(output, support, "Linux", "amd64");
+            requireThat(Files.readString(output.resolve("frida")), "retainedProduct").isEqualTo("fixture frida");
+        }
+    }
+
+    /**
+     * Old receipts, changed determining inputs, target mismatches and changed bytes are rejected without deletion.
+     * @throws Exception if fixture creation, validation or cleanup fails
+     */
+    @Test
+    public void rejectsInapplicableNativeProducts() throws Exception
+    {
+        for (String mutation : List.of("old", "producer", "host", "architecture", "product", "pin", "incomplete"))
+        {
+            try (Tree tree = new Tree())
+            {
+                Path support = Files.createDirectory(tree.root.resolve("support"));
+                Path output = fixtureProducts(tree.root, support, "Linux", "x86_64");
+                Path receiptPath = output.resolve("native-receipt.properties.xml");
+                Properties receipt = new Properties();
+                try (InputStream input = Files.newInputStream(receiptPath)) { receipt.loadFromXML(input); }
+                switch (mutation)
+                {
+                    case "old" -> receipt.remove("applicability.version");
+                    case "producer" -> receipt.setProperty("producer.sha256", "0".repeat(64));
+                    case "host" -> receipt.setProperty("host", "Windows");
+                    case "architecture" -> receipt.setProperty("architecture", "arm64");
+                    case "pin" -> receipt.setProperty("frida.archive.sha256", "0".repeat(64));
+                    case "incomplete" -> receipt.remove("production");
+                    case "product" -> Files.writeString(output.resolve("frida"), "altered");
+                    default -> throw new IllegalStateException(mutation);
+                }
+                try (var target = Files.newOutputStream(receiptPath)) { receipt.storeToXML(target, "test mutation"); }
+                boolean rejected = false;
+                try { PrepareReleaseSchedulerNative.validateReuse(output, support, "Linux", "x86_64"); }
+                catch (IOException expected) { rejected = true; }
+                requireThat(rejected, mutation + "Rejected").isTrue();
+                requireThat(Files.isRegularFile(output.resolve("frida")), "recoveryProductRetained").isTrue();
+            }
+        }
+    }
+
+    /**
+     * Windows support bytes determine reuse; changing an application sibling does not.
+     * @throws Exception if fixture creation, validation or cleanup fails
+     */
+    @Test
+    public void rejectsChangedWindowsSupport() throws Exception
+    {
+        try (Tree tree = new Tree())
+        {
+            Path support = Files.createDirectory(tree.root.resolve("support"));
+            for (String name : List.of("windows-producer.ps1", "exports.txt", "devkit-x64.sha256", "devkit-arm64.sha256"))
+                Files.writeString(support.resolve(name), "fixture " + name);
+            Path output = fixtureProducts(tree.root, support, "Windows", "arm64");
+            PrepareReleaseSchedulerNative.validateReuse(output, support, "Windows", "aarch64");
+            Files.writeString(support.resolve("exports.txt"), "changed support");
+            boolean rejected = false;
+            try { PrepareReleaseSchedulerNative.validateReuse(output, support, "Windows", "arm64"); }
+            catch (IOException expected) { rejected = true; }
+            requireThat(rejected, "changedSupportRejected").isTrue();
+        }
+    }
+
+    /**
+     * CLI dispatch accepts the actual completed receipt and rejects a different requested target.
+     * @throws Exception if fixture creation, dispatch or cleanup fails
+     */
+    @Test
+    public void dispatchesCompletedReuseAndRejectsOtherTarget() throws Exception
+    {
+        try (Tree tree = new Tree())
+        {
+            Path support = Files.createDirectory(tree.root.resolve("support"));
+            Path output = fixtureProducts(tree.root, support, "macOS", "arm64");
+            ByteArrayOutputStream errors = new ByteArrayOutputStream();
+            try (var out = new java.io.PrintStream(new ByteArrayOutputStream());
+                var err = new java.io.PrintStream(errors);
+                var input = new ByteArrayInputStream(new byte[]{42}))
+            {
+                String[] arguments = {"validate-release-native", output.toString(), support.toString(), "macOS", "arm64"};
+                requireThat(Main.run(arguments, input, out, err), "acceptedReuseStatus").isEqualTo(0);
+                arguments[4] = "x86_64";
+                requireThat(Main.run(arguments, input, out, err), "wrongRequestedTargetStatus").isEqualTo(1);
+                requireThat(errors.toString(), "targetDiagnostic").contains("architecture");
+                requireThat(input.read(), "borrowedInput").isEqualTo(42);
+                out.print("still usable");
+                err.print("still usable");
+            }
+        }
+    }
+
+    /**
+     * Constructs interpretation-only product bytes through the actual producer receipt boundaries.
+     * @param root exclusively owned fixture root
+     * @param support determining support inputs
+     * @param platform supported canonical native host
+     * @param architecture supported architecture
+     * @return completed fixture product directory; bytes are not evidence of native ABI acceptance
+     * @throws IOException if fixture bytes or the actual producer receipt cannot be written
+     */
+    private static Path fixtureProducts(Path root, Path support, String platform, String architecture) throws IOException
+    {
+        Path output = Files.createDirectory(root.resolve("output"));
+        if (platform.equals("Windows")) Files.writeString(output.resolve("frida.dll"), "fixture frida");
+        else Files.writeString(output.resolve("frida"), "fixture frida");
+        if (platform.equals("Linux")) Files.writeString(output.resolve("libcgroup.so"), "fixture libcgroup");
+        Properties receipt = PrepareReleaseSchedulerNative.inputReceipt(platform, architecture, support);
+        PrepareReleaseSchedulerNative.completeReceipt(output, receipt);
+        return output;
+    }
+
     /**
      * Creates a test instance with no shared fixture state.
      */

@@ -72,6 +72,20 @@ public final class Main
 			return switch (arguments[0])
 			{
 				case "prepare-release-native" -> prepareReleaseNative(Arrays.copyOfRange(arguments, 1, arguments.length));
+                case "validate-release-native" -> {
+                    if (arguments.length != 5)
+                        throw new IllegalArgumentException("Expected native output, producer-support, host and architecture");
+                    try
+                    {
+                        PrepareReleaseSchedulerNative.validateReuse(Path.of(arguments[1]), Path.of(arguments[2]),
+                            arguments[3], arguments[4]);
+                    }
+                    catch (UnsupportedOperationException unsupported)
+                    {
+                        throw new IllegalArgumentException(unsupported.getMessage(), unsupported);
+                    }
+                    yield 0;
+                }
                 case "validate-release-installation" -> {
                     ValidateReleaseSchedulerInstallation.main(Arrays.copyOfRange(arguments, 1, arguments.length));
                     yield 0;
@@ -156,6 +170,7 @@ public final class Main
         err.println("       codex-tooling verify-cargo-lock <original> <current> <workspace-metadata>");
         err.println("       codex-tooling cargo-cache-parts <push|pull> <repository> <reference> <previous> <target> <temporary> [options]");
         err.println("       codex-tooling prepare-release-native <fresh-output> <producer-support>");
+        err.println("       codex-tooling validate-release-native <output> <producer-support> <Linux|macOS|Windows> <architecture>");
         err.println("       codex-tooling validate-release-installation <installation>");
         err.println("       codex-tooling prepare-cargo-launch <explicit platform/tool/runtime/output options>");
 		err.println("       codex-tooling " + V8_SCRIPT_COMMAND + " <upstream-action.yml>");

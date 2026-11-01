@@ -1,0 +1,104 @@
+{
+  "scope": "Portable source integration only; checkpoint 3 and full build remain incomplete.",
+  "predecessor": "79ae80b7bb",
+  "assignmentBaseline": "7b7001338aa5eb166fa92ab7a258b56277a26f58",
+  "sourceAcceptance": {
+    "sharedRunner": "Single authenticated service extracted; Linux adapter signatures and native workspace authority retained. Original six baseline tests and nine expanded tests pass before extraction; nine pass after extraction.",
+    "nativeReuse": "Existing native receipt owner validates current producer, pins, target, support and product bytes before reuse; unrelated application packaging is excluded. Trusted receipt consistency only; no hostile-receipt authentication claim."
+  },
+  "integration": "Root replayed seven exact source paths separately, requiring unchanged existing preimages or an absent new-file target. No merge or unrelated worktree changes.",
+  "checks": [
+    {
+      "name": "production-compile",
+      "command": [
+        "javac",
+        "--release",
+        "27",
+        "-Xlint:all,-processing",
+        "-cp",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a1976f-d543-7fa2-b400-6a99898fe478/temp/native-reuse-lfD2fC/producer.jar",
+        "-d",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/runner-reuse-integration-b43qly/classes",
+        "@/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/runner-reuse-integration-b43qly/production-sources.txt"
+      ],
+      "exit": 0,
+      "output": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/runner-reuse-integration-b43qly/production-compile.log"
+    },
+    {
+      "name": "owned-compile",
+      "command": [
+        "javac",
+        "--release",
+        "27",
+        "-Xlint:all,-processing",
+        "-Werror",
+        "-Xdoclint:all/private",
+        "-cp",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/runner-reuse-integration-b43qly/classes:/home/gili/codex-unleashed/workspace/.cat/sessions/01a1976f-d543-7fa2-b400-6a99898fe478/temp/native-reuse-lfD2fC/producer.jar",
+        "-d",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/runner-reuse-integration-b43qly/classes",
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelRunner.java",
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelRunner.java",
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/PrepareReleaseSchedulerNative.java",
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/Main.java",
+        "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelRunnerTest.java",
+        "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/TestRequirements.java",
+        "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/PrepareReleaseSchedulerNativeTest.java",
+        "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/MainTest.java"
+      ],
+      "exit": 0,
+      "output": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/runner-reuse-integration-b43qly/owned-compile.log"
+    },
+    {
+      "name": "combined-tests",
+      "command": [
+        "java",
+        "-Djava.io.tmpdir=/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/runner-reuse-integration-b43qly/tmp",
+        "-cp",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/runner-reuse-integration-b43qly/classes:/home/gili/codex-unleashed/workspace/.cat/sessions/01a1976f-d543-7fa2-b400-6a99898fe478/temp/native-reuse-lfD2fC/producer.jar:/home/gili/codex-unleashed/workspace/tooling/cli/src/test/resources",
+        "org.testng.TestNG",
+        "-parallel",
+        "methods",
+        "-threadcount",
+        "8",
+        "-d",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/runner-reuse-integration-b43qly/test-reports",
+        "-testclass",
+        "com.holdmyspot.codexunleashed.scheduler.LinuxBazelRunnerTest,com.holdmyspot.codexunleashed.tooling.PrepareReleaseSchedulerNativeTest,com.holdmyspot.codexunleashed.tooling.MainTest"
+      ],
+      "exit": 0,
+      "output": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/runner-reuse-integration-b43qly/combined-tests.log"
+    }
+  ],
+  "results": {
+    "productionCompilation": {
+      "sources": 137,
+      "exit": 0,
+      "scope": "Classpath compilation; JPMS/Maven unverified. Existing warnings outside owned source remain nonfatal."
+    },
+    "ownedStrictCompilation": {
+      "exit": 0,
+      "lint": "-Xlint:all,-processing -Werror -Xdoclint:all/private"
+    },
+    "parallelTests": {
+      "tests": 28,
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0,
+      "parallel": "methods",
+      "threadCount": 8
+    }
+  },
+  "fullOutputArchive": "docs/evidence/artifacts/cp3-shared-runner-native-reuse.tar.gz",
+  "combinedTestOutput": "WARNING: A restricted method in java.lang.System has been called\nWARNING: java.lang.System::loadLibrary has been called by io.grpc.netty.shaded.io.netty.util.internal.NativeLibraryUtil in an unnamed module (file:/home/gili/codex-unleashed/workspace/.cat/sessions/01a1976f-d543-7fa2-b400-6a99898fe478/temp/native-reuse-lfD2fC/producer.jar)\nWARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module\nWARNING: Restricted methods will be blocked in a future release unless native access is enabled\n\nWARN io.grpc.netty.shaded.io.netty.util.internal.MacAddressUtil - Failed to find a usable hardware address from the network interfaces; using random bytes: 97:91:02:44:9a:63:92:fb\n\n===============================================\nCommand line suite\nTotal tests run: 28, Passes: 28, Failures: 0, Skips: 0\n===============================================\n\n",
+  "workflowLimitations": [
+    "Focused Maven attempts failed before compilation resolving os-maven-plugin:1.7.1 through the inherited repository/proxy setup. Direct classpath checks preserve focused behavioral evidence but do not pass Maven, JPMS or full-build gates.",
+    "Native reuse pre-edit result was a compilation failure, not behavioral red. Post-implementation controlled comparison establishes baseline Main status2 (unknown command) versus candidate status0 for the same completed fixture; this does not retroactively satisfy test-first ordering."
+  ],
+  "remaining": [
+    "Release shell consumer wiring and connected product reuse acceptance.",
+    "Full Maven/JPMS and stable composed runtime verification.",
+    "Platform Bazel consumers, native execution/recovery, six-target release acceptance and later checkpoints."
+  ],
+  "nativeBuilds": "None run locally or by these two source owners."
+}

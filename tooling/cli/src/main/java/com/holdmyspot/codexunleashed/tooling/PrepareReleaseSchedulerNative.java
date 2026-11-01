@@ -1,6 +1,7 @@
 package com.holdmyspot.codexunleashed.tooling;
 
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -13,6 +14,8 @@ import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
@@ -94,24 +97,12 @@ public final class PrepareReleaseSchedulerNative
         validateOutput(output, runnerTemp);
         Files.createDirectory(output);
         Files.createDirectory(output.resolve("tmp"));
-        Properties receipt = new Properties();
-        receipt.setProperty("host", platform);
-        receipt.setProperty("architecture", architecture);
-        receipt.setProperty("pathBase", "output-directory");
-        receipt.setProperty("nativeSchedulerAcceptance", "unrun");
+        Properties receipt = inputReceipt(platform, architecture, support);
         writeProperties(output.resolve(RECEIPT), receipt);
         Commands commands = new Commands(output);
 
-        String assetPlatform = switch (platform)
-        {
-            case "Linux" -> "linux";
-            case "macOS" -> "macos";
-            case "Windows" -> "windows";
-            default -> throw new UnsupportedOperationException("Unsupported platform: " + platform);
-        };
-        String asset = "frida-core-devkit-" + FRIDA_VERSION + "-" + assetPlatform + "-" + architecture + ".tar.xz";
-        String digest = FRIDA_HASHES.get(platform + "/" + architecture);
-        URI uri = URI.create("https://github.com/frida/frida/releases/download/" + FRIDA_VERSION + "/" + asset);
+        String digest = receipt.getProperty("frida.archive.sha256");
+        URI uri = URI.create(receipt.getProperty("frida.archive.url"));
         Path archive = output.resolve("devkit.tar.xz");
         download(uri, digest, archive);
         receipt.setProperty("frida.archive.url", uri.toString());
@@ -142,22 +133,162 @@ public final class PrepareReleaseSchedulerNative
             else
                 produceMac(output, architecture, library, commands);
         }
-        List<String> products = switch (platform)
+        completeReceipt(output, receipt);
+    }
+
+    /**
+     * Describes current native recipe inputs independently of supplied product receipts.
+     * The executing producer and its nested command implementation determine the recipe identity;
+     * unrelated application classes and distribution packaging are intentionally excluded. Windows
+     * support files are caller-supplied trusted release inputs, not authenticated by their own receipt.
+     * This binds reuse to accepted production evidence; it does not authenticate a hostile receipt.
+     * @param platform canonical supported host
+     * @param machine native architecture or its JVM alias
+     * @param support current trusted producer-support directory; only Windows consumes its files
+     * @return current expected receipt fields, excluding product bytes and completion
+     * @throws IOException if producer or determining support bytes cannot be read
+     * @throws UnsupportedOperationException if the host or architecture is unsupported
+     */
+    static Properties inputReceipt(String platform, String machine, Path support) throws IOException
+    {
+        selectPlatform(platform, platform, machine);
+        String architecture = normalizeArchitecture(machine);
+        Properties receipt = new Properties();
+        receipt.setProperty("applicability.version", "1");
+        receipt.setProperty("host", platform);
+        receipt.setProperty("architecture", architecture);
+        receipt.setProperty("pathBase", "output-directory");
+        receipt.setProperty("nativeSchedulerAcceptance", "unrun");
+        StringBuilder producer = new StringBuilder();
+        for (Class<?> type : Arrays.stream(PrepareReleaseSchedulerNative.class.getNestMembers())
+            .sorted(Comparator.comparing(Class::getName)).toList())
+        {
+            String resource = "/" + type.getName().replace('.', '/') + ".class";
+            try (InputStream bytes = type.getResourceAsStream(resource))
+            {
+                if (bytes == null) throw new IOException("Current native producer class is unavailable: " + resource);
+                producer.append(type.getName()).append('=').append(sha256(bytes)).append('\n');
+            }
+        }
+        receipt.setProperty("producer.sha256", sha256(new ByteArrayInputStream(
+            producer.toString().getBytes(StandardCharsets.UTF_8))));
+        String assetPlatform = platform.equals("macOS") ? "macos" : platform.toLowerCase(Locale.ROOT);
+        String asset = "frida-core-devkit-" + FRIDA_VERSION + "-" + assetPlatform + "-" + architecture + ".tar.xz";
+        receipt.setProperty("frida.archive.url", "https://github.com/frida/frida/releases/download/" + FRIDA_VERSION + "/" + asset);
+        receipt.setProperty("frida.archive.sha256", FRIDA_HASHES.get(platform + "/" + architecture));
+        if (platform.equals("Linux"))
+        {
+            boolean x64 = architecture.equals("x86_64");
+            receipt.setProperty("libcgroup.package.url", "https://deb.debian.org/debian/pool/main/libc/libcgroup/libcgroup3_3.2.0-1_" +
+                (x64 ? "amd64" : "arm64") + ".deb");
+            receipt.setProperty("libcgroup.package.sha256", x64 ?
+                "bd0938fc5ed7aaff58aae3d2dad717378b942be9906a9606e08f88078279697d" :
+                "f1bba53be5471643b488cec603b10fac8d351f411154c538d5e8f458318ba0d1");
+        }
+        if (platform.equals("Windows"))
+        {
+            for (String name : List.of("windows-producer.ps1", "exports.txt", "devkit-x64.sha256", "devkit-arm64.sha256"))
+            {
+                Path input = support.resolve(name);
+                requireRegular(input);
+                receipt.setProperty("support." + name + ".sha256", sha256(input));
+            }
+        }
+        return receipt;
+    }
+
+    /**
+     * Records the actual regular product bytes after native commands complete.
+     * @param output caller-owned production directory
+     * @param receipt current native inputs from {@link #inputReceipt(String, String, Path)}
+     * @throws IOException if a required product is missing, linked or unreadable, or publication fails
+     */
+    static void completeReceipt(Path output, Properties receipt) throws IOException
+    {
+        for (String name : products(receipt.getProperty("host")))
+        {
+            Path product = output.resolve(name);
+            requireRegular(product);
+            receipt.setProperty("product." + name + ".sha256", sha256(product));
+        }
+        receipt.setProperty("production", "complete");
+        writeProperties(output.resolve(RECEIPT), receipt);
+    }
+
+    /**
+     * Lists required products for the already validated canonical host.
+     * @param platform supported canonical host
+     * @return exact required native product names
+     * @throws UnsupportedOperationException if the host is unsupported
+     */
+    private static List<String> products(String platform)
+    {
+        return switch (platform)
         {
             case "Linux" -> List.of("frida", "libcgroup.so");
             case "Windows" -> List.of("frida.dll");
             case "macOS" -> List.of("frida");
             default -> throw new UnsupportedOperationException("Unsupported platform: " + platform);
         };
-        for (String name : products)
+    }
+
+    /**
+     * Validates accepted supplied native products without executing, mutating or acquiring anything.
+     * The caller supplies the intended supported target and current trusted support inputs. Current
+     * producer bytes and retained dependency pins are independently derived by this running command.
+     * Product digests are compared with the existing trusted production receipt, not a new authority.
+     * Old or failed receipts remain intact for recovery and require fresh accepted production.
+     * This establishes recipe applicability and integrity, not native execution acceptance.
+     * @param output existing absolute nonsymlink product directory
+     * @param support current trusted producer-support inputs
+     * @param platform canonical intended target host: Linux, macOS or Windows
+     * @param machine intended target architecture or JVM alias
+     * @throws IOException if the receipt, determining inputs or actual product bytes disagree
+     * @throws UnsupportedOperationException if the requested target is unsupported
+     */
+    public static void validateReuse(Path output, Path support, String platform, String machine) throws IOException
+    {
+        if (!output.isAbsolute() || !Files.isDirectory(output, LinkOption.NOFOLLOW_LINKS))
+            throw new IOException("Native reuse requires an existing absolute nonsymlink output directory: " + output);
+        Path receiptPath = output.resolve(RECEIPT);
+        requireRegular(receiptPath);
+        Properties actual = new Properties();
+        try (InputStream bytes = Files.newInputStream(receiptPath)) { actual.loadFromXML(bytes); }
+        Properties expected = inputReceipt(platform, machine, support);
+        expected.setProperty("production", "complete");
+        for (String name : expected.stringPropertyNames().stream().sorted().toList())
+            matchProperty(actual, name, expected.getProperty(name));
+        for (String name : products(platform))
         {
             Path product = output.resolve(name);
-            if (!Files.isRegularFile(product, LinkOption.NOFOLLOW_LINKS))
-                throw new IOException("Native producer did not create the required regular product: " + name);
-            receipt.setProperty("product." + name + ".sha256", sha256(product));
+            requireRegular(product);
+            matchProperty(actual, "product." + name + ".sha256", sha256(product));
         }
-        receipt.setProperty("production", "complete");
-        writeProperties(output.resolve(RECEIPT), receipt);
+    }
+
+    /**
+     * Requires one producer-derived identity without mutating the retained production evidence.
+     * @param receipt accepted prior production record
+     * @param name determining field
+     * @param expected current producer or actual product identity
+     * @throws IOException if the field is absent or different
+     */
+    private static void matchProperty(Properties receipt, String name, String expected) throws IOException
+    {
+        if (!expected.equals(receipt.getProperty(name)))
+            throw new IOException("Native reuse receipt mismatch or missing applicability data: " + name +
+                "; retain supplied products for recovery");
+    }
+
+    /**
+     * Rejects a missing, linked or nonregular determining input before reading it.
+     * @param input path whose own bytes are required
+     * @throws IOException if input is not a regular nonsymlink file
+     */
+    private static void requireRegular(Path input) throws IOException
+    {
+        if (!Files.isRegularFile(input, LinkOption.NOFOLLOW_LINKS))
+            throw new IOException("Native producer requires a regular nonsymlink input or product: " + input);
     }
 
     /**
@@ -177,7 +308,7 @@ public final class PrepareReleaseSchedulerNative
             platform = switch (host)
             {
                 case "Linux" -> "Linux";
-                case "Mac OS X", "Darwin" -> "macOS";
+                case "Mac OS X", "Darwin", "macOS" -> "macOS";
                 default -> throw new UnsupportedOperationException("Unsupported native host: " + host);
             };
         String identity = platform + "/" + normalizeArchitecture(machine);
@@ -288,15 +419,23 @@ public final class PrepareReleaseSchedulerNative
      */
     static String sha256(Path input) throws IOException
     {
+        try (InputStream bytes = Files.newInputStream(input)) { return sha256(bytes); }
+    }
+
+    /**
+     * Computes one SHA-256 identity without taking ownership of the supplied stream.
+     * @param bytes caller-owned bytes; remains open
+     * @return lowercase hexadecimal SHA-256
+     * @throws IOException if reading fails or SHA-256 is unavailable
+     */
+    private static String sha256(InputStream bytes) throws IOException
+    {
         try
         {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            try (InputStream bytes = Files.newInputStream(input))
-            {
-                byte[] buffer = new byte[1024 * 1024];
-                for (int length; (length = bytes.read(buffer)) >= 0; )
-                    digest.update(buffer, 0, length);
-            }
+            byte[] buffer = new byte[1024 * 1024];
+            for (int length; (length = bytes.read(buffer)) >= 0; )
+                digest.update(buffer, 0, length);
             return HexFormat.of().formatHex(digest.digest());
         }
         catch (NoSuchAlgorithmException e)
@@ -396,13 +535,10 @@ public final class PrepareReleaseSchedulerNative
             "-Wl,--no-whole-archive", "-ldl", "-lrt", "-lm", "-lpthread", "-Wl,-z,noexecstack", "-o",
             output.resolve("frida").toString()));
         boolean x64 = architecture.equals("x86_64");
-        String packageArchitecture = x64 ? "amd64" : "arm64";
-        String packageHash = x64 ? "bd0938fc5ed7aaff58aae3d2dad717378b942be9906a9606e08f88078279697d" :
-            "f1bba53be5471643b488cec603b10fac8d351f411154c538d5e8f458318ba0d1";
+        String packageHash = receipt.getProperty("libcgroup.package.sha256");
         String libraryHash = x64 ? "225437e52c9e87e977f645fe639439782252952dbb7c9896f3df3f02bc5d0aab" :
             "abe212dc85aa2c9008296a2a042270793bea52a94846b5ce6a907cd085d0f8d7";
-        URI uri = URI.create("https://deb.debian.org/debian/pool/main/libc/libcgroup/libcgroup3_3.2.0-1_" +
-            packageArchitecture + ".deb");
+        URI uri = URI.create(receipt.getProperty("libcgroup.package.url"));
         Path deb = output.resolve("libcgroup.deb");
         download(uri, packageHash, deb);
         receipt.setProperty("libcgroup.package.url", uri.toString());

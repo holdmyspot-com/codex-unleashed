@@ -90,6 +90,75 @@ public final class LinuxBazelRunnerTest
     }
 
     /**
+     * A successful transaction publishes its authentic status once and releases original path ownership.
+     * @throws Exception if fixture setup or authenticated operations fail
+     */
+    @Test
+    public void publicationCommitsOnceAndReleasesClaim() throws Exception
+    {
+        try (Fixture fixture = Fixture.open())
+        {
+            ListenableFuture<RunResponse> response = fixture.run(fixture.request().build());
+            LinuxBazelRunner.Ready ready = fixture.ready();
+            java.util.concurrent.atomic.AtomicInteger commits = new java.util.concurrent.atomic.AtomicInteger();
+            requireThat(ready.publish(commits::incrementAndGet, 23), "publicationAccepted").isTrue();
+            requireThat(response.get(20, TimeUnit.SECONDS).getExitCode(), "authenticNonzeroResult").isEqualTo(23L);
+            requireThat(ready.publish(commits::incrementAndGet, 99), "terminalPublicationRejected").isFalse();
+            requireThat(commits.get(), "oneTransaction").isEqualTo(1);
+            ListenableFuture<RunResponse> successor = fixture.run(fixture.request().build());
+            requireThat(fixture.ready().complete(0), "claimReleasedAfterResult").isTrue();
+            requireThat(successor.get(20, TimeUnit.SECONDS).getExitCode(), "successorResult").isEqualTo(0L);
+        }
+    }
+
+    /**
+     * Host failure withholds publication and preserves the native cleanup lease until explicitly retired.
+     * @throws Exception if fixture setup or authenticated operations fail
+     */
+    @Test
+    public void failureRetainsClaimUntilCleanup() throws Exception
+    {
+        try (Fixture fixture = Fixture.open())
+        {
+            ListenableFuture<RunResponse> response = fixture.run(fixture.request().build());
+            LinuxBazelRunner.Ready ready = fixture.ready();
+            ready.fail(new IOException("owned native cleanup remains pending"));
+            requireThat(failure(response), "hostFailureStatus").isEqualTo(Status.Code.INTERNAL);
+            requireThat(ready.publicationAllowed(), "failedPublicationAuthority").isFalse();
+            requireThat(failure(fixture.run(fixture.request().build())), "failedClaimStillExclusive")
+                .isEqualTo(Status.Code.INVALID_ARGUMENT);
+            ready.releaseClaim();
+            ListenableFuture<RunResponse> successor = fixture.run(fixture.request().build());
+            requireThat(fixture.ready().complete(0), "cleanupRetiredClaim").isTrue();
+            requireThat(successor.get(20, TimeUnit.SECONDS).getExitCode(), "successorResult").isEqualTo(0L);
+        }
+    }
+
+    /**
+     * Cancellation during a rollback-capable publication is visible to its final authority check.
+     * @throws Exception if fixture setup or authenticated operations fail
+     */
+    @Test
+    public void publicationRechecksCancellationBeforeCommit() throws Exception
+    {
+        try (Fixture fixture = Fixture.open())
+        {
+            ListenableFuture<RunResponse> response = fixture.run(fixture.request().build());
+            LinuxBazelRunner.Ready ready = fixture.ready();
+            requireException(IOException.class, () -> ready.publish(() ->
+            {
+                response.cancel(true);
+                await(() -> !ready.publicationAllowed());
+                if (!ready.publicationAllowed()) throw new IOException("transaction rolled back after cancellation");
+            }, 0));
+            requireThat(ready.publicationAllowed(), "cancelledPublicationAuthority").isFalse();
+            requireThat(failure(fixture.run(fixture.request().build())), "cancelledClaimStillExclusive")
+                .isEqualTo(Status.Code.INVALID_ARGUMENT);
+            ready.releaseClaim();
+        }
+    }
+
+    /**
      * Invalid request roots, stream collisions, environment and cwd links are rejected on the real wire.
      * @throws Exception if fixture setup or wire operations fail
      */
