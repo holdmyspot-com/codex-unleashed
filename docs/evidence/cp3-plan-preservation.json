@@ -1,0 +1,51 @@
+{
+  "task_contract": "acknowledged",
+  "verdict": "accepted_preservation_review",
+  "baseline": "fb430f61e5bc8f518e2e823bf8ad98ce29cfd15f:plan.md",
+  "reviewedPlanSha256": "6f0173a6a2ea305975ca8869dce14df05f701f0edc5e3b4ac0e44649969a0230",
+  "currentPlanSha256": "2e0cce6ee60f8b59f55736609604f3b3bafb51fbaf23ac0ad86f34cfcf6c1564",
+  "appendixInputs": [
+    {
+      "source": "docs/plans/restart-scope.md",
+      "snapshot": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/plan-preservation-review-1oyo6C/docs__plans__restart-scope.md",
+      "bytes": 112278,
+      "lines": 256,
+      "sha256": "509cad8e53b98f512b4ab7743fb82d054369505f19a26017ba925b568fd1bc4e"
+    },
+    {
+      "source": "docs/plans/restart-history.md",
+      "snapshot": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/plan-preservation-review-1oyo6C/docs__plans__restart-history.md",
+      "bytes": 495443,
+      "lines": 1188,
+      "sha256": "3d6b49be97ca349922f06a5a8ac05d970dff63b5231c22097ec4de4e4aadfe91"
+    }
+  ],
+  "archive": "docs/evidence/artifacts/cp3-plan-preservation.tar.gz",
+  "archiveSha256": "d245b712c34be2f1f34fc3beb673ce793d56ce21ad06d94581138fc627a75a39",
+  "decisiveReport": "report.json",
+  "findings": [
+    {
+      "id": "P1",
+      "initial_severity": "material_preservation_omission",
+      "original": "plan.md:487\u2013493",
+      "initial_rewrite": "plan.md:68,149 generalized cache behavior while the selected archive/stage contract survived only in nonnormative history.",
+      "consequence": "A clean reader could change upfront restore/per-step output ownership or omit between-executable checkpoints without realizing these were owner-selected constraints.",
+      "repair": "Root added operative plan.md:151 including release-build-checkpoints.md normative incorporation and explicit retained grouping/stage/overhead/compatibility requirements.",
+      "status": "RESOLVED",
+      "verification": "Read complete repaired paragraph and confirmed its local link resolves."
+    },
+    {
+      "id": "P2",
+      "initial_severity": "explicit_instruction_omission",
+      "original": "plan.md:436",
+      "initial_rewrite": "plan.md:149 omitted git format-patch while retaining general patch replay.",
+      "consequence": "The selected emitted-patch construction command was no longer an operative instruction.",
+      "repair": "Root restored git format-patch, exact bases/prerequisites and emitted-patch fresh-base verification at plan.md:149.",
+      "status": "RESOLVED",
+      "verification": "Read complete repaired paragraph."
+    }
+  ],
+  "postReviewDelta": "One static Bazel execution-status row adds the already accepted protected-path placement prerequisite. Normative scope and both appendices are unchanged from the accepted review.",
+  "acceptance": "All original obligations map to operative current clauses or the explicitly normative scope appendix. Original history and scoped negative/unrun evidence remain retrievable.",
+  "limits": "Preservation evidence only. Checkpoint 3 and the overall goal remain incomplete."
+}
