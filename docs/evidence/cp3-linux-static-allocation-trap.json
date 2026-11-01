@@ -1,0 +1,66 @@
+{
+  "status": "PASSED_NATIVE_BOUNDARY_ONLY",
+  "claim": "An executed injected software trap holds a genuine mmap allocation denial in the unchanged static Zig executable before the caller consumes it.",
+  "artifact": "docs/evidence/artifacts/cp3-linux-static-allocation-trap.tar.gz",
+  "archiveBytes": 4882,
+  "archiveSha256": "5bb9b8c45f2dbf07b6e7ca7aa136ee85ce9184ce0251e82ac5733e7339ce4621",
+  "validation": {
+    "safeUniqueRegularMembers": 9,
+    "scope": "Independently read all nine nonnative members; final fixture source, result and stdout agree on native denial, executed SIGTRAP and target collection."
+  },
+  "worker": {
+    "runId": 41322568696,
+    "jobId": 124895770128,
+    "os": "Ubuntu 24.04",
+    "architecture": "x86_64",
+    "gdb": "15.1-1ubuntu1~24.04.1"
+  },
+  "command": "CP3_FIXTURE=\"$CP3_WORK\" gdb -nx -batch -x \"$CP3_WORK/static-denial.py\" > \"$CP3_WORK/static-denial.stdout\" 2>&1",
+  "target": {
+    "argv": [
+      "zig",
+      "cc",
+      "-c",
+      "tiny.c",
+      "-o",
+      "tiny.o"
+    ],
+    "sha256Before": "77340932066b76bc9f3a4ac120288f21790ed2836e5cd5a003f4a3c12f37d765",
+    "sha256After": "77340932066b76bc9f3a4ac120288f21790ed2836e5cd5a003f4a3c12f37d765",
+    "addressSpaceLimitBytes": 209715200
+  },
+  "observed": {
+    "pid": 6419,
+    "tid": 6419,
+    "birthTicks": 169813,
+    "syscall": 9,
+    "requestedBytes": 33562624,
+    "nativeResult": -12,
+    "registersModified": false,
+    "syscallBytes": "0f05",
+    "originalReturnByte": "9b",
+    "injectedByte": "cc",
+    "returnAddress": 176358079,
+    "trapProgramCounter": 176358080,
+    "heldSeconds": 2,
+    "remainingInferiorPids": []
+  },
+  "failedAttempts": {
+    "members": "initial-static-denial and correlated-static-denial source/result/stdout triples",
+    "finding": "Earlier fixtures inserted a GDB-managed breakpoint at syscall entry and failed to establish the required denial hold. They are retained as failed fixture evidence, not as evidence that the native candidate is unavailable."
+  },
+  "remaining": {
+    "javaControl": "UNRUN",
+    "descendants": "UNRUN",
+    "linuxArm64": "UNRUN",
+    "schedulerRecovery": "UNRUN",
+    "actualBazelRelease": "UNRUN"
+  },
+  "scope": "GDB/Python diagnostic proof only. No maintained runtime implementation or dependency source changes; no production GDB/Python dependency selected. Successful mmap results were observed without changing native register results. The target was killed and collected rather than resumed after denial.",
+  "fixtureInput": {
+    "relativePath": "tiny.c",
+    "utf8Content": "int value(void) { return 42; }\n",
+    "sha256": "cefb4c7645ad186ff92ce97db2d6a007e9d141afba3ca10c8544fdf4667cb92f",
+    "retrieval": "Create tiny.c with these exact UTF-8 bytes in the CP3_FIXTURE directory before running the archived fixture; retrieve the unchanged compiler asset using its recorded SHA256."
+  }
+}
