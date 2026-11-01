@@ -51,6 +51,21 @@ admin() {
   if [[ "$RUNNER_OS" == Windows ]]; then "$@"; else sudo -n "$@"; fi
 }
 
+# Invoke the packaged tooling entry point using its platform's actual format.
+# Arguments: runtime root followed by the exact tooling command and arguments.
+# Environment: RUNNER_OS selects Linux's native executable or the Bash launcher.
+# Side effects: runs the requested tooling operation without changing its arguments.
+# Exit status: the tooling operation's actual status.
+run_tooling() {
+  local runtime="$1"
+  shift
+  if [[ "$RUNNER_OS" == Linux ]]; then
+    "$runtime/bin/codex-tooling" "$@"
+  else
+    bash "$runtime/bin/codex-tooling" "$@"
+  fi
+}
+
 if [[ "${1:-}" == prepare-debug-session ]]; then
   [[ $# == 4 ]] || { printf 'prepare-debug-session requires action source, checkout and evidence roots.\n' >&2; exit 2; }
   source="$(debug_path "$2")"; checkout="$(debug_path "$3")"; evidence="$(debug_path "$4")"
@@ -114,9 +129,9 @@ elif [[ "${1:-}" == prepare-native ]]; then
 
   # Existing paths, including dangling links, must reach validation rather than fresh production.
   if ! [[ -e "$native_output" || -L "$native_output" ]]; then
-    bash "$runtime_input/bin/codex-tooling" prepare-release-native "$native_output" "$support_input"
+    run_tooling "$runtime_input" prepare-release-native "$native_output" "$support_input"
   fi
-  bash "$runtime_input/bin/codex-tooling" validate-release-native \
+  run_tooling "$runtime_input" validate-release-native \
     "$native_output" "$support_input" "$RUNNER_OS" "$architecture"
 elif [[ "${1:-}" == install ]]; then
   [[ $# == 4 || $# == 5 ]] || { printf 'install requires runtime, toolchain and native library inputs.\n' >&2; exit 2; }
@@ -131,7 +146,7 @@ elif [[ "${1:-}" == install ]]; then
       parent=/var/lib
       if [[ "$RUNNER_OS" == macOS ]]; then parent=/Library; fi
       # Authenticate the existing namespace before creating any administrator-owned path.
-      bash "$runtime_input/bin/codex-tooling" validate-release-installation --parent "$parent"
+      run_tooling "$runtime_input" validate-release-installation --parent "$parent"
       root="$(sudo -n mktemp -d "$parent/codex-release-scheduler-XXXXXXXX")"
       ;;
     Windows)
@@ -183,7 +198,7 @@ elif [[ "${1:-}" == cleanup ]]; then
       parent=/var/lib
       if [[ "$RUNNER_OS" == macOS ]]; then parent=/Library; fi
       [[ "$(dirname -- "$root")" == "$parent" ]]
-      bash "$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling" validate-release-installation "$root"
+      run_tooling "$RUNNER_TEMP/source-cache-build/runtime" validate-release-installation "$root"
       ;;
     Windows:*)
       temporary_root="$RUNNER_TEMP"

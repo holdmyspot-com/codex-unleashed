@@ -48,7 +48,9 @@ admin() {
   if [[ "$RUNNER_OS" == Windows ]]; then "$@"; else sudo -n "$@"; fi
 }
 
-if [[ "$RUNNER_OS" != Windows ]]; then
+if [[ "$RUNNER_OS" == Linux ]]; then
+  "$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling" validate-release-installation "$root"
+elif [[ "$RUNNER_OS" != Windows ]]; then
   bash "$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling" validate-release-installation "$root"
 fi
 

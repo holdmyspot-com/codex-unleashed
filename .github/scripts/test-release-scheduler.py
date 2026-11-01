@@ -118,6 +118,18 @@ class ReleaseSchedulerTest(unittest.TestCase):
             self.assertTrue((install/'retained-owner').exists())
             self.assertEqual(len(list(Path(tmp).glob('release-stage-*'))),1)
 
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'The packaged ELF entry point is a Linux contract')
+    def test_linux_native_bootstrap_rejection_preserves_executable_status(self):
+        """A native Linux bootstrap executes and rejects before any privileged workload starts."""
+        with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as tmp:
+            root=Path(tmp)
+            destination=root/'source-cache-build/runtime/bin';destination.mkdir(parents=True)
+            (destination/'codex-tooling').symlink_to(shutil.which('false'))
+            result,calls,_,_,_,_=self.invoke(root,'Linux')
+            self.assertEqual(result.returncode,1,result.stderr)
+            self.assertEqual(result.stderr,b'')
+            self.assertEqual(calls,[])
+
     def test_construction_failure_never_starts_schedule(self):
         """A failed construction leaves no consumers or retained ownership marker."""
         with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as tmp:
@@ -168,9 +180,10 @@ elif args[0]=='validate-release-native':
 else:
  sys.exit(90)
 ''')
-        # The packaged entry point is a Bash launcher; its controlled child records exact argv.
+        # This executable script controls argv recording; the real Linux package uses a native launcher.
         (runtime/'bin/codex-tooling').write_text(
             '#!/usr/bin/env bash\nexec "$FIXTURE_PYTHON" "$FIXTURE_TOOL" "$@"\n')
+        (runtime/'bin/codex-tooling').chmod(0o755)
         env=dict(os.environ,RUNNER_OS=platform,RUNNER_ARCH=architecture,RUNNER_TEMP=str(root),
             FIXTURE_PYTHON=sys.executable,FIXTURE_TOOL=str(tool),NATIVE_RECORD=str(record),
             NATIVE_VALIDATION_STATUS=str(validation_status))
@@ -184,6 +197,17 @@ else:
     def calls(self, record):
         """Read only the exact runtime requests issued by the shell under test."""
         return [json.loads(line) for line in record.read_text().splitlines()] if record.exists() else []
+
+    @unittest.skipUnless(sys.platform.startswith('linux'),'The packaged ELF entry point is a Linux contract')
+    def test_linux_packaged_native_entrypoint_is_executed(self):
+        """A native Linux launcher executes rather than being parsed as a Bash source file."""
+        with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as tmp:
+            runtime,support,output,record,env=self.fixture(Path(tmp))
+            output.mkdir()
+            launcher=runtime/'bin/codex-tooling';launcher.unlink()
+            launcher.symlink_to(shutil.which('true'))
+            result=self.prepare(runtime,support,output,env)
+            self.assertEqual(result.returncode,0,result.stderr)
 
     def test_existing_products_validate_without_production(self):
         """Retained products select validation only, preserving quoted paths and the worker target."""
