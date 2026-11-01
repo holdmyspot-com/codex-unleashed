@@ -1,0 +1,135 @@
+{
+  "gate": "passed",
+  "scope": "Fixture-only Linux exact consumed physical-pressure attribution on x64 and ARM64 installed Main; unchanged production composition",
+  "inputCommit": "aeac145f38f395658348a93fe681ba528c523ecb",
+  "immutableCliSourceInputs": 298,
+  "archive": "docs/evidence/artifacts/cp3-linux-exact-pressure.tar.gz",
+  "archiveSha256": "c2566652221f07bbf2c0a8748236d04ca0fc661b57e356196693b13bd2a1fb72",
+  "archiveBytes": 3593068,
+  "archiveReport": "report.json",
+  "architectures": {
+    "x64": {
+      "gate": "passed",
+      "run": 41326921894,
+      "connectedCliExit": 0,
+      "authorityExchanges": 1575,
+      "completeRequestOrdinals": {
+        "first": 1,
+        "last": 1575,
+        "contiguous": true
+      },
+      "acceptedBatches": 525,
+      "counterDelta": {
+        "stall": 15159,
+        "swapOut": 0,
+        "swapUsed": 0
+      },
+      "terminationSha256": "2c8a481bcb18f1e50609792b668b418d3f8c4bb868a7745e50494480a6e6c493",
+      "wholeBuild": {
+        "passed": true,
+        "gates": 279,
+        "acceptedAttemptOrder": [
+          1,
+          0,
+          2,
+          3
+        ],
+        "profiles": 11,
+        "swapGrowthBytes": 0
+      },
+      "usefulOutputExit": 7,
+      "sourceInputsUnchanged": true,
+      "remainingOwnedBirths": [],
+      "cleanup": {
+        "task_contract": "acknowledged",
+        "sshOwnerToolExit": 0,
+        "remoteShellExitObserved": true,
+        "remoteRootRemoved": true,
+        "cgroupRemoved": true,
+        "privateKeyRemoved": true,
+        "client-keySha256": "b83088f957d604fb7903fb607a056e2da29bb0752987e8a326ca3fba9018a678",
+        "client-key.pubSha256": "44bf5142a7a1fb8f696e2924c29b1b183399e9177e681e2eec3e8ad85d2f5dd0",
+        "publicKeyRemoved": true
+      },
+      "decisiveEvidence": [
+        "x64/shareable-validation.json",
+        "x64/final/genuine-pressure-validation.json"
+      ]
+    },
+    "arm64": {
+      "gate": "passed",
+      "run": 41327295062,
+      "connectedCliExit": 0,
+      "authorityExchanges": 1017,
+      "completeRequestOrdinals": {
+        "first": 1,
+        "last": 1017,
+        "contiguous": true
+      },
+      "acceptedBatches": 344,
+      "counterDelta": {
+        "stall": 7372,
+        "swapOut": 0,
+        "swapUsed": 0
+      },
+      "terminationSha256": "bb0e02e98846aedcdcdeeaed915c421e42dd30e0648c08c1bae7c26d6ae561f9",
+      "wholeBuild": {
+        "passed": true,
+        "gates": 208,
+        "acceptedAttemptOrder": [
+          1,
+          0,
+          2,
+          3
+        ],
+        "profiles": 11,
+        "swapGrowthBytes": 0
+      },
+      "usefulOutputExit": 7,
+      "sourceInputsUnchanged": true,
+      "remainingOwnedBirths": [],
+      "cleanup": {
+        "task_contract": "acknowledged",
+        "sshOwnerToolExit": 0,
+        "remoteShellExitObserved": true,
+        "remoteRootRemoved": true,
+        "cgroupRemoved": true,
+        "privateKeyRemoved": true,
+        "client-keySha256": "e54b50fd3309b7ec1bacf4af677dfe2e92f18dfe0f807066e000f744f1eb8258",
+        "client-key.pubSha256": "e251a2ba04f6f9e825ad430df1ff3f7075c6afe83006802fcaa635d932654a8c",
+        "publicKeyRemoved": true
+      },
+      "decisiveEvidence": [
+        "arm64/shareable-validation.json",
+        "arm64/final/genuine-pressure-validation.json"
+      ]
+    }
+  },
+  "parentReview": {
+    "owner": "/root",
+    "validator": "fixtures/validate-physical-correlation.py",
+    "observations": [
+      "Reviewed complete exact-correlation validator and final successful validator outputs for both architectures.",
+      "Complete authenticated consumed host/resident/verify batches precede the matching native victim termination and authenticated RESULT137.",
+      "Whole-build predicates separately pass original-position retry, collection and useful output.",
+      "No unchanged native run repeated."
+    ]
+  },
+  "credentialOmissionScan": {
+    "passed": true,
+    "knownInheritedProviderCredentialValues": 4,
+    "membersChecked": 6592,
+    "privateKeysRemoved": true,
+    "rawRetrievalPayloadEchoesExcluded": true
+  },
+  "limitations": [
+    "Requires elevated CAP_SYS_ADMIN on Linux LP64; this is fixture evidence, not shipped telemetry",
+    "PSI evidence is the exact accepted stall-counter interval; no exhaustion severity or spontaneous malloc-denial claim",
+    "Neither case grew swap; swap-only acceptance remains separate",
+    "Inherited provider credential values in observer/controller environment records omitted; environment digests retained. Compiler argv/environment and protocol bytes are exact",
+    "Top-level physical-helper.c omitted by first export selector; restored byte-for-byte from its digest-verified original transferred fixture archive with explicit provenance",
+    "The earlier first local restricted-FFM compilation failure is recorded from retained conversation evidence; final strict compile and final native source identities are durable",
+    "This completes only the delegated Linux exact-pressure unit, not the parent\u2019s complete checkpoint or release"
+  ],
+  "checkpoint3": "incomplete; other required gates remain unmet"
+}
