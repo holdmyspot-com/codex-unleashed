@@ -1,0 +1,214 @@
+{
+  "gate": "passed",
+  "scope": "Actual installed Main death extinguishes/reaps owned work; supported fresh invocation retains completed work and replaces interrupted compiler output, succeeds and produces useful native output on x64 and ARM64.",
+  "inputCommit": "fb430f61e5bc8f518e2e823bf8ad98ce29cfd15f",
+  "productionChanges": [],
+  "archive": "docs/evidence/artifacts/cp3-linux-successor-resumption.tar.gz",
+  "archiveSha256": "6878ef6cf5d61cb4c95e5b4986f8c2b71f64c2e72b3cb55c746691f237894ae0",
+  "archiveBytes": 2797176,
+  "archiveReport": "report.json",
+  "architectures": {
+    "x64": {
+      "gate": "passed",
+      "run": 41331544951,
+      "job": 124922570859,
+      "passedPredicates": 23,
+      "predicates": [
+        "driverCompleted",
+        "sameSupportedPublicCommand",
+        "pinnedRuntimeInput",
+        "actualInstalledMainTarget",
+        "authenticSIGKILLExit",
+        "realCompilerActiveAtDeath",
+        "completedUsefulWorkBeforeDeath",
+        "failedPartialOutputPresent",
+        "providerCredentialsExcludedFromCapturedProcesses",
+        "completedUsefulNativeResult",
+        "noObserverDeletionBeforeSuccessor",
+        "completedStateRetainedThroughCrash",
+        "failedStateRetainedThroughCrash",
+        "wholeOwnedWorkloadExtinct",
+        "nativeSupervisorReaping",
+        "freshControllerBirth",
+        "freshAuthorityContainment",
+        "completedWorkReused",
+        "failedActionRecompiled",
+        "failedPartialOutputsExcluded",
+        "freshCompilerSuccessfulNativeResult",
+        "publicSuccessAndOriginalStreams",
+        "usefulFinalOutput"
+      ],
+      "controllerSignal": 9,
+      "controllerExit": -9,
+      "completedWorkReused": true,
+      "failedOutputReplaced": true,
+      "usefulOutput": {
+        "exit": 7,
+        "inputHex": "4100ff0a",
+        "stdoutHex": "47415445004100ff0a",
+        "stderrHex": "45525200"
+      },
+      "decisiveEvidence": "x64/evidence/product/successor-resumption-validation.json",
+      "cleanReplay": "x64/clean-validation.json",
+      "cleanup": {
+        "passed": true,
+        "recordedNativeBirths": 79,
+        "survivors": [],
+        "populatedOwnedGroups": [],
+        "removedContainment": "/sys/fs/cgroup/codex-successor-IU3AA0",
+        "removedRoots": [
+          "/var/lib/codex-successor-uoimgS",
+          "/var/lib/cs-5CVMNh",
+          "/home/runner/work/codex-unleashed/codex-unleashed/.cat/work/temp/successor-IU3AA0"
+        ],
+        "terminalGates": 23
+      },
+      "providerTerminal": {
+        "status": "completed",
+        "conclusion": "failure",
+        "expectedDeliberateFailure": true,
+        "allPostStepsSucceeded": true
+      },
+      "sshExit": {
+        "exit": 0
+      }
+    },
+    "arm64": {
+      "gate": "passed",
+      "run": 41331560813,
+      "job": 124922629169,
+      "passedPredicates": 23,
+      "predicates": [
+        "driverCompleted",
+        "sameSupportedPublicCommand",
+        "pinnedRuntimeInput",
+        "actualInstalledMainTarget",
+        "authenticSIGKILLExit",
+        "realCompilerActiveAtDeath",
+        "completedUsefulWorkBeforeDeath",
+        "failedPartialOutputPresent",
+        "providerCredentialsExcludedFromCapturedProcesses",
+        "completedUsefulNativeResult",
+        "noObserverDeletionBeforeSuccessor",
+        "completedStateRetainedThroughCrash",
+        "failedStateRetainedThroughCrash",
+        "wholeOwnedWorkloadExtinct",
+        "nativeSupervisorReaping",
+        "freshControllerBirth",
+        "freshAuthorityContainment",
+        "completedWorkReused",
+        "failedActionRecompiled",
+        "failedPartialOutputsExcluded",
+        "freshCompilerSuccessfulNativeResult",
+        "publicSuccessAndOriginalStreams",
+        "usefulFinalOutput"
+      ],
+      "controllerSignal": 9,
+      "controllerExit": -9,
+      "completedWorkReused": true,
+      "failedOutputReplaced": true,
+      "usefulOutput": {
+        "exit": 7,
+        "inputHex": "4100ff0a",
+        "stdoutHex": "47415445004100ff0a",
+        "stderrHex": "45525200"
+      },
+      "decisiveEvidence": "arm64/evidence/product/successor-resumption-validation.json",
+      "cleanReplay": "arm64/clean-validation.json",
+      "cleanup": {
+        "passed": true,
+        "recordedNativeBirths": 76,
+        "survivors": [],
+        "populatedOwnedGroups": [],
+        "removedContainment": "/sys/fs/cgroup/codex-successor-qMz218",
+        "removedRoots": [
+          "/var/lib/codex-successor-rQyR1L",
+          "/var/lib/cs-lMgbA8",
+          "/home/runner/work/codex-unleashed/codex-unleashed/.cat/work/temp/successor-qMz218"
+        ],
+        "terminalGates": 23
+      },
+      "providerTerminal": {
+        "status": "completed",
+        "conclusion": "failure",
+        "expectedDeliberateFailure": true,
+        "allPostStepsSucceeded": true
+      },
+      "sshExit": {
+        "exit": 0
+      }
+    }
+  },
+  "parentReview": {
+    "owner": "/root",
+    "accepted": true,
+    "observations": [
+      "Reviewed the complete final validator and both clean replay results: 23 predicates passed on each native architecture.",
+      "The installed public command is identical across controller death and fresh successor, with no observer deletion between invocations.",
+      "Native journals and authentic RESULT records establish completed-work reuse, interrupted-action recompilation, fresh authority, workload extinction/reaping and useful final output.",
+      "Inspected terminal native, SSH, provider and local-key cleanup receipts; no unchanged native workload rerun."
+    ]
+  },
+  "credentialOmission": {
+    "passed": true,
+    "explicitAllowlist": true,
+    "privateKeyMarkerFound": false,
+    "privateConnectionMembersSelected": false,
+    "nestedProviderCredentialScans": {
+      "x64": {
+        "passed": true,
+        "providerValuesChecked": 2,
+        "membersChecked": 582,
+        "privateConnectionFilesSelected": false
+      },
+      "arm64": {
+        "passed": true,
+        "providerValuesChecked": 2,
+        "membersChecked": 584,
+        "privateConnectionFilesSelected": false
+      }
+    },
+    "scope": "Outer selected plaintext checked for OpenSSH private-key marker; nested native payloads previously scanned against provider values before retrieval. No claim of scanning unavailable provider secret values locally."
+  },
+  "localKeyCleanup": {
+    "passed": true,
+    "removed": [
+      "x64/client-key",
+      "x64/client-key.pub",
+      "x64/ssh-input",
+      "arm64/client-key",
+      "arm64/client-key.pub",
+      "arm64/ssh-input"
+    ],
+    "sshOwnersTerminalExit": {
+      "x64": 0,
+      "arm64": 0
+    },
+    "privateConnectionRecords": "retained privately in task directory; excluded from handoff"
+  },
+  "limitations": [
+    {
+      "event": "Runner-owned ancestor rejected before compiler execution",
+      "classification": "fixture prerequisite; reused accepted root-owned /var/lib placement remedy"
+    },
+    {
+      "event": "Overlong Unix socket path",
+      "classification": "fixture placement; used supported short protected scratch option while preserving runtime"
+    },
+    {
+      "event": "Observer relative-path exception and completed-too-fast compiler observation window",
+      "classification": "fixture correction; generalized authentic active compiler candidate and added real app source padding"
+    },
+    {
+      "event": "512-byte transport guard rejected oversized copy; old orchestration continued stale driver",
+      "classification": "fixture orchestration error; corrected to checked serial commands",
+      "limitation": "Earlier unaccepted x64 observer selection/timing JSON was overwritten and is unrecoverable. Retained older case result/process/raw streams survive. Acceptance relies only on complete final driver-v5 records."
+    },
+    {
+      "event": "Read-only ARM diagnostic missing sudo-cleared environment value",
+      "classification": "observer invocation corrected by explicit argument"
+    }
+  ],
+  "replay": "Retrieve this receipt and its committed archive together. The archive retains report.json, the final validator, both safe native evidence archives and clean replay outputs; use the recorded paths and commands in report.json. No private task directory or live runner is required.",
+  "checkpoint3": "incomplete; static Bazel, macOS normal close, scheduled release and later required gates remain unmet"
+}
