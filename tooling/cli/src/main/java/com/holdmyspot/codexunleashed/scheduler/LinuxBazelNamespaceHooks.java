@@ -307,6 +307,24 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
             (observedBirth == originalBirth || observedBirth == authorized.birthTicks());
     }
 
+    /**
+     * Matches an ordinary root's collected identity to its kernel-reparented descendant lineage.
+     * The caller authenticates the terminal through the sole helper channel and independently verifies root death.
+     * @param terminal original authenticated native terminal, or null before collection
+     * @param original independently admitted original root generation
+     * @param ownerPid original authenticated namespace owner's host PID
+     * @param priorParent descendant's retained original host parent
+     * @param observedParent descendant's independently observed current host parent
+     * @return true only for exact ordinary-root identity and reparenting to the original namespace owner
+     */
+    static boolean authenticatedOrdinaryRootParent(LinuxAllocationTrace.Terminal terminal, ImageObservation original,
+        long ownerPid, long priorParent, long observedParent)
+    {
+        return terminal != null && terminal.waitStatus() >= 0 && (terminal.waitStatus() & 127) == 0 &&
+            terminal.identity().tid() == original.localPid() && terminal.identity().birthTicks() == original.birth() &&
+            priorParent == original.hostPid() && observedParent == ownerPid;
+    }
+
     /** One live-image admission sequence, retaining its original checked observation failure. */
     @FunctionalInterface
     interface LiveImageAdmission
@@ -810,6 +828,8 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
                 }
                 ImageObservation observed = map(event.pid());
                 ImageObservation previous = currentImages.get(event.pid());
+                collectEndedRoot();
+                if (rootSignalRetirement) return;
                 ImageObservation parent = null;
                 if (event.origin() == 1)
                 {
@@ -823,20 +843,25 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
                             previous.birth(), observed.birth());
                         boolean authenticatedBirth = nonleaderExec ? migratedBirth : sameBirth;
                         if (previous.hostPid() != observed.hostPid() || !authenticatedBirth ||
-                            previous.parent() != observed.parent()) throw new IOException("Held exec changed its retained process birth");
+                            (previous.parent() != observed.parent() && !inheritedRootParent(previous.parent(), observed.parent())))
+                            throw new IOException("Held exec changed its retained process birth or lineage");
                     }
                     else parent = parent(observed.parent());
                 }
                 else
                 {
                     parent = currentImages.get(event.parentPid());
-                    if (previous != null || parent == null || parent.hostPid() != observed.parent())
+                    ImageObservation originalRoot = latestRoot();
+                    if (parent == null && event.parentPid() == local.pid() && inheritedRootParent(originalRoot.hostPid(), observed.parent()))
+                        parent = originalRoot;
+                    if (previous != null || parent == null || (parent.hostPid() != observed.parent() &&
+                        !inheritedRootParent(parent.hostPid(), observed.parent())))
                         throw new IOException("Held child has no retained original parent");
                 }
                 if (previous == null && parent == null) throw new IOException("Held image lacks an authenticated original lineage");
                 requireRequestedImage(Path.of("/proc", Long.toString(observed.hostPid())), event,
                     parent == null ? null : parent.executable(), observed.arguments(), images);
-                if (parent != null) parent.requireUnchanged(observe(parent.hostPid(), parent.localPid()));
+                if (parent != null) requireParentImage(parent);
                 FileChannel image = FileChannel.open(Path.of("/proc", Long.toString(observed.hostPid()), "exe"), StandardOpenOption.READ);
                 heldFiles.add(image);
                 if (previous != null)
@@ -856,12 +881,54 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
                 exchange(command);
                 if (!readyImages.contains(generation)) throw new IOException("Held image did not acknowledge its distinct native readiness");
                 observed.requireUnchanged(observe(observed.hostPid(), observed.localPid()));
-                if (parent != null) parent.requireUnchanged(observe(parent.hostPid(), parent.localPid()));
+                if (parent != null) requireParentImage(parent);
                 if (Thread.currentThread().isInterrupted()) throw new IOException("Held descendant resume interrupted");
                 exchange(imageRequest("resumeHeld", observed, generation));
                 currentImages.put(event.pid(), observed);
                 currentInstallations.put(event.pid(), generation);
             }
+        }
+
+        /**
+         * Collects an exited original root before interpreting a still-held descendant's inherited lineage.
+         * @throws IOException if the genuine native terminal cannot be authenticated within the control deadline
+         */
+        private void collectEndedRoot() throws IOException
+        {
+            ImageObservation original = latestRoot();
+            if (!retryAfterDenial || !originalImageEnded(Path.of("/proc", Long.toString(original.hostPid())), original.birth())) return;
+            long start = System.nanoTime();
+            while (rootTerminal == null)
+            {
+                exchange(request("pump"));
+                if (rootTerminal == null) pause(start, "original root terminal before descendant lineage admission");
+            }
+        }
+
+        /**
+         * Accepts only kernel reparenting from the collected ordinary root to its original namespace owner.
+         * @param priorParent previously retained original host parent
+         * @param observedParent independently observed current host parent
+         * @return true for this exact authenticated ordinary-root retirement
+         * @throws IOException if retained root observations are unavailable
+         */
+        private boolean inheritedRootParent(long priorParent, long observedParent) throws IOException
+        {
+            ImageObservation original = latestRoot();
+            return authenticatedOrdinaryRootParent(rootTerminal, original, owner.peer().pid(), priorParent, observedParent);
+        }
+
+        /**
+         * Revalidates a live parent or the collected original root whose descendant remains independently held.
+         * @param parent retained image whose native fork established the descendant lineage
+         * @throws IOException if current image facts or authenticated ordinary-root retirement differ
+         */
+        private void requireParentImage(ImageObservation parent) throws IOException
+        {
+            collectEndedRoot();
+            if (inheritedRootParent(parent.hostPid(), owner.peer().pid()))
+                containment.requireImageObservationAuthority();
+            else parent.requireUnchanged(observe(parent.hostPid(), parent.localPid()));
         }
 
         /**
@@ -989,8 +1056,8 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
          */
         private ImageObservation observe(long hostPid, long localPid) throws IOException
         {
-            // Containment revalidates the pinned owner and child across their authenticated PID namespace.
-            containment.requireContained();
+            // The native namespace owner outlives an ordinary root; every image is checked independently below.
+            containment.requireImageObservationAuthority();
             Path proc = Path.of("/proc", Long.toString(hostPid));
             Path action = Path.of("/proc", Long.toString(owner.peer().pid()));
             String before = birth(proc);
@@ -1011,7 +1078,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
                 if (!before.equals(birth(proc)) || !AllocationHooks.credentialsMatch(after, execution.uid(), execution.gid()) ||
                     namespacePid(after) != localPid) throw new IOException("Held process changed during authentication");
             }
-            containment.requireContained();
+            containment.requireImageObservationAuthority();
             return image;
         }
 

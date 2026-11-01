@@ -1,0 +1,530 @@
+{
+  "task_contract": "acknowledged",
+  "packagingBaseline": "d38fc9a502e07db0bd6475e3dc0b6df344e7fa21",
+  "ownerBaseline": "5217d87166",
+  "scope": "Completed Linux x64 ordinary23 owner delivery only; final combined root composition UNRUN. No CP3 completion, source promotion or maintained edits.",
+  "authoritativeHandoff": {
+    "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/handoff.json",
+    "sha256": "4bdfdd04547a07ab30f7403deea8340e3dffbec92ee52a7a26e30ed50ec2edc0"
+  },
+  "source": {
+    "archive": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/ordinary23-source.tar.gz",
+    "sha256": "d3fd3b60bfa72c9986f6e7b023fa8d07b3e7cd765cc477867e6955883c8a4a59",
+    "manifest": {
+      "baseline": "5217d87166",
+      "paths": [
+        {
+          "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelContainment.java",
+          "beforeSha256": "25a4d40f7a2abb0db0344a61cf9acd7ed2cdeef2b2071c09b1a81e0eb7932593",
+          "sha256": "577b0deefa1db8780ed5f109c5c3095d2a64c21c10aaea66fa4934420992ba08"
+        },
+        {
+          "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelIdentity.java",
+          "beforeSha256": "64b3dfbf4e3b2737f392e65d4987da10535333a50fa1c2b69bc758ed0da15f05",
+          "sha256": "52bb47893a30844d1536777f94dcf0032403c839392b31d13169478a71f163f2"
+        },
+        {
+          "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelNamespaceHooks.java",
+          "beforeSha256": "3117262ed82bb818fe10fdded3ac5e90cddea4f06787e8a9674f36339508a412",
+          "sha256": "cc1ab81c9e3c0a72c388b0d7facd2761417a718ba340a022ed26194b57c854f9"
+        },
+        {
+          "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelTraceHelper.java",
+          "beforeSha256": "2c7a62d02b43f424906731799f2ded8e7af94b3565f32c6939b544322556aa83",
+          "sha256": "0368bfe942fc33d98786c70bdb8a76090b32d9db82af63f3de41a0e044e82206"
+        },
+        {
+          "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelContainmentTest.java",
+          "beforeSha256": "76f75e5ca99433fb8a490cfcc3ae3f5f1fde0a071fe343e809bd66ece9bf153d",
+          "sha256": "bd831051ede57dfb4e5c45af67c2a1b59be8143a3cad66a59496cc56a27c595a"
+        },
+        {
+          "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelNamespaceHooksTest.java",
+          "beforeSha256": "941df10f880dd439b760941a9e789190d424162e6ae6a91db02fd949b5b2b71c",
+          "sha256": "ac4877197921d697dfb8e8e93d6c242a6213e582d73e04cf6fbc4ad7798d217a"
+        }
+      ]
+    },
+    "integrationConsumer": "root; apply six-path incremental patch preserving root public Scheduler/common backend/packaging work"
+  },
+  "rootCause": "Descendant image admission revalidated the already-collected original root procfs entry. Original root23 legitimately precedes its still-held child fork/exec; child is reparented to the authenticated original namespace owner.",
+  "repair": "Separate unchanged namespace-owner and cgroup observation authority from live-root exec authority; collect original terminal before authorizing only exact ordinary-root PID/birth lineage to original owner; preserve native held task identity and whole-tree-zero before disposal.",
+  "gates": [
+    {
+      "outcome": "meaningful native red",
+      "result": "failed as required before repair",
+      "primary": "NoSuchFileException /proc/5276/stat",
+      "fullOutput": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/evidence/cases/producer-djle6iwt/exec23.stderr"
+    },
+    {
+      "outcome": "strict lint/private Javadoc",
+      "result": "pass",
+      "declaration": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/focused-results.json",
+      "fullOutput": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/focused-compile.log"
+    },
+    {
+      "outcome": "affected method-parallel8 tests",
+      "result": "105passed0failed0skip",
+      "fullOutput": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/focused-tests.log"
+    },
+    {
+      "outcome": "ordinary root23 after childexec0",
+      "result": "pass; expected Bazel consumer1; genuine action23/no signal/no retry/no publication; child output; whole-tree zero",
+      "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/evidence/worker/ordinary23-native-receipt.json",
+      "fullOutput": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/evidence/worker/exec23-green2-wrapper.log"
+    },
+    {
+      "outcome": "actual public Main useful action",
+      "result": "pass;0, one ELF publication, owned cleanup true",
+      "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/evidence/worker/public-result.json",
+      "callerDeclaration": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/evidence/worker/public-caller-composition.json",
+      "extraCallerClassesVerifiedByteEqual": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/evidence/worker/public-extra-equivalence.json",
+      "fullOutput": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/evidence/worker/public-final-wrapper.log"
+    },
+    {
+      "outcome": "full named-module Maven tests/runtime packaging",
+      "result": {
+        "maven": {
+          "command": [
+            "mvn",
+            "-B",
+            "-ntp",
+            "-f",
+            "/home/runner/work/_temp/cp3-ordinary23-ENa0X9/source/tooling/cli/pom.xml",
+            "-P",
+            "runtime,bazel-native-backend",
+            "-Dbazel.backend.directory=/home/runner/work/_temp/cp3-ordinary23-ENa0X9/backend",
+            "-Dtooling.build.directory=/home/runner/work/_temp/cp3-ordinary23-ENa0X9/maven-output",
+            "-Dparallel=methods",
+            "-DthreadCount=8",
+            "verify"
+          ],
+          "exit": 0
+        },
+        "tests": {
+          "total": 1344,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 8,
+          "sourceInputCache": {
+            "name": "com.holdmyspot.codexunleashed.tooling.SourceInputCacheTest",
+            "tests": 11,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          }
+        },
+        "checks": [
+          {
+            "command": [
+              "/home/runner/work/_temp/cp3-ordinary23-ENa0X9/maven-output/runtime/bin/java",
+              "--list-modules"
+            ],
+            "exit": 0,
+            "output": "runtime-check-0.log"
+          },
+          {
+            "command": [
+              "/home/runner/work/_temp/cp3-ordinary23-ENa0X9/maven-output/runtime/bin/codex-tooling"
+            ],
+            "exit": 2,
+            "output": "runtime-check-1.log"
+          },
+          {
+            "command": [
+              "rustc",
+              "--version"
+            ],
+            "exit": 0,
+            "output": "runtime-check-2.log"
+          },
+          {
+            "command": [
+              "cargo",
+              "--version"
+            ],
+            "exit": 0,
+            "output": "runtime-check-3.log"
+          },
+          {
+            "command": [
+              "mvn",
+              "-version"
+            ],
+            "exit": 0,
+            "output": "runtime-check-4.log"
+          }
+        ],
+        "nativeBuilds": 0,
+        "complete": true,
+        "sourceBoundary": "maintained5217 plus four-production ordinary23 repair; root packaging POM read-only input; original matching MainTest. Public Scheduler separately consumes accepted immutable artifact13101499426."
+      },
+      "fullOutput": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/evidence/worker/consuming-maven.log"
+    },
+    {
+      "outcome": "prebuilt native products staged unchanged",
+      "result": "all7executables plus manifest/licenses byteequal; static Zig SHA unchanged; no backend build",
+      "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/evidence/worker/final-native-cleanup.json"
+    }
+  ],
+  "decisiveReceiptChecks": {
+    "nativeRed": "native/cases/producer-djle6iwt/exec23.stderr: actual NoSuchFileException /proc/5276/stat",
+    "ordinary23": "native/worker/ordinary23-native-receipt.json: consumer1, actual action23 unsignaled, one attempt, no publication, execution retired, original identities absent and cgroups0",
+    "descendant": "native/cases/producer-1daubaq6/exec23.stdout: DESCENDANT_COMPLETED",
+    "publicMain": "native/worker/public-result.json: exit0 one ELF publication and cleanup",
+    "focused": "owner/focused-results.json + owner/focused-reports/testng-results.xml: strict/private doclint105passed0failed0skipped",
+    "mavenRuntime": "native/worker/runtime-verification.json:1344tests0failures0errors8skipped,11 actual Rust SourceInputCache tests; native Maven verify exit0",
+    "fullMavenOutput": "native/worker/consuming-maven.log",
+    "nativeProducts": "native/worker/final-native-cleanup.json:7executables+manifest/licenses unchanged; static Zig unchanged",
+    "cleanup": "owner/cleanup-receipt.json: SSH0/provider terminal deliberate failure; debug/poststeps success; keys retired"
+  },
+  "validationCommands": {
+    "localOwner": [
+      {
+        "gate": "compile",
+        "command": [
+          "javac",
+          "--release",
+          "27",
+          "-Xlint:all,-processing",
+          "-Werror",
+          "-Xdoclint:all/private",
+          "-cp",
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/baseline-java-classes:/home/gili/codex-unleashed/workspace/.cat/sessions/01a1976f-d543-7fa2-b400-6a99898fe478/temp/native-reuse-lfD2fC/producer.jar",
+          "-d",
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/focused-classes",
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelIdentity.java",
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelContainment.java",
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelNamespaceHooks.java",
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelTraceHelper.java",
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/worktree/tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelIdentityTest.java",
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/worktree/tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelContainmentTest.java",
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/worktree/tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelNamespaceHooksTest.java",
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/worktree/tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelHelperMainTest.java",
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/worktree/tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/TestRequirements.java"
+        ],
+        "exit": 0,
+        "fullOutput": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/focused-compile.log"
+      },
+      {
+        "gate": "tests",
+        "command": [
+          "java",
+          "--enable-native-access=ALL-UNNAMED",
+          "-Djava.io.tmpdir=/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/tmp",
+          "-cp",
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/focused-classes:/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/baseline-java-classes:/home/gili/codex-unleashed/workspace/.cat/sessions/01a1976f-d543-7fa2-b400-6a99898fe478/temp/native-reuse-lfD2fC/producer.jar",
+          "org.testng.TestNG",
+          "-parallel",
+          "methods",
+          "-threadcount",
+          "8",
+          "-d",
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/focused-reports",
+          "-testclass",
+          "com.holdmyspot.codexunleashed.scheduler.LinuxBazelIdentityTest,com.holdmyspot.codexunleashed.scheduler.LinuxBazelContainmentTest,com.holdmyspot.codexunleashed.scheduler.LinuxBazelNamespaceHooksTest,com.holdmyspot.codexunleashed.scheduler.LinuxBazelHelperMainTest"
+        ],
+        "exit": 0,
+        "fullOutput": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/focused-tests.log"
+      }
+    ],
+    "native": [
+      "sudo env CP3_WORK=\"$CP3_WORK\" PATH=\"$PATH\" JAVA_HOME=\"$JAVA_HOME\" python3 \"$CP3_WORK/prepare-case-short.py\"",
+      "sudo env CP3_WORK=\"$CP3_WORK\" PATH=\"$PATH\" JAVA_HOME=\"$JAVA_HOME\" python3 \"$CP3_WORK/run-exec23.py\" EXEC23",
+      "python3 \"$CP3_WORK/compose-public.py\"",
+      "sudo env CP3_WORK=\"$CP3_WORK\" PATH=\"$PATH\" JAVA_HOME=\"$JAVA_HOME\" python3 \"$CP3_WORK/run-public-final.py\""
+    ],
+    "mavenRuntime": {
+      "maven": {
+        "command": [
+          "mvn",
+          "-B",
+          "-ntp",
+          "-f",
+          "/home/runner/work/_temp/cp3-ordinary23-ENa0X9/source/tooling/cli/pom.xml",
+          "-P",
+          "runtime,bazel-native-backend",
+          "-Dbazel.backend.directory=/home/runner/work/_temp/cp3-ordinary23-ENa0X9/backend",
+          "-Dtooling.build.directory=/home/runner/work/_temp/cp3-ordinary23-ENa0X9/maven-output",
+          "-Dparallel=methods",
+          "-DthreadCount=8",
+          "verify"
+        ],
+        "exit": 0
+      },
+      "tests": {
+        "total": 1344,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 8,
+        "sourceInputCache": {
+          "name": "com.holdmyspot.codexunleashed.tooling.SourceInputCacheTest",
+          "tests": 11,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      "checks": [
+        {
+          "command": [
+            "/home/runner/work/_temp/cp3-ordinary23-ENa0X9/maven-output/runtime/bin/java",
+            "--list-modules"
+          ],
+          "exit": 0,
+          "output": "runtime-check-0.log"
+        },
+        {
+          "command": [
+            "/home/runner/work/_temp/cp3-ordinary23-ENa0X9/maven-output/runtime/bin/codex-tooling"
+          ],
+          "exit": 2,
+          "output": "runtime-check-1.log"
+        },
+        {
+          "command": [
+            "rustc",
+            "--version"
+          ],
+          "exit": 0,
+          "output": "runtime-check-2.log"
+        },
+        {
+          "command": [
+            "cargo",
+            "--version"
+          ],
+          "exit": 0,
+          "output": "runtime-check-3.log"
+        },
+        {
+          "command": [
+            "mvn",
+            "-version"
+          ],
+          "exit": 0,
+          "output": "runtime-check-4.log"
+        }
+      ],
+      "nativeBuilds": 0,
+      "complete": true,
+      "sourceBoundary": "maintained5217 plus four-production ordinary23 repair; root packaging POM read-only input; original matching MainTest. Public Scheduler separately consumes accepted immutable artifact13101499426."
+    }
+  },
+  "preservedFailures": [
+    "Authentic baseline NoRetry exit1 primary procfs failure",
+    "First repaired fixture overlong Cargo Unix socket pathname; rerun shortened fixture path only",
+    "Public command baseline Scheduler rejects unknown --bazel-launch-config; accepted public Scheduler restored separately from immutable native artifact",
+    "Initial full Maven1error from mismatched newer public MainTest; restored exact5217matching test, final fullrun passes",
+    "Artifact publisher sudo stripped runtime metadata; rerun sudo-E succeeded"
+  ],
+  "verificationBoundary": "Full1344-test Maven/runtime verifies exact maintained5217plus this repair and accepted read-only POM. It does not claim parent final Linux/Mac/Windows composition acceptance. Parent owns one final combined Maven/runtime gate per latest instruction.",
+  "limitations": [
+    "Native acceptance is Linux x64; no ARM/macOS/Windows claim from this worker",
+    "Public Scheduler is immutable accepted caller bytecode composed separately; full Maven/named runtime gate uses maintained5217source plus this repair and read-only root packaging POM",
+    "Generated third-party ANTLR module-name warning and existing native-access notices in full Maven; owned strict compile/private doclint passed",
+    "Final root Linux/Mac/Windows composition remains UNRUN. Native Maven/runtime covers maintained5217+four-production repair and read-only packaging POM; public Scheduler consumes accepted caller artifact separately.",
+    "Archive transport logs with signed URLs omitted; paths/hashes retained. All determining validation/failure outputs retained.",
+    "No accepted checks rerun or independent source re-review; existing receipt assertions and archive bytes verified only."
+  ],
+  "products": {
+    "artifact": 13102692714,
+    "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/runtime-artifact-13102692714.zip",
+    "bytes": 285098426,
+    "sha256": "c900ccec2a296088f63c5a99218e27aa95fb1c6e8cfaeadcc03901361807e898",
+    "member": {
+      "name": "cp3-ordinary23-runtime-41353197678",
+      "bundle": "ordinary23-runtime.tar.gz",
+      "bytes": 285098262,
+      "sha256": "022db5c0605e83e3cdae75e5192e5ca970e4eb421bf8b71c0b9aad91b573bd27"
+    },
+    "verifiedPayloadSha256": "022db5c0605e83e3cdae75e5192e5ca970e4eb421bf8b71c0b9aad91b573bd27",
+    "nativeExtractionPerformed": false
+  },
+  "verifiedInputs": [
+    {
+      "zip": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/evidence-artifact-13103220867.zip",
+      "sha256": "98b92df19b555d951c7a009709c5c48854393368adc161b02f50036e69a4599c",
+      "innerSha256": "d39d93f567b669ecf4a01ee2a110d924cf897079430d35d11202d655ebfbc801"
+    },
+    {
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/ordinary23-source.tar.gz",
+      "sha256": "d3fd3b60bfa72c9986f6e7b023fa8d07b3e7cd765cc477867e6955883c8a4a59",
+      "sixSourceHashesVerified": true
+    },
+    {
+      "runtime": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/runtime-artifact-13102692714.zip",
+      "sha256": "c900ccec2a296088f63c5a99218e27aa95fb1c6e8cfaeadcc03901361807e898",
+      "compressedOnly": true
+    }
+  ],
+  "safety": {
+    "passed": true,
+    "patterns": [
+      "private-key-material",
+      "github-token",
+      "signed-url",
+      "authorization"
+    ],
+    "allRegularUtf8": true,
+    "noNativeBinariesCachesCredentialFiles": true,
+    "membersExamined": 307,
+    "excluded": [
+      {
+        "path": "native/worker/runtime-upload.log",
+        "sha256": "644edff95006df63809d094ad181549310a6e2f1cd2d1623b025630aa769a484",
+        "bytes": 4527,
+        "reason": "Private transport credential material omitted",
+        "patterns": [
+          "signed-url"
+        ]
+      },
+      {
+        "path": "native/worker/publish-runtime.log",
+        "sha256": "68f11e59ad4a9bb879024ee3ca20df37e56da7734373f06d3d81ef468407b9e3",
+        "bytes": 5124,
+        "reason": "Private transport credential material omitted",
+        "patterns": [
+          "signed-url"
+        ]
+      },
+      {
+        "path": "cases/producer-djle6iwt/scratch/bazel-producer-3547796588209982478/backend-root/credentials/keytool.log",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-djle6iwt/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/42ec5d04-741c-4cde-a73d-f194befcf044/MODULE.bazel",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-djle6iwt/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/42ec5d04-741c-4cde-a73d-f194befcf044/version.bzl",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-djle6iwt/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/42ec5d04-741c-4cde-a73d-f194befcf044/host/constraints.bzl",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-djle6iwt/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/42ec5d04-741c-4cde-a73d-f194befcf044/host/extension.bzl",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-djle6iwt/workspace/lib/libc/darwin/SDKSettings.json",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-s9jp35z2/scratch/bazel-producer-10221330587864469230/backend-root/credentials/keytool.log",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-s9jp35z2/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/c77044ff-7aaa-468d-a799-43118862ebd4/MODULE.bazel",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-s9jp35z2/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/c77044ff-7aaa-468d-a799-43118862ebd4/version.bzl",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-s9jp35z2/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/c77044ff-7aaa-468d-a799-43118862ebd4/host/constraints.bzl",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-s9jp35z2/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/c77044ff-7aaa-468d-a799-43118862ebd4/host/extension.bzl",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-s9jp35z2/workspace/lib/libc/darwin/SDKSettings.json",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-1daubaq6/scratch/bazel-producer-6949899333563999828/backend-root/credentials/keytool.log",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-1daubaq6/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/d524cd3e-1499-499d-99fe-8489b72a41cd/MODULE.bazel",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-1daubaq6/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/d524cd3e-1499-499d-99fe-8489b72a41cd/version.bzl",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-1daubaq6/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/d524cd3e-1499-499d-99fe-8489b72a41cd/host/constraints.bzl",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-1daubaq6/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/d524cd3e-1499-499d-99fe-8489b72a41cd/host/extension.bzl",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-1daubaq6/workspace/lib/libc/darwin/SDKSettings.json",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-36ck8vza/scratch/bazel-producer-4017965156439558451/backend-root/credentials/keytool.log",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-36ck8vza/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/47af93f0-b891-4cc9-a61b-762e57cb6c05/MODULE.bazel",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-36ck8vza/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/47af93f0-b891-4cc9-a61b-762e57cb6c05/version.bzl",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-36ck8vza/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/47af93f0-b891-4cc9-a61b-762e57cb6c05/host/constraints.bzl",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-36ck8vza/home/repository-cache/contents/841bcd892684812e35c86d3269a0449ba490ab09cc288b139024249e079d2bfa/47af93f0-b891-4cc9-a61b-762e57cb6c05/host/extension.bzl",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      },
+      {
+        "path": "cases/producer-36ck8vza/workspace/lib/libc/darwin/SDKSettings.json",
+        "reason": "Cache/copied SDK or credential directory omitted"
+      }
+    ],
+    "noNativeReruns": true
+  },
+  "archive": {
+    "path": "docs/evidence/artifacts/cp3-linux-ordinary23-native.tar.gz",
+    "sha256": "89741065e5d9abebbfb346d8313f482aba89fc7c4dab1accc19b946315dab913",
+    "bytes": 228856,
+    "members": 309,
+    "roundTripEveryMember": true,
+    "safeRetrieval": "Regular relative UTF8 paths, no links/traversal; inventory hashes every payload member"
+  },
+  "cleanup": {
+    "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/linux-ordinary23-I51zcO/cleanup-receipt.json",
+    "sshExit": 0,
+    "providerTerminal": true,
+    "allPostStepsSuccess": true,
+    "ownedNativeCgroupsZero": true,
+    "ephemeralKeyPairRetired": true
+  },
+  "sourcePromotion": false,
+  "rootIntegration": {
+    "scope": "Root promotes only the six-path Linux repair and its scoped evidence; public Scheduler/platform dispatch remains isolated; checkpoint3 remains incomplete",
+    "paths": [
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelContainment.java",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelIdentity.java",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelNamespaceHooks.java",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelTraceHelper.java",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelContainmentTest.java",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelNamespaceHooksTest.java"
+    ],
+    "verification": {
+      "commandReceipt": ".cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/mutation-transaction-UHlQpd/maven-command.json",
+      "output": ".cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/mutation-transaction-UHlQpd/maven-snapshot2.log",
+      "allSourceCompile": "pass",
+      "tests": 185,
+      "failures": 0,
+      "errors": 0,
+      "skips": 4,
+      "scope": "Focused 17-class combined Linux/Mac/Windows checks; four Windows identity cases skip on Linux"
+    },
+    "finalCombinedRuntime": "unrun",
+    "checkpointCompletion": false
+  }
+}

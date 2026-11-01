@@ -231,6 +231,21 @@ final class LinuxBazelContainment implements AutoCloseable
     }
 
     /**
+     * Revalidates the original namespace owner and its exclusion from the pinned attempt group.
+     * This authority remains valid for independently observed descendants after the workload root exits;
+     * callers must still verify each member's birth, credentials, namespaces, membership and native lineage.
+     * It grants neither root exec authority nor a whole-tree completion observation.
+     * @throws IOException if the original owner changed or entered the attempt group
+     */
+    void requireImageObservationAuthority() throws IOException
+    {
+        requireOpen();
+        authenticator.requireNamespaceOwner(owner);
+        if (group.contains(owner.peer().pid())) throw new IOException("Native action owner entered the attempt cgroup");
+        authenticator.requireNamespaceOwner(owner);
+    }
+
+    /**
      * Captures a held original nonleader exec thread while current root identity and containment still hold.
      * @param localThreadPid namespace-local thread ID from the original native exec-entry stop
      * @param startTicks native exec-entry birth to match against independent thread observations

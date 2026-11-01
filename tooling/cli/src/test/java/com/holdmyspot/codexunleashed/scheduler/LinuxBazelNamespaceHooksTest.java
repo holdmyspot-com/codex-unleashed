@@ -23,6 +23,27 @@ public final class LinuxBazelNamespaceHooksTest
      */
     public LinuxBazelNamespaceHooksTest() {}
 
+    /** Requires exact collected root identity and original-owner reparenting before admitting its descendant. */
+    @Test public void authenticatesOrdinaryRootRetirementLineage()
+    {
+        var root = new LinuxBazelNamespaceHooks.ImageObservation(300, 3, 30, 200, Path.of("/program"),
+            "a".repeat(64), Map.of(), List.of("/program"), "0::/attempt", "pid:[sandbox]", "mnt:[sandbox]");
+        var terminal = new LinuxAllocationTrace.Terminal(new LinuxAllocationTrace.Identity(3, 30), 23 << 8);
+        requireThat(LinuxBazelNamespaceHooks.authenticatedOrdinaryRootParent(terminal, root, 200, 300, 200),
+            "originalOrdinaryRootLineage").isTrue();
+        for (LinuxAllocationTrace.Terminal invalid : java.util.Arrays.asList(null,
+            new LinuxAllocationTrace.Terminal(new LinuxAllocationTrace.Identity(4, 30), 23 << 8),
+            new LinuxAllocationTrace.Terminal(new LinuxAllocationTrace.Identity(3, 31), 23 << 8),
+            new LinuxAllocationTrace.Terminal(new LinuxAllocationTrace.Identity(3, 30), 5),
+            new LinuxAllocationTrace.Terminal(new LinuxAllocationTrace.Identity(3, 30), 5 | 128)))
+            requireThat(LinuxBazelNamespaceHooks.authenticatedOrdinaryRootParent(invalid, root, 200, 300, 200),
+                "uncollectedOrDifferentOrSignaledRoot").isFalse();
+        requireThat(LinuxBazelNamespaceHooks.authenticatedOrdinaryRootParent(terminal, root, 200, 301, 200),
+            "unknownOriginalParent").isFalse();
+        requireThat(LinuxBazelNamespaceHooks.authenticatedOrdinaryRootParent(terminal, root, 200, 300, 201),
+            "foreignReplacementParent").isFalse();
+    }
+
     /** Accepts both genuine Linux exec birth observations while preserving exact former-thread authority. */
     @Test public void authenticatesExactExecMigrationWithEitherRetainedBirth()
     {

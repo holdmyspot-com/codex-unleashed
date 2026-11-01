@@ -273,6 +273,19 @@ final class LinuxBazelIdentity
     }
 
     /**
+     * Revalidates the retained native namespace owner independently of an exited workload root.
+     * Descendant membership, credentials and executable authorization remain separate caller obligations.
+     * @param owner original independently authenticated native owner
+     * @throws IllegalArgumentException if the owner belongs to another authenticator
+     * @throws IOException if the original parent or namespace owner changed
+     */
+    void requireNamespaceOwner(Owner owner) throws IOException
+    {
+        requireOwner(owner);
+        requireOwnerLive(owner);
+    }
+
+    /**
      * Checks the retained original parent birth and trusted executable image.
      * @return current original parent observation
      * @throws IOException if the retained parent is stale or has another executable

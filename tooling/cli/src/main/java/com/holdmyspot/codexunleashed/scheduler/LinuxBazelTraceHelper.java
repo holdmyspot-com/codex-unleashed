@@ -246,9 +246,16 @@ final class LinuxBazelTraceHelper implements LinuxBazelHelperMain.Backend
         }
         else
         {
-            if (parent == null || observed.parent() != parent.image.localPid())
+            Generation originalRoot = null;
+            for (Generation generation : generations.values())
+                if (generation.image.localPid() == pid) originalRoot = generation;
+            boolean inheritedRoot = originalRoot != null && event.parentPid() == pid &&
+                LinuxBazelNamespaceHooks.authenticatedOrdinaryRootParent(collectedRoot, originalRoot.image,
+                    originalRoot.image.parent(), event.parentPid(), observed.parent());
+            if (parent == null && inheritedRoot) parent = originalRoot;
+            if (parent == null || (observed.parent() != parent.image.localPid() && !inheritedRoot))
                 throw new IOException("Native held child lacks its admitted original parent");
-            parent.image.requireUnchanged(inspect(parent.image.localPid()));
+            if (!inheritedRoot) parent.image.requireUnchanged(inspect(parent.image.localPid()));
         }
         LinuxBazelNamespaceHooks.requireRequestedImage(Path.of("/proc", Long.toString(target)),
             new FridaRuntime.Child(target, event.parentPid(), event.origin(), event.path()),

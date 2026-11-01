@@ -46,6 +46,29 @@ public final class LinuxBazelContainmentTest
     }
 
     /**
+     * Keeps descendant observation authority after root exit without granting root exec or whole-tree completion.
+     * @throws IOException if original namespace ownership or modeled group exclusion is rejected
+     */
+    @Test public void observesDescendantsAfterOrdinaryRootExit() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        try (LinuxBazelContainment containment = fixture.admit())
+        {
+            fixture.childGone = true;
+            fixture.group.member = false;
+            requireException(java.nio.file.NoSuchFileException.class, containment::requireContained);
+            containment.requireImageObservationAuthority();
+            requireThat(containment.observeExecutionImpossible(), "liveDescendantRemains").isFalse();
+            requireException(java.nio.file.NoSuchFileException.class, () -> containment.prepareExec(4, 31));
+            fixture.group.ownerInside = true;
+            requireException(IOException.class, containment::requireImageObservationAuthority);
+            fixture.group.ownerInside = false;
+            fixture.ownerGone = true;
+            requireException(java.nio.file.NoSuchFileException.class, containment::requireImageObservationAuthority);
+        }
+    }
+
+    /**
      * Advances only live identity after modeled original nonleader exec while preserving the native wait receipt.
      * @throws IOException if modeled original membership or authenticated migration is rejected
      */
@@ -520,6 +543,10 @@ public final class LinuxBazelContainmentTest
         private long childBirth = 30;
         /** Indicates whether a modeled child exec has changed its image while preserving identity. */
         private boolean changedImage;
+        /** Indicates the modeled original root has been collected while a descendant remains. */
+        private boolean childGone;
+        /** Indicates the original namespace owner can no longer be authenticated. */
+        private boolean ownerGone;
         /** Number of group allocation requests made by the production admission operation. */
         private int allocations;
 
@@ -547,6 +574,8 @@ public final class LinuxBazelContainmentTest
         @Override
         public LinuxBazelIdentity.Observation observe(long pid, Path executable) throws IOException
         {
+            if ((pid == 300 && childGone) || (pid == 200 && ownerGone))
+                throw new java.nio.file.NoSuchFileException("/proc/" + pid + "/stat");
             long birth;
             long parent;
             List<Long> pids;
