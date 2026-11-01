@@ -25,8 +25,8 @@
   },
   {
     "path": ".github/scripts/provision-release-scheduler.sh",
-    "sha256": "fc6d024fc37e2661c998bc0c6d6f23a093433b886d2a3c69917d12a1933d2673",
-    "bytes": 6154,
+    "sha256": "4224712eeb991e1c60ee3ef5524f902854fe146beaebd29ad420704b3727eb42",
+    "bytes": 6527,
     "mode": "0o755"
   },
   {
@@ -106,6 +106,12 @@
     "sha256": "63848f9ea9eb72a91b045008ac498253add2e218d44eac9bfa464ba35b9f8c9b",
     "bytes": 18657,
     "mode": "0o600"
+  },
+  {
+    "path": "tooling/cli/src/build/test/java/com/holdmyspot/codexunleashed/distribution/DistributionLauncherTest.java",
+    "sha256": "b260b65f67f8f83c011c0564b58a392c2851bced720391eaada86ddb95a5bc69",
+    "bytes": 5858,
+    "mode": "0o644"
   },
   {
     "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/AllocationHook.java",
@@ -889,8 +895,8 @@
   },
   {
     "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/ValidateReleaseSchedulerInstallation.java",
-    "sha256": "563e71f8011036c64907eb435229434c7cd2925d944e98960fc615da78c0c864",
-    "bytes": 4950,
+    "sha256": "6978cc21eb69adcc4918f61a2cf8444938e582809d9ae02bbe306a10d0ff5b61",
+    "bytes": 6114,
     "mode": "0o644"
   },
   {
@@ -1018,12 +1024,6 @@
     "sha256": "92c6f14c42bf7592d6e2696b86dc6748133cafc44566796beb21d0d56d5c1456",
     "bytes": 334,
     "mode": "0o600"
-  },
-  {
-    "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/distribution/DistributionLauncherTest.java",
-    "sha256": "b260b65f67f8f83c011c0564b58a392c2851bced720391eaada86ddb95a5bc69",
-    "bytes": 5858,
-    "mode": "0o644"
   },
   {
     "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/AllocationHookTest.java",
@@ -1813,8 +1813,8 @@
   },
   {
     "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/ValidateReleaseSchedulerInstallationTest.java",
-    "sha256": "78b9b4533092a8cd2086d7ed4276b9182498afb42c9fcea37cb9e57cc2558751",
-    "bytes": 5864,
+    "sha256": "787497d9ff1a32c4bc61160dd14d2c8e8b5f7f4141d0a3da20fc0f77099dbc7c",
+    "bytes": 7992,
     "mode": "0o644"
   },
   {
