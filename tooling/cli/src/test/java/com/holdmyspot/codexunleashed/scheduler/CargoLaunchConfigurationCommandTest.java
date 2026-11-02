@@ -5,12 +5,15 @@ import com.holdmyspot.codexunleashed.tooling.Main;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.testng.annotations.Test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -50,7 +53,7 @@ public final class CargoLaunchConfigurationCommandTest
     {
         try (Fixture fixture = new Fixture(); var tooling = new DefaultToolingScope(); var scope = new WindowsCargoScope(tooling))
         {
-            requireThat(fixture.run("Windows"), "windowsConstructionStatus").isEqualTo(0);
+            requireThat(fixture.runInProcess("Windows"), "windowsConstructionStatus").isEqualTo(0);
             var configuration = WindowsCargoLaunchConfiguration.read(scope, fixture.output);
             configuration.requireIdentities(fixture.frida, fixture.runtime, fixture.wrapper);
             requireThat(configuration.memory() != null, "generatedOutputBoundaryAccepted").isTrue();
@@ -66,7 +69,7 @@ public final class CargoLaunchConfigurationCommandTest
         TestRequirements.requirePosixFileSystem();
         try (Fixture fixture = new Fixture(); var tooling = new DefaultToolingScope(); var scope = new MacCargoScope(tooling))
         {
-            requireThat(fixture.run("macOS"), "macConstructionStatus").isEqualTo(0);
+            requireThat(fixture.runInProcess("macOS"), "macConstructionStatus").isEqualTo(0);
             var configuration = MacCargoLaunchConfiguration.read(scope, fixture.output);
             requireThat(configuration.identities().keySet(), "completeMacProducts")
                 .isEqualTo(java.util.Set.of("cargo", "rustc", "toolchain", "cargoBridge", "workload", "wrapper", "anchor", "frida", "javaRuntime"));
@@ -82,7 +85,7 @@ public final class CargoLaunchConfigurationCommandTest
         try (Fixture fixture = new Fixture())
         {
             Files.writeString(fixture.output, "original authorization");
-            requireThat(fixture.run("Linux") != 0, "existingPublicationRejected").isTrue();
+            requireThat(fixture.runInProcess("Linux") != 0, "existingPublicationRejected").isTrue();
             requireThat(Files.readString(fixture.output), "originalAuthorization").isEqualTo("original authorization");
         }
     }
@@ -96,7 +99,7 @@ public final class CargoLaunchConfigurationCommandTest
         try (Fixture fixture = new Fixture())
         {
             Files.delete(fixture.wrapper);
-            requireThat(fixture.run("Windows") != 0, "missingProductRejected").isTrue();
+            requireThat(fixture.runInProcess("Windows") != 0, "missingProductRejected").isTrue();
             requireThat(Files.exists(fixture.output), "noPartialAuthorization").isFalse();
         }
     }
@@ -152,22 +155,68 @@ public final class CargoLaunchConfigurationCommandTest
         }
 
         /**
-         * Invokes actual public Main in an owned Java process with a complete explicit representable environment.
+         * Builds the exact option list of one platform's construction command.
          * @param platform represented platform schema
-         * @return actual public command status
+         * @return command options following the command name
          */
-        private int run(String platform)
+        private List<String> arguments(String platform)
         {
-            List<String> arguments = new ArrayList<>(List.of("prepare-cargo-launch", "--platform", platform,
+            List<String> arguments = new ArrayList<>(List.of("--platform", platform,
                 "--runtime", runtime.toString(), "--toolchain", toolchain.toString(), "--frida-library", frida.toString(),
                 "--workspace", workspace.toString(), "--output-root", target.toString(), "--history", root.resolve("history").toString(),
                 "--output", output.toString()));
             if (!platform.equals("Windows")) arguments.addAll(List.of("--uid", "1001", "--gid", "1001"));
             if (platform.equals("Linux")) arguments.addAll(List.of("--unshare", root.resolve("unshare").toString(),
                 "--libcgroup", root.resolve("libcgroup").toString(), "--delegation-parent", "/sys/fs/cgroup/owned-release"));
+            return arguments;
+        }
+
+        /**
+         * Supplies the complete stage environment shared by both command invocations.
+         * @return explicit representable environment
+         */
+        private static Map<String, String> environment()
+        {
+            var environment = new HashMap<String, String>();
+            environment.put("PATH", System.getenv("PATH"));
+            if (System.getenv("SystemRoot") != null) environment.put("SystemRoot", System.getenv("SystemRoot"));
+            environment.put("STABLE_GIT_COMMIT", "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4");
+            environment.put("CODEX_BWRAP_SHA256", "fixture completed bwrap identity");
+            environment.put("EMPTY", "");
+            environment.put("RUSTC_WRAPPER", "foreign authority is excluded");
+            return environment;
+        }
+
+        /**
+         * Runs the command operation behind the public entry in this JVM, for claims about its inputs and published
+         * document that do not depend on a fresh process environment. A rejected construction is reported as status one,
+         * the status the public entry gives it.
+         * @param platform represented platform schema
+         * @return zero after publication, otherwise one
+         */
+        private int runInProcess(String platform)
+        {
+            try (var tooling = new DefaultToolingScope())
+            {
+                return CargoLaunchConfigurationCommand.run(tooling, arguments(platform).toArray(String[]::new),
+                    environment(), new PrintStream(OutputStream.nullOutputStream()));
+            }
+            catch (IOException | IllegalArgumentException rejected) { return 1; }
+        }
+
+        /**
+         * Invokes actual public Main in an owned Java process with a complete explicit representable environment.
+         * @param platform represented platform schema
+         * @return actual public command status
+         */
+        private int run(String platform)
+        {
+            List<String> arguments = new ArrayList<>(List.of("prepare-cargo-launch"));
+            arguments.addAll(arguments(platform));
             String javaName = System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java";
             var command = new ArrayList<>(List.of(Path.of(System.getProperty("java.home"), "bin", javaName).toString(),
-                "-Djava.io.tmpdir=" + root, "--enable-native-access=ALL-UNNAMED"));
+                "-Djava.io.tmpdir=" + root, "--enable-native-access=ALL-UNNAMED", "-Xshare:auto", "-XX:+UseSerialGC",
+                "-XX:TieredStopAtLevel=1"));
             if (Main.class.getModule().isNamed())
                 command.addAll(List.of("--module-path", System.getProperty("jdk.module.path"), "-m",
                     Main.class.getModule().getName() + "/" + Main.class.getName()));
@@ -176,12 +225,7 @@ public final class CargoLaunchConfigurationCommandTest
             command.addAll(arguments);
             var builder = new ProcessBuilder(command).directory(root.toFile());
             builder.environment().clear();
-            builder.environment().put("PATH", System.getenv("PATH"));
-            if (System.getenv("SystemRoot") != null) builder.environment().put("SystemRoot", System.getenv("SystemRoot"));
-            builder.environment().put("STABLE_GIT_COMMIT", "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4");
-            builder.environment().put("CODEX_BWRAP_SHA256", "fixture completed bwrap identity");
-            builder.environment().put("EMPTY", "");
-            builder.environment().put("RUSTC_WRAPPER", "foreign authority is excluded");
+            builder.environment().putAll(environment());
             builder.redirectOutput(root.resolve("command.out").toFile());
             builder.redirectError(root.resolve("command.err").toFile());
             Process child = null;

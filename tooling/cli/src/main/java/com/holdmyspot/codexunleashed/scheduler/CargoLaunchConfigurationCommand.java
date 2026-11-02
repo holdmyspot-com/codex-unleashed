@@ -48,10 +48,27 @@ public final class CargoLaunchConfigurationCommand
      */
     public static int run(ToolingScope tooling, String[] arguments, PrintStream out) throws IOException
     {
+        return run(tooling, arguments, System.getenv(), out);
+    }
+
+    /**
+     * Creates a new launch document like {@link #run(ToolingScope, String[], PrintStream)}, from an explicit caller
+     * environment.
+     * @param tooling borrowed caller services and bounded platform parsers
+     * @param arguments common construction options plus Unix credentials and Linux authority inputs where applicable
+     * @param callerEnvironment complete stage environment to copy into the document
+     * @param out borrowed progress stream; configuration contents and environment values are never printed
+     * @return zero after complete publication
+     * @throws IOException if an installed input, generated document or exclusive publication is invalid
+     * @throws IllegalArgumentException if options, paths or platform selection are invalid
+     */
+    static int run(ToolingScope tooling, String[] arguments, Map<String, String> callerEnvironment, PrintStream out)
+        throws IOException
+    {
         Map<String, String> options = options(arguments);
         String platform = options.get("--platform");
         Path output = path(options, "--output");
-        Map<String, Object> document = document(options, environment(platform, System.getenv()));
+        Map<String, Object> document = document(options, environment(platform, callerEnvironment));
         byte[] bytes = tooling.getJsonMapper().writeValueAsBytes(document);
         validate(tooling, platform, output, bytes);
         Files.write(output, bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);

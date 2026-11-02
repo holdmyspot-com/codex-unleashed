@@ -25,6 +25,9 @@ public final class CargoCachePartsTest
 
     /**
      * Archives exact groups, reuses unchanged layers, restores real files and retains unrelated target contents.
+     * This test stays near one second because its claims need real tar archives and one external registry
+     * process per ORAS operation across the first push, the reusing push and the pull; the fixture process is already
+     * reduced to JDK-only startup with no JSON mapper.
      * @throws Exception if fixture allocation or real archive operations fail
      */
     @Test public void groupedPushReuseAndOverlayPull() throws Exception
@@ -142,7 +145,7 @@ public final class CargoCachePartsTest
             String classPath = System.getProperty("java.class.path");
             if (Registry.class.getModule().isNamed())
                 classPath += java.io.File.pathSeparator + System.getProperty("jdk.module.path");
-            environment.put("CARGO_CACHE_ORAS_COMMAND", scope.getJsonMapper().writeValueAsString(List.of(javaExecutable,"-Xmx64m","-cp",classPath,Registry.class.getName())));
+            environment.put("CARGO_CACHE_ORAS_COMMAND", scope.getJsonMapper().writeValueAsString(List.of(javaExecutable,"-Xmx64m","-Xshare:auto","-XX:+UseSerialGC","-XX:TieredStopAtLevel=1","-cp",classPath,Registry.class.getName())));
             environment.put("CACHE_FIXTURE_ROOT",registry.toString());environment.put("CACHE_FIXTURE_AUTH","original-auth");
         }
         /**
@@ -180,37 +183,33 @@ public final class CargoCachePartsTest
         {
             if (!"original-auth".equals(System.getenv("CACHE_FIXTURE_AUTH"))) { System.err.println("unauthorized");System.exit(19); }
             Path root=Path.of(System.getenv("CACHE_FIXTURE_ROOT"));
-            try(var scope=new DefaultToolingScope())
+            if(arguments[0].equals("manifest")&&arguments[1].equals("fetch"))
             {
-                if(arguments[0].equals("manifest")&&arguments[1].equals("fetch"))
-                {
-                    String reference=arguments[arguments.length-1];Path path=root.resolve(reference.substring(reference.lastIndexOf(':')+1));
-                    if(!Files.exists(path)){System.err.println("MANIFEST_UNKNOWN");System.exit(1);}
-                    var content=scope.getJsonMapper().readTree(Files.readString(path));
-                    System.out.println(scope.getJsonMapper().writeValueAsString(Map.of("content",content,"digest","sha256:fixture")));return;
-                }
-                if(arguments[0].equals("blob")&&arguments[1].equals("push"))
-                {
-                    String fail=System.getenv("CACHE_FIXTURE_FAIL_BLOB");if(fail!=null){System.err.println("fixture blob failure");System.exit(Integer.parseInt(fail));}
-                    Path input=Path.of(arguments[arguments.length-1]);byte[] bytes=Files.readAllBytes(input);
-                    String digest=HexFormat.of().formatHex(CargoCacheKeys.digest().digest(bytes));
-                    Files.copy(input,root.resolve("blob-"+digest),StandardCopyOption.REPLACE_EXISTING);
-                    System.out.println(scope.getJsonMapper().writeValueAsString(Map.of("mediaType",arguments[4],"digest","sha256:"+digest,"size",bytes.length)));return;
-                }
-                if(arguments[0].equals("manifest")&&arguments[1].equals("push"))
-                {
-                    Path input=Path.of(arguments[3]);Files.copy(input,root.resolve("last-manifest"),StandardCopyOption.REPLACE_EXISTING);
-                    String ref=arguments[2];String[] aliases=ref.substring(ref.lastIndexOf(':')+1).split(",");
-                    for(String alias:aliases)Files.copy(input,root.resolve(alias),StandardCopyOption.REPLACE_EXISTING);
-                    System.out.println("published");return;
-                }
-                if(arguments[0].equals("blob")&&arguments[1].equals("fetch"))
-                {
-                    String digest=arguments[arguments.length-1];digest=digest.substring(digest.lastIndexOf(':')+1);
-                    Files.copy(root.resolve("blob-"+digest),Path.of(arguments[3]),StandardCopyOption.REPLACE_EXISTING);return;
-                }
-                throw new IOException("Unexpected fixture ORAS operation");
+                String reference=arguments[arguments.length-1];Path path=root.resolve(reference.substring(reference.lastIndexOf(':')+1));
+                if(!Files.exists(path)){System.err.println("MANIFEST_UNKNOWN");System.exit(1);}
+                System.out.println("{\"content\":"+Files.readString(path)+",\"digest\":\"sha256:fixture\"}");return;
             }
+            if(arguments[0].equals("blob")&&arguments[1].equals("push"))
+            {
+                String fail=System.getenv("CACHE_FIXTURE_FAIL_BLOB");if(fail!=null){System.err.println("fixture blob failure");System.exit(Integer.parseInt(fail));}
+                Path input=Path.of(arguments[arguments.length-1]);byte[] bytes=Files.readAllBytes(input);
+                String digest=HexFormat.of().formatHex(CargoCacheKeys.digest().digest(bytes));
+                Files.copy(input,root.resolve("blob-"+digest),StandardCopyOption.REPLACE_EXISTING);
+                System.out.println("{\"mediaType\":\""+arguments[4]+"\",\"digest\":\"sha256:"+digest+"\",\"size\":"+bytes.length+"}");return;
+            }
+            if(arguments[0].equals("manifest")&&arguments[1].equals("push"))
+            {
+                Path input=Path.of(arguments[3]);Files.copy(input,root.resolve("last-manifest"),StandardCopyOption.REPLACE_EXISTING);
+                String ref=arguments[2];String[] aliases=ref.substring(ref.lastIndexOf(':')+1).split(",");
+                for(String alias:aliases)Files.copy(input,root.resolve(alias),StandardCopyOption.REPLACE_EXISTING);
+                System.out.println("published");return;
+            }
+            if(arguments[0].equals("blob")&&arguments[1].equals("fetch"))
+            {
+                String digest=arguments[arguments.length-1];digest=digest.substring(digest.lastIndexOf(':')+1);
+                Files.copy(root.resolve("blob-"+digest),Path.of(arguments[3]),StandardCopyOption.REPLACE_EXISTING);return;
+            }
+            throw new IOException("Unexpected fixture ORAS operation");
         }
     }
 }

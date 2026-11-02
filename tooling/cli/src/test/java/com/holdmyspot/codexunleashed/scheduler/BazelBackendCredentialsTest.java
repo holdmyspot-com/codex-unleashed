@@ -42,6 +42,10 @@ public final class BazelBackendCredentialsTest
 
     /**
      * Issuing credentials creates distinct CA-signed server/client identities with matching private keys.
+     * This test stays above one second because the claim needs the real JDK keytool: issuance runs eight keytool JVMs in
+     * sequence (CA creation and export, then key, request and signature for each of the server and worker), at about
+     * half a second each, and every assertion below reads their output. A faster stand-in would not prove that keytool
+     * output is signed by the CA and matches the exported keys, and parallel leaf issuance would change production code.
      * @throws Exception if issuance or native certificate verification fails
      */
     @Test
