@@ -72,7 +72,8 @@ final class WindowsCargoRegistration
 
     /**
      * Derives launch authentication only from original retained creation authorities and sealed child state.
-     * Every non-Cargo ancestor must be the pinned packaged launcher; jpackage may restart that executable.
+     * The peer and its consecutive ancestors must be the pinned packaged launcher, which jpackage may restart; any
+     * higher ancestor, such as a build script, must be a retained process of the Cargo Job.
      * @param scope borrowed linker provider
      * @param cargo retained original Cargo Job
      * @param observer creation/event join owner that sealed actual child state before resume
@@ -87,14 +88,19 @@ final class WindowsCargoRegistration
     {
         WindowsCreationReceipt peer = observer.receipt(peerPid).orElseThrow(
             () -> new IOException("Pipe peer has no retained original creation receipt"));
-        WindowsCreationReceipt cursor = peer;
+        Link start = link(peer);
+        List<Link> wrappers = wrapperChain(start, pid -> cargo.creationReceipt(pid).map(WindowsCargoRegistration::link),
+            cargo.pid(), cargo.birth(), wrapper);
         List<String> arguments = null;
-        var seen = new HashSet<Long>();
-        while (true)
+        WindowsCreationReceipt cursor = peer;
+        for (int index = 0; index < wrappers.size(); ++index)
         {
-            if (!seen.add(cursor.pid())) throw new IOException("Packaged wrapper ancestry contains a cycle");
-            if (!cursor.executable().equals(wrapper))
-                throw new IOException("Registration peer delegates through an unexpected executable: " + cursor.executable());
+            if (index > 0)
+            {
+                long pid = wrappers.get(index).pid();
+                cursor = cargo.creationReceipt(pid).orElseThrow(
+                    () -> new IOException("Packaged launcher has no retained original creator"));
+            }
             String expectedHash = imageHashes.get(cursor.executable());
             if (expectedHash == null || !expectedHash.equals(hash(cursor.executable())))
                 throw new IOException("Packaged wrapper executable differs from its immutable image identity");
@@ -103,21 +109,78 @@ final class WindowsCargoRegistration
             List<String> compiler = List.copyOf(command.subList(1, command.size()));
             if (arguments == null) arguments = compiler;
             else if (!arguments.equals(compiler)) throw new IOException("Restarted launcher changed logical compiler arguments");
-            if (cursor.parentPid() == cargo.pid())
-            {
-                if (cursor.parentBirth() != cargo.birth()) throw new IOException("Original Cargo ancestor birth differs");
-                break;
-            }
-            WindowsCreationReceipt parent = cargo.creationReceipt(cursor.parentPid()).orElseThrow(
-                () -> new IOException("Packaged launcher has no retained original creator"));
-            if (parent.birth() != cursor.parentBirth()) throw new IOException("Retained wrapper creator birth differs");
-            cursor = parent;
         }
         var state = peer.state();
         var environment = nativeEnvironment(state.environment());
         peer.requireLive();
         return new NativeSource(peer, cargo.pid(), cargo.birth(), arguments,
             Path.of(state.directory()).toAbsolutePath().normalize(), environment);
+    }
+
+    /**
+     * Retained creation facts of one process in the original Cargo Job.
+     * @param pid process identifier
+     * @param birth process creation time
+     * @param parentPid creator process identifier
+     * @param parentBirth creator creation time
+     * @param executable absolute native image path
+     */
+    record Link(long pid, long birth, long parentPid, long parentBirth, Path executable)
+    {
+        /**
+         * Validates the link.
+         * @throws NullPointerException if executable is null
+         */
+        Link { Objects.requireNonNull(executable, "executable"); }
+    }
+
+    /**
+     * Copies the ancestry facts of a retained creation receipt.
+     * @param receipt retained original creation authority
+     * @return immutable link
+     */
+    private static Link link(WindowsCreationReceipt receipt)
+    {
+        return new Link(receipt.pid(), receipt.birth(), receipt.parentPid(), receipt.parentBirth(), receipt.executable());
+    }
+
+    /**
+     * Walks a registering wrapper's retained ancestry to the original Cargo process.
+     * The peer and each consecutive ancestor up to the first other image must be the pinned wrapper, because jpackage
+     * may restart it. Any remaining ancestors, such as a build script that runs the compiler, must each be a process the
+     * Cargo Job created, so the chain reaches Cargo only through retained original creation authority.
+     * @param peer retained creation facts of the registering process
+     * @param creator retained creation facts for a process created inside the Cargo Job, or empty
+     * @param cargoPid original Cargo process identifier
+     * @param cargoBirth original Cargo creation time
+     * @param wrapper pinned packaged wrapper executable
+     * @return the peer followed by its consecutive wrapper ancestors
+     * @throws IOException if the peer is not the wrapper, a wrapper reappears above another image, a creator is not
+     *     retained, a birth differs, or the ancestry contains a cycle
+     */
+    static List<Link> wrapperChain(Link peer, java.util.function.LongFunction<java.util.Optional<Link>> creator,
+        long cargoPid, long cargoBirth, Path wrapper) throws IOException
+    {
+        List<Link> wrappers = new ArrayList<>();
+        var seen = new HashSet<Long>();
+        Link cursor = peer;
+        while (true)
+        {
+            if (!seen.add(cursor.pid())) throw new IOException("Packaged wrapper ancestry contains a cycle");
+            boolean isWrapper = cursor.executable().equals(wrapper);
+            if (isWrapper && wrappers.size() == seen.size() - 1) wrappers.add(cursor);
+            else if (wrappers.isEmpty() || isWrapper)
+                throw new IOException("Registration peer delegates through an unexpected executable: " + cursor.executable());
+            if (cursor.parentPid() == cargoPid)
+            {
+                if (cursor.parentBirth() != cargoBirth) throw new IOException("Original Cargo ancestor birth differs");
+                return List.copyOf(wrappers);
+            }
+            Link parent = creator.apply(cursor.parentPid()).orElseThrow(
+                () -> new IOException("Wrapper ancestor has no retained original creator"));
+            if (parent.birth() != cursor.parentBirth()) throw new IOException("Retained wrapper creator birth differs");
+            cursor = parent;
+        }
     }
 
     /**
