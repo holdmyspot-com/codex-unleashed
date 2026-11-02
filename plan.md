@@ -55,7 +55,12 @@ No root command remains in progress inside the Windows shell. The successor must
   - Windows `41453055655`: `os.execv` lost the fixture adapter's exit status. `9dfd6a666b` uses `subprocess.run`.
   - ARM macOS `41453059700`: the jobserver lease prepends to `PATH`, so registration rejected the changed entry. `9322e5c318` builds the registration policy from the lease environment, as Linux does (`MacCargoRegistrationPolicyTest`).
   - Windows `41454210285` and `41455476149`: tests that use bash or POSIX paths now skip on Windows (`9322e5c318`, `981112115d`).
-  - Current: Windows `41456129467` (`981112115d`) and ARM macOS `41455480286` (`9322e5c318`).
+  - Windows `41456129467` hid its cause behind pending cleanup. `16ff601b74` prints every cause, and `5a38a05b30` prints suppressed context too.
+  - Windows `41458014269`: a compiler wrapper started by a Cargo build script was rejected. `4d7835f3f9` accepts a wrapper chain whose non-wrapper ancestors are retained Cargo creation receipts (`WindowsWrapperAncestryTest`).
+  - x64 Linux `41450457062`: a Frida leader dispatch error was fatal. `cc61c125e6` retries the attempt up to three times in a row (`LeaderDispatchRetriesTest`). `48a710b344` accepts a compiler that succeeds after its termination was requested.
+  - ARM Linux `41450461991` and `41466828942`, x64 Linux `41466838462`: cargo panicked (`dependency_queue.rs:190`) on a duplicate rustc artifact notification after a pressure retry. `19d6cf57da` relays compiler stderr through a pipe that drops repeated artifact lines. `e852fe6ff6` recognizes the rustc 1.95 `{"$message_type":"artifact",...}` form.
+  - ARM macOS `41455480286`, `41466833994` and `41468757542`: Frida attach to `/usr/bin/xcrun` failed with `KERN_PROTECTION_FAILURE` (platform binary). `ddeca7c64b` treats a child that exits during attach as an ordinary exit. `4d6ea4ff33` checks `CS_PLATFORM_BINARY` through `csops` and resumes such images uninstrumented. Gap: the children of a platform image are not gated or hooked, but the workload coalition still covers them.
+  - Current (all `cache=true`): ARM Linux `41478388482` and x64 Linux `41478393647` (`e852fe6ff6`), Windows `41459753721` (`4d7835f3f9`), ARM macOS `41479617969` (`4d6ea4ff33`).
 - Next: finish that run (resumption, CLI/app-server smokes, timings). Cut the per-image hold cost (keep one tracer resident across images). Then do macOS remote validation.
 
 ### Ready continuations and precise evidence limits
