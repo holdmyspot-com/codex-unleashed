@@ -51,8 +51,47 @@ public final class LinuxCargoRootDescendantTest
         requireThat(queue.size(), "oneHeldTransition").isEqualTo(1);
         routing.prepare(compiler, event());
         routing.completed(compiler, event());
-        requireException(IOException.class, () -> routing.route(cargo, event()));
         requireException(IOException.class, () -> routing.prepare(compiler, event()));
+    }
+
+    /** A source that already delivered a completed transition reports an identical event only for a new held
+     * transition, such as a process executing the same path again, which its owner receives and continues once.
+     * @throws IOException if controlled setup or expected successful readiness fails
+     */
+    @Test
+    public void acceptsRepeatedTransitionFromSameSourceAfterCompletion() throws IOException
+    {
+        var routing = new AllocationHooks.Routing();
+        List<FridaRuntime.Child> queue = new ArrayList<>();
+        var compiler = routing.register(pid -> true, queue::add);
+        routing.route(compiler, event());
+        routing.prepare(compiler, event());
+        routing.completed(compiler, event());
+        routing.route(compiler, event());
+        requireThat(queue.size(), "secondHeldTransition").isEqualTo(2);
+        routing.prepare(compiler, event());
+        routing.completed(compiler, event());
+        requireException(IOException.class, () -> routing.prepare(compiler, event()));
+    }
+
+    /** Another source's late copy of a completed transition grants no second continuation and is not delivered.
+     * @throws IOException if controlled setup or expected successful readiness fails
+     */
+    @Test
+    public void ignoresLateCopyFromAnotherSourceAfterCompletion() throws IOException
+    {
+        var routing = new AllocationHooks.Routing();
+        List<FridaRuntime.Child> queue = new ArrayList<>();
+        var cargo = routing.register(pid -> false, ignored -> {});
+        var compiler = routing.register(pid -> true, queue::add);
+        routing.route(compiler, event());
+        routing.prepare(compiler, event());
+        routing.completed(compiler, event());
+        routing.route(cargo, event());
+        requireThat(queue.size(), "lateCopyNotDelivered").isEqualTo(1);
+        requireException(IOException.class, () -> routing.prepare(compiler, event()));
+        routing.route(cargo, event());
+        requireThat(queue.size(), "cargoRepeatIsNewTransition").isEqualTo(2);
     }
 
     /** A canceled original owner never transfers continuation to another manager.

@@ -27,8 +27,10 @@ final class AllocationHooks
     /**
      * Invocation-owned device-event dispatcher. Current containment selects a controller; that controller still
      * authenticates lineage and resumes only through its own retained original manager. No native event creates an
-     * action identity. Duplicate pending deliveries are coalesced; an indistinguishable delivery after continuation
-     * is rejected because the callback API has no transition identifier with which to authorize another resume.
+     * action identity. Duplicate pending deliveries are coalesced. The callback API carries no transition identifier,
+     * so after a successful continuation an identical event from a source that already reported it is a new held
+     * transition (a manager reports each hold once), while another source's first copy is a late duplicate that grants
+     * nothing. A delivery after an uncertain continuation is rejected.
      */
     static final class Routing
     {
@@ -80,10 +82,21 @@ final class AllocationHooks
             Transition previous = transitions.get(child);
             if (previous != null)
             {
-                if (previous.target != target || previous.attempted)
+                if (previous.completed && previous.sources.contains(source))
+                    previous = null;
+                else if (previous.completed)
+                {
+                    // Another manager's late copy of a transition that already continued needs no action.
+                    previous.sources.add(source);
+                    return;
+                }
+                else if (previous.target != target || previous.attempted)
                     throw new IOException("Held image delivery cannot authorize a second continuation");
-                previous.sources.add(source);
-                return;
+                else
+                {
+                    previous.sources.add(source);
+                    return;
+                }
             }
             var transition = new Transition(target);
             transition.sources.add(source);
