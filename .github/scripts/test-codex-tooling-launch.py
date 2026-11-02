@@ -36,6 +36,7 @@ class CodexToolingLaunchTest(unittest.TestCase):
             result = self.pull(root, 'Linux', launcher)
             self.assertEqual(result.returncode, 0, result.stderr)
 
+    @unittest.skipIf(sys.platform == 'win32', 'A bare bash on Windows may be WSL, which cannot read native Windows paths')
     def test_other_runners_source_bash_launcher(self):
         """Other runners keep passing their non-executable Bash launcher to Bash."""
         with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as tmp:

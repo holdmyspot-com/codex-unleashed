@@ -649,8 +649,9 @@ final class MacCargoInvocation implements CargoSession.Invocation
             cargoOwner = new MacWorkloadNative.Owner(scope.tooling(), launch, manager);
             MacImages.Identity root = cargoOwner.root();
             rootAuthority = cargoOwner.authority(root);
-            registration = estimates == null ? new MacCargoRegistration(config.registration(), cargoOwner, root) :
-                new MacCargoRegistration(config.registration(), cargoOwner, root, estimates);
+            MacCargoRegistration.Configuration policy = registrationFor(config.registration(), lease.environment());
+            registration = estimates == null ? new MacCargoRegistration(policy, cargoOwner, root) :
+                new MacCargoRegistration(policy, cargoOwner, root, estimates);
             rootTokens = lease.retainAttempt();
             cargoInstrumentation = new MacCargoInstrumentation(scope.tooling(), UUID.randomUUID(), manager, cargoOwner,
                 lease, rootTokens, new AllocationWaits(), config.timeout(), attempts::pumpAll, MacCargoInstrumentation.Mode.ROOT_CARGO);
@@ -845,6 +846,29 @@ final class MacCargoInvocation implements CargoSession.Invocation
         return new MacWorkloadNative.Launch(launch.library(), launch.helper(), launch.directory(), launch.workingDirectory(),
             launch.streams(), launch.command(), environment.entrySet().stream().map(entry -> entry.getKey() + "=" + entry.getValue()).toList(),
             launch.uid(), launch.gid());
+    }
+
+    /**
+     * Returns the compiler registration policy for the environment Cargo actually received.
+     * The jobserver lease may rewrite a required entry, such as {@code PATH} naming the make front end first; every
+     * compiler then inherits the lease value, so registration requires that value instead of the original one.
+     * @param trusted trusted registration policy built from the original Cargo environment
+     * @param lease exact complete lease environment published to Cargo
+     * @return equivalent policy whose required entries take the lease values
+     * @throws IllegalArgumentException if the lease removes a required entry
+     */
+    static MacCargoRegistration.Configuration registrationFor(MacCargoRegistration.Configuration trusted,
+        Map<String, String> lease)
+    {
+        Map<String, String> required = new LinkedHashMap<>();
+        for (String name : trusted.requiredEnvironment().keySet())
+        {
+            String value = lease.get(name);
+            if (value == null) throw new IllegalArgumentException("Jobserver lease removed required Cargo environment entry: " + name);
+            required.put(name, value);
+        }
+        return new MacCargoRegistration.Configuration(trusted.cargoExecutable(), trusted.wrapperExecutable(),
+            trusted.rustcExecutable(), trusted.uid(), trusted.gid(), required);
     }
 
     /**
