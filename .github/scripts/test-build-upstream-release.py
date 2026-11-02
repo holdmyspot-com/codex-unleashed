@@ -50,10 +50,11 @@ if binary == 'bwrap':
             rustc.chmod(0o755)
             scheduler = root / "scheduler adapter ; literal"
             scheduler.write_text("""#!/usr/bin/env python3
-import json, os, sys
+import json, os, subprocess, sys
 with open(os.environ['EVENTS'], 'a') as log:
     log.write(json.dumps(['schedule', sys.argv[1:]]) + '\\n')
-os.execv(sys.executable, [sys.executable, os.environ['FIXTURE_CARGO'], *sys.argv[1:]])
+# Windows os.execv starts a new process and exits 0, so run Cargo as a child to keep its status.
+sys.exit(subprocess.run([sys.executable, os.environ['FIXTURE_CARGO'], *sys.argv[1:]]).returncode)
 """)
             scheduler.chmod(0o755)
             checkpoint = root / "checkpoint"
