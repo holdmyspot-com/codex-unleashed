@@ -203,7 +203,8 @@ public final class Scheduler
     }
 
     /**
-     * Prints a failure and each distinct cause, one message per line, so the root cause reaches the diagnostic stream.
+     * Prints a failure, each distinct cause and their suppressed failures, one message per line, so the root cause and
+     * its context reach the diagnostic stream.
      * @param failure failure to report
      * @param err diagnostic stream
      * @throws NullPointerException if an argument is null
@@ -213,8 +214,33 @@ public final class Scheduler
         err.println("ERROR: " + failure.getMessage());
         var seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Throwable, Boolean>());
         seen.add(failure);
+        reportSuppressed(failure, "", seen, err);
         for (Throwable cause = failure.getCause(); cause != null && seen.add(cause); cause = cause.getCause())
+        {
             err.println("Caused by: " + cause.getMessage());
+            reportSuppressed(cause, "", seen, err);
+        }
+    }
+
+    /**
+     * Prints the suppressed failures of one reported failure, each with its own causes, so that context attached during
+     * cleanup reaches the diagnostic stream.
+     * @param failure reported failure
+     * @param indent prefix of the reported failure's lines
+     * @param seen failures already printed
+     * @param err diagnostic stream
+     */
+    private static void reportSuppressed(Throwable failure, String indent, java.util.Set<Throwable> seen, PrintStream err)
+    {
+        String nested = indent + "  ";
+        for (Throwable suppressed : failure.getSuppressed())
+        {
+            if (!seen.add(suppressed)) continue;
+            err.println(nested + "Suppressed: " + suppressed.getMessage());
+            reportSuppressed(suppressed, nested, seen, err);
+            for (Throwable cause = suppressed.getCause(); cause != null && seen.add(cause); cause = cause.getCause())
+                err.println(nested + "Caused by: " + cause.getMessage());
+        }
     }
 
     /**

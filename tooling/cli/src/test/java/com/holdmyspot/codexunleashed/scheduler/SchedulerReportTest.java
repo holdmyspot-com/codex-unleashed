@@ -26,4 +26,17 @@ public final class SchedulerReportTest
         requireThat(text, "report").contains("Caused by: Windows Cargo token delivery failed");
         requireThat(text, "report").contains("Caused by: pipe disconnected");
     }
+    /** Context attached to a cause as a suppressed failure is printed with that cause. */
+    @Test
+    public void printsSuppressedContext()
+    {
+        var attach = new IOException("frida_device_attach_sync failed");
+        attach.addSuppressed(new IOException("Held image transition failed: pid=7, reportedPath=/usr/bin/cc"));
+        var failure = new IllegalStateException("Action poll failed", attach);
+        var bytes = new ByteArrayOutputStream();
+        try (var err = new PrintStream(bytes, true, StandardCharsets.UTF_8)) { Scheduler.report(failure, err); }
+        String text = bytes.toString(StandardCharsets.UTF_8);
+        requireThat(text, "report").contains("Caused by: frida_device_attach_sync failed");
+        requireThat(text, "report").contains("Suppressed: Held image transition failed: pid=7, reportedPath=/usr/bin/cc");
+    }
 }
