@@ -50,6 +50,13 @@ final class LinuxCargoJobserver implements AutoCloseable
 	static final int READ_DESCRIPTOR = 200;
 	/** Descriptor number on which every Cargo-tree leader installs the FIFO for jobserver writes. */
 	static final int WRITE_DESCRIPTOR = 201;
+	/** Directory, inside the owned directory, holding the make front end that PATH names first. */
+	private static final String FRONT_END_DIRECTORY = "bin";
+	/** Front-end directory access permitting the workload group to look up the front end by name. */
+	private static final Set<PosixFilePermission> FRONT_END_DIRECTORY_PERMISSIONS =
+		Set.copyOf(PosixFilePermissions.fromString("rwx--x---"));
+	/** Front-end script access permitting the workload group to read and execute it. */
+	private static final Set<PosixFilePermission> FRONT_END_PERMISSIONS = Set.copyOf(PosixFilePermissions.fromString("rwxr-x---"));
 	/** Numeric group attribute supplied by the pinned Linux JDK filesystem provider. */
 	private static final String GROUP_ATTRIBUTE = "unix:gid";
 	/** Native operations; the retained descriptor belongs to this owner rather than an arena. */
@@ -60,6 +67,12 @@ final class LinuxCargoJobserver implements AutoCloseable
 	private Path fifo = null;
 	/** Indicates whether this operation created the FIFO entry. */
 	private boolean fifoCreated = false;
+	/** Workload GID granted access to the FIFO and the make front end. */
+	private int workloadGroup = -1;
+	/** Created make front end, or null when none was created or after its deletion. */
+	private Path frontEnd = null;
+	/** Created front-end directory, or null when none was created or after its deletion. */
+	private Path frontEndDirectory = null;
 	/** Retained Linux descriptor, or -1 before open and after its single close attempt. */
 	private int descriptor = -1;
 	/** Indicates whether this owner has already supplied its single Cargo invocation. */
@@ -143,6 +156,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 	private static LinuxCargoJobserver acquire(Path parent, int workloadGroup, int jobs, Calls calls) throws IOException
 	{
 		LinuxCargoJobserver owner = new LinuxCargoJobserver(calls);
+		owner.workloadGroup = workloadGroup;
 		try
 		{
 			owner.directory = Files.createTempDirectory(parent, DIRECTORY_PREFIX,
@@ -221,15 +235,22 @@ final class LinuxCargoJobserver implements AutoCloseable
 	/**
 	 * Reserves the only Cargo invocation and supplies its complete immutable environment.
 	 * Existing make flags are rejected, including empty values, before this owner's one borrow is consumed.
+	 * <p>
+	 * The make flags name the FIFO by path. With numeric descriptors, the jobserver crate adds a pre-exec hook to
+	 * every Cargo child, which forces fork; concurrent forks under Frida child gating abort the forking process.
+	 * GNU Make before 4.4 rejects a FIFO path, so when {@code PATH} names a {@code make}, the lease prepends an owned
+	 * directory whose {@code make} front end rewrites the FIFO path to the descriptor numbers in
+	 * {@link CargoLease#descriptors()} and executes that make. Every process that receives the environment must start
+	 * with the FIFO open on those numbers.
 	 * @param environment complete root environment without CARGO_MAKEFLAGS, MAKEFLAGS or MFLAGS
-	 * The make flags name the FIFO by the descriptor numbers in {@link CargoLease#descriptors()}; every process that
-	 * receives the environment must start with the FIFO open on those numbers.
 	 * @return lease that must outlive every consumer and every retry of this Cargo invocation
 	 * @throws NullPointerException if the map or an entry is null
-	 * @throws IllegalArgumentException if an owned make-variable key is already present
+	 * @throws IllegalArgumentException if an owned make-variable key is already present, or the make that
+	 *   {@code PATH} names has a path that a shell word cannot carry
 	 * @throws IllegalStateException if closing has begun or the single invocation was already retained
+	 * @throws IOException if the make front end cannot be created
 	 */
-	CargoLease retainCargo(Map<String, String> environment)
+	CargoLease retainCargo(Map<String, String> environment) throws IOException
 	{
 		Map<String, String> copy = new HashMap<>(Map.copyOf(environment));
 		for (String name : MAKE_VARIABLES)
@@ -237,11 +258,17 @@ final class LinuxCargoJobserver implements AutoCloseable
 				throw new IllegalArgumentException("Root Cargo environment already contains " + name);
 		if (closing || retained)
 			throw new IllegalStateException("Jobserver is closing or its single Cargo invocation was already retained");
-		// GNU Make 4.3 and older read only descriptor pairs; each leader opens the FIFO on these numbers before exec.
-		String auth = READ_DESCRIPTOR + "," + WRITE_DESCRIPTOR;
+		String auth = "fifo:" + fifo;
 		String flags = "-j " + FDS_OPTION + auth + " " + AUTH_OPTION + auth;
 		for (String name : MAKE_VARIABLES)
 			copy.put(name, flags);
+		String search = copy.get("PATH");
+		if (search != null)
+		{
+			Path make = findMake(search);
+			if (make != null)
+				copy.put("PATH", createFrontEnd(make, auth) + ":" + search);
+		}
 		CargoLease result = new CargoLease(Map.copyOf(copy));
 		retained = true;
 		lease = result;
@@ -249,7 +276,76 @@ final class LinuxCargoJobserver implements AutoCloseable
 	}
 
 	/**
-	 * Releases the descriptor once, then removes only the created FIFO and directory.
+	 * Finds the make that a build script running {@code make} would execute.
+	 * @param search colon-separated executable search path
+	 * @return real path of the first executable {@code make}, or null when none exists
+	 * @throws IOException if a found make cannot be resolved
+	 */
+	private static Path findMake(String search) throws IOException
+	{
+		for (String entry : search.split(":", -1))
+		{
+			if (entry.isEmpty() || !entry.startsWith("/"))
+				continue;
+			Path candidate = Path.of(entry, "make");
+			if (Files.isRegularFile(candidate) && Files.isExecutable(candidate))
+				return candidate.toRealPath();
+		}
+		return null;
+	}
+
+	/**
+	 * Creates the make front end that replaces the FIFO path in make flags with the lease's descriptor numbers.
+	 * The workload can look the front end up and execute it but cannot modify or replace it.
+	 * @param make real path of the make to execute
+	 * @param auth FIFO auth value to replace
+	 * @return front-end directory
+	 * @throws IOException if creation or access publication fails
+	 */
+	private Path createFrontEnd(Path make, String auth) throws IOException
+	{
+		for (String word : new String[] {make.toString(), auth})
+			if (!word.matches("[A-Za-z0-9_./:+=,@%-]+"))
+				throw new IllegalArgumentException("Make front end cannot quote " + word);
+		String script = """
+			#!/bin/sh
+			# Owned by one Cargo jobserver lease. GNU Make before 4.4 reads jobserver descriptors, not a FIFO path.
+			replace() {
+			  rest=$1 result=
+			  while :; do
+			    case $rest in
+			      *'%1$s'*) result=$result${rest%%%%'%1$s'*}'%2$s'; rest=${rest#*'%1$s'} ;;
+			      *) break ;;
+			    esac
+			  done
+			  printf '%%s' "$result$rest"
+			}
+			for name in CARGO_MAKEFLAGS MAKEFLAGS MFLAGS; do
+			  eval "set=\\${$name+x} value=\\${$name-}"
+			  if [ -n "$set" ]; then
+			    value=$(replace "$value")
+			    eval "$name=\\$value"
+			    export "$name"
+			  fi
+			done
+			exec '%3$s' "$@"
+			""".formatted(auth, READ_DESCRIPTOR + "," + WRITE_DESCRIPTOR, make);
+		frontEndDirectory = Files.createDirectory(directory.resolve(FRONT_END_DIRECTORY),
+			PosixFilePermissions.asFileAttribute(SETUP_PERMISSIONS));
+		frontEnd = Files.createFile(frontEndDirectory.resolve("make"),
+			PosixFilePermissions.asFileAttribute(INITIAL_FIFO_PERMISSIONS));
+		Files.writeString(frontEnd, script);
+		Files.setAttribute(frontEnd, GROUP_ATTRIBUTE, workloadGroup);
+		Files.setPosixFilePermissions(frontEnd, FRONT_END_PERMISSIONS);
+		verifyAccess(frontEnd, workloadGroup, FRONT_END_PERMISSIONS);
+		Files.setAttribute(frontEndDirectory, GROUP_ATTRIBUTE, workloadGroup);
+		Files.setPosixFilePermissions(frontEndDirectory, FRONT_END_DIRECTORY_PERMISSIONS);
+		verifyAccess(frontEndDirectory, workloadGroup, FRONT_END_DIRECTORY_PERMISSIONS);
+		return frontEndDirectory;
+	}
+
+	/**
+	 * Releases the descriptor once, then removes only the created FIFO, make front end and directory.
 	 * A live lease rejects close without changing resources. After a cleanup failure, retry close for unresolved
 	 * path deletion only. Linux releases a descriptor even when close reports EINTR, so its number is never retried.
 	 * @throws IllegalStateException if the Cargo lease remains live
@@ -280,7 +376,25 @@ final class LinuxCargoJobserver implements AutoCloseable
 			}
 			catch (IOException cleanup) { failure = combine(failure, cleanup); }
 		}
-		if (!fifoCreated && directory != null)
+		if (frontEnd != null)
+		{
+			try
+			{
+				Files.delete(frontEnd);
+				frontEnd = null;
+			}
+			catch (IOException cleanup) { failure = combine(failure, cleanup); }
+		}
+		if (frontEnd == null && frontEndDirectory != null)
+		{
+			try
+			{
+				Files.delete(frontEndDirectory);
+				frontEndDirectory = null;
+			}
+			catch (IOException cleanup) { failure = combine(failure, cleanup); }
+		}
+		if (!fifoCreated && frontEndDirectory == null && directory != null)
 		{
 			try
 			{
@@ -289,7 +403,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 			}
 			catch (IOException cleanup) { failure = combine(failure, cleanup); }
 		}
-		closed = descriptor < 0 && !fifoCreated && directory == null;
+		closed = descriptor < 0 && !fifoCreated && frontEnd == null && frontEndDirectory == null && directory == null;
 		if (failure != null)
 			throw failure;
 	}

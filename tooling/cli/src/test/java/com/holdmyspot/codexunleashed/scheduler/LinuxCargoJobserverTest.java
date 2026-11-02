@@ -112,10 +112,30 @@ public final class LinuxCargoJobserverTest
 	}
 
 	/**
-	 * GNU Make, run as a build script runs it, joins the lease's jobserver when the FIFO is open on the lease's
-	 * descriptors. Bash stands in for the trusted leader that opens those descriptors before exec. Make 4.3 rejects a
-	 * FIFO path in its auth option and runs serially when it cannot use the named descriptors, so a clean exit with no
-	 * jobserver diagnostic shows that it accepted the advertised descriptors.
+	 * Names the FIFO by path, so the jobserver crate configures Cargo's children without a pre-exec hook. That hook
+	 * forces fork, and concurrent forks under Frida child gating abort the forking process.
+	 * @throws Exception if native setup or cleanup fails
+	 */
+	@Test
+	public void cargoFlagsNameTheFifoPath() throws Exception
+	{
+		requireLinux();
+		try (Fixture fixture = new Fixture();
+			LinuxCargoJobserver owner = LinuxCargoJobserver.create(fixture.scope, fixture.directory, fixture.group, 2);
+			var lease = owner.retainCargo(Map.of()))
+		{
+			String flags = lease.environment().get("CARGO_MAKEFLAGS");
+			requireThat(flags, "cargoFlags").contains("--jobserver-auth=fifo:" + fifo(lease));
+			requireThat(flags, "cargoFlags").doesNotContain(LinuxCargoJobserver.READ_DESCRIPTOR + ",");
+			requireThat(lease.environment().containsKey("PATH"), "pathWithoutMake").isFalse();
+		}
+	}
+
+	/**
+	 * GNU Make, found on the lease's PATH as a build script finds it, joins the lease's jobserver when the FIFO is
+	 * open on the lease's descriptors. Bash stands in for the trusted leader that opens those descriptors before exec.
+	 * Make 4.3 rejects a FIFO path in its auth option, so a clean exit with no jobserver diagnostic shows that the
+	 * lease's make front end translated the path to the inherited descriptors.
 	 * @throws Exception if fixture setup, process execution or cleanup fails
 	 */
 	@Test
@@ -126,22 +146,33 @@ public final class LinuxCargoJobserverTest
 		Path bash = Path.of("/bin/bash");
 		if (!Files.isExecutable(make) || !Files.isExecutable(bash))
 			throw new SkipException("GNU Make and Bash are required to observe make's jobserver import");
-		try (Fixture fixture = new Fixture();
-			LinuxCargoJobserver owner = LinuxCargoJobserver.create(fixture.scope, fixture.directory, fixture.group, 2);
-			var lease = owner.retainCargo(Map.of()))
+		Path frontEnd;
+		try (Fixture fixture = new Fixture())
 		{
-			var descriptors = lease.descriptors();
-			Path makefile = Files.writeString(fixture.directory.resolve("Makefile"), "all: a b\na b:\n\t@true\n");
-			var builder = new ProcessBuilder(bash.toString(), "-c", "exec \"$0\" -f \"$1\" " + descriptors.read() + "<>\"$2\" " +
-				descriptors.write() + "<>\"$2\"", make.toString(), makefile.toString(), descriptors.fifo().toString());
-			builder.environment().keySet().removeAll(List.of("CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS"));
-			builder.environment().put("MAKEFLAGS", lease.environment().get("MAKEFLAGS"));
-			builder.directory(fixture.directory.toFile()).redirectErrorStream(true);
-			Process process = builder.start();
-			String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-			requireThat(process.waitFor(), "makeExit").isEqualTo(0, "expected");
-			requireThat(output, "makeOutput").doesNotContain("jobserver");
-			Files.delete(makefile);
+			try (LinuxCargoJobserver owner = LinuxCargoJobserver.create(fixture.scope, fixture.directory, fixture.group, 2))
+			{
+				try (var lease = owner.retainCargo(Map.of("PATH", "/usr/bin:/bin")))
+				{
+					var descriptors = lease.descriptors();
+					String path = lease.environment().get("PATH");
+					requireThat(path, "leasePath").endsWith(":/usr/bin:/bin");
+					frontEnd = Path.of(path.substring(0, path.indexOf(':')), "make");
+					requireThat(Files.isExecutable(frontEnd), "frontEnd").isTrue();
+					Path makefile = Files.writeString(fixture.directory.resolve("Makefile"), "all: a b\na b:\n\t@true\n");
+					var builder = new ProcessBuilder(bash.toString(), "-c", "exec make -f \"$0\" " + descriptors.read() +
+						"<>\"$1\" " + descriptors.write() + "<>\"$1\"", makefile.toString(), descriptors.fifo().toString());
+					builder.environment().keySet().removeAll(List.of("CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS"));
+					builder.environment().put("MAKEFLAGS", lease.environment().get("MAKEFLAGS"));
+					builder.environment().put("PATH", path);
+					builder.directory(fixture.directory.toFile()).redirectErrorStream(true);
+					Process process = builder.start();
+					String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+					requireThat(process.waitFor(), "makeExit").isEqualTo(0, "expected");
+					requireThat(output, "makeOutput").doesNotContain("jobserver");
+					Files.delete(makefile);
+				}
+			}
+			requireThat(Files.exists(frontEnd), "frontEndAfterClose").isFalse();
 		}
 	}
 
