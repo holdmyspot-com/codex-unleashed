@@ -42,6 +42,8 @@ public final class LinuxAllocationTraceNativeTest
 		""";
 	/**
 	 * The number of group exits traced, so that at least one lands while a thread's syscall stop is being serviced.
+	 * With the fix for that race reverted, one traced exit exposed it in 9 of 15 local runs, so 20 exits, about
+	 * 0.1 s each, miss a regression with a probability near 0.4^20; fewer exits would trade that for a flaky pass.
 	 */
 	private static final int GROUP_EXIT_ATTEMPTS = 20;
 

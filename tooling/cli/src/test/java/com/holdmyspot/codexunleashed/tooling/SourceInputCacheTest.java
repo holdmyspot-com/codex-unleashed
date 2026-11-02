@@ -40,7 +40,11 @@ public final class SourceInputCacheTest
 	}
 
 	/**
-	 * Reuses ci-test outputs across unchanged inputs and failed builds, invalidates changed bytes and preserves release state.
+	 * Keeps ci-test freshness state apart from release state: a cold ci-test preparation rebuilds even though a
+	 * release snapshot exists, a recorded ci-test snapshot lets unchanged inputs reuse ci-test outputs, and neither
+	 * step changes the release snapshot or executable. Same-mtime content changes and failed builds take the same
+	 * profile-independent path as release builds and are verified in {@link #reusesAndRebuildsActualCargoLibraries}
+	 * and {@link #restoresPartiallyBuiltRevertedInputs}.
 	 *
 	 * @throws IOException if Cargo, fixture operations or cleanup fail
 	 */
@@ -49,7 +53,7 @@ public final class SourceInputCacheTest
 	{
 		try (Fixture fixture = Fixture.create("reusesTestProfileWithoutCleaningRelease"))
 		{
-			// Real Cargo: the ci-test libraryFresh checks and the unchanged release binary digest need actual outputs.
+			// Real Cargo: the ci-test libraryFresh checks and the unchanged release executable digest need actual outputs.
 			fixture.initialize();
 			Path manifest = fixture.workspace.resolve("Cargo.toml");
 			Files.writeString(manifest, Files.readString(manifest) + "[profile.ci-test]\ninherits = \"dev\"\n");
@@ -76,26 +80,6 @@ public final class SourceInputCacheTest
 			requireThat(fixture.artifactFresh(unchanged, "cache-demo", "bin"), "fixture").isTrue();
 			fixture.record(request);
 
-			Files.writeString(source, "pub fn value() -> u8 { 9 }\n");
-			Files.setLastModifiedTime(source, before);
-			fixture.prepare(request, fixture.context());
-			requireThat(fixture.libraryFresh(fixture.command(build).stdout()), "fixture").isFalse();
-			Path executable = fixture.base.resolve("target").resolve(fixture.target).resolve("ci-test").
-				resolve(fixture.binary().getFileName());
-			requireThat(fixture.command(List.of(executable.toString())).stdout().strip(), "fixture").isEqualTo("9");
-			fixture.record(request);
-
-			Path main = fixture.workspace.resolve("src/main.rs");
-			String validMain = Files.readString(main);
-			Files.writeString(main, "compile_error!(\"controlled ci-test failure\");\nfn main() {}\n");
-			fixture.prepare(request, fixture.context());
-			requireException(IOException.class, () -> fixture.command(build));
-			Files.writeString(main, validMain);
-			fixture.prepare(request, fixture.context());
-			requireThat(fixture.libraryFresh(fixture.command(build).stdout()), "fixture").isTrue();
-			requireThat(fixture.command(List.of(executable.toString())).stdout().strip(), "fixture").isEqualTo("9");
-			fixture.record(request);
-
 			requireThat(Files.readString(fixture.snapshot()), "Files.readString(fixture.snapshot())")
 				.isEqualTo(releaseSnapshot);
 			requireThat(Sha256.digest(fixture.binary()), "Sha256.digest(fixture.binary())").isEqualTo(releaseDigest);
@@ -103,7 +87,9 @@ public final class SourceInputCacheTest
 	}
 
 	/**
-	 * Reuses identical libraries, rebuilds same-mtime content changes and refuses post-build changes when recording.
+	 * Reuses identical libraries, rebuilds same-mtime content changes, including a file read only through
+	 * {@code include!()}, and refuses post-build changes when recording. A failed build followed by reverted sources
+	 * is verified in {@link #restoresPartiallyBuiltRevertedInputs}, where the failed build has cached changed output.
 	 *
 	 * @throws IOException if actual Cargo, fixture operations, or cleanup fail
 	 */
@@ -133,41 +119,25 @@ public final class SourceInputCacheTest
 				.isTrue();
 			fixture.record();
 
-			Files.writeString(source, "pub fn value() -> u8 { 9 }\n");
+			// The same-mtime change also moves the value into a file that Cargo reads only through include!(), so the
+			// next step can change an input that no manifest or module declaration names.
+			Path included = fixture.workspace.resolve("src/included.rs");
+			Files.writeString(included, "pub fn value() -> u8 { 9 }\n");
+			Files.writeString(source, "include!(\"included.rs\");\n");
 			Files.setLastModifiedTime(source, before);
 			fixture.prepare();
 			requireThat(fixture.libraryFresh(fixture.build()), "fixture.libraryFresh(fixture.build())").isFalse();
 			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("9");
 			fixture.record();
 
-			String valid = Files.readString(source);
-			FileTime successfulTime = Files.getLastModifiedTime(source);
-			Files.writeString(source, "compile_error!(\"interrupted build\");\n");
-			Files.setLastModifiedTime(source, successfulTime);
-			fixture.prepare();
-			requireException(IOException.class, fixture::build);
-			Files.writeString(source, valid);
-			Files.setLastModifiedTime(source, successfulTime);
-			fixture.prepare();
-			fixture.build();
-			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("9");
-			fixture.record();
-
-			Path included = fixture.workspace.resolve("src/included.rs");
-			Files.writeString(included, "pub fn value() -> u8 { 13 }\n");
-			Files.writeString(source, "include!(\"included.rs\");\n");
-			fixture.prepare();
-			requireThat(fixture.libraryFresh(fixture.build()), "fixture.libraryFresh(fixture.build())").isFalse();
-			fixture.record();
 			FileTime includedTime = Files.getLastModifiedTime(included);
 			Files.writeString(included, "pub fn value() -> u8 { 17 }\n");
 			Files.setLastModifiedTime(included, includedTime);
 			fixture.prepare();
 			requireThat(fixture.libraryFresh(fixture.build()), "fixture.libraryFresh(fixture.build())").isFalse();
 			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("17");
-			fixture.record();
 
-			fixture.prepare();
+			// Recording after the build above, with a source changed since its preparation, must be refused.
 			String successful = Files.readString(fixture.snapshot());
 			Files.writeString(source, "pub fn value() -> u8 { 11 }\n");
 			IOException failure = requireException(IOException.class, fixture::record);
@@ -219,7 +189,8 @@ public final class SourceInputCacheTest
 	}
 
 	/**
-	 * Rebuilds changed host build scripts and their executable when the preparation clock moves backward.
+	 * Rebuilds changed host build scripts and their executable when the preparation clock moves backward, and leaves
+	 * state from which the next preparation reuses the rebuilt outputs.
 	 *
 	 * @throws IOException if Cargo, fixture access or cleanup fails
 	 */
@@ -255,7 +226,9 @@ public final class SourceInputCacheTest
 	}
 
 	/**
-	 * Retains an external path dependency when a missing snapshot forces workspace compilation.
+	 * Retains an external path dependency when a missing snapshot forces workspace compilation. Reuse and same-mtime
+	 * invalidation with an external path dependency once a snapshot exists are verified in
+	 * {@link #reusesAndInvalidatesExternalBindingWithActualCargo}.
 	 *
 	 * @throws IOException if actual Cargo or fixture operations fail
 	 */
@@ -264,7 +237,8 @@ public final class SourceInputCacheTest
 	{
 		try (Fixture fixture = Fixture.create("coldSnapshotRetainsExternalDependency"))
 		{
-			// Real Cargo: libraryFresh for external_dependency after the cold clean, and the binary printing 9 and 11.
+			// Real Cargo: libraryFresh for external_dependency after the cold clean, and the binary printing 9. The first
+			// build runs without preparation to leave compiled outputs that no snapshot describes.
 			fixture.initialize();
 			Path dependency = fixture.base.resolve("dependency");
 			Files.createDirectories(dependency.resolve("src"));
@@ -297,20 +271,6 @@ public final class SourceInputCacheTest
 			requireThat(fixture.libraryFresh(output, "external_dependency"), "fixture").isTrue();
 			requireThat(fixture.libraryFresh(output), "fixture.libraryFresh(output)").isFalse();
 			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("9");
-			fixture.record();
-			fixture.prepare();
-			output = fixture.build();
-			requireThat(fixture.libraryFresh(output, "external_dependency"), "fixture").isTrue();
-			requireThat(fixture.libraryFresh(output), "fixture.libraryFresh(output)").isTrue();
-			fixture.record();
-			FileTime successfulTime = Files.getLastModifiedTime(source);
-			Files.writeString(source, "pub fn value() -> u8 { external_dependency::value() + 9 }\n");
-			Files.setLastModifiedTime(source, successfulTime);
-			fixture.prepare();
-			output = fixture.build();
-			requireThat(fixture.libraryFresh(output, "external_dependency"), "fixture").isTrue();
-			requireThat(fixture.libraryFresh(output), "fixture.libraryFresh(output)").isFalse();
-			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("11");
 		}
 	}
 
@@ -375,7 +335,6 @@ public final class SourceInputCacheTest
 			String output = fixture.build();
 			requireThat(fixture.libraryFresh(output, "side_demo"), "fixture").isFalse();
 			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("7");
-			fixture.record();
 		}
 	}
 
@@ -507,9 +466,8 @@ public final class SourceInputCacheTest
 				.withContext("changed binding bytes must rebuild despite the old mtime", "diagnostic")
 				.isFalse();
 			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("9");
-			fixture.record();
 
-			fixture.prepare();
+			// Recording after the build above, with the binding changed since its preparation, must be refused.
 			Files.writeString(binding, "pub fn value() -> u8 { 11 }\n");
 			requireException(IOException.class, fixture::record);
 		}
