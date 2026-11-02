@@ -26,6 +26,7 @@ public final class CargoLaunchConfigurationCommandTest
      */
     @Test public void publicCommandProducesActualLinuxConsumerConfiguration() throws IOException
     {
+        TestRequirements.requirePosixFileSystem();
         try (Fixture fixture = new Fixture(); var tooling = new DefaultToolingScope(); var scope = new LinuxCargoScope(tooling))
         {
             requireThat(fixture.run("Linux"), "publicConstructionStatus").isEqualTo(0);
@@ -62,6 +63,7 @@ public final class CargoLaunchConfigurationCommandTest
      */
     @Test public void macConfigurationUsesEveryInstalledProduct() throws IOException
     {
+        TestRequirements.requirePosixFileSystem();
         try (Fixture fixture = new Fixture(); var tooling = new DefaultToolingScope(); var scope = new MacCargoScope(tooling))
         {
             requireThat(fixture.run("macOS"), "macConstructionStatus").isEqualTo(0);

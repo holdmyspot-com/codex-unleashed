@@ -22,6 +22,7 @@ public final class MacCargoMessagesTest
      */
     @Test public void preservesExactNativeInputs() throws IOException
     {
+        TestRequirements.requirePosixFileSystem();
         List<String> command = List.of("/usr/bin/true", "", "λ雪", "line\nbreak");
         MacCargoMessages.Invocation value = MacCargoMessages.decode(frame(command, List.of("EMPTY=", "VALUE=a=b"), List.of("/cwd λ")));
         requireThat(value.arguments(), "exactArguments").isEqualTo(command, "expected");

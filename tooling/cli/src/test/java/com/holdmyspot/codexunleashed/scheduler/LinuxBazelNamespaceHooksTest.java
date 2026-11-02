@@ -26,6 +26,7 @@ public final class LinuxBazelNamespaceHooksTest
     /** Requires exact collected root identity and original-owner reparenting before admitting its descendant. */
     @Test public void authenticatesOrdinaryRootRetirementLineage()
     {
+        TestRequirements.requirePosixFileSystem();
         var root = new LinuxBazelNamespaceHooks.ImageObservation(300, 3, 30, 200, Path.of("/program"),
             "a".repeat(64), Map.of(), List.of("/program"), "0::/attempt", "pid:[sandbox]", "mnt:[sandbox]");
         var terminal = new LinuxAllocationTrace.Terminal(new LinuxAllocationTrace.Identity(3, 30), 23 << 8);

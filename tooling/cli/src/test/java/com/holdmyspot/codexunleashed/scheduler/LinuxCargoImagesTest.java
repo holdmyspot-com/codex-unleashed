@@ -18,6 +18,17 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /** Exercises current held-image membership without authenticating compiler actions or fabricating native evidence. */
 public final class LinuxCargoImagesTest
 {
+    /**
+     * Skips this class on file systems without POSIX attributes, which its POSIX-only production code requires.
+     *
+     * @throws org.testng.SkipException if the default file system lacks the POSIX attribute view
+     */
+    @org.testng.annotations.BeforeClass
+    public void requirePosix()
+    {
+        TestRequirements.requirePosixFileSystem();
+    }
+
     /** Creates tests whose scopes and image observations belong to each method. */
     public LinuxCargoImagesTest() {}
 

@@ -15,6 +15,17 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /** Portable administrator-document checks; parsing and rejection do not establish native execution readiness. */
 public final class MacCargoLaunchConfigurationTest
 {
+    /**
+     * Skips this class on file systems without POSIX attributes, which its POSIX-only production code requires.
+     *
+     * @throws org.testng.SkipException if the default file system lacks the POSIX attribute view
+     */
+    @org.testng.annotations.BeforeClass
+    public void requirePosix()
+    {
+        TestRequirements.requirePosixFileSystem();
+    }
+
     /** Creates method-owned parser and document fixtures. */
     public MacCargoLaunchConfigurationTest() {}
 

@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import java.nio.file.FileSystems;
+import org.testng.SkipException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /** Checks exception outcomes with Requirements while TestNG supplies only test discovery and execution. */
@@ -35,6 +37,17 @@ public final class TestRequirements
 		}
 		requireThat(failure, "exception").isNotNull().isInstanceOf(expected);
 		return expected.cast(failure);
+	}
+
+	/**
+	 * Skips the running test when the default file system lacks the POSIX attribute view, as on Windows.
+	 *
+	 * @throws SkipException if the default file system does not support the {@code posix} attribute view
+	 */
+	public static void requirePosixFileSystem()
+	{
+		if (!FileSystems.getDefault().supportedFileAttributeViews().contains("posix"))
+			throw new SkipException("Requires a POSIX file system");
 	}
 
 	/** Executes a test operation that may return normally or throw any exception or error. */

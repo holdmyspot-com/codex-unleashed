@@ -19,6 +19,17 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class LinuxBazelProducerTest
 {
     /**
+     * Skips this class on file systems without POSIX attributes, which its POSIX-only production code requires.
+     *
+     * @throws org.testng.SkipException if the default file system lacks the POSIX attribute view
+     */
+    @org.testng.annotations.BeforeClass
+    public void requirePosix()
+    {
+        TestRequirements.requirePosixFileSystem();
+    }
+
+    /**
      * Creates independent connected publication cases.
      */
     public LinuxBazelProducerTest() {}
