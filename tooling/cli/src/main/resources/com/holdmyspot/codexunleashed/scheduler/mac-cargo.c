@@ -54,6 +54,8 @@ int mc_accept(void *handle,void **output,int *pid,int *uid,int *gid) {
  struct mc_peer *peer=calloc(1,sizeof *peer);if(!peer)return ENOMEM;peer->fd=-1;for(int i=0;i<3;i++)peer->streams[i]=-1;
  peer->fd=accept(server->fd,NULL,NULL);if(peer->fd<0){int error=errno;free(peer);return error==EAGAIN || error==EWOULDBLOCK?-1:error;}*output=peer;
  if(fcntl(peer->fd,F_SETFD,FD_CLOEXEC)<0)return errno;
+ /* Darwin accepted sockets inherit the listener's O_NONBLOCK; registration and replies are blocking exchanges. */
+ int flags=fcntl(peer->fd,F_GETFL);if(flags<0 || fcntl(peer->fd,F_SETFL,flags&~O_NONBLOCK)<0)return errno;
  int enabled=1;if(setsockopt(peer->fd,SOL_SOCKET,SO_NOSIGPIPE,&enabled,sizeof enabled)<0)return errno;
  socklen_t bytes=sizeof peer->pid;if(getsockopt(peer->fd,SOL_LOCAL,LOCAL_PEERPID,&peer->pid,&bytes)<0)return errno;
  if(bytes!=sizeof peer->pid || peer->pid<=0)return EIO;
