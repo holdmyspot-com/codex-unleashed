@@ -21,12 +21,16 @@ public final class LinuxBazelProducerTest
     /**
      * Skips this class on file systems without POSIX attributes, which its POSIX-only production code requires.
      *
+     * Also issues the shared runner credentials here so that no single test absorbs their one-time cost.
+     *
      * @throws org.testng.SkipException if the default file system lacks the POSIX attribute view
+     * @throws IOException if credential issuance fails
      */
     @org.testng.annotations.BeforeClass
-    public void requirePosix()
+    public void requirePosix() throws IOException
     {
         TestRequirements.requirePosixFileSystem();
+        LinuxBazelRunnerTest.Fixture.sharedCredentials();
     }
 
     /**

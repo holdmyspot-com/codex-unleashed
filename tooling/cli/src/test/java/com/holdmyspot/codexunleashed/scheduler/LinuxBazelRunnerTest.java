@@ -43,12 +43,16 @@ public final class LinuxBazelRunnerTest
     /**
      * Skips this class on file systems without POSIX attributes, which its POSIX-only production code requires.
      *
+     * Also issues the shared credentials here so that no single test absorbs their one-time cost.
+     *
      * @throws org.testng.SkipException if the default file system lacks the POSIX attribute view
+     * @throws IOException if credential issuance fails
      */
     @org.testng.annotations.BeforeClass
-    public void requirePosix()
+    public void requirePosix() throws IOException
     {
         TestRequirements.requirePosixFileSystem();
+        Fixture.sharedCredentials();
     }
 
     /**
@@ -294,6 +298,9 @@ public final class LinuxBazelRunnerTest
 
     /**
      * Another clientAuth leaf signed by the same trusted CA cannot act as the exact authorized worker.
+     * This test stays near 2 s: the claim needs a second leaf that the same CA really signed, and the only supported
+     * issuer is the JDK keytool executable. Its three launches (key pair, request, signature) cost about 0.5 s each,
+     * and an in-process signer would need JDK-internal certificate APIs.
      * @throws Exception if certificate issuance or wire operations fail
      */
     @Test
@@ -397,6 +404,8 @@ public final class LinuxBazelRunnerTest
         final LinuxBazelRunner runner;
         /** Exact authorized client channel. */
         private final Client client;
+        /** Credentials issued once for the test JVM, or {@code null} before first use. */
+        private static LinuxBazelBackend.Credentials sharedCredentials;
 
         /**
          * Retains successfully acquired fixture resources.
@@ -436,8 +445,7 @@ public final class LinuxBazelRunnerTest
                 Path input = Files.createDirectory(slot.resolve("input"));
                 Path temporary = Files.createDirectory(slot.resolve("temporary"));
                 Files.createDirectory(slot.resolve("logs"));
-                LinuxBazelBackend.Credentials credentials = LinuxBazelBackend.Credentials.generate(root.resolve("credentials"),
-                    Path.of(System.getProperty("java.home")).resolve("bin/keytool"));
+                LinuxBazelBackend.Credentials credentials = sharedCredentials();
                 runner = new LinuxBazelRunner(build, new LinuxBazelRunner.Credentials(credentials.certificateAuthority(),
                     credentials.serverCertificate(), credentials.serverKey(), credentials.workerCertificate()));
                 runner.start();
@@ -451,6 +459,30 @@ public final class LinuxBazelRunnerTest
                 try { remove(root); } catch (IOException cleanup) { failure.addSuppressed(cleanup); }
                 throw failure;
             }
+        }
+
+        /**
+         * Returns the class-wide invocation credentials, issuing them on first use.
+         * Issuing runs keytool eight times, about 3.5 s, and no test's claim depends on a fresh authority: every test
+         * only reads these files, and the one test that needs a second leaf writes it under its own fixture root.
+         * The credentials directory is removed when the test JVM exits.
+         * @return production-issued credentials shared read-only by all fixtures
+         * @throws IOException if issuance fails
+         */
+        static synchronized LinuxBazelBackend.Credentials sharedCredentials() throws IOException
+        {
+            if (sharedCredentials == null)
+            {
+                Path owner = Files.createTempDirectory("bazel-runner-credentials-");
+                Runtime.getRuntime().addShutdownHook(new Thread(() ->
+                {
+                    try { remove(owner); }
+                    catch (IOException ignored) { /* Best effort: the JVM is exiting and the directory is private. */ }
+                }));
+                sharedCredentials = LinuxBazelBackend.Credentials.generate(owner.resolve("credentials"),
+                    Path.of(System.getProperty("java.home")).resolve("bin/keytool"));
+            }
+            return sharedCredentials;
         }
 
         /**
@@ -529,8 +561,9 @@ public final class LinuxBazelRunnerTest
          */
         List<Path> issueOtherWorker() throws IOException, GeneralSecurityException
         {
-            Path directory = credentials.certificateAuthority().getParent();
-            Path password = directory.resolve("store-password");
+            Path authority = credentials.certificateAuthority().getParent();
+            Path password = authority.resolve("store-password");
+            Path directory = root;
             Path store = directory.resolve("other-worker.p12");
             keytool("-genkeypair", "-alias", "other-worker", "-dname", "CN=other-worker", "-keyalg", "EC",
                 "-groupname", "secp256r1", "-validity", "1", "-keystore", store.toString(), "-storetype", "PKCS12",
@@ -539,7 +572,7 @@ public final class LinuxBazelRunnerTest
             keytool("-certreq", "-alias", "other-worker", "-keystore", store.toString(), "-storepass:file",
                 password.toString(), "-file", request.toString());
             Path certificate = directory.resolve("other-worker-cert.pem");
-            keytool("-gencert", "-rfc", "-alias", "ca", "-keystore", directory.resolve("ca.p12").toString(),
+            keytool("-gencert", "-rfc", "-alias", "ca", "-keystore", authority.resolve("ca.p12").toString(),
                 "-storepass:file", password.toString(), "-infile", request.toString(), "-outfile", certificate.toString(),
                 "-validity", "1", "-ext", "KU=digitalSignature", "-ext", "EKU=clientAuth");
             char[] secret = Files.readString(password).toCharArray();
