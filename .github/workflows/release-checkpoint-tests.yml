@@ -101,7 +101,11 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: checkpoint-tests-${{ matrix.target }}
-          path: ${{ runner.temp }}/checkpoint-evidence
+          # Per-test surefire reports give each test's time and captured output, which the Maven log does not.
+          path: |
+            ${{ runner.temp }}/checkpoint-evidence
+            ${{ runner.temp }}/checkpoint-tests/build/surefire-reports/TEST-com.holdmyspot.codexunleashed.tooling.*.xml
+            ${{ runner.temp }}/checkpoint-tests/build/surefire-reports/TEST-com.holdmyspot.codexunleashed.scheduler.*.xml
           retention-days: 1
           if-no-files-found: warn
       - name: Remove owned test scratch directory

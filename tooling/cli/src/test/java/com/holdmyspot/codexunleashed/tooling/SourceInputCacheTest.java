@@ -9,6 +9,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.commons.io.file.PathUtils;
 import org.apache.commons.io.file.StandardDeleteOption;
+import org.apache.commons.io.function.IORunnable;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -45,8 +47,9 @@ public final class SourceInputCacheTest
 	@Test
 	public void reusesTestProfileWithoutCleaningRelease() throws IOException
 	{
-		try (Fixture fixture = Fixture.create())
+		try (Fixture fixture = Fixture.create("reusesTestProfileWithoutCleaningRelease"))
 		{
+			// Real Cargo: the ci-test libraryFresh checks and the unchanged release binary digest need actual outputs.
 			fixture.initialize();
 			Path manifest = fixture.workspace.resolve("Cargo.toml");
 			Files.writeString(manifest, Files.readString(manifest) + "[profile.ci-test]\ninherits = \"dev\"\n");
@@ -60,42 +63,38 @@ public final class SourceInputCacheTest
 			List<String> build = List.of("cargo", "build", "--offline", "--profile", "ci-test", "--target",
 				fixture.target, "--message-format=json");
 
-			try (PrintStream output = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
-				PrintStream errors = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8))
-			{
-				SourceInputCache.prepare(request, fixture.context(), output, errors);
-				requireThat(fixture.libraryFresh(fixture.command(build).stdout()), "fixture").isFalse();
-				SourceInputCache.record(request, fixture.context(), output, errors);
+			fixture.prepare(request, fixture.context());
+			requireThat(fixture.libraryFresh(fixture.command(build).stdout()), "fixture").isFalse();
+			fixture.record(request);
 
-				Path source = fixture.workspace.resolve("src/lib.rs");
-				FileTime before = Files.getLastModifiedTime(source);
-				Files.setLastModifiedTime(source, FileTime.from(before.toInstant().plusSeconds(100)));
-				SourceInputCache.prepare(request, fixture.context(), output, errors);
-				String unchanged = fixture.command(build).stdout();
-				requireThat(fixture.libraryFresh(unchanged), "fixture.libraryFresh(unchanged)").isTrue();
-				requireThat(fixture.artifactFresh(unchanged, "cache-demo", "bin"), "fixture").isTrue();
-				SourceInputCache.record(request, fixture.context(), output, errors);
+			Path source = fixture.workspace.resolve("src/lib.rs");
+			FileTime before = Files.getLastModifiedTime(source);
+			Files.setLastModifiedTime(source, FileTime.from(before.toInstant().plusSeconds(100)));
+			fixture.prepare(request, fixture.context());
+			String unchanged = fixture.command(build).stdout();
+			requireThat(fixture.libraryFresh(unchanged), "fixture.libraryFresh(unchanged)").isTrue();
+			requireThat(fixture.artifactFresh(unchanged, "cache-demo", "bin"), "fixture").isTrue();
+			fixture.record(request);
 
-				Files.writeString(source, "pub fn value() -> u8 { 9 }\n");
-				Files.setLastModifiedTime(source, before);
-				SourceInputCache.prepare(request, fixture.context(), output, errors);
-				requireThat(fixture.libraryFresh(fixture.command(build).stdout()), "fixture").isFalse();
-				Path executable = fixture.base.resolve("target").resolve(fixture.target).resolve("ci-test").
-					resolve(fixture.binary().getFileName());
-				requireThat(fixture.command(List.of(executable.toString())).stdout().strip(), "fixture").isEqualTo("9");
-				SourceInputCache.record(request, fixture.context(), output, errors);
+			Files.writeString(source, "pub fn value() -> u8 { 9 }\n");
+			Files.setLastModifiedTime(source, before);
+			fixture.prepare(request, fixture.context());
+			requireThat(fixture.libraryFresh(fixture.command(build).stdout()), "fixture").isFalse();
+			Path executable = fixture.base.resolve("target").resolve(fixture.target).resolve("ci-test").
+				resolve(fixture.binary().getFileName());
+			requireThat(fixture.command(List.of(executable.toString())).stdout().strip(), "fixture").isEqualTo("9");
+			fixture.record(request);
 
-				Path main = fixture.workspace.resolve("src/main.rs");
-				String validMain = Files.readString(main);
-				Files.writeString(main, "compile_error!(\"controlled ci-test failure\");\nfn main() {}\n");
-				SourceInputCache.prepare(request, fixture.context(), output, errors);
-				requireException(IOException.class, () -> fixture.command(build));
-				Files.writeString(main, validMain);
-				SourceInputCache.prepare(request, fixture.context(), output, errors);
-				requireThat(fixture.libraryFresh(fixture.command(build).stdout()), "fixture").isTrue();
-				requireThat(fixture.command(List.of(executable.toString())).stdout().strip(), "fixture").isEqualTo("9");
-				SourceInputCache.record(request, fixture.context(), output, errors);
-			}
+			Path main = fixture.workspace.resolve("src/main.rs");
+			String validMain = Files.readString(main);
+			Files.writeString(main, "compile_error!(\"controlled ci-test failure\");\nfn main() {}\n");
+			fixture.prepare(request, fixture.context());
+			requireException(IOException.class, () -> fixture.command(build));
+			Files.writeString(main, validMain);
+			fixture.prepare(request, fixture.context());
+			requireThat(fixture.libraryFresh(fixture.command(build).stdout()), "fixture").isTrue();
+			requireThat(fixture.command(List.of(executable.toString())).stdout().strip(), "fixture").isEqualTo("9");
+			fixture.record(request);
 
 			requireThat(Files.readString(fixture.snapshot()), "Files.readString(fixture.snapshot())")
 				.isEqualTo(releaseSnapshot);
@@ -111,8 +110,9 @@ public final class SourceInputCacheTest
 	@Test
 	public void reusesAndRebuildsActualCargoLibraries() throws IOException
 	{
-		try (Fixture fixture = Fixture.create())
+		try (Fixture fixture = Fixture.create("reusesAndRebuildsActualCargoLibraries"))
 		{
+			// Real Cargo: libraryFresh after same-mtime and include!() changes, and the binary printing 9 and 17.
 			fixture.initialize();
 			fixture.prepare();
 			requireThat(Files.isRegularFile(SourceInputSnapshots.pending(fixture.snapshot())), "Files").isTrue();
@@ -168,7 +168,6 @@ public final class SourceInputCacheTest
 			fixture.record();
 
 			fixture.prepare();
-			fixture.build();
 			String successful = Files.readString(fixture.snapshot());
 			Files.writeString(source, "pub fn value() -> u8 { 11 }\n");
 			IOException failure = requireException(IOException.class, fixture::record);
@@ -186,8 +185,9 @@ public final class SourceInputCacheTest
 	@Test
 	public void resumesColdPartialLibraries() throws IOException
 	{
-		try (Fixture fixture = Fixture.create())
+		try (Fixture fixture = Fixture.create("resumesColdPartialLibraries"))
 		{
+			// Real Cargo: the libcache_demo rlib left by the failed build and the retry's libraryFresh check.
 			fixture.initialize();
 			Path executableSource = fixture.workspace.resolve("src/main.rs");
 			String validExecutable = Files.readString(executableSource);
@@ -226,8 +226,9 @@ public final class SourceInputCacheTest
 	@Test
 	public void rebuildsChangedExecutableAfterClockRollback() throws IOException
 	{
-		try (Fixture fixture = Fixture.create())
+		try (Fixture fixture = Fixture.create("rebuildsChangedExecutableAfterClockRollback"))
 		{
+			// Real Cargo: the rebuilt binary printing 9, because future output timestamps come from actual compilation.
 			fixture.initialize();
 			Path source = fixture.workspace.resolve("build.rs");
 			Files.writeString(source, "fn main() { println!(\"cargo:rustc-env=CACHE_VALUE=7\"); }\n");
@@ -243,15 +244,10 @@ public final class SourceInputCacheTest
 
 			SourceInputCache.Context context = new SourceInputCache.Context(fixture.scope, fixture.workspace, fixture.temporary,
 				fixture.environment, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC));
-			ByteArrayOutputStream preparation = new ByteArrayOutputStream();
-			try (PrintStream output = new PrintStream(preparation, true, StandardCharsets.UTF_8);
-				PrintStream errors = new PrintStream(preparation, true, StandardCharsets.UTF_8))
-			{
-				SourceInputCache.prepare(fixture.request(), context, output, errors);
-			}
+			String preparation = fixture.prepare(fixture.request(), context);
 			requireThat(fixture.artifactFresh(fixture.build(), "cache-demo", "bin"), "fixture")
 				.withContext("content changes must rebuild even when the preparation clock moves backward: " +
-					preparation.toString(StandardCharsets.UTF_8), "diagnostic").isFalse();
+					preparation, "diagnostic").isFalse();
 			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("9");
 			fixture.record();
 			fixture.prepare();
@@ -267,8 +263,9 @@ public final class SourceInputCacheTest
 	@Test
 	public void coldSnapshotRetainsExternalDependency() throws IOException
 	{
-		try (Fixture fixture = Fixture.create())
+		try (Fixture fixture = Fixture.create("coldSnapshotRetainsExternalDependency"))
 		{
+			// Real Cargo: libraryFresh for external_dependency after the cold clean, and the binary printing 9 and 11.
 			fixture.initialize();
 			Path dependency = fixture.base.resolve("dependency");
 			Files.createDirectories(dependency.resolve("src"));
@@ -326,8 +323,9 @@ public final class SourceInputCacheTest
 	@Test
 	public void retainsSiblingBinaryAndLibrary() throws IOException
 	{
-		try (Fixture fixture = Fixture.create())
+		try (Fixture fixture = Fixture.create("retainsSiblingBinaryAndLibrary"))
 		{
+			// Real Cargo: artifactFresh for the sibling binary, both package binaries and the side_demo library.
 			fixture.initialize();
 			fixture.addWorkspaceLibrary();
 			fixture.prepare();
@@ -350,8 +348,9 @@ public final class SourceInputCacheTest
 	@Test
 	public void restoresPartiallyBuiltRevertedInputs() throws IOException
 	{
-		try (Fixture fixture = Fixture.create())
+		try (Fixture fixture = Fixture.create("restoresPartiallyBuiltRevertedInputs"))
 		{
+			// Real Cargo: side_demo libraryFresh being false after the reverted inputs, and the binary printing 7.
 			fixture.initialize();
 			fixture.addWorkspaceLibrary();
 			fixture.prepare();
@@ -389,11 +388,16 @@ public final class SourceInputCacheTest
 	@Test
 	public void failedColdCleanNeverRecordsSuccess() throws IOException
 	{
-		try (Fixture fixture = Fixture.create())
+		try (Fixture fixture = Fixture.create("failedColdCleanNeverRecordsSuccess"))
 		{
-			fixture.initialize();
-			String metadata = fixture.command(List.of("cargo", "metadata", "--no-deps", "--format-version", "1")).
-				stdout();
+			fixture.initializeSources();
+			// The root package in the shape of `cargo metadata --no-deps --format-version 1`, limited to the fields
+			// that preparation reads, so the cold path selects its workspace member for cleanup.
+			String metadata = """
+				{"packages":[{"name":"cache-demo","id":"path+file:///workspace#cache-demo@0.1.0","targets":[
+				  {"name":"cache_demo","kind":["lib"]},{"name":"cache-demo","kind":["bin"]}]}],
+				 "workspace_members":["path+file:///workspace#cache-demo@0.1.0"]}
+				""";
 			fixture.useCargoFixture(metadata, 7);
 			for (int attempt = 0; attempt < 2; attempt += 1)
 			{
@@ -413,8 +417,9 @@ public final class SourceInputCacheTest
 	@Test
 	public void reusesAndRebuildsBinaryOnlyPackage() throws IOException
 	{
-		try (Fixture fixture = Fixture.create())
+		try (Fixture fixture = Fixture.create("reusesAndRebuildsBinaryOnlyPackage"))
 		{
+			// Real Cargo: artifactFresh for the binary-only package, and the rebuilt binary printing 9.
 			fixture.initialize();
 			Files.delete(fixture.workspace.resolve("src/lib.rs"));
 			Path source = fixture.workspace.resolve("src/main.rs");
@@ -445,9 +450,9 @@ public final class SourceInputCacheTest
 	@Test
 	public void missingBinaryRefusesClean() throws IOException
 	{
-		try (Fixture fixture = Fixture.create())
+		try (Fixture fixture = Fixture.create("missingBinaryRefusesClean"))
 		{
-			fixture.initialize();
+			fixture.initializeSources();
 			fixture.useCargoFixture("{\"packages\":[]}", 0);
 			IOException failure = requireException(IOException.class, fixture::prepare);
 			requireThat(failure.getMessage().contains("Binaries absent from Cargo metadata: cache-demo"), "failure").isTrue();
@@ -466,8 +471,9 @@ public final class SourceInputCacheTest
 	@Test
 	public void reusesAndInvalidatesExternalBindingWithActualCargo() throws IOException
 	{
-		try (Fixture fixture = Fixture.create())
+		try (Fixture fixture = Fixture.create("reusesAndInvalidatesExternalBindingWithActualCargo"))
 		{
+			// Real Cargo: libraryFresh across binding mtime and content changes, and the binary printing 9.
 			fixture.initialize();
 			Path binding = fixture.base.resolve("downloaded-binding.rs");
 			Files.writeString(binding, "pub fn value() -> u8 { 7 }\n");
@@ -505,7 +511,6 @@ public final class SourceInputCacheTest
 			fixture.record();
 
 			fixture.prepare();
-			fixture.build();
 			Files.writeString(binding, "pub fn value() -> u8 { 11 }\n");
 			requireException(IOException.class, fixture::record);
 		}
@@ -517,6 +522,9 @@ public final class SourceInputCacheTest
 	private static final class Fixture implements AutoCloseable
 	{
 		private final ToolingScope scope = new DefaultToolingScope();
+		private final long createdNanos = System.nanoTime();
+		private final List<String> operationTimes = new ArrayList<>();
+		private final String test;
 		private final Path base;
 		private final Path workspace;
 		private final Path temporary;
@@ -527,10 +535,12 @@ public final class SourceInputCacheTest
 		/**
 		 * Defines paths before any operation that can fail after allocation.
 		 *
+		 * @param test the test method whose operation times are reported on close
 		 * @param base the owned root
 		 */
-		private Fixture(Path base)
+		private Fixture(String test, Path base)
 		{
+			this.test = test;
 			this.base = base;
 			if (base.getFileSystem().getSeparator().equals("\\"))
 				siblingBinary = "side_companion";
@@ -544,25 +554,42 @@ public final class SourceInputCacheTest
 			environment.put("XDG_CACHE_HOME", base.resolve("xdg").toString());
 			environment.put("TMPDIR", base.resolve("tmp").toString());
 			environment.put("GIT_CEILING_DIRECTORIES", base.toString());
+			// Git for Windows takes about nine seconds to start on hosted runners when it inherits the test JVM's
+			// stdin, and every preparation starts Git six times; null-device stdin removes that delay.
+			environment.put("GIT_REDIRECT_STDIN", "NUL");
 		}
 
 		/**
 		 * Allocates only the owned root, which callers immediately protect with try-with-resources.
 		 *
+		 * @param test the test method whose operation times are reported on close
 		 * @return the fixture
 		 * @throws IOException if allocation fails
 		 */
-		private static Fixture create() throws IOException
+		private static Fixture create(String test) throws IOException
 		{
-			return new Fixture(Files.createTempDirectory("source-input-cache-"));
+			return new Fixture(test, Files.createTempDirectory("source-input-cache-"));
 		}
 
 		/**
-		 * Writes a native-host Cargo package and creates every selected cache directory.
+		 * Writes the Cargo package, creates every selected cache directory and selects the native host target.
 		 *
-		 * @throws IOException if writing or host discovery fails
+		 * @throws IOException if writing, Git or host discovery fails
 		 */
 		private void initialize() throws IOException
+		{
+			initializeSources();
+			target = command(List.of("rustc", "-vV")).stdout().lines().filter(line -> line.startsWith("host: ")).
+				findFirst().orElseThrow(() -> new IOException("rustc did not report its host target")).substring(6);
+		}
+
+		/**
+		 * Writes the Cargo package into a new Git repository and creates every selected cache directory, without
+		 * selecting a target.
+		 *
+		 * @throws IOException if writing or Git fails
+		 */
+		private void initializeSources() throws IOException
 		{
 			Files.createDirectories(workspace.resolve("src"));
 			for (String name : List.of("captures", "cargo-home", "target", "xdg", "tmp"))
@@ -576,8 +603,6 @@ public final class SourceInputCacheTest
 				""");
 			Files.writeString(workspace.resolve("src/lib.rs"), "pub fn value() -> u8 { 7 }\n");
 			Files.writeString(workspace.resolve("src/main.rs"), "fn main() { println!(\"{}\", cache_demo::value()); }\n");
-			target = command(List.of("rustc", "-vV")).stdout().lines().filter(line -> line.startsWith("host: ")).
-				findFirst().orElseThrow(() -> new IOException("rustc did not report its host target")).substring(6);
 			command(List.of("git", "init", "--quiet"));
 			command(List.of("git", "add", "Cargo.toml", "src"));
 		}
@@ -614,14 +639,17 @@ public final class SourceInputCacheTest
 		}
 
 		/**
-		 * Supplies controlled Cargo responses through Node's native executable and a preload file.
+		 * Supplies controlled Cargo responses through Node's native executable and a preload file. Selects a fixed
+		 * target name when none is selected, because the fake Cargo never compiles for it.
 		 *
-		 * @param metadata the exact metadata document
+		 * @param metadata    the exact metadata document
 		 * @param cleanStatus cleanup's exit status
 		 * @throws IOException if writing or discovering the executable fails
 		 */
 		private void useCargoFixture(String metadata, int cleanStatus) throws IOException
 		{
+			if (target == null)
+				target = "x86_64-unknown-linux-gnu";
 			JsonMapper mapper = scope.getLeaderJsonMapper();
 			String node = command(List.of("node", "-p", "process.execPath")).stdout().strip();
 			Path preload = base.resolve("cargo-fixture.cjs");
@@ -673,32 +701,95 @@ public final class SourceInputCacheTest
 		}
 
 		/**
-		 * Prepares a selected executable set using real Cargo metadata.
+		 * Prepares a selected executable set using the configured Cargo's metadata.
 		 *
 		 * @param binaries requested executable names
 		 * @throws IOException if preparation fails
 		 */
 		private void prepare(Set<String> binaries) throws IOException
 		{
-			try (PrintStream output = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
-				PrintStream errors = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8))
-			{
-				SourceInputCache.prepare(new SourceInputCache.Request(workspace, target, binaries), context(), output, errors);
-			}
+			prepare(new SourceInputCache.Request(workspace, target, binaries), context());
 		}
 
 		/**
-		 * Runs successful-build recording with locally owned diagnostics.
+		 * Runs and times preparation with locally owned diagnostic streams.
+		 *
+		 * @param request the cache request
+		 * @param context the operation context
+		 * @return the preparation's combined progress and diagnostic output
+		 * @throws IOException if preparation fails
+		 */
+		private String prepare(SourceInputCache.Request request, SourceInputCache.Context context) throws IOException
+		{
+			ByteArrayOutputStream preparation = new ByteArrayOutputStream();
+			try (PrintStream output = new PrintStream(preparation, true, StandardCharsets.UTF_8);
+				PrintStream errors = new PrintStream(preparation, true, StandardCharsets.UTF_8))
+			{
+				time("SourceInputCache.prepare " + request.profile().cargoName(),
+					() -> SourceInputCache.prepare(request, context, output, errors));
+			}
+			return preparation.toString(StandardCharsets.UTF_8);
+		}
+
+		/**
+		 * Runs successful-build recording of the root executable with locally owned diagnostics.
 		 *
 		 * @throws IOException if source inputs no longer match or recording fails
 		 */
 		private void record() throws IOException
 		{
+			record(request());
+		}
+
+		/**
+		 * Runs and times successful-build recording with locally owned diagnostics.
+		 *
+		 * @param request the cache request
+		 * @throws IOException if source inputs no longer match or recording fails
+		 */
+		private void record(SourceInputCache.Request request) throws IOException
+		{
 			try (PrintStream output = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
 				PrintStream errors = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8))
 			{
-				SourceInputCache.record(request(), context(), output, errors);
+				time("SourceInputCache.record " + request.profile().cargoName(),
+					() -> SourceInputCache.record(request, context(), output, errors));
 			}
+		}
+
+		/**
+		 * Runs a cache operation and adds its wall time and outcome to the report printed on close.
+		 *
+		 * @param operation a description of the operation
+		 * @param action    the operation
+		 * @throws IOException if the operation fails
+		 */
+		private void time(String operation, IORunnable action) throws IOException
+		{
+			long start = System.nanoTime();
+			String outcome = "failed";
+			try
+			{
+				action.run();
+				outcome = "ok";
+			}
+			finally
+			{
+				addTime(operation, start, outcome);
+			}
+		}
+
+		/**
+		 * Adds one operation's wall time and outcome to the report printed on close.
+		 *
+		 * @param operation  a description of the operation
+		 * @param startNanos the {@link System#nanoTime()} value when the operation started
+		 * @param outcome    the operation's exit status or result
+		 */
+		private void addTime(String operation, long startNanos, String outcome)
+		{
+			Duration elapsed = Duration.ofNanos(System.nanoTime() - startNanos);
+			operationTimes.add(elapsed.toMillis() + " ms, " + outcome + ": " + operation);
 		}
 
 		/**
@@ -773,7 +864,18 @@ public final class SourceInputCacheTest
 		 */
 		private SystemCommands.Result command(List<String> arguments) throws IOException
 		{
-			SystemCommands.Result result = SystemCommands.capture(arguments, workspace, temporary, environment);
+			long start = System.nanoTime();
+			String outcome = "not started";
+			SystemCommands.Result result;
+			try
+			{
+				result = SystemCommands.capture(arguments, workspace, temporary, environment);
+				outcome = "status " + result.status();
+			}
+			finally
+			{
+				addTime(arguments.toString(), start, outcome);
+			}
 			if (result.status() != 0)
 				throw new IOException("Fixture command failed: " + arguments + "\n" + result.stdout() + result.stderr());
 			return result;
@@ -803,13 +905,20 @@ public final class SourceInputCacheTest
 		}
 
 		/**
-		 * Deletes the fixture root and all files and directories it owns.
+		 * Prints the wall time of every timed operation, so a slow platform's test output names the operation that
+		 * costs the time, then deletes the fixture root and all files and directories it owns.
 		 *
 		 * @throws IOException if a fixture entry cannot be removed
 		 */
 		@Override
 		public void close() throws IOException
 		{
+			StringBuilder report = new StringBuilder();
+			report.append("SourceInputCacheTest.").append(test).append(" operation times, ").
+				append(Duration.ofNanos(System.nanoTime() - createdNanos).toMillis()).append(" ms in total:\n");
+			for (String line : operationTimes)
+				report.append("  ").append(line).append('\n');
+			System.out.print(report);
 			scope.close();
 			PathUtils.deleteDirectory(base, new LinkOption[]{LinkOption.NOFOLLOW_LINKS},
 				StandardDeleteOption.OVERRIDE_READ_ONLY);
