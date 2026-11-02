@@ -136,6 +136,30 @@ int mw_snapshot(void *handle,int pid,uint64_t out[18]) {
  return mw_watch(owner,pid,out[1]);
 }
 
+/* The SDK exports csops from libsystem_kernel but declares it only in the kernel's
+ * private sys/codesign.h; these values match that header. */
+int csops(pid_t pid,unsigned int ops,void *useraddr,size_t usersize);
+#define MW_CS_OPS_STATUS 0
+#define MW_CS_PLATFORM_BINARY 0x04000000u
+
+/* Report whether one retained held image is an Apple platform binary, whose
+ * threads the kernel refuses to expose to another process. expected supplies all
+ * eighteen mw_snapshot fields; snapshots before and after the kernel code-signing
+ * query must equal it, so the flags belong to that exact incarnation. *platform is
+ * written only on success. Return errno-style status; EAGAIN means the image changed. */
+int mw_platform(void *handle,const uint64_t expected[18],int *platform) {
+ if(!expected || !platform || expected[0]==0 || expected[0]>INT_MAX)return EINVAL;
+ uint64_t before[18],after[18];uint32_t flags=0;
+ int error=mw_snapshot(handle,(int)expected[0],before);
+ if(error)return error;
+ if(memcmp(before,expected,sizeof before)!=0)return EAGAIN;
+ if(csops((pid_t)expected[0],MW_CS_OPS_STATUS,&flags,sizeof flags)!=0)return errno?errno:EIO;
+ error=mw_snapshot(handle,(int)expected[0],after);
+ if(error)return error;
+ if(memcmp(after,expected,sizeof after)!=0)return EAGAIN;
+ *platform=(flags&MW_CS_PLATFORM_BINARY)!=0;return 0;
+}
+
 /* Order descriptor rows without subtraction that could overflow a signed int. */
 static int mw_compare_descriptors(const void *left,const void *right) {
  const struct proc_fdinfo *a=left,*b=right;

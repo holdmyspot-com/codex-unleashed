@@ -217,9 +217,13 @@ final class MacImages
                 ((WorkloadAuthority) authority).authenticateChild(child, inspect(child.pid()));
             }
             Image nativeParent = child.origin() == 0 ? currentImages.get(child.parentPid()) : null;
-            if (child.origin() == 0 && (nativeParent == null || nativeParent.protection == null))
+            if (child.origin() == 0 && (nativeParent == null ||
+                (nativeParent.protection == null && !nativeParent.uninstrumented)))
                 throw new IOException("Native fork lacks its retained descriptor registry owner");
-            if (!install(observed, nativeParent == null ? null : nativeParent.protection.registry()))
+            if (operations.platformImage(observed))
+                admitUninstrumented(observed);
+            else if (!install(observed, nativeParent == null || nativeParent.uninstrumented ? null :
+                nativeParent.protection.registry()))
                 return;
             if (authority instanceof WorkloadAuthority workloadAuthority)
                 workloadAuthority.authenticateChild(child, inspect(child.pid()));
@@ -283,6 +287,20 @@ final class MacImages
     }
 
     /**
+     * Admits an Apple platform image without attaching to it, because the kernel refuses another process access to
+     * its threads. The image is tracked as the process's current generation so that its exec and fork events are
+     * classified in turn, but it owns no connection, protection or instrumentation.
+     * @param expected independently authenticated image lineage
+     * @throws IOException if the image's identity changes before admission
+     */
+    private void admitUninstrumented(Identity expected) throws IOException
+    {
+        if (!expected.equals(inspect(expected.pid()))) throw new IOException("Birth changed before uninstrumented release");
+        current.put(expected.pid(), expected);
+        currentImages.put(expected.pid(), Image.UNINSTRUMENTED);
+    }
+
+    /**
      * Indicates whether a held image's process has exited, judged after an attachment to it failed.
      * @param expected independently authenticated image lineage
      * @param attachment the attachment failure, which receives a failed re-inspection as suppressed evidence
@@ -301,11 +319,13 @@ final class MacImages
     /**
      * Retires an exact predecessor only after independent successor authentication and native detach observations.
      * Failed destruction consumes its opportunity and remains retained for whole-workload diagnostics.
+     * An uninstrumented predecessor owns nothing to retire.
      * @param image exact retained predecessor, never selected from a callback alone
      * @throws IOException if either observation or destruction remains uncertain
      */
     private void retirePredecessor(Image image) throws IOException
     {
+        if (image != null && image.uninstrumented) return;
         if (image == null || image.instrumentation == null || !image.connection.detached() ||
             !image.instrumentation.detached())
             throw new IOException("Authenticated exec predecessor detachment is unproven");
@@ -588,6 +608,15 @@ final class MacImages
          */
         AllocationHook.Connection connection(long pid);
         /**
+         * Reads the kernel code-signing status of one held image, independently of any callback path.
+         * The kernel marks an image as an Apple platform binary when it is signed as part of the operating system.
+         * Such an image cannot be instrumented: the kernel refuses another process access to its threads.
+         * @param identity retained independently authenticated held image
+         * @return {@code true} if the image's current code-signing flags include {@code CS_PLATFORM_BINARY}
+         * @throws IOException if the status cannot be read for this exact image
+         */
+        boolean platformImage(Identity identity) throws IOException;
+        /**
          * Releases a genuinely gated child once after readiness.
          * @param pid held child
          * @throws IOException if release has uncertain effects
@@ -627,6 +656,12 @@ final class MacImages
             throw new IOException("Descriptor admission requires the authenticated native workload authority");
         }
         @Override public AllocationHook.Connection connection(long pid) { return AllocationHook.newNativeConnection(manager, pid); }
+        /**
+         * Exempts no image, because these observations lack the kernel code-signing bridge; every image is attached.
+         * @param identity held image
+         * @return {@code false}
+         */
+        @Override public boolean platformImage(Identity identity) { return false; }
         @Override public void resume(long pid) throws IOException { manager.resume(pid); }
     }
 
@@ -638,7 +673,7 @@ final class MacImages
     private static final class Image
     {
         /**
-         * Connection owning its dependent script/session resources.
+         * Connection owning its dependent script/session resources; null only for the uninstrumented generation.
          */
         private final AllocationHook.Connection connection;
         /** Native descriptor protocol retained before attachment and through target termination. */
@@ -672,9 +707,29 @@ final class MacImages
          */
         private Throwable failure;
         /**
+         * The current generation of every Apple platform image, which owns no native resource and is never closed.
+         */
+        private static final Image UNINSTRUMENTED = new Image();
+        /**
+         * Indicates whether this is the shared uninstrumented platform generation.
+         */
+        private final boolean uninstrumented;
+        /**
          * Retains a resource-free connection before start.
          * @param connection independent image owner
          */
-        private Image(AllocationHook.Connection connection) { this.connection = Objects.requireNonNull(connection, "connection"); }
+        private Image(AllocationHook.Connection connection)
+        {
+            this.connection = Objects.requireNonNull(connection, "connection");
+            this.uninstrumented = false;
+        }
+        /**
+         * Creates the shared uninstrumented platform generation.
+         */
+        private Image()
+        {
+            this.connection = null;
+            this.uninstrumented = true;
+        }
     }
 }

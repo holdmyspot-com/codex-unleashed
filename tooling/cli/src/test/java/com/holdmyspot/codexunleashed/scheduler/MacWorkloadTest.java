@@ -278,6 +278,7 @@ public final class MacWorkloadTest
             return new MacDescriptorProtection.Inventory(362, 5, List.of());
         }
         @Override public void releaseRoot() { events.add("release-root"); }
+        @Override public boolean platformImage(MacImages.Identity identity) { return false; }
         @Override public void resume(long pid) { events.add("resume:" + pid); }
         @Override public void cancel() { events.add("cancel-owned"); }
         @Override public OptionalInt terminalResult() { return result; }

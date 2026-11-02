@@ -860,6 +860,180 @@ public final class MacImagesTest
     }
 
     /**
+     * Resumes an Apple platform child without attaching to it, because the kernel refuses Frida access to its threads.
+     * @throws IOException if the owner refuses the platform child or fails cleanup
+     */
+    @Test public void platformChildIsResumedUninstrumented() throws IOException
+    {
+        try (var scope = new DefaultToolingScope())
+        {
+            var calls = new Calls(scope.getLeaderJsonMapper());
+            var root = calls.add(10, 1, 9);
+            calls.platform.add(calls.add(11, 2, 10));
+            var owner = owner(scope, calls, root);
+            owner.start();
+            owner.advance(new FridaRuntime.Child(11, 10, 2, "/usr/bin/xcrun"));
+            requireThat(calls.resumed, "platformChildResumedOnce").isEqualTo(List.of(11L), "expected");
+            requireThat(calls.connections.size(), "platformChildNeverAttached").isEqualTo(1);
+            requireThat(calls.instrumentationOwners.size(), "platformChildNeverInstrumented").isEqualTo(1);
+            owner.close(() -> true);
+            requireThat(owner.isClosed(), "ownerClosed").isTrue();
+        }
+    }
+
+    /**
+     * Classifies a child before attaching, and keeps an attach failure on a live non-platform child fatal.
+     * @throws IOException if cleanup fails
+     */
+    @Test public void nonPlatformAttachFailureStaysFatal() throws IOException
+    {
+        try (var scope = new DefaultToolingScope())
+        {
+            var calls = new Calls(scope.getLeaderJsonMapper());
+            var root = calls.add(10, 1, 9);
+            calls.add(11, 2, 10);
+            var owner = owner(scope, calls, root);
+            owner.start();
+            var failure = new FridaRuntime.NativeFailure("frida_device_attach_sync", "frida-error-quark", 10,
+                "get_thread_state returned '(os/kern) protection failure'");
+            calls.startFailure = failure;
+            requireThat(requireException(IOException.class, () -> owner.advance(new FridaRuntime.Child(11, 10, 2, ""))) ==
+                failure, "originalAttachFailure").isTrue();
+            requireThat(calls.events.contains("platform-check:11"), "classifiedBeforeAttach").isTrue();
+            requireThat(calls.resumed.isEmpty(), "liveChildNotResumed").isTrue();
+            owner.close(() -> true);
+        }
+    }
+
+    /**
+     * Resumes a same-process exec within an uninstrumented platform lineage, with no predecessor to retire.
+     * @throws IOException if the owner refuses either image or fails cleanup
+     */
+    @Test public void execWithinUninstrumentedLineage() throws IOException
+    {
+        try (var scope = new DefaultToolingScope())
+        {
+            var calls = new Calls(scope.getLeaderJsonMapper());
+            var root = calls.add(10, 1, 9);
+            calls.platform.add(calls.add(11, 2, 10));
+            var owner = workloadOwner(scope, calls, root);
+            owner.start();
+            owner.advance(new FridaRuntime.Child(11, 10, 0, "/usr/bin/xcrun"));
+            owner.advance(new FridaRuntime.Child(11, 11, 1, "/usr/bin/xcodebuild"));
+            requireThat(calls.resumed, "bothImagesResumed").isEqualTo(List.of(11L, 11L), "expected");
+            requireThat(calls.connections.size(), "neitherImageAttached").isEqualTo(1);
+            owner.close(() -> true);
+            requireThat(owner.isClosed(), "ownerClosed").isTrue();
+        }
+    }
+
+    /**
+     * Classifies each fork of an uninstrumented parent by its own image: a platform fork stays uninstrumented, while
+     * any other fork is instrumented as a fresh image, because its parent retains no descriptor registry to inherit.
+     * @throws IOException if the owner refuses a fork or fails cleanup
+     */
+    @Test public void forkUnderUninstrumentedParent() throws IOException
+    {
+        try (var scope = new DefaultToolingScope())
+        {
+            var calls = new Calls(scope.getLeaderJsonMapper());
+            var root = calls.add(10, 1, 9);
+            calls.platform.add(calls.add(11, 2, 10));
+            calls.platform.add(calls.add(12, 3, 11));
+            calls.add(13, 4, 11);
+            var owner = owner(scope, calls, root);
+            owner.start();
+            owner.advance(new FridaRuntime.Child(11, 10, 2, "/usr/bin/xcrun"));
+            owner.advance(new FridaRuntime.Child(12, 11, 0, ""));
+            requireThat(calls.connections.size(), "platformForkNeverAttached").isEqualTo(1);
+            owner.advance(new FridaRuntime.Child(13, 11, 0, ""));
+            requireThat(calls.resumed, "everyForkResumed").isEqualTo(List.of(11L, 12L, 13L), "expected");
+            requireThat(calls.connections.size(), "nonPlatformForkAttached").isEqualTo(2);
+            requireThat(calls.connections.getLast().configuration.path("inheritedRegistry").isNull(),
+                "nonPlatformForkStartsAFreshRegistry").isTrue();
+            requireThat(calls.instrumented, "nonPlatformForkInstrumented").isEqualTo(List.of(10L, 13L), "expected");
+            owner.close(() -> true);
+            requireThat(owner.isClosed(), "ownerClosed").isTrue();
+        }
+    }
+
+    /**
+     * Instruments an image that a platform binary execs into a non-platform binary, as a fresh image.
+     * @throws IOException if the owner refuses either image or fails cleanup
+     */
+    @Test public void execFromPlatformIntoNonPlatformIsInstrumented() throws IOException
+    {
+        try (var scope = new DefaultToolingScope())
+        {
+            var calls = new Calls(scope.getLeaderJsonMapper());
+            var root = calls.add(10, 1, 9);
+            var platform = calls.add(11, 2, 10);
+            calls.platform.add(platform);
+            var owner = workloadOwner(scope, calls, root);
+            owner.start();
+            owner.advance(new FridaRuntime.Child(11, 10, 0, "/usr/bin/xcrun"));
+            calls.platform.remove(platform);
+            owner.advance(new FridaRuntime.Child(11, 11, 1, "/fixture/clang"));
+            requireThat(calls.resumed, "bothImagesResumed").isEqualTo(List.of(11L, 11L), "expected");
+            requireThat(calls.connections.size(), "successorAttached").isEqualTo(2);
+            requireThat(calls.connections.getLast().configuration.path("inheritedRegistry").isNull(),
+                "successorStartsAFreshRegistry").isTrue();
+            requireThat(calls.instrumented, "successorInstrumented").isEqualTo(List.of(10L, 11L), "expected");
+            owner.close(() -> true);
+            requireThat(owner.isClosed(), "ownerClosed").isTrue();
+        }
+    }
+
+    /**
+     * Closes every instrumented image once when uninstrumented platform images are interleaved with them.
+     * @throws IOException if cleanup fails
+     */
+    @Test public void cleanupWithMixedImages() throws IOException
+    {
+        try (var scope = new DefaultToolingScope())
+        {
+            var calls = new Calls(scope.getLeaderJsonMapper());
+            var root = calls.add(10, 1, 9);
+            calls.platform.add(calls.add(11, 2, 10));
+            calls.add(12, 3, 10);
+            var owner = owner(scope, calls, root);
+            owner.start();
+            owner.advance(new FridaRuntime.Child(11, 10, 2, "/usr/bin/xcrun"));
+            owner.advance(new FridaRuntime.Child(12, 10, 2, "/fixture/clang"));
+            owner.close(() -> true);
+            requireThat(owner.isClosed(), "ownerClosed").isTrue();
+            requireThat(calls.connections.size(), "onlyInstrumentedImagesAttached").isEqualTo(2);
+            requireThat(calls.connections.stream().allMatch(value -> value.closeCalls == 1), "connectionsClosedOnce").isTrue();
+            requireThat(calls.instrumentationOwners.stream().allMatch(value -> value.closeCalls == 1),
+                "instrumentationClosedOnce").isTrue();
+        }
+    }
+
+    /**
+     * Builds a resource-free owner whose workload authority authenticates each held event against current observations.
+     * @param scope this test's owned services
+     * @param calls independent observations
+     * @param root retained root lineage
+     * @return unstarted owner
+     */
+    private static MacImages workloadOwner(DefaultToolingScope scope, Calls calls, MacImages.Identity root)
+    {
+        MacImages.WorkloadAuthority authority = new MacImages.WorkloadAuthority()
+        {
+            @Override public void authenticate(MacImages.Identity identity) throws IOException
+            {
+                if (!identity.equals(calls.inspect(identity.pid()))) throw new IOException("Changed native image");
+            }
+            @Override public void authenticateChild(FridaRuntime.Child child, MacImages.Identity observed) throws IOException
+            {
+                authenticate(observed);
+                if (child.pid() != observed.pid()) throw new IOException("Foreign held event");
+            }
+        };
+        return new MacImages(scope, calls, authority, calls::instrumentation, root, Duration.ofSeconds(1), System::nanoTime);
+    }
+
+    /**
      * Builds a resource-free owner with an advancing test clock and fresh test operations.
      * @param scope this test's owned services
      * @param calls independent observations
@@ -928,6 +1102,8 @@ public final class MacImagesTest
          * Optional acquisition failure.
          */
         private IOException startFailure;
+        /** Images that the kernel marks as Apple platform binaries. */
+        private final java.util.Set<MacImages.Identity> platform = new java.util.HashSet<>();
         /** Optional change to the observed processes when a connection start fails, before it reports the failure. */
         private Runnable beforeStartFailure;
         /**
@@ -1003,6 +1179,12 @@ public final class MacImagesTest
             else connections.add(value);
             nextBootstrap = !nextBootstrap;
             return value;
+        }
+        @Override public boolean platformImage(MacImages.Identity identity) throws IOException
+        {
+            if (!identity.equals(inspect(identity.pid()))) throw new IOException("Code-signing check names another image");
+            events.add("platform-check:" + identity.pid());
+            return platform.contains(identity);
         }
         @Override public void resume(long pid) throws IOException
         {

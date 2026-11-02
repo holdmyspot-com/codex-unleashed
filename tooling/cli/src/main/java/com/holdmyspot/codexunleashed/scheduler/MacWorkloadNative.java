@@ -315,6 +315,7 @@ interface MacWorkloadNative extends MacImages.Operations, MacImages.WorkloadAuth
             bind(library, "mw_inventory", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS);
             bind(library, "mw_descriptors", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                 ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+            bind(library, "mw_platform", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
             bind(library, "mw_release", ValueLayout.ADDRESS);
             bind(library, "mw_cancel", ValueLayout.ADDRESS);
             bind(library, "mw_terminal", ValueLayout.ADDRESS, ValueLayout.ADDRESS);
@@ -511,6 +512,32 @@ interface MacWorkloadNative extends MacImages.Operations, MacImages.WorkloadAuth
         {
             requireThread();
             return AllocationHook.newNativeConnection(manager, pid);
+        }
+
+        /**
+         * Reads the kernel code-signing status of one retained held image.
+         * The native bridge requires the retained eighteen-field authority before and after the query, so the
+         * status belongs to this exact incarnation.
+         * @param identity independently observed retained image lineage
+         * @return {@code true} if the kernel marks the image as an Apple platform binary
+         * @throws IOException if authority changed or the kernel query fails
+         * @throws IllegalStateException if called from another thread
+         */
+        @Override public boolean platformImage(MacImages.Identity identity) throws IOException
+        {
+            requireThread(); requireHandle();
+            authenticate(identity);
+            long[] expected = identities.get(identity.pid()).clone();
+            try (Arena call = Arena.ofConfined())
+            {
+                MemorySegment authority = call.allocateFrom(ValueLayout.JAVA_LONG, expected);
+                MemorySegment platform = call.allocate(ValueLayout.JAVA_INT);
+                check("mw_platform", invoke("mw_platform", handle, authority, platform));
+                authenticate(identity);
+                if (!Arrays.equals(expected, identities.get(identity.pid())))
+                    throw new IOException("Native image authority changed during code-signing inspection");
+                return platform.get(ValueLayout.JAVA_INT, 0) != 0;
+            }
         }
 
         @Override public void resume(long pid) throws IOException
