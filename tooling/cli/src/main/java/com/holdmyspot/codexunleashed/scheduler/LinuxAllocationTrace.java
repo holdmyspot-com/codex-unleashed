@@ -47,6 +47,8 @@ final class LinuxAllocationTrace
 	private static final int NOHANG = 1;
 	/** Linux signals needed by stopped-shell startup, trap recognition, and terminal collection. */
 	private static final int KILL = 9, STOP = 19, CONTINUE = 18, TRAP = 5, SYSCALL_TRAP = 133;
+	/** Linux ESRCH: the task does not exist or, for ptrace, is no longer stopped for its tracer. */
+	private static final int ESRCH = 3;
 	/** Linux mmap syscall and ENOMEM number for the x86-64 syscall ABI. */
 	private static final long MMAP = 9, NO_MEMORY = -12;
 	/** Constant bootstrap receives cwd and command exclusively through distinct positional arguments. */
@@ -813,6 +815,30 @@ final class LinuxAllocationTrace
 	}
 
 	/**
+	 * Reports that ptrace found no stopped task, because the kernel killed it after its stop was reported.
+	 * Its terminal status is still collected through the owner's wait, so the stop needs no further service.
+	 */
+	private static final class TaskVanished extends IOException
+	{
+		private static final long serialVersionUID = 1L;
+		/**
+		 * The task that ptrace no longer found.
+		 */
+		private final int tid;
+
+		/**
+		 * Creates a report for one task.
+		 * @param message the failed request
+		 * @param tid the task that ptrace no longer found
+		 */
+		TaskVanished(String message, int tid)
+		{
+			super(message);
+			this.tid = tid;
+		}
+	}
+
+	/**
 	 * Owns one tracing thread's native calls, task identities, syscall observations and terminal collection.
 	 */
 	private static final class Attempt
@@ -829,6 +855,10 @@ final class LinuxAllocationTrace
 		private final DenialHandler handler;
 		/** Every tracee remains here until waitpid supplies its terminal status. */
 		private final Map<Integer, Identity> owned = new LinkedHashMap<>();
+		/**
+		 * The task whose wait result is being serviced, or zero before a wait returns one.
+		 */
+		private int servicing;
 		/** Entry mmap lengths keyed by task ID until the corresponding syscall exit. */
 		private final Map<Integer, Long> mmapLengths = new HashMap<>();
 		/** Every authentic terminal status, in collection order. */
@@ -1247,6 +1277,9 @@ final class LinuxAllocationTrace
 		private long trace(int operation, int tid, long address, MemorySegment data) throws IOException
 		{
 			NativeResult result = call(ptrace, operation, tid, MemorySegment.ofAddress(address), data);
+			if (result.value() == -1 && result.errno() == ESRCH)
+				throw new TaskVanished("ptrace request " + operation + " for task " + tid +
+					" failed with errno " + result.errno(), tid);
 			if (result.value() == -1 && result.errno() != 0)
 				throw new IOException("ptrace request " + operation + " for task " + tid +
 					" failed with errno " + result.errno());
@@ -1262,16 +1295,37 @@ final class LinuxAllocationTrace
 		private void signal(int tid, int signal) throws IOException
 		{
 			NativeResult result = call(kill, tid, signal);
-			if (result.value() != 0 && result.errno() != 3)
+			if (result.value() != 0 && result.errno() != ESRCH)
 				throw new IOException("kill for task " + tid + " failed with errno " + result.errno());
 		}
 
 		/**
 		 * Collects or services one stop, preserving descendant tracking after the root exits.
+		 * A stop whose own task the kernel kills while it is serviced is dropped; the task's terminal status is
+		 * collected by a later wait. Any other task vanishing still fails, because the stopped task would stay held.
 		 * @param running indicates whether normal syscall tracing remains enabled
 		 * @throws IOException if wait, ptrace or a denial callback fails
 		 */
         private void waitOne(boolean running) throws IOException
+        {
+            servicing = 0;
+            try
+            {
+                serviceOne(running);
+            }
+            catch (TaskVanished vanished)
+            {
+                if (vanished.tid != servicing || owned.containsKey(vanished.tid) == false)
+                    throw vanished;
+            }
+        }
+
+		/**
+		 * Collects or services one stop without accepting a task that vanishes during service.
+		 * @param running indicates whether normal syscall tracing remains enabled
+		 * @throws IOException if wait, ptrace or a denial callback fails
+		 */
+        private void serviceOne(boolean running) throws IOException
         {
             if (running && !denied) serviceContinuations();
             try (Arena arena = Arena.ofConfined())
@@ -1290,6 +1344,7 @@ final class LinuxAllocationTrace
 					throw new IOException("Owned waitpid failed with errno " + waited.errno());
 				}
 				int tid = Math.toIntExact(waited.value());
+				servicing = tid;
 				int status = statusValue.get(ValueLayout.JAVA_INT, 0);
 				boolean stopped = (status & 255) == 127;
                 boolean unannounced = !owned.containsKey(tid);
