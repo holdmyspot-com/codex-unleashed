@@ -24,6 +24,26 @@ public final class CompilerErrorRelayTest
 	}
 
 	/**
+	 * Forwards a typed artifact notification once, because current rustc releases begin each JSON message with its
+	 * {@code $message_type}.
+	 * @throws IOException if the in-memory stream fails
+	 */
+	@Test
+	public void forwardsRepeatedTypedArtifactNotificationOnce() throws IOException
+	{
+		String typed = "{\"$message_type\":\"artifact\",\"artifact\":\"/work/target/release/deps/libhash32-0d3b.rmeta\"," +
+			"\"emit\":\"metadata\"}\n";
+		String diagnostic = "{\"$message_type\":\"diagnostic\",\"message\":\"unused \\\"artifact\\\":\",\"level\":\"warning\"}\n";
+		var cargo = new ByteArrayOutputStream();
+		var relay = new CompilerErrorRelay(cargo);
+		accept(relay, diagnostic + typed);
+		relay.endAttempt(true);
+		accept(relay, diagnostic + typed);
+		relay.endAttempt(false);
+		requireThat(cargo.toString(StandardCharsets.UTF_8), "cargoStandardError").isEqualTo(diagnostic + typed + diagnostic);
+	}
+
+	/**
 	 * Forwards an artifact notification once when a retried compiler repeats it, because Cargo panics on a repeat.
 	 * @throws IOException if the in-memory stream fails
 	 */

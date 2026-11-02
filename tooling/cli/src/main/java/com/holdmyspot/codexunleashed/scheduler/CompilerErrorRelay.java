@@ -4,7 +4,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -21,8 +20,10 @@ import java.util.Set;
  */
 final class CompilerErrorRelay
 {
-	/** Prefix of the JSON line that rustc writes when it finishes an output file, as Cargo's message format defines. */
-	private static final byte[] ARTIFACT = "{\"artifact\":".getBytes(StandardCharsets.UTF_8);
+	/** Key that names the output file in rustc's JSON artifact notification. */
+	private static final String ARTIFACT = "\"artifact\":";
+	/** Key that every rustc JSON diagnostic carries and an artifact notification lacks. */
+	private static final String MESSAGE = "\"message\":";
 
 	/** Cargo's standard-error stream that receives the forwarded output. */
 	private final OutputStream cargo;
@@ -87,10 +88,22 @@ final class CompilerErrorRelay
 	{
 		byte[] bytes = line.toByteArray();
 		line.reset();
-		boolean artifact = bytes.length >= ARTIFACT.length &&
-			Arrays.equals(bytes, 0, ARTIFACT.length, ARTIFACT, 0, ARTIFACT.length);
-		if (artifact && !artifacts.add(new String(bytes, StandardCharsets.UTF_8)))
+		String text = new String(bytes, StandardCharsets.UTF_8);
+		if (isArtifact(text) && !artifacts.add(text))
 			return;
 		cargo.write(bytes);
+	}
+
+	/**
+	 * Recognizes rustc's artifact notification, which is a one-line JSON object that names an output file and, unlike a
+	 * diagnostic, carries no message. Older rustc releases begin it with the artifact key and newer ones with
+	 * {@code $message_type}, so the key order is not relied on.
+	 * @param line one complete standard-error line, including its newline if any
+	 * @return {@code true} if the line is an artifact notification
+	 */
+	static boolean isArtifact(String line)
+	{
+		String trimmed = line.strip();
+		return trimmed.startsWith("{") && trimmed.endsWith("}") && trimmed.contains(ARTIFACT) && !trimmed.contains(MESSAGE);
 	}
 }
