@@ -299,6 +299,12 @@ final class WindowsCargoJobserver implements AutoCloseable
 		private CargoLease(Map<String, String> environment) { this.environment = environment; }
 
 		/**
+		 * Reports the pool's initial explicit capacity without touching the semaphore.
+		 * @return explicit tokens in a quiescent pool, excluding Cargo's implicit slot
+		 */
+		int capacity() { return expectedTokens; }
+
+		/**
 		 * Returns the complete launch environment while the invocation is retained.
 		 * @return immutable named-jobserver environment
 		 * @throws IllegalStateException if released or accessed from another thread

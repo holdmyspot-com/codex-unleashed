@@ -4,6 +4,7 @@ import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -105,7 +106,11 @@ final class WindowsCargoSchedule
             invocation = configuration.memory() == null ? new WindowsCargoInvocation(scope, inputs) :
                 new WindowsCargoInvocation(scope, inputs, configuration.memory());
             invocation.start();
-            return new SchedulerCoordinator<>(invocation.session(), settings.budget(), () -> Thread.sleep(10)).run();
+            // Scheduler.dispatch requires inherited standard error, so a stall report reaches the build log there.
+            StallWatch stalls = new StallWatch(Clock.systemUTC(), StallWatch.DEFAULT_THRESHOLD, scope.json(),
+                System.err::println, invocation::stallFacts);
+            return new SchedulerCoordinator<>(invocation.session(), settings.budget(), () -> Thread.sleep(10),
+                (event, payload) -> { }, stalls).run();
         }
         catch (IOException | RuntimeException | Error failure) { primary = failure; throw failure; }
         finally

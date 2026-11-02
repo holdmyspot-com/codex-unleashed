@@ -349,6 +349,30 @@ public final class SchedulerCoordinatorTest
     }
 
     /**
+     * The wait observer sees every policy wait, with its reason and queue snapshot, immediately before each idle wait.
+     * @throws IOException if modeled coordination fails
+     */
+    @Test
+    public void reportsEveryPolicyWaitBeforeIdling() throws IOException
+    {
+        var session = new Model();
+        session.seeded = true;
+        session.rootEarly = true;
+        session.discoveryDelay = 3;
+        List<String> order = new ArrayList<>();
+        List<Policy.Decision> decisions = new ArrayList<>();
+        new SchedulerCoordinator<>(session, new Policy.Budget(0, 2), () -> order.add("idle"), (event, payload) -> { },
+            (decision, snapshot) ->
+            {
+                order.add("wait");
+                decisions.add(decision);
+                requireThat(snapshot.budget(), "snapshotBudget").isEqualTo(new Policy.Budget(0, 2));
+            }).run();
+        requireThat(order, "observerPrecedesEachIdle").isEqualTo(List.of("wait", "idle", "wait", "idle"));
+        requireThat(decisions.getFirst().control(), "observedControl").isEqualTo(Policy.Control.WAIT);
+    }
+
+    /**
      * Trusted rejected samples wait and reconcile again without losing completed payloads.
      * @throws IOException if modeled observation recovery fails
      */

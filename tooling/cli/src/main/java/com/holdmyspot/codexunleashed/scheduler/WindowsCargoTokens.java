@@ -59,6 +59,39 @@ final class WindowsCargoTokens implements AutoCloseable
  }
 
  /**
+  * Counts the grants of every live domain without touching the semaphore.
+  * @return tokens definitely held and tokens outstanding, including uncertain acquisitions
+  * @throws IllegalStateException if called off-thread
+  */
+ Accounting accounting()
+ {
+  requireController();
+  int held = 0;
+  int outstanding = 0;
+  for (Domain domain : domains.values())
+  {
+   if (domain.retired) continue;
+   outstanding += domain.grants.size();
+   for (Boolean certain : domain.grants.values())
+    if (certain) ++held;
+  }
+  return new Accounting(held, outstanding);
+ }
+
+ /**
+  * Reports the explicit semaphore capacity this ledger draws from.
+  * @return explicit tokens in a quiescent pool, excluding Cargo's implicit slot
+  */
+ int capacity() { return lease.capacity(); }
+
+ /**
+  * Token counts of the live domains.
+  * @param held tokens definitely held
+  * @param outstanding held tokens plus acquisitions whose result is uncertain
+  */
+ record Accounting(int held, int outstanding) { }
+
+ /**
   * Releases the invocation borrow only when every domain has reached whole-Job quiescence.
   * A poisoned ledger releases its borrow for pool destruction and still reports its original failure. It never
   * invents a return for an uncertain acquisition or repeats an uncertain return.

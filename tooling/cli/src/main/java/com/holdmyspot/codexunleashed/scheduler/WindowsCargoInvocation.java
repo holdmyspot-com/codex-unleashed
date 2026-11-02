@@ -153,6 +153,17 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
     }
 
     /**
+     * Reads the native facts a stall report adds to the queue state, without changing any owner.
+     * @return attempt owners, unregistered wrapper pids and token accounting
+     * @throws IllegalStateException if called from another thread
+     */
+    StallWatch.Facts stallFacts()
+    {
+        requireThread();
+        return resources.stallFacts();
+    }
+
+    /**
      * Returns completed prediction and sampled-residency pairs for best-effort estimate calibration.
      * @return immutable completed observations, or empty when history was not configured
      * @throws IllegalStateException if another thread calls
@@ -533,6 +544,11 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
          */
         default CargoMemoryEstimates memoryEstimates() { return null; }
         /**
+         * Reads the native facts a stall report adds to the queue state, without changing any owner.
+         * @return attempt owners, unregistered wrapper pids and token accounting; empty when none are acquired
+         */
+        default StallWatch.Facts stallFacts() { return StallWatch.Facts.NONE; }
+        /**
          * Consumes a validated whole-Job outcome before publication to the wrapper.
          * Only non-aborted zero-status completion can publish accepted residency as reusable history.
          * @param completion accepted whole-Job result and exact queue attempt ordinal
@@ -748,6 +764,21 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
         @Override public JobQueue.AttemptFactory<WindowsProcess.Result> factory() { return attempts; }
         @Override public Controller.Measurements measurements() { return estimates == null ? measurements : estimates; }
         @Override public CargoMemoryEstimates memoryEstimates() { return estimates; }
+        @Override public StallWatch.Facts stallFacts()
+        {
+            List<Long> pending = new ArrayList<>();
+            for (Peer peer : peers)
+                if (peer.request == null) pending.add(peer.connection.peerPid());
+            StallWatch.TokenFacts tokenFacts = null;
+            if (tokens != null)
+            {
+                WindowsCargoTokens.Accounting counts = tokens.accounting();
+                int capacity = tokens.capacity();
+                tokenFacts = new StallWatch.TokenFacts(capacity, counts.held(), counts.outstanding(),
+                    Math.max(0, capacity - counts.outstanding()));
+            }
+            return new StallWatch.Facts(attempts == null ? List.of() : attempts.facts(), pending, tokenFacts);
+        }
         @Override public void register(CargoCompilerRequest request, long position) throws IOException
         {
             Peer peer = requests.get(request.name());

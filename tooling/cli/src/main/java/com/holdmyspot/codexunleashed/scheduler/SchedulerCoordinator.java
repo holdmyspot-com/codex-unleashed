@@ -27,6 +27,8 @@ final class SchedulerCoordinator<R>
     private final Idle idle;
     /** Owner-thread durable event boundary; failures use ordinary retained cleanup. */
     private final Observer observer;
+    /** Owner-thread listener told about each policy wait; it cannot change scheduling. */
+    private final WaitObserver waits;
     /** Prevents reuse after any attempted invocation. */
     private boolean attempted;
     /** Accepted payloads retained even if a later measurement, protocol or cleanup operation fails. */
@@ -53,6 +55,20 @@ final class SchedulerCoordinator<R>
      */
     SchedulerCoordinator(Session<R> session, Policy.Budget budget, Idle idle, Observer observer)
     {
+        this(session, budget, idle, observer, (decision, snapshot) -> {});
+    }
+
+    /**
+     * Configures a coordinator that also reports each policy wait so a caller can explain a stall.
+     * @param session caller-retained protocol and outer resource owner
+     * @param budget physical reserve and concurrency ceiling
+     * @param idle bounded idle operation
+     * @param observer durable event recorder; failure aborts through normal retained cleanup
+     * @param waits owner-thread listener called before every policy idle wait; it must not throw
+     */
+    SchedulerCoordinator(Session<R> session, Policy.Budget budget, Idle idle, Observer observer, WaitObserver waits)
+    {
+        this.waits = Objects.requireNonNull(waits, "waits");
         this.observer = Objects.requireNonNull(observer, "observer");
         this.session = Objects.requireNonNull(session, "session");
         this.budget = Objects.requireNonNull(budget, "budget");
@@ -131,7 +147,11 @@ final class SchedulerCoordinator<R>
                     result = root.getAsInt();
                     break;
                 }
-                if (decision.control() == Policy.Control.WAIT) idle.await();
+                if (decision.control() == Policy.Control.WAIT)
+                {
+                    waits.waiting(decision, queue.diagnostics());
+                    idle.await();
+                }
             }
         }
         catch (InterruptedException cause)
@@ -250,6 +270,21 @@ final class SchedulerCoordinator<R>
          * @throws IOException if the event cannot be durably recorded
          */
         void record(String event, Object payload) throws IOException;
+    }
+
+    /**
+     * Learns of each policy wait with the queue state that explains it.
+     * Calls run on the constructing thread, must not reenter the coordinator and must not throw.
+     */
+    @FunctionalInterface
+    interface WaitObserver
+    {
+        /**
+         * Records one policy wait, immediately before the idle operation.
+         * @param decision the waiting decision and its reason
+         * @param snapshot the queue state at this wait
+         */
+        void waiting(Policy.Decision decision, JobQueue.Snapshot snapshot);
     }
 
     /** Bounded cooperative wait after policy WAIT or a rejected memory observation. */

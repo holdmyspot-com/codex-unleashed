@@ -86,6 +86,33 @@ final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
      */
     long sequence() { requireOwner(); return sequence; }
 
+    /**
+     * Describes this owner for a stall report without changing it: lifecycle phase, root process id and whether the Job
+     * can still run. It never pumps events and never throws.
+     * @return phase, root pid and liveness; pid and liveness are null before a Job exists, and liveness is null if it
+     *   cannot be observed
+     */
+    StallWatch.AttemptFacts facts()
+    {
+        requireOwner();
+        String phase;
+        if (closed) phase = "closed";
+        else if (collected != null) phase = "collected";
+        else if (stopping) phase = "stopping";
+        else if (process != null) phase = "running";
+        else phase = "created";
+        if (process == null) return new StallWatch.AttemptFacts(name, sequence, phase, null, null);
+        OptionalLong pid = process.pid();
+        Boolean alive;
+        if (closed) alive = false;
+        else
+        {
+            try { alive = process.poll().isEmpty(); }
+            catch (IOException | RuntimeException cause) { alive = null; }
+        }
+        return new StallWatch.AttemptFacts(name, sequence, phase, pid.isPresent() ? pid.getAsLong() : null, alive);
+    }
+
     /** Prepares and registers the Job, then instruments and verifies the root before its single release.
      * @throws IOException if preparation, registration, readiness or release fails; partial owners remain retained
      */
@@ -372,6 +399,10 @@ final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
          * @throws IOException if status cannot be observed
          */
         Optional<WindowsProcess.Result> poll() throws IOException;
+        /** Reads the launched root process id for diagnostics.
+         * @return the root process id, or empty if none is known
+         */
+        OptionalLong pid();
         /** Requests whole-Job cancellation once; it supplies no completion outcome.
          * @throws IOException if the cancellation request is uncertain
          */
@@ -518,6 +549,7 @@ final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
         /** Allocates the Java bridge before acquiring its native Job owner. */
         private NativeProcess() {}
         @Override public Optional<WindowsProcess.Result> poll() throws IOException { return process.poll(); }
+        @Override public OptionalLong pid() { return OptionalLong.of(process.pid()); }
         @Override public void terminate() throws IOException { process.terminate(); }
         @Override public void close() throws IOException { process.close(); }
     }

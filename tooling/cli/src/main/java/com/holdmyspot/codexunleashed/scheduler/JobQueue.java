@@ -215,6 +215,19 @@ final class JobQueue<R> implements AutoCloseable
 	}
 
 	/**
+	 * Copies the state a stall report explains: unfinished actions, completions, retained memory demand and the latest
+	 * host reading. It samples nothing and never changes scheduling state.
+	 *
+	 * @return immutable diagnostic snapshot
+	 * @throws IllegalStateException if closing or an unresolved effect prevents projection
+	 */
+	Snapshot diagnostics()
+	{
+		return new Snapshot(jobs(), completions, nextAttempt + completed.size(), controller.memoryDemands(), sampledHost,
+			budget);
+	}
+
+	/**
 	 * Returns the number of accepted non-aborted whole-action completions accounted once. A failed observation batch
 	 * defers accounting until reconciliation succeeds. This diagnostic remains available after failure or close.
 	 *
@@ -557,6 +570,28 @@ final class JobQueue<R> implements AutoCloseable
 	private IOException contextual(Entry entry, String operation, Throwable cause)
 	{
 		return new IOException("Action " + entry.name + " attempt " + entry.sequence + " " + operation + " failed", cause);
+	}
+
+	/**
+	 * Diagnostic copy of the queue's unfinished work and memory facts.
+	 *
+	 * @param jobs unfinished actions in original submission order
+	 * @param completions accepted non-aborted whole-action completions
+	 * @param progress attempts created plus attempts whose outcome was accepted; it never decreases
+	 * @param demands retained per-action memory demand, including completed actions
+	 * @param host latest accepted host reading, or null before the first reading
+	 * @param budget reserved headroom and live-attempt ceiling
+	 */
+	record Snapshot(List<Policy.Job> jobs, long completions, long progress,
+		Map<Controller.Action, Controller.MemoryDemand> demands, Controller.Memory host, Policy.Budget budget)
+	{
+		/** Copies the collections so later queue changes cannot alter the snapshot. */
+		Snapshot
+		{
+			jobs = List.copyOf(jobs);
+			demands = Map.copyOf(demands);
+			Objects.requireNonNull(budget, "budget may not be null");
+		}
 	}
 
 	/**

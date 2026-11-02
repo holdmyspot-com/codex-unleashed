@@ -158,6 +158,15 @@ final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Re
      */
     boolean hasOpenAttempts() { requireOwner(); return live.isEmpty() == false; }
     /**
+     * Describes every retained attempt owner for a stall report without changing any of them.
+     * @return facts in creation order, omitting owners already cleaned
+     */
+    List<StallWatch.AttemptFacts> facts()
+    {
+        requireOwner();
+        return live.values().stream().map(WindowsAttempt::facts).toList();
+    }
+    /**
      * Forgets only the exact successfully cleaned owner.
      * @param attempt exact successfully cleaned owner to forget
      */

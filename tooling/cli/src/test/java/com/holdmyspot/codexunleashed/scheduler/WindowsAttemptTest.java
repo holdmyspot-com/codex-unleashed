@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -158,9 +159,64 @@ public final class WindowsAttemptTest
         requireThat(factory.hasOpenAttempts(), "failedCloseRemainsVisible").isTrue();
     }
 
+    /**
+     * A stall report can name an attempt's phase, root process and whether its Job can still run, before and after
+     * the Job starts and after it is collected.
+     * @throws IOException if the controlled lifecycle fails
+     */
+    @Test
+    public void factsDescribePhaseRootProcessAndJobLiveness() throws IOException
+    {
+        Resources resources = new Resources();
+        resources.pid = 4242;
+        WindowsAttempt attempt = factory(resources).create("compile", 0);
+
+        StallWatch.AttemptFacts created = attempt.facts();
+        requireThat(created, "beforeStart").isEqualTo(new StallWatch.AttemptFacts("compile", 0, "created", null, null));
+
+        attempt.start();
+        requireThat(attempt.facts(), "whileJobRuns")
+            .isEqualTo(new StallWatch.AttemptFacts("compile", 0, "running", 4242L, true));
+
+        resources.result = new WindowsProcess.Result(0, false);
+        requireThat(attempt.facts().alive(), "jobHasNoMembers").isEqualTo(false);
+        attempt.poll();
+        requireThat(attempt.facts().phase(), "afterCollection").isEqualTo("collected");
+        attempt.close();
+    }
+
+    /**
+     * Facts cover every attempt owner the factory still retains, in creation order, and drop one once it is cleaned.
+     * @throws IOException if the controlled lifecycle fails
+     */
+    @Test
+    public void factoryFactsListRetainedAttemptsOnly() throws IOException
+    {
+        Map<String, Resources> resources = new HashMap<>();
+        resources.put("a", new Resources());
+        resources.put("b", new Resources());
+        WindowsAttempts factory = new WindowsAttempts(UUID.randomUUID(),
+            Map.of("a", WindowsAttemptsTest.command("a", 0), "b", WindowsAttemptsTest.command("b", 1)),
+            Duration.ofSeconds(1), (command, sequence, identity, timeout) -> resources.get(command.action().name()));
+        WindowsAttempt first = factory.create("a", 0);
+        factory.create("b", 1);
+
+        requireThat(factory.facts().stream().map(StallWatch.AttemptFacts::name).toList(), "retainedNames")
+            .isEqualTo(List.of("a", "b"));
+        first.start();
+        resources.get("a").result = new WindowsProcess.Result(0, false);
+        first.poll();
+        first.close();
+        requireThat(factory.facts().stream().map(StallWatch.AttemptFacts::name).toList(), "afterCleanup")
+            .isEqualTo(List.of("b"));
+    }
+
     /** Owned simulated Job/registration/hooks supporting precise lifecycle-failure injection. */
     static final class Resources implements WindowsAttempt.Resources, WindowsAttempt.Process, WindowsAttempt.Hooks
     {
+        long pid = -1;
+        @Override public java.util.OptionalLong pid()
+        { return pid < 0 ? java.util.OptionalLong.empty() : java.util.OptionalLong.of(pid); }
         final List<String> events = new ArrayList<>();
         AllocationWaits waits;
         AllocationHook.Pump peers;

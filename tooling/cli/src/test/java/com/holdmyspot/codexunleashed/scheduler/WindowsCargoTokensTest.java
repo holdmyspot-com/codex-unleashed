@@ -41,6 +41,46 @@ public final class WindowsCargoTokensTest
   }
  }
  /**
+  * Accounting counts definitely held tokens across every live domain and stops counting a domain once it retires.
+  * @throws IOException if accounting fails
+  */
+ @Test public void accountingCountsHeldTokensOfLiveDomains() throws IOException
+ {
+  Pool pool = new Pool();
+  try (WindowsCargoJobserver owner = WindowsCargoJobserver.SharedSecrets.create(4, pool);
+       WindowsCargoJobserver.CargoLease lease = owner.retainCargo(Map.of());
+       WindowsCargoTokens tokens = new WindowsCargoTokens(lease))
+  {
+   requireThat(tokens.accounting(), "empty").isEqualTo(new WindowsCargoTokens.Accounting(0, 0));
+   WindowsCargoTokens.Domain first = tokens.retain(UUID.randomUUID());
+   WindowsCargoTokens.Domain second = tokens.retain(UUID.randomUUID());
+   UUID grant = UUID.randomUUID();
+   requireThat(first.tryReserve(grant), "firstReserved").isTrue();
+   requireThat(second.tryReserve(UUID.randomUUID()), "secondReserved").isTrue();
+   requireThat(tokens.accounting(), "twoHeld").isEqualTo(new WindowsCargoTokens.Accounting(2, 2));
+   first.returnToken(grant);
+   requireThat(tokens.accounting(), "oneReturned").isEqualTo(new WindowsCargoTokens.Accounting(1, 1));
+   first.retire(() -> true);
+   second.retire(() -> true);
+   requireThat(tokens.accounting(), "retiredDomainsIgnored").isEqualTo(new WindowsCargoTokens.Accounting(0, 0));
+  }
+ }
+ /**
+  * An acquisition whose result is uncertain stays outstanding without counting as held.
+  * @throws IOException if setup fails
+  */
+ @Test public void uncertainAcquisitionIsOutstandingButNotHeld() throws IOException
+ {
+  Pool pool = new Pool();
+  WindowsCargoJobserver owner = WindowsCargoJobserver.SharedSecrets.create(4, pool);
+  WindowsCargoJobserver.CargoLease lease = owner.retainCargo(Map.of());
+  WindowsCargoTokens tokens = new WindowsCargoTokens(lease);
+  WindowsCargoTokens.Domain domain = tokens.retain(UUID.randomUUID());
+  pool.failAcquire = true;
+  requireException(IOException.class, () -> domain.tryReserve(UUID.randomUUID()));
+  requireThat(tokens.accounting(), "uncertainIsOutstanding").isEqualTo(new WindowsCargoTokens.Accounting(0, 1));
+ }
+ /**
   * Retains ambiguous native returns without issuing the same return twice.
   * @throws Exception if setup fails
   */
@@ -73,12 +113,19 @@ public final class WindowsCargoTokensTest
   private int returns;
   /** Requests an ambiguous token return failure. */
   private boolean failReturn;
+  /** Requests an ambiguous token acquisition failure. */
+  private boolean failAcquire;
   /** Creates a test-local pool. */
   private Pool() { }
   @Override public boolean create(String name, int initial, int maximum, Consumer<MemorySegment> acquired)
   { available = initial; acquired.accept(MemorySegment.ofAddress(42)); return false; }
-  @Override public boolean tryAcquire(MemorySegment handle)
-  { if (available == 0) return false; --available; return true; }
+  @Override public boolean tryAcquire(MemorySegment handle) throws IOException
+  {
+   if (failAcquire) throw new IOException("Ambiguous controlled acquisition");
+   if (available == 0) return false;
+   --available;
+   return true;
+  }
   @Override public void release(MemorySegment handle, int count) throws IOException
   { ++returns; if (failReturn) throw new IOException("Ambiguous controlled return"); available += count; }
   @Override public void closeHandle(MemorySegment handle) { }
