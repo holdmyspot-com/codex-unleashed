@@ -6,7 +6,7 @@ inputs:
     required: true
   idle-timeout-minutes:
     description: Positive whole minutes allowed before joining or while waiting at an idle shell prompt
-    default: '30'
+    default: '10'
 outputs:
   ssh-command:
     description: SSH command for the owned live debug session

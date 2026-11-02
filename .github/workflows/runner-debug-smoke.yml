@@ -18,7 +18,7 @@ on:
       idle_timeout_minutes:
         description: Positive whole minutes before an unjoined or idle shell ends
         type: string
-        default: '30'
+        default: '10'
       target:
         description: Native target to verify; all exercises the release matrix
         type: choice
