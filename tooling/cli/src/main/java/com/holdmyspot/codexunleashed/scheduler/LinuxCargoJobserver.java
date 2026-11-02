@@ -265,9 +265,9 @@ final class LinuxCargoJobserver implements AutoCloseable
 		String search = copy.get("PATH");
 		if (search != null)
 		{
-			Path make = findMake(search);
+			Path make = CargoMakeFrontEnd.findMake(search);
 			if (make != null)
-				copy.put("PATH", createFrontEnd(make, auth) + ":" + search);
+				copy.put("PATH", createFrontEnd(make) + ":" + search);
 		}
 		CargoLease result = new CargoLease(Map.copyOf(copy));
 		retained = true;
@@ -276,60 +276,15 @@ final class LinuxCargoJobserver implements AutoCloseable
 	}
 
 	/**
-	 * Finds the make that a build script running {@code make} would execute.
-	 * @param search colon-separated executable search path
-	 * @return real path of the first executable {@code make}, or null when none exists
-	 * @throws IOException if a found make cannot be resolved
-	 */
-	private static Path findMake(String search) throws IOException
-	{
-		for (String entry : search.split(":", -1))
-		{
-			if (entry.isEmpty() || !entry.startsWith("/"))
-				continue;
-			Path candidate = Path.of(entry, "make");
-			if (Files.isRegularFile(candidate) && Files.isExecutable(candidate))
-				return candidate.toRealPath();
-		}
-		return null;
-	}
-
-	/**
 	 * Creates the make front end that replaces the FIFO path in make flags with the lease's descriptor numbers.
 	 * The workload can look the front end up and execute it but cannot modify or replace it.
 	 * @param make real path of the make to execute
-	 * @param auth FIFO auth value to replace
 	 * @return front-end directory
 	 * @throws IOException if creation or access publication fails
 	 */
-	private Path createFrontEnd(Path make, String auth) throws IOException
+	private Path createFrontEnd(Path make) throws IOException
 	{
-		for (String word : new String[] {make.toString(), auth})
-			if (!word.matches("[A-Za-z0-9_./:+=,@%-]+"))
-				throw new IllegalArgumentException("Make front end cannot quote " + word);
-		String script = """
-			#!/bin/sh
-			# Owned by one Cargo jobserver lease. GNU Make before 4.4 reads jobserver descriptors, not a FIFO path.
-			replace() {
-			  rest=$1 result=
-			  while :; do
-			    case $rest in
-			      *'%1$s'*) result=$result${rest%%%%'%1$s'*}'%2$s'; rest=${rest#*'%1$s'} ;;
-			      *) break ;;
-			    esac
-			  done
-			  printf '%%s' "$result$rest"
-			}
-			for name in CARGO_MAKEFLAGS MAKEFLAGS MFLAGS; do
-			  eval "set=\\${$name+x} value=\\${$name-}"
-			  if [ -n "$set" ]; then
-			    value=$(replace "$value")
-			    eval "$name=\\$value"
-			    export "$name"
-			  fi
-			done
-			exec '%3$s' "$@"
-			""".formatted(auth, READ_DESCRIPTOR + "," + WRITE_DESCRIPTOR, make);
+		String script = CargoMakeFrontEnd.script(make, fifo, READ_DESCRIPTOR, WRITE_DESCRIPTOR, false);
 		frontEndDirectory = Files.createDirectory(directory.resolve(FRONT_END_DIRECTORY),
 			PosixFilePermissions.asFileAttribute(SETUP_PERMISSIONS));
 		frontEnd = Files.createFile(frontEndDirectory.resolve("make"),

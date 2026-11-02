@@ -32,6 +32,15 @@ final class MacCargoJobserver implements AutoCloseable
     private static final String DIRECTORY_PREFIX = "mac-cargo-jobserver-";
     /** Exact child name owned by the native FIFO. */
     private static final String FIFO_NAME = "tokens";
+    /** Descriptor number on which the make front end opens the FIFO for jobserver reads. */
+    static final int READ_DESCRIPTOR = 200;
+    /** Descriptor number on which the make front end opens the FIFO for jobserver writes. */
+    static final int WRITE_DESCRIPTOR = 201;
+    /** Directory, inside the owned directory, holding the make front end that PATH names first. */
+    private static final String FRONT_END_DIRECTORY = "bin";
+    /** Front-end script access permitting the workload group to read and execute it. */
+    private static final Set<PosixFilePermission> FRONT_END_PERMISSIONS =
+        Set.copyOf(PosixFilePermissions.fromString("rwxr-x---"));
     /** Preferred jobserver authentication option. */
     private static final String AUTH_OPTION = "--jobserver-auth=";
     /** Borrowed native access and partial-owner inventory. */
@@ -42,6 +51,12 @@ final class MacCargoJobserver implements AutoCloseable
     private final List<Endpoint> endpoints = new ArrayList<>();
     /** Exact directory created here, or null before acquisition and after removal. */
     private Path directory;
+    /** Workload group granted access to the make front end. */
+    private int workloadGroup = -1;
+    /** Created make front end, or null when none was created or after its deletion. */
+    private Path frontEnd;
+    /** Created front-end directory, or null when none was created or after its deletion. */
+    private Path frontEndDirectory;
     /** Published successful FIFO transport, or null when acquisition did not complete. */
     private Endpoint fifo;
     /** One published invocation lease, or null before publication and after release. */
@@ -99,6 +114,7 @@ final class MacCargoJobserver implements AutoCloseable
             throw new IllegalArgumentException("Jobserver parent must have a lossless whitespace-free auth pathname: " + parent);
         if (attempted || closing) throw new IllegalStateException("Jobserver acquisition already attempted or closing");
         attempted = true;
+        workloadGroup = gid;
         directory = provider.createDirectory(parent);
         provider.publishDirectory(directory, gid);
         try { fifo = provider.create(directory.resolve(FIFO_NAME), uid, gid, jobs); }
@@ -108,13 +124,20 @@ final class MacCargoJobserver implements AutoCloseable
     /**
      * Publishes the only Cargo invocation environment and owns its logical attempt ledger.
      * Existing make variables, even empty values, are rejected without consuming the single lease opportunity.
+     * <p>
+     * The make flags name the FIFO by path, so Cargo's children start without a fork-forcing pre-exec hook. GNU Make
+     * before 4.4, including Darwin's 3.81, rejects a FIFO path, so when {@code PATH} names a {@code make}, the lease
+     * prepends an owned directory whose {@code make} front end opens the FIFO onto {@link #READ_DESCRIPTOR} and
+     * {@link #WRITE_DESCRIPTOR}, names them in the make flags and executes that make.
      * @param environment complete immutable-copyable environment without make variables
      * @return invocation borrow retained until every native consumer and logical attempt retires
      * @throws NullPointerException if the map or an entry is null
-     * @throws IllegalArgumentException if any owned make variable is present
+     * @throws IllegalArgumentException if any owned make variable is present, or the make that {@code PATH} names
+     *   has a path that a shell word cannot carry
      * @throws IllegalStateException if off-thread, unavailable, closing or already retained
+     * @throws IOException if the make front end cannot be created
      */
-    CargoLease retainCargo(Map<String, String> environment)
+    CargoLease retainCargo(Map<String, String> environment) throws IOException
     {
         requireOwner();
         Map<String, String> copy = new HashMap<>(Map.copyOf(environment));
@@ -124,9 +147,42 @@ final class MacCargoJobserver implements AutoCloseable
         String auth = "fifo:" + directory.resolve(FIFO_NAME);
         String flags = "-j --jobserver-fds=" + auth + " " + AUTH_OPTION + auth;
         for (String name : MAKE_VARIABLES) copy.put(name, flags);
+        String search = copy.get("PATH");
+        if (search != null)
+        {
+            Path make = CargoMakeFrontEnd.findMake(search);
+            if (make != null)
+                copy.put("PATH", createFrontEnd(make) + ":" + search);
+        }
         lease = new CargoLease(Map.copyOf(copy));
         retained = true;
         return lease;
+    }
+
+    /**
+     * Creates the make front end that opens the FIFO onto fixed descriptors for GNU Make before 4.4.
+     * The workload group can look the front end up and execute it but cannot modify or replace it.
+     * @param make real path of the make to execute
+     * @return front-end directory
+     * @throws IOException if creation or access publication fails
+     */
+    private Path createFrontEnd(Path make) throws IOException
+    {
+        String script = CargoMakeFrontEnd.script(make, directory.resolve(FIFO_NAME), READ_DESCRIPTOR, WRITE_DESCRIPTOR, true);
+        frontEndDirectory = Files.createDirectory(directory.resolve(FRONT_END_DIRECTORY),
+            PosixFilePermissions.asFileAttribute(SETUP_PERMISSIONS));
+        frontEnd = Files.createFile(frontEndDirectory.resolve("make"),
+            PosixFilePermissions.asFileAttribute(SETUP_PERMISSIONS));
+        Files.writeString(frontEnd, script);
+        Files.setAttribute(frontEnd, "unix:gid", workloadGroup);
+        Files.setPosixFilePermissions(frontEnd, FRONT_END_PERMISSIONS);
+        Files.setAttribute(frontEndDirectory, "unix:gid", workloadGroup);
+        Files.setPosixFilePermissions(frontEndDirectory, DIRECTORY_PERMISSIONS);
+        if (!Files.getAttribute(frontEnd, "unix:gid").equals(workloadGroup) ||
+            !Files.getPosixFilePermissions(frontEnd).equals(FRONT_END_PERMISSIONS) ||
+            !Files.getPosixFilePermissions(frontEndDirectory).equals(DIRECTORY_PERMISSIONS))
+            throw new IOException("Make front end access differs from requested group/permissions: " + frontEnd);
+        return frontEndDirectory;
     }
 
     /**
@@ -150,7 +206,25 @@ final class MacCargoJobserver implements AutoCloseable
                 else failure.addSuppressed(cleanup);
             }
         }
-        if (endpoints.isEmpty() && directory != null)
+        if (frontEnd != null)
+        {
+            try { Files.delete(frontEnd); frontEnd = null; }
+            catch (IOException cleanup)
+            {
+                if (failure == null) failure = cleanup;
+                else failure.addSuppressed(cleanup);
+            }
+        }
+        if (frontEnd == null && frontEndDirectory != null)
+        {
+            try { Files.delete(frontEndDirectory); frontEndDirectory = null; }
+            catch (IOException cleanup)
+            {
+                if (failure == null) failure = cleanup;
+                else failure.addSuppressed(cleanup);
+            }
+        }
+        if (endpoints.isEmpty() && frontEndDirectory == null && directory != null)
         {
             try { Files.delete(directory); directory = null; }
             catch (IOException cleanup)

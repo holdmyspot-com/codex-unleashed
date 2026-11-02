@@ -46,6 +46,50 @@ public final class MacCargoJobserverTest
     }
 
     /**
+     * GNU Make before 4.4, found on the lease's PATH as a build script finds it, joins the FIFO jobserver: the front end
+     * opens the FIFO onto the lease's descriptor numbers itself, because the Darwin anchor installs no descriptors.
+     * GNU Make 4.3 stands in for Darwin's 3.81 and rejects a FIFO path in its auth option, so a clean exit without a
+     * jobserver diagnostic shows the front end translated the path.
+     * @throws Exception if fixture setup, process execution or cleanup fails
+     */
+    @Test public void olderMakeJoinsTheFifoThroughTheFrontEnd() throws Exception
+    {
+        Path make = Path.of("/usr/bin/make");
+        if (!Files.isExecutable(make) || !Files.isExecutable(Path.of("/bin/bash")) || !System.getProperty("os.name").equals("Linux"))
+            throw new org.testng.SkipException("GNU Make, Bash and mkfifo are required to observe make's jobserver import");
+        Path frontEnd;
+        try (Fixture fixture = new Fixture())
+        {
+            int group = (Integer) Files.getAttribute(fixture.parent, "unix:gid");
+            fixture.owner.open(fixture.parent, 1, group, 3);
+            new ProcessBuilder("mkfifo", fixture.provider.endpoint.path + ".fifo").inheritIO().start().waitFor();
+            Files.delete(fixture.provider.endpoint.path);
+            Files.move(Path.of(fixture.provider.endpoint.path + ".fifo"), fixture.provider.endpoint.path);
+            fixture.lease = fixture.owner.retainCargo(Map.of("PATH", "/usr/bin:/bin"));
+            String path = fixture.lease.environment().get("PATH");
+            requireThat(path, "leasePath").endsWith(":/usr/bin:/bin");
+            frontEnd = Path.of(path.substring(0, path.indexOf(':')), "make");
+            requireThat(Files.isExecutable(frontEnd), "frontEnd").isTrue();
+            Path makefile = Files.writeString(fixture.parent.resolve("Makefile"), "all: a b\na b:\n\t@true\n");
+            var builder = new ProcessBuilder("/bin/sh", "-c", "exec make -f \"$0\"", makefile.toString());
+            builder.environment().clear();
+            builder.environment().putAll(fixture.lease.environment());
+            builder.directory(fixture.parent.toFile()).redirectErrorStream(true);
+            try (var seed = java.nio.channels.FileChannel.open(fixture.provider.endpoint.path,
+                java.nio.file.StandardOpenOption.READ, java.nio.file.StandardOpenOption.WRITE))
+            {
+                seed.write(java.nio.ByteBuffer.wrap(new byte[] {'+'}));
+                Process process = builder.start();
+                String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                requireThat(process.waitFor(), "makeExit").withContext(output, "makeOutput").isEqualTo(0);
+                requireThat(output, "makeOutput").doesNotContain("jobserver");
+            }
+            Files.delete(makefile);
+        }
+        requireThat(Files.exists(frontEnd), "frontEndAfterClose").isFalse();
+    }
+
+    /**
      * An empty inherited make variable is rejected without consuming the one invocation lease.
      * @throws IOException if fixture operations fail
      */
