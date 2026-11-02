@@ -9,6 +9,8 @@
     <maven.compiler.release>27</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <tooling.build.directory>${project.basedir}/../../.cat/work/temp/build-caches/maven/source-cache</tooling.build.directory>
+    <!-- The platform whose protoc and gRPC plugin executables run during code generation. -->
+    <protoc.classifier>${os.detected.classifier}</protoc.classifier>
   </properties>
   <dependencies>
     <dependency>
@@ -138,9 +140,9 @@
         <artifactId>protobuf-maven-plugin</artifactId>
         <version>0.6.1</version>
         <configuration>
-          <protocArtifact>com.google.protobuf:protoc:4.36.2:exe:${os.detected.classifier}</protocArtifact>
+          <protocArtifact>com.google.protobuf:protoc:4.36.2:exe:${protoc.classifier}</protocArtifact>
           <pluginId>grpc-java</pluginId>
-          <pluginArtifact>io.grpc:protoc-gen-grpc-java:1.85.1:exe:${os.detected.classifier}</pluginArtifact>
+          <pluginArtifact>io.grpc:protoc-gen-grpc-java:1.85.1:exe:${protoc.classifier}</pluginArtifact>
         </configuration>
         <executions>
           <execution>
@@ -202,6 +204,20 @@
     </plugins>
   </build>
   <profiles>
+    <profile>
+      <!-- protoc and protoc-gen-grpc-java publish no Windows ARM64 executables; Windows on ARM runs the x64 ones
+        under emulation. -->
+      <id>windows-arm64-code-generators</id>
+      <activation>
+        <os>
+          <family>windows</family>
+          <arch>aarch64</arch>
+        </os>
+      </activation>
+      <properties>
+        <protoc.classifier>windows-x86_64</protoc.classifier>
+      </properties>
+    </profile>
     <profile>
       <id>runtime</id>
       <build>
