@@ -15,6 +15,7 @@ public final class MacCargoRegistrationPolicyTest
     @Test
     public void requiredEntriesFollowTheLeaseEnvironment()
     {
+        TestRequirements.requirePosixFileSystem();
         var trusted = new MacCargoRegistration.Configuration(Path.of("/opt/cargo"), Path.of("/opt/wrapper"),
             Path.of("/opt/rustc"), 501, 20, Map.of("PATH", "/usr/bin:/bin", "RUSTC", "/opt/rustc"));
         Map<String, String> lease = Map.of("PATH", "/scratch/make-front-end:/usr/bin:/bin", "RUSTC", "/opt/rustc",

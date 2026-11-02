@@ -18,6 +18,7 @@ public final class MacInstallationPathBudgetTest
     @Test
     public void provisionedScratchFitsNativePathBudget() throws IOException
     {
+        TestRequirements.requirePosixFileSystem();
         Path root = Path.of("/Library", ValidateReleaseSchedulerInstallation.ROOT_PREFIX + "X".repeat(8));
         MacCargoSchedule.requirePathBudget(root.resolve("scratch"));
     }
