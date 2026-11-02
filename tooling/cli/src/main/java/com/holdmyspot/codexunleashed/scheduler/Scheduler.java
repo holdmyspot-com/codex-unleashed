@@ -150,11 +150,7 @@ public final class Scheduler
             catch (PendingCleanup pending) { throw pending; }
             catch (IOException | IllegalArgumentException | UnsupportedOperationException failure)
             {
-                err.println("ERROR: " + failure.getMessage());
-                var seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Throwable, Boolean>());
-                seen.add(failure);
-                for (Throwable cause = failure.getCause(); cause != null && seen.add(cause); cause = cause.getCause())
-                    err.println("Caused by: " + cause.getMessage());
+                report(failure, err);
                 return 1;
             }
         }
@@ -204,6 +200,21 @@ public final class Scheduler
         {
             return dispatch(scope, arguments, in, out, err, platform, adapter);
         }
+    }
+
+    /**
+     * Prints a failure and each distinct cause, one message per line, so the root cause reaches the diagnostic stream.
+     * @param failure failure to report
+     * @param err diagnostic stream
+     * @throws NullPointerException if an argument is null
+     */
+    public static void report(Throwable failure, PrintStream err)
+    {
+        err.println("ERROR: " + failure.getMessage());
+        var seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Throwable, Boolean>());
+        seen.add(failure);
+        for (Throwable cause = failure.getCause(); cause != null && seen.add(cause); cause = cause.getCause())
+            err.println("Caused by: " + cause.getMessage());
     }
 
     /**

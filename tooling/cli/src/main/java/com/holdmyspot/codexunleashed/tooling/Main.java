@@ -38,7 +38,7 @@ public final class Main
         try { status = run(arguments, System.in, System.out, System.err); }
         catch (Scheduler.PendingCleanup pending)
         {
-            System.err.println("ERROR: " + pending.getCause().getMessage());
+            Scheduler.report(pending.getCause(), System.err);
             System.err.println("Native cleanup is incomplete; terminating with failure.");
             status = 1;
         }
