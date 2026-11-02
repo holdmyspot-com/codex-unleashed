@@ -234,7 +234,6 @@ public final class SourceInputCacheTest
 			Files.writeString(source, "fn main() { println!(\"cargo:rustc-env=CACHE_VALUE=7\"); }\n");
 			Files.writeString(fixture.workspace.resolve("src/main.rs"),
 				"fn main() { println!(\"{}\", env!(\"CACHE_VALUE\")); }\n");
-			fixture.command(List.of("git", "add", "build.rs"));
 			fixture.prepare();
 			fixture.build();
 			fixture.record();
@@ -581,10 +580,13 @@ public final class SourceInputCacheTest
 		}
 
 		/**
-		 * Writes the Cargo package into a new Git repository and creates every selected cache directory, without
-		 * selecting a target.
+		 * Writes the Cargo package and creates every selected cache directory, without selecting a target.
+		 * The workspace is deliberately outside any Git repository, because Git's ceiling directory is the fixture
+		 * root, so inventory walks the files. Cache freshness does not depend on how inputs are listed, and each
+		 * Git process costs tens of milliseconds on macOS and Windows for every preparation and recording;
+		 * {@code SourceInputInventoryTest} verifies the Git listing.
 		 *
-		 * @throws IOException if writing or Git fails
+		 * @throws IOException if writing fails
 		 */
 		private void initializeSources() throws IOException
 		{
@@ -600,8 +602,6 @@ public final class SourceInputCacheTest
 				""");
 			Files.writeString(workspace.resolve("src/lib.rs"), "pub fn value() -> u8 { 7 }\n");
 			Files.writeString(workspace.resolve("src/main.rs"), "fn main() { println!(\"{}\", cache_demo::value()); }\n");
-			command(List.of("git", "init", "--quiet"));
-			command(List.of("git", "add", "Cargo.toml", "src"));
 		}
 
 		/**

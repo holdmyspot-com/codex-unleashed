@@ -11,7 +11,7 @@ import org.testng.annotations.Test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Verifies the standard input that captured external commands receive.
+ * Verifies the standard input that external commands receive.
  */
 public final class SystemCommandsTest
 {
@@ -44,5 +44,22 @@ public final class SystemCommandsTest
 		{
 			Files.delete(temporary);
 		}
+	}
+
+	/**
+	 * A command run for its output reads end-of-input from standard input instead of the caller's standard input,
+	 * so Git for Windows does not wait on an inherited console or pipe at startup.
+	 *
+	 * @throws IOException if the command cannot run
+	 */
+	@Test
+	public void runSuppliesEmptyStandardInput() throws IOException
+	{
+		if (Path.of("/bin/sh").toFile().canExecute() == false)
+			throw new SkipException("The fixture command requires a POSIX shell");
+		String output = SystemCommands.run(
+			// -ef compares the device and inode that standard input refers to; readlink output differs by platform.
+			List.of("/bin/sh", "-c", "if [ /dev/stdin -ef /dev/null ]; then echo null; else echo other; fi"));
+		requireThat(output.strip(), "stdin").isEqualTo("null");
 	}
 }

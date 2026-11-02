@@ -12,14 +12,13 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Executes external tools with direct argument boundaries. Captured commands read end-of-input; {@link #run} inherits
- * the caller's standard input.
+ * Executes external tools with direct argument boundaries. Captured commands and {@link #run} read end-of-input.
  */
 public final class SystemCommands
 {
 	/**
-	 * Standard input for captured commands: the platform null device. Captured commands are non-interactive, and an
-	 * inherited console or pipe makes Git for Windows wait about nine seconds at startup on hosted runners.
+	 * Standard input for commands whose output is read: the platform null device. Such commands are non-interactive,
+	 * and an inherited console or pipe makes Git for Windows wait about nine seconds at startup on hosted runners.
 	 */
 	private static final ProcessBuilder.Redirect EMPTY_INPUT = ProcessBuilder.Redirect.from(
 		ProcessBuilder.Redirect.DISCARD.file());
@@ -252,8 +251,8 @@ public final class SystemCommands
 	}
 
 	/**
-	 * Executes a command without invoking a shell, inheriting standard input, standard error, the working directory,
-	 * and environment. Returns standard output decoded as UTF-8, rejecting malformed output.
+	 * Executes a command without invoking a shell, giving it end-of-input as standard input and inheriting standard
+	 * error, the working directory, and environment. Returns standard output decoded as UTF-8, rejecting malformed output.
 	 *
 	 * @param command the executable followed by its arguments
 	 * @return the command's standard output
@@ -266,7 +265,7 @@ public final class SystemCommands
 		List<String> arguments = List.copyOf(command);
 		if (arguments.isEmpty())
 			throw new IllegalArgumentException("An external command requires an executable");
-		Process process = createBuilder(arguments).redirectInput(ProcessBuilder.Redirect.INHERIT).
+		Process process = createBuilder(arguments).redirectInput(EMPTY_INPUT).
 			redirectError(ProcessBuilder.Redirect.INHERIT).start();
 		try
 		{
