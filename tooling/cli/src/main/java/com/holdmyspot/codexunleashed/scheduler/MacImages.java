@@ -219,7 +219,8 @@ final class MacImages
             Image nativeParent = child.origin() == 0 ? currentImages.get(child.parentPid()) : null;
             if (child.origin() == 0 && (nativeParent == null || nativeParent.protection == null))
                 throw new IOException("Native fork lacks its retained descriptor registry owner");
-            install(observed, nativeParent == null ? null : nativeParent.protection.registry());
+            if (!install(observed, nativeParent == null ? null : nativeParent.protection.registry()))
+                return;
             if (authority instanceof WorkloadAuthority workloadAuthority)
                 workloadAuthority.authenticateChild(child, inspect(child.pid()));
             else if (child.origin() != 1)
@@ -243,11 +244,16 @@ final class MacImages
     /**
      * Retains readiness and caller instrumentation owners before starting each one.
      * Both readiness acknowledgements and a final identity check precede publication or release.
+     * <p>
+     * A child can exit while Frida attaches to it, which makes the attachment fail. When the process is then absent, or
+     * its identifier names another process, the image is left unadmitted and its partial owners remain retained for
+     * cleanup, as for any other child that exits.
      * @param expected independently authenticated image lineage
      * @param inheritedRegistry exact native-fork parent mapping, otherwise null
-     * @throws IOException if acquisition, readiness or identity changes
+     * @return {@code false} if the process exited during attachment, otherwise {@code true}
+     * @throws IOException if acquisition, readiness or identity changes while the process remains live
      */
-    private void install(Identity expected, String inheritedRegistry) throws IOException
+    private boolean install(Identity expected, String inheritedRegistry) throws IOException
     {
         if (!expected.equals(inspect(expected.pid()))) throw new IOException("Held image identity changed");
         var image = new Image(operations.connection(expected.pid()));
@@ -257,6 +263,8 @@ final class MacImages
         try { image.protection.start(inheritedRegistry); }
         catch (FridaRuntime.NativeFailure cause)
         {
+            if (exited(expected, cause))
+                return false;
             suppress(cause, new IOException("Readiness attachment image: pid=" + expected.pid() +
                 ", birth=" + expected.birth() + ", nativeParent=" + expected.parent()));
             throw cause;
@@ -271,6 +279,23 @@ final class MacImages
         if (!expected.equals(inspect(expected.pid()))) throw new IOException("Birth changed after descriptor agreement");
         current.put(expected.pid(), expected);
         currentImages.put(expected.pid(), image);
+        return true;
+    }
+
+    /**
+     * Indicates whether a held image's process has exited, judged after an attachment to it failed.
+     * @param expected independently authenticated image lineage
+     * @param attachment the attachment failure, which receives a failed re-inspection as suppressed evidence
+     * @return {@code true} if the process is absent or its identifier now names another process
+     */
+    private boolean exited(Identity expected, FridaRuntime.NativeFailure attachment)
+    {
+        try { return !expected.equals(inspect(expected.pid())); }
+        catch (IOException absent)
+        {
+            suppress(attachment, absent);
+            return true;
+        }
     }
 
     /**

@@ -192,6 +192,79 @@ public final class MacImagesTest
     }
 
     /**
+     * Treats a child that exited while Frida attached to it as an ordinary exit: it is neither resumed nor a failure,
+     * and the owner keeps admitting the workload's other children.
+     * @throws IOException if the owner rejects the vanished child or fails cleanup
+     */
+    @Test public void childVanishingDuringAttachIsAnOrdinaryExit() throws IOException
+    {
+        try (var scope = new DefaultToolingScope())
+        {
+            var calls = new Calls(scope.getLeaderJsonMapper());
+            var root = calls.add(10, 1, 9);
+            calls.add(11, 2, 10);
+            calls.add(12, 3, 10);
+            var owner = owner(scope, calls, root);
+            owner.start();
+            // Frida reports this failure when the attached child exits before its threads can be read.
+            calls.startFailure = new FridaRuntime.NativeFailure("frida_device_attach_sync", "frida-error-quark", 10,
+                "get_thread_state returned '(os/kern) protection failure'");
+            calls.beforeStartFailure = () -> calls.identities.remove(11L);
+            owner.advance(new FridaRuntime.Child(11, 10, 0, ""));
+            calls.startFailure = null;
+            owner.advance(new FridaRuntime.Child(12, 10, 0, ""));
+            requireThat(calls.resumed, "onlyLiveChildResumed").isEqualTo(List.of(12L), "expected");
+            owner.close(() -> true);
+            requireThat(owner.isClosed(), "vanishedChildConnectionClosed").isTrue();
+        }
+    }
+
+    /**
+     * Treats a child whose process identifier was reused while Frida attached to it as an ordinary exit.
+     * @throws IOException if the owner rejects the replaced child or fails cleanup
+     */
+    @Test public void childReplacedDuringAttachIsAnOrdinaryExit() throws IOException
+    {
+        try (var scope = new DefaultToolingScope())
+        {
+            var calls = new Calls(scope.getLeaderJsonMapper());
+            var root = calls.add(10, 1, 9);
+            calls.add(11, 2, 10);
+            var owner = owner(scope, calls, root);
+            owner.start();
+            calls.startFailure = new FridaRuntime.NativeFailure("frida_device_attach_sync", "frida-error-quark", 10,
+                "get_thread_state returned '(os/kern) protection failure'");
+            calls.beforeStartFailure = () -> calls.add(11, 5, 10);
+            owner.advance(new FridaRuntime.Child(11, 10, 0, ""));
+            requireThat(calls.resumed.isEmpty(), "replacedChildNotResumed").isTrue();
+            owner.close(() -> true);
+        }
+    }
+
+    /**
+     * Keeps an attach failure on a child that is still live a failure of the image owner.
+     * @throws IOException if cleanup fails
+     */
+    @Test public void attachFailureOnLiveChildFails() throws IOException
+    {
+        try (var scope = new DefaultToolingScope())
+        {
+            var calls = new Calls(scope.getLeaderJsonMapper());
+            var root = calls.add(10, 1, 9);
+            calls.add(11, 2, 10);
+            var owner = owner(scope, calls, root);
+            owner.start();
+            var failure = new FridaRuntime.NativeFailure("frida_device_attach_sync", "frida-error-quark", 10,
+                "get_thread_state returned '(os/kern) protection failure'");
+            calls.startFailure = failure;
+            requireThat(requireException(IOException.class, () -> owner.advance(new FridaRuntime.Child(11, 10, 0, ""))) ==
+                failure, "originalAttachFailure").isTrue();
+            requireThat(calls.resumed.isEmpty(), "liveChildNotResumed").isTrue();
+            owner.close(() -> true);
+        }
+    }
+
+    /**
      * Arms the held root, a child and its same-birth exec before each explicit child resume.
      * @throws IOException if accepted observations are refused
      */
@@ -855,6 +928,8 @@ public final class MacImagesTest
          * Optional acquisition failure.
          */
         private IOException startFailure;
+        /** Optional change to the observed processes when a connection start fails, before it reports the failure. */
+        private Runnable beforeStartFailure;
         /**
          * Optional uncertain resumption failure.
          */
@@ -1047,7 +1122,13 @@ public final class MacImagesTest
         @Override public void start(String source) throws IOException
         {
             if (bootstrap && calls.bootstrapStartFailure != null) throw calls.bootstrapStartFailure;
-            if (calls.startFailure != null) throw calls.startFailure;
+            if (calls.startFailure != null)
+            {
+                if (calls.beforeStartFailure != null) calls.beforeStartFailure.run();
+                // Descriptor protection requests no bootstrap connection for an image whose readiness start failed.
+                if (!bootstrap) calls.nextBootstrap = false;
+                throw calls.startFailure;
+            }
             calls.events.add(bootstrap ? "bootstrap-start" : "connection-start");
             String declaration = "const configuration = ";
             int start = source.indexOf(declaration) + declaration.length();

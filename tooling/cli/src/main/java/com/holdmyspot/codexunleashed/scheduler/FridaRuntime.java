@@ -1090,7 +1090,7 @@ final class FridaRuntime implements AutoCloseable
 		 * @param code native error code within that domain
 		 * @param message native diagnostic
 		 */
-		private NativeFailure(String operation, String domain, int code, String message)
+		NativeFailure(String operation, String domain, int code, String message)
 		{
 			super(operation + " failed: domain=" + domain + ", code=" + code + ", message=" + message);
 			this.operation = operation;
