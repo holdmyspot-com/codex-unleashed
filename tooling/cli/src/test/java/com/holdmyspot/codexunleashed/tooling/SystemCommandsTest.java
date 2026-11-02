@@ -34,8 +34,8 @@ public final class SystemCommandsTest
 		try
 		{
 			SystemCommands.Result result = SystemCommands.capture(
-				List.of("/bin/sh", "-c", "if [ -c /dev/stdin ] && [ \"$(readlink -f /dev/stdin)\" = /dev/null ]; " +
-					"then echo null; else echo other; fi"),
+				// -ef compares the device and inode that standard input refers to; readlink output differs by platform.
+				List.of("/bin/sh", "-c", "if [ /dev/stdin -ef /dev/null ]; then echo null; else echo other; fi"),
 				temporary, temporary, Map.of());
 			requireThat(result.status(), "status").isEqualTo(0);
 			requireThat(result.stdout().strip(), "stdin").isEqualTo("null");
