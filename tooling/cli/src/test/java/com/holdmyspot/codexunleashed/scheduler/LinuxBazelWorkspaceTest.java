@@ -9,6 +9,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -31,6 +32,8 @@ public final class LinuxBazelWorkspaceTest
     @Test
     public void authenticatedProcRootAllowsMergedFreezeWithoutRetainedDescriptors() throws IOException
     {
+        if (!Files.isDirectory(Path.of("/proc/self")))
+            throw new SkipException("Requires a Linux procfs");
         Path root = Files.createTempDirectory("bazel-proc-root-");
         try
         {
