@@ -47,7 +47,15 @@ No root command remains in progress inside the Windows shell. The successor must
   - Windows `41448519555`: `MacWorkloadTest` could not parse CRLF resources. Fixed in `5733bf5f89`.
   - ARM Linux `41448364697`: `LinuxAarch64TraceNativeTest` read unset fixture properties. Fixed in `5733bf5f89`.
   - ARM macOS `41448368978`: the scheduler prerequisites were stale (fixed in `71b8789a42`). Its retry `41448805215` then failed `LinuxBazelWorkspaceTest`, which needs `/proc` (fixed in `9488e0a932`).
-  - Re-dispatched on `9488e0a932` with `cache=true`: Linux x64 `41450457062`, ARM Linux `41450461991`, Windows `41450466163`, ARM macOS `41450470502`.
+  - Re-dispatched on `9488e0a932` with `cache=true`: Linux x64 `41450457062`, ARM Linux `41450461991`, Windows `41450466163`, ARM macOS `41450470502`. Both Linux runs reached compilation.
+- Windows and ARM macOS then failed in turn, each fixed and re-dispatched with `cache=true`:
+  - ARM macOS `41450470502`: the provisioned scratch path exceeded the Darwin socket-path budget. `6533a8c162` shortens the root prefix to `codex-rs-` (`MacInstallationPathBudgetTest`).
+  - Windows `41450466163`: about 160 POSIX-only test errors. `6b468c3b4e` skips them without a POSIX file system. `475ea28065` writes cache keys and lock receipts with LF line endings and stores link targets with `/`.
+  - ARM macOS `41451988179`: `mc_receive` hit EAGAIN, because accepted Darwin sockets inherit `O_NONBLOCK`. `5312d93969` clears the flag.
+  - Windows `41453055655`: `os.execv` lost the fixture adapter's exit status. `9dfd6a666b` uses `subprocess.run`.
+  - ARM macOS `41453059700`: the jobserver lease prepends to `PATH`, so registration rejected the changed entry. `9322e5c318` builds the registration policy from the lease environment, as Linux does (`MacCargoRegistrationPolicyTest`).
+  - Windows `41454210285` and `41455476149`: tests that use bash or POSIX paths now skip on Windows (`9322e5c318`, `981112115d`).
+  - Current: Windows `41456129467` (`981112115d`) and ARM macOS `41455480286` (`9322e5c318`).
 - Next: finish that run (resumption, CLI/app-server smokes, timings). Cut the per-image hold cost (keep one tracer resident across images). Then do macOS remote validation.
 
 ### Ready continuations and precise evidence limits
