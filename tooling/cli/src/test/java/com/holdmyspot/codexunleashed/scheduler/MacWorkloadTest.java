@@ -306,7 +306,9 @@ public final class MacWorkloadTest
                 {
                     String declaration = "const configuration = ";
                     int start = script.indexOf(declaration) + declaration.length();
-                    configuration = json.readTree(script.substring(start, script.indexOf(";\n", start)));
+                    // Windows checkouts may convert the maintained resource to CRLF line endings.
+                    String line = script.substring(start, script.indexOf('\n', start)).stripTrailing();
+                    configuration = json.readTree(line.substring(0, line.length() - 1));
                     Object payload = bootstrap ? configuration.path("marker").asString() : Map.of(
                         "kind", "mac-descriptor-installed", "marker", configuration.path("marker").asString(),
                         "pid", pid, "registry", "0x1000", "inheritedDescriptors", List.of());

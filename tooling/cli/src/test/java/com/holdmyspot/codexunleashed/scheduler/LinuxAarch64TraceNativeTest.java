@@ -90,8 +90,12 @@ public final class LinuxAarch64TraceNativeTest
         };
         if (!System.getProperty("os.name").equals("Linux") || !arm)
             throw new SkipException("Requires genuine Linux AArch64");
-        Path zig = Path.of(System.getProperty("codex.arm64.zig")).toRealPath();
-        Path root = Path.of(System.getProperty("codex.arm64.fixtureRoot")).toRealPath();
+        String configuredZig = System.getProperty("codex.arm64.zig");
+        String configuredRoot = System.getProperty("codex.arm64.fixtureRoot");
+        if (configuredZig == null || configuredRoot == null)
+            throw new SkipException("Set codex.arm64.zig and codex.arm64.fixtureRoot to the native fixture");
+        Path zig = Path.of(configuredZig).toRealPath();
+        Path root = Path.of(configuredRoot).toRealPath();
         Path work = Files.createTempDirectory(root, "trace-" + mode + "-");
         try (var scope = new DefaultToolingScope())
         {
