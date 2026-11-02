@@ -53,6 +53,8 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 	private boolean controlling;
 	/** Terminal grant-authority withdrawal. */
 	private boolean stopping;
+	/** Indicates whether start terminated the attempt because its leader could not dispatch the launch. */
+	private boolean startAborted;
 	/** Whether instrumentation closed and its COLLECT acknowledgement was published successfully. */
 	private boolean instrumentationClosed;
 	/** Successful exclusive cleanup. */
@@ -138,10 +140,34 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 			hooks = new AllocationHooks(scope, identity, runtime, command.launch(), supervisor, waits, timeout,
 				attempts::pumpAll, cargoTokens, attempts.routing());
 			hooks.start();
+			attempts.leaderDispatchRetries().started(name);
 		}
-		catch (IOException | RuntimeException cause) { throw failed("Start", cause); }
+		catch (IOException | RuntimeException cause)
+		{
+			if (hooks == null || attempts.leaderDispatchRetries().retry(name, cause) == false)
+				throw failed("Start", cause);
+			abortStart(cause);
+		}
 		catch (Error cause) { failed("Start", cause); throw cause; }
 		finally { controlling = false; }
+	}
+
+	/** Terminates an attempt whose leader could not dispatch the launch, so that poll reports it as aborted after the
+	 * workload is collected and the queue retries the action.
+	 * @param cause the start failure, recorded as a receipt
+	 * @throws IOException if termination cannot be requested; the attempt then fails as for any other start failure
+	 */
+	private void abortStart(Throwable cause) throws IOException
+	{
+		receipt("leader-dispatch-failed retrying: " + cause.getCause());
+		startAborted = true;
+		stopGrants();
+		try { supervisor.requestTermination(); }
+		catch (IOException | RuntimeException termination)
+		{
+			termination.addSuppressed(cause);
+			throw failed("Start", termination);
+		}
 	}
 
 	/** Acknowledges exactly the selected frozen allocation batch.
@@ -244,7 +270,7 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 			}
 			LinuxSupervisor.Result result = supervisor.result();
 			receipt("accepted-result " + result);
-			outcome = new JobQueue.Outcome<>(result, result.aborted());
+			outcome = new JobQueue.Outcome<>(result, startAborted || result.aborted());
 			return Optional.of(outcome);
 		}
 		catch (IOException | RuntimeException cause) { throw failed("Whole-job observation", cause); }

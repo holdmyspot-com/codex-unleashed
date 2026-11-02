@@ -452,7 +452,8 @@ final class LinuxLeaderExec
 	/**
 	 * Awaits one exact leader receipt, rejecting script errors and unexpected messages.
 	 * @param expected exact payload
-	 * @throws IOException if receipt is invalid or timed out
+	 * @throws LeaderDispatchFailure if the leader could not dispatch the launch
+	 * @throws IOException if another receipt is invalid or the receipt timed out
 	 */
 	private void awaitLeader(String expected) throws IOException
 	{
@@ -465,7 +466,8 @@ final class LinuxLeaderExec
 				JsonNode envelope = json.readTree(frame);
 				if (envelope == null || !envelope.path("type").asString().equals("send") ||
 					!envelope.path("payload").asString().equals(expected))
-					throw new IOException("Unexpected leader receipt: " + frame);
+					throw LeaderDispatchFailure.unexpected(envelope == null ? "" : envelope.path("payload").asString(),
+						frame);
 				return;
 			}
 			waitForPeer(began, "Leader receipt deadline exceeded: " + expected);

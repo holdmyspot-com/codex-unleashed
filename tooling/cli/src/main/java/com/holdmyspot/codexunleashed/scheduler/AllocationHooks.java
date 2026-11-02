@@ -857,7 +857,8 @@ final class AllocationHooks
 
 	/** Awaits one exact leader receipt, rejecting script errors and unexpected messages.
 	 * @param expected exact payload
-	 * @throws IOException if receipt is invalid or timed out
+	 * @throws LeaderDispatchFailure if the leader could not dispatch the launch
+	 * @throws IOException if another receipt is invalid or the receipt timed out
 	 */
 	private void awaitLeader(String expected) throws IOException
 	{
@@ -870,7 +871,8 @@ final class AllocationHooks
 				JsonNode envelope = json.readTree(frame.get());
 				if (envelope == null || envelope.path("type").asString().equals("send") == false ||
 					envelope.path("payload").asString().equals(expected) == false)
-					throw new IOException("Unexpected leader receipt: " + frame.get());
+					throw LeaderDispatchFailure.unexpected(envelope == null ? "" : envelope.path("payload").asString(),
+						frame.get());
 				return;
 			}
 			waitForPeer(began, "Leader receipt deadline exceeded: " + expected);

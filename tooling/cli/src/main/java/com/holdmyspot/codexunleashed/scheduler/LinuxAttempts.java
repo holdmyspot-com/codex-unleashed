@@ -41,6 +41,8 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	private long lastSequence = -1;
 	/** Deferred notifications; no queue callback is retained. */
 	private final Notifications notifications = new Notifications();
+	/** Bounds the retries of attempts whose leader could not dispatch the launch, across each action's attempts. */
+	private final LeaderDispatchRetries leaderDispatchRetries = new LeaderDispatchRetries();
 
 	/**
 	 * Validates and copies configuration without native calls or filesystem access.
@@ -80,6 +82,11 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 		Map.copyOf(commands).forEach(this::register);
 		this.timeout = checkedTimeout(timeout);
 	}
+
+    /** Returns the retry policy for attempts whose leader could not dispatch the launch, shared by all attempts.
+     * @return the build's leader dispatch retry policy
+     */
+    LeaderDispatchRetries leaderDispatchRetries() { requireOwner(); return leaderDispatchRetries; }
 
     /** Borrows this invocation's original-controller dispatcher without granting action authority.
      * @return explicit shared routing owner
