@@ -147,13 +147,13 @@ elif [[ "${1:-}" == install ]]; then
       if [[ "$RUNNER_OS" == macOS ]]; then parent=/Library; fi
       # Authenticate the existing namespace before creating any administrator-owned path.
       run_tooling "$runtime_input" validate-release-installation --parent "$parent"
-      root="$(sudo -n mktemp -d "$parent/codex-release-scheduler-XXXXXXXX")"
+      root="$(sudo -n mktemp -d "$parent/codex-rs-XXXXXXXX")"
       ;;
     Windows)
       : "${RUNNER_TEMP:?Set the job-owned native temporary root}"
       temporary_root="$RUNNER_TEMP"
       if command -v cygpath >/dev/null 2>&1; then temporary_root="$(cygpath -u "$temporary_root")"; fi
-      root="$(mktemp -d "$temporary_root/codex-release-scheduler-XXXXXXXX")"
+      root="$(mktemp -d "$temporary_root/codex-rs-XXXXXXXX")"
       uid=0; gid=0
       ;;
     *) printf 'Unsupported scheduler installation platform.\n' >&2; exit 2 ;;
@@ -194,7 +194,7 @@ elif [[ "${1:-}" == cleanup ]]; then
   require_path_record "$root"
   [[ -f "$root/installation" && ! -L "$root" ]]
   case "$RUNNER_OS:$root" in
-    Linux:/var/lib/codex-release-scheduler-* | macOS:/Library/codex-release-scheduler-*)
+    Linux:/var/lib/codex-rs-* | macOS:/Library/codex-rs-*)
       parent=/var/lib
       if [[ "$RUNNER_OS" == macOS ]]; then parent=/Library; fi
       [[ "$(dirname -- "$root")" == "$parent" ]]
@@ -203,7 +203,7 @@ elif [[ "${1:-}" == cleanup ]]; then
     Windows:*)
       temporary_root="$RUNNER_TEMP"
       if command -v cygpath >/dev/null 2>&1; then temporary_root="$(cygpath -u "$temporary_root")"; fi
-      [[ "$(dirname -- "$root")" == "$temporary_root" && "$(basename -- "$root")" == codex-release-scheduler-* ]]
+      [[ "$(dirname -- "$root")" == "$temporary_root" && "$(basename -- "$root")" == codex-rs-* ]]
       ;;
     *) printf 'Installation is outside the owned platform namespace.\n' >&2; exit 2 ;;
   esac

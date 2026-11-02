@@ -15,6 +15,12 @@ import java.util.Map;
  */
 public final class ValidateReleaseSchedulerInstallation
 {
+    /**
+     * The installation directory name prefix; provisioning appends eight random characters.
+     * Keep it short: macOS Cargo socket paths under the installation's scratch directory are limited to 104 bytes.
+     */
+    public static final String ROOT_PREFIX = "codex-rs-";
+
     /** Prevents construction of this command. */
     private ValidateReleaseSchedulerInstallation() {}
 
@@ -41,7 +47,7 @@ public final class ValidateReleaseSchedulerInstallation
     static void validate(Path root) throws IOException
     {
         if (!root.isAbsolute() || !(Path.of("/var/lib").equals(root.getParent()) || Path.of("/Library").equals(root.getParent())) ||
-            !root.getFileName().toString().startsWith("codex-release-scheduler-") || !root.normalize().equals(root))
+            !root.getFileName().toString().startsWith(ROOT_PREFIX) || !root.normalize().equals(root))
             throw new IOException("Installation must be an immediate protected /var/lib or /Library scheduler child");
         validateParent(root.getParent());
         for (Path ancestor : List.of(root))
