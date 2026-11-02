@@ -124,6 +124,23 @@ public final class MacAttemptTest
     }
 
     /**
+     * Accepts a compiler that exited successfully before the queue's termination request stopped it.
+     * @throws IOException if native boundary control fails
+     */
+    @Test public void successAfterTerminationRequestIsAccepted() throws IOException
+    {
+        NativeBoundary backend = new NativeBoundary();
+        MacAttempt attempt = new MacAttempt(backend, null, "compiler", 0);
+        attempt.start();
+        attempt.terminate();
+        backend.terminal = new JobQueue.Outcome<>(0, true);
+        JobQueue.Outcome<Integer> result = attempt.poll().orElseThrow();
+        requireThat(result.aborted(), "completedCompilerIsNotRetried").isFalse();
+        requireThat(result.result(), "successfulRootStatus").isEqualTo(0, "expected");
+        attempt.close();
+    }
+
+    /**
      * Disables further backend controls after successful cleanup.
      * @throws IOException if native boundary control fails
      */

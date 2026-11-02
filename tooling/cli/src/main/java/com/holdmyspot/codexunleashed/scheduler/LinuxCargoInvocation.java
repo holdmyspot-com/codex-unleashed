@@ -764,8 +764,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
         {
             if (estimates == null) return;
             LinuxSupervisor.Result nativeResult = completion.outcome().result();
-            boolean successful = !completion.outcome().aborted() && !nativeResult.terminationRequested() &&
-                nativeResult.rootExit() == 0 && nativeResult.adoptedExits().values().stream().allMatch(status -> status == 0);
+            boolean successful = !completion.outcome().aborted() && nativeResult.succeeded();
             estimates.completed(completion.name(), completion.attemptSequence(), successful);
         }
         @Override public List<CargoMemoryEstimates.Observation> memoryObservations()

@@ -136,13 +136,30 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
         finally { controlling = false; }
     }
 
+    /**
+     * Decides whether the queue retries a collected compiler instead of accepting its status. A compiler that exited
+     * successfully is accepted even when termination was requested, because its output is complete and a retry would
+     * repeat it.
+     * @param terminationRequested indicates whether termination was requested for the attempt
+     * @param status the collected root status
+     * @return true if termination was requested and the compiler did not succeed
+     */
+    static boolean aborted(boolean terminationRequested, int status)
+    {
+        return terminationRequested && status != 0;
+    }
+
     @Override public Optional<JobQueue.Outcome<Integer>> poll() throws IOException
     {
         requireThread();
         if (controlling) throw new IllegalStateException("Queue controls cannot reenter native execution");
         if (!started || closed) return Optional.empty();
         controlling = true;
-        try { return backend.poll().map(result -> new JobQueue.Outcome<>(result.result(), terminated || result.aborted())); }
+        try
+        {
+            return backend.poll().map(result -> new JobQueue.Outcome<>(result.result(),
+                aborted(terminated || result.aborted(), result.result())));
+        }
         finally { controlling = false; }
     }
 
@@ -570,7 +587,7 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
                 OptionalInt result = workload.advance();
                 if (result.isEmpty()) return Optional.empty();
                 retire();
-                outcome = new JobQueue.Outcome<>(result.getAsInt(), stopping);
+                outcome = new JobQueue.Outcome<>(result.getAsInt(), aborted(stopping, result.getAsInt()));
                 return Optional.of(outcome);
             }
             catch (IOException | RuntimeException cause) { throw failed(cause); }

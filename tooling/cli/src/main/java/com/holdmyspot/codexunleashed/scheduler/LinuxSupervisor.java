@@ -416,6 +416,25 @@ public final class LinuxSupervisor implements AutoCloseable
 			if (adoptedExits.keySet().stream().anyMatch(pid -> pid <= 0))
 				throw new IllegalArgumentException("Adopted child PIDs must be positive");
 		}
+
+		/**
+		 * Reports whether the root and every adopted child exited with status zero.
+		 * @return true if the whole job succeeded
+		 */
+		public boolean succeeded()
+		{
+			return rootExit == 0 && adoptedExits.values().stream().allMatch(status -> status == 0);
+		}
+
+		/**
+		 * Reports whether the scheduler should retry this job instead of accepting its result. A job that succeeded is
+		 * accepted even when termination was requested, because its compiler output is complete and a retry would repeat it.
+		 * @return true if termination was requested and the job did not succeed
+		 */
+		public boolean aborted()
+		{
+			return terminationRequested && !succeeded();
+		}
 	}
 
 	/**

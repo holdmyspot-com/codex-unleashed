@@ -94,6 +94,18 @@ public final class LinuxSupervisorTest
 	}
 
 	/**
+	 * Accepts a job that succeeded before its requested termination took effect, and retries one it actually stopped.
+	 */
+	@Test
+	public void retriesOnlyTerminatedJobsThatDidNotSucceed()
+	{
+		requireThat(new LinuxSupervisor.Result(0, Map.of(42L, 0), true).aborted(), "succeededAfterRequest").isFalse();
+		requireThat(new LinuxSupervisor.Result(137, Map.of(), true).aborted(), "killedRoot").isTrue();
+		requireThat(new LinuxSupervisor.Result(0, Map.of(42L, -9), true).aborted(), "killedChild").isTrue();
+		requireThat(new LinuxSupervisor.Result(1, Map.of(), false).aborted(), "ordinaryFailure").isFalse();
+	}
+
+	/**
 	 * Refuses outcomes that cannot identify an ordinary root exit or a real adopted process.
 	 */
 	@Test

@@ -244,7 +244,7 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 			}
 			LinuxSupervisor.Result result = supervisor.result();
 			receipt("accepted-result " + result);
-			outcome = new JobQueue.Outcome<>(result, result.terminationRequested());
+			outcome = new JobQueue.Outcome<>(result, result.aborted());
 			return Optional.of(outcome);
 		}
 		catch (IOException | RuntimeException cause) { throw failed("Whole-job observation", cause); }
