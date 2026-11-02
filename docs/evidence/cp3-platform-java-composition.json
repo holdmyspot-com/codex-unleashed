@@ -160,5 +160,754 @@
     "Thirteen native-platform tests skip on this Linux host; these are not native outcome acceptance.",
     "Windows useful/ordinary native results bind snapshot2, while this composition includes snapshot3 launcher changes.",
     "Final combined native runtime, installed launchers, platform recovery and scheduled release acceptance remain unmet."
-  ]
+  ],
+  "cacheLeaseSuccessor": {
+    "status": "portable composition and Windows ARM64 native successor reuse passed; Windows x64 evidence collection and final platform acceptance pending",
+    "baseCommit": "16b22c251cc247e3f2948a8088ae61ed256f663c",
+    "sourceCount": 89,
+    "changedArtifactCount": 90,
+    "sources": [
+      {
+        "path": "tooling/cli/pom.xml",
+        "sha256": "1fd2029a31a2bc3b488860f5ed5e7f1af6f607c402161514e4dbd9e93117fa88"
+      },
+      {
+        "path": "tooling/cli/src/build-test/java/com/holdmyspot/codexunleashed/distribution/BazelNativeBackendMainTest.java",
+        "sha256": "a5b90f4fc3e718b5b22faf49ac837aa6ee7f38c4b3eddb99fad16b3fc17a70cf"
+      },
+      {
+        "path": "tooling/cli/src/build/java/com/holdmyspot/codexunleashed/distribution/BazelBackendMain.java",
+        "sha256": "e96c938bff293e18fe0ec028a4b8b7e05531f0236262b29c5c1ef65c902e91f5"
+      },
+      {
+        "path": "tooling/cli/src/build/java/com/holdmyspot/codexunleashed/distribution/BazelNativeBackendMain.java",
+        "sha256": "d5906ff2c1c971f31cb5525525c351a088956f2b90622198abc000f57c89fdb4"
+      },
+      {
+        "path": "tooling/cli/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java",
+        "sha256": "cfd8c56b6d82b40306139c36f730a15cfb04de89fda06e74ef02dc2fe35ca441"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelBackendCache.java",
+        "sha256": "0fe92f618cc1c0d4e4486ec9227abccaadf4177a62aaeafd823a7144dbe3315b"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelBackendCredentials.java",
+        "sha256": "ed7d5a1501b80b416be47475f773299bb5e846d48a07fb9242d8d1c69e5e62df"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelNativeBackend.java",
+        "sha256": "f5e07011ce3fa08bda7db44d73762f07aedab59aa6aaf050702c87c621041c3a"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelRunner.java",
+        "sha256": "cd186c46e1e98a758af30c03bd20563f48fc10c1512badb2090b44e88a49367d"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelWorkIdentity.java",
+        "sha256": "52971aab18802a09564a5e4fced3b526677ba7d6988b94d9ec08eaafca99291d"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelWorkspace.java",
+        "sha256": "1b6730656f9cb4806ed0f7142fe642388213f5011f8ea195389f9f65c8d752d0"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/JobQueue.java",
+        "sha256": "4b2fa130d2ea176a9a36efd1f618bca6a4523ee37f370c79bdab1ec1156d0400"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAarch64Trace.java",
+        "sha256": "59b6d017b507480c6c2a3a07a87b1a4562d79107f381f2ff2e55750c9a40d2a3"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAllocationTrace.java",
+        "sha256": "29b9cc13a8f19d38b8924ff9b2fd99a51fd43ba2110f11fc46d832ac257a42bf"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelAction.java",
+        "sha256": "aa255fd66691603db4e995fab0f8aba372dc5faa29066070034dfb851a49c16b"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelAdmission.java",
+        "sha256": "7208946fbd507ff298d84eed7ec898243a22853a8077916dd8e88eee5cfd6469"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelBackend.java",
+        "sha256": "149fbd8ae3fcc4fd87beec1e23641ab98cba69160c4a3c9a4c9b56896988a6c8"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelContainment.java",
+        "sha256": "577b0deefa1db8780ed5f109c5c3095d2a64c21c10aaea66fa4934420992ba08"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelHelperMain.java",
+        "sha256": "52914c675c6a6f4a8fac1e8ec46a9e2d53f7e48eaff283f2f608c16bcc6e8810"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelIdentity.java",
+        "sha256": "52bb47893a30844d1536777f94dcf0032403c839392b31d13169478a71f163f2"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelInvocation.java",
+        "sha256": "2dd2dedbd1e8398767523093f119bea16865107299283225dad955e70a961ada"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelNamespaceHooks.java",
+        "sha256": "cc1ab81c9e3c0a72c388b0d7facd2761417a718ba340a022ed26194b57c854f9"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelProducer.java",
+        "sha256": "c8a305fc002d84fb0f04670df8e6fe261acdd4d5ea4da0994fecc2dad67cdb31"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelRunner.java",
+        "sha256": "1f2bbb07d43d4cbc3d2e93633a77e93fc950c511d06bcd36b9dd76389678905e"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelSession.java",
+        "sha256": "c4fa6323404ff4c2c2fc53b6c5d0f9f5e8de0a4bfe304cbb96beb39e9c33a8d8"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelTraceHelper.java",
+        "sha256": "0368bfe942fc33d98786c70bdb8a76090b32d9db82af63f3de41a0e044e82206"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/MacBazelAttempt.java",
+        "sha256": "a91c1f610b06c7f07a5325fbe94b05e49aaee80945fc7af2c4a34436d869abf6"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/MacBazelInstrumentation.java",
+        "sha256": "516a0ae235e3af2e5f8dc0d93ae17ff022d7cfd6a14b494399fada9f399d0838"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/MacBazelInvocation.java",
+        "sha256": "157c4cd964738c0cc9bb1eecdc928711424e5e2dcae7d584aa7b47fc23633147"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/MacBazelLaunchConfiguration.java",
+        "sha256": "7203f6c15bda915c36e4dd1d514caaa4387fd63c7815675efaf9ead5a643fd94"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/MacBazelSchedule.java",
+        "sha256": "7b1e54e92f05f05bff5e648422545bff4092d94db57fbfff6d17169e71f089b4"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/MacBazelWorkspace.java",
+        "sha256": "9edd9006ad34a69ca005e0402a65e659ee57fba23e4ed42b051873cc5d0b8d18"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/MacDescriptorProtection.java",
+        "sha256": "70ec5ae2b203d912f7c82f8d426abc5c80ba546181f4c5f79bcc30b85237251a"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/MacImages.java",
+        "sha256": "169324855e1ec220af820e43f81a2908c25a09434eedf465507dcebae34d7799"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/MacWorkloadNative.java",
+        "sha256": "cf9a7e9e1e06c2e81b5a54d23749cdabcb97069ed24ee0e4bf3ad9c5f3288482"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Scheduler.java",
+        "sha256": "3356c7b8294f7f4d499dc153b74bb9dbe85a5df809f95d609eaa035552e5a5a9"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/SchedulerCoordinator.java",
+        "sha256": "16dfb51bccbc1e35f2ab3f638b2f4d5513f40876e5abfe3d6f5facb432e18bcc"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttempt.java",
+        "sha256": "cb0f4abe84f6cfe8c65f0b97c3a4fa0eb853694bf8b8249afd32bd37f3f41a0d"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelDaemon.java",
+        "sha256": "6b177b387cad1d9399cc34e02426e37ee6b782ea995a85969f1b1bcd090fe78a"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelFiles.java",
+        "sha256": "5058826dd1b1e211cbebc61d968a4ee806aec1c336f43b5783131be035b55980"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelInvocation.java",
+        "sha256": "806d06f851659ddc3399e5fd4fa90d43fc07eb84114c3b03bef6525eca84d165"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelLaunchConfiguration.java",
+        "sha256": "52b82a798d079c9a4388d0b3fb6ead5931702af27ad5a204624bc394afae1c0f"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelLauncher.java",
+        "sha256": "2b23c9ae0b045f0a5afd645ac63302129fdf6762428f39d94e7d9b39fde2b585"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelSchedule.java",
+        "sha256": "883363cb19a5fd803fa07cfa99279e62497c81eeb375638cba42cd8aac75da72"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelScope.java",
+        "sha256": "c40e2e80af6d9673d1db8f539fa9c6a2efa61fabe118884012ccaf348447e181"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelSecurity.java",
+        "sha256": "adf5674d9a0cc86d26100555a59b61f5cd9cd6ed4edc942cc6573e5f18bcfce4"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelStreams.java",
+        "sha256": "76d61d5c02829ae27696415a1d5a0d7031183c341d2400d429da3a2f59f6ae50"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelWorkspace.java",
+        "sha256": "1fd011e9838648e1ce14498474281dd7785aa995c13a3fc74d768fe2c18df873"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsProcess.java",
+        "sha256": "3dc2b97f5756a13aac826284784282bc2e64141b2e826f9a2b9279f31e987650"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/DefaultToolingScope.java",
+        "sha256": "70651a119338d54f7efff777b0a345835f04621c1da9d32f7b7dcb69747260e6"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/ToolingScope.java",
+        "sha256": "930613c7b5952eabc1c7653c6358c117359169f3c037b8616eef620f48f87508"
+      },
+      {
+        "path": "tooling/cli/src/main/resources/com/holdmyspot/codexunleashed/scheduler/buildbarn/worker-windows.json.template",
+        "sha256": "4871731c7da96b14707693caa052fdfd22248149ae187f08fb38de2cd169d837"
+      },
+      {
+        "path": "tooling/cli/src/main/resources/com/holdmyspot/codexunleashed/scheduler/mac-descriptor-protection.c",
+        "sha256": "ebbfd0f04cce776b92e4f2e4e0feb1444f30c1200e91b716357d62872453f9f3"
+      },
+      {
+        "path": "tooling/cli/src/main/resources/com/holdmyspot/codexunleashed/scheduler/mac-descriptor-protection.js",
+        "sha256": "c9f975fa1c5e297eb115e0e16226d5b46eeccb15271194d7026920a8d0445f9b"
+      },
+      {
+        "path": "tooling/cli/src/main/resources/com/holdmyspot/codexunleashed/scheduler/mac-workload.c",
+        "sha256": "242bb35780e9eb19bebd5fcb81318283c577ceeddc527452bf6d33c814a0e371"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/distribution/DistributionPackagingTest.java",
+        "sha256": "6e5f5208de7f3a213f010e34553aaa215544f0d430913ced708536b61b2f6e17"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/distribution/WindowsLauncherPackagingTest.java",
+        "sha256": "b977d0b45493c18ee5787b5a3174426a27e04e58530383e9dad97471d7276b71"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/BazelBackendCredentialsTest.java",
+        "sha256": "1e3af6b908ff0c3f148d3abafa3018cf79e2cb9b6e57abcbe328c4211e32c2af"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/BazelNativeBackendTest.java",
+        "sha256": "03d2bf2c86b82857a0d42d97c3aa44e4f056483018f1f316a9acd4118b326625"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/BazelSchedulerOptionsTest.java",
+        "sha256": "faf7d14e65bcb4d9c3fa9cf95542134b2a7227e84ac77f9e21bccee7bd8316ca"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/JobQueueTest.java",
+        "sha256": "9410e4ed5be5ff900465987c7b7f93b6887575bdf827ca63ebb61c04006bd3bb"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxAarch64TraceNativeTest.java",
+        "sha256": "9c682ced8fc2a0ecab1fa608ea5a4474d82b991b9f031243cb1c4e33d152748f"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxAarch64TraceTest.java",
+        "sha256": "bee8719812ce7809d8c91a89d66aba125a416da31986fbdb875af0e3b61a81a1"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelActionTest.java",
+        "sha256": "99009f00dc8dda503a927fce64dfab12e788c540f7e72afd5e783c474c5d69aa"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelBackendTest.java",
+        "sha256": "43ddc6472fd01a6f1badf8b0befff2ce2f6b06b4e0b57af2fee24804b9c13674"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelContainmentTest.java",
+        "sha256": "bd831051ede57dfb4e5c45af67c2a1b59be8143a3cad66a59496cc56a27c595a"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelHelperMainTest.java",
+        "sha256": "ba6fdda8a8f6efd53799e8338a4c17f4d59acd7b85c0772f60609fa2c79d2831"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelIdentityTest.java",
+        "sha256": "72b7dbf73668818cdeb5a06dab9aa558b5cfd58209a656b90118bd8b962fdefc"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelNamespaceHooksTest.java",
+        "sha256": "ac4877197921d697dfb8e8e93d6c242a6213e582d73e04cf6fbc4ad7798d217a"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelRunnerTest.java",
+        "sha256": "4ee88c68ed5a7130146fcd011c42f6efdfbde9dea09b021c9c09de3daf8a49b9"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelStaticImageTest.java",
+        "sha256": "80c22973f298eb85ae71ceaac911f470d41a0ab84330b7a0f580c00e1a1055c7"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/MacBazelLaunchConfigurationTest.java",
+        "sha256": "f4e7ed72555c5e5819081c086171616589152bf77a7abc76ee9cb3347f655d99"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/MacBazelScheduleTest.java",
+        "sha256": "dd65188ef1d4a0a7eb86acbec99bb0a12745f28f831f494ab92ecb4467a70972"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/MacBazelWorkspaceTest.java",
+        "sha256": "f74f40eae3aa2aeaa2de7e6c03f5bfc2212106ebfd171deafd688eeb4c3bb8fa"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/MacDescriptorProtectionTest.java",
+        "sha256": "6e024ff3072d134be57543272dfe399164af194b593e427f245331336f3f111c"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/MacImagesTest.java",
+        "sha256": "e51049d7abbb721ceec739efce7f6c36eeb9b7f8abad5e739f78456d28df7e6f"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/MacWorkloadTest.java",
+        "sha256": "fc13f4f296b9fc51d96785cdf5315caf222500070c7402837fda09d566b1d5ea"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/SchedulerCoordinatorTest.java",
+        "sha256": "1c4b0eb71e3e708ca5006951622244de7d06971b1bdd06461858c4a2141f075f"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/SchedulerTest.java",
+        "sha256": "b02eff22b2d260334d727a05afae753eed1c18e3ff07514d73cdc6423c77b2f5"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttemptTest.java",
+        "sha256": "81c1e8839ac53f366e0d387cd1460b661f76504ffb836a86eb7d4f6d3117bd04"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelLaunchConfigurationTest.java",
+        "sha256": "63f400ad20296b0d44b44d5ce4d2d0da34866275b1a2da9a2533de70066f4903"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelLauncherTest.java",
+        "sha256": "3c6d754656e7cd80a8437b42361c10b58dc7f4597e39d9f30c98499c95bf2f8a"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelScheduleTest.java",
+        "sha256": "072ce0960f680f9f4e8fdc0039b728decb9a8f58a7300364c8dc7542668421f1"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelStreamsTest.java",
+        "sha256": "f8c8d27f30f879fa79715fad03c49c5556ae052d0bc1dad273e5d4b01249dcbc"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelWorkspaceTest.java",
+        "sha256": "9d41e03971a85ac6b4405ba941e0c29e7e59e1e8355d632f4d3796ecbb85be4e"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsMeasurementsTest.java",
+        "sha256": "a5bd49009686c5e753fc5b379fd12ab7644b791b2fa7ff994c7e8a5e094df926"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsProcessTest.java",
+        "sha256": "1b61c775f8f5abc1ea9be4d5742a2b276d7ab3463a3e5014203aae0da1effaec"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsWorkIdentityTest.java",
+        "sha256": "168cf2d3f46329853ce8f082e5d8ef792b3486f9bfee62b7b0168a82488a71c7"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/MainTest.java",
+        "sha256": "1fd4e2cf5d5bf71df8a09717a73f6367827e587a3b26749ce3d22e81be6946cd"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/ToolingScopeTest.java",
+        "sha256": "c3fe4db4bb7a93d15309a5ce4769e6dd19348b2de7157fece2ba7983389c3e80"
+      }
+    ],
+    "verification": {
+      "tests": 1413,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 13,
+      "exitCode": 0,
+      "parallel": "methods",
+      "threadCount": 8,
+      "command": "maven-lease-correction-command.json",
+      "log": "maven-lease-correction.log",
+      "exclusion": "Eleven Rust-compiling SourceInputCacheTest cases remain remote-only."
+    },
+    "command": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/mutation-transaction-UHlQpd/maven-lease-correction-command.json",
+    "log": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/mutation-transaction-UHlQpd/maven-lease-correction.log",
+    "module": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/mutation-transaction-UHlQpd/snapshot6-tooling.jar",
+    "moduleSha256": "03263dad3f5d3eac78b934d4e05e6989e5239403b0a9ab49d88e456693cabd4f",
+    "moduleBytes": 1861927,
+    "stagingReceipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/mutation-transaction-UHlQpd/snapshot6-staging-receipt.json",
+    "leaseCorrectionReceipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/mutation-transaction-UHlQpd/lease-correction-receipt.json",
+    "sourcePromotion": false,
+    "limits": [
+      "Native controller-death/successor cache reuse remains unrun for this module.",
+      "Failed Linux Frida retirement candidate is excluded.",
+      "Earlier native evidence retains its original source and platform scope.",
+      "Eleven Rust-compiling tests remain remote-only."
+    ],
+    "windowsArm64NativeSuccessor": {
+      "acceptance": {
+        "status": "passed",
+        "platform": "Windows ARM64",
+        "workerRun": 41360572128,
+        "moduleSha256": "03263dad3f5d3eac78b934d4e05e6989e5239403b0a9ab49d88e456693cabd4f",
+        "moduleBytes": 1861927,
+        "moduleNativeVerificationMarker": "CP3_ROOT_MODULE_VERIFY_93qnznvh",
+        "fixtureManifest": "manifest.json",
+        "nativeResult": "actual-root-controller-death-retry1-receipt.json",
+        "nativeResultSha256": "c6884d0714829164a5755c83cbf875553d5bb4f083071fcb77e75ac1042424ef",
+        "spawnLog": "death-retry1-execution-fresh.json",
+        "spawnLogSha256": "b31a15faea9e9574699327df1a65149f8999a7e5c1a19302708735ccfd322f20",
+        "claims": [
+          "Actual production controller abruptly terminated without Java finally cleanup.",
+          "All six retained owned native process handles signaled extinct before fresh successor.",
+          "Fresh public scheduler invocation completed0.",
+          "Authentic Bazel SpawnExec reports completed A as remote cache hit with action digest; A was not dispatched a second time.",
+          "Exactly fresh action C ran; completed A and fresh C output bytes match expected."
+        ],
+        "originalObservationFailure": "Preserved CP3_DONE_3be3aad243dd47218f01918a398abf1a:1. JSON execution log is converted on close; pre-death live-JSON requirement removed from fixture, production unchanged.",
+        "limits": [
+          "Windows x64 module6 reuse remains unrun.",
+          "Unchanged original action digest was not independently read before abrupt death; required reuse is established by completed native publication, final remote cache hit and only-C dispatch.",
+          "Provider lifecycle remains live, no final cleanup claim.",
+          "No full release or whole-checkpoint acceptance claim."
+        ]
+      },
+      "nativeReceipt": {
+        "scope": "Only actual launched controller descendants, no system-wide process inventory",
+        "production": "actual root module6; ordinary unnamed Jobs and existing KILL_ON_JOB_CLOSE",
+        "gate": "passed",
+        "processes": [
+          {
+            "parent": 5968,
+            "pid": 6096,
+            "birth": 134380504044191170,
+            "nativeWait": 0
+          },
+          {
+            "parent": 5968,
+            "pid": 5124,
+            "birth": 134380504048929400,
+            "nativeWait": 0
+          },
+          {
+            "parent": 5968,
+            "pid": 4500,
+            "birth": 134380504059183150,
+            "nativeWait": 0
+          },
+          {
+            "parent": 5968,
+            "pid": 2528,
+            "birth": 134380504061384120,
+            "nativeWait": 0
+          },
+          {
+            "parent": 5968,
+            "pid": 5080,
+            "birth": 134380504177352810,
+            "nativeWait": 0
+          },
+          {
+            "parent": 2528,
+            "pid": 10540,
+            "birth": 134380504062242020,
+            "nativeWait": 0
+          }
+        ],
+        "originalCompletedNativeResult": {
+          "event": "action-result",
+          "payload": {
+            "sequence": 0,
+            "identity": "a6a91d5bec680a10de1c0e7990bb5712e8dc8c266169358bb65fe764219f30e5",
+            "exit": 0,
+            "published": true,
+            "name": "81e7587f-24fa-4ce5-b0e1-e9e6098b269b:0"
+          },
+          "nanoTime": 3535980680200
+        },
+        "originalExecutionLogObservation": "JSON unavailable before intentional build interruption; not a prerequisite for behavioral reuse",
+        "controllerPid": 5968,
+        "heldActionPid": 5080,
+        "completedOutputSha256": "b4bc9b4dc15a6f44422df096d76f000fa55f8a21a0b429fdcf3d4416d27800a6",
+        "controllerExit": 1,
+        "nativeWorkloadsExtinct": true,
+        "successorExit": 0,
+        "successorCompletedActionLog": [
+          {
+            "commandArgs": [
+              "C:/a/_temp/windows-consumer-final-vpilmU/death-toolchain/death-generator.exe",
+              "bazel-out/arm64_windows-fastbuild/bin/done.c",
+              "A"
+            ],
+            "environmentVariables": [
+              {
+                "name": "LOCALAPPDATA",
+                "value": "C:\\Users\\runneradmin\\AppData\\Local"
+              },
+              {
+                "name": "SystemRoot",
+                "value": "C:\\Windows"
+              }
+            ],
+            "inputs": [],
+            "listedOutputs": [
+              "bazel-out/arm64_windows-fastbuild/bin/done.c"
+            ],
+            "remotable": true,
+            "cacheable": true,
+            "timeoutMillis": "0",
+            "mnemonic": "Action",
+            "actualOutputs": [
+              {
+                "path": "bazel-out/arm64_windows-fastbuild/bin/done.c",
+                "digest": {
+                  "hash": "b4bc9b4dc15a6f44422df096d76f000fa55f8a21a0b429fdcf3d4416d27800a6",
+                  "sizeBytes": "59",
+                  "hashFunctionName": "SHA-256"
+                },
+                "isTool": false,
+                "symlinkTargetPath": ""
+              }
+            ],
+            "runner": "remote cache hit",
+            "cacheHit": true,
+            "status": "",
+            "exitCode": 0,
+            "remoteCacheable": true,
+            "targetLabel": "//:done",
+            "digest": {
+              "hash": "d30c4ab186f831ee0efb69a0e00a2af954dd94546dbbb7067db2d2894c081af5",
+              "sizeBytes": "143",
+              "hashFunctionName": "SHA256"
+            },
+            "metrics": {
+              "totalTime": "0.084s",
+              "parseTime": "0.013s",
+              "networkTime": "0.042s",
+              "fetchTime": "0.015s",
+              "inputBytes": "0",
+              "inputFiles": "0",
+              "memoryEstimateBytes": "0",
+              "inputBytesLimit": "0",
+              "inputFilesLimit": "0",
+              "outputBytesLimit": "0",
+              "outputFilesLimit": "0",
+              "memoryBytesLimit": "0",
+              "startTime": "2026-11-01T23:46:53.025Z"
+            }
+          }
+        ],
+        "completedWorkReused": true,
+        "freshUsefulAction": true
+      },
+      "successorExecutionLog": [
+        {
+          "commandArgs": [
+            "C:/a/_temp/windows-consumer-final-vpilmU/death-toolchain/death-generator.exe",
+            "bazel-out/arm64_windows-fastbuild/bin/done.c",
+            "A"
+          ],
+          "environmentVariables": [
+            {
+              "name": "LOCALAPPDATA",
+              "value": "C:\\Users\\runneradmin\\AppData\\Local"
+            },
+            {
+              "name": "SystemRoot",
+              "value": "C:\\Windows"
+            }
+          ],
+          "inputs": [],
+          "listedOutputs": [
+            "bazel-out/arm64_windows-fastbuild/bin/done.c"
+          ],
+          "remotable": true,
+          "cacheable": true,
+          "timeoutMillis": "0",
+          "mnemonic": "Action",
+          "actualOutputs": [
+            {
+              "path": "bazel-out/arm64_windows-fastbuild/bin/done.c",
+              "digest": {
+                "hash": "b4bc9b4dc15a6f44422df096d76f000fa55f8a21a0b429fdcf3d4416d27800a6",
+                "sizeBytes": "59",
+                "hashFunctionName": "SHA-256"
+              },
+              "isTool": false,
+              "symlinkTargetPath": ""
+            }
+          ],
+          "runner": "remote cache hit",
+          "cacheHit": true,
+          "status": "",
+          "exitCode": 0,
+          "remoteCacheable": true,
+          "targetLabel": "//:done",
+          "digest": {
+            "hash": "d30c4ab186f831ee0efb69a0e00a2af954dd94546dbbb7067db2d2894c081af5",
+            "sizeBytes": "143",
+            "hashFunctionName": "SHA256"
+          },
+          "metrics": {
+            "totalTime": "0.084s",
+            "parseTime": "0.013s",
+            "networkTime": "0.042s",
+            "fetchTime": "0.015s",
+            "inputBytes": "0",
+            "inputFiles": "0",
+            "memoryEstimateBytes": "0",
+            "inputBytesLimit": "0",
+            "inputFilesLimit": "0",
+            "outputBytesLimit": "0",
+            "outputFilesLimit": "0",
+            "memoryBytesLimit": "0",
+            "startTime": "2026-11-01T23:46:53.025Z"
+          }
+        },
+        {
+          "commandArgs": [
+            "C:/a/_temp/windows-consumer-final-vpilmU/death-toolchain/death-generator.exe",
+            "bazel-out/arm64_windows-fastbuild/bin/fresh.c",
+            "C"
+          ],
+          "environmentVariables": [
+            {
+              "name": "LOCALAPPDATA",
+              "value": "C:\\Users\\runneradmin\\AppData\\Local"
+            },
+            {
+              "name": "SystemRoot",
+              "value": "C:\\Windows"
+            }
+          ],
+          "inputs": [
+            {
+              "path": "bazel-out/arm64_windows-fastbuild/bin/done.c",
+              "digest": {
+                "hash": "b4bc9b4dc15a6f44422df096d76f000fa55f8a21a0b429fdcf3d4416d27800a6",
+                "sizeBytes": "59",
+                "hashFunctionName": "SHA-256"
+              },
+              "isTool": false,
+              "symlinkTargetPath": ""
+            }
+          ],
+          "listedOutputs": [
+            "bazel-out/arm64_windows-fastbuild/bin/fresh.c"
+          ],
+          "remotable": true,
+          "cacheable": true,
+          "timeoutMillis": "0",
+          "mnemonic": "Action",
+          "actualOutputs": [
+            {
+              "path": "bazel-out/arm64_windows-fastbuild/bin/fresh.c",
+              "digest": {
+                "hash": "d47781bad6e7fcc8ccab10d687f3e4d1a2447c48504425f377bc022b672de3f5",
+                "sizeBytes": "54",
+                "hashFunctionName": "SHA-256"
+              },
+              "isTool": false,
+              "symlinkTargetPath": ""
+            }
+          ],
+          "runner": "remote",
+          "cacheHit": false,
+          "status": "",
+          "exitCode": 0,
+          "remoteCacheable": true,
+          "targetLabel": "//:fresh",
+          "digest": {
+            "hash": "b5febe92c69428e6d7303f03cb8fcd70e4f22f616727def7de40509e5bbf7616",
+            "sizeBytes": "145",
+            "hashFunctionName": "SHA256"
+          },
+          "metrics": {
+            "totalTime": "3.261s",
+            "parseTime": "0.007s",
+            "networkTime": "0.022s",
+            "fetchTime": "0.003s",
+            "queueTime": "0.001s",
+            "setupTime": "0.012s",
+            "uploadTime": "0.043s",
+            "executionWallTime": "3.110s",
+            "processOutputsTime": "0.006s",
+            "inputBytes": "398",
+            "inputFiles": "1",
+            "memoryEstimateBytes": "0",
+            "inputBytesLimit": "0",
+            "inputFilesLimit": "0",
+            "outputBytesLimit": "0",
+            "outputFilesLimit": "0",
+            "memoryBytesLimit": "0",
+            "startTime": "2026-11-01T23:47:37.413Z"
+          }
+        }
+      ]
+    }
+  },
+  "windowsRepairSuccessor": {
+    "module": {
+      "module": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/mutation-transaction-UHlQpd/snapshot7-tooling.jar",
+      "bytes": 1863914,
+      "sha256": "2eb730477a1c0cab54f042c2302ebba7b5f8d7f38f448c194610f88484adbabb",
+      "scope": "Actual JPMS module6 plus Windows full-MSVC launcher and security-only exact environment restoration; failed Linux Java GC candidate excluded",
+      "changedProductionEntries": [
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$CreatedChild.class",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$ImageProtocols.class",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeBackend.class",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeHook.class",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeManager.class",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeMember.class",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeObserver.class",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$PendingChild.class",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$Receipt.class",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks.class",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$NativeProcess.class",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$NativeResources.class",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsBazelLauncher.class",
+        "com/holdmyspot/codexunleashed/scheduler/windows-creation-observer.js"
+      ],
+      "compile": "snapshot7-compile-exit.json",
+      "focusedVerification": "snapshot7-focused-exit.json",
+      "nativeAcceptance": "UNRUN; requires rebuilt linked app image using this named module, unchanged full MSVC useful/action23, exact action argv/env/cwd/binary streams, whole-Job extinction. App/mods jar replacement alone does not override linked boot module.",
+      "dependencies": "Unchanged original dependency archive and retained native products; no native backend rebuild"
+    },
+    "portableVerification": {
+      "tests": 1414,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 13,
+      "exitCode": 0,
+      "parallel": "methods",
+      "threadCount": 8,
+      "command": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/mutation-transaction-UHlQpd/snapshot7-full-command.json",
+      "log": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/mutation-transaction-UHlQpd/snapshot7-full.log",
+      "exclusion": "Eleven Rust-compiling SourceInputCacheTest cases remain remote-only."
+    },
+    "focusedVerification": {
+      "tests": 37,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "nativeAcceptance": "Actual linked x64 packaging passed. All three action gates then failed at environment-agent startup, before useful/full MSVC, exact action env or cancellation acceptance. Failure is preserved; no whole-checkpoint claim.",
+    "module8Correction": {
+      "handoff": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/mutation-transaction-UHlQpd/snapshot8-module-handoff.json",
+      "sha256": "bf7efd2414b078d13e38c202f98c31734d18ec96d525374d39c2a15f8bd5a1c9",
+      "bytes": 1863955,
+      "change": "Only creation observer JS: explicit U16 writes preserve embedded NUL environment entries. All module7 Java and descriptor bytes unchanged.",
+      "native": "Unrun; staged unpublished asset699940050."
+    }
+  }
 }
