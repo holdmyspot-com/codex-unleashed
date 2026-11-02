@@ -265,6 +265,10 @@ public final class LinuxResidency
 					if (process.getFileName().toString().equals(statusField(status, "Tgid")) == false)
 						throw new IOException("Bound task has a different thread-group identity: " + taskPath);
 					if (isExitedTask(status, process.getFileName().toString())) continue;
+					// A thread of an exiting process loses its Vm* lines once the shared address space is released.
+					if (statusField(status, "VmRSS") == null)
+						throw new MembershipChanged("Sampled memory task released its address space while exiting: " +
+							taskPath, original);
 					long bytes = LinuxMemory.readResidentBytes(new StringReader(status), taskPath.resolve("status"));
 					requireMembership(task, taskPath, expected);
 					if (threadMembers(group).contains(tid) == false)

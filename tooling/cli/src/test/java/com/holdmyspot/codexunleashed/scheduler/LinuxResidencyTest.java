@@ -335,7 +335,13 @@ public final class LinuxResidencyTest
 			if (succeeds)
 				requireThat(LinuxResidency.read(root, proc, owned), "survivingThreadSample")
 					.isEqualTo(new LinuxResidency.Sample(variation.equals("zero") ? 0 : 12288, 1));
-			else requireException(IOException.class, () -> LinuxResidency.read(root, proc, owned));
+			else
+			{
+				IOException failure = requireException(IOException.class, () -> LinuxResidency.read(root, proc, owned));
+				// A live leader or thread without VmRSS belongs to a process that released its address space while exiting.
+				requireThat(failure instanceof LinuxResidency.MembershipChanged, "membershipRejection")
+					.isEqualTo(variation.equals("missingCounter") || variation.equals("runningLeader"));
+			}
 		}
 		finally
 		{
