@@ -242,6 +242,12 @@ final class AllocationHooks
 
 	/** Owned manager retained before native start. */
 	private FridaRuntime.Manager manager;
+    /** Sole static-image native owners retained through authentic whole-workload zero. */
+    private final LinuxAllocationTrace.Images nativeImages;
+    /** Installation generations backed by the native tracer rather than a Frida script. */
+    private final java.util.Set<Long> nativeInstallations = new java.util.HashSet<>();
+    /** Whether a genuine executed native denial requires whole-attempt retry. */
+    private boolean nativeRetry;
 	/** Owned original gate attachment retained before native start. */
 	private FridaRuntime.Manager.Session gate;
 	/** Owned original gate script retained before native start. */
@@ -319,6 +325,7 @@ final class AllocationHooks
 		this.supervisor = Objects.requireNonNull(supervisor, "supervisor");
 		this.waits = Objects.requireNonNull(waits, "waits");
 		timeoutNanos = LinuxAttempts.checkedTimeout(timeout).toNanos();
+        nativeImages = new LinuxAllocationTrace.Images(scope.getNativeLinker(), timeout);
 		this.peers = Objects.requireNonNull(peers, "peers");
 		this.cargoTokens = Objects.requireNonNull(cargoTokens, "cargoTokens");
 	}
@@ -343,7 +350,8 @@ final class AllocationHooks
 			{
 				if (input == null)
 					throw new IOException("Packaged Linux leader program is missing");
-				leader = leaderProgram(scope, new String(input.readAllBytes(), StandardCharsets.UTF_8), launch);
+				leader = leaderProgram(scope, new String(input.readAllBytes(), StandardCharsets.UTF_8), launch,
+					cargoTokens.map(CargoTokens::descriptors).orElse(null));
 			}
 			long root = supervisor.rootPid();
 			Image gateIdentity = inspect(root, false, null);
@@ -402,9 +410,17 @@ final class AllocationHooks
 				try { advanceChild(children.removeFirst()); }
 				finally { advancing = false; }
 			}
+            LinuxAllocationTrace.Denial nativeDenial = nativeImages.pollDenial();
+            if (nativeDenial != null)
+            {
+                AllocationWaits.Wait nativeWait = nativeWait(nativeDenial, activeInstallations, nativeInstallations);
+                nativeRetry = true;
+                waits.blocked(nativeWait);
+            }
 			for (long installation : List.copyOf(activeInstallations.values()))
 			{
-				installations.get(installation).pump();
+                AllocationHook hook = installations.get(installation);
+                if (hook != null) hook.pump();
 				CargoTokenHook tokens = tokenInstallations.get(installation);
 				if (tokens != null) tokens.pump();
 			}
@@ -412,6 +428,28 @@ final class AllocationHooks
 		catch (IOException | RuntimeException cause) { throw failed("Instrumentation delivery", cause); }
 		catch (Error cause) { failed("Instrumentation delivery", cause); throw cause; }
 	}
+
+    /** Binds a genuine held native denial to its active independently authenticated image generation.
+     * Native tracing permits one denied hold before whole-attempt termination, so its wait ordinal is one.
+     * @param denial copied executed-trap observation from this controller's original native owner
+     * @param active current independently authenticated process-to-installation assignments
+     * @param nativeGenerations installation generations retained by this native trace owner
+     * @return positive generation-bound queue wait for the actual allocating process
+     * @throws IOException if no active native image owns the actual allocating process
+     */
+    static AllocationWaits.Wait nativeWait(LinuxAllocationTrace.Denial denial, Map<Long, Long> active,
+        java.util.Set<Long> nativeGenerations) throws IOException
+    {
+        Long installation = active.get((long) denial.processId());
+        if (installation == null || !nativeGenerations.contains(installation))
+            throw new IOException("Native allocation denial has no authenticated image installation");
+        return new AllocationWaits.Wait(installation, 1);
+    }
+
+    /** Reports a genuine native denial requiring the queue's existing whole-attempt retry path.
+     * @return true only after this attempt observes an executed native allocation-denial trap
+     */
+    boolean requiresRetryAfterDenial() { requireOwner(); return nativeRetry; }
 
 	/** Grants through the exact existing installation owner, never by PID alone.
 	 * @param wait authentic wait selected by AllocationWaits
@@ -423,6 +461,8 @@ final class AllocationHooks
 		requireCertain();
 		if (stopped || advancing)
 			throw new IllegalStateException("Instrumentation cannot grant during another transition");
+        if (nativeInstallations.contains(wait.installation()))
+            throw new IOException("Native denied allocation requires whole-attempt retry");
 		AllocationHook hook = installation(installations, wait);
 		advancing = true;
 		try { hook.grant(wait, peers); }
@@ -479,6 +519,12 @@ final class AllocationHooks
 					else cleanup.addSuppressed(cause);
 				}
 			}
+            try { nativeImages.close(); }
+            catch (IOException cause)
+            {
+                if (cleanup == null) cleanup = cause;
+                else cleanup.addSuppressed(cause);
+            }
 			if (cleanup != null)
 				throw cleanup;
 			if (gateScript != null) gateScript.close();
@@ -500,6 +546,8 @@ final class AllocationHooks
 	 */
 	private void copyChildren() throws IOException
 	{
+        FridaRuntime.Child nativeChild = nativeImages.pollChild();
+        if (nativeChild != null) routing.route(route, nativeChild);
 		for (int count = 0; count < 64; count++)
 		{
 			var event = manager.pollChild();
@@ -523,13 +571,16 @@ final class AllocationHooks
         LinuxCargoImages.Identity parent = LinuxCargoImages.retainedParent(event, lineage(observed), retained,
             pid -> lineage(inspect(pid, true, null)));
         Path executable = LinuxCargoImages.executable(event, parent == null ? null : parent.executable());
-        Image image = inspect(event.pid(), true, executable);
+        LinuxCargoImages.ExecutableIdentity source = LinuxCargoImages.executableIdentity(lineage(observed), executable,
+            pid -> lineage(inspect(pid, true, null)));
+        Image image = observed;
         if (!observed.equals(image)) throw new IOException("Held image changed during executable verification");
         if (previous != null)
         {
             long retired = activeInstallations.get(event.pid());
             // Verified same-process exec removed old-image threads; retain owners through whole-workload zero.
-            installations.get(retired).stop();
+            AllocationHook oldHook = installations.get(retired);
+            if (oldHook != null) oldHook.stop();
             CargoTokenHook tokens = tokenInstallations.get(retired);
             if (tokens != null) tokens.stop();
             waits.retireInstallation(retired);
@@ -538,7 +589,10 @@ final class AllocationHooks
         install(image);
         if (parent != null && !parent.equals(lineage(inspect(parent.pid(), true, parent.executable()))))
             throw new IOException("Held child parent changed during hook readiness");
-        if (!image.equals(inspect(event.pid(), true, executable)))
+        if (!source.equals(LinuxCargoImages.executableIdentity(lineage(image), executable,
+            pid -> lineage(inspect(pid, true, null)))))
+            throw new IOException("Held executable source changed during hook readiness");
+        if (!image.equals(inspect(event.pid(), true, null)))
             throw new IOException("Held child changed during hook readiness");
         resume(event);
     }
@@ -561,7 +615,9 @@ final class AllocationHooks
     {
         if (stopped || Thread.currentThread().isInterrupted()) throw new IOException("Held attempt continuation canceled");
         routing.prepare(route, event);
-        manager.resume(event.pid());
+        if (nativeImages.owns(event.pid()))
+            nativeImages.resume(event.pid(), startTime(Files.readString(proc(event.pid()).resolve("stat"))));
+        else manager.resume(event.pid());
         routing.completed(route, event);
     }
 
@@ -573,6 +629,13 @@ final class AllocationHooks
 	{
 		long installation = nextInstallation;
 		nextInstallation = Math.incrementExact(nextInstallation);
+        if (nativeImages.install(image.pid(), image.started(), () -> manager.resume(image.pid())))
+        {
+            nativeInstallations.add(installation);
+            activeInstallations.put(image.pid(), installation);
+            images.put(image.pid(), image);
+            return;
+        }
 		AllocationHook hook = new AllocationHook(scope, identity, installation, image.pid(), manager, waits, program,
 			Duration.ofNanos(timeoutNanos));
 		installations.put(installation, hook);
@@ -596,17 +659,22 @@ final class AllocationHooks
 	 * This value does not authenticate an image, own the descriptor or retire the ledger.
 	 * @param fifo independently observed identity from the invocation's retained lease
 	 * @param tokens whole-attempt ledger retained by LinuxAttempt until trusted whole-descendant zero
+	 * @param descriptors FIFO and descriptor numbers that the attempt's leader opens before exec
 	 */
-	record CargoTokens(LinuxFifoBindings.Identity fifo, LinuxCargoTokens.Attempt tokens)
+	record CargoTokens(LinuxFifoBindings.Identity fifo, LinuxCargoTokens.Attempt tokens, LinuxCargoJobserver.Descriptors descriptors)
 	{
 		/**
 		 * Validates borrowed inputs without acquiring native resources.
-		 * @throws NullPointerException if either input is null
+		 * @param fifo independently observed identity from the invocation's retained lease
+		 * @param tokens whole-attempt ledger retained by LinuxAttempt until trusted whole-descendant zero
+		 * @param descriptors FIFO and descriptor numbers that the attempt's leader opens before exec
+		 * @throws NullPointerException if any input is null
 		 */
 		CargoTokens
 		{
 			Objects.requireNonNull(fifo, "fifo");
 			Objects.requireNonNull(tokens, "tokens");
+			Objects.requireNonNull(descriptors, "descriptors");
 		}
 	}
 
@@ -629,9 +697,7 @@ final class AllocationHooks
 		if (pid == supervisor.rootPid() && parent != supervisor.pid())
 			throw new IOException("Prepared workload root has changed supervisor parent");
 		Path actual = Files.readSymbolicLink(process.resolve("exe"));
-		if (executable != null && (executable.isAbsolute() == false ||
-			Files.isSameFile(process.resolve("exe"), executable) == false))
-			throw new IOException("Held executable differs from native notification: " + actual);
+		if (executable != null) requireHeldExecutable(process, executable);
 		String group = Files.readString(process.resolve("cgroup"));
 		Path contained = null;
 		try (var groups = Files.walk(supervisor.directory()))
@@ -650,6 +716,32 @@ final class AllocationHooks
 			began != startTime(Files.readString(process.resolve("stat"))))
 			throw new IOException("Held process lacks stable actual owned cgroup identity");
 		return new Image(pid, began, parent, actual, contained);
+	}
+
+	/** Checks that a held process image came from the requested executable, either directly or as a kernel
+	 * shebang script whose interpreter image and kernel-inserted arguments match the script.
+	 * @param process the held process's proc directory
+	 * @param executable the absolute executable the notification requested
+	 * @throws IOException if the held image did not come from {@code executable}
+	 */
+	static void requireHeldExecutable(Path process, Path executable) throws IOException
+	{
+		Path image = process.resolve("exe");
+		if (executable.isAbsolute() && Files.isSameFile(image, executable)) return;
+		try
+		{
+			if (executable.isAbsolute() == false) throw new IOException("Requested executable is not absolute");
+			byte[] command = Files.readAllBytes(process.resolve("cmdline"));
+			if (command.length == 0 || command[command.length - 1] != 0)
+				throw new IOException("Held image command line is incomplete");
+			String text = LinuxCargoImages.utf8(java.util.Arrays.copyOf(command, command.length - 1));
+			LinuxCargoImages.executableIdentity(image, executable, List.of(text.split(String.valueOf((char) 0), -1)));
+		}
+		catch (IOException cause)
+		{
+			throw new IOException("Held executable differs from native notification for " + process.getFileName() +
+				": expected " + executable + "; observed " + Files.readSymbolicLink(image), cause);
+		}
 	}
 
 	/** Reads the Linux start-time field without splitting a command name containing spaces or parentheses.
@@ -736,16 +828,18 @@ final class AllocationHooks
 	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param template packaged program with exactly one marker
 	 * @param launch immutable launch
+	 * @param jobserver FIFO and descriptor numbers the leader opens before exec, or null when the launch has no jobserver
 	 * @return initialized leader program
 	 * @throws IOException if marker or serialization is invalid
 	 */
-	static String leaderProgram(ToolingScope scope, String template, LinuxProcessTree.Launch launch) throws IOException
+	static String leaderProgram(ToolingScope scope, String template, LinuxProcessTree.Launch launch,
+		LinuxCargoJobserver.Descriptors jobserver) throws IOException
 	{
 		int marker = template.indexOf(LAUNCH_MARKER);
 		if (marker < 0 || template.indexOf(LAUNCH_MARKER, marker + LAUNCH_MARKER.length()) >= 0)
 			throw new IOException("Leader program must contain exactly one launch marker");
-		return template.substring(0, marker) + scope.getLeaderJsonMapper().writeValueAsString(Map.of("command", launch.command(),
-			"environment", launch.environment())) + template.substring(marker + LAUNCH_MARKER.length());
+		return template.substring(0, marker) + scope.getLeaderJsonMapper().writeValueAsString(
+			LinuxLeaderExec.launchValues(launch, jobserver)) + template.substring(marker + LAUNCH_MARKER.length());
 	}
 
 	/** Awaits one exact leader receipt, rejecting script errors and unexpected messages.

@@ -68,6 +68,49 @@ public final class FridaRuntimeTest
 	}
 
 	/**
+	 * Closing a runtime whose producer was loaded keeps that producer mapped in the JVM. Loading Frida installs process-wide
+	 * signal handlers that its teardown does not remove, so unloading it would leave the JVM's next SIGSEGV jumping into
+	 * unmapped code. A uniquely named copy of a JDK library stands in for the producer: it loads, lacks the version export,
+	 * and so fails start after loading, which is the earliest point at which the producer must stay resident.
+	 * @throws IOException if the stand-in cannot be copied or cleanup fails
+	 */
+	@Test
+	public void closeKeepsLoadedProducerMapped() throws IOException
+	{
+		if (System.getProperty("os.name", "").startsWith("Linux") == false)
+			throw new org.testng.SkipException("Process mappings are observed through Linux /proc/self/maps");
+		Path temporary = java.nio.file.Files.createTempDirectory("frida-runtime-resident-");
+		Path producer = temporary.resolve("stand-in-producer-" + System.nanoTime() + ".so");
+		java.nio.file.Files.copy(Path.of(System.getProperty("java.home"), "lib", "libsyslookup.so"), producer);
+		try (var scope = new DefaultToolingScope())
+		{
+			var runtime = new FridaRuntime(scope, producer);
+			requireException(IOException.class, runtime::start);
+			requireThat(mapped(producer), "mappedAfterFailedStart").isTrue();
+			runtime.close();
+			requireThat(mapped(producer), "mappedAfterClose").isTrue();
+		}
+		finally
+		{
+			java.nio.file.Files.delete(producer);
+			java.nio.file.Files.delete(temporary);
+		}
+	}
+
+	/**
+	 * Indicates whether this JVM currently maps the named file.
+	 * @param file absolute file path compared with the mapping's backing path
+	 * @return {@code true} if any mapping of this process is backed by {@code file}
+	 * @throws IOException if the process mappings cannot be read
+	 */
+	private static boolean mapped(Path file) throws IOException
+	{
+		String target = file.toRealPath().toString();
+		return java.nio.file.Files.readAllLines(Path.of("/proc/self/maps")).stream().
+			anyMatch(line -> line.endsWith(" " + target));
+	}
+
+	/**
 	 * A different thread cannot acquire or close an owner's resources; the constructing thread can still close it.
 	 * @throws IOException if owner-thread cleanup fails
 	 * @throws InterruptedException if waiting for the rejected caller is interrupted

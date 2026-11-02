@@ -32,6 +32,7 @@ import static java.lang.foreign.ValueLayout.ADDRESS;
  * initialization is permitted only once; successful shutdown does not permit reinitialization. Managers must close before
  * this runtime. A refused close while managers remain does not change state. A manager whose full startup is unresolved
  * retains this runtime; neither owner may report successful cleanup or unload the producer.
+ * A loaded producer stays loaded until the JVM exits, even after successful close.
  * The native runtime owns its dispatcher. This type neither starts a second dispatcher nor owns instrumented processes.
  */
 final class FridaRuntime implements AutoCloseable
@@ -46,7 +47,11 @@ final class FridaRuntime implements AutoCloseable
 	private final Thread owner = Thread.currentThread();
 	/** Managers remain owned here until their explicit cleanup succeeds. */
 	private final Set<Manager> managers = new LinkedHashSet<>();
-	/** Native file scope; retained after partial start until close succeeds. */
+	/**
+	 * Scope of the loaded producer and of the callback stubs that native code may still hold. It is the global arena, so
+	 * the producer stays loaded until the JVM exits: loading Frida installs process-wide signal handlers that its teardown
+	 * does not restore, and unloading the producer would send the JVM's next SIGSEGV into unmapped code.
+	 */
 	private Arena libraryArena = null;
 	/** Explicit producer lookup, available only after native file loading succeeds. */
 	private SymbolLookup library = null;
@@ -148,7 +153,7 @@ final class FridaRuntime implements AutoCloseable
 		if (startAttempted || closed)
 			throw new IllegalStateException("Frida runtime start is permitted once on an open owner");
 		startAttempted = true;
-		libraryArena = Arena.ofShared();
+		libraryArena = Arena.global();
 		try
 		{
 			library = SymbolLookup.libraryLookup(producer, libraryArena);
@@ -223,7 +228,8 @@ final class FridaRuntime implements AutoCloseable
 
 	/**
 	 * Closes native resources after all manager owners have closed. Unstarted or failed pre-initialization owners
-	 * release only their library scope. Repeated successful close is a no-op; a global teardown failure is retained.
+	 * release nothing native. A loaded producer stays loaded until the JVM exits, because its signal handlers outlive
+	 * teardown. Repeated successful close is a no-op; a global teardown failure is retained.
 	 * @throws IllegalStateException if called by another thread
 	 * @throws IOException if managers remain, initialization has no proven return, or global teardown failed
 	 */
@@ -247,8 +253,6 @@ final class FridaRuntime implements AutoCloseable
 				invoke(shutdown);
 				invoke(deinit);
 			}
-			if (libraryArena != null)
-				libraryArena.close();
 			closed = true;
 		}
 		catch (RuntimeException | Error failure)

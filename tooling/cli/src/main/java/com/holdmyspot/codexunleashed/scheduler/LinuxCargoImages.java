@@ -41,6 +41,8 @@ final class LinuxCargoImages
      * Caller-owned readiness consumer; retained through the same workload barrier.
      */
     private final Enrollment enrollment;
+    /** Positive unique generation across dynamic connections and native image holds. */
+    private long nextGeneration;
     /**
      * Root birth retained by the caller's genuine process owner.
      */
@@ -76,14 +78,18 @@ final class LinuxCargoImages
      * @param manager active native manager retained through cleanup
      * @param root caller-authenticated prepared root identity before credential drop
      * @param containment owned retained cgroup containing the root and every supported image
+     * @param supervisorPid original live native supervisor retained by the caller
+     * @param supervisorBirth original supervisor start ticks authenticated by its process owner
      * @param policy required workload credentials and Cargo executable
      * @param enrollment callback returning only after its image consumer is ready
      * @param timeout positive readiness duration
+     * @throws IOException if the original supervisor identity cannot be pinned
      */
     LinuxCargoImages(ToolingScope scope, FridaRuntime.Manager manager, Identity root, Path containment,
-        Policy policy, Enrollment enrollment, Duration timeout)
+        Policy policy, Enrollment enrollment, Duration timeout, long supervisorPid, long supervisorBirth) throws IOException
     {
-        this(scope, new NativeOperations(manager, containment), root, policy, enrollment, timeout, System::nanoTime);
+        this(scope, new NativeOperations(scope, manager, containment, timeout, supervisorPid, supervisorBirth), root, policy, enrollment, timeout, System::nanoTime);
+        if (root.parent() != supervisorPid) throw new IOException("Root differs from original supervisor ancestry");
     }
 
     /**
@@ -144,7 +150,8 @@ final class LinuxCargoImages
         {
             if (child.origin() < 0 || child.origin() > 2) throw new IOException("Unknown native child origin");
             Identity observed = operations.inspect(child.pid());
-            Identity parent = retainedParent(child, observed, current, operations::inspect);
+            Lineage lineage = retainedParent(child, observed, current, operations);
+            Identity parent = lineage.source();
             if (!observed.group().startsWith(root.group())) throw new IOException("Held image left retained root containment");
             if (observed.uid() != policy.uid() || observed.gid() != policy.gid())
                 throw new IOException("Held image credentials differ from workload identity");
@@ -153,8 +160,7 @@ final class LinuxCargoImages
             install(observed, true);
             if (!source.equals(operations.executableIdentity(observed, executable)))
                 throw new IOException("Held executable source changed during image readiness");
-            if (parent != null && !parent.equals(operations.inspect(parent.pid())))
-                throw new IOException("Parent birth changed before child release");
+            lineage.verify(observed, operations);
             if (!observed.equals(operations.inspect(child.pid())))
                 throw new IOException("Native image changed before exact held resume");
             if (Thread.currentThread().isInterrupted()) throw new IOException("Held resume interrupted");
@@ -162,6 +168,65 @@ final class LinuxCargoImages
         }
         catch (IOException | RuntimeException | Error cause) { fail(cause); throw cause; }
         finally { advancing = false; }
+    }
+
+    /** Authenticates live ancestry or the kernel's adoption of a held descendant by its original supervisor.
+     * @param child copied notification with origin-specific parent shape
+     * @param observed independently verified current image
+     * @param retained current image identities owned by this controller
+     * @param operations independent native observation and adoption authority
+     * @return retained source lineage and its required final verification
+     * @throws IOException if retained ancestry or adoption differs
+     */
+    private static Lineage retainedParent(FridaRuntime.Child child, Identity observed, Map<Long, Identity> retained,
+        Operations operations) throws IOException
+    {
+        Identity previous = retained.get(child.pid());
+        Identity parent;
+        if (child.origin() == 1)
+        {
+            if (child.parentPid() != child.pid()) throw new IOException("Exec notification is not self-parented");
+            if (previous != null)
+            {
+                if (previous.pid() != observed.pid() || previous.birth() != observed.birth())
+                    throw new IOException("Exec replaced its retained original process birth");
+                if (previous.parent() == observed.parent()) return new Lineage(null, null);
+                parent = retained.get(previous.parent());
+                if (parent == null) throw new IOException("Exec adoption lacks its retained original parent");
+                var lineage = new Lineage(null, parent);
+                lineage.verify(observed, operations);
+                return lineage;
+            }
+            parent = retained.get(observed.parent());
+        }
+        else
+        {
+            parent = retained.get(child.parentPid());
+            if (previous != null) throw new IOException("Child replaced an already retained birth");
+        }
+        if (parent == null) throw new IOException("Child lacks a retained original parent birth");
+        var lineage = new Lineage(parent, observed.parent() == parent.pid() ? null : parent);
+        lineage.verify(observed, operations);
+        return lineage;
+    }
+
+    /** Keeps the original executable source distinct from a kernel-authenticated adoptive parent.
+     * @param source original source parent, or null for an exec
+     * @param retired original retired parent requiring supervisor adoption, or null for live ancestry
+     */
+    private record Lineage(Identity source, Identity retired)
+    {
+        /** Rechecks ancestry after readiness without treating a notification as admission authority.
+         * @param child independently inspected held child
+         * @param operations native observation authority
+         * @throws IOException if live ancestry or original supervisor adoption no longer holds
+         */
+        private void verify(Identity child, Operations operations) throws IOException
+        {
+            if (retired != null) operations.requireAdoption(retired, child);
+            else if (source != null && !source.equals(operations.inspect(source.pid())))
+                throw new IOException("Parent birth changed before child release");
+        }
     }
 
     /**
@@ -210,6 +275,25 @@ final class LinuxCargoImages
         Identity inspect(long pid) throws IOException;
     }
 
+    /** Rejects live or recycled original-parent PIDs when proving kernel adoption.
+     * @param expectedBirth independently retained original parent birth
+     * @param stat current native stat record, or null only after native file absence
+     * @throws IOException if the original process has not retired or the PID was recycled
+     */
+    static void requireRetiredParent(long expectedBirth, String stat) throws IOException
+    {
+        if (stat == null) return;
+        try
+        {
+            String[] fields = stat.substring(stat.lastIndexOf(')') + 2).split(" ");
+            if (Long.parseLong(fields[19]) != expectedBirth ||
+                !(fields[0].equals("Z") || fields[0].equals("X")))
+                throw new IOException("Original parent is live or its PID was recycled");
+        }
+        catch (IndexOutOfBoundsException | NumberFormatException cause)
+        { throw new IOException("Original parent retirement is unavailable", cause); }
+    }
+
     /**
      * Selects the original origin-specific executable, retaining relative spelling for independent native resolution.
      * @param child copied native event
@@ -253,6 +337,41 @@ final class LinuxCargoImages
             arguments = List.copyOf(arguments);
             source = Map.copyOf(source);
         }
+    }
+
+    /** Resolves the original executable through an independently authenticated held process view.
+     * Retains kernel arguments, cwd identity, source bytes and interpreter identity for readiness revalidation.
+     * @param image independently authenticated held process
+     * @param expected original requested executable spelling
+     * @param inspector independent current process identity reader
+     * @return immutable complete source identity
+     * @throws IOException if arguments, source, cwd or original process identity changes
+     */
+    static ExecutableIdentity executableIdentity(Identity image, Path expected, Inspector inspector) throws IOException
+    {
+
+        Path proc = Path.of("/proc", Long.toString(image.pid()));
+        byte[] command = Files.readAllBytes(proc.resolve("cmdline"));
+        if (command.length == 0 || command[command.length - 1] != 0)
+            throw new IOException("Held image command line is incomplete");
+        String text = utf8(command);
+        List<String> arguments = List.of(text.substring(0, text.length() - 1).split(String.valueOf((char) 0), -1));
+        if (!image.equals(inspector.inspect(image.pid()))) throw new IOException("Held source birth changed before resolution");
+        Map<String, Object> directoryIdentity = Files.readAttributes(proc.resolve("cwd"), "unix:dev,ino");
+        Path directory = Files.readSymbolicLink(proc.resolve("cwd"));
+        if (!directory.isAbsolute()) throw new IOException("Held working directory is not absolute");
+        Path resolved = expected.isAbsolute() ? expected : directory.resolve(expected);
+        ExecutableIdentity verified = LinuxCargoImages.executableIdentity(proc.resolve("exe"), resolved,
+            expected.isAbsolute() ? arguments : NativeOperations.relativeInterpreterArguments(arguments, expected, resolved));
+        if (!directoryIdentity.equals(Files.readAttributes(proc.resolve("cwd"), "unix:dev,ino")) ||
+            !directory.equals(Files.readSymbolicLink(proc.resolve("cwd"))) ||
+            !java.util.Arrays.equals(command, Files.readAllBytes(proc.resolve("cmdline"))) ||
+            !image.equals(inspector.inspect(image.pid())))
+            throw new IOException("Held working directory, arguments or birth changed during source resolution");
+        var source = new java.util.LinkedHashMap<>(verified.source());
+        source.put("workingDirectoryIdentity", directoryIdentity);
+        source.put("workingDirectory", directory.toString());
+        return new ExecutableIdentity(expected, verified.actual(), arguments, source);
     }
 
     /** Resolves direct binary or kernel shebang execution without granting action authority.
@@ -329,7 +448,7 @@ final class LinuxCargoImages
      * @return exact decoded text
      * @throws IOException if native bytes do not round-trip
      */
-    private static String utf8(byte[] bytes) throws IOException
+    static String utf8(byte[] bytes) throws IOException
     {
         String value = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
         if (!java.util.Arrays.equals(bytes, value.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
@@ -361,7 +480,10 @@ final class LinuxCargoImages
         long generation;
         try
         {
-            generation = connections.start(operations.connection(expected.pid()), "linux-cargo-image-ready:" + expected.pid());
+            if (!operations.prepareNative(expected))
+                connections.start(operations.connection(expected.pid()), "linux-cargo-image-ready:" + expected.pid());
+            generation = Math.incrementExact(nextGeneration);
+            nextGeneration = generation;
         }
         catch (IOException cause)
         {
@@ -390,7 +512,22 @@ final class LinuxCargoImages
         if (closed) return;
         stopped = true;
         advancing = true;
-        try { connections.close(barrier); }
+        try
+        {
+            if (!barrier.reached()) throw new IOException("Native image cleanup requires authentic whole-workload zero");
+            Throwable closing = null;
+            try { connections.close(barrier); }
+            catch (IOException | RuntimeException | Error cause) { closing = cause; }
+            try { operations.closeNative(); }
+            catch (IOException | RuntimeException | Error cause)
+            {
+                if (closing == null) closing = cause;
+                else HeldImageConnections.suppress(closing, cause);
+            }
+            if (closing instanceof IOException checked) throw checked;
+            if (closing instanceof RuntimeException unchecked) throw unchecked;
+            if (closing instanceof Error fatal) throw fatal;
+        }
         catch (IOException | RuntimeException | Error cause)
         {
             if (failure != null) HeldImageConnections.suppress(failure, cause);
@@ -405,6 +542,16 @@ final class LinuxCargoImages
      * @return whether every retained connection closed
      */
     boolean isClosed() { requireThread(); return closed; }
+
+    /** Copies one genuine native fork or exec stop for independent image admission.
+     * @return native held transition, or null when none is pending
+     * @throws IOException if native tracing or a producer allocation fails
+     */
+    FridaRuntime.Child pollNativeChild() throws IOException
+    {
+        requireThread();
+        return operations.pollNativeChild();
+    }
 
     /**
      * Preserves the first exact operation failure for subsequent cleanup diagnostics.
@@ -505,6 +652,14 @@ final class LinuxCargoImages
          * @throws IOException if native observations are unavailable
          */
         Identity inspect(long pid) throws IOException;
+        /** Authenticates kernel adoption by the caller-owned original supervisor after parent retirement.
+         * @param parent independently retained original parent birth
+         * @param child independently observed held child
+         * @throws IOException if retirement or original supervisor adoption is not authenticated
+         */
+        default void requireAdoption(Identity parent, Identity child) throws IOException
+        { throw new IOException("No authenticated supervisor adoption authority"); }
+
         /**
          * Compares the observed executable with the expected immutable native file.
          * @param image independently inspected image
@@ -536,6 +691,21 @@ final class LinuxCargoImages
          */
         default boolean contains(long pid, Path containment) throws IOException
         { return inspect(pid).group().startsWith(containment); }
+        /** Establishes exact sole-native-tracer readiness when this is a static or already native-owned image.
+         * @param image independently authenticated held process
+         * @return true for native-held readiness; false when the caller must acquire a Frida connection
+         * @throws IOException if native handoff is uncertain
+         */
+        default boolean prepareNative(Identity image) throws IOException { return false; }
+        /** Copies one native held transition without authorizing it.
+         * @return pending actual event, or null
+         * @throws IOException if native ownership or producer allocation fails
+         */
+        default FridaRuntime.Child pollNativeChild() throws IOException { return null; }
+        /** Joins original trace owners after the caller's authentic workload-zero barrier.
+         * @throws IOException if native collection remains incomplete
+         */
+        default void closeNative() throws IOException {}
         /**
          * Creates a resource-free connection subsequently retained before start.
          * @param pid authenticated process
@@ -555,6 +725,8 @@ final class LinuxCargoImages
      */
     private static final class NativeOperations implements Operations
     {
+        /** Sole native owners retained through the same whole-workload execution barrier. */
+        private final LinuxAllocationTrace.Images nativeImages;
         /**
          * Active borrowed manager retained through every connection lifetime.
          */
@@ -563,17 +735,35 @@ final class LinuxCargoImages
          * Caller-owned cgroup retained through the workload barrier.
          */
         private final Path containment;
+        /** Original native supervisor birth and credentials, pinned before any workload release. */
+        private final LinuxBorrowedStreams.Peer supervisor;
+        /** Original supervisor executable inode and device. */
+        private final Map<String, Object> supervisorExecutable;
         /**
          * Retains native observations without acquiring resources.
+         * @param scope borrowed native linker services
+         * @param timeout positive native readiness and collection interval
          * @param manager active manager
          * @param containment normalized absolute owned cgroup
+         * @param supervisorPid original caller-owned native supervisor
+         * @param supervisorBirth original authenticated supervisor birth
+         * @throws IOException if the supervisor cannot be independently pinned
          */
-        private NativeOperations(FridaRuntime.Manager manager, Path containment)
+        private NativeOperations(ToolingScope scope, FridaRuntime.Manager manager, Path containment, Duration timeout,
+            long supervisorPid, long supervisorBirth) throws IOException
         {
             this.manager = Objects.requireNonNull(manager, "manager");
+            nativeImages = new LinuxAllocationTrace.Images(scope.getNativeLinker(), timeout);
             this.containment = Objects.requireNonNull(containment, "containment");
             if (!containment.isAbsolute() || !containment.normalize().equals(containment))
                 throw new IllegalArgumentException("Normalized absolute containment required");
+            Path proc = Path.of("/proc", Long.toString(supervisorPid));
+            String status = Files.readString(proc.resolve("status"));
+            supervisor = new LinuxBorrowedStreams.Peer(supervisorPid, supervisorBirth,
+                credentials(status, "Uid:"), credentials(status, "Gid:"));
+            supervisor.requireLive();
+            supervisorExecutable = Files.readAttributes(proc.resolve("exe"), "unix:dev,ino");
+            supervisor.requireLive();
         }
         @Override public Identity inspect(long pid) throws IOException
         {
@@ -606,35 +796,35 @@ final class LinuxCargoImages
             if (!executable.equals(Files.readSymbolicLink(proc.resolve("exe")))) throw new IOException("Native executable changed");
             return new Identity(pid, birth, parent, uid, gid, executable, member);
         }
+        @Override public void requireAdoption(Identity parent, Identity child) throws IOException
+        {
+            requireSupervisor();
+            if (child.parent() != supervisor.pid() || child.birth() < parent.birth())
+                throw new IOException("Child was not adopted by its original supervisor");
+            String stat;
+            try { stat = Files.readString(Path.of("/proc", Long.toString(parent.pid()), "stat")); }
+            catch (java.nio.file.NoSuchFileException absent) { stat = null; }
+            requireRetiredParent(parent.birth(), stat);
+            if (!child.equals(inspect(child.pid()))) throw new IOException("Adopted child changed during authentication");
+            requireSupervisor();
+        }
+        /** Checks the original process owner rather than inferring a supervisor from the child callback.
+         * @throws IOException if birth, credentials or original executable identity changed
+         */
+        private void requireSupervisor() throws IOException
+        {
+            supervisor.requireLive();
+            if (!supervisorExecutable.equals(Files.readAttributes(
+                Path.of("/proc", Long.toString(supervisor.pid()), "exe"), "unix:dev,ino")))
+                throw new IOException("Original supervisor executable changed");
+            supervisor.requireLive();
+        }
         @Override public boolean contains(long pid, Path ignored) throws IOException
         { return AllocationHooks.contains(containment, pid); }
         @Override public boolean matchesExecutable(Identity image, Path expected) throws IOException
         { return Files.isSameFile(Path.of("/proc", Long.toString(image.pid()), "exe"), expected); }
         @Override public ExecutableIdentity executableIdentity(Identity image, Path expected) throws IOException
-        {
-            Path proc = Path.of("/proc", Long.toString(image.pid()));
-            byte[] command = Files.readAllBytes(proc.resolve("cmdline"));
-            if (command.length == 0 || command[command.length - 1] != 0)
-                throw new IOException("Held image command line is incomplete");
-            String text = utf8(command);
-            List<String> arguments = List.of(text.substring(0, text.length() - 1).split(String.valueOf((char) 0), -1));
-            if (!image.equals(inspect(image.pid()))) throw new IOException("Held source birth changed before resolution");
-            Map<String, Object> directoryIdentity = Files.readAttributes(proc.resolve("cwd"), "unix:dev,ino");
-            Path directory = Files.readSymbolicLink(proc.resolve("cwd"));
-            if (!directory.isAbsolute()) throw new IOException("Held working directory is not absolute");
-            Path resolved = expected.isAbsolute() ? expected : directory.resolve(expected);
-            ExecutableIdentity verified = LinuxCargoImages.executableIdentity(proc.resolve("exe"), resolved,
-                expected.isAbsolute() ? arguments : relativeInterpreterArguments(arguments, expected, resolved));
-            if (!directoryIdentity.equals(Files.readAttributes(proc.resolve("cwd"), "unix:dev,ino")) ||
-                !directory.equals(Files.readSymbolicLink(proc.resolve("cwd"))) ||
-                !java.util.Arrays.equals(command, Files.readAllBytes(proc.resolve("cmdline"))) ||
-                !image.equals(inspect(image.pid())))
-                throw new IOException("Held working directory, arguments or birth changed during source resolution");
-            var source = new java.util.LinkedHashMap<>(verified.source());
-            source.put("workingDirectoryIdentity", directoryIdentity);
-            source.put("workingDirectory", directory.toString());
-            return new ExecutableIdentity(expected, verified.actual(), arguments, source);
-        }
+        { return LinuxCargoImages.executableIdentity(image, expected, this::inspect); }
 
         /** Resolves only the kernel's requested script operand while retaining original argv elsewhere.
          * Direct binary validation does not use this rewritten comparison view. A relative script
@@ -710,7 +900,22 @@ final class LinuxCargoImages
             catch (NumberFormatException cause) { throw new IOException("Malformed native credentials", cause); }
         }
         @Override public AllocationHook.Connection connection(long pid) { return AllocationHook.newNativeConnection(manager, pid); }
-        @Override public void resume(long pid) throws IOException { manager.resume(pid); }
+        @Override public boolean prepareNative(Identity image) throws IOException
+        {
+            return nativeImages.install(image.pid(), image.birth(), () -> manager.resume(image.pid()));
+        }
+        @Override public FridaRuntime.Child pollNativeChild() throws IOException
+        {
+            LinuxAllocationTrace.Denial denial = nativeImages.pollDenial();
+            if (denial != null) throw new IOException("Cargo producer allocation denied at held native trap: " + denial);
+            return nativeImages.pollChild();
+        }
+        @Override public void closeNative() throws IOException { nativeImages.close(); }
+        @Override public void resume(long pid) throws IOException
+        {
+            if (nativeImages.owns(pid)) nativeImages.resume(pid, inspect(pid).birth());
+            else manager.resume(pid);
+        }
     }
 
 }

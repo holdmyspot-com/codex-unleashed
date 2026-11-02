@@ -33,6 +33,23 @@ public final class LinuxCargoImagesTest
         }
     }
 
+    /** A native static image must become ready without creating a second Frida attachment.
+     * @throws IOException if native image admission fails
+     */
+    @Test
+    public void preservesSoleNativeStaticOwner() throws IOException
+    {
+        try (Fixture fixture = new Fixture())
+        {
+            fixture.putChild(2, fixture.cargo, fixture.group, 1000, 1001, 10);
+            fixture.nativeImage = true;
+            fixture.owner.advance(fixture.event(0));
+            requireThat(fixture.nativePrepared, "nativePrepared").isTrue();
+            requireThat(fixture.enrolled, "enrolled").isEqualTo(List.of(11L));
+            requireThat(fixture.resumed, "resumed").isEqualTo(List.of(11L));
+        }
+    }
+
     /** Enumerates identities that subgroup selection must never repair.
      * @return independently changed root identity fields
      */
@@ -62,6 +79,104 @@ public final class LinuxCargoImagesTest
             owner.close(() -> true);
         }
     }
+
+    /** A held fork remains admissible after its authenticated parent retires into the owned subreaper.
+     * @throws IOException if independently authenticated adoption is rejected
+     */
+    @Test
+    public void acceptsHeldForkAfterOriginalParentRetires() throws IOException
+    {
+        try (var fixture = new Fixture())
+        {
+            fixture.putChild(2, fixture.cargo, fixture.group, 1000, 1001, 9);
+            fixture.nativeImages.remove(10L);
+            fixture.adoptionAuthorized = true;
+            fixture.owner.advance(fixture.event(0));
+            requireThat(fixture.resumed, "resumed").isEqualTo(List.of(11L));
+            requireThat(fixture.adoptions, "adoptions").isEqualTo(2);
+        }
+    }
+
+    /** Retired-parent notifications cannot authorize an unrelated or replaced adoptive parent.
+     * @throws IOException if fixture initialization fails
+     */
+    @Test
+    public void rejectsUnprovedSupervisorAdoption() throws IOException
+    {
+        try (var fixture = new Fixture())
+        {
+            fixture.putChild(2, fixture.cargo, fixture.group, 1000, 1001, 9);
+            fixture.nativeImages.remove(10L);
+            requireException(IOException.class, () -> fixture.owner.advance(fixture.event(0)));
+            requireThat(fixture.resumed, "resumed").isEmpty();
+        }
+    }
+
+    /** Adoption authority is checked again after consumer readiness before the sole resume.
+     * @throws IOException if fixture initialization fails
+     */
+    @Test
+    public void rejectsAdoptionReplacementDuringEnrollment() throws IOException
+    {
+        try (var fixture = new Fixture())
+        {
+            fixture.putChild(2, fixture.cargo, fixture.group, 1000, 1001, 9);
+            fixture.nativeImages.remove(10L);
+            fixture.adoptionAuthorized = true;
+            fixture.onEnrollment = () -> fixture.adoptionAuthorized = false;
+            requireException(IOException.class, () -> fixture.owner.advance(fixture.event(0)));
+            requireThat(fixture.resumed, "resumed").isEmpty();
+        }
+    }
+
+    /** A known native birth may exec after kernel adoption without losing its original lineage.
+     * @throws IOException if authenticated exec adoption fails
+     */
+    @Test
+    public void acceptsRetainedExecAfterOriginalParentRetires() throws IOException
+    {
+        try (var fixture = new Fixture())
+        {
+            fixture.owner.advance(fixture.event(2));
+            fixture.putChild(2, fixture.compiler, fixture.group, 1000, 1001, 9);
+            fixture.nativeImages.remove(10L);
+            fixture.adoptionAuthorized = true;
+            fixture.owner.advance(fixture.event(1));
+            requireThat(fixture.resumed, "resumed").isEqualTo(List.of(11L, 11L));
+            requireThat(fixture.adoptions, "adoptions").isEqualTo(2);
+        }
+    }
+
+    /** Enumerates native terminal and unsafe parent observations independently from child notifications.
+     * @return stat records and whether the original parent has genuinely retired
+     */
+    @DataProvider(parallel = true)
+    public Object[][] retiredParentObservations()
+    {
+        return new Object[][] {{null, true}, {parentStat("Z", 1), true}, {parentStat("X", 1), true},
+            {parentStat("S", 1), false}, {parentStat("R", 1), false}, {parentStat("Z", 2), false},
+            {"malformed", false}};
+    }
+
+    /** PID reuse and a live parent cannot be accepted as kernel retirement.
+     * @param stat current independently read stat, or native file absence
+     * @param retired whether the exact original birth is terminal
+     * @throws IOException if a valid retirement observation fails
+     */
+    @Test(dataProvider = "retiredParentObservations")
+    public void authenticatesOriginalParentRetirement(String stat, boolean retired) throws IOException
+    {
+        if (retired) LinuxCargoImages.requireRetiredParent(1, stat);
+        else requireException(IOException.class, () -> LinuxCargoImages.requireRetiredParent(1, stat));
+    }
+
+    /** Constructs a stat record whose process name exercises the existing last-parenthesis parsing.
+     * @param state native process state
+     * @param birth native start ticks
+     * @return a complete minimal native record through field22
+     */
+    private static String parentStat(String state, long birth)
+    { return "10 (parent (git)) " + state + " 0".repeat(18) + " " + birth; }
 
     /** Supplies direct kernel script forms and their exact argument prefixes.
      * @return bounded direct shebang headers and kernel-inserted arguments
@@ -457,6 +572,30 @@ public final class LinuxCargoImagesTest
         private final List<Long> enrolled = new ArrayList<>();
         /** Mutation at the external readiness callback. */
         private Runnable onEnrollment = () -> {};
+        /** Independent controlled supervisor adoption authority. */
+        private boolean adoptionAuthorized;
+        /** Number of independent adoption validations. */
+        private int adoptions;
+        @Override public void requireAdoption(LinuxCargoImages.Identity parent, LinuxCargoImages.Identity child)
+            throws IOException
+        {
+            adoptions++;
+            if (!adoptionAuthorized || parent.pid() != 10 || parent.birth() != 1 || child.parent() != 9 ||
+                nativeImages.containsKey(parent.pid())) throw new IOException("Unproved controlled adoption");
+        }
+        /** Whether the child has an independently retained static native trace owner. */
+        private boolean nativeImage;
+        /** Whether that native owner established its held readiness boundary. */
+        private boolean nativePrepared;
+        /** Selects independently controlled native readiness without a Frida connection.
+         * @param image independently authenticated held image
+         * @return whether this image is native-owned
+         */
+        public boolean prepareNative(LinuxCargoImages.Identity image)
+        {
+            nativePrepared = nativeImage;
+            return nativeImage;
+        }
         /** Controlled mutation during connection readiness, before enrollment. */
         private Runnable onReadiness = () -> {};
         /** Whether a child connection reports an invalid ready receipt. */
@@ -542,6 +681,7 @@ public final class LinuxCargoImagesTest
 
         @Override public AllocationHook.Connection connection(long pid)
         {
+            if (nativeImage) throw new AssertionError("Static native image must not receive a Frida attachment");
             return new AllocationHook.Connection()
             {
                 /** One copied exact receipt. */

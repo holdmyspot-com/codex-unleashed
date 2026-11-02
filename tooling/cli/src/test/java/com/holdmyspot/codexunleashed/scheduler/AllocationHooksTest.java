@@ -26,6 +26,63 @@ public final class AllocationHooksTest
 	/** Creates isolated decision tests. */
 	public AllocationHooksTest() {}
 
+    /** Native waits select the allocating process's original image generation, including nonleader threads.
+     * @throws IOException if a retained native denial is rejected
+     */
+    @Test
+    public void requiresOriginalNativeImageForDenial() throws IOException
+    {
+        LinuxAllocationTrace.Denial denial = new LinuxAllocationTrace.Denial(
+            new LinuxAllocationTrace.Identity(21, 30), 20, 9, 4096, -12, 4096, 4097, "0f05", 0x90, "owned executable mapping");
+        requireThat(AllocationHooks.nativeWait(denial, Map.of(20L, 7L), java.util.Set.of(7L)), "nativeWait").
+            isEqualTo(new AllocationWaits.Wait(7, 1));
+        requireException(IOException.class, () -> AllocationHooks.nativeWait(denial, Map.of(21L, 7L), java.util.Set.of(7L)));
+        requireException(IOException.class, () -> AllocationHooks.nativeWait(denial, Map.of(20L, 7L), java.util.Set.of(8L)));
+    }
+
+	/** A held root launched from a kernel shebang script, such as a compiler wrapper, matches its requested script.
+	 * The fixture is a real shell-script process because the claim is about the kernel's interpreter exec image.
+	 * @throws Exception if the native fixture cannot be started or inspected
+	 */
+	@Test
+	public void acceptsHeldScriptRootExecutable() throws Exception
+	{
+		if (!System.getProperty("os.name").equals("Linux"))
+			throw new org.testng.SkipException("Requires Linux proc executable links and kernel shebang execution");
+		Path directory = java.nio.file.Files.createTempDirectory("held-script-root-");
+		Path script = directory.resolve("compiler-wrapper");
+		Process process = null;
+		try
+		{
+			java.nio.file.Files.writeString(script, "#!/bin/sh\nread line\n");
+			java.nio.file.Files.setPosixFilePermissions(script, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+			process = new ProcessBuilder(script.toString()).start();
+			Path proc = Path.of("/proc", Long.toString(process.pid()));
+			long began = System.nanoTime();
+			while (!java.nio.file.Files.isSameFile(proc.resolve("exe"), Path.of("/bin/sh")))
+			{
+				if (System.nanoTime() - began > Duration.ofSeconds(10).toNanos())
+					throw new AssertionError("Script interpreter image was not established");
+				Thread.sleep(10);
+			}
+			AllocationHooks.requireHeldExecutable(proc, script);
+			Path unrelated = directory.resolve("unrelated");
+			java.nio.file.Files.writeString(unrelated, "#!/bin/sh\n");
+			requireException(IOException.class, () -> AllocationHooks.requireHeldExecutable(proc, unrelated));
+		}
+		finally
+		{
+			if (process != null)
+			{
+				process.destroyForcibly();
+				process.waitFor();
+			}
+			java.nio.file.Files.deleteIfExists(directory.resolve("unrelated"));
+			java.nio.file.Files.deleteIfExists(script);
+			java.nio.file.Files.deleteIfExists(directory);
+		}
+	}
+
 	/** Missing, duplicate or partially different credentials cannot count as verified identity. */
 	@Test
 	public void requiresCompleteCredentials()
@@ -74,15 +131,36 @@ public final class AllocationHooksTest
 		try (var scope = new DefaultToolingScope())
 		{
 			var launch = launch(List.of("/worker", "a b", "quote\"", "é", ""), Map.of("VALUE", "$(x)\n'\""));
-			String result = AllocationHooks.leaderProgram(scope, "__LAUNCH__", launch);
+			String result = AllocationHooks.leaderProgram(scope, "__LAUNCH__", launch, null);
 			JsonNode node = scope.getLeaderJsonMapper().readTree(result);
 			requireThat(node.path("command").get(0).asString(), "executable")
 				.isEqualTo(launch.command().getFirst(), "hostAbsoluteFixtureExecutable");
 			requireThat(node.path("command").get(1).asString(), "space").isEqualTo("a b", "expected");
 			requireThat(node.path("command").get(4).asString(), "empty").isEqualTo("", "expected");
 			requireThat(node.path("environment").path("VALUE").asString(), "literalEnvironment").isEqualTo("$(x)\n'\"", "expected");
-			requireException(IOException.class, () -> AllocationHooks.leaderProgram(scope, "", launch));
-			requireException(IOException.class, () -> AllocationHooks.leaderProgram(scope, "__LAUNCH____LAUNCH__", launch));
+			requireException(IOException.class, () -> AllocationHooks.leaderProgram(scope, "", launch, null));
+			requireException(IOException.class, () -> AllocationHooks.leaderProgram(scope, "__LAUNCH____LAUNCH__", launch, null));
+		}
+	}
+
+	/**
+	 * A Cargo attempt's leader program carries the jobserver descriptor plan that its leader installs before exec, and a
+	 * launch without a jobserver carries none.
+	 * @throws IOException if valid marker/JSON is rejected
+	 */
+	@Test
+	public void embedsJobserverDescriptorPlan() throws IOException
+	{
+		try (var scope = new DefaultToolingScope())
+		{
+			var launch = launch(List.of("/worker"), Map.of());
+			var plan = new LinuxCargoJobserver.Descriptors(Path.of("/scratch/cargo-jobserver-1/tokens").toAbsolutePath(), 200, 201);
+			JsonNode node = scope.getLeaderJsonMapper().readTree(AllocationHooks.leaderProgram(scope, "__LAUNCH__", launch, plan));
+			requireThat(node.path("jobserver").path("fifo").asString(), "fifo").isEqualTo(plan.fifo().toString(), "expected");
+			requireThat(node.path("jobserver").path("read").asInt(), "read").isEqualTo(200, "expected");
+			requireThat(node.path("jobserver").path("write").asInt(), "write").isEqualTo(201, "expected");
+			JsonNode plain = scope.getLeaderJsonMapper().readTree(AllocationHooks.leaderProgram(scope, "__LAUNCH__", launch, null));
+			requireThat(plain.has("jobserver"), "plainJobserver").isFalse();
 		}
 	}
 

@@ -87,7 +87,7 @@ public final class LinuxCargoJobserverNativeTest
 			Path directory;
 			try (var lease = owner.retainCargo(Map.of()))
 			{
-				fifo = LinuxCargoJobserverTest.fifo(lease.environment());
+				fifo = LinuxCargoJobserverTest.fifo(lease);
 				directory = fifo.getParent();
 				Object identity = Files.readAttributes(fifo, "unix:dev,ino");
 				requireThat(Files.getPosixFilePermissions(fifo), "fifoAccess")
@@ -138,7 +138,7 @@ public final class LinuxCargoJobserverNativeTest
 			var lease = owner.retainCargo(Map.of()); var a = lease.retainAttempt(); var b = lease.retainAttempt())
 		{
 			var calls = LinuxCargoJobserver.SharedSecrets.nativeCalls(fixture.scope);
-			int observer = calls.open(LinuxCargoJobserverTest.fifo(lease.environment()));
+			int observer = calls.open(LinuxCargoJobserverTest.fifo(lease));
 			try
 			{
 				requireThat(calls.tryRead(observer).getAsInt(), "firstSeed").isEqualTo((int) '+', "seedByte");

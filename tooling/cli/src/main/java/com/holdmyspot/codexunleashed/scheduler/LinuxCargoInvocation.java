@@ -785,7 +785,8 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
             this.session = session;
             Configuration config = configuration;
             LinuxProcessTree.Launch launch = withEnvironment(config.cargo(), lease.environment());
-            leader = new LinuxLeaderExec(scope.tooling(), runtime, launch, cargo, config.timeout(), attempts::pumpAll);
+            leader = new LinuxLeaderExec(scope.tooling(), runtime, launch, lease.descriptors(), cargo, config.timeout(),
+                attempts::pumpAll);
             leader.start((image, manager) ->
             {
                 LinuxCargoImages.Identity root = new LinuxCargoImages.Identity(image.pid(), image.started(), image.parent(),
@@ -797,7 +798,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
                         // Readiness supplies independently checked lineage and containment, never receipt-derived authority.
                         retainReadyParent(cargoParents, readyImage, generation,
                             LinuxCargoRegistration.imageIdentity(Path.of("/proc", Long.toString(readyImage.pid()), "exe")));
-                    }, config.timeout());
+                    }, config.timeout(), cargo.pid(), birth(cargo.pid()));
                 imageRoute = routing.register(images::owns, imageChildren::addLast);
                 images.start();
             });
@@ -808,6 +809,11 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
             if (!stopping && !instrumentationClosed && leader != null)
             {
                 leader.copyChildren();
+                if (images != null)
+                {
+                    FridaRuntime.Child nativeChild = images.pollNativeChild();
+                    if (nativeChild != null) routing.route(imageRoute, nativeChild);
+                }
                 while (leader.hasChildren()) routing.route(imageRoute, leader.removeChild());
                 if (!advancingImage && !imageChildren.isEmpty())
                 {

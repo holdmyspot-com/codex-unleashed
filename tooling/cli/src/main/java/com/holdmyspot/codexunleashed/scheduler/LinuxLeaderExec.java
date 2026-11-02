@@ -50,6 +50,10 @@ final class LinuxLeaderExec
 	 */
 	private final LinuxSupervisor supervisor;
 	/**
+	 * Jobserver FIFO and descriptor numbers the leader installs before exec, or null when the launch has no jobserver.
+	 */
+	private final LinuxCargoJobserver.Descriptors jobserver;
+	/**
 	 * Bounded control interval in nanoseconds.
 	 */
 	private final long timeoutNanos;
@@ -99,6 +103,7 @@ final class LinuxLeaderExec
 	 * @param scope serializer scope retained until closure
 	 * @param runtime started runtime retained until closure
 	 * @param launch immutable workload configuration
+	 * @param jobserver FIFO and descriptor numbers to install before exec, or null when the launch has no jobserver
 	 * @param supervisor prepared contained workload retained until closure
 	 * @param timeout positive control interval whose nanoseconds fit in a signed long
 	 * @param peers peer service while waiting for copied native events
@@ -106,12 +111,14 @@ final class LinuxLeaderExec
 	 * @throws IllegalArgumentException if {@code timeout} is nonpositive or exceeds the supported interval
 	 */
 	LinuxLeaderExec(ToolingScope scope, FridaRuntime runtime, LinuxProcessTree.Launch launch,
+		LinuxCargoJobserver.Descriptors jobserver,
 		LinuxSupervisor supervisor, Duration timeout, AllocationHook.Pump peers)
 	{
 		this.scope = scope;
 		this.json = scope.getLeaderJsonMapper();
 		this.runtime = Objects.requireNonNull(runtime, "runtime");
 		this.launch = Objects.requireNonNull(launch, "launch");
+		this.jobserver = jobserver;
 		this.supervisor = Objects.requireNonNull(supervisor, "supervisor");
 		this.timeoutNanos = LinuxAttempts.checkedTimeout(timeout).toNanos();
 		this.peers = Objects.requireNonNull(peers, "peers");
@@ -139,7 +146,7 @@ final class LinuxLeaderExec
 			{
 				if (input == null)
 					throw new IOException("Packaged Linux leader program is missing");
-				leader = leaderProgram(scope, new String(input.readAllBytes(), StandardCharsets.UTF_8), launch);
+				leader = leaderProgram(scope, new String(input.readAllBytes(), StandardCharsets.UTF_8), launch, jobserver);
 			}
 			long root = supervisor.rootPid();
 			HeldImage gateIdentity = inspect(root, false, null);
@@ -411,16 +418,35 @@ final class LinuxLeaderExec
 	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param template packaged program with exactly one marker
 	 * @param launch immutable launch
+	 * @param jobserver FIFO and descriptor numbers the leader opens before exec, or null when the launch has no jobserver
 	 * @return initialized leader program
 	 * @throws IOException if marker or serialization is invalid
 	 */
-	static String leaderProgram(ToolingScope scope, String template, LinuxProcessTree.Launch launch) throws IOException
+	static String leaderProgram(ToolingScope scope, String template, LinuxProcessTree.Launch launch,
+		LinuxCargoJobserver.Descriptors jobserver) throws IOException
 	{
 		int marker = template.indexOf(LAUNCH_MARKER);
 		if (marker < 0 || template.indexOf(LAUNCH_MARKER, marker + LAUNCH_MARKER.length()) >= 0)
 			throw new IOException("Leader program must contain exactly one launch marker");
-		return template.substring(0, marker) + scope.getLeaderJsonMapper().writeValueAsString(Map.of("command", launch.command(),
-			"environment", launch.environment())) + template.substring(marker + LAUNCH_MARKER.length());
+		return template.substring(0, marker) + scope.getLeaderJsonMapper().writeValueAsString(launchValues(launch, jobserver)) +
+			template.substring(marker + LAUNCH_MARKER.length());
+	}
+
+	/**
+	 * Returns the values a packaged leader program reads: the workload's argv and environment, and, for a Cargo-tree
+	 * process, the jobserver FIFO that the leader opens on the named descriptor numbers before exec.
+	 * @param launch immutable launch
+	 * @param jobserver FIFO and descriptor numbers to install, or null when the launch has no jobserver
+	 * @return launch values in the leader program's input form
+	 */
+	static Map<String, Object> launchValues(LinuxProcessTree.Launch launch, LinuxCargoJobserver.Descriptors jobserver)
+	{
+		Map<String, Object> values = new java.util.LinkedHashMap<>();
+		values.put("command", launch.command());
+		values.put("environment", launch.environment());
+		if (jobserver != null)
+			values.put("jobserver", Map.of("fifo", jobserver.fifo().toString(), "read", jobserver.read(), "write", jobserver.write()));
+		return values;
 	}
 
 	/**

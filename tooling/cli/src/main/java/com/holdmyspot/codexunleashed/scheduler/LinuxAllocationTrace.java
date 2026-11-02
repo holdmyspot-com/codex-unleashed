@@ -347,6 +347,241 @@ final class LinuxAllocationTrace
         return new Session(linker, child, executable, arguments, variables);
     }
 
+    /** Releases an original native exec gate while retaining a pending kernel stop.
+     * @param linker borrowed native linker
+     * @param child independently authenticated single-threaded held exec identity
+     * @param release original gate owner's synchronous detach operation; must not send SIGCONT
+     * @param timeout positive bounded readiness interval
+     * @return sole native trace owner holding the unchanged executable before further execution
+     * @throws IOException if identity, original detach, group-stop or sole tracing readiness fails
+     * @throws NullPointerException if a reference is null
+     * @throws IllegalArgumentException if timeout is nonpositive
+     */
+    static Session handoff(Linker linker, Identity child, GateRelease release, Duration timeout) throws IOException
+    {
+        checkPlatform();
+        Objects.requireNonNull(linker, "linker");
+        Objects.requireNonNull(child, "child");
+        Objects.requireNonNull(release, "release");
+        Objects.requireNonNull(timeout, "timeout");
+        if (timeout.isZero() || timeout.isNegative()) throw new IllegalArgumentException("Positive handoff timeout required");
+        long budget = timeout.toNanos();
+        if (!Attempt.identify(child.tid()).equals(child)) throw new IOException("Original gated child birth changed");
+        MethodHandle kill = Attempt.bind(linker, "kill", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+            ValueLayout.JAVA_INT, ValueLayout.JAVA_INT), false);
+        NativeResult sent = Attempt.call(kill, child.tid(), STOP);
+        if (sent.value() != 0) throw new IOException("Queuing original child stop failed: " + sent.errno());
+        release.release();
+        long began = System.nanoTime();
+        while (true)
+        {
+            if (!Attempt.identify(child.tid()).equals(child)) throw new IOException("Child birth changed during gate transfer");
+            String status = Files.readString(Path.of("/proc", Integer.toString(child.tid()), "status"));
+            boolean stopped = status.lines().anyMatch(line -> line.startsWith("State:") && line.contains("T (stopped)"));
+            boolean untraced = status.lines().anyMatch(line -> line.startsWith("TracerPid:") && line.substring(10).strip().equals("0"));
+            if (stopped && untraced) break;
+            if (Thread.currentThread().isInterrupted() || System.nanoTime() - began >= budget)
+                throw new IOException("Original child did not reach an untraced kernel group-stop");
+            LockSupport.parkNanos(1_000_000);
+        }
+        Session session = new Session(linker, child, null, List.of(), Map.of());
+        try { session.awaitPrepared(timeout); return session; }
+        catch (IOException | RuntimeException | Error failure)
+        {
+            session.terminate();
+            try { session.awaitCollected(timeout); }
+            catch (IOException cleanup)
+            {
+                failure.addSuppressed(cleanup);
+                throw new HandoffFailure(failure, session);
+            }
+            throw failure;
+        }
+    }
+
+    /** Retains a partially collected native owner when original gate transfer fails.
+     * The caller must preserve this owner and establish workload zero before retrying collection.
+     */
+    static final class HandoffFailure extends IOException
+    {
+        /** Serialization identity for the diagnostic exception; serialized values carry no native authority. */
+        private static final long serialVersionUID = 1L;
+        /** Original sole native owner, absent only after diagnostic deserialization. */
+        private final transient Session retained;
+        /** Preserves the primary failure and its partially collected owner.
+         * @param cause primary transfer failure, including cleanup evidence
+         * @param retained original native owner
+         */
+        private HandoffFailure(Throwable cause, Session retained)
+        {
+            super("Native gate transfer retains collection ownership", cause);
+            this.retained = retained;
+        }
+    }
+
+    /** Original exec gate's exclusive detach authority; it must preserve a separately queued SIGSTOP. */
+    @FunctionalInterface
+    interface GateRelease
+    {
+        /** Detaches the original tracer without sending SIGCONT.
+         * @throws IOException if original gate release is uncertain
+         */
+        void release() throws IOException;
+    }
+
+    /** Owns native image handoffs and copied descendant events for one existing Cargo controller.
+     * The caller authenticates every image before install and every continuation before resume, and supplies
+     * whole-workload zero before close. Dynamic images outside an acquired native tree remain Frida-owned.
+     */
+    static final class Images
+    {
+        /** Borrowed native ABI linker retained through all native sessions. */
+        private final Linker linker;
+        /** Positive native readiness and cleanup deadline. */
+        private final Duration timeout;
+        /** Native owners retained even after their original process exits. */
+        private final List<Session> sessions = new ArrayList<>();
+        /** Actual process-to-owner mapping established by native fork and exec observations. */
+        private final Map<Long, Session> owners = new LinkedHashMap<>();
+        /** Latest identity copied from each actual native root, fork or exec stop. */
+        private final Map<Long, Identity> identities = new LinkedHashMap<>();
+        /** Initial sessions awaiting their independently authenticated first continuation. */
+        private final Set<Long> initial = new HashSet<>();
+        /** Exact descendant holds awaiting independently authenticated continuation. */
+        private final Map<Long, Held> pending = new LinkedHashMap<>();
+
+        /** Borrows the existing native services without acquiring a process.
+         * @param linker scoped native linker
+         * @param timeout positive native readiness interval
+         */
+        Images(Linker linker, Duration timeout)
+        {
+            this.linker = Objects.requireNonNull(linker, "linker");
+            this.timeout = Objects.requireNonNull(timeout, "timeout");
+            if (timeout.isNegative() || timeout.isZero()) throw new IllegalArgumentException("Positive native image timeout required");
+        }
+
+        /** Selects an existing native tree or transfers an authentic static exec gate.
+         * @param pid independently authenticated held process
+         * @param birth independently authenticated current birth
+         * @param release original Frida owner's single detach operation, preserving queued SIGSTOP
+         * @return true when the image is held by this sole native owner; false for an ordinary dynamic image
+         * @throws IOException if executable selection or exact native handoff fails
+         */
+        boolean install(long pid, long birth, GateRelease release) throws IOException
+        {
+            if (owners.containsKey(pid))
+            {
+                if (!new Identity(Math.toIntExact(pid), birth).equals(identities.get(pid)))
+                    throw new IOException("Native image differs from its retained root or transition identity");
+                return true;
+            }
+            try (java.nio.channels.FileChannel image = java.nio.channels.FileChannel.open(
+                Path.of("/proc", Long.toString(pid), "exe")))
+            {
+                if (!LinuxBazelHelperMain.isStaticTraceImage(image)) return false;
+            }
+            Session session;
+            try { session = handoff(linker, new Identity(Math.toIntExact(pid), birth), release, timeout); }
+            catch (HandoffFailure failure)
+            {
+                sessions.add(Objects.requireNonNull(failure.retained, "retained native owner"));
+                throw failure;
+            }
+            sessions.add(session);
+            owners.put(pid, session);
+            identities.put(pid, new Identity(Math.toIntExact(pid), birth));
+            initial.add(pid);
+            return true;
+        }
+
+        /** Reports whether an authentic native observation already assigned this process to this owner.
+         * @param pid current process ID
+         * @return true for a retained native root or descendant
+         */
+        boolean owns(long pid) { return owners.containsKey(pid); }
+
+        /** Continues one independently authenticated held native image once.
+         * @param pid authenticated process
+         * @param birth current independently checked birth
+         * @throws IOException if exact original continuation authority is absent
+         */
+        void resume(long pid, long birth) throws IOException
+        {
+            Session session = owners.get(pid);
+            if (session == null) throw new IOException("Native image has no original owner");
+            Identity identity = new Identity(Math.toIntExact(pid), birth);
+            if (!Attempt.identify(identity.tid()).equals(identity)) throw new IOException("Native image birth changed before continuation");
+            if (initial.remove(pid)) session.resume();
+            else
+            {
+                Held event = pending.remove(pid);
+                if (event == null || !event.task().equals(identity)) throw new IOException("Native image lacks its exact held transition");
+                session.releaseHeld(identity);
+            }
+        }
+
+        /** Copies one native image stop after authenticating any original nonleader exec entry.
+         * The caller must independently authenticate the returned image before its continuation.
+         * @return copied original native event, or null while none is pending
+         * @throws IOException if native ownership, original thread membership or birth is uncertain
+         */
+        FridaRuntime.Child pollChild() throws IOException
+        {
+            for (Session session : sessions)
+            {
+                PreExec entry;
+                while ((entry = session.pollPreExec()) != null)
+                {
+                    if (!Attempt.identify(entry.thread().tid()).equals(entry.thread()) ||
+                        Attempt.processId(entry.thread().tid()) != entry.processId())
+                        throw new IOException("Original native exec thread membership or birth changed");
+                    session.authorizeExec(entry.thread());
+                }
+                Held event = session.pollHeld();
+                if (event == null) continue;
+                long pid = event.task().tid();
+                if (pending.putIfAbsent(pid, event) != null) throw new IOException("Native image has an outstanding admission");
+                owners.put(pid, session);
+                identities.put(pid, event.task());
+                return new FridaRuntime.Child(pid, event.parentPid(), event.origin(), event.path());
+            }
+            return null;
+        }
+
+        /** Copies one actual executed-trap denial without authorizing a continuation.
+         * @return authentic native denial, or null when none is pending
+         * @throws IOException if the original tracing owner failed
+         */
+        Denial pollDenial() throws IOException
+        {
+            for (Session session : sessions)
+            {
+                Denial denial = session.pollDenial();
+                if (denial != null) return denial;
+            }
+            return null;
+        }
+
+        /** Joins every retained native owner after the caller has established whole-workload zero.
+         * @throws IOException if a native owner failed or collection remains incomplete
+         */
+        void close() throws IOException
+        {
+            IOException failure = null;
+            for (Session session : sessions)
+            {
+                try { session.awaitCollected(timeout); }
+                catch (IOException cause)
+                {
+                    if (failure == null) failure = cause;
+                    else failure.addSuppressed(cause);
+                }
+            }
+            if (failure != null) throw failure;
+        }
+    }
+
     /**
      * One real fork or exec stop requiring separate host image admission before continuation.
      * @param task held process kernel identity
@@ -399,7 +634,7 @@ final class LinuxAllocationTrace
          * Starts the sole platform thread; every native acquisition remains within that thread.
          * @param linker borrowed native linker
          * @param child authenticated original child
-         * @param executable exact requested native image
+         * @param executable exact requested native image, or null to retain a transferred exec image
          * @param argv exact requested arguments
          * @param environment complete requested environment
          */
@@ -522,6 +757,28 @@ final class LinuxAllocationTrace
         {
             check();
             return outcome.get();
+        }
+
+        /** Waits for the sole native thread to finish collection without releasing its ownership early.
+         * @param timeout positive collection interval
+         * @throws IOException if collection times out, interruption occurs or the native owner failed
+         */
+        void awaitCollected(Duration timeout) throws IOException
+        {
+            long began = System.nanoTime();
+            boolean interrupted = Thread.interrupted();
+            try
+            {
+                while (thread.isAlive())
+                {
+                    if (System.nanoTime() - began >= timeout.toNanos())
+                        throw new IOException("Original native owner has not completed collection");
+                    try { thread.join(1); }
+                    catch (InterruptedException cause) { interrupted = true; }
+                }
+                check();
+            }
+            finally { if (interrupted) Thread.currentThread().interrupt(); }
         }
 
         /**
@@ -718,7 +975,7 @@ final class LinuxAllocationTrace
         /**
          * Adopts and replaces the parked native child, then owns all tracing until complete collection.
          * @param child authenticated original child
-         * @param executable requested native image
+         * @param executable requested native image, or null for an unchanged group-stopped exec image
          * @param argv exact native arguments
          * @param environment exact native environment
          * @param prepared publishes the genuine initial exec stop
@@ -737,11 +994,19 @@ final class LinuxAllocationTrace
                 owned.put(child.tid(), child);
                 trace(INTERRUPT, child.tid(), 0, MemorySegment.NULL);
                 awaitStop(child.tid());
-                replaceParkedChild(child.tid(), executable, argv, environment);
+                if (executable == null)
+                {
+                    try (Arena arena = Arena.ofConfined()) { registers(child.tid(), arena); }
+                }
+                else replaceParkedChild(child.tid(), executable, argv, environment);
                 prepared.set(true);
                 while (!released.get() && !cancel.get()) LockSupport.parkNanos(1_000_000);
                 if (cancel.get()) terminateAll();
-                else trace(SYSCALL, child.tid(), 0, MemorySegment.NULL);
+                else
+                {
+                    if (executable == null) signal(child.tid(), CONTINUE);
+                    trace(SYSCALL, child.tid(), 0, MemorySegment.NULL);
+                }
                 while (!owned.isEmpty())
                 {
                     if (cancel.get()) terminateAll();

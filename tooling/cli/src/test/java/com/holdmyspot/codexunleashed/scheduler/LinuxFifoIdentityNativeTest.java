@@ -92,7 +92,7 @@ public final class LinuxFifoIdentityNativeTest
 			{
 				var calls = fixture.scope.getLinuxFifoBindings();
 				var original = lease.identity();
-				Path fifo = LinuxCargoJobserverTest.fifo(lease.environment());
+				Path fifo = LinuxCargoJobserverTest.fifo(lease);
 				Path retained = fifo.resolveSibling("original.fifo");
 				Files.move(fifo,retained);
 				try

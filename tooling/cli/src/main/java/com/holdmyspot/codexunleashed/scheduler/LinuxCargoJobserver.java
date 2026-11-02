@@ -42,6 +42,14 @@ final class LinuxCargoJobserver implements AutoCloseable
 	private static final String AUTH_OPTION = "--jobserver-auth=";
 	/** Legacy auth option emitted alongside the preferred option by jobserver 0.1.34. */
 	private static final String FDS_OPTION = "--jobserver-fds=";
+	/**
+	 * Descriptor number on which every Cargo-tree leader installs the FIFO for jobserver reads. Numbers are fixed so
+	 * every process in the invocation shares one make-flags value; they sit above the descriptors a held gate normally
+	 * has open, and installation fails rather than replacing a descriptor already open at this number.
+	 */
+	static final int READ_DESCRIPTOR = 200;
+	/** Descriptor number on which every Cargo-tree leader installs the FIFO for jobserver writes. */
+	static final int WRITE_DESCRIPTOR = 201;
 	/** Numeric group attribute supplied by the pinned Linux JDK filesystem provider. */
 	private static final String GROUP_ATTRIBUTE = "unix:gid";
 	/** Native operations; the retained descriptor belongs to this owner rather than an arena. */
@@ -214,6 +222,8 @@ final class LinuxCargoJobserver implements AutoCloseable
 	 * Reserves the only Cargo invocation and supplies its complete immutable environment.
 	 * Existing make flags are rejected, including empty values, before this owner's one borrow is consumed.
 	 * @param environment complete root environment without CARGO_MAKEFLAGS, MAKEFLAGS or MFLAGS
+	 * The make flags name the FIFO by the descriptor numbers in {@link CargoLease#descriptors()}; every process that
+	 * receives the environment must start with the FIFO open on those numbers.
 	 * @return lease that must outlive every consumer and every retry of this Cargo invocation
 	 * @throws NullPointerException if the map or an entry is null
 	 * @throws IllegalArgumentException if an owned make-variable key is already present
@@ -227,7 +237,8 @@ final class LinuxCargoJobserver implements AutoCloseable
 				throw new IllegalArgumentException("Root Cargo environment already contains " + name);
 		if (closing || retained)
 			throw new IllegalStateException("Jobserver is closing or its single Cargo invocation was already retained");
-		String auth = "fifo:" + fifo;
+		// GNU Make 4.3 and older read only descriptor pairs; each leader opens the FIFO on these numbers before exec.
+		String auth = READ_DESCRIPTOR + "," + WRITE_DESCRIPTOR;
 		String flags = "-j " + FDS_OPTION + auth + " " + AUTH_OPTION + auth;
 		for (String name : MAKE_VARIABLES)
 			copy.put(name, flags);
@@ -374,8 +385,21 @@ final class LinuxCargoJobserver implements AutoCloseable
 		}
 
 		/**
+		 * Returns the FIFO and the descriptor numbers that a leader must open it on before executing a process that
+		 * receives this lease's environment.
+		 * @return the FIFO and its inherited read and write descriptor numbers
+		 * @throws IllegalStateException if this lease was released
+		 */
+		Descriptors descriptors()
+		{
+			if (released)
+				throw new IllegalStateException("Cargo jobserver lease was released");
+			return new Descriptors(fifo, READ_DESCRIPTOR, WRITE_DESCRIPTOR);
+		}
+
+		/**
 		 * Returns the complete environment for Cargo and all compiler launch contexts.
-		 * @return immutable root environment with supported FIFO auth
+		 * @return immutable root environment whose make flags name the lease's descriptor numbers
 		 * @throws IllegalStateException if this lease was released
 		 */
 		Map<String, String> environment()
@@ -404,12 +428,44 @@ final class LinuxCargoJobserver implements AutoCloseable
 	}
 
 	/**
+	 * Names the FIFO that a leader opens, read-write and inheritable, on two exact descriptor numbers before it executes
+	 * a Cargo-tree process. GNU Make before 4.4 accepts only these numeric descriptors, not a FIFO path.
+	 * @param fifo absolute FIFO path in the owner's protected directory
+	 * @param read descriptor number that the make flags name for token reads
+	 * @param write descriptor number that the make flags name for token writes
+	 */
+	record Descriptors(Path fifo, int read, int write)
+	{
+		/**
+		 * Validates a descriptor plan.
+		 * @param fifo absolute FIFO path in the owner's protected directory
+		 * @param read descriptor number that the make flags name for token reads
+		 * @param write descriptor number that the make flags name for token writes
+		 * @throws NullPointerException if {@code fifo} is null
+		 * @throws IllegalArgumentException if {@code fifo} is relative, or the numbers are equal or not above standard error
+		 */
+		Descriptors
+		{
+			if (!Objects.requireNonNull(fifo, "fifo").isAbsolute())
+				throw new IllegalArgumentException("fifo must be absolute: " + fifo);
+			if (read <= 2 || write <= 2 || read == write)
+				throw new IllegalArgumentException("Descriptors must be distinct and above standard error: " + read + ", " + write);
+		}
+	}
+
+	/**
 	 * Preserves failed acquisition whose owned path cleanup requires retry.
 	 */
 	static final class PreparationFailure extends IOException implements AutoCloseable
 	{
-		/** Partially acquired owner retained until cleanup succeeds. */
-		private final LinuxCargoJobserver owner;
+		/** Serialization version inherited from the checked failure API. */
+		@java.io.Serial
+		private static final long serialVersionUID = 1L;
+		/**
+		 * Partially acquired owner retained until cleanup succeeds. It is transient because a live cleanup owner cannot be
+		 * copied; serialization is rejected so no copy can exist whose close would lose this owner.
+		 */
+		private final transient LinuxCargoJobserver owner;
 
 		/**
 		 * Retains the original setup failure and cleanup capability.
@@ -430,6 +486,17 @@ final class LinuxCargoJobserver implements AutoCloseable
 		public void close() throws IOException
 		{
 			owner.close();
+		}
+
+		/**
+		 * Rejects serialization, which cannot carry the live cleanup owner.
+		 * @param output unused serialization stream
+		 * @throws java.io.NotSerializableException always
+		 */
+		@java.io.Serial
+		private void writeObject(java.io.ObjectOutputStream output) throws java.io.NotSerializableException
+		{
+			throw new java.io.NotSerializableException("A jobserver cleanup owner cannot be serialized");
 		}
 	}
 

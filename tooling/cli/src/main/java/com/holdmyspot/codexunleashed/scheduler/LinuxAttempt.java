@@ -133,7 +133,7 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 			{
 				LinuxFifoBindings.Identity fifo = cargo.lease().identity();
 				tokens = cargo.lease().retainAttempt();
-				cargoTokens = Optional.of(new AllocationHooks.CargoTokens(fifo, tokens));
+				cargoTokens = Optional.of(new AllocationHooks.CargoTokens(fifo, tokens, cargo.lease().descriptors()));
 			}
 			hooks = new AllocationHooks(scope, identity, runtime, command.launch(), supervisor, waits, timeout,
 				attempts::pumpAll, cargoTokens, attempts.routing());

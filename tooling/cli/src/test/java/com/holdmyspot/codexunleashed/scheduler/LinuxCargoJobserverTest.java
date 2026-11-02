@@ -99,7 +99,7 @@ public final class LinuxCargoJobserverTest
 				String flags = environment.get("CARGO_MAKEFLAGS");
 				requireThat(environment.get("MAKEFLAGS"), "makeFlags").isEqualTo(flags, "cargoFlags");
 				requireThat(environment.get("MFLAGS"), "legacyFlags").isEqualTo(flags, "cargoFlags");
-				Path fifo = fifo(environment);
+				Path fifo = fifo(lease);
 				requireThat(Files.exists(fifo), "liveFifo").isTrue();
 				requireException(IllegalStateException.class, owner::close);
 				requireThat(Files.exists(fifo), "retainedFifo").isTrue();
@@ -108,6 +108,40 @@ public final class LinuxCargoJobserverTest
 			requireException(IllegalStateException.class, lease::environment);
 			lease.close();
 			requireException(IllegalStateException.class, () -> owner.retainCargo(Map.of()));
+		}
+	}
+
+	/**
+	 * GNU Make, run as a build script runs it, joins the lease's jobserver when the FIFO is open on the lease's
+	 * descriptors. Bash stands in for the trusted leader that opens those descriptors before exec. Make 4.3 rejects a
+	 * FIFO path in its auth option and runs serially when it cannot use the named descriptors, so a clean exit with no
+	 * jobserver diagnostic shows that it accepted the advertised descriptors.
+	 * @throws Exception if fixture setup, process execution or cleanup fails
+	 */
+	@Test
+	public void gnuMakeJoinsLeaseJobserverThroughInheritedDescriptors() throws Exception
+	{
+		requireLinux();
+		Path make = Path.of("/usr/bin/make");
+		Path bash = Path.of("/bin/bash");
+		if (!Files.isExecutable(make) || !Files.isExecutable(bash))
+			throw new SkipException("GNU Make and Bash are required to observe make's jobserver import");
+		try (Fixture fixture = new Fixture();
+			LinuxCargoJobserver owner = LinuxCargoJobserver.create(fixture.scope, fixture.directory, fixture.group, 2);
+			var lease = owner.retainCargo(Map.of()))
+		{
+			var descriptors = lease.descriptors();
+			Path makefile = Files.writeString(fixture.directory.resolve("Makefile"), "all: a b\na b:\n\t@true\n");
+			var builder = new ProcessBuilder(bash.toString(), "-c", "exec \"$0\" -f \"$1\" " + descriptors.read() + "<>\"$2\" " +
+				descriptors.write() + "<>\"$2\"", make.toString(), makefile.toString(), descriptors.fifo().toString());
+			builder.environment().keySet().removeAll(List.of("CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS"));
+			builder.environment().put("MAKEFLAGS", lease.environment().get("MAKEFLAGS"));
+			builder.directory(fixture.directory.toFile()).redirectErrorStream(true);
+			Process process = builder.start();
+			String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+			requireThat(process.waitFor(), "makeExit").isEqualTo(0, "expected");
+			requireThat(output, "makeOutput").doesNotContain("jobserver");
+			Files.delete(makefile);
 		}
 	}
 
@@ -276,20 +310,19 @@ public final class LinuxCargoJobserverTest
 			try (var owner = LinuxCargoJobserver.SharedSecrets.create(fixture.directory, fixture.group, 2, calls);
 				var lease = owner.retainCargo(Map.of()))
 			{
-				requireThat(Files.exists(fifo(lease.environment())), "accessibleOwnerPool").isTrue();
+				requireThat(Files.exists(fifo(lease)), "accessibleOwnerPool").isTrue();
 			}
 		}
 	}
 
 	/**
-	 * Extracts the exact path from this owner's emitted auth option for behavioral consumer checks.
-	 * @param environment owner-produced complete launch environment
-	 * @return exact emitted FIFO path
+	 * Returns the FIFO that the lease's consumers open, for behavioral checks of that endpoint.
+	 * @param lease live owner-produced invocation lease
+	 * @return exact FIFO path
 	 */
-	static Path fifo(Map<String, String> environment)
+	static Path fifo(LinuxCargoJobserver.CargoLease lease)
 	{
-		String flags = environment.get("CARGO_MAKEFLAGS");
-		return Path.of(flags.substring(flags.lastIndexOf("fifo:") + "fifo:".length()));
+		return lease.descriptors().fifo();
 	}
 
 	/**
