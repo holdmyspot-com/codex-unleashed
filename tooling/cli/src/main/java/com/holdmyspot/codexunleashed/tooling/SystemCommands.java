@@ -12,10 +12,18 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Executes external tools with direct argument boundaries and inherited input.
+ * Executes external tools with direct argument boundaries. Captured commands read end-of-input; {@link #run} inherits
+ * the caller's standard input.
  */
 public final class SystemCommands
 {
+	/**
+	 * Standard input for captured commands: the platform null device. Captured commands are non-interactive, and an
+	 * inherited console or pipe makes Git for Windows wait about nine seconds at startup on hosted runners.
+	 */
+	private static final ProcessBuilder.Redirect EMPTY_INPUT = ProcessBuilder.Redirect.from(
+		ProcessBuilder.Redirect.DISCARD.file());
+
 	/**
 	 * Prevents construction.
 	 */
@@ -101,7 +109,7 @@ public final class SystemCommands
 	}
 
 	/**
-	 * Captures a command's streams and status in the selected working directory.
+	 * Captures a command's streams and status in the selected working directory. The command reads end-of-input.
 	 * Capture avoids blocking the child on unread output pipes. Cleanup of capture files and their directory
 	 * is attempted on every exit; cleanup failures are reported.
 	 *
@@ -205,7 +213,7 @@ public final class SystemCommands
 		try (CaptureFiles files = new CaptureFiles(Files.createTempDirectory(temporaryDirectory, "command-capture-")))
 		{
 			ProcessBuilder builder = createBuilder(arguments).directory(workingDirectory.toFile()).
-				redirectInput(ProcessBuilder.Redirect.INHERIT).redirectOutput(files.stdout.toFile()).
+				redirectInput(EMPTY_INPUT).redirectOutput(files.stdout.toFile()).
 				redirectError(files.stderr.toFile());
 			builder.environment().putAll(overrides);
 			try (Process process = builder.start())

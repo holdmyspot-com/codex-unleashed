@@ -554,9 +554,6 @@ public final class SourceInputCacheTest
 			environment.put("XDG_CACHE_HOME", base.resolve("xdg").toString());
 			environment.put("TMPDIR", base.resolve("tmp").toString());
 			environment.put("GIT_CEILING_DIRECTORIES", base.toString());
-			// Git for Windows takes about nine seconds to start on hosted runners when it inherits the test JVM's
-			// stdin, and every preparation starts Git six times; null-device stdin removes that delay.
-			environment.put("GIT_REDIRECT_STDIN", "NUL");
 		}
 
 		/**
