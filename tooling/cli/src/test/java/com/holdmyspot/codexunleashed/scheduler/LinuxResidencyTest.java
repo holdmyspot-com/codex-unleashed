@@ -344,6 +344,47 @@ public final class LinuxResidencyTest
 	}
 
 	/**
+	 * Supplies exiting process records that have released their address space but are not yet zombies.
+	 * @return exit-path state, and whether the sample is a retryable membership rejection
+	 */
+	@DataProvider
+	public Object[][] releasingLeaders()
+	{
+		return new Object[][] {{"State:\tR (running)\nTgid:\t41\n", true}, {"State:\tD (disk sleep)\nTgid:\t41\n", true},
+			{"State:\tR (running)\nTgid:\t99\n", false}, {"State:\tR (running)\n", false}};
+	}
+
+	/**
+	 * A process between releasing its address space and becoming a zombie has no VmRSS line. Its sample is a
+	 * retryable membership rejection, never a zero or a fatal authority failure.
+	 * @param status exiting leader's status record
+	 * @param rejected whether the sample is rejected as membership churn rather than failing
+	 * @throws IOException if fixture setup or cleanup fails
+	 */
+	@Test(dataProvider = "releasingLeaders")
+	public void rejectsProcessReleasingItsAddressSpace(String status, boolean rejected) throws IOException
+	{
+		Path fixture = Files.createTempDirectory("linux-residency-releasing-");
+		try
+		{
+			requireSecureDirectory(fixture);
+			Path root = fixture.resolve("cgroups");
+			Path proc = fixture.resolve("proc");
+			Path owned = root.resolve("owned");
+			writeGroup(owned, "41\n");
+			Files.writeString(owned.resolve("cgroup.threads"), "41\n");
+			writeProcess(proc, 41, "0::/owned\n", status);
+			Files.createDirectories(proc.resolve("41/task"));
+			IOException failure = requireException(IOException.class, () -> LinuxResidency.read(root, proc, owned));
+			requireThat(failure instanceof LinuxResidency.MembershipChanged, "membershipRejection").isEqualTo(rejected);
+		}
+		finally
+		{
+			FileUtils.deleteDirectory(fixture.toFile());
+		}
+	}
+
+	/**
 	 * Writes an owned cgroup membership fixture.
 	 *
 	 * @param group the group directory

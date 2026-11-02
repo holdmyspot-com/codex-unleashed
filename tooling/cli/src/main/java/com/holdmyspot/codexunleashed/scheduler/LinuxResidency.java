@@ -201,6 +201,13 @@ public final class LinuxResidency
 				}
 				catch (IOException failure)
 				{
+					String pid = process.getFileName().toString();
+					// An exiting process drops its Vm* lines once it releases its address space, before it becomes a
+					// zombie. Its memory is leaving the group, so the sample is retried rather than counted as zero.
+					if (statusField(status, "VmRSS") == null && pid.equals(statusField(status, "Tgid")) &&
+						isExitedTask(status, pid) == false)
+						throw new MembershipChanged("Sampled process released its address space while exiting: " + process,
+							failure);
 					if (statusField(status, "VmRSS") != null ||
 						isExitedTask(status, process.getFileName().toString()) == false) throw failure;
 					bytes = readSurvivingThread(secure, process, expected, group, failure);
