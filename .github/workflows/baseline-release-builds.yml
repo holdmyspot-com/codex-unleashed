@@ -350,10 +350,13 @@ jobs:
         if: inputs.scheduler
         env:
           RELEASE_SCHEDULER_HEADROOM_BYTES: "1073741824"
-          RELEASE_SCHEDULER_MAX_JOBS: "2"
           RELEASE_SCHEDULER_CONTROL_TIMEOUT_MS: "120000"
         run: |
           set -euo pipefail
+          # Cargo needs a fixed jobserver size; offer one slot per CPU, as Cargo does by default, and let memory
+          # admission decide how many of them run.
+          RELEASE_SCHEDULER_MAX_JOBS="$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)"
+          [[ "$RELEASE_SCHEDULER_MAX_JOBS" =~ ^[1-9][0-9]*$ ]]
           native="$RUNNER_TEMP/release-native"
           bash "$RUNNER_TEMP/provision-release-scheduler.sh" prepare-native \
             "$RUNNER_TEMP/source-cache-build/runtime" "$native" "$RUNNER_TEMP/release-scheduler-native" \
@@ -498,6 +501,8 @@ jobs:
       - name: Build the upstream release binaries with default features
         id: release_build
         working-directory: codex-rs
+        # End before the 360-minute job limit, so the build fails instead of being cancelled and its partial state is saved.
+        timeout-minutes: 320
         env:
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
           CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
@@ -508,12 +513,16 @@ jobs:
           if [[ "$CACHE_ENABLED" == true ]]; then
             export RELEASE_CHECKPOINT_COMMAND="$RUNNER_TEMP/checkpoint-upstream-release.sh"
           fi
-          case "$TARGET" in
-            aarch64-unknown-linux-musl | x86_64-unknown-linux-musl)
-              export CARGO_BUILD_JOBS=2
-              printf 'Limiting Linux Cargo compilation to two concurrent jobs after observed memory pressure.\n'
-              ;;
-          esac
+          # The build scheduler admits compilers by measured memory, so it needs no fixed job cap. Without it, Linux
+          # keeps the two-job limit that prevented observed memory pressure.
+          if [[ -z "${RELEASE_CARGO_COMMAND:-}" ]]; then
+            case "$TARGET" in
+              aarch64-unknown-linux-musl | x86_64-unknown-linux-musl)
+                export CARGO_BUILD_JOBS=2
+                printf 'Limiting Linux Cargo compilation to two concurrent jobs after observed memory pressure.\n'
+                ;;
+            esac
+          fi
           printf 'cargo_build_jobs=%s\n' "${CARGO_BUILD_JOBS:-default}" \
             | tee "$RUNNER_TEMP/baseline-evidence/cargo-concurrency.log"
           release_command=(bash "$RUNNER_TEMP/build-upstream-release.sh")
