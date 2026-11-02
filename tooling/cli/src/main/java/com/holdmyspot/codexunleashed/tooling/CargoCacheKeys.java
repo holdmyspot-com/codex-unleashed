@@ -36,8 +36,9 @@ final class CargoCacheKeys
                 exact.update(values[i]);
                 if (i != 1) seed.update(values[i]);
             }
-            out.println("tag=cargo-v3-" + target + "-" + HexFormat.of().formatHex(exact.digest()));
-            out.println("seed_tag=cargo-seed-v1-" + target + "-" + HexFormat.of().formatHex(seed.digest()));
+            // Write LF on every platform: callers append these lines to GITHUB_OUTPUT.
+            out.print("tag=cargo-v3-" + target + "-" + HexFormat.of().formatHex(exact.digest()) + "\n");
+            out.print("seed_tag=cargo-seed-v1-" + target + "-" + HexFormat.of().formatHex(seed.digest()) + "\n");
             return 0;
         }
         catch (IOException | IllegalArgumentException failure) { err.println(failure.getMessage()); return 2; }

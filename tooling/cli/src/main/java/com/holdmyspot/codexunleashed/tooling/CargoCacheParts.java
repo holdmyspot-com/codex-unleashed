@@ -257,7 +257,11 @@ final class CargoCacheParts
             }
             content = HexFormat.of().formatHex(digest.digest());
         }
-        else if (attributes.isSymbolicLink()) content = Files.readSymbolicLink(path).toString();
+        else if (attributes.isSymbolicLink())
+        {
+            // Record link targets with "/" so an entry has one identity on every platform.
+            content = Files.readSymbolicLink(path).toString().replace(path.getFileSystem().getSeparator(), "/");
+        }
         else if (attributes.isDirectory()) content = "directory";
         else throw new IOException("Unsupported cache output type: " + relative);
         int mode;

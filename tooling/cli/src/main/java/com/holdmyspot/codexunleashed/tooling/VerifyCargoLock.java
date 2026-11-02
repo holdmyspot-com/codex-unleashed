@@ -77,7 +77,8 @@ final class VerifyCargoLock
                 }
             }
             if (!expected.equals(observed)) throw new IOException("Cargo.lock changed beyond workspace package versions; refusing cache snapshot");
-            out.println(CargoCacheParts.json(scope, Map.of("result", "verified", "workspace_version_updates", updates), true, true));
+            // The receipt is part of the cached evidence; write LF on every platform.
+            out.print(CargoCacheParts.json(scope, Map.of("result", "verified", "workspace_version_updates", updates), true, true) + "\n");
             return 0;
         }
         catch (IOException | RuntimeException failure) { err.println("Cargo.lock verification failed: " + failure.getMessage()); return 1; }
