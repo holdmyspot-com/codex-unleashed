@@ -12,19 +12,22 @@
       "releaseThroughScheduler": "unrun"
     },
     "aarch64-apple-darwin": {
-      "cargoNativeReady": false,
-      "unmet": [
-        "ordinary descriptor close FAILED_UNWAIVED"
-      ],
-      "releaseThroughScheduler": "unrun"
+      "cargoNativeReady": true,
+      "unmet": [],
+      "releaseThroughScheduler": "unrun",
+      "accepted": [
+        "ordinary descriptor close: docs/evidence/cp3-macos-normal-close-arm.json (repair 1a71786bde)"
+      ]
     },
     "x86_64-apple-darwin": {
       "cargoNativeReady": false,
       "unmet": [
-        "ordinary descriptor close FAILED_UNWAIVED",
         "physical pressure recovery UNMET at safe 6GiB bound"
       ],
-      "releaseThroughScheduler": "unrun"
+      "releaseThroughScheduler": "unrun",
+      "accepted": [
+        "ordinary descriptor close: docs/evidence/cp3-macos-normal-close-intel.json (repair 1a71786bde)"
+      ]
     },
     "x86_64-pc-windows-msvc": {
       "cargoNativeReady": true,
