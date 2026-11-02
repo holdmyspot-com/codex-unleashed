@@ -13,6 +13,14 @@ set -euo pipefail
 # the step owning new outputs; an unset stage defaults to bootstrap. It requires
 # CODEX_SOURCE_CACHE_TOOL to name the bundled codex-tooling launcher. Unchanged
 # groups require no archive uploads.
+run_codex_tooling() {
+  # Linux packages a native launcher; other runners package a Bash launcher.
+  if [[ "$RUNNER_OS" == Linux ]]; then
+    "$CODEX_SOURCE_CACHE_TOOL" "$@"
+  else
+    bash "$CODEX_SOURCE_CACHE_TOOL" "$@"
+  fi
+}
 if [[ $# != 5 && $# != 6 ]]; then
   printf 'usage: %s <pull|push|pull-partial|push-partial> <repository> <tag> <target-directory> <upstream-tag> [compatible-seed-tag]\n' "$0" >&2
   exit 2
@@ -90,7 +98,7 @@ case "$operation" in
     if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
       for candidate in "$reference" "$repository:${tag/-parts-v2/-parts-v1}" "$repository:${tag/-parts-v2/}"; do
         set +e
-        bash "$CODEX_SOURCE_CACHE_TOOL" cargo-cache-parts pull "$repository" "$candidate" "$candidate" "$target_directory" "$archive_directory"
+        run_codex_tooling cargo-cache-parts pull "$repository" "$candidate" "$candidate" "$target_directory" "$archive_directory"
         result=$?
         set -e
         case "$result" in
@@ -136,7 +144,7 @@ case "$operation" in
       # GHCR accepted a push but immediately returned not found for its tag.
       # Publish every alias from the local manifest without resolving that tag.
       if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
-        bash "$CODEX_SOURCE_CACHE_TOOL" cargo-cache-parts push "$repository" "$publication_reference" "$reference" "$target_directory" "$archive_directory" --reuse-reference "$repository:${seed_tag:-$tag}"
+        run_codex_tooling cargo-cache-parts push "$repository" "$publication_reference" "$reference" "$target_directory" "$archive_directory" --reuse-reference "$repository:${seed_tag:-$tag}"
       else
         oras push "$publication_reference" \
           --artifact-type application/vnd.codex-unleashed.cargo-target.v1 \

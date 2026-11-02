@@ -152,6 +152,14 @@ jobs:
         id: cache
         run: |
           set -euo pipefail
+          run_codex_tooling() {
+            # Linux packages a native launcher; other runners package a Bash launcher.
+            if [[ "$RUNNER_OS" == Linux ]]; then
+              "$CODEX_SOURCE_CACHE_TOOL" "$@"
+            else
+              bash "$CODEX_SOURCE_CACHE_TOOL" "$@"
+            fi
+          }
           evidence="$FOCUSED_RUNTIME/evidence"
           cp .github/upstream-commit "$evidence/upstream-commit"
           cp upstream/codex-rs/Cargo.lock "$evidence/upstream-Cargo.lock"
@@ -175,8 +183,8 @@ jobs:
             printf '\n'
             cat "$CARGO_HOME/config.toml"
           } > "$evidence/compiler.txt"
-          bash "$CODEX_SOURCE_CACHE_TOOL" cargo-cache-keys "$TARGET" "$evidence/upstream-commit" "$evidence/wrappers.txt" "$evidence/helpers.txt" "$evidence/compiler.txt" | tee "$evidence/keys.txt" >> "$GITHUB_OUTPUT"
-          bash "$CODEX_SOURCE_CACHE_TOOL" cargo-cache-keys "$TARGET" "$evidence/upstream-commit" "$evidence/wrappers.txt" "$evidence/helpers-transport-only.txt" "$evidence/compiler.txt" | sed -n 's/^seed_tag=/legacy_seed_tag=/p' >> "$GITHUB_OUTPUT"
+          run_codex_tooling cargo-cache-keys "$TARGET" "$evidence/upstream-commit" "$evidence/wrappers.txt" "$evidence/helpers.txt" "$evidence/compiler.txt" | tee "$evidence/keys.txt" >> "$GITHUB_OUTPUT"
+          run_codex_tooling cargo-cache-keys "$TARGET" "$evidence/upstream-commit" "$evidence/wrappers.txt" "$evidence/helpers-transport-only.txt" "$evidence/compiler.txt" | sed -n 's/^seed_tag=/legacy_seed_tag=/p' >> "$GITHUB_OUTPUT"
 
       - name: Restore verified or partial compiled state
         id: restore
@@ -205,7 +213,15 @@ jobs:
         id: prepare
         run: |
           set -euo pipefail
-          bash "$CODEX_SOURCE_CACHE_TOOL" clean-cached-release-binaries --profile ci-test \
+          run_codex_tooling() {
+            # Linux packages a native launcher; other runners package a Bash launcher.
+            if [[ "$RUNNER_OS" == Linux ]]; then
+              "$CODEX_SOURCE_CACHE_TOOL" "$@"
+            else
+              bash "$CODEX_SOURCE_CACHE_TOOL" "$@"
+            fi
+          }
+          run_codex_tooling clean-cached-release-binaries --profile ci-test \
             "$CODEX_REPO_ROOT/codex-rs" "$TARGET" codex codex-app-server 2>&1 | tee "$FOCUSED_RUNTIME/evidence/cache-prepare.log"
 
       - name: Await the retained client's runtime result
@@ -277,6 +293,14 @@ jobs:
         if: always() && steps.restore.outcome == 'success'
         run: |
           set -euo pipefail
+          run_codex_tooling() {
+            # Linux packages a native launcher; other runners package a Bash launcher.
+            if [[ "$RUNNER_OS" == Linux ]]; then
+              "$CODEX_SOURCE_CACHE_TOOL" "$@"
+            else
+              bash "$CODEX_SOURCE_CACHE_TOOL" "$@"
+            fi
+          }
           evidence="$FOCUSED_RUNTIME/evidence"
           test "$(git -C upstream rev-parse HEAD)" = "$(cat .github/upstream-commit)"
           git -C upstream diff --binary > "$evidence/source.diff"
@@ -284,14 +308,22 @@ jobs:
           git -C upstream status --porcelain=v1 --untracked-files=all > "$evidence/source-status.txt"
           test -z "$(git -C upstream ls-files --others --exclude-standard)"
           (cd upstream/codex-rs && cargo metadata --no-deps --format-version 1) > "$evidence/workspace.json"
-          bash "$CODEX_SOURCE_CACHE_TOOL" verify-cargo-lock "$evidence/upstream-Cargo.lock" upstream/codex-rs/Cargo.lock "$evidence/workspace.json" | tee "$evidence/dependencies.json"
+          run_codex_tooling verify-cargo-lock "$evidence/upstream-Cargo.lock" upstream/codex-rs/Cargo.lock "$evidence/workspace.json" | tee "$evidence/dependencies.json"
 
       - name: Record successful test-profile inputs
         id: record
         if: steps.test.outcome == 'success' && steps.guard.outcome == 'success' && steps.prepare.outcome == 'success'
         run: |
           set -euo pipefail
-          bash "$CODEX_SOURCE_CACHE_TOOL" clean-cached-release-binaries --record-source-inputs --profile ci-test \
+          run_codex_tooling() {
+            # Linux packages a native launcher; other runners package a Bash launcher.
+            if [[ "$RUNNER_OS" == Linux ]]; then
+              "$CODEX_SOURCE_CACHE_TOOL" "$@"
+            else
+              bash "$CODEX_SOURCE_CACHE_TOOL" "$@"
+            fi
+          }
+          run_codex_tooling clean-cached-release-binaries --record-source-inputs --profile ci-test \
             "$CODEX_REPO_ROOT/codex-rs" "$TARGET" 2>&1 | tee "$FOCUSED_RUNTIME/evidence/cache-record.log"
 
       - name: Save compiled outputs without changing the test result

@@ -12,6 +12,14 @@
 # Write metadata, verification receipts, transfer logs and elapsed seconds under
 # baseline-evidence; propagate guard, Cargo, verifier and upload failures.
 set -euo pipefail
+run_codex_tooling() {
+  # Linux packages a native launcher; other runners package a Bash launcher.
+  if [[ "$RUNNER_OS" == Linux ]]; then
+    "$CODEX_SOURCE_CACHE_TOOL" "$@"
+  else
+    bash "$CODEX_SOURCE_CACHE_TOOL" "$@"
+  fi
+}
 
 if [[ $# != 1 ]]; then
   printf 'usage: %s <completed-release-binary>\n' "$0" >&2
@@ -35,7 +43,7 @@ started=$SECONDS
 test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
 git -C "$GITHUB_WORKSPACE" diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
 cargo metadata --no-deps --format-version 1 > "$evidence/workspace-metadata-$binary.json"
-bash "$CODEX_SOURCE_CACHE_TOOL" verify-cargo-lock \
+run_codex_tooling verify-cargo-lock \
   "$evidence/upstream-Cargo.lock" Cargo.lock "$evidence/workspace-metadata-$binary.json" \
   > "$evidence/lock-verification-$binary.json"
 CARGO_CACHE_STAGE="$binary" bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial \

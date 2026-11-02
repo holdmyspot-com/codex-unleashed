@@ -160,6 +160,7 @@ jobs:
           cp restart-metadata/.github/scripts/test-build-upstream-release.py "$RUNNER_TEMP/test-build-upstream-release.py"
           cp restart-metadata/.github/scripts/verify-codex-cache-invalidation.py "$RUNNER_TEMP/verify-codex-cache-invalidation.py"
           cp restart-metadata/.github/scripts/test-ghcr-cargo-target-cache.sh "$RUNNER_TEMP/test-ghcr-cargo-target-cache.sh"
+          cp restart-metadata/.github/scripts/test-codex-tooling-launch.py "$RUNNER_TEMP/test-codex-tooling-launch.py"
           cp restart-metadata/.github/scripts/build-upstream-release.sh "$RUNNER_TEMP/build-upstream-release.sh"
           cp restart-metadata/.github/scripts/provision-release-scheduler.sh "$RUNNER_TEMP/provision-release-scheduler.sh"
           if [[ -n "$DEBUG_PUBLIC_KEY" ]]; then
@@ -386,6 +387,7 @@ jobs:
           set -euo pipefail
           CODEX_TEST_ORAS="$(command -v oras)" TMPDIR="$RUNNER_TEMP" bash "$RUNNER_TEMP/test-ghcr-cargo-target-cache.sh" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/cache-transport-test.log"
           python3 "$RUNNER_TEMP/test-build-upstream-release.py" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/build-stage-test.log"
+          python3 "$RUNNER_TEMP/test-codex-tooling-launch.py" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/codex-tooling-launch-test.log"
 
       - name: Log in to the GHCR cache
         if: inputs.cache
@@ -398,6 +400,14 @@ jobs:
         if: inputs.cache
         run: |
           set -euo pipefail
+          run_codex_tooling() {
+            # Linux packages a native launcher; other runners package a Bash launcher.
+            if [[ "$RUNNER_OS" == Linux ]]; then
+              "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+            else
+              bash "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+            fi
+          }
           evidence="$RUNNER_TEMP/baseline-evidence"
           {
             rustc -vV
@@ -408,7 +418,7 @@ jobs:
             sha256sum codex-rs/Cargo.lock codex-rs/rust-toolchain.toml
           } > "$evidence/compiler-cache-inputs.txt"
           cat "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256" "$evidence/cache-helper-inputs.sha256" "$evidence/compiler-cache-inputs.txt" > "$evidence/compiled-cache-inputs.txt"
-          bash "$CODEX_SOURCE_CACHE_TOOL" cargo-cache-keys "$TARGET" \
+          run_codex_tooling cargo-cache-keys "$TARGET" \
             "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256" \
             "$evidence/cache-helper-inputs.sha256" "$evidence/compiler-cache-inputs.txt" \
             | tee "$evidence/cache-keys.txt" >> "$GITHUB_OUTPUT"
@@ -462,6 +472,14 @@ jobs:
         working-directory: codex-rs
         run: |
           set -euo pipefail
+          run_codex_tooling() {
+            # Linux packages a native launcher; other runners package a Bash launcher.
+            if [[ "$RUNNER_OS" == Linux ]]; then
+              "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+            else
+              bash "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+            fi
+          }
           binaries=(codex codex-code-mode-host codex-responses-api-proxy codex-app-server)
           case "$TARGET" in
             *-linux-musl) binaries+=(bwrap) ;;
@@ -469,7 +487,7 @@ jobs:
               binaries+=(codex-windows-sandbox-setup codex-windows-sandbox-service codex-command-runner)
               ;;
           esac
-          bash "$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling" \
+          run_codex_tooling \
             clean-cached-release-binaries "$GITHUB_WORKSPACE/codex-rs" "$TARGET" "${binaries[@]}" \
             2>&1 | tee "$RUNNER_TEMP/baseline-evidence/source-cache-prepare.log"
 
@@ -542,9 +560,17 @@ jobs:
         working-directory: codex-rs
         run: |
           set -euo pipefail
+          run_codex_tooling() {
+            # Linux packages a native launcher; other runners package a Bash launcher.
+            if [[ "$RUNNER_OS" == Linux ]]; then
+              "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+            else
+              bash "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+            fi
+          }
           evidence="$RUNNER_TEMP/baseline-evidence"
           cargo metadata --no-deps --format-version 1 > "$evidence/workspace-metadata.json"
-          bash "$CODEX_SOURCE_CACHE_TOOL" verify-cargo-lock \
+          run_codex_tooling verify-cargo-lock \
             "$evidence/upstream-Cargo.lock" Cargo.lock "$evidence/workspace-metadata.json" \
             | tee "$evidence/lock-verification.json"
 
@@ -553,7 +579,15 @@ jobs:
         working-directory: codex-rs
         run: |
           set -euo pipefail
-          bash "$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling" \
+          run_codex_tooling() {
+            # Linux packages a native launcher; other runners package a Bash launcher.
+            if [[ "$RUNNER_OS" == Linux ]]; then
+              "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+            else
+              bash "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+            fi
+          }
+          run_codex_tooling \
             clean-cached-release-binaries --record-source-inputs "$GITHUB_WORKSPACE/codex-rs" "$TARGET" \
             2>&1 | tee "$RUNNER_TEMP/baseline-evidence/source-cache-record.log"
 
