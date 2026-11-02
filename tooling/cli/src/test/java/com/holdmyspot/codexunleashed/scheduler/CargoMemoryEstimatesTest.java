@@ -57,6 +57,52 @@ public final class CargoMemoryEstimatesTest
     }
 
     /**
+     * Unknown work from a compiler that already completed measured work in this invocation receives a provisional
+     * estimate of twice that compiler's greatest accepted sample, so a cold build measures one unit per compiler
+     * exclusively instead of every unit. Work from an unmeasured compiler, and work after only failed attempts,
+     * stays unknown.
+     * @throws IOException if fixture setup, sampling or cleanup fails
+     */
+    @Test
+    public void completedCompilerSeedsProvisionalEstimateForUnknownWork() throws IOException
+    {
+        Path root = Files.createTempDirectory("cargo-provisional-");
+        try
+        {
+            Path source = Files.createDirectory(root.resolve("source"));
+            Path toolchain = Files.createDirectory(root.resolve("toolchain"));
+            Path compiler = Files.writeString(toolchain.resolve("rustc"), "compiler");
+            Path linker = Files.writeString(toolchain.resolve("cc"), "linker");
+            Files.writeString(source.resolve("main.rs"), "fn main() {}\n");
+            Files.writeString(source.resolve("lib.rs"), "pub fn f() {}\n");
+            Files.writeString(source.resolve("other.rs"), "pub fn g() {}\n");
+            Path history = Files.createDirectory(root.resolve("history"));
+            CargoWorkIdentity identities = new CargoWorkIdentity(source, List.of(), toolchain);
+            SampleSource samples = new SampleSource();
+            CargoMemoryEstimates estimates = new CargoMemoryEstimates(samples, new CargoMemoryHistory(history), identities);
+            CargoCompilerRequest failed = request(source, compiler, "other.rs");
+            requireThat(estimates.register(failed).peakBytes() == null, "firstUnknown").isTrue();
+            Policy.Job failing = new Policy.Job(failed.name(), Policy.State.RUNNING, 0, null, 0, 1L, null, 0);
+            estimates.readHost();
+            estimates.readResidentBytes(failing);
+            estimates.acceptReadings();
+            estimates.completed(failed.name(), 1, false);
+            CargoCompilerRequest cold = request(source, compiler, "main.rs");
+            requireThat(estimates.register(cold).peakBytes() == null, "failedAttemptSeedsNothing").isTrue();
+            Policy.Job running = new Policy.Job(cold.name(), Policy.State.RUNNING, 0, null, 0, 2L, null, 0);
+            estimates.readHost();
+            estimates.readResidentBytes(running);
+            estimates.acceptReadings();
+            estimates.completed(cold.name(), 2, true);
+            requireThat(estimates.register(request(source, compiler, "lib.rs")).peakBytes(), "provisionalEstimate").
+                isEqualTo(400L);
+            requireThat(estimates.register(request(source, linker, "lib.rs")).peakBytes() == null, "otherCompilerUnknown").
+                isTrue();
+        }
+        finally { remove(root); }
+    }
+
+    /**
      * Failed, aborted, incomplete and changed-input work cannot publish completed training samples.
      * @throws IOException if fixture setup or cleanup fails
      */
@@ -171,8 +217,20 @@ public final class CargoMemoryEstimatesTest
      */
     private static CargoCompilerRequest request(Path source, Path compiler)
     {
+        return request(source, compiler, "main.rs");
+    }
+
+    /**
+     * Creates immutable authenticated-data inputs for one source file with a fresh native action identity.
+     * @param source source working directory
+     * @param compiler exact toolchain executable
+     * @param file source file argument
+     * @return authenticated-data request model
+     */
+    private static CargoCompilerRequest request(Path source, Path compiler, String file)
+    {
         return new CargoCompilerRequest(UUID.randomUUID(), new CargoCompilerRequest.Wrapper(71, 81, 61, 91),
-            List.of(compiler.toString(), "main.rs"), source, Map.of("LANG", "C"), null);
+            List.of(compiler.toString(), file), source, Map.of("LANG", "C"), null);
     }
 
     /**

@@ -15,6 +15,8 @@ import java.util.HashMap;
  */
 final class CargoMemoryEstimates implements Controller.Measurements
 {
+    /** Multiplier applied to a compiler's greatest measured sample for its unmeasured work. */
+    private static final long PROVISIONAL_FACTOR = 2;
     /** Borrowed complete native measurement provider. */
     private final Controller.Measurements measurements;
     /** Caller-owned completed observation history. */
@@ -30,6 +32,8 @@ final class CargoMemoryEstimates implements Controller.Measurements
     private final Map<Attempt, Long> pending = new HashMap<>();
     /** Completed prediction/observation pairs for caller inspection and calibration. */
     private final List<Observation> observations = new ArrayList<>();
+    /** Greatest accepted sample of each compiler's successful work in this invocation. */
+    private final Map<String, Long> compilerPeaks = new HashMap<>();
     /** Best-effort history/content failures, never substituted with invented estimates. */
     private final List<IOException> problems = new ArrayList<>();
     /** Indicates whether a successful host reading began the current pending batch. */
@@ -67,6 +71,7 @@ final class CargoMemoryEstimates implements Controller.Measurements
             prediction = history.estimate(identity);
         }
         catch (IOException failure) { problems.add(failure); }
+        if (prediction == null) prediction = provisional(request);
         work.put(request.name(), new Work(request, identity, prediction));
         return new CargoCompilerRequest(request.identity(), request.wrapper(), request.arguments(), request.directory(),
             request.environment(), prediction);
@@ -84,6 +89,8 @@ final class CargoMemoryEstimates implements Controller.Measurements
         Work registered = work.get(name);
         Long observed = accepted.remove(new Attempt(name, sequence));
         if (registered == null) return;
+        if (successful && observed != null && observed > 0)
+            compilerPeaks.merge(registered.request().arguments().getFirst(), observed, Math::max);
         Status status = successful ? Status.UNOBSERVED : Status.UNSUCCESSFUL;
         if (successful && observed != null && observed > 0 && registered.identity() != null)
         {
@@ -103,6 +110,20 @@ final class CargoMemoryEstimates implements Controller.Measurements
             }
         }
         observations.add(new Observation(name, sequence, registered.identity(), registered.prediction(), observed, status));
+    }
+
+    /**
+     * Estimates unknown work from its compiler's measured successful work in this invocation. The first unit of each
+     * compiler stays unknown and is measured exclusively; later units admit at twice the greatest accepted sample.
+     * Native pressure recovery remains responsible for work that exceeds this best-effort estimate.
+     * @param request authenticated request without applicable history
+     * @return provisional bytes, or null when no work from the same compiler has completed with a sample
+     */
+    private Long provisional(CargoCompilerRequest request)
+    {
+        Long peak = compilerPeaks.get(request.arguments().getFirst());
+        if (peak == null) return null;
+        return Math.multiplyExact(peak, PROVISIONAL_FACTOR);
     }
 
     /**
