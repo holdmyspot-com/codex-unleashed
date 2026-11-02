@@ -144,7 +144,7 @@ public final class LinuxBorrowedStreamsTest {
         var peer=LinuxBorrowedStreams.Peer.current();var action=new UUID(1,1);var endpoint=Path.of("/owned/streams.sock").toAbsolutePath();
         int[] transfers={0};
         var transport=new LinuxBorrowedStreams.Transfer() {
-            public void sendBorrowed(Duration timeout,LinuxBorrowedStreams.Binding binding)throws IOException{transfers[0]++;throw new IOException("fixture disconnect");}
+            public void sendBorrowed(Duration timeout,LinuxBorrowedStreams.Binding binding,int error)throws IOException{transfers[0]++;throw new IOException("fixture disconnect");}
             public void close(){}
         };
         try(var listener=new LinuxBorrowedStreams.Listener(transport,peer,action,endpoint,terminal())) {
@@ -176,7 +176,7 @@ public final class LinuxBorrowedStreamsTest {
         var peer=LinuxBorrowedStreams.Peer.current();var action=new UUID(1,1);var endpoint=Path.of("/owned/streams.sock").toAbsolutePath();
         int[] transfers={0};
         var transport=new LinuxBorrowedStreams.Transfer() {
-            public void sendBorrowed(Duration timeout,LinuxBorrowedStreams.Binding binding){transfers[0]++;}
+            public void sendBorrowed(Duration timeout,LinuxBorrowedStreams.Binding binding,int error){transfers[0]++;}
             public void close(){}
         };
         try(var listener=new LinuxBorrowedStreams.Listener(transport,peer,action,endpoint,terminal())) {

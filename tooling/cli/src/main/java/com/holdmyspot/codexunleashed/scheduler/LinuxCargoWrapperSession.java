@@ -1,6 +1,8 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+import java.io.FileDescriptor;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -56,6 +58,19 @@ final class LinuxCargoWrapperSession implements LinuxCargoWrapper.Session
      * Permanently withdraws protocol authority once cleanup starts.
      */
     private boolean closing;
+    /**
+     * Native functions borrowed from the invocation scope.
+     */
+    private LinuxBorrowedStreams.NativeBindings bindings;
+    /**
+     * Relay of the compiler's standard error to Cargo across attempts, or null when the original standard error is a
+     * terminal and attempts write to it directly.
+     */
+    private CompilerErrorRelay errorRelay;
+    /**
+     * Standard-error pipe of the last transferred attempt until its output ends, or null.
+     */
+    private LinuxCompilerErrorPipe errorPipe;
 
     /**
      * Creates the resource owner before acquiring its connection or filesystem state.
@@ -108,6 +123,10 @@ final class LinuxCargoWrapperSession implements LinuxCargoWrapper.Session
             owner.streams = LinuxBorrowedStreams.listen(scope, owner.directory, action);
             owner.registration = new LinuxBorrowedStreams.Binding(action, 1, owner.streams.wrapper(),
                 owner.streams.endpoint(), new byte[32], owner.streams.terminal(), launch);
+            owner.bindings = scope.getLinuxBorrowedStreamBindings();
+            // An attempt receiving a pipe instead of a terminal would change the compiler's output, such as its colors.
+            if (!owner.streams.terminal().streams().get(2).tty())
+                owner.errorRelay = new CompilerErrorRelay(new FileOutputStream(FileDescriptor.err));
             return owner;
         }
         catch (IOException | RuntimeException | Error failure)
@@ -174,8 +193,44 @@ final class LinuxCargoWrapperSession implements LinuxCargoWrapper.Session
     public void transfer(LinuxBorrowedStreams.Binding binding) throws IOException
     {
         requireRegistered();
+        // The controller sends another attempt only after the previous one was aborted and its processes collected.
+        endAttempt(true);
         streams.authorize(binding);
-        streams.sendBorrowed(timeout);
+        if (errorRelay == null)
+        {
+            streams.sendBorrowed(timeout);
+            return;
+        }
+        errorPipe = new LinuxCompilerErrorPipe(bindings, errorRelay);
+        try { streams.sendBorrowed(timeout, errorPipe.writeEnd()); }
+        finally { errorPipe.closeWriteEnd(); }
+    }
+
+    /**
+     * Delivers the accepted attempt's remaining standard-error output, waiting up to the session timeout for its
+     * processes to close it.
+     * @throws IllegalStateException if registration was not attempted or cleanup has begun
+     * @throws IOException if the attempt's standard error stays open or cannot be relayed
+     */
+    @Override
+    public void finish() throws IOException
+    {
+        requireRegistered();
+        endAttempt(false);
+    }
+
+    /**
+     * Ends the relayed standard error of the last transferred attempt, if any.
+     * @param superseded {@code true} if the scheduler will retry the compiler in another attempt
+     * @throws IOException if the attempt's standard error stays open or cannot be relayed
+     */
+    private void endAttempt(boolean superseded) throws IOException
+    {
+        if (errorPipe == null)
+            return;
+        var pipe = errorPipe;
+        errorPipe = null;
+        pipe.end(superseded, timeout);
     }
 
     /**

@@ -58,7 +58,11 @@ final class LinuxCargoWrapper
                         attempt.binding().requireExecution(launch);
                         session.transfer(attempt.binding());
                     }
-                    case LinuxCargoMessages.Final result -> { return result.status(); }
+                    case LinuxCargoMessages.Final result ->
+                    {
+                        session.finish();
+                        return result.status();
+                    }
                 }
             }
         }
@@ -110,6 +114,13 @@ final class LinuxCargoWrapper
          * @throws IOException if authorization or descriptor transfer fails
          */
         void transfer(LinuxBorrowedStreams.Binding binding) throws IOException;
+
+        /**
+         * Delivers the accepted attempt's remaining standard-error output to Cargo after the controller's final result.
+         * A later transfer instead discards the incomplete output of the attempt it supersedes.
+         * @throws IOException if the output cannot be delivered
+         */
+        void finish() throws IOException;
 
         /**
          * Closes owned endpoints before removing the original private directory.

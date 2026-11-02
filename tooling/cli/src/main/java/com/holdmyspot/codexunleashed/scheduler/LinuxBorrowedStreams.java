@@ -237,9 +237,10 @@ public final class LinuxBorrowedStreams {
          * Retains the state required by this owned native operation.
          * @param timeout positive bounded control timeout
          * @param binding authenticated action, peer and launch receipt
+         * @param error the descriptor that the attempt receives as its standard error
          * @throws java.io.IOException if validation, native access or owned cleanup fails
          */
-        void sendBorrowed(Duration timeout, Binding binding) throws IOException;
+        void sendBorrowed(Duration timeout, Binding binding, int error) throws IOException;
         @Override void close() throws IOException;
     }
     /** Wrapper-owned endpoint; original0/1/2 and Cargo capacity remain borrowed. */
@@ -308,13 +309,23 @@ public final class LinuxBorrowedStreams {
          * @throws java.io.IOException if validation, native access or owned cleanup fails
          */
         public void sendBorrowed(Duration timeout) throws IOException {
+            sendBorrowed(timeout, 2);
+        }
+        /**
+         * Consumes installed authorization once, lending original standard input and output with a chosen standard error.
+         * @param timeout positive bounded handoff deadline
+         * @param error the descriptor that the attempt receives as its standard error; it must have the registered
+         *     terminal semantics of original standard error
+         * @throws java.io.IOException if validation, native access or owned cleanup fails
+         */
+        public void sendBorrowed(Duration timeout, int error) throws IOException {
             deadline(timeout);
             if (closed || authorized == null) throw new IllegalStateException("No installed stream authorization");
             Binding binding = authorized;
             authorized = null; lastSequence = binding.attemptSequence;
             if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Stream transfer was interrupted before native acquisition");
             wrapper.requireLive();
-            transport.sendBorrowed(timeout, binding);
+            transport.sendBorrowed(timeout, binding, error);
         }
         /** Closes only owned socket references and removes only the original endpoint identity. */
         @Override public void close() throws IOException {
@@ -815,6 +826,7 @@ public final class LinuxBorrowedStreams {
             calls.put("dup2",bind("dup2",I,I,I));
             calls.put("fcntl",bind("fcntl",I,I,I,I));
             calls.put("isatty",bind("isatty",I,I));
+            calls.put("pipe2",bind("pipe2",I,P,I));
             calls.put("getsid",bind("getsid",I,I));
             calls.put("getpgrp",bind("getpgrp",I));
             calls.put("tcgetsid",bind("tcgetsid",I,I));
@@ -899,6 +911,19 @@ public final class LinuxBorrowedStreams {
             var r=call(name,args);
             if(r.value()<0)throw new IOException(name+" errno="+r.errno());
             return Math.toIntExact(r.value());
+        }
+        /**
+         * Creates a pipe whose descriptors close when this process executes another program.
+         * @return the read descriptor followed by the write descriptor; the caller owns both
+         * @throws java.io.IOException if the pipe cannot be created
+         */
+        int[] pipe()throws IOException {
+            try(var arena=Arena.ofConfined()){
+                var fds=arena.allocate(ValueLayout.JAVA_INT,2);
+                // O_CLOEXEC has the value 02000000 on both verified Linux ABIs.
+                require("pipe2",fds,0x80000);
+                return new int[]{fds.getAtIndex(ValueLayout.JAVA_INT,0),fds.getAtIndex(ValueLayout.JAVA_INT,1)};
+            }
         }
         /**
          * Validates a positive duration and computes its monotonic deadline.
@@ -1180,10 +1205,11 @@ public final class LinuxBorrowedStreams {
              * Sends the authorized standard descriptor references to one authenticated gate.
              * @param timeout positive bounded handoff deadline
              * @param binding authenticated action, peer and launch receipt
+             * @param error the descriptor sent in place of standard error
              * @throws UnsupportedOperationException if descriptor borrowing is unverified on this architecture
              * @throws IOException if authentication, transfer or cleanup fails
              */
-            public void sendBorrowed(Duration timeout, Binding binding)throws IOException {
+            public void sendBorrowed(Duration timeout, Binding binding, int error)throws IOException {
                 requireDescriptorAbi();
                 long end=deadline(timeout);
                 int server=owned.fds[0];
@@ -1207,7 +1233,9 @@ public final class LinuxBorrowedStreams {
                         control.set(ValueLayout.JAVA_LONG,0,28);
                         control.set(ValueLayout.JAVA_INT,8,1);
                         control.set(ValueLayout.JAVA_INT,12,1);
-                        for(int i=0;i<3;i++)control.set(ValueLayout.JAVA_INT,16+4*i,i);
+                        control.set(ValueLayout.JAVA_INT,16,0);
+                        control.set(ValueLayout.JAVA_INT,20,1);
+                        control.set(ValueLayout.JAVA_INT,24,error);
                         header.set(ValueLayout.JAVA_LONG,40,32);
                         while(true){
                             ready(socket,(short)4,end);

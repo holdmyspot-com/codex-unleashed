@@ -45,7 +45,7 @@ public final class LinuxCargoWrapperTest
 
             requireThat(wrapper.run(), "compilerStatus").isEqualTo(7);
             requireThat(session.events, "protocolOrder").isEqualTo(List.of("register", "read", "transfer:1",
-                "read", "transfer:2", "read", "close"));
+                "read", "transfer:2", "read", "finish", "close"));
             requireThat(properties(codec.readRegistration(session.registrationMessage)), "registration").
                 isEqualTo(properties(original));
             requireThat(session.transferred.stream().map(LinuxCargoWrapperTest::properties).toList(), "forwardedReceipts").
@@ -204,7 +204,7 @@ public final class LinuxCargoWrapperTest
             var wrapper = new LinuxCargoWrapper(scope, original.approvedLaunch(), () -> session);
 
             requireThat(requireException(IOException.class, wrapper::run), "cleanupFailure").isEqualTo(session.closeFailure);
-            requireThat(session.events, "protocolOrder").isEqualTo(List.of("register", "read", "close"));
+            requireThat(session.events, "protocolOrder").isEqualTo(List.of("register", "read", "finish", "close"));
         }
     }
 
@@ -312,6 +312,11 @@ public final class LinuxCargoWrapperTest
             events.add("transfer:" + binding.attemptSequence());
             transferred.add(binding);
             if (transferFailure != null) throw transferFailure;
+        }
+
+        @Override public void finish()
+        {
+            events.add("finish");
         }
 
         @Override public void close() throws IOException
