@@ -591,6 +591,13 @@ public final class LinuxCargoWrapperNativeTest
 		{
 			return Optional.empty();
 		}
+		catch (IOException failure)
+		{
+			// A process reaped between opening and reading its stat file makes the read fail with ESRCH.
+			if (Files.notExists(Path.of("/proc/" + pid)))
+				return Optional.empty();
+			throw failure;
+		}
 	}
 
 	/**
