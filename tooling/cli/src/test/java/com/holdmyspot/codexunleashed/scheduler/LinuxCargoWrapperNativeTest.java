@@ -3,11 +3,16 @@ package com.holdmyspot.codexunleashed.scheduler;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.ProcessBuilder.Redirect;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.channels.Pipe;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -17,6 +22,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 
@@ -125,18 +131,17 @@ public final class LinuxCargoWrapperNativeTest
 			{
 				controller.receive();
 				long pid = Long.parseLong(controller.receive().get(2));
-				Path image = Path.of("/proc/" + pid + "/exe");
-				Path wrapperImage = installation.executable().toRealPath();
+				String wrapperCommand = commandName(wrapper.pid());
 				String state;
-				Path current;
+				String current;
 				do
 				{
-					Thread.onSpinWait();
+					spinOnce();
 					state = statFields(pid).getFirst();
-					current = Files.readSymbolicLink(image);
+					current = commandName(pid);
 				}
-				while (!state.equals("S") && current.equals(wrapperImage));
-				requireThat(current, "childImage").isEqualTo(wrapperImage);
+				while (!state.equals("S") && current.equals(wrapperCommand));
+				requireThat(current, "childCommand").isEqualTo(wrapperCommand);
 				requireThat(state, "childState").isEqualTo("S");
 				requireThat(Files.exists(marker), "markerExistsBeforeRelease").isFalse();
 
@@ -424,6 +429,139 @@ public final class LinuxCargoWrapperNativeTest
 	}
 
 	/**
+	 * A termination signal other than SIGINT, SIGTERM and SIGHUP, here SIGQUIT, that reaches the wrapper before the
+	 * release makes it kill and reap the child and exit 125 instead of ending with the child unreaped.
+	 * @throws IOException          if the fixture cannot be built or a process cannot be run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = TEST_TIMEOUT_MILLIS)
+	public void quitSignalBeforeReleaseKillsChild() throws IOException, InterruptedException
+	{
+		try (WrapperInstallation installation = WrapperInstallation.create(PATIENT_TIMEOUT_MILLIS, true))
+		{
+			Path marker = installation.work().resolve("executed");
+			Path compiler = installation.script("compiler", """
+				#!/bin/sh
+				: > "$1"
+				""");
+			Process wrapper = installation.start(List.of(compiler.toString(), marker.toString()), Map.of());
+			List<String> child;
+			try (ControllerConnection controller = installation.accept())
+			{
+				controller.receive();
+				child = controller.receive();
+				// Java has no API that sends SIGQUIT, so the kill program delivers it.
+				Process kill = new ProcessBuilder("kill", "-s", "QUIT", Long.toString(wrapper.pid())).
+					redirectErrorStream(true).redirectOutput(Redirect.DISCARD).start();
+				requireThat(kill.waitFor(), "killStatus").isEqualTo(0);
+				requireThat(wrapper.waitFor(), "wrapperStatus").isEqualTo(125);
+			}
+			finally
+			{
+				installation.stop(wrapper);
+			}
+			long pid = Long.parseLong(child.get(2));
+			requireThat(startTime(pid), "childStartTimeAfterWrapperExit").isNotEqualTo(Optional.of(child.get(3)));
+			requireThat(Files.exists(marker), "markerExists").isFalse();
+			requireThat(installation.stderr(), "stderr").contains("received signal 3");
+		}
+	}
+
+	/**
+	 * When Cargo stops reading the wrapper's stderr while the compiler keeps writing, so that the wrapper cannot relay
+	 * more, losing the controller still makes the wrapper kill and reap the compiler and exit 125 with a diagnostic.
+	 * @throws IOException          if the fixture cannot be built or the wrapper cannot be run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = TEST_TIMEOUT_MILLIS)
+	public void blockedStderrStillSeesControllerLoss() throws IOException, InterruptedException
+	{
+		try (WrapperInstallation installation = WrapperInstallation.create(PATIENT_TIMEOUT_MILLIS, true))
+		{
+			// 16 MiB of 1024-byte lines exceeds the capacity of both pipes and the wrapper's read buffer on any page size.
+			int lineBytes = 1024;
+			Path compiler = installation.script("compiler", """
+				#!/bin/sh
+				yes "$(printf '%%0%dd' 0)" | head -c 16777216 >&2
+				""".formatted(lineBytes - 1));
+			int heldWhenFull = pollWritableLimit(lineBytes);
+			// The test stands in for Cargo by holding the read end of the wrapper's stderr pipe without reading it.
+			Process wrapper = installation.startCommand(List.of(installation.executable().toString(),
+				compiler.toString()), Map.of(), Redirect.from(Path.of("/dev/null").toFile()), Redirect.PIPE);
+			List<String> child;
+			try
+			{
+				try (ControllerConnection controller = installation.accept())
+				{
+					controller.receive();
+					child = controller.receive();
+					controller.send("release", "1");
+					// Once the pipe holds this much, the wrapper holds more compiler output that it cannot write.
+					while (wrapper.getErrorStream().available() < heldWhenFull)
+						spinOnce();
+				}
+				long pid = Long.parseLong(child.get(2));
+				while (startTime(pid).equals(Optional.of(child.get(3))))
+					spinOnce();
+				String stderr = new String(wrapper.getErrorStream().readAllBytes(), UTF_8);
+				requireThat(wrapper.waitFor(), "wrapperStatus").isEqualTo(125);
+				requireThat(stderr, "stderr").contains("controller connection reached EOF");
+			}
+			finally
+			{
+				installation.stop(wrapper);
+			}
+		}
+	}
+
+	/**
+	 * While the child waits for the release, no other process of the build user can open the wrapper's or the child's
+	 * descriptors, such as the release pipe, through {@code /proc}; the compiler that the release lets run is as
+	 * accessible as any program that the build user starts.
+	 * @throws IOException          if the fixture cannot be built or the wrapper cannot be run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = TEST_TIMEOUT_MILLIS)
+	public void descriptorsHiddenUntilRelease() throws IOException, InterruptedException
+	{
+		try (WrapperInstallation installation = WrapperInstallation.create(PATIENT_TIMEOUT_MILLIS, true))
+		{
+			if (Files.getAttribute(installation.work(), "unix:uid").equals(0))
+				throw new SkipException("Root can open the descriptors of every process, so this test needs a non-root user");
+			Path marker = installation.work().resolve("executed");
+			Path compiler = installation.script("compiler", """
+				#!/bin/sh
+				: > "$1"
+				read line
+				exit 0
+				""");
+			// The compiler stays alive, reading stdin, until the test closes stdin.
+			Process wrapper = installation.startCommand(List.of(installation.executable().toString(),
+				compiler.toString(), marker.toString()), Map.of(), Redirect.PIPE, installation.capturedStderr());
+			try (ControllerConnection controller = installation.accept())
+			{
+				controller.receive();
+				long pid = Long.parseLong(controller.receive().get(2));
+				requireThat(descriptorsListable(wrapper.pid()), "wrapperDescriptorsListable").isFalse();
+				requireThat(descriptorsListable(pid), "waitingChildDescriptorsListable").isFalse();
+
+				controller.send("release", "1");
+				while (!Files.exists(marker))
+					spinOnce();
+				requireThat(descriptorsListable(pid), "compilerDescriptorsListable").isTrue();
+				wrapper.getOutputStream().close();
+				requireThat(controller.receive(), "exited").isEqualTo(List.of("exited", "1", "0"));
+				controller.send("final", "0");
+				requireThat(wrapper.waitFor(), "wrapperStatus").isEqualTo(0);
+			}
+			finally
+			{
+				installation.stop(wrapper);
+			}
+		}
+	}
+
+	/**
 	 * Reads the fields of {@code /proc/PID/stat} that follow the command name.
 	 * @param pid the process to inspect
 	 * @return the fields starting with field 3, the process state
@@ -456,6 +594,80 @@ public final class LinuxCargoWrapperNativeTest
 	}
 
 	/**
+	 * Waits briefly in a busy-wait loop, ending the loop when the test's timeout interrupts it so that a condition that
+	 * never holds cannot keep the test's thread running after the test has failed.
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	private static void spinOnce() throws InterruptedException
+	{
+		if (Thread.interrupted())
+			throw new InterruptedException("Interrupted while waiting for a process condition");
+		Thread.onSpinWait();
+	}
+
+	/**
+	 * Returns the command name of a process.
+	 * @param pid the process to inspect
+	 * @return field 2 of {@code /proc/PID/stat}, without its parentheses
+	 * @throws NoSuchFileException if no process has this pid
+	 * @throws IOException         if the file cannot be read
+	 */
+	private static String commandName(long pid) throws IOException
+	{
+		String stat = Files.readString(Path.of("/proc/" + pid + "/stat"));
+		return stat.substring(stat.indexOf('(') + 1, stat.lastIndexOf(')'));
+	}
+
+	/**
+	 * Reports whether this test's process may list another process's open descriptors, which is also what opening one
+	 * of them through {@code /proc/PID/fd} requires.
+	 * @param pid the process to inspect
+	 * @return {@code false} if the kernel denies access to {@code /proc/PID/fd}
+	 * @throws IOException if the directory cannot be listed for another reason
+	 */
+	private static boolean descriptorsListable(long pid) throws IOException
+	{
+		try (Stream<Path> descriptors = Files.list(Path.of("/proc/" + pid + "/fd")))
+		{
+			return descriptors.findAny().isPresent();
+		}
+		catch (AccessDeniedException _)
+		{
+			return false;
+		}
+	}
+
+	/**
+	 * Measures how many bytes a new pipe of this user holds once a writer that writes fixed-size chunks only while poll
+	 * reports the pipe writable must stop, as the wrapper does with each relayed line. The kernel stops reporting a pipe
+	 * writable while its last page still has room, so this is less than the pipe's capacity. The stderr pipe that the
+	 * JVM creates for a started process has the same size as a new pipe.
+	 * @param chunkBytes the size of each write
+	 * @return the number of bytes the pipe holds when poll first reports it not writable
+	 * @throws IOException if the pipe cannot be created or written
+	 */
+	private static int pollWritableLimit(int chunkBytes) throws IOException
+	{
+		Pipe pipe = Pipe.open();
+		try (Pipe.SinkChannel sink = pipe.sink();
+			Pipe.SourceChannel _ = pipe.source();
+			Selector selector = Selector.open())
+		{
+			sink.configureBlocking(false);
+			sink.register(selector, SelectionKey.OP_WRITE);
+			ByteBuffer chunk = ByteBuffer.allocate(chunkBytes);
+			int held = 0;
+			while (selector.selectNow() > 0)
+			{
+				selector.selectedKeys().clear();
+				chunk.clear();
+				held += sink.write(chunk);
+			}
+			return held;
+		}
+	}
+
+	/**
 	 * A test-owned directory holding a compiled wrapper, its configuration, fixture scripts, captured output and the
 	 * fake controller's listening socket. Closing it closes the socket and deletes the directory.
 	 * @param directory  the owned directory
@@ -482,7 +694,7 @@ public final class LinuxCargoWrapperNativeTest
 			try
 			{
 				new ProcessBuilder("cc", "--version").redirectErrorStream(true).redirectOutput(
-					ProcessBuilder.Redirect.DISCARD).start().waitFor();
+					Redirect.DISCARD).start().waitFor();
 			}
 			catch (IOException unavailable)
 			{
@@ -617,10 +829,26 @@ public final class LinuxCargoWrapperNativeTest
 		 */
 		Process startCommand(List<String> command, Map<String, String> environment) throws IOException
 		{
+			return startCommand(command, environment, Redirect.from(Path.of("/dev/null").toFile()), capturedStderr());
+		}
+
+		/**
+		 * Starts a command in the wrapper's working directory with its environment, stdout capture and the given stdin
+		 * and stderr.
+		 * @param command     the complete command, which executes the wrapper itself or through a parent program
+		 * @param environment variables added to a minimal environment that already names the configuration
+		 * @param input       the source of the command's stdin
+		 * @param error       the destination of the command's stderr
+		 * @return the started process
+		 * @throws IOException if the process cannot be started
+		 */
+		Process startCommand(List<String> command, Map<String, String> environment, Redirect input, Redirect error)
+			throws IOException
+		{
 			ProcessBuilder builder = new ProcessBuilder(command).directory(work().toFile()).
-				redirectInput(ProcessBuilder.Redirect.from(Path.of("/dev/null").toFile())).
+				redirectInput(input).
 				redirectOutput(directory.resolve("stdout").toFile()).
-				redirectError(directory.resolve("stderr").toFile());
+				redirectError(error);
 			builder.environment().clear();
 			builder.environment().put("PATH", "/usr/bin:/bin");
 			builder.environment().put(CONFIG_ENV, config.toString());
@@ -672,6 +900,15 @@ public final class LinuxCargoWrapperNativeTest
 		String stdout() throws IOException
 		{
 			return Files.readString(directory.resolve("stdout"));
+		}
+
+		/**
+		 * Returns the stderr destination that {@link #stderr()} reads.
+		 * @return a redirect to the installation's stderr capture file
+		 */
+		Redirect capturedStderr()
+		{
+			return Redirect.to(directory.resolve("stderr").toFile());
 		}
 
 		/**

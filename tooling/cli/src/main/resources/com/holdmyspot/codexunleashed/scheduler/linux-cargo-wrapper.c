@@ -89,11 +89,26 @@
  * child unreaped until its standard error reaches EOF, then reaps it and sends
  * `exited`. The controller must therefore make every process that inherited
  * that standard error exit; the wrapper waits for EOF without a time limit.
- * The child executes argv[0] as a path, without a PATH search. SIGINT, SIGTERM
- * and SIGHUP that Cargo did not ignore make the wrapper fail the same way as a
- * lost connection, so that a signal cannot end it while its child is unreaped;
- * the child restores Cargo's original signal dispositions and mask before it
- * blocks on the release pipe.
+ * The child executes argv[0] as a path, without a PATH search.
+ *
+ * A signal must not end the wrapper while its child is unreaped. Every
+ * catchable signal whose default action ends a process, unless Cargo set it to
+ * be ignored or it reports a fault of the wrapper itself, therefore makes the
+ * wrapper fail the same way as a lost connection; SIGPIPE is ignored so that a closed Cargo standard error is
+ * reported as a write error. The child restores Cargo's original signal
+ * dispositions and mask before it blocks on the release pipe. Relaying to a
+ * Cargo standard error that is not being read waits for it to drain only
+ * while the controller connection and the signals are watched as well, and
+ * the wrapper's own diagnostics reach standard error only after the child has
+ * been reaped, so that a full standard error cannot keep the wrapper from
+ * ending the child.
+ *
+ * The wrapper makes itself non-dumpable before it opens any descriptor, so
+ * that another process of the build user cannot open the release pipe through
+ * /proc/PID/fd and let the child run before the controller has instrumented
+ * it. The child inherits that state until it executes the compiler, when the
+ * kernel makes it dumpable again because its credentials do not change; the
+ * controller runs as root and needs neither state to act on the child.
  */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -102,11 +117,13 @@
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -145,13 +162,19 @@
 #define RELAY_CHUNK_BYTES 65536
 /** Prefix of the rustc artifact notification that Cargo accepts only once per compiler invocation. */
 #define ARTIFACT_PREFIX "{\"$message_type\":\"artifact\""
-
-/** Signals that end the wrapper through its cleanup path unless Cargo ignored them. */
-static const int TERMINATION_SIGNALS[] = { SIGINT, SIGTERM, SIGHUP };
-#define TERMINATION_SIGNAL_COUNT (sizeof(TERMINATION_SIGNALS) / sizeof(TERMINATION_SIGNALS[0]))
+/** Capacity of the deferred diagnostics; a longer report is truncated. */
+#define MAX_DIAGNOSTIC_BYTES 8192
 
 /** Signal that requested termination, or zero; the control loop performs the cleanup. */
 static volatile sig_atomic_t termination_signal;
+
+/**
+ * Diagnostics written to standard error only once no child is unreaped, because
+ * a Cargo standard error that nobody reads would otherwise block the wrapper
+ * before it kills the child.
+ */
+static char diagnostics[MAX_DIAGNOSTIC_BYTES];
+static size_t diagnostics_length;
 
 /** A growable byte sequence. */
 struct buffer {
@@ -173,8 +196,9 @@ struct relay {
 /** Signal state that Cargo gave the wrapper and that each child restores before exec. */
 struct inherited_signals {
     sigset_t mask;
-    struct sigaction pipe_action;
-    struct sigaction termination_actions[TERMINATION_SIGNAL_COUNT];
+    /** Original action of each signal whose action the wrapper replaced. */
+    struct sigaction actions[NSIG];
+    bool replaced[NSIG];
 };
 
 /** Owns the controller connection and the current attempt's child and pipes. */
@@ -219,25 +243,76 @@ static void request_termination(int signal_number)
     termination_signal = signal_number;
 }
 
+/** Appends one formatted line, prefixed with the program name, to the deferred diagnostics. */
+__attribute__((format(printf, 1, 2)))
+static void report(const char *format, ...)
+{
+    static const char prefix[] = "linux-cargo-wrapper: ";
+    size_t available = sizeof(diagnostics) - diagnostics_length;
+    if (available <= sizeof(prefix))
+        return;
+    memcpy(diagnostics + diagnostics_length, prefix, sizeof(prefix) - 1);
+    diagnostics_length += sizeof(prefix) - 1;
+    available -= sizeof(prefix) - 1;
+    va_list arguments;
+    va_start(arguments, format);
+    int length = vsnprintf(diagnostics + diagnostics_length, available, format, arguments);
+    va_end(arguments);
+    if (length < 0)
+        return;
+    diagnostics_length += (size_t) length < available ? (size_t) length : available - 1;
+}
+
+/**
+ * Writes all bytes to standard error, waiting as long as it takes. Only for use
+ * once no child is unreaped. Returns zero, or -1 without a diagnostic.
+ */
+static int write_stderr_unwatched(const char *bytes, size_t length)
+{
+    size_t written = 0;
+    while (written < length) {
+        ssize_t result = write(STDERR_FILENO, bytes + written, length - written);
+        if (result < 0 && errno == EINTR)
+            continue;
+        if (result < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            struct pollfd descriptor = { .fd = STDERR_FILENO, .events = POLLOUT };
+            if (poll(&descriptor, 1, -1) < 0 && errno != EINTR)
+                return -1;
+            continue;
+        }
+        if (result < 0)
+            return -1;
+        written += (size_t) result;
+    }
+    return 0;
+}
+
+/** Writes and clears the deferred diagnostics. Only for use once no child is unreaped. */
+static void flush_diagnostics(void)
+{
+    write_stderr_unwatched(diagnostics, diagnostics_length);
+    diagnostics_length = 0;
+}
+
 /** Reports a failed operation with its errno and returns -1. */
 static int fail(const char *operation)
 {
     int failure_number = errno;
-    fprintf(stderr, "linux-cargo-wrapper: %s: %s\n", operation, strerror(failure_number));
+    report("%s: %s\n", operation, strerror(failure_number));
     return -1;
 }
 
 /** Reports an invalid input, configuration or protocol state and returns -1. */
 static int reject(const char *reason)
 {
-    fprintf(stderr, "linux-cargo-wrapper: %s\n", reason);
+    report("%s\n", reason);
     return -1;
 }
 
 /** Reports a received termination signal and returns -1. */
 static int reject_termination(void)
 {
-    fprintf(stderr, "linux-cargo-wrapper: received signal %d\n", (int) termination_signal);
+    report("received signal %d\n", (int) termination_signal);
     return -1;
 }
 
@@ -347,8 +422,7 @@ static int require_root_controlled(int descriptor, const char *path)
     trusted_owner = trusted_owner || metadata.st_uid == geteuid();
 #endif
     if (!trusted_owner || (metadata.st_mode & (S_IWGRP | S_IWOTH)) != 0) {
-        fprintf(stderr, "linux-cargo-wrapper: configuration path %s must be owned by uid 0 and not "
-            "group- or other-writable\n", path);
+        report("configuration path %s must be owned by uid 0 and not group- or other-writable\n", path);
         return -1;
     }
     return 0;
@@ -399,8 +473,8 @@ static int open_config(const char *path)
         close(directory);
         if (next < 0) {
             errno = open_error;
-            fprintf(stderr, "linux-cargo-wrapper: open configuration path %s without following symbolic "
-                "links: %s\n", prefix, strerror(open_error));
+            report("open configuration path %s without following symbolic links: %s\n", prefix,
+                strerror(open_error));
             return -1;
         }
         if (require_root_controlled(next, prefix) < 0) {
@@ -546,35 +620,88 @@ static int add_jobserver_descriptors(struct wrapper *wrapper, const char *flags)
 }
 
 /**
+ * Reports whether a signal that another process may send would end the wrapper
+ * by default and can be caught. The faults SIGSEGV, SIGBUS, SIGFPE, SIGILL,
+ * SIGTRAP and SIGSYS, and SIGABRT from abort(), are excluded: they report a
+ * defect in the wrapper itself, and a handler that returns from a real fault
+ * runs the faulting instruction again. The numbers between the classic signals
+ * and SIGRTMIN belong to the C library's threads implementation.
+ */
+static bool ends_process_by_default(int signal_number)
+{
+    switch (signal_number) {
+    case SIGKILL:
+    case SIGSTOP:
+    case SIGSEGV:
+    case SIGBUS:
+    case SIGFPE:
+    case SIGILL:
+    case SIGTRAP:
+    case SIGSYS:
+    case SIGABRT:
+    case SIGCHLD:
+    case SIGCONT:
+    case SIGURG:
+    case SIGWINCH:
+    case SIGTSTP:
+    case SIGTTIN:
+    case SIGTTOU:
+        return false;
+    default:
+        return signal_number < 32 || signal_number >= SIGRTMIN;
+    }
+}
+
+/**
  * Saves Cargo's signal state for each child to restore, ignores SIGPIPE so that
- * a closed Cargo stderr is reported as a write error, and blocks the
- * termination signals that Cargo did not ignore so that they are delivered only
- * inside ppoll. Returns zero, or -1.
+ * a closed Cargo stderr is reported as a write error, and handles and blocks
+ * every other signal that would end the wrapper and that Cargo did not ignore,
+ * so that it is delivered only inside ppoll. Returns zero, or -1.
  */
 static int install_signals(struct wrapper *wrapper)
 {
     struct inherited_signals *signals = &wrapper->signals;
-    struct sigaction ignore = { .sa_handler = SIG_IGN };
-    sigemptyset(&ignore.sa_mask);
-    if (sigaction(SIGPIPE, &ignore, &signals->pipe_action) < 0)
-        return fail("ignore SIGPIPE");
+    if (sigprocmask(SIG_SETMASK, NULL, &signals->mask) < 0)
+        return fail("read the signal mask");
     sigset_t blocked;
     sigemptyset(&blocked);
+    struct sigaction ignore = { .sa_handler = SIG_IGN };
+    sigemptyset(&ignore.sa_mask);
     struct sigaction handler = { .sa_handler = request_termination };
     sigemptyset(&handler.sa_mask);
-    for (size_t index = 0; index < TERMINATION_SIGNAL_COUNT; ++index) {
-        int signal_number = TERMINATION_SIGNALS[index];
-        if (sigaction(signal_number, NULL, &signals->termination_actions[index]) < 0)
-            return fail("inspect a termination signal");
-        if (signals->termination_actions[index].sa_handler == SIG_IGN)
+    for (int signal_number = 1; signal_number < NSIG; ++signal_number) {
+        if (!ends_process_by_default(signal_number))
             continue;
-        if (sigaction(signal_number, &handler, NULL) < 0)
-            return fail("handle a termination signal");
-        sigaddset(&blocked, signal_number);
+        struct sigaction *original = &signals->actions[signal_number];
+        if (sigaction(signal_number, NULL, original) < 0)
+            return fail("inspect a signal's action");
+        const struct sigaction *replacement = &handler;
+        if (signal_number == SIGPIPE)
+            replacement = &ignore;
+        else if (original->sa_handler == SIG_IGN)
+            continue;
+        if (sigaction(signal_number, replacement, NULL) < 0)
+            return fail("handle a signal");
+        signals->replaced[signal_number] = true;
+        if (signal_number != SIGPIPE)
+            sigaddset(&blocked, signal_number);
     }
-    if (sigprocmask(SIG_BLOCK, &blocked, &signals->mask) < 0)
+    if (sigprocmask(SIG_BLOCK, &blocked, NULL) < 0)
         return fail("block termination signals");
     return 0;
+}
+
+/** Restores Cargo's signal actions and mask. Returns zero, or -1 without a diagnostic. */
+static int restore_signals(const struct inherited_signals *signals)
+{
+    int outcome = 0;
+    for (int signal_number = 1; signal_number < NSIG; ++signal_number) {
+        if (signals->replaced[signal_number] && sigaction(signal_number, &signals->actions[signal_number], NULL) < 0)
+            outcome = -1;
+    }
+    if (sigprocmask(SIG_SETMASK, &signals->mask, NULL) < 0)
+        outcome = -1;
+    return outcome;
 }
 
 /**
@@ -631,7 +758,7 @@ static int await_controller(struct wrapper *wrapper, short events, int64_t deadl
             return -1;
         int64_t remaining = deadline - now;
         if (remaining <= 0) {
-            fprintf(stderr, "linux-cargo-wrapper: controller %s exceeded timeout_millis\n", operation);
+            report("controller %s exceeded timeout_millis\n", operation);
             return -1;
         }
         struct timespec limit = { .tv_sec = remaining / 1000, .tv_nsec = (remaining % 1000) * 1000000 };
@@ -666,7 +793,7 @@ static int send_message(struct wrapper *wrapper, const char *const *fields, size
     size_t length = frame.length - 4;
     if (length > MAX_FRAME_BYTES) {
         free(frame.bytes);
-        fprintf(stderr, "linux-cargo-wrapper: the %s message exceeds 1048576 bytes\n", fields[0]);
+        report("the %s message exceeds 1048576 bytes\n", fields[0]);
         return -1;
     }
     frame.bytes[0] = (char) (length >> 24);
@@ -906,10 +1033,9 @@ static int close_unkept_descriptors(const int *kept, size_t count)
  */
 static void run_child(struct wrapper *wrapper, int release, int errors)
 {
-    sigaction(SIGPIPE, &wrapper->signals.pipe_action, NULL);
-    for (size_t index = 0; index < TERMINATION_SIGNAL_COUNT; ++index)
-        sigaction(TERMINATION_SIGNALS[index], &wrapper->signals.termination_actions[index], NULL);
-    if (sigprocmask(SIG_SETMASK, &wrapper->signals.mask, NULL) < 0)
+    /* The child's diagnostics reach the wrapper through the standard-error pipe. */
+    diagnostics_length = 0;
+    if (restore_signals(&wrapper->signals) < 0)
         _exit(FAILURE_STATUS);
     if (dup2(errors, STDERR_FILENO) < 0)
         _exit(FAILURE_STATUS);
@@ -918,6 +1044,7 @@ static void run_child(struct wrapper *wrapper, int release, int errors)
     kept[wrapper->kept_count] = release;
     if (close_unkept_descriptors(kept, wrapper->kept_count + 1) < 0) {
         fail("close inherited descriptors");
+        flush_diagnostics();
         _exit(FAILURE_STATUS);
     }
 
@@ -931,7 +1058,8 @@ static void run_child(struct wrapper *wrapper, int release, int errors)
     close(release);
     execve(wrapper->compiler[0], wrapper->compiler, environ);
     int failure_number = errno;
-    fprintf(stderr, "linux-cargo-wrapper: execute %s: %s\n", wrapper->compiler[0], strerror(failure_number));
+    report("execute %s: %s\n", wrapper->compiler[0], strerror(failure_number));
+    flush_diagnostics();
     _exit(failure_number == ENOENT ? 127 : 126);
 }
 
@@ -1001,91 +1129,39 @@ static int start_attempt(struct wrapper *wrapper)
     return send_message(wrapper, fields, 4);
 }
 
-/** Writes all bytes to the wrapper's standard error. Returns zero, or -1. */
-static int write_stderr(const char *bytes, size_t length)
-{
-    size_t written = 0;
-    while (written < length) {
-        ssize_t result = write(STDERR_FILENO, bytes + written, length - written);
-        if (result < 0 && errno == EINTR)
-            continue;
-        if (result < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-            /* Cargo may share a nonblocking pipe; wait until it drains. */
-            struct pollfd descriptor = { .fd = STDERR_FILENO, .events = POLLOUT };
-            if (poll(&descriptor, 1, -1) < 0 && errno != EINTR)
-                return fail("wait for Cargo's standard error");
-            continue;
-        }
-        if (result < 0)
-            return fail("relay the compiler's standard error to Cargo");
-        written += (size_t) result;
-    }
-    return 0;
-}
-
 /**
- * Forwards the held line unless it is an artifact notification whose exact
- * bytes were already forwarded, then clears it. Returns zero, or -1.
+ * Records whether the held line, which the caller then writes and clears, should
+ * reach Cargo: an artifact notification whose exact bytes were already
+ * forwarded should not. Returns 1 to forward, 0 to drop, or -1.
  */
-static int relay_forward_line(struct relay *relay)
+static int relay_admit_line(struct relay *relay)
 {
     struct buffer *line = &relay->line;
     size_t prefix_length = sizeof(ARTIFACT_PREFIX) - 1;
     bool artifact = line->length >= prefix_length && memcmp(line->bytes, ARTIFACT_PREFIX, prefix_length) == 0;
-    if (artifact) {
-        for (size_t index = 0; index < relay->artifact_count; ++index) {
-            struct buffer *seen = &relay->artifacts[index];
-            if (seen->length == line->length && memcmp(seen->bytes, line->bytes, line->length) == 0) {
-                line->length = 0;
-                return 0;
-            }
-        }
-        if (relay->artifact_count == relay->artifact_capacity) {
-            size_t capacity = relay->artifact_capacity == 0 ? 4 : relay->artifact_capacity * 2;
-            struct buffer *grown = realloc(relay->artifacts, capacity * sizeof(*grown));
-            if (grown == NULL)
-                return fail("record a forwarded artifact notification");
-            relay->artifacts = grown;
-            relay->artifact_capacity = capacity;
-        }
-        struct buffer *seen = &relay->artifacts[relay->artifact_count];
-        *seen = (struct buffer) { 0 };
-        if (buffer_append(seen, line->bytes, line->length) < 0) {
-            free(seen->bytes);
-            return -1;
-        }
-        ++relay->artifact_count;
+    if (!artifact)
+        return 1;
+    for (size_t index = 0; index < relay->artifact_count; ++index) {
+        struct buffer *seen = &relay->artifacts[index];
+        if (seen->length == line->length && memcmp(seen->bytes, line->bytes, line->length) == 0)
+            return 0;
     }
-    int outcome = write_stderr(line->bytes, line->length);
-    line->length = 0;
-    return outcome;
-}
-
-/** Accepts output that the current attempt wrote to its standard error. Returns zero, or -1. */
-static int relay_accept(struct relay *relay, const char *bytes, size_t length)
-{
-    size_t start = 0;
-    for (size_t index = 0; index < length; ++index) {
-        if (bytes[index] != '\n')
-            continue;
-        if (buffer_append(&relay->line, bytes + start, index + 1 - start) < 0 || relay_forward_line(relay) < 0)
-            return -1;
-        start = index + 1;
+    if (relay->artifact_count == relay->artifact_capacity) {
+        size_t capacity = relay->artifact_capacity == 0 ? 4 : relay->artifact_capacity * 2;
+        struct buffer *grown = realloc(relay->artifacts, capacity * sizeof(*grown));
+        if (grown == NULL)
+            return fail("record a forwarded artifact notification");
+        relay->artifacts = grown;
+        relay->artifact_capacity = capacity;
     }
-    return buffer_append(&relay->line, bytes + start, length - start);
-}
-
-/**
- * Ends the current attempt's output: a superseded attempt's incomplete last
- * line is discarded, and the accepted attempt's is forwarded. Returns zero, or -1.
- */
-static int relay_end(struct relay *relay, bool superseded)
-{
-    if (superseded || relay->line.length == 0) {
-        relay->line.length = 0;
-        return 0;
+    struct buffer *seen = &relay->artifacts[relay->artifact_count];
+    *seen = (struct buffer) { 0 };
+    if (buffer_append(seen, line->bytes, line->length) < 0) {
+        free(seen->bytes);
+        return -1;
     }
-    return relay_forward_line(relay);
+    ++relay->artifact_count;
+    return 1;
 }
 
 /**
@@ -1105,6 +1181,65 @@ static int reject_unexpected_controller_event(struct wrapper *wrapper, short rev
             return fail("read from the controller");
     }
     return reject("the controller connection failed");
+}
+
+/**
+ * Writes all bytes to Cargo's standard error while a child is unreaped. Waiting
+ * for a full standard error to drain also watches the controller connection and
+ * the termination signals, so that the wrapper still ends the child when the
+ * controller is lost or a signal arrives. After POLLOUT a pipe has room for
+ * PIPE_BUF bytes, so a write of at most that many does not block. Returns zero,
+ * or -1.
+ */
+static int write_stderr(struct wrapper *wrapper, const char *bytes, size_t length)
+{
+    size_t written = 0;
+    while (written < length) {
+        if (termination_signal != 0)
+            return reject_termination();
+        struct pollfd descriptors[2] = {
+            { .fd = wrapper->socket, .events = POLLIN },
+            { .fd = STDERR_FILENO, .events = POLLOUT }
+        };
+        int result = ppoll(descriptors, 2, NULL, &wrapper->signals.mask);
+        if (result < 0 && errno == EINTR)
+            continue;
+        if (result < 0)
+            return fail("wait for Cargo's standard error");
+        if (descriptors[0].revents != 0)
+            return reject_unexpected_controller_event(wrapper, descriptors[0].revents);
+        if (descriptors[1].revents == 0)
+            continue;
+        size_t chunk = length - written;
+        if (chunk > PIPE_BUF)
+            chunk = PIPE_BUF;
+        ssize_t count = write(STDERR_FILENO, bytes + written, chunk);
+        if (count < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK))
+            continue;
+        if (count < 0)
+            return fail("relay the compiler's standard error to Cargo");
+        written += (size_t) count;
+    }
+    return 0;
+}
+
+/** Accepts output that the current attempt wrote to its standard error. Returns zero, or -1. */
+static int relay_accept(struct wrapper *wrapper, const char *bytes, size_t length)
+{
+    struct relay *relay = &wrapper->relay;
+    size_t start = 0;
+    for (size_t index = 0; index < length; ++index) {
+        if (bytes[index] != '\n')
+            continue;
+        if (buffer_append(&relay->line, bytes + start, index + 1 - start) < 0)
+            return -1;
+        int admitted = relay_admit_line(relay);
+        if (admitted < 0 || (admitted == 1 && write_stderr(wrapper, relay->line.bytes, relay->line.length) < 0))
+            return -1;
+        relay->line.length = 0;
+        start = index + 1;
+    }
+    return buffer_append(&relay->line, bytes + start, length - start);
 }
 
 /**
@@ -1137,7 +1272,7 @@ static int finish_attempt(struct wrapper *wrapper, int *wait_status)
                 return fail("read the compiler's standard error");
             if (count == 0)
                 close_owned(&wrapper->errors);
-            else if (count > 0 && relay_accept(&wrapper->relay, chunk, (size_t) count) < 0)
+            else if (count > 0 && relay_accept(wrapper, chunk, (size_t) count) < 0)
                 return -1;
         }
         if (descriptors[2].revents != 0)
@@ -1156,7 +1291,8 @@ static int finish_attempt(struct wrapper *wrapper, int *wait_status)
 
 /**
  * Runs one attempt from fork through the controller's decision after `exited`.
- * Returns 0 for retry, 1 with final_status for final, or -1.
+ * Returns 0 for retry, 1 with final_status for final, or -1. The final
+ * attempt's incomplete last line stays held for the caller to forward.
  */
 static int run_attempt(struct wrapper *wrapper, int *final_status)
 {
@@ -1199,13 +1335,11 @@ static int run_attempt(struct wrapper *wrapper, int *final_status)
         if (wrapper->attempt == UINT64_MAX)
             return reject("the attempt number would overflow");
         ++wrapper->attempt;
-        relay_end(&wrapper->relay, true);
+        wrapper->relay.line.length = 0;
         return 0;
     }
     if (command.kind != COMMAND_FINAL)
         return reject("the controller sent a message other than retry or final after exited");
-    if (relay_end(&wrapper->relay, false) < 0)
-        return -1;
     *final_status = (int) command.value;
     return 1;
 }
@@ -1244,6 +1378,24 @@ static void free_relay(struct relay *relay)
 }
 
 /**
+ * Forwards the final attempt's incomplete last line once no child is unreaped
+ * and the controller connection is closed, so that a Cargo standard error that
+ * is not being read delays only the wrapper's own exit. Returns zero, or -1.
+ */
+static int relay_final_line(struct relay *relay)
+{
+    if (relay->line.length == 0)
+        return 0;
+    int admitted = relay_admit_line(relay);
+    if (admitted < 0)
+        return -1;
+    if (admitted == 1 && write_stderr_unwatched(relay->line.bytes, relay->line.length) < 0)
+        return fail("relay the compiler's standard error to Cargo");
+    relay->line.length = 0;
+    return 0;
+}
+
+/**
  * Validates the invocation and configuration, registers with the controller
  * and runs attempts until the controller sends the final status. Returns that
  * status, or 125 after reporting a failure.
@@ -1254,8 +1406,15 @@ int main(int argc, char **argv)
         .socket = -1, .child_descriptor = -1, .release = -1, .errors = -1, .attempt = 1,
         .compiler = argv + 1, .compiler_count = argc - 1
     };
+    /* Before any descriptor exists, so that none is ever reachable through /proc/PID/fd. */
+    if (prctl(PR_SET_DUMPABLE, 0L, 0L, 0L, 0L) < 0) {
+        fail("make the wrapper non-dumpable");
+        flush_diagnostics();
+        return FAILURE_STATUS;
+    }
     if (argc < 2) {
         reject("expected the compiler path followed by its arguments");
+        flush_diagnostics();
         return FAILURE_STATUS;
     }
     struct sockaddr_un address;
@@ -1273,9 +1432,15 @@ int main(int argc, char **argv)
     int final_status = FAILURE_STATUS;
     while (outcome == 0)
         outcome = run_attempt(&wrapper, &final_status);
+    abandon(&wrapper);
+    /* No child is left, so a signal may end the wrapper while it waits for Cargo's standard error. */
+    if (restore_signals(&wrapper.signals) < 0)
+        fail("restore the signal actions");
+    if (outcome > 0 && relay_final_line(&wrapper.relay) < 0)
+        outcome = -1;
     if (outcome < 0)
         final_status = FAILURE_STATUS;
-    abandon(&wrapper);
+    flush_diagnostics();
     free_relay(&wrapper.relay);
     return final_status;
 }
