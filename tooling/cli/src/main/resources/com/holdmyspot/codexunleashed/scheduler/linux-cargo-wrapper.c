@@ -68,7 +68,7 @@
  * It execs argv with env and cwd exactly as registered.
  *
  * ## Standard error relay
- * Same semantics as CompilerErrorRelay: complete lines are forwarded as they arrive; a line that
+ * Complete lines are forwarded as they arrive; a line that
  * starts with `{"$message_type":"artifact"` is forwarded only the first time its exact bytes are seen
  * for this registration; on `retry` the incomplete trailing line is discarded; on `final` it is
  * flushed.
