@@ -134,44 +134,44 @@ public final class LinuxCargoJobserverTest
 	}
 
 	/**
-	 * GNU Make, found on the lease's PATH as a build script finds it, joins the lease's jobserver when the FIFO is
-	 * open on the lease's descriptors. Bash stands in for the trusted leader that opens those descriptors before exec.
-	 * Make 4.3 rejects a FIFO path in its auth option, so a clean exit with no jobserver diagnostic shows that the
-	 * lease's make front end translated the path to the inherited descriptors.
+	 * The lease puts a make front end ahead of the make a build script would find. With the FIFO open on the lease's
+	 * descriptors, as the trusted leader leaves it, the front end runs that make with the FIFO auth value replaced by
+	 * those descriptor numbers, which is the form GNU Make before 4.4 accepts. Bash stands in for the leader.
 	 * @throws Exception if fixture setup, process execution or cleanup fails
 	 */
 	@Test
-	public void gnuMakeJoinsLeaseJobserverThroughInheritedDescriptors() throws Exception
+	public void makeFrontEndPassesInheritedDescriptors() throws Exception
 	{
 		requireLinux();
-		Path make = Path.of("/usr/bin/make");
-		Path bash = Path.of("/bin/bash");
-		if (!Files.isExecutable(make) || !Files.isExecutable(bash))
-			throw new SkipException("GNU Make and Bash are required to observe make's jobserver import");
 		Path frontEnd;
 		try (Fixture fixture = new Fixture())
 		{
+			FakeMake make = new FakeMake(fixture.directory, LinuxCargoJobserver.READ_DESCRIPTOR,
+				LinuxCargoJobserver.WRITE_DESCRIPTOR);
 			try (LinuxCargoJobserver owner = LinuxCargoJobserver.create(fixture.scope, fixture.directory, fixture.group, 2))
 			{
-				try (var lease = owner.retainCargo(Map.of("PATH", "/usr/bin:/bin")))
+				try (var lease = owner.retainCargo(Map.of("PATH", make.directory + ":/usr/bin:/bin")))
 				{
 					var descriptors = lease.descriptors();
 					String path = lease.environment().get("PATH");
-					requireThat(path, "leasePath").endsWith(":/usr/bin:/bin");
+					requireThat(path, "leasePath").endsWith(":" + make.directory + ":/usr/bin:/bin");
 					frontEnd = Path.of(path.substring(0, path.indexOf(':')), "make");
-					requireThat(Files.isExecutable(frontEnd), "frontEnd").isTrue();
-					Path makefile = Files.writeString(fixture.directory.resolve("Makefile"), "all: a b\na b:\n\t@true\n");
-					var builder = new ProcessBuilder(bash.toString(), "-c", "exec make -f \"$0\" " + descriptors.read() +
-						"<>\"$1\" " + descriptors.write() + "<>\"$1\"", makefile.toString(), descriptors.fifo().toString());
-					builder.environment().keySet().removeAll(List.of("CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS"));
-					builder.environment().put("MAKEFLAGS", lease.environment().get("MAKEFLAGS"));
+					String flags = lease.environment().get("MAKEFLAGS");
+					var builder = new ProcessBuilder("/bin/bash", "-c", "exec make all 'two words' " +
+						descriptors.read() + "<>\"$0\" " + descriptors.write() + "<>\"$0\"", descriptors.fifo().toString());
+					builder.environment().clear();
+					builder.environment().put("MAKEFLAGS", flags);
 					builder.environment().put("PATH", path);
 					builder.directory(fixture.directory.toFile()).redirectErrorStream(true);
 					Process process = builder.start();
 					String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-					requireThat(process.waitFor(), "makeExit").isEqualTo(0, "expected");
-					requireThat(output, "makeOutput").doesNotContain("jobserver");
-					Files.delete(makefile);
+					requireThat(process.waitFor(), "frontEndExit").withContext(output, "output").isEqualTo(0);
+					String auth = "fifo:" + descriptors.fifo();
+					requireThat(flags, "leaseFlags").contains(auth);
+					String fifo = descriptors.fifo().toRealPath().toString();
+					requireThat(make.observations(), "makeObservations").isEqualTo(List.of(
+						flags.replace(auth, descriptors.read() + "," + descriptors.write()), "unset", "unset", fifo, fifo,
+						"all", "two words"));
 				}
 			}
 			requireThat(Files.exists(frontEnd), "frontEndAfterClose").isFalse();

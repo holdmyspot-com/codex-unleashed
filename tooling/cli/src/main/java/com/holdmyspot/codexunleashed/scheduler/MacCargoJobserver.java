@@ -33,9 +33,9 @@ public final class MacCargoJobserver implements AutoCloseable
     /** Exact child name owned by the native FIFO. */
     private static final String FIFO_NAME = "tokens";
     /** Descriptor number on which the make front end opens the FIFO for jobserver reads. */
-    static final int READ_DESCRIPTOR = 200;
+    public static final int READ_DESCRIPTOR = 200;
     /** Descriptor number on which the make front end opens the FIFO for jobserver writes. */
-    static final int WRITE_DESCRIPTOR = 201;
+    public static final int WRITE_DESCRIPTOR = 201;
     /** Directory, inside the owned directory, holding the make front end that PATH names first. */
     private static final String FRONT_END_DIRECTORY = "bin";
     /** Front-end script access permitting the workload group to read and execute it. */

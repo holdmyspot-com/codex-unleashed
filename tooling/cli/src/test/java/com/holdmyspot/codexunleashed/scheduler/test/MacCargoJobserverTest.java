@@ -49,45 +49,48 @@ public final class MacCargoJobserverTest
     }
 
     /**
-     * GNU Make before 4.4, found on the lease's PATH as a build script finds it, joins the FIFO jobserver: the front end
-     * opens the FIFO onto the lease's descriptor numbers itself, because the Darwin anchor installs no descriptors.
-     * GNU Make 4.3 stands in for Darwin's 3.81 and rejects a FIFO path in its auth option, so a clean exit without a
-     * jobserver diagnostic shows the front end translated the path.
+     * The lease puts a make front end ahead of the make a build script would find. Because the Darwin anchor installs
+     * no descriptors, the front end opens the FIFO onto the lease's descriptor numbers itself and runs that make with
+     * the FIFO auth value replaced by those numbers, the form GNU Make before 4.4 accepts.
      * @throws Exception if fixture setup, process execution or cleanup fails
      */
-    @Test public void olderMakeJoinsTheFifoThroughTheFrontEnd() throws Exception
+    @Test public void makeFrontEndOpensTheFifoOntoItsDescriptors() throws Exception
     {
-        Path make = Path.of("/usr/bin/make");
-        if (!Files.isExecutable(make) || !Files.isExecutable(Path.of("/bin/bash")) || !System.getProperty("os.name").equals("Linux"))
-            throw new org.testng.SkipException("GNU Make, Bash and mkfifo are required to observe make's jobserver import");
+        if (!Files.isExecutable(Path.of("/bin/bash")) || !Files.isDirectory(Path.of("/proc/self/fd")))
+            throw new org.testng.SkipException("Bash and /proc are required to observe the front end's descriptors");
         Path frontEnd;
         try (Fixture fixture = new Fixture())
         {
             int group = (Integer) Files.getAttribute(fixture.parent, "unix:gid");
             fixture.owner.open(fixture.parent, 1, group, 3);
-            new ProcessBuilder("mkfifo", fixture.provider.endpoint.path + ".fifo").inheritIO().start().waitFor();
-            Files.delete(fixture.provider.endpoint.path);
-            Files.move(Path.of(fixture.provider.endpoint.path + ".fifo"), fixture.provider.endpoint.path);
-            fixture.lease = fixture.owner.retainCargo(Map.of("PATH", "/usr/bin:/bin"));
+            FakeMake make = new FakeMake(fixture.parent, MacCargoJobserver.READ_DESCRIPTOR,
+                MacCargoJobserver.WRITE_DESCRIPTOR);
+            fixture.lease = fixture.owner.retainCargo(Map.of("PATH", make.directory + ":/usr/bin:/bin"));
             String path = fixture.lease.environment().get("PATH");
-            requireThat(path, "leasePath").endsWith(":/usr/bin:/bin");
+            requireThat(path, "leasePath").endsWith(":" + make.directory + ":/usr/bin:/bin");
             frontEnd = Path.of(path.substring(0, path.indexOf(':')), "make");
-            requireThat(Files.isExecutable(frontEnd), "frontEnd").isTrue();
-            Path makefile = Files.writeString(fixture.parent.resolve("Makefile"), "all: a b\na b:\n\t@true\n");
-            var builder = new ProcessBuilder("/bin/sh", "-c", "exec make -f \"$0\"", makefile.toString());
+            String flags = fixture.lease.environment().get("MAKEFLAGS");
+            String auth = "fifo:" + fixture.provider.endpoint.path;
+            requireThat(flags, "leaseFlags").contains(auth);
+            var builder = new ProcessBuilder("/bin/sh", "-c", "exec make all 'two words'");
             builder.environment().clear();
             builder.environment().putAll(fixture.lease.environment());
             builder.directory(fixture.parent.toFile()).redirectErrorStream(true);
-            try (var seed = java.nio.channels.FileChannel.open(fixture.provider.endpoint.path,
-                java.nio.file.StandardOpenOption.READ, java.nio.file.StandardOpenOption.WRITE))
+            Process process = builder.start();
+            String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            requireThat(process.waitFor(), "frontEndExit").withContext(output, "output").isEqualTo(0);
+            String fifo = fixture.provider.endpoint.path.toRealPath().toString();
+            List<String> observed = make.observations();
+            String expectedFlags = flags.replace(auth, MacCargoJobserver.READ_DESCRIPTOR + "," +
+                MacCargoJobserver.WRITE_DESCRIPTOR);
+            requireThat(observed.getFirst(), "makeFlags").isEqualTo(expectedFlags);
+            requireThat(observed.subList(3, observed.size()), "descriptorsAndArguments").isEqualTo(List.of(fifo, fifo,
+                "all", "two words"));
+            try (var files = Files.walk(make.directory))
             {
-                seed.write(java.nio.ByteBuffer.wrap(new byte[] {'+'}));
-                Process process = builder.start();
-                String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-                requireThat(process.waitFor(), "makeExit").withContext(output, "makeOutput").isEqualTo(0);
-                requireThat(output, "makeOutput").doesNotContain("jobserver");
+                for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList())
+                    Files.delete(file);
             }
-            Files.delete(makefile);
         }
         requireThat(Files.exists(frontEnd), "frontEndAfterClose").isFalse();
     }

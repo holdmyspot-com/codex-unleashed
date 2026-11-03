@@ -49,7 +49,7 @@ public final class LinuxCargoJobserver implements AutoCloseable
 	 */
 	public static final int READ_DESCRIPTOR = 200;
 	/** Descriptor number on which every Cargo-tree leader installs the FIFO for jobserver writes. */
-	static final int WRITE_DESCRIPTOR = 201;
+	public static final int WRITE_DESCRIPTOR = 201;
 	/** Directory, inside the owned directory, holding the make front end that PATH names first. */
 	private static final String FRONT_END_DIRECTORY = "bin";
 	/** Front-end directory access permitting the workload group to look up the front end by name. */
