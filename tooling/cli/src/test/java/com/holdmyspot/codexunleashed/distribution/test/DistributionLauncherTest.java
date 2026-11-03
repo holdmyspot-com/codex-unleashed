@@ -6,7 +6,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.jar.JarOutputStream;
@@ -266,34 +265,15 @@ public final class DistributionLauncherTest
     }
 
 	/**
-	 * Invokes the actual generated companion by its absolute path, preserving exact user arguments.
-	 * @throws Exception if fixture assembly or execution fails
+	 * Stages the companion in-process: validates the backend through the given tool with the bundled Java, copies the
+	 * build JDK's keytool and writes the companion script.
+	 * @throws Exception if fixture IO or staging fails
 	 */
 	@Test
-	public void absoluteCompanionResolvesBundledJava() throws Exception
+	public void stagesCompanionThroughBundledJava() throws Exception
 	{
-		verifyLauncher(true);
-	}
-
-	/**
-	 * Invokes the actual generated companion through a nested relative path.
-	 * @throws Exception if fixture assembly or execution fails
-	 */
-	@Test
-	public void nestedRelativeCompanionResolvesBundledJava() throws Exception
-	{
-		verifyLauncher(false);
-	}
-
-	/**
-	 * Exercises production staging and shell execution without changing shared platform properties.
-	 * @param absolute whether the actual invocation uses an absolute path
-	 * @throws Exception if fixture IO or process execution fails
-	 */
-	private static void verifyLauncher(boolean absolute) throws Exception
-	{
-		if (!System.getProperty("os.name").equals("Linux"))
-			throw new SkipException("Generated POSIX companion requires Linux; no shared platform properties are changed");
+		if (!java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix"))
+			throw new SkipException("The POSIX companion's mode requires a POSIX file system");
 		try (Directory directory = new Directory())
 		{
 			Path root = directory.path;
@@ -302,76 +282,69 @@ public final class DistributionLauncherTest
 			{
 				jar.finish();
 			}
-			Path runtime = Files.createDirectories(root.resolve("nested/runtime"));
+			Path runtime = Files.createDirectories(root.resolve("runtime"));
 			Path bin = Files.createDirectory(runtime.resolve("bin"));
 			Files.createDirectory(runtime.resolve("lib"));
-			Path receiver = bin.resolve("java");
-			Files.writeString(receiver, "#!/bin/sh\nset -eu\nprintf '%s\\000' \"$@\" > \"$RECEIVER_OUTPUT\"\n");
-			Files.setPosixFilePermissions(receiver, PosixFilePermissions.fromString("rwxr-xr-x"));
-			Path received = root.resolve("received-argv");
-			Path stageLog = root.resolve("stage.log");
-			Path stagingClasses = Files.createDirectory(root.resolve("staging-classes"));
-			Path stagingSource = root.resolve("CompanionStage.java");
-			Files.writeString(stagingSource, """
-				/** Invokes the actual build-only companion generator in an independent fixture process. */
-				public final class CompanionStage
+			Path javaHome = root.resolve("jdk");
+			Files.writeString(Files.createDirectories(javaHome.resolve("bin")).resolve("keytool"), "keytool image");
+			Path backend = root.resolve("backend");
+			Path temporary = root.resolve("temp with spaces");
+			List<List<String>> commands = new ArrayList<>();
+			com.holdmyspot.codexunleashed.distribution.DistributionMain.stageBazelCompanion(modules, runtime, backend, "Linux",
+				javaHome, temporary, (command, diagnostic) ->
 				{
-				    /** Prevents construction. */
-				    private CompanionStage() {}
-				    /**
-				     * Stages the real companion using the three independently owned fixture paths.
-				     * @param args modules, runtime and backend paths
-				     * @throws Exception if the actual generator fails
-				     */
-				    public static void main(String[] args) throws Exception
-				    {
-				        com.holdmyspot.codexunleashed.distribution.DistributionMain.stageBazelCompanion(
-				            java.nio.file.Path.of(args[0]), java.nio.file.Path.of(args[1]), java.nio.file.Path.of(args[2]));
-				    }
-				}
-				""");
-			Path buildSource = Path.of(System.getProperty("basedir", ".")).resolve(
-				"src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java").toAbsolutePath();
-			ProcessBuilder compile = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin/javac").toString(),
-				"--release", "27", "-Xlint:all", "-Werror", "-Xdoclint:all/private", "-d", stagingClasses.toString(),
-				buildSource.toString(), stagingSource.toString());
-			compile.redirectErrorStream(true).redirectOutput(stageLog.toFile());
-			try (Process child = compile.start())
-			{
-				int exit = child.waitFor();
-				if (exit != 0) System.err.println(Files.readString(stageLog));
-				requireThat(exit, "buildSourceCompilationExit").isEqualTo(0);
-			}
-			ProcessBuilder stage = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin/java").toString(),
-				"-Dos.arch=aarch64", "-cp", stagingClasses.toString(), "CompanionStage", modules.toString(),
-				runtime.toString(), root.resolve("backend").toString());
-			stage.environment().put("RECEIVER_OUTPUT", received.toString());
-			stage.redirectErrorStream(true).redirectOutput(stageLog.toFile());
-			try (Process child = stage.start())
-			{
-				requireThat(child.waitFor(), "productionStagingExit").isEqualTo(0);
-			}
-			Files.delete(received);
+					commands.add(command);
+					return 0;
+				});
+			Path lib = runtime.resolve("lib/bazel-backend");
+			requireThat(commands, "validationCommands").isEqualTo(List.of(List.of(bin.resolve("java").toString(),
+				"-Djava.io.tmpdir=" + temporary, "-cp", lib.resolve("codex-tooling.jar").toString(),
+				"com.holdmyspot.codexunleashed.scheduler.BazelNativeBackend", backend.toString(),
+				lib.resolve("native").toString())));
+			requireThat(Files.readString(bin.resolve("keytool")), "copiedKeytool").isEqualTo("keytool image");
 			Path launcher = bin.resolve("codex-tooling-bazel");
-			String invocation = absolute ? launcher.toString() : root.relativize(launcher).toString();
-			List<String> command = new ArrayList<>(List.of(invocation, "arg with spaces", "", "--literal=$value"));
-			Path log = root.resolve("launcher.log");
-			ProcessBuilder launch = new ProcessBuilder(command).directory(root.toFile());
-			launch.environment().put("RECEIVER_OUTPUT", received.toString());
-			launch.environment().put("TMPDIR", root.resolve("temp with spaces").toString());
-			launch.redirectErrorStream(true).redirectOutput(log.toFile());
-			try (Process child = launch.start())
+			requireThat(Files.readString(launcher), "companion").isEqualTo(
+				com.holdmyspot.codexunleashed.distribution.DistributionMain.companionScript(""));
+			requireThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(launcher)), "companionMode")
+				.isEqualTo("rwxr-xr-x");
+			requireThat(Files.exists(bin.resolve("codex-tooling-bazel.cmd")), "windowsCompanion").isFalse();
+		}
+	}
+
+	/**
+	 * Reports a failed backend validation with its status and diagnostic, before writing any launcher.
+	 * @throws Exception if fixture IO fails
+	 */
+	@Test
+	public void failedValidationStopsStaging() throws Exception
+	{
+		try (Directory directory = new Directory())
+		{
+			Path root = directory.path;
+			Path modules = Files.createDirectory(root.resolve("modules"));
+			try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(modules.resolve("fixture.jar"))))
 			{
-				int exit = child.waitFor();
-				if (exit != 0) System.err.println(Files.readString(log));
-				requireThat(exit, "generatedLauncherExit").isEqualTo(0);
+				jar.finish();
 			}
-			List<String> actual = Arrays.asList(new String(Files.readAllBytes(received), StandardCharsets.UTF_8).split("\u0000", -1));
-			List<String> expected = List.of("-Djava.io.tmpdir=" + root.resolve("temp with spaces"),
-				"-Xlog:all=off:stdout", "-Xlog:all=warning:stderr", "--enable-native-access=ALL-UNNAMED", "-cp",
-				bin + "/../lib/bazel-backend/codex-tooling.jar", "com.holdmyspot.codexunleashed.tooling.Main",
-				"arg with spaces", "", "--literal=$value", "");
-			requireThat(actual, "exactGeneratedLauncherArguments").isEqualTo(expected);
+			Path runtime = Files.createDirectories(root.resolve("runtime"));
+			Files.createDirectory(runtime.resolve("bin"));
+			Files.createDirectory(runtime.resolve("lib"));
+			try
+			{
+				com.holdmyspot.codexunleashed.distribution.DistributionMain.stageBazelCompanion(modules, runtime,
+					root.resolve("backend"), "Linux", root.resolve("jdk"), root, (command, diagnostic) ->
+					{
+						Files.writeString(diagnostic, "unsupported host");
+						return 7;
+					});
+				throw new AssertionError("Staging accepted a failed validation");
+			}
+			catch (IOException failure)
+			{
+				requireThat(failure.getMessage(), "failure").isEqualTo(
+					"Native backend package validation failed with status 7: unsupported host");
+			}
+			requireThat(Files.exists(runtime.resolve("bin/codex-tooling-bazel")), "launcherWritten").isFalse();
 		}
 	}
 

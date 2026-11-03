@@ -6,13 +6,9 @@ import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
@@ -21,16 +17,13 @@ import java.util.Map;
 import org.testng.annotations.Test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-/** Verifies real grouped tar transfers against an isolated authenticated ORAS process fixture. */
+/** Verifies real grouped tar transfers against an in-process registry that answers ORAS commands. */
 public final class CargoCachePartsTest
 {
     /** Creates independent method fixtures. */ public CargoCachePartsTest() {}
 
     /**
      * Archives exact groups, reuses unchanged layers, restores real files and retains unrelated target contents.
-     * This test stays near one second because its claims need real tar archives and one external registry
-     * process per ORAS operation across the first push, the reusing push and the pull; the fixture process is already
-     * reduced to JDK-only startup with no JSON mapper.
      * @throws Exception if fixture allocation or real archive operations fail
      */
     @Test public void groupedPushReuseAndOverlayPull() throws Exception
@@ -41,7 +34,7 @@ public final class CargoCachePartsTest
             Files.writeString(f.target.resolve("release/deps/library"), "compiled λ");
             Files.writeString(f.target.resolve("release/deps/library.d"), "dependency report");
             requireThat(f.run("push", "repo:verified", "repo:previous", "codex"), "firstPush").isEqualTo(0);
-            var first = f.scope.getJsonMapper().readTree(Files.readString(f.registry.resolve("last-manifest")));
+            var first = f.scope.getJsonMapper().readTree(Files.readString(f.registry.root.resolve("last-manifest")));
             requireThat(first.path("layers").size(), "separateMetadataAndBuildGroups").isEqualTo(2);
             f.output.reset();
             requireThat(f.run("push", "repo:next", "repo:verified", "final"), "reusedPush").isEqualTo(0);
@@ -79,25 +72,26 @@ public final class CargoCachePartsTest
     }
 
     /**
-     * Preserves missing, unsupported, authenticated subprocess and invalid CLI failure statuses.
-     * @throws Exception if fixture or subprocess collection fails
+     * Preserves missing, unsupported, failed-command and invalid launcher statuses.
+     * @throws Exception if fixture allocation or archive operations fail
      */
     @Test public void preservesFailuresWithoutPublication() throws Exception
     {
         try (Fixture f = new Fixture())
         {
             requireThat(f.run("pull", "repo:missing", "repo:missing", "bootstrap"), "missingReference").isEqualTo(3);
-            Files.writeString(f.registry.resolve("unsupported"), "{}");
+            Files.writeString(f.registry.root.resolve("unsupported"), "{}");
             requireThat(f.run("pull", "repo:unsupported", "repo:unsupported", "bootstrap"), "unsupportedFormat").isEqualTo(4);
-            f.environment.put("CACHE_FIXTURE_FAIL_BLOB", "23");
+            f.registry.failBlobPush = 23;
             Files.writeString(f.target.resolve("artifact"), "contents");
             requireThat(f.run("push", "repo:never", "repo:missing", "codex"), "uploadFailureStatus").isEqualTo(23);
-            requireThat(Files.exists(f.registry.resolve("never")), "noManifestBeforeAllBlobs").isFalse();
+            requireThat(Files.exists(f.registry.root.resolve("never")), "noManifestBeforeAllBlobs").isFalse();
             requireThat(f.temporaryChildren(), "failedTransferChildrenRemoved").isEqualTo(0L);
-            f.environment.put("CACHE_FIXTURE_AUTH", "wrong");
+            f.registry.failAll = 19;
             requireThat(f.run("pull", "repo:missing", "repo:missing", "bootstrap"), "authenticationNotAMiss").isEqualTo(19);
             f.environment.put("CARGO_CACHE_ORAS_COMMAND", "not json");
-            requireThat(f.run("pull", "repo:missing", "repo:missing", "bootstrap"), "invalidLauncher").isEqualTo(2);
+            requireThat(CargoCacheParts.run(f.scope, new String[]{"pull", "repo", "repo:missing", "repo:missing", f.target.toString(),
+                f.temporary.toString()}, f.environment, f.out, f.err), "invalidLauncher").isEqualTo(2);
         }
     }
 
@@ -111,7 +105,7 @@ public final class CargoCachePartsTest
         {
             Files.writeString(f.target.resolve(CargoCacheParts.OWNERS), "{broken");
             requireThat(f.run("push", "repo:never", "repo:missing", "codex"), "malformedOwnership").isEqualTo(1);
-            requireThat(Files.exists(f.registry.resolve("never")), "noMalformedPublication").isFalse();
+            requireThat(Files.exists(f.registry.root.resolve("never")), "noMalformedPublication").isFalse();
             requireThat(f.temporaryChildren(), "noRetainedTransfer").isEqualTo(0L);
         }
     }
@@ -123,8 +117,8 @@ public final class CargoCachePartsTest
         /** Owned fixture root. */ private final Path root;
         /** Idle Cargo output directory. */ private final Path target;
         /** Owned temporary transfer parent. */ private final Path temporary;
-        /** Controlled fixture registry. */ private final Path registry;
-        /** Actual inherited environment plus explicit fixture authentication. */ private final Map<String, String> environment = new HashMap<>(System.getenv());
+        /** In-process registry. */ private final Registry registry;
+        /** Actual inherited environment, which supplies the tar search path. */ private final Map<String, String> environment = new HashMap<>(System.getenv());
         /** Captured progress. */ private final ByteArrayOutputStream output = new ByteArrayOutputStream();
         /** Borrowed progress stream. */ private final PrintStream out = new PrintStream(output);
         /** Borrowed diagnostic stream. */ private final PrintStream err = new PrintStream(new ByteArrayOutputStream());
@@ -138,21 +132,16 @@ public final class CargoCachePartsTest
             try (var children = Files.list(temporary)) { return children.count(); }
         }
         /**
-         * Allocates only method-owned trees and exact JSON process argv, with no registry mutations outside the fixture.
+         * Allocates only method-owned trees.
          * @throws IOException if allocation fails
          */
         private Fixture() throws IOException
         {
-            root=Files.createTempDirectory("parts-");target=Files.createDirectory(root.resolve("target"));temporary=Files.createDirectory(root.resolve("temporary"));registry=Files.createDirectory(root.resolve("registry"));
-            String javaExecutable=Path.of(System.getProperty("java.home"),"bin",java.io.File.separatorChar=='\\'?"java.exe":"java").toString();
-            String classPath = System.getProperty("java.class.path");
-            if (Registry.class.getModule().isNamed())
-                classPath += java.io.File.pathSeparator + System.getProperty("jdk.module.path");
-            environment.put("CARGO_CACHE_ORAS_COMMAND", scope.getJsonMapper().writeValueAsString(List.of(javaExecutable,"-Xmx64m","-Xshare:auto","-XX:+UseSerialGC","-XX:TieredStopAtLevel=1","-cp",classPath,Registry.class.getName())));
-            environment.put("CACHE_FIXTURE_ROOT",registry.toString());environment.put("CACHE_FIXTURE_AUTH","original-auth");
+            root=Files.createTempDirectory("parts-");target=Files.createDirectory(root.resolve("target"));temporary=Files.createDirectory(root.resolve("temporary"));
+            registry=new Registry(Files.createDirectory(root.resolve("registry")));
         }
         /**
-         * Invokes the actual production operation against an explicit external ORAS process boundary.
+         * Invokes the production operation with the in-process registry.
          * @param operation push or pull
          * @param reference publication or read reference
          * @param previous preceding snapshot
@@ -161,7 +150,7 @@ public final class CargoCachePartsTest
          */
         private int run(String operation,String reference,String previous,String step)
         {
-            return CargoCacheParts.run(scope,new String[]{operation,"repo",reference,previous,target.toString(),temporary.toString(),"--step",step},environment,out,err);
+            return CargoCacheParts.run(scope,new String[]{operation,"repo",reference,previous,target.toString(),temporary.toString(),"--step",step},environment,registry,out,err);
         }
         /**
          * Deletes only this method's registry, target and transient trees.
@@ -173,46 +162,56 @@ public final class CargoCachePartsTest
         }
     }
 
-    /** Controlled ORAS-compatible process fixture; authentication and all writes remain inside its supplied root. */
-    public static final class Registry
+    /** Answers the ORAS commands that the production helper issues, storing everything under one owned root. */
+    private static final class Registry implements CargoCacheParts.Oras
     {
-        /** Prevents construction. */ private Registry() {}
+        /** Owned storage root. */ private final Path root;
+        /** Status that every command returns instead of running, or zero. */ private int failAll;
+        /** Status that blob pushes return instead of storing, or zero. */ private int failBlobPush;
         /**
-         * Implements only the production helper's documented ORAS operations using a local fixture directory.
-         * @param arguments exact ORAS argv
-         * @throws Exception if fixture input or storage fails
+         * Creates a registry over an owned root.
+         * @param root owned storage root
          */
-        public static void main(String[] arguments) throws Exception
+        private Registry(Path root) { this.root = root; }
+        @Override public CargoCacheParts.Result run(List<String> arguments) throws IOException
         {
-            if (!"original-auth".equals(System.getenv("CACHE_FIXTURE_AUTH"))) { System.err.println("unauthorized");System.exit(19); }
-            Path root=Path.of(System.getenv("CACHE_FIXTURE_ROOT"));
-            if(arguments[0].equals("manifest")&&arguments[1].equals("fetch"))
+            if (failAll != 0) return new CargoCacheParts.Result(failAll, "", "unauthorized\n");
+            String verb = arguments.get(0) + " " + arguments.get(1);
+            String last = arguments.getLast();
+            switch (verb)
             {
-                String reference=arguments[arguments.length-1];Path path=root.resolve(reference.substring(reference.lastIndexOf(':')+1));
-                if(!Files.exists(path)){System.err.println("MANIFEST_UNKNOWN");System.exit(1);}
-                System.out.println("{\"content\":"+Files.readString(path)+",\"digest\":\"sha256:fixture\"}");return;
+                case "manifest fetch" ->
+                {
+                    Path path = root.resolve(last.substring(last.lastIndexOf(':') + 1));
+                    if (!Files.exists(path)) return new CargoCacheParts.Result(1, "", "MANIFEST_UNKNOWN\n");
+                    return new CargoCacheParts.Result(0, "{\"content\":" + Files.readString(path) + ",\"digest\":\"sha256:fixture\"}", "");
+                }
+                case "blob push" ->
+                {
+                    if (failBlobPush != 0) return new CargoCacheParts.Result(failBlobPush, "", "fixture blob failure\n");
+                    byte[] bytes = Files.readAllBytes(Path.of(last));
+                    String digest = HexFormat.of().formatHex(CargoCacheKeys.digest().digest(bytes));
+                    Files.write(root.resolve("blob-" + digest), bytes);
+                    return new CargoCacheParts.Result(0, "{\"mediaType\":\"" + arguments.get(4) + "\",\"digest\":\"sha256:" + digest +
+                        "\",\"size\":" + bytes.length + "}", "");
+                }
+                case "manifest push" ->
+                {
+                    Path input = Path.of(arguments.get(3));
+                    Files.copy(input, root.resolve("last-manifest"), StandardCopyOption.REPLACE_EXISTING);
+                    String reference = arguments.get(2);
+                    for (String alias : reference.substring(reference.lastIndexOf(':') + 1).split(","))
+                        Files.copy(input, root.resolve(alias), StandardCopyOption.REPLACE_EXISTING);
+                    return new CargoCacheParts.Result(0, "published\n", "");
+                }
+                case "blob fetch" ->
+                {
+                    Files.copy(root.resolve("blob-" + last.substring(last.lastIndexOf(':') + 1)), Path.of(arguments.get(3)),
+                        StandardCopyOption.REPLACE_EXISTING);
+                    return new CargoCacheParts.Result(0, "", "");
+                }
+                default -> throw new IOException("Unexpected ORAS command: " + arguments);
             }
-            if(arguments[0].equals("blob")&&arguments[1].equals("push"))
-            {
-                String fail=System.getenv("CACHE_FIXTURE_FAIL_BLOB");if(fail!=null){System.err.println("fixture blob failure");System.exit(Integer.parseInt(fail));}
-                Path input=Path.of(arguments[arguments.length-1]);byte[] bytes=Files.readAllBytes(input);
-                String digest=HexFormat.of().formatHex(CargoCacheKeys.digest().digest(bytes));
-                Files.copy(input,root.resolve("blob-"+digest),StandardCopyOption.REPLACE_EXISTING);
-                System.out.println("{\"mediaType\":\""+arguments[4]+"\",\"digest\":\"sha256:"+digest+"\",\"size\":"+bytes.length+"}");return;
-            }
-            if(arguments[0].equals("manifest")&&arguments[1].equals("push"))
-            {
-                Path input=Path.of(arguments[3]);Files.copy(input,root.resolve("last-manifest"),StandardCopyOption.REPLACE_EXISTING);
-                String ref=arguments[2];String[] aliases=ref.substring(ref.lastIndexOf(':')+1).split(",");
-                for(String alias:aliases)Files.copy(input,root.resolve(alias),StandardCopyOption.REPLACE_EXISTING);
-                System.out.println("published");return;
-            }
-            if(arguments[0].equals("blob")&&arguments[1].equals("fetch"))
-            {
-                String digest=arguments[arguments.length-1];digest=digest.substring(digest.lastIndexOf(':')+1);
-                Files.copy(root.resolve("blob-"+digest),Path.of(arguments[3]),StandardCopyOption.REPLACE_EXISTING);return;
-            }
-            throw new IOException("Unexpected fixture ORAS operation");
         }
     }
 }

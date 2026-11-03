@@ -60,6 +60,36 @@ public final class CargoCacheParts
      */
     public static int run(ToolingScope scope, String[] arguments, Map<String, String> environment, PrintStream out, PrintStream err)
     {
+        List<String> launcher = new ArrayList<>();
+        try
+        {
+            JsonNode command;
+            try { command = scope.getJsonMapper().readTree(environment.getOrDefault("CARGO_CACHE_ORAS_COMMAND", "[\"oras\"]")); }
+            catch (tools.jackson.core.JacksonException invalid) { throw new IllegalArgumentException("Invalid ORAS command JSON", invalid); }
+            if (!command.isArray() || command.isEmpty()) throw new IllegalArgumentException("CARGO_CACHE_ORAS_COMMAND must be a nonempty JSON array of strings");
+            for (JsonNode part : command)
+            {
+                if (!part.isString()) throw new IllegalArgumentException("ORAS command parts must be strings");
+                launcher.add(part.asString());
+            }
+        }
+        catch (IllegalArgumentException failure) { err.println(failure.getMessage()); return 2; }
+        return run(scope, arguments, environment, oras(launcher, environment), out, err);
+    }
+
+    /**
+     * Transfers groups through the given ORAS, ignoring {@code CARGO_CACHE_ORAS_COMMAND}.
+     * @param scope borrowed shared JSON values
+     * @param arguments operation, repository, reference, previous reference, target, temporary and optional reuse/step pairs
+     * @param environment inherited environment for tar and the saving-step default
+     * @param oras executes one ORAS command
+     * @param out borrowed progress output
+     * @param err borrowed diagnostics
+     * @return zero on success, three for a missing reference, four for an unsupported format, two for invalid arguments,
+     *   or the failed command's status
+     */
+    public static int run(ToolingScope scope, String[] arguments, Map<String, String> environment, Oras oras, PrintStream out, PrintStream err)
+    {
         if (arguments.length < 6 || (!arguments[0].equals("push") && !arguments[0].equals("pull")))
         { err.println("Expected push|pull repository reference previous-reference target temporary [--step STEP] [--reuse-reference REF]"); return 2; }
         try
@@ -74,25 +104,15 @@ public final class CargoCacheParts
                 else throw new IllegalArgumentException("Unknown cache option: " + arguments[i]);
             }
             if (!STEPS.contains(step)) throw new IllegalArgumentException("Unsupported saving step: " + step);
-            JsonNode command;
-            try { command = scope.getJsonMapper().readTree(environment.getOrDefault("CARGO_CACHE_ORAS_COMMAND", "[\"oras\"]")); }
-            catch (tools.jackson.core.JacksonException invalid) { throw new IllegalArgumentException("Invalid ORAS command JSON", invalid); }
-            if (!command.isArray() || command.isEmpty()) throw new IllegalArgumentException("CARGO_CACHE_ORAS_COMMAND must be a nonempty JSON array of strings");
-            List<String> launcher = new ArrayList<>();
-            for (JsonNode part : command)
-            {
-                if (!part.isString()) throw new IllegalArgumentException("ORAS command parts must be strings");
-                launcher.add(part.asString());
-            }
             Path target = Path.of(arguments[4]).toAbsolutePath().normalize();
             Path temporary = Path.of(arguments[5]).toAbsolutePath().normalize();
             String tar = executable(environment, "gtar", "tar");
             if (arguments[0].equals("push"))
             {
-                push(scope, launcher, tar, arguments[1], arguments[2], arguments[3], target, temporary, step, reuse, environment, out, err);
+                push(scope, oras, tar, arguments[1], arguments[2], arguments[3], target, temporary, step, reuse, environment, out, err);
                 return 0;
             }
-            return pull(scope, launcher, tar, arguments[1], arguments[2], target, temporary, environment, out, err);
+            return pull(scope, oras, tar, arguments[1], arguments[2], target, temporary, environment, out, err);
         }
         catch (CommandFailure failure) { if (!failure.diagnostic.isEmpty()) err.print(failure.diagnostic); return failure.status; }
         catch (IllegalArgumentException failure) { err.println(failure.getMessage()); return 2; }
@@ -282,7 +302,7 @@ public final class CargoCacheParts
     /**
      * Uploads missing groups concurrently and publishes aliases only after every required blob succeeds.
      * @param scope borrowed JSON services
-     * @param command exact ORAS argv prefix
+     * @param command executes one ORAS command
      * @param tar resolved GNU tar executable
      * @param repository blob repository
      * @param reference publication aliases
@@ -296,7 +316,7 @@ public final class CargoCacheParts
      * @param err subprocess diagnostics
      * @throws IOException if any collection, upload or publication fails
      */
-    private static void push(ToolingScope scope, List<String> command, String tar, String repository, String reference,
+    private static void push(ToolingScope scope, Oras command, String tar, String repository, String reference,
         String previous, Path target, Path temporary, String step, List<String> reuse, Map<String, String> environment,
         PrintStream out, PrintStream err) throws IOException
     {
@@ -310,7 +330,7 @@ public final class CargoCacheParts
         }
         for (String candidate : candidates)
         {
-            Manifest fetched = fetch(scope, command, candidate, environment);
+            Manifest fetched = fetch(scope, command, candidate);
             if (fetched != null && ARTIFACT.equals(fetched.content.path("artifactType").asString()))
                 for (JsonNode layer : fetched.content.path("layers"))
                     reusable.put(layer.path("annotations").path(GROUP).asString() + ":" + layer.path("annotations").path(INPUTS).asString(), layer);
@@ -330,7 +350,7 @@ public final class CargoCacheParts
                 Path archive = scratch.path.resolve("part.tar.zst");
                 checked(List.of(tar, "--format=pax", "--zstd", "--no-recursion", "--null", "-T", paths.toString(), "-cf", "-"),
                     target, environment, null, archive, err);
-                ObjectNode layer = (ObjectNode) scope.getJsonMapper().readTree(oras(command, environment, err, "blob", "push", "--descriptor", "--media-type", LAYER, repository, archive.toString()));
+                ObjectNode layer = (ObjectNode) scope.getJsonMapper().readTree(oras(command, err, "blob", "push", "--descriptor", "--media-type", LAYER, repository, archive.toString()));
                 layer.set("annotations", scope.getJsonMapper().valueToTree(Map.of(GROUP, group.getKey(), INPUTS, signature,
                     "org.opencontainers.image.title", signature + ".tar.zst")));
                 return new Uploaded(layer, layer.path("size").longValue());
@@ -352,13 +372,13 @@ public final class CargoCacheParts
         try (OwnedDirectory scratch = new OwnedDirectory(temporary, "cargo-manifest-"))
         {
             Path config = scratch.path.resolve("config.json"); Files.writeString(config, "{}");
-            JsonNode descriptor = scope.getJsonMapper().readTree(oras(command, environment, err, "blob", "push", "--descriptor", "--media-type", "application/vnd.oci.empty.v1+json", repository, config.toString()));
+            JsonNode descriptor = scope.getJsonMapper().readTree(oras(command, err, "blob", "push", "--descriptor", "--media-type", "application/vnd.oci.empty.v1+json", repository, config.toString()));
             Path manifest = scratch.path.resolve("manifest.json");
             var document = new LinkedHashMap<String, Object>(); document.put("schemaVersion", 2);
             document.put("mediaType", "application/vnd.oci.image.manifest.v1+json"); document.put("artifactType", ARTIFACT);
             document.put("config", descriptor); document.put("layers", uploaded.stream().map(Uploaded::layer).toList());
             Files.writeString(manifest, json(scope, document, true, false));
-            out.print(oras(command, environment, err, "manifest", "push", reference, manifest.toString()));
+            out.print(oras(command, err, "manifest", "push", reference, manifest.toString()));
         }
         out.println("cache_parts=" + uploaded.size() + " uploaded_archive_bytes=" + uploaded.stream().mapToLong(Uploaded::bytes).sum() +
             " reused_parts=" + uploaded.stream().filter(value -> value.bytes == 0).count());
@@ -367,7 +387,7 @@ public final class CargoCacheParts
     /**
      * Downloads and extracts layers in manifest order, preserving unrelated existing target files.
      * @param scope borrowed JSON services
-     * @param command ORAS argv prefix
+     * @param command executes one ORAS command
      * @param tar resolved GNU tar
      * @param repository blob repository
      * @param reference selected artifact
@@ -379,10 +399,10 @@ public final class CargoCacheParts
      * @return zero for restored, three for missing, four for unsupported artifact format
      * @throws IOException if download, parse or extraction fails
      */
-    private static int pull(ToolingScope scope, List<String> command, String tar, String repository, String reference,
+    private static int pull(ToolingScope scope, Oras command, String tar, String repository, String reference,
         Path target, Path temporary, Map<String, String> environment, PrintStream out, PrintStream err) throws IOException
     {
-        Manifest manifest = fetch(scope, command, reference, environment);
+        Manifest manifest = fetch(scope, command, reference);
         if (manifest == null) return 3;
         if (!Set.of(ARTIFACT, "application/vnd.codex-unleashed.cargo-target.v1").contains(manifest.content.path("artifactType").asString())) return 4;
         Files.createDirectories(target);
@@ -391,7 +411,7 @@ public final class CargoCacheParts
             try (OwnedDirectory scratch = new OwnedDirectory(temporary, "cargo-part-"))
             {
                 Path archive = scratch.path.resolve("part.tar.zst");
-                oras(command, environment, err, "blob", "fetch", "--output", archive.toString(), repository + "@" + layer.path("digest").asString());
+                oras(command, err, "blob", "fetch", "--output", archive.toString(), repository + "@" + layer.path("digest").asString());
                 checked(List.of(tar, "--zstd", "-xf", "-"), target, environment, archive, null, err);
             }
         }
@@ -403,16 +423,14 @@ public final class CargoCacheParts
     /**
      * Fetches an authenticated manifest and distinguishes only the original supported missing-reference diagnostics.
      * @param scope borrowed JSON parser
-     * @param command ORAS argv prefix
+     * @param command executes one ORAS command
      * @param reference registry reference
-     * @param environment inherited environment
      * @return parsed manifest or null for a genuine missing reference
      * @throws IOException if ORAS fails otherwise or its response is invalid
      */
-    private static Manifest fetch(ToolingScope scope, List<String> command, String reference, Map<String, String> environment) throws IOException
+    private static Manifest fetch(ToolingScope scope, Oras command, String reference) throws IOException
     {
-        List<String> arguments = new ArrayList<>(command); arguments.addAll(List.of("manifest", "fetch", "--format", "json", reference));
-        Result result = execute(arguments, null, environment, null, null);
+        Result result = command.run(List.of("manifest", "fetch", "--format", "json", reference));
         if (result.status != 0)
         {
             if (java.util.regex.Pattern.compile("not found|MANIFEST_UNKNOWN|NAME_UNKNOWN|404 Not Found").matcher(result.error).find()) return null;
@@ -425,18 +443,34 @@ public final class CargoCacheParts
     }
 
     /**
-     * Invokes ORAS directly with inherited authentication and returns its stdout.
-     * @param command exact launcher argv prefix
-     * @param environment inherited process environment
+     * Returns an ORAS that runs the launcher as a child process with the inherited environment.
+     * @param launcher exact launcher argv prefix
+     * @param environment inherited authenticated environment
+     * @return process-backed ORAS
+     */
+    private static Oras oras(List<String> launcher, Map<String, String> environment)
+    {
+        List<String> prefix = List.copyOf(launcher);
+        return arguments ->
+        {
+            List<String> argv = new ArrayList<>(prefix); argv.addAll(arguments);
+            return execute(argv, null, environment, null, null);
+        };
+    }
+
+    /**
+     * Invokes ORAS and returns its stdout, failing with its original status.
+     * @param oras executes one ORAS command
      * @param err borrowed diagnostic output
      * @param arguments literal ORAS arguments
      * @return original stdout text
-     * @throws IOException if process or ORAS fails
+     * @throws IOException if ORAS fails
      */
-    private static String oras(List<String> command, Map<String, String> environment, PrintStream err, String... arguments) throws IOException
+    private static String oras(Oras oras, PrintStream err, String... arguments) throws IOException
     {
-        List<String> argv = new ArrayList<>(command); argv.addAll(List.of(arguments));
-        return checked(argv, null, environment, null, null, err);
+        Result result = oras.run(List.of(arguments));
+        if (result.status != 0) throw new CommandFailure(result.status, result.error);
+        err.print(result.error); return result.output;
     }
 
     /**
@@ -519,12 +553,25 @@ public final class CargoCacheParts
      */
     private record Uploaded(JsonNode layer, long bytes) {}
     /**
-     * Retains actual process completion and pipe text.
+     * Retains one command's completion and pipe text.
      * @param status original exit status
      * @param output complete stdout
      * @param error complete stderr
      */
-    private record Result(int status, String output, String error) {}
+    public record Result(int status, String output, String error) {}
+
+    /** Executes one ORAS command. */
+    @FunctionalInterface
+    public interface Oras
+    {
+        /**
+         * Executes ORAS with the given arguments.
+         * @param arguments literal ORAS arguments, without the executable
+         * @return the command's status, stdout and stderr
+         * @throws IOException if the command cannot run
+         */
+        Result run(List<String> arguments) throws IOException;
+    }
 
     /** Preserves a failed child's original status and diagnostic bytes. */
     private static final class CommandFailure extends IOException

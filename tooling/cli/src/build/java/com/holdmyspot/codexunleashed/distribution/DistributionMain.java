@@ -310,18 +310,7 @@ public final class DistributionMain
             !Files.isExecutable(linkedKeytool))
             throw new IOException("Fresh linked runtime keytool is not a regular executable: " + linkedKeytool);
         Files.writeString(lib.resolve("application.sha256"), sha256(application) + "  codex-tooling.jar\n");
-        String companion = """
-            #!/bin/sh
-            set -eu
-            DIR=$(CDPATH= cd -- "${0%%/*}" && pwd)
-            JAVA_TEMP=${TMPDIR:-/tmp}
-            if command -v cygpath >/dev/null 2>&1; then
-                JAVA_TEMP=$(cygpath -m "$JAVA_TEMP")
-            fi
-            exec "$DIR/java%s" "-Djava.io.tmpdir=$JAVA_TEMP" -Xlog:all=off:stdout -Xlog:all=warning:stderr \
-                --enable-native-access=ALL-UNNAMED -cp "$DIR/../lib/bazel-backend/codex-tooling.jar" \
-                com.holdmyspot.codexunleashed.tooling.Main "$@"
-            """.formatted(suffix);
+        String companion = companionScript(suffix);
         Path launcher = output.resolve("bin/codex-tooling-bazel");
         Files.writeString(launcher, companion);
         if (windows)
@@ -337,6 +326,27 @@ public final class DistributionMain
         }
         else
             Files.setPosixFilePermissions(launcher, java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"));
+    }
+
+    /**
+     * Returns the POSIX companion launcher, which runs the tooling main class on the bundled Java next to it.
+     * @param suffix executable suffix of the bundled Java, empty except on Windows
+     * @return complete script text
+     */
+    public static String companionScript(String suffix)
+    {
+        return """
+        #!/bin/sh
+        set -eu
+        DIR=$(CDPATH= cd -- "${0%%/*}" && pwd)
+        JAVA_TEMP=${TMPDIR:-/tmp}
+        if command -v cygpath >/dev/null 2>&1; then
+            JAVA_TEMP=$(cygpath -m "$JAVA_TEMP")
+        fi
+        exec "$DIR/java%s" "-Djava.io.tmpdir=$JAVA_TEMP" -Xlog:all=off:stdout -Xlog:all=warning:stderr \
+            --enable-native-access=ALL-UNNAMED -cp "$DIR/../lib/bazel-backend/codex-tooling.jar" \
+            com.holdmyspot.codexunleashed.tooling.Main "$@"
+        """.formatted(suffix);
     }
 
     /** One owned external stage operation; the returned value is its authentic process exit status. */
