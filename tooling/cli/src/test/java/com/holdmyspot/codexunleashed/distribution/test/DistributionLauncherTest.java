@@ -57,8 +57,11 @@ public final class DistributionLauncherTest
     }
 
     /**
-     * Preserves supplied environment entries and arguments through both actual generated Linux entry points.
-     * Independent Java receivers observe values after the packaged launcher has executed.
+     * Preserves supplied environment entries and arguments through the generated Linux tooling launcher, and packages
+     * the native Cargo wrapper rather than another Java launcher.
+     * <p>
+     * An independent Java receiver observes the values after the packaged launcher has executed. The packaged wrapper,
+     * started without its configuration, must refuse with its own diagnostic and never reach that receiver.
      * @throws Exception if fixture compilation, production packaging, launch or cleanup fails
      */
     @Test
@@ -91,19 +94,10 @@ public final class DistributionLauncherTest
                     }
                 }
                 """);
-            Path wrapper = fixture.resolve("LinuxCargoWrapperMain.java");
-            Files.writeString(wrapper, """
-                package com.holdmyspot.codexunleashed.scheduler;
-                public final class LinuxCargoWrapperMain {
-                    public static void main(String[] args) throws Exception {
-                        com.holdmyspot.codexunleashed.tooling.Main.main(args);
-                    }
-                }
-                """);
             Files.writeString(fixture.resolve("module-info.java"), "module com.holdmyspot.codexunleashed.tooling {}\n");
             Path receiverClasses = Files.createDirectory(root.resolve("receiver-classes"));
             checked(root, tool("javac"), "-d", receiverClasses.toString(), fixture.resolve("module-info.java").toString(),
-                receiver.toString(), wrapper.toString());
+                receiver.toString());
             checked(root, tool("jar"), "--create", "--file", modules.resolve("tooling.jar").toString(),
                 "-C", receiverClasses.toString(), ".");
             Files.writeString(fixture.resolve("module-info.java"), "module ch.qos.logback.classic {}\n");
@@ -142,49 +136,60 @@ public final class DistributionLauncherTest
             supplied.put("JAVA_TEMP", "original Java temporary value");
             supplied.put("TMPDIR", root.toString());
             supplied.put("PATH", "/usr/bin:/bin");
-            List<java.util.Map<String, String>> observations = new ArrayList<>();
             List<String> arguments = List.of("argument with spaces", "", "--literal=$value", "line one\nline two");
-            for (String name : List.of("codex-tooling", "codex-cargo-wrapper-linux"))
+
+            Path captured = root.resolve("codex-tooling.properties");
+            List<String> command = new ArrayList<>(List.of(runtime.resolve("bin/codex-tooling").toString(),
+                captured.toString()));
+            command.addAll(arguments);
+            ProcessBuilder launch = new ProcessBuilder(command).directory(root.toFile());
+            launch.environment().clear();
+            launch.environment().putAll(supplied);
+            Path output = root.resolve("codex-tooling-stdout.log");
+            Path error = root.resolve("codex-tooling-stderr.log");
+            launch.redirectOutput(output.toFile()).redirectError(error.toFile());
+            try (Process child = launch.start())
             {
-                Path captured = root.resolve(name + ".properties");
-                List<String> command = new ArrayList<>(List.of(runtime.resolve("bin").resolve(name).toString(),
-                    captured.toString()));
-                command.addAll(arguments);
-                ProcessBuilder launch = new ProcessBuilder(command).directory(root.toFile());
-                launch.environment().clear();
-                launch.environment().putAll(supplied);
-                Path output = root.resolve(name + "-stdout.log");
-                Path error = root.resolve(name + "-stderr.log");
-                launch.redirectOutput(output.toFile()).redirectError(error.toFile());
-                try (Process child = launch.start())
+                try (java.io.OutputStream input = child.getOutputStream())
                 {
-                    try (java.io.OutputStream input = child.getOutputStream())
-                    {
-                        input.write("authentic stdin\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                    }
-                    int exit = child.waitFor();
-                    if (exit != 23)
-                    {
-                        System.err.println(Files.readString(output));
-                        System.err.println(Files.readString(error));
-                    }
-                    requireThat(exit, "actualLauncherExit").isEqualTo(23);
+                    input.write("authentic stdin\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 }
-                java.util.Properties result = new java.util.Properties();
-                try (java.io.InputStream input = Files.newInputStream(captured)) { result.load(input); }
-                requireThat(result.getProperty("stdin"), "actualStandardInput").isEqualTo("authentic stdin\n");
-                requireThat(Files.readString(output), "actualStandardOutput").isEqualTo("authentic stdout");
-                String diagnostic = Files.readString(error);
-                requireThat(diagnostic.contains("authentic stderr"), "actualStandardError").isTrue();
-                requireThat(diagnostic.contains("authentic stdout"), "standardOutputAbsentFromError").isFalse();
-                System.out.println(name + " captured " + result);
-                java.util.Map<String, String> observed = new java.util.LinkedHashMap<>();
-                for (String key : supplied.keySet()) observed.put(key, result.getProperty("env." + key));
-                observations.add(observed);
-                for (int index = 0; index < arguments.size(); ++index)
-                    requireThat(result.getProperty("arg." + index), "actualUserArgument").isEqualTo(arguments.get(index));
+                int exit = child.waitFor();
+                if (exit != 23)
+                {
+                    System.err.println(Files.readString(output));
+                    System.err.println(Files.readString(error));
+                }
+                requireThat(exit, "actualLauncherExit").isEqualTo(23);
             }
-            requireThat(observations, "bothActualLauncherEnvironments").isEqualTo(List.of(supplied, supplied));
+            java.util.Properties result = new java.util.Properties();
+            try (java.io.InputStream input = Files.newInputStream(captured)) { result.load(input); }
+            requireThat(result.getProperty("stdin"), "actualStandardInput").isEqualTo("authentic stdin\n");
+            requireThat(Files.readString(output), "actualStandardOutput").isEqualTo("authentic stdout");
+            String diagnostic = Files.readString(error);
+            requireThat(diagnostic, "actualStandardError").contains("authentic stderr");
+            requireThat(diagnostic, "standardOutputAbsentFromError").doesNotContain("authentic stdout");
+            java.util.Map<String, String> observed = new java.util.LinkedHashMap<>();
+            for (String key : supplied.keySet()) observed.put(key, result.getProperty("env." + key));
+            requireThat(observed, "actualLauncherEnvironment").isEqualTo(supplied);
+            for (int index = 0; index < arguments.size(); ++index)
+                requireThat(result.getProperty("arg." + index), "actualUserArgument").isEqualTo(arguments.get(index));
+
+            Path wrapperCaptured = root.resolve("codex-cargo-wrapper-linux.properties");
+            ProcessBuilder wrapper = new ProcessBuilder(runtime.resolve("bin/codex-cargo-wrapper-linux").toString(),
+                wrapperCaptured.toString()).directory(root.toFile());
+            wrapper.environment().clear();
+            wrapper.environment().putAll(supplied);
+            Path wrapperError = root.resolve("codex-cargo-wrapper-linux-stderr.log");
+            wrapper.redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/null")))
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(wrapperError.toFile());
+            try (Process child = wrapper.start())
+            {
+                requireThat(child.waitFor(), "wrapperExitWithoutConfiguration").isEqualTo(125);
+            }
+            requireThat(Files.readString(wrapperError), "wrapperDiagnostic").
+                contains("CODEX_LINUX_CARGO_WRAPPER_CONFIG is not set");
+            requireThat(Files.exists(wrapperCaptured), "wrapperReachedJava").isFalse();
         }
     }
 

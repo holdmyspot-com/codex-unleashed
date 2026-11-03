@@ -45,6 +45,11 @@ public final class BazelNativeBackendMain
     private static final String LAUNCHER_RESOURCE = "/com/holdmyspot/codexunleashed/scheduler/linux-java-launcher.c";
 
     /**
+     * Maintained native Cargo compiler wrapper consumed from the final application artifact.
+     */
+    private static final String WRAPPER_RESOURCE = "/com/holdmyspot/codexunleashed/scheduler/linux-cargo-wrapper.c";
+
+    /**
      * Prevents construction of the build entry point.
      */
     private BazelNativeBackendMain() {}
@@ -166,24 +171,33 @@ public final class BazelNativeBackendMain
                     "-Wextra", "-Werror", "-MD", "-MF", build.resolve("action-waiter-headers.d").toString(),
                     ownerSource.toString(), "-o", waiter.toString()));
                 executables.put("linux-bazel-action-waiter", Map.of("path", "linux-bazel-action-waiter", "sha256", sha256(waiter)));
-                Path launcherSource = build.resolve("linux-java-launcher.c");
-                try (InputStream input = BazelNativeBackendMain.class.getResourceAsStream(LAUNCHER_RESOURCE))
+                Map<String, String> launcherResources = new LinkedHashMap<>();
+                launcherResources.put("codex-tooling", LAUNCHER_RESOURCE);
+                launcherResources.put("codex-cargo-wrapper-linux", WRAPPER_RESOURCE);
+                Map<String, Path> launcherSources = new LinkedHashMap<>();
+                for (Map.Entry<String, String> resource : launcherResources.entrySet())
                 {
-                    if (input == null) throw new IOException("Final application artifact lacks maintained Java launcher source");
-                    byte[] bytes = input.readAllBytes();
-                    if (Files.isRegularFile(launcherSource, LinkOption.NOFOLLOW_LINKS) &&
-                        !java.util.Arrays.equals(Files.readAllBytes(launcherSource), bytes))
-                        throw new IOException("Resume Java launcher source differs from its completed native build inputs");
-                    Files.write(launcherSource, bytes);
+                    String file = resource.getValue().substring(resource.getValue().lastIndexOf('/') + 1);
+                    Path launcherSource = build.resolve(file);
+                    try (InputStream input = BazelNativeBackendMain.class.getResourceAsStream(resource.getValue()))
+                    {
+                        if (input == null) throw new IOException("Final application artifact lacks maintained source " + file);
+                        byte[] bytes = input.readAllBytes();
+                        if (Files.isRegularFile(launcherSource, LinkOption.NOFOLLOW_LINKS) &&
+                            !java.util.Arrays.equals(Files.readAllBytes(launcherSource), bytes))
+                            throw new IOException("Resume source " + file + " differs from its completed native build inputs");
+                        Files.write(launcherSource, bytes);
+                    }
+                    launcherSources.put(resource.getKey(), launcherSource);
                 }
-                for (String name : List.of("codex-tooling", "codex-cargo-wrapper-linux"))
+                for (Map.Entry<String, Path> source : launcherSources.entrySet())
                 {
+                    String name = source.getKey();
                     Path launcher = staging.resolve(name);
-                    String wrapper = name.equals("codex-cargo-wrapper-linux") ? "1" : "0";
                     run(mapper, build, build, environment, "build-" + name, List.of("gcc", "-std=c11", "-O2",
-                        "-Wall", "-Wextra", "-Werror", "-pedantic", "-DCARGO_WRAPPER=" + wrapper,
+                        "-Wall", "-Wextra", "-Werror", "-pedantic",
                         "-MD", "-MF", build.resolve(name + "-headers.d").toString(),
-                        launcherSource.toString(), "-o", launcher.toString()));
+                        source.getValue().toString(), "-o", launcher.toString()));
                     Files.setPosixFilePermissions(launcher, java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"));
                     executables.put(name, Map.of("path", name, "sha256", sha256(launcher)));
                 }
@@ -207,9 +221,10 @@ public final class BazelNativeBackendMain
                     waiterHeaders.put(header.toString(), sha256(header));
                 }
                 linuxMetadata.put("actionWaiterHeaderInputs", waiterHeaders);
-                linuxMetadata.put("launcherSourceSha256", sha256(launcherSource));
+                linuxMetadata.put("launcherSourceSha256", sha256(launcherSources.get("codex-tooling")));
+                linuxMetadata.put("cargoWrapperSourceSha256", sha256(launcherSources.get("codex-cargo-wrapper-linux")));
                 Map<String, String> launcherHeaders = new LinkedHashMap<>();
-                for (String name : List.of("codex-tooling", "codex-cargo-wrapper-linux"))
+                for (String name : launcherSources.keySet())
                 {
                     String launcherDependencies = Files.readString(build.resolve(name + "-headers.d")).replace("\\\n", " ");
                     for (String dependency : launcherDependencies.substring(launcherDependencies.indexOf(':') + 1).strip().split("\\s+"))

@@ -7,10 +7,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#ifndef CARGO_WRAPPER
-#error CARGO_WRAPPER must select the packaged entry point
-#endif
-
 /* Resolve the installed executable, independently of argv[0], PATH and the working directory. */
 static char *java_path(void)
 {
@@ -51,7 +47,6 @@ int main(int argc, char **argv)
     if (arguments == NULL) { free(java); perror("Launcher arguments"); return 127; }
     size_t next = 0;
     arguments[next++] = java;
-#if !CARGO_WRAPPER
     const char *temporary = getenv("TMPDIR");
     if (temporary == NULL || temporary[0] == '\0') temporary = "/tmp";
     const char prefix[] = "-Djava.io.tmpdir=";
@@ -69,18 +64,11 @@ int main(int argc, char **argv)
     arguments[next++] = "--enable-native-access=com.holdmyspot.codexunleashed.tooling,com.github.oshi.ffm";
     arguments[next++] = "--module";
     arguments[next++] = "com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.tooling.Main";
-#else
-    arguments[next++] = "--enable-native-access=com.holdmyspot.codexunleashed.tooling";
-    arguments[next++] = "--module";
-    arguments[next++] = "com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler.LinuxCargoWrapperMain";
-#endif
     for (int index = 1; index < argc; ++index) arguments[next++] = argv[index];
     execv(java, arguments);
     int failure = errno;
     perror("Execute bundled Java");
-#if !CARGO_WRAPPER
     free(option);
-#endif
     free(arguments);
     free(java);
     return failure == ENOENT ? 127 : 126;

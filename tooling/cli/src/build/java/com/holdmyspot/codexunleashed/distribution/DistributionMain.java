@@ -127,22 +127,25 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Compiles the Linux exec bindings without passing the workload environment through a shell.
+	 * Compiles the Linux tooling launcher and the native Cargo wrapper without passing the workload environment
+	 * through a shell.
 	 * Compilation is a packaging operation; invocation requires only the assembled runtime.
-	 * @param sources directory containing linux-java-launcher.c
+	 * @param sources directory containing linux-java-launcher.c and linux-cargo-wrapper.c
 	 * @param runtime newly linked runtime
-	 * @throws IOException if the source is missing or compilation fails
+	 * @throws IOException if a source is missing or compilation fails
 	 */
 	private static void packageLinuxLaunchers(Path sources, Path runtime) throws IOException
 	{
-		Path source = sources.resolve("linux-java-launcher.c");
-		if (!Files.isRegularFile(source))
-			throw new IOException("Linux launcher source is required: " + source);
-		for (String name : List.of("codex-tooling", "codex-cargo-wrapper-linux"))
+		Map<String, String> programs = new LinkedHashMap<>();
+		programs.put("codex-tooling", "linux-java-launcher.c");
+		programs.put("codex-cargo-wrapper-linux", "linux-cargo-wrapper.c");
+		for (Map.Entry<String, String> program : programs.entrySet())
 		{
-			Path output = runtime.resolve("bin").resolve(name);
+			Path source = sources.resolve(program.getValue());
+			if (!Files.isRegularFile(source))
+				throw new IOException("Linux launcher source is required: " + source);
+			Path output = runtime.resolve("bin").resolve(program.getKey());
 			List<String> command = List.of("/usr/bin/cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
-				"-DCARGO_WRAPPER=" + (name.equals("codex-tooling") ? "0" : "1"),
 				source.toString(), "-o", output.toString());
 			try (JlinkDiagnostics diagnostic = new JlinkDiagnostics(Files.createTempFile("linux-launcher-", ".log")))
 			{
@@ -167,10 +170,10 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Copies prebuilt exec bindings for the optional compiler-free Bazel distribution.
+	 * Copies the prebuilt tooling launcher and native Cargo wrapper for the optional compiler-free Bazel distribution.
 	 * @param backend explicit prebuilt artifact directory
 	 * @param runtime newly linked runtime
-	 * @throws IOException if either launcher is absent or is not a regular executable
+	 * @throws IOException if either executable is absent or is not a regular executable
 	 */
 	private static void stageLinuxLaunchers(Path backend, Path runtime) throws IOException
 	{
