@@ -14,13 +14,8 @@ import io.grpc.netty.shaded.io.netty.handler.ssl.ApplicationProtocolNames;
 import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
 import io.grpc.netty.shaded.io.netty.handler.ssl.SslProvider;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.GeneralSecurityException;
-import java.security.KeyStore;
-import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -42,17 +37,12 @@ public final class LinuxBazelRunnerTest
 {
     /**
      * Skips this class on file systems without POSIX attributes, which its POSIX-only production code requires.
-     *
-     * Also issues the shared credentials here so that no single test absorbs their one-time cost.
-     *
      * @throws org.testng.SkipException if the default file system lacks the POSIX attribute view
-     * @throws IOException if credential issuance fails
      */
     @org.testng.annotations.BeforeClass
-    public void requirePosix() throws IOException
+    public void requirePosix()
     {
         TestRequirements.requirePosixFileSystem();
-        Fixture.sharedCredentials();
     }
 
     /**
@@ -298,9 +288,6 @@ public final class LinuxBazelRunnerTest
 
     /**
      * Another clientAuth leaf signed by the same trusted CA cannot act as the exact authorized worker.
-     * This test stays near 2 s: the claim needs a second leaf that the same CA really signed, and the only supported
-     * issuer is the JDK keytool executable. Its three launches (key pair, request, signature) cost about 0.5 s each,
-     * and an in-process signer would need JDK-internal certificate APIs.
      * @throws Exception if certificate issuance or wire operations fail
      */
     @Test
@@ -309,7 +296,7 @@ public final class LinuxBazelRunnerTest
         try (Fixture fixture = Fixture.open())
         {
             fixture.readiness();
-            List<Path> wrong = fixture.issueOtherWorker();
+            List<Path> wrong = TestCredentials.otherWorker(fixture.credentials);
             try (Client client = fixture.client(wrong.getFirst(), wrong.getLast()))
             {
                 StatusRuntimeException failure = requireException(StatusRuntimeException.class,
@@ -398,14 +385,12 @@ public final class LinuxBazelRunnerTest
         final Path input;
         /** Worker-owned temporary directory separate from its input root. */
         final Path temporary;
-        /** Private server/worker credentials, issued by the production backend operation. */
+        /** Private server/worker credentials copied from fixed test resources. */
         final LinuxBazelBackend.Credentials credentials;
         /** Actual per-test protocol listener. */
         final LinuxBazelRunner runner;
         /** Exact authorized client channel. */
         private final Client client;
-        /** Credentials issued once for the test JVM, or {@code null} before first use. */
-        private static LinuxBazelBackend.Credentials sharedCredentials;
 
         /**
          * Retains successfully acquired fixture resources.
@@ -445,7 +430,7 @@ public final class LinuxBazelRunnerTest
                 Path input = Files.createDirectory(slot.resolve("input"));
                 Path temporary = Files.createDirectory(slot.resolve("temporary"));
                 Files.createDirectory(slot.resolve("logs"));
-                LinuxBazelBackend.Credentials credentials = sharedCredentials();
+                LinuxBazelBackend.Credentials credentials = TestCredentials.copy(root.resolve("credentials"));
                 runner = new LinuxBazelRunner(build, new LinuxBazelRunner.Credentials(credentials.certificateAuthority(),
                     credentials.serverCertificate(), credentials.serverKey(), credentials.workerCertificate()));
                 runner.start();
@@ -459,30 +444,6 @@ public final class LinuxBazelRunnerTest
                 try { remove(root); } catch (IOException cleanup) { failure.addSuppressed(cleanup); }
                 throw failure;
             }
-        }
-
-        /**
-         * Returns the class-wide invocation credentials, issuing them on first use.
-         * Issuing runs keytool eight times, about 3.5 s, and no test's claim depends on a fresh authority: every test
-         * only reads these files, and the one test that needs a second leaf writes it under its own fixture root.
-         * The credentials directory is removed when the test JVM exits.
-         * @return production-issued credentials shared read-only by all fixtures
-         * @throws IOException if issuance fails
-         */
-        static synchronized LinuxBazelBackend.Credentials sharedCredentials() throws IOException
-        {
-            if (sharedCredentials == null)
-            {
-                Path owner = Files.createTempDirectory("bazel-runner-credentials-");
-                Runtime.getRuntime().addShutdownHook(new Thread(() ->
-                {
-                    try { remove(owner); }
-                    catch (IOException ignored) { /* Best effort: the JVM is exiting and the directory is private. */ }
-                }));
-                sharedCredentials = LinuxBazelBackend.Credentials.generate(owner.resolve("credentials"),
-                    Path.of(System.getProperty("java.home")).resolve("bin/keytool"));
-            }
-            return sharedCredentials;
         }
 
         /**
@@ -551,68 +512,6 @@ public final class LinuxBazelRunnerTest
         Client client(Path certificate, Path key) throws IOException
         {
             return connect(runner.endpoint(), credentials, certificate, key);
-        }
-
-        /**
-         * Issues a second valid clientAuth leaf under this fixture's actual CA for exact-leaf rejection.
-         * @return certificate followed by its PKCS8 key
-         * @throws IOException if JDK issuance or PEM writing fails
-         * @throws GeneralSecurityException if the private key cannot be exported
-         */
-        List<Path> issueOtherWorker() throws IOException, GeneralSecurityException
-        {
-            Path authority = credentials.certificateAuthority().getParent();
-            Path password = authority.resolve("store-password");
-            Path directory = root;
-            Path store = directory.resolve("other-worker.p12");
-            keytool("-genkeypair", "-alias", "other-worker", "-dname", "CN=other-worker", "-keyalg", "EC",
-                "-groupname", "secp256r1", "-validity", "1", "-keystore", store.toString(), "-storetype", "PKCS12",
-                "-storepass:file", password.toString());
-            Path request = directory.resolve("other-worker.csr");
-            keytool("-certreq", "-alias", "other-worker", "-keystore", store.toString(), "-storepass:file",
-                password.toString(), "-file", request.toString());
-            Path certificate = directory.resolve("other-worker-cert.pem");
-            keytool("-gencert", "-rfc", "-alias", "ca", "-keystore", authority.resolve("ca.p12").toString(),
-                "-storepass:file", password.toString(), "-infile", request.toString(), "-outfile", certificate.toString(),
-                "-validity", "1", "-ext", "KU=digitalSignature", "-ext", "EKU=clientAuth");
-            char[] secret = Files.readString(password).toCharArray();
-            try
-            {
-                KeyStore keys = KeyStore.getInstance("PKCS12");
-                try (InputStream input = Files.newInputStream(store)) { keys.load(input, secret); }
-                byte[] encoded = keys.getKey("other-worker", secret).getEncoded();
-                Path key = directory.resolve("other-worker-key.pem");
-                Files.writeString(key, "-----BEGIN PRIVATE KEY-----\n" +
-                    Base64.getMimeEncoder(64, new byte[]{'\n'}).encodeToString(encoded) + "\n-----END PRIVATE KEY-----\n");
-                java.util.Arrays.fill(encoded, (byte) 0);
-                return List.of(certificate, key);
-            }
-            finally { java.util.Arrays.fill(secret, '\0'); }
-        }
-
-        /**
-         * Invokes the real JDK certificate operation without a shell or password argv disclosure.
-         * @param arguments exact supported keytool arguments
-         * @throws IOException if issuance fails or is interrupted
-         */
-        private void keytool(String... arguments) throws IOException
-        {
-            List<String> command = new ArrayList<>();
-            command.add(Path.of(System.getProperty("java.home")).resolve("bin/keytool").toString());
-            command.addAll(List.of(arguments));
-            Path log = root.resolve("other-worker-keytool.log");
-            Process process = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log.toFile()).start();
-            try
-            {
-                if (process.waitFor() != 0) throw new IOException("Fixture clientAuth issuance failed: " + Files.readString(log));
-            }
-            catch (InterruptedException interrupted)
-            {
-                process.destroyForcibly();
-                try { process.waitFor(); } catch (InterruptedException again) { interrupted.addSuppressed(again); }
-                Thread.currentThread().interrupt();
-                throw new IOException("Fixture clientAuth issuance interrupted", interrupted);
-            }
         }
 
         /**

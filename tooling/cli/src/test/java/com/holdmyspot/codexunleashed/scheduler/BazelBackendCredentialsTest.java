@@ -3,6 +3,7 @@ package com.holdmyspot.codexunleashed.scheduler;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -13,14 +14,20 @@ import java.nio.file.attribute.AclEntryType;
 import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.security.KeyFactory;
-import java.security.Signature;
+import java.security.GeneralSecurityException;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.KeyStore;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
-import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.ECGenParameterSpec;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
 import org.apache.commons.io.file.PathUtils;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
@@ -41,33 +48,171 @@ public final class BazelBackendCredentialsTest
     }
 
     /**
-     * Issuing credentials creates distinct CA-signed server/client identities with matching private keys.
-     * This test stays above one second because the claim needs the real JDK keytool: issuance runs eight keytool JVMs in
-     * sequence (CA creation and export, then key, request and signature for each of the server and worker), at about
-     * half a second each, and every assertion below reads their output. A faster stand-in would not prove that keytool
-     * output is signed by the CA and matches the exported keys, and parallel leaf issuance would change production code.
-     * @throws Exception if issuance or native certificate verification fails
+     * Issuance asks keytool for a CA and two CA-signed leaves with the documented arguments, passes the store password
+     * only through a protected file, exports each leaf's PKCS8 key from its store, and protects every credential file.
+     * keytool itself is assumed to work as documented, so a fake stands in for it: it records each argument list and
+     * writes, for each operation, the file that keytool documents producing.
+     * @throws Exception if issuance or verification fails
      */
     @Test
     public void issuesMatchingSignedCredentials() throws Exception
     {
         try (Fixture fixture = Fixture.open())
         {
+            FakeKeytool keytool = new FakeKeytool();
             BazelBackendCredentials credentials = BazelBackendCredentials.generate(
-                fixture.root.resolve("credentials"), keytool(), fixture.protection);
-            X509Certificate ca = certificate(credentials.certificateAuthority());
-            X509Certificate server = certificate(credentials.serverCertificate());
-            X509Certificate worker = certificate(credentials.workerCertificate());
-            server.verify(ca.getPublicKey());
-            worker.verify(ca.getPublicKey());
-            server.checkValidity();
-            worker.checkValidity();
-            requireThat(server.getExtendedKeyUsage(), "serverUsage").isEqualTo(List.of("1.3.6.1.5.5.7.3.1"));
-            requireThat(worker.getExtendedKeyUsage(), "workerUsage").isEqualTo(List.of("1.3.6.1.5.5.7.3.2"));
-            requireThat(server.getPublicKey().equals(worker.getPublicKey()), "sameLeafIdentity").isFalse();
-            verifyKey(credentials.serverKey(), server);
-            verifyKey(credentials.workerKey(), worker);
+                fixture.root.resolve("credentials"), keytool, fixture.protection);
+            Path root = credentials.certificateAuthority().getParent();
+            String password = root.resolve("store-password").toString();
+            List<String> common = List.of("-keyalg", "EC", "-groupname", "secp256r1", "-validity", "1");
+            List<List<String>> expected = new ArrayList<>();
+            List<String> ca = new ArrayList<>(List.of("-genkeypair", "-alias", "ca", "-dname", "CN=Invocation CA"));
+            ca.addAll(common);
+            ca.addAll(List.of("-ext", "BC=ca:true", "-keystore", root.resolve("ca.p12").toString(), "-storetype",
+                "PKCS12", "-storepass:file", password));
+            expected.add(ca);
+            expected.add(List.of("-exportcert", "-rfc", "-alias", "ca", "-keystore", root.resolve("ca.p12").toString(),
+                "-storepass:file", password, "-file", root.resolve("ca.pem").toString()));
+            for (String name : List.of("server", "worker"))
+            {
+                Path store = root.resolve(name + ".p12");
+                List<String> pair = new ArrayList<>(List.of("-genkeypair", "-alias", name, "-dname", "CN=" + name));
+                pair.addAll(common);
+                pair.addAll(List.of("-keystore", store.toString(), "-storetype", "PKCS12", "-storepass:file", password));
+                expected.add(pair);
+                expected.add(List.of("-certreq", "-alias", name, "-keystore", store.toString(), "-storepass:file",
+                    password, "-file", root.resolve(name + ".csr").toString()));
+                expected.add(List.of("-gencert", "-rfc", "-alias", "ca", "-keystore", root.resolve("ca.p12").toString(),
+                    "-storepass:file", password, "-infile", root.resolve(name + ".csr").toString(), "-outfile",
+                    root.resolve(name + "-cert.pem").toString(), "-validity", "1", "-ext", "KU=digitalSignature",
+                    "-ext", "EKU=" + (name.equals("server") ? "serverAuth" : "clientAuth"), "-ext",
+                    "SAN=DNS:localhost,IP:127.0.0.1"));
+            }
+            requireThat(keytool.calls, "keytoolCalls").isEqualTo(expected);
+            requireThat(keytool.directories.stream().allMatch(root::equals), "keytoolWorkingDirectory").isTrue();
+            requireThat(Files.readString(root.resolve("store-password")), "storePassword").matches("[0-9a-f]{64}");
+            requireThat(Files.readString(credentials.serverKey()), "serverKey")
+                .isEqualTo(pem(keytool.keys.get("server")));
+            requireThat(Files.readString(credentials.workerKey()), "workerKey")
+                .isEqualTo(pem(keytool.keys.get("worker")));
             for (Path path : credentials.paths()) fixture.protection.requireFile(path);
+            try (Stream<Path> files = Files.list(root))
+            {
+                for (Path path : files.toList()) fixture.protection.requireFile(path);
+            }
+        }
+    }
+
+    /**
+     * A keytool failure is reported with its log and removes the newly created credential directory.
+     * @throws IOException if fixture creation or cleanup fails
+     */
+    @Test
+    public void reportsAndCollectsFailedKeytool() throws IOException
+    {
+        try (Fixture fixture = Fixture.open())
+        {
+            Path credentials = fixture.root.resolve("credentials");
+            IOException failure = requireException(IOException.class, () -> BazelBackendCredentials.generate(
+                credentials, (directory, arguments, log) ->
+                {
+                    Files.writeString(log, "keytool error: refused");
+                    return 1;
+                }, fixture.protection));
+            requireThat(failure.getMessage(), "message").contains("status 1").contains("keytool error: refused");
+            requireThat(Files.exists(credentials, LinkOption.NOFOLLOW_LINKS), "failedCredentialRootRetained").isFalse();
+        }
+    }
+
+    /**
+     * Formats a PKCS8 key the way issuance documents writing it.
+     * @param encoded PKCS8 key bytes
+     * @return PEM text
+     */
+    private static String pem(byte[] encoded)
+    {
+        return "-----BEGIN PRIVATE KEY-----\n" + Base64.getMimeEncoder(64, new byte[]{'\n'}).encodeToString(encoded) +
+            "\n-----END PRIVATE KEY-----\n";
+    }
+
+    /**
+     * Stands in for keytool: records each call and writes the file that each operation documents producing.
+     * Key stores hold an in-process EC key under the requested alias and password; certificate outputs hold a fixed
+     * marker, because issuance only passes them along.
+     */
+    private static final class FakeKeytool implements BazelBackendCredentials.Keytool
+    {
+        /** Argument lists in call order. */
+        final List<List<String>> calls = new ArrayList<>();
+        /** Working directories in call order. */
+        final List<Path> directories = new ArrayList<>();
+        /** PKCS8 encodings of the leaf keys placed in each store, by alias. */
+        final Map<String, byte[]> keys = new HashMap<>();
+
+        /**
+         * Creates a fake with no recorded calls.
+         */
+        FakeKeytool()
+        {
+        }
+
+        @Override
+        public int run(Path directory, List<String> arguments, Path log) throws IOException
+        {
+            calls.add(arguments);
+            directories.add(directory);
+            try
+            {
+                switch (arguments.getFirst())
+                {
+                    case "-genkeypair" -> writeStore(arguments);
+                    case "-exportcert" -> Files.writeString(Path.of(value(arguments, "-file")), "certificate");
+                    case "-certreq" -> Files.writeString(Path.of(value(arguments, "-file")), "request");
+                    case "-gencert" -> Files.writeString(Path.of(value(arguments, "-outfile")), "certificate");
+                    default -> { return 2; }
+                }
+            }
+            catch (GeneralSecurityException failure)
+            {
+                throw new IOException(failure);
+            }
+            return 0;
+        }
+
+        /**
+         * Writes a PKCS12 store holding a fresh EC key under the requested alias and file password.
+         * @param arguments a {@code -genkeypair} argument list
+         * @throws IOException if the store cannot be written
+         * @throws GeneralSecurityException if the key or store cannot be created
+         */
+        private void writeStore(List<String> arguments) throws IOException, GeneralSecurityException
+        {
+            char[] password = Files.readString(Path.of(value(arguments, "-storepass:file"))).toCharArray();
+            String alias = value(arguments, "-alias");
+            KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+            generator.initialize(new ECGenParameterSpec("secp256r1"));
+            KeyPair pair = generator.generateKeyPair();
+            X509Certificate certificate = certificate(TEST_CERTIFICATE);
+            KeyStore store = KeyStore.getInstance("PKCS12");
+            store.load(null, password);
+            // PKCS12 requires a certificate chain beside a private key; issuance reads only the key.
+            store.setKeyEntry(alias, pair.getPrivate(), password, new java.security.cert.Certificate[]{certificate});
+            try (OutputStream output = Files.newOutputStream(Path.of(value(arguments, "-keystore"))))
+            {
+                store.store(output, password);
+            }
+            keys.put(alias, pair.getPrivate().getEncoded());
+        }
+
+        /**
+         * Returns the element after an option.
+         * @param arguments keytool arguments
+         * @param option the option name
+         * @return its value
+         */
+        private static String value(List<String> arguments, String option)
+        {
+            return arguments.get(arguments.indexOf(option) + 1);
         }
     }
 
@@ -167,7 +312,10 @@ public final class BazelBackendCredentialsTest
             fixture.protection.createFile(retained);
             Files.writeString(retained, "caller-owned");
             requireException(IOException.class, () -> BazelBackendCredentials.generate(
-                credentials, keytool(), fixture.protection));
+                credentials, (directory, arguments, log) ->
+                {
+                    throw new AssertionError("keytool must not run for an existing root");
+                }, fixture.protection));
             requireThat(Files.readString(retained), "callerOwnedBytes").isEqualTo("caller-owned");
         }
     }
@@ -193,50 +341,23 @@ public final class BazelBackendCredentialsTest
         }
     }
 
+    /** A fixed certificate that fake key stores carry beside their key. */
+    private static final String TEST_CERTIFICATE = "bazel-credentials/ca.pem";
+
     /**
-     * Reads one generated PEM certificate through the JDK's X.509 consumer.
-     * @param path issued certificate
+     * Reads a PEM certificate test resource.
+     * @param name resource name relative to this class
      * @return parsed X.509 certificate
-     * @throws Exception if certificate parsing fails
+     * @throws IOException if the resource is missing
+     * @throws java.security.cert.CertificateException if parsing fails
      */
-    private static X509Certificate certificate(Path path) throws Exception
+    private static X509Certificate certificate(String name) throws IOException, java.security.cert.CertificateException
     {
-        try (InputStream input = Files.newInputStream(path))
+        try (InputStream input = BazelBackendCredentialsTest.class.getResourceAsStream(name))
         {
+            if (input == null) throw new IOException("Missing test resource: " + name);
             return (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(input);
         }
-    }
-
-    /**
-     * Signs with the exported private key and verifies with the corresponding certificate.
-     * @param path issued PKCS8 PEM private key
-     * @param certificate corresponding leaf certificate
-     * @throws Exception if decoding, signing or verification fails
-     */
-    private static void verifyKey(Path path, X509Certificate certificate) throws Exception
-    {
-        String pem = Files.readString(path).replace("-----BEGIN PRIVATE KEY-----", "")
-            .replace("-----END PRIVATE KEY-----", "").replaceAll("\\s", "");
-        Signature signer = Signature.getInstance("SHA256withECDSA");
-        signer.initSign(KeyFactory.getInstance("EC").generatePrivate(
-            new PKCS8EncodedKeySpec(Base64.getDecoder().decode(pem))));
-        byte[] message = new byte[]{1, 2, 3};
-        signer.update(message);
-        byte[] signature = signer.sign();
-        signer.initVerify(certificate);
-        signer.update(message);
-        requireThat(signer.verify(signature), "exportedKeyMatchesCertificate").isTrue();
-    }
-
-    /**
-     * Selects the current test runtime's trusted certificate tool using native executable filenames.
-     * @return the current JDK's keytool path
-     */
-    private static Path keytool()
-    {
-        Path bin = Path.of(System.getProperty("java.home")).resolve("bin");
-        Path executable = bin.resolve("keytool");
-        return Files.isRegularFile(executable) ? executable : bin.resolve("keytool.exe");
     }
 
     /**

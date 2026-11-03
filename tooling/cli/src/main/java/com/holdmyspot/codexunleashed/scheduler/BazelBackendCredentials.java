@@ -79,9 +79,43 @@ public record BazelBackendCredentials(Path certificateAuthority, Path serverCert
      */
     public static BazelBackendCredentials generate(Path credentialRoot, Path keytool, Protection protection) throws IOException
     {
+        Path executable = keytool.toAbsolutePath().normalize();
+        return generate(credentialRoot, (directory, arguments, log) -> runKeytool(executable, directory, arguments, log),
+            protection);
+    }
+
+    /**
+     * Runs one keytool operation in the private credential directory.
+     */
+    @FunctionalInterface
+    interface Keytool
+    {
+        /**
+         * Runs keytool with the exact arguments, appending its combined output to the log.
+         * @param directory private credential working directory
+         * @param arguments exact keytool argument elements, excluding the executable
+         * @param log existing protected file that receives keytool's output
+         * @return keytool's exit status
+         * @throws IOException if keytool cannot run
+         * @throws InterruptedException if waiting for keytool is interrupted after it has been reaped
+         */
+        int run(Path directory, List<String> arguments, Path log) throws IOException, InterruptedException;
+    }
+
+    /**
+     * Issues credentials through the supplied keytool operation; see {@link #generate(Path, Path, Protection)}.
+     * @param credentialRoot new directory under an already private invocation root
+     * @param keytool the keytool operation
+     * @param protection mandatory native authority for all credential objects
+     * @return issued PEM credentials
+     * @throws IOException if issuance or protected-file creation fails
+     */
+    static BazelBackendCredentials generate(Path credentialRoot, Keytool keytool, Protection protection)
+        throws IOException
+    {
         Path root = credentialRoot.toAbsolutePath().normalize();
+        Objects.requireNonNull(keytool, "keytool");
         Objects.requireNonNull(protection, "protection");
-        keytool = keytool.toAbsolutePath().normalize();
         protection.requireDirectory(root.getParent());
         protection.createDirectory(root);
         byte[] secret = new byte[32];
@@ -131,7 +165,7 @@ public record BazelBackendCredentials(Path certificateAuthority, Path serverCert
 
     /**
      * Issues one CA-signed leaf and exports its PKCS8 key without exposing a password in argv.
-     * @param keytool trusted JDK keytool
+     * @param keytool the keytool operation
      * @param root private credential directory containing the CA store
      * @param protection mandatory native authority
      * @param name server or worker leaf role
@@ -140,7 +174,7 @@ public record BazelBackendCredentials(Path certificateAuthority, Path serverCert
      * @throws IOException if issuance or PEM writing fails
      * @throws GeneralSecurityException if the generated keystore cannot be read
      */
-    private static void issueLeaf(Path keytool, Path root, Protection protection, String name, Path password, char[] chars)
+    private static void issueLeaf(Keytool keytool, Path root, Protection protection, String name, Path password, char[] chars)
         throws IOException, GeneralSecurityException
     {
         Path store = root.resolve(name + ".p12");
@@ -170,22 +204,46 @@ public record BazelBackendCredentials(Path certificateAuthority, Path serverCert
     }
 
     /**
-     * Runs the supported JDK certificate tool with owned diagnostics and waits for its original exit.
-     * @param keytool trusted JDK executable
+     * Runs one keytool operation with owned diagnostics and checks its exit status.
+     * @param keytool the keytool operation
      * @param root private credential working directory
      * @param protection mandatory native authority
      * @param arguments exact keytool argument elements
      * @throws IOException if keytool cannot run or reports a failure
      */
-    private static void issue(Path keytool, Path root, Protection protection, String... arguments) throws IOException
+    private static void issue(Keytool keytool, Path root, Protection protection, String... arguments) throws IOException
     {
-        List<String> command = new ArrayList<>();
-        command.add(keytool.toAbsolutePath().toString());
-        command.addAll(List.of(arguments));
         protection.requireDirectory(root);
         Path log = root.resolve("keytool.log");
         if (Files.exists(log, LinkOption.NOFOLLOW_LINKS)) protection.requireFile(log);
         else protection.createFile(log);
+        int result;
+        try { result = keytool.run(root, List.of(arguments), log); }
+        catch (InterruptedException failure)
+        {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted during invocation certificate issuance; keytool was reaped", failure);
+        }
+        protection.requireDirectory(root);
+        if (result != 0) throw new IOException("JDK keytool failed with status " + result + ": " + Files.readString(log));
+    }
+
+    /**
+     * Runs the JDK keytool executable and waits for its original exit, reaping it if interrupted.
+     * @param keytool absolute trusted JDK keytool executable
+     * @param root private credential working directory
+     * @param arguments exact keytool argument elements
+     * @param log existing protected file that receives keytool's output
+     * @return keytool's exit status
+     * @throws IOException if keytool cannot start
+     * @throws InterruptedException if waiting was interrupted; keytool has been destroyed and reaped
+     */
+    private static int runKeytool(Path keytool, Path root, List<String> arguments, Path log)
+        throws IOException, InterruptedException
+    {
+        List<String> command = new ArrayList<>();
+        command.add(keytool.toString());
+        command.addAll(arguments);
         ProcessBuilder builder = new ProcessBuilder(command).directory(root.toFile()).redirectErrorStream(true).
             redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile()));
         Process process = builder.start();
@@ -196,13 +254,8 @@ public record BazelBackendCredentials(Path certificateAuthority, Path serverCert
             try { result = process.waitFor(); break; }
             catch (InterruptedException failure) { interrupted = true; process.destroy(); }
         }
-        if (interrupted)
-        {
-            Thread.currentThread().interrupt();
-            throw new IOException("Interrupted during invocation certificate issuance; keytool was reaped");
-        }
-        protection.requireDirectory(root);
-        if (result != 0) throw new IOException("JDK keytool failed with status " + result + ": " + Files.readString(log));
+        if (interrupted) throw new InterruptedException("keytool was reaped after an interrupt");
+        return result;
     }
 
     /**
