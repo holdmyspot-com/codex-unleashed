@@ -21,7 +21,7 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 
 | Operation | Identity | State and next action |
 | --- | --- | --- |
-| Linux x64 release build | Run `41739349889` (`cache=true`, `scheduler=true`), commit `9e03146991` | Started 2026-11-03T21:10Z. Read `baseline-evidence/quiet-build-report.log` in its artifact if it goes quiet. |
+| Linux x64 release build | Run `41739349889` (`cache=true`, `scheduler=true`), commit `9e03146991` | Dispatched 2026-11-03T23:27Z. Read `baseline-evidence/quiet-build-report.log` in its artifact if it goes quiet. |
 | Linux ARM release build | Run `41739345208`, same commit and inputs | Same. |
 | Checkpoint tests | Run `41739313338`, commit `9e03146991` | Includes the new `test-watch-quiet-build.py` on Linux. |
 
