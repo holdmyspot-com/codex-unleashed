@@ -71,21 +71,23 @@ public final class SourceInputInventory
 	 * @param cargoHome optional downloads to exclude from untracked or fallback inputs
 	 * @param temporaryDirectory the owned subprocess capture parent
 	 * @param environment explicit child environment overrides
+	 * @param commands external Git command execution
 	 * @return immutable digests and exact timestamps
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if Git startup, inventory, hashing, timestamps, or capture cleanup fails
 	 */
 	public static Snapshot read(ToolingScope scope, Path workspace, Path targetDirectory, Optional<Path> cargoHome,
-		Path temporaryDirectory, Map<String, String> environment) throws IOException
+		Path temporaryDirectory, Map<String, String> environment, SystemCommands.Capture commands) throws IOException
 	{
 		Objects.requireNonNull(scope, "scope");
 		Objects.requireNonNull(workspace, "workspace");
 		Objects.requireNonNull(targetDirectory, "targetDirectory");
 		Objects.requireNonNull(cargoHome, "cargoHome");
 		Objects.requireNonNull(temporaryDirectory, "temporaryDirectory");
+		Objects.requireNonNull(commands, "commands");
 		Map<String, String> overrides = Map.copyOf(environment);
 		Path working = workspace.toRealPath();
-		SystemCommands.Result discovery = SystemCommands.capture(List.of("git", "-C", working.toString(),
+		SystemCommands.Result discovery = commands.capture(List.of("git", "-C", working.toString(),
 			"rev-parse", "--show-toplevel"), working, temporaryDirectory, overrides);
 		Path root = working;
 		if (discovery.status() == 0)
@@ -96,7 +98,7 @@ public final class SourceInputInventory
 			excluded.add(SourceInputPaths.resolve(cargoHome.orElseThrow()));
 		List<Path> paths;
 		if (discovery.status() == 0)
-			paths = gitPaths(root, excluded, temporaryDirectory, overrides);
+			paths = gitPaths(root, excluded, temporaryDirectory, overrides, commands);
 		else
 			paths = fallbackPaths(root, excluded);
 		return snapshot(scope, root, paths, SourceInputPaths.resolve(targetDirectory));
@@ -109,10 +111,12 @@ public final class SourceInputInventory
 	 * @param excluded canonical cache directories
 	 * @param temporary capture storage
 	 * @param environment child overrides
+	 * @param commands external Git command execution
 	 * @return source candidates in Git order
 	 * @throws IOException if Git or decoding fails
 	 */
-	private static List<Path> gitPaths(Path root, Set<Path> excluded, Path temporary, Map<String, String> environment)
+	private static List<Path> gitPaths(Path root, Set<Path> excluded, Path temporary, Map<String, String> environment,
+		SystemCommands.Capture commands)
 		throws IOException
 	{
 		List<String> tracked = List.of("git", "-C", root.toString(), "ls-files", "--cached", "-z");
@@ -126,7 +130,7 @@ public final class SourceInputInventory
 		List<Path> paths = new ArrayList<>();
 		for (List<String> command : List.of(tracked, untracked))
 		{
-			SystemCommands.Result result = SystemCommands.capture(command, root, temporary, environment);
+			SystemCommands.Result result = commands.capture(command, root, temporary, environment);
 			if (result.status() != 0)
 				throw new IOException("Git source inventory failed with status " + result.status() + ": " + result.stderr());
 			for (String name : result.stdout().split("\\x00"))

@@ -82,7 +82,7 @@ public final class SourceCacheCommand
 		}
 
 		SourceInputCache.Context context = new SourceInputCache.Context(scope, Path.of("").toAbsolutePath(),
-			Path.of(System.getProperty("java.io.tmpdir")), System.getenv(), Clock.systemUTC());
+			Path.of(System.getProperty("java.io.tmpdir")), System.getenv(), Clock.systemUTC(), SystemCommands::capture);
 		if (record)
 			SourceInputCache.record(request, context, out, err);
 		else

@@ -82,9 +82,10 @@ public final class SourceInputCache
 	 * @param temporaryDirectory existing owned subprocess capture storage
 	 * @param environment effective inherited environment with explicit caller overrides
 	 * @param clock timestamp authority for content changes
+	 * @param commands external Cargo and Git command execution
 	 */
 	public record Context(ToolingScope scope, Path workingDirectory, Path temporaryDirectory,
-		Map<String, String> environment, Clock clock)
+		Map<String, String> environment, Clock clock, SystemCommands.Capture commands)
 	{
 		/**
 		 * Copies the environment, makes the working directory absolute, and resolves a relative temporary directory against it.
@@ -94,6 +95,7 @@ public final class SourceInputCache
 		 * @param temporaryDirectory capture storage
 		 * @param environment the effective environment
 		 * @param clock the timestamp authority
+		 * @param commands external Cargo and Git command execution
 		 * @throws NullPointerException if an argument, environment key, or value is null
 		 */
 		public Context
@@ -103,6 +105,7 @@ public final class SourceInputCache
 			temporaryDirectory = workingDirectory.resolve(Objects.requireNonNull(temporaryDirectory, "temporaryDirectory"));
 			environment = Map.copyOf(environment);
 			Objects.requireNonNull(clock, "clock");
+			Objects.requireNonNull(commands, "commands");
 		}
 	}
 
@@ -316,7 +319,7 @@ public final class SourceInputCache
 		Optional<Path> cargoHome = Optional.ofNullable(context.environment().get("CARGO_HOME")).
 			filter(value -> !value.isEmpty()).map(value -> context.workingDirectory().resolve(value));
 		return SourceInputInventory.read(context.scope(), workspace, target, cargoHome,
-			context.temporaryDirectory(), context.environment());
+			context.temporaryDirectory(), context.environment(), context.commands());
 	}
 
 	/**
@@ -379,7 +382,7 @@ public final class SourceInputCache
 		List<String> command = new ArrayList<>();
 		command.add(context.environment().getOrDefault("CARGO", "cargo"));
 		command.addAll(arguments);
-		return SystemCommands.capture(command, context.workingDirectory(), context.temporaryDirectory(),
+		return context.commands().capture(command, context.workingDirectory(), context.temporaryDirectory(),
 			context.environment());
 	}
 }

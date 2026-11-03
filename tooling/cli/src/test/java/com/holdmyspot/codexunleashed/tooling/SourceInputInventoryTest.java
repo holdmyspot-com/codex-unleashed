@@ -50,7 +50,7 @@ public final class SourceInputInventoryTest
 			Files.writeString(fixture.root.resolve("included.rs"), "untracked input");
 			Files.writeString(fixture.root.resolve("ignored"), "ignored input");
 			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, source.getParent(), fixture.target,
-				Optional.of(fixture.cargo), fixture.temporary, fixture.environment());
+				Optional.of(fixture.cargo), fixture.temporary, fixture.environment(), SystemCommands::capture);
 			requireThat(snapshot.root(), "snapshot.root()").isEqualTo(fixture.root.toRealPath());
 			requireThat(snapshot.files().keySet(), "snapshot.files().keySet()")
 				.isEqualTo(Set.of(".gitignore", "workspace/src/lib.rs", "included.rs"));
@@ -79,7 +79,7 @@ public final class SourceInputInventoryTest
 			for (String directory : new String[]{".git", "node_modules", "nested/target"})
 				Files.writeString(Files.createDirectories(fixture.root.resolve(directory)).resolve("excluded"), "ignored");
 			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, fixture.root, fixture.target,
-				Optional.of(fixture.cargo), fixture.temporary, fixture.environment());
+				Optional.of(fixture.cargo), fixture.temporary, fixture.environment(), SystemCommands::capture);
 			requireThat(snapshot.root(), "snapshot.root()").isEqualTo(fixture.root.toRealPath());
 			requireThat(snapshot.files(), "snapshot.files()").isEqualTo(Map.of("src/lib.rs", Sha256.digest(source)));
 			requireThat(snapshot.mtimes().containsKey("src"), "snapshot").isTrue();
@@ -99,7 +99,7 @@ public final class SourceInputInventoryTest
 			SystemCommands.run(java.util.List.of("git", "init", "-q", fixture.root.toString()));
 			SystemCommands.run(java.util.List.of("git", "-C", fixture.root.toString(), "add", "cargo", "target"));
 			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, fixture.root, fixture.target,
-				Optional.of(fixture.cargo), fixture.temporary, fixture.environment());
+				Optional.of(fixture.cargo), fixture.temporary, fixture.environment(), SystemCommands::capture);
 			requireThat(snapshot.files().keySet(), "snapshot.files().keySet()").isEqualTo(Set.of("cargo/download"));
 		}
 	}
@@ -119,7 +119,7 @@ public final class SourceInputInventoryTest
 			Instant required = Instant.parse("2300-01-01T00:00:00.123456789Z");
 			SourceInputTimes.setTimes(fixture.scope, source, FileTime.from(required));
 			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, fixture.root, fixture.target,
-				Optional.of(fixture.cargo), fixture.temporary, fixture.environment());
+				Optional.of(fixture.cargo), fixture.temporary, fixture.environment(), SystemCommands::capture);
 			requireThat(snapshot.mtimes().get("source.rs"), "snapshot")
 				.isEqualTo(SourceInputTimes.nanos(NativeTimestampRange.expected(fixture.root, required)));
 		}

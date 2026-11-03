@@ -24,6 +24,26 @@ public final class SystemCommands
 		ProcessBuilder.Redirect.DISCARD.file());
 
 	/**
+	 * Captures an external command in an explicitly supplied process environment.
+	 */
+	@FunctionalInterface
+	public interface Capture
+	{
+		/**
+		 * Executes the command and captures its status and UTF-8 output without inheriting standard input.
+		 *
+		 * @param command            executable and literal arguments
+		 * @param workingDirectory   child working directory
+		 * @param temporaryDirectory owned capture storage
+		 * @param environment        child environment overrides
+		 * @return the ordinary exit status and separate output streams
+		 * @throws IOException if startup, capture or cleanup fails
+		 */
+		Result capture(List<String> command, Path workingDirectory, Path temporaryDirectory,
+			Map<String, String> environment) throws IOException;
+	}
+
+	/**
 	 * Prevents construction.
 	 */
 	private SystemCommands()
