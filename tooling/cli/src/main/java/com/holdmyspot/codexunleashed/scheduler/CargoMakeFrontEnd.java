@@ -13,7 +13,7 @@ import java.util.Objects;
  * process. Make before 4.4 accepts only numeric descriptors. The front end, first on the lease's {@code PATH},
  * replaces the FIFO auth value in the make variables with fixed descriptor numbers and executes the real make.
  */
-final class CargoMakeFrontEnd
+public final class CargoMakeFrontEnd
 {
 	/** Characters that the generated script carries inside single quotes without escaping. */
 	private static final String SAFE_WORD = "[A-Za-z0-9_./:+=,@%-]+";
@@ -30,7 +30,7 @@ final class CargoMakeFrontEnd
 	 * @throws NullPointerException if {@code search} is null
 	 * @throws IOException if a found make cannot be resolved
 	 */
-	static Path findMake(String search) throws IOException
+	public static Path findMake(String search) throws IOException
 	{
 		for (String entry : Objects.requireNonNull(search, "search").split(":", -1))
 		{
@@ -55,7 +55,7 @@ final class CargoMakeFrontEnd
 	 * @throws NullPointerException if a path is null
 	 * @throws IllegalArgumentException if a path contains characters the script cannot carry
 	 */
-	static String script(Path make, Path fifo, int read, int write, boolean openDescriptors)
+	public static String script(Path make, Path fifo, int read, int write, boolean openDescriptors)
 	{
 		String auth = "fifo:" + Objects.requireNonNull(fifo, "fifo");
 		for (String word : new String[] {Objects.requireNonNull(make, "make").toString(), auth})

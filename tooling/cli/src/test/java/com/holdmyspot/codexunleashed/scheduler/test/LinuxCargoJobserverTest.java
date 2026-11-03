@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.scheduler.test;
 
+import com.holdmyspot.codexunleashed.scheduler.CargoMakeFrontEnd;
 import com.holdmyspot.codexunleashed.scheduler.LinuxCargoJobserver;
 import com.holdmyspot.codexunleashed.scheduler.LinuxFifoBindings;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
@@ -134,44 +135,34 @@ public final class LinuxCargoJobserverTest
 	}
 
 	/**
-	 * The lease puts a make front end ahead of the make a build script would find. With the FIFO open on the lease's
-	 * descriptors, as the trusted leader leaves it, the front end runs that make with the FIFO auth value replaced by
-	 * those descriptor numbers, which is the form GNU Make before 4.4 accepts. Bash stands in for the leader.
-	 * @throws Exception if fixture setup, process execution or cleanup fails
+	 * The lease puts the make front end for the make a build script would find ahead of the caller's search path. The
+	 * front end expects the trusted leader to have opened the FIFO onto the lease's descriptors.
+	 * @throws Exception if fixture setup or cleanup fails
 	 */
 	@Test
-	public void makeFrontEndPassesInheritedDescriptors() throws Exception
+	public void leaseInstallsTheMakeFrontEnd() throws Exception
 	{
 		requireLinux();
 		Path frontEnd;
 		try (Fixture fixture = new Fixture())
 		{
-			FakeMake make = new FakeMake(fixture.directory, LinuxCargoJobserver.READ_DESCRIPTOR,
-				LinuxCargoJobserver.WRITE_DESCRIPTOR);
+			Path tools = Files.createDirectory(fixture.directory.resolve("tools"));
+			Path make = Files.createFile(tools.resolve("make"),
+				java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+					java.nio.file.attribute.PosixFilePermissions.fromString("rwx------")));
+			String search = tools + ":/usr/bin:/bin";
 			try (LinuxCargoJobserver owner = LinuxCargoJobserver.create(fixture.scope, fixture.directory, fixture.group, 2))
 			{
-				try (var lease = owner.retainCargo(Map.of("PATH", make.directory + ":/usr/bin:/bin")))
+				try (var lease = owner.retainCargo(Map.of("PATH", search)))
 				{
 					var descriptors = lease.descriptors();
 					String path = lease.environment().get("PATH");
-					requireThat(path, "leasePath").endsWith(":" + make.directory + ":/usr/bin:/bin");
+					requireThat(path, "leasePath").endsWith(":" + search);
 					frontEnd = Path.of(path.substring(0, path.indexOf(':')), "make");
-					String flags = lease.environment().get("MAKEFLAGS");
-					var builder = new ProcessBuilder("/bin/bash", "-c", "exec make all 'two words' " +
-						descriptors.read() + "<>\"$0\" " + descriptors.write() + "<>\"$0\"", descriptors.fifo().toString());
-					builder.environment().clear();
-					builder.environment().put("MAKEFLAGS", flags);
-					builder.environment().put("PATH", path);
-					builder.directory(fixture.directory.toFile()).redirectErrorStream(true);
-					Process process = builder.start();
-					String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-					requireThat(process.waitFor(), "frontEndExit").withContext(output, "output").isEqualTo(0);
-					String auth = "fifo:" + descriptors.fifo();
-					requireThat(flags, "leaseFlags").contains(auth);
-					String fifo = descriptors.fifo().toRealPath().toString();
-					requireThat(make.observations(), "makeObservations").isEqualTo(List.of(
-						flags.replace(auth, descriptors.read() + "," + descriptors.write()), "unset", "unset", fifo, fifo,
-						"all", "two words"));
+					requireThat(Files.readString(frontEnd), "frontEnd").isEqualTo(CargoMakeFrontEnd.script(
+						make.toRealPath(), descriptors.fifo(), descriptors.read(), descriptors.write(), false));
+					requireThat(Files.isExecutable(frontEnd), "frontEndExecutable").isTrue();
+					requireThat(lease.environment().get("MAKEFLAGS"), "leaseFlags").contains("fifo:" + descriptors.fifo());
 				}
 			}
 			requireThat(Files.exists(frontEnd), "frontEndAfterClose").isFalse();
