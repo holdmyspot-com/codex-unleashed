@@ -25,7 +25,7 @@ import java.util.Set;
  * After failed session cleanup the caller retains this owner and may call close to progress safe cleanup; observation
  * never retries native effects. Failed descriptor closes and uncertain publication are never replayed.
  */
-final class WindowsCargoInvocation implements CargoSession.Invocation
+public final class WindowsCargoInvocation implements CargoSession.Invocation
 {
     /**
      * Sole native coordination thread.
@@ -82,7 +82,7 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
      * @param configuration trusted immutable Cargo and wrapper boundaries
      * @throws NullPointerException if an input is null
      */
-    WindowsCargoInvocation(WindowsCargoScope scope, Configuration configuration)
+    public WindowsCargoInvocation(WindowsCargoScope scope, Configuration configuration)
     {
         this(new NativeResources(Objects.requireNonNull(scope, "scope"),
             Objects.requireNonNull(configuration, "configuration"), null));
@@ -96,7 +96,7 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
      * @param memory caller-owned history and complete source/toolchain identity boundaries
      * @throws NullPointerException if an input is null
      */
-    WindowsCargoInvocation(WindowsCargoScope scope, Configuration configuration, CargoMemoryEstimates.Settings memory)
+    public WindowsCargoInvocation(WindowsCargoScope scope, Configuration configuration, CargoMemoryEstimates.Settings memory)
     {
         this(new NativeResources(Objects.requireNonNull(scope, "scope"),
             Objects.requireNonNull(configuration, "configuration"), Objects.requireNonNull(memory, "memory")));
@@ -107,7 +107,7 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
      * @param resources retained acquisition, service and cleanup owner
      * @throws NullPointerException if resources is null
      */
-    WindowsCargoInvocation(Resources resources)
+    public WindowsCargoInvocation(Resources resources)
     {
         this.resources = Objects.requireNonNull(resources, "resources");
     }
@@ -118,7 +118,7 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
      * @throws IllegalStateException if called from another thread or acquisition was already attempted or closed
      * @throws IOException if native acquisition or release fails
      */
-    void start() throws IOException
+    public void start() throws IOException
     {
         requireThread();
         if (startAttempted || closed) throw new IllegalStateException("Cargo invocation acquisition is permitted once");
@@ -145,7 +145,7 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
      * @return started coordinator session
      * @throws IllegalStateException if no successful start occurred or another thread calls
      */
-    CargoSession<WindowsProcess.Result> session()
+    public CargoSession<WindowsProcess.Result> session()
     {
         requireThread();
         if (!started) throw new IllegalStateException("Cargo invocation did not start successfully");
@@ -168,7 +168,7 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
      * @return immutable completed observations, or empty when history was not configured
      * @throws IllegalStateException if another thread calls
      */
-    List<CargoMemoryEstimates.Observation> memoryObservations()
+    public List<CargoMemoryEstimates.Observation> memoryObservations()
     {
         requireThread();
         return List.copyOf(resources.memoryObservations());
@@ -326,7 +326,7 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
     /**
      * Retains a partial invocation without changing the original failure's type or cause graph.
      */
-    static final class CleanupFailure extends IOException implements AutoCloseable
+    public static final class CleanupFailure extends IOException implements AutoCloseable
     {
         /**
          * Exception serialization format identifier.
@@ -384,7 +384,7 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
      * @throws NullPointerException if configuration is null
      * @throws IllegalArgumentException if input names contain case-insensitive duplicates
      */
-    static Map<String, String> approvedEnvironment(Configuration configuration)
+    public static Map<String, String> approvedEnvironment(Configuration configuration)
     {
         Objects.requireNonNull(configuration, "configuration may not be null");
         Map<String, String> environment = new LinkedHashMap<>(configuration.environment());
@@ -424,7 +424,7 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
      * @param jobs positive capacity including Cargo's implicit slot
      * @param timeout positive bounded native control interval, not a Cargo runtime deadline
      */
-    record Configuration(List<String> cargo, Path directory, Map<String, String> environment,
+    public record Configuration(List<String> cargo, Path directory, Map<String, String> environment,
         MemorySegment input, MemorySegment output, MemorySegment error, Path rustc, Path wrapper, Path frida,
         Map<Path, String> imageHashes, int jobs, Duration timeout)
     {
@@ -445,7 +445,7 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
          * @throws NullPointerException if an input or collection member is null
          * @throws IllegalArgumentException if paths, capacity or interval are invalid
          */
-        Configuration
+        public Configuration
         {
             cargo = List.copyOf(cargo);
             environment = Map.copyOf(environment);
@@ -480,7 +480,7 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
      * Attempts an independent disposal batch once after its caller has established every required safety barrier.
      * A failed batch retains its first exact failure without repeating uncertain effects.
      */
-    static final class Cleanup
+    public static final class Cleanup
     {
         /** Whether any owner disposal has begun; no uncertain operation may be repeated. */
         private boolean attempted;
@@ -488,7 +488,7 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
         private Throwable failure;
 
         /** Creates a resource-free disposal guard. */
-        Cleanup() {}
+        public Cleanup() {}
 
         /**
          * Attempts every independent owner even when an earlier owner fails.
@@ -498,7 +498,7 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
          * @throws RuntimeException if an unchecked owner disposal fails first
          * @throws Error if a fatal owner disposal fails first
          */
-        void close(WindowsAttempt.Close... owners) throws IOException
+        public void close(WindowsAttempt.Close... owners) throws IOException
         {
             if (attempted) { rethrow(failure); return; }
             attempted = true;
@@ -514,7 +514,7 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
     /**
      * Retains the concrete native owners through acquisition, service and staged cleanup.
      */
-    interface Resources
+    public interface Resources
     {
         /**
          * Acquires native dependencies under this retained owner.
@@ -565,7 +565,7 @@ final class WindowsCargoInvocation implements CargoSession.Invocation
          * Returns completed predictions and accepted sampled-residency observations.
          * @return immutable completed observations, or empty without an acquired estimator
          */
-        default List<CargoMemoryEstimates.Observation> memoryObservations()
+        public default List<CargoMemoryEstimates.Observation> memoryObservations()
         {
             CargoMemoryEstimates estimates = memoryEstimates();
             return estimates == null ? List.of() : estimates.observations();

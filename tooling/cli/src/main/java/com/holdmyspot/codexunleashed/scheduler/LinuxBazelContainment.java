@@ -13,7 +13,7 @@ import java.util.Objects;
  * The root manager authenticates held executable transitions separately. Calls and group topology are confined to
  * one operation thread, and external process migration into or out of the retained group is unsupported.
  */
-final class LinuxBazelContainment implements AutoCloseable
+public final class LinuxBazelContainment implements AutoCloseable
 {
     /** Original authentication policy retained through the child lifetime. */
     private final LinuxBazelIdentity authenticator;
@@ -63,7 +63,7 @@ final class LinuxBazelContainment implements AutoCloseable
      * @throws UnsupportedOperationException if the parent filesystem is not cgroup v2
      * @throws IOException if identity, allocation, migration or membership cannot be verified
      */
-    static LinuxBazelContainment admit(LinuxBazelIdentity authenticator, LinuxBazelIdentity.Owner owner,
+    public static LinuxBazelContainment admit(LinuxBazelIdentity authenticator, LinuxBazelIdentity.Owner owner,
         LinuxBazelIdentity.Child child, LinuxBazelIdentity.Execution preparedExecution, Path cgroupParent,
         Duration timeout) throws IOException
     {
@@ -96,7 +96,7 @@ final class LinuxBazelContainment implements AutoCloseable
      * @return verified containment over the same group
      * @throws IOException if authentication, migration or cleanup fails
      */
-    static LinuxBazelContainment admitReserved(LinuxBazelIdentity authenticator, LinuxBazelIdentity.Owner owner,
+    public static LinuxBazelContainment admitReserved(LinuxBazelIdentity authenticator, LinuxBazelIdentity.Owner owner,
         LinuxBazelIdentity.Child child, LinuxBazelIdentity.Execution preparedExecution, Group group,
         Duration timeout) throws IOException
     {
@@ -194,13 +194,13 @@ final class LinuxBazelContainment implements AutoCloseable
      * Returns the independently authenticated child PID used by the host memory reader and instrumentation.
      * @return positive child PID in the controller namespace
      */
-    long rootPid() { return child.hostPid(); }
+    public long rootPid() { return child.hostPid(); }
 
     /**
      * Returns the exclusive host group path, retaining its last location after successful close.
      * @return absolute retained cgroup directory
      */
-    Path directory() { return group.directory(); }
+    public Path directory() { return group.directory(); }
 
     /**
      * Supplies the exact authenticated direct-group registration facts after current containment revalidation.
@@ -220,7 +220,7 @@ final class LinuxBazelContainment implements AutoCloseable
      * @throws IllegalStateException if cleanup already completed
      * @throws IOException if identities or membership differ or cannot be observed
      */
-    void requireContained() throws IOException
+    public void requireContained() throws IOException
     {
         requireOpen();
         authenticator.requireChildIdentity(owner, currentChild);
@@ -237,7 +237,7 @@ final class LinuxBazelContainment implements AutoCloseable
      * It grants neither root exec authority nor a whole-tree completion observation.
      * @throws IOException if the original owner changed or entered the attempt group
      */
-    void requireImageObservationAuthority() throws IOException
+    public void requireImageObservationAuthority() throws IOException
     {
         requireOpen();
         authenticator.requireNamespaceOwner(owner);
@@ -252,7 +252,7 @@ final class LinuxBazelContainment implements AutoCloseable
      * @return one-use independently authenticated migration authority
      * @throws IOException if current identity, membership or original thread cannot be authenticated
      */
-    LinuxBazelIdentity.ExecAuthorization prepareExec(long localThreadPid, long startTicks) throws IOException
+    public LinuxBazelIdentity.ExecAuthorization prepareExec(long localThreadPid, long startTicks) throws IOException
     {
         requireContained();
         LinuxBazelIdentity.ExecAuthorization authorization = authenticator.prepareExec(owner, currentChild, localThreadPid, startTicks);
@@ -265,7 +265,7 @@ final class LinuxBazelContainment implements AutoCloseable
      * @param authorization exact original thread capability captured before native exec was authorized
      * @throws IOException if native identity, original parent exclusion or cgroup membership differs
      */
-    void admitExec(LinuxBazelIdentity.ExecAuthorization authorization) throws IOException
+    public void admitExec(LinuxBazelIdentity.ExecAuthorization authorization) throws IOException
     {
         requireOpen();
         if (!group.contains(child.hostPid()) || group.contains(owner.peer().pid()))
@@ -282,7 +282,7 @@ final class LinuxBazelContainment implements AutoCloseable
      * @return true after an actual populated-zero read or successful group close, which itself observes zero
      * @throws IOException if population cannot be read
      */
-    boolean observeExecutionImpossible() throws IOException
+    public boolean observeExecutionImpossible() throws IOException
     {
         if (zeroObserved) return true;
         if (!group.isPopulated()) zeroObserved = true;
@@ -294,7 +294,7 @@ final class LinuxBazelContainment implements AutoCloseable
      * @throws IllegalStateException if group cleanup already completed
      * @throws IOException if the kernel cannot receive the request
      */
-    void requestTermination() throws IOException
+    public void requestTermination() throws IOException
     {
         requireOpen();
         requireOwnerOutside();
@@ -339,7 +339,7 @@ final class LinuxBazelContainment implements AutoCloseable
     /**
      * Retains incomplete containment cleanup when admission and its immediate cleanup both fail.
      */
-    static final class AcquisitionFailure extends IOException
+    public static final class AcquisitionFailure extends IOException
     {
         /** Serialization identity for the retained-owner failure type. */
         private static final long serialVersionUID = 1L;
@@ -362,7 +362,7 @@ final class LinuxBazelContainment implements AutoCloseable
          * @return containment whose close must be retried
          * @throws IllegalStateException if deserialization retained only diagnostics without live ownership
          */
-        LinuxBazelContainment owner()
+        public LinuxBazelContainment owner()
         {
             if (owner == null) throw new IllegalStateException("Deserialized admission diagnostics contain no live cleanup owner");
             return owner;
@@ -373,7 +373,7 @@ final class LinuxBazelContainment implements AutoCloseable
      * Allocates an exclusive empty host group without moving the native owner.
      */
     @FunctionalInterface
-    interface Groups
+    public interface Groups
     {
         /**
          * Creates a new empty cgroup whose cleanup belongs to the returned owner.
@@ -388,7 +388,7 @@ final class LinuxBazelContainment implements AutoCloseable
     /**
      * Owns one cgroup, including authoritative population observation and bounded removal.
      */
-    interface Group extends AutoCloseable
+    public interface Group extends AutoCloseable
     {
         /**
          * Returns the owned group's absolute directory.
@@ -478,7 +478,7 @@ final class LinuxBazelContainment implements AutoCloseable
     /**
      * Provides typed access to controlled allocation while exercising the single production admission operation.
      */
-    static final class SharedSecrets
+    public static final class SharedSecrets
     {
         /**
          * Prevents construction of the focused access facade.
@@ -497,7 +497,7 @@ final class LinuxBazelContainment implements AutoCloseable
          * @return production containment decision and retained lifecycle owner
          * @throws IOException if native facts, migration, membership or cleanup fail
          */
-        static LinuxBazelContainment admit(LinuxBazelIdentity authenticator, LinuxBazelIdentity.Owner owner,
+        public static LinuxBazelContainment admit(LinuxBazelIdentity authenticator, LinuxBazelIdentity.Owner owner,
             LinuxBazelIdentity.Child child, LinuxBazelIdentity.Execution preparedExecution, Path cgroupParent,
             Duration timeout, Groups groups) throws IOException
         {

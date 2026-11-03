@@ -14,7 +14,7 @@ import java.util.Optional;
  * Applies Linux pathname and directory authority to the shared authenticated Runner service.
  * Native workspace acquisition remains with the coordinator after immutable admission.
  */
-final class LinuxBazelRunner implements AutoCloseable
+public final class LinuxBazelRunner implements AutoCloseable
 {
     /** Sole common transport and publication authority. */
     private final BazelRunner<NativeAdmission> runner;
@@ -26,7 +26,7 @@ final class LinuxBazelRunner implements AutoCloseable
      * @param buildRoot absolute private directory materialized by the trusted worker
      * @param credentials private TLS material, never mounted into an action
      */
-    LinuxBazelRunner(Path buildRoot, Credentials credentials)
+    public LinuxBazelRunner(Path buildRoot, Credentials credentials)
     {
         this.buildRoot = Objects.requireNonNull(buildRoot, "buildRoot").toAbsolutePath().normalize();
         Objects.requireNonNull(credentials, "credentials");
@@ -38,25 +38,25 @@ final class LinuxBazelRunner implements AutoCloseable
      * Observes authenticated worker readiness after Linux pathname validation.
      * @return independent future completed by the actual shared Runner readiness callback
      */
-    java.util.concurrent.CompletableFuture<Void> workerReadiness() { return runner.workerReadiness(); }
+    public java.util.concurrent.CompletableFuture<Void> workerReadiness() { return runner.workerReadiness(); }
 
     /**
      * Starts one JDK TLS listener on a kernel-selected loopback port.
      * @throws IOException if identity material or listener setup fails
      */
-    void start() throws IOException { runner.start(); }
+    public void start() throws IOException { runner.start(); }
 
     /**
      * Returns the bound loopback endpoint without a transport scheme.
      * @return numeric loopback host and port
      */
-    String endpoint() { return runner.endpoint(); }
+    public String endpoint() { return runner.endpoint(); }
 
     /**
      * Transfers the oldest authenticated request without executing it.
      * @return next original Linux ready request, if any
      */
-    Optional<Ready> poll() { return runner.poll().map(Ready::new); }
+    public Optional<Ready> poll() { return runner.poll().map(Ready::new); }
 
     /**
      * Withdraws future RPCs while preserving live native cleanup leases.
@@ -72,7 +72,7 @@ final class LinuxBazelRunner implements AutoCloseable
      * @return normalized relative path
      * @throws IOException if the pathname can escape or has ambiguous lexical semantics
      */
-    static Path relative(String value, boolean emptyAllowed) throws IOException
+    public static Path relative(String value, boolean emptyAllowed) throws IOException
     {
         Objects.requireNonNull(value, "value");
         if (value.isEmpty() && emptyAllowed) return Path.of("");
@@ -128,7 +128,7 @@ final class LinuxBazelRunner implements AutoCloseable
      * @param serverPrivateKey PKCS8 server key
      * @param workerCertificate exact leaf certificate authorized to enqueue work
      */
-    record Credentials(Path authority, Path serverCertificate, Path serverPrivateKey, Path workerCertificate) {}
+    public record Credentials(Path authority, Path serverCertificate, Path serverPrivateKey, Path workerCertificate) {}
 
     /**
      * Linux-only interpretation of worker paths and directory identity authority.
@@ -216,7 +216,7 @@ final class LinuxBazelRunner implements AutoCloseable
          * @return workspace anchored to the original admitted input and temporary directories
          * @throws IOException if admission objects changed or snapshot acquisition fails
          */
-        LinuxBazelWorkspace openWorkspace(Path ownedRoot) throws IOException
+        public LinuxBazelWorkspace openWorkspace(Path ownedRoot) throws IOException
         {
             verifyAdmission();
             LinuxBazelWorkspace workspace = LinuxBazelWorkspace.open(inputRoot, temporaryDirectory, ownedRoot);
@@ -269,7 +269,7 @@ final class LinuxBazelRunner implements AutoCloseable
     /**
      * Linux facade preserving producer signatures while delegating all RPC state to the common service.
      */
-    static final class Ready
+    public static final class Ready
     {
         /** Sole original request and publication authority. */
         private final BazelRunner.Ready<NativeAdmission> ready;
@@ -286,20 +286,20 @@ final class LinuxBazelRunner implements AutoCloseable
          * @return private workspace for the original directories
          * @throws IOException if identity verification or workspace acquisition fails
          */
-        LinuxBazelWorkspace openWorkspace(Path ownedRoot) throws IOException { return ready.admission().openWorkspace(ownedRoot); }
+        public LinuxBazelWorkspace openWorkspace(Path ownedRoot) throws IOException { return ready.admission().openWorkspace(ownedRoot); }
 
         /**
          * Returns whether original RPC authority still permits output promotion.
          * @return whether publication remains authorized
          */
-        boolean publicationAllowed() { return ready.publicationAllowed(); }
+        public boolean publicationAllowed() { return ready.publicationAllowed(); }
 
         /**
          * Publishes an authentic final result after promotion and cleanup.
          * @param exitCode authentic original ordinary action exit status
          * @return whether the original RPC accepted the result
          */
-        boolean complete(int exitCode) { return ready.complete(exitCode); }
+        public boolean complete(int exitCode) { return ready.complete(exitCode); }
 
         /**
          * Serializes authenticated promotion against cancellation notification.
@@ -309,30 +309,30 @@ final class LinuxBazelRunner implements AutoCloseable
          * @return whether publication completed before cancellation
          * @throws IOException if promotion fails
          */
-        boolean publish(Publication publication, int exitCode) throws IOException { return ready.publish(publication, exitCode); }
+        public boolean publish(Publication publication, int exitCode) throws IOException { return ready.publish(publication, exitCode); }
 
         /**
          * Reports host failure without releasing its independent native cleanup lease.
          * @param cause original host failure
          */
-        void fail(Throwable cause) { ready.fail(cause); }
+        public void fail(Throwable cause) { ready.fail(cause); }
 
         /**
          * Retires original path ownership only after native cleanup is complete.
          */
-        void releaseClaim() { ready.releaseClaim(); }
+        public void releaseClaim() { ready.releaseClaim(); }
 
         /**
          * Returns the original invocation-local Run ordinal.
          * @return original invocation-local Run ordinal
          */
-        long sequence() { return ready.sequence(); }
+        public long sequence() { return ready.sequence(); }
 
         /**
          * Returns the immutable original protocol request.
          * @return immutable original protocol request
          */
-        RunRequest request() { return ready.request(); }
+        public RunRequest request() { return ready.request(); }
 
         /**
          * Returns the original worker input root.
@@ -350,7 +350,7 @@ final class LinuxBazelRunner implements AutoCloseable
          * Returns the original absolute action cwd.
          * @return original absolute action cwd
          */
-        Path directory() { return ready.admission().directory; }
+        public Path directory() { return ready.admission().directory; }
 
         /**
          * Returns the original stdout and stderr paths.
@@ -364,5 +364,5 @@ final class LinuxBazelRunner implements AutoCloseable
      * Original coordinator-owned transaction delegated to the common publication authority.
      */
     @FunctionalInterface
-    interface Publication extends BazelRunner.Publication {}
+    public interface Publication extends BazelRunner.Publication {}
 }

@@ -15,7 +15,7 @@ import java.util.UUID;
  * Each image receives original-manager child gating and any additional protocol before its sole resume.
  * Calls are confined to the thread that constructed the root Job owner.
  */
-final class WindowsCreationObserver
+public final class WindowsCreationObserver
 {
     /** Exact prepared Cargo Job retaining every original creation authority. */
     private final WindowsProcess process;
@@ -107,10 +107,10 @@ final class WindowsCreationObserver
      */
     void close(AllocationHook.ExecutionBarrier barrier) throws IOException { hooks.close(barrier); }
     /** Owns a strict parser for complete native process-state frames, independently of allocation notifications. */
-    static final class MessageScope extends io.github.cowwoc.pouch10.core.AbstractScope
+    public static final class MessageScope extends io.github.cowwoc.pouch10.core.AbstractScope
     {
         /** Document bound shared by the pre-parser transport check and this immutable parser. */
-        static final int MAX_CHARACTERS = 1_048_576;
+        public static final int MAX_CHARACTERS = 1_048_576;
         /** Lazily constructed immutable parser shared by this observer's frames and controls. */
         private final io.github.cowwoc.pouch10.core.ConcurrentLazyFactory<tools.jackson.databind.json.JsonMapper> json =
             io.github.cowwoc.pouch10.core.ConcurrentLazyFactory.create(() ->
@@ -124,14 +124,14 @@ final class WindowsCreationObserver
         private final java.util.concurrent.atomic.AtomicBoolean closed = new java.util.concurrent.atomic.AtomicBoolean();
 
         /** Creates an observer-local scope without constructing a parser or acquiring native resources. */
-        MessageScope() {}
+        public MessageScope() {}
 
         /**
          * Returns this scope's strict bounded parser for complete UTF-16 process-state observations.
          * @return the same immutable parser while this scope is open
          * @throws IllegalStateException if disposal began
          */
-        tools.jackson.databind.json.JsonMapper json()
+        public tools.jackson.databind.json.JsonMapper json()
         {
             if (closed.get()) throw new IllegalStateException("Creation message scope is closed");
             return json.getValue();

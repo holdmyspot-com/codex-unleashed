@@ -23,7 +23,7 @@ import tools.jackson.databind.node.ObjectNode;
  * It runs only while the coordinator loop cycles, so it cannot report a block inside a single native call.
  * Every call belongs to the coordinator thread.
  */
-final class StallWatch implements SchedulerCoordinator.WaitObserver
+public final class StallWatch implements SchedulerCoordinator.WaitObserver
 {
 	/** Default stall threshold. */
 	static final Duration DEFAULT_THRESHOLD = Duration.ofMinutes(10);
@@ -59,7 +59,7 @@ final class StallWatch implements SchedulerCoordinator.WaitObserver
 	 * @throws NullPointerException if an argument is null
 	 * @throws IllegalArgumentException if {@code threshold} is not positive
 	 */
-	StallWatch(Clock clock, Duration threshold, JsonMapper json, Consumer<String> sink, Details details)
+	public StallWatch(Clock clock, Duration threshold, JsonMapper json, Consumer<String> sink, Details details)
 	{
 		this.clock = Objects.requireNonNull(clock, "clock");
 		this.threshold = Objects.requireNonNull(threshold, "threshold");
@@ -357,7 +357,7 @@ final class StallWatch implements SchedulerCoordinator.WaitObserver
 
 	/** Supplies platform facts that the queue does not hold. */
 	@FunctionalInterface
-	interface Details
+	public interface Details
 	{
 		/**
 		 * Reads the platform facts without changing scheduling state.
@@ -375,13 +375,13 @@ final class StallWatch implements SchedulerCoordinator.WaitObserver
 	 * @param pendingRegistrationPids wrapper pids that connected but have not completed registration
 	 * @param tokens jobserver token accounting, or null when the platform has none
 	 */
-	record Facts(List<AttemptFacts> attempts, List<Long> pendingRegistrationPids, TokenFacts tokens)
+	public record Facts(List<AttemptFacts> attempts, List<Long> pendingRegistrationPids, TokenFacts tokens)
 	{
 		/** No platform facts. */
-		static final Facts NONE = new Facts(List.of(), List.of(), null);
+		public static final Facts NONE = new Facts(List.of(), List.of(), null);
 
 		/** Copies the collections. */
-		Facts
+		public Facts
 		{
 			attempts = List.copyOf(attempts);
 			pendingRegistrationPids = List.copyOf(pendingRegistrationPids);
@@ -397,7 +397,7 @@ final class StallWatch implements SchedulerCoordinator.WaitObserver
 	 * @param pid root process id, or null before a process exists
 	 * @param alive whether the process or its job object can still run, or null when unknown
 	 */
-	record AttemptFacts(String name, long sequence, String phase, Long pid, Boolean alive)
+	public record AttemptFacts(String name, long sequence, String phase, Long pid, Boolean alive)
 	{
 	}
 
@@ -410,7 +410,7 @@ final class StallWatch implements SchedulerCoordinator.WaitObserver
 	 * @param available capacity not outstanding to the controller, which excludes tokens that Cargo itself holds, or null
 	 *   when unknown
 	 */
-	record TokenFacts(int capacity, int held, int outstanding, Integer available)
+	public record TokenFacts(int capacity, int held, int outstanding, Integer available)
 	{
 	}
 }

@@ -35,7 +35,7 @@ import static java.lang.foreign.ValueLayout.ADDRESS;
  * A loaded producer stays loaded until the JVM exits, even after successful close.
  * The native runtime owns its dispatcher. This type neither starts a second dispatcher nor owns instrumented processes.
  */
-final class FridaRuntime implements AutoCloseable
+public final class FridaRuntime implements AutoCloseable
 {
 	/** Version whose devkit exports and runtime lifecycle the scheduler has evaluated. */
 	private static final String VERSION = "17.24.3";
@@ -81,18 +81,12 @@ final class FridaRuntime implements AutoCloseable
 	private MethodHandle enumerateDevices = null;
 	/** Local-device acquisition after full manager startup. */
 	private MethodHandle findLocalDevice = null;
-	/** Reference retirement on the native runtime's dispatcher. */
-	private MethodHandle unref = null;
-	/** Error disposal, resolved before errors can be returned. */
-	private MethodHandle errorFree = null;
-	/** Conversion of native error-domain identifiers to their borrowed names. */
-	private MethodHandle quarkToString = null;
+	/** Reference retirement, error disposal and destruction observations, resolved before any global effect. */
+	private Lifecycle lifecycle = null;
 	/** Attachment acquisition with a guint process identity. */
 	private MethodHandle attach = null;
 	/** Synchronous session detachment. */
 	private MethodHandle detach = null;
-	/** Observation of native session detachment, including target exit. */
-	private MethodHandle isDetached = null;
 	/** Script options acquisition. */
 	private MethodHandle newOptions = null;
 	/** QuickJS selection on owned script options. */
@@ -101,10 +95,6 @@ final class FridaRuntime implements AutoCloseable
 	private MethodHandle createScript = null;
 	/** Synchronous script loading. */
 	private MethodHandle loadScript = null;
-	/** Synchronous script unloading. */
-	private MethodHandle unloadScript = null;
-	/** Observation of native script destruction, including target exit. */
-	private MethodHandle isDestroyed = null;
 	/** Delivery of serialized JSON without binary data. */
 	private MethodHandle post = null;
 	/** GLib signal registration using the platform's gulong carrier. */
@@ -134,7 +124,7 @@ final class FridaRuntime implements AutoCloseable
 	 * @param producer native library file selected by the caller; relative paths use the process working directory
 	 * @throws NullPointerException if {@code producer} is null
 	 */
-	FridaRuntime(ToolingScope scope, Path producer)
+	public FridaRuntime(ToolingScope scope, Path producer)
 	{
 		this.producer = Objects.requireNonNull(producer, "producer may not be null");
 		linker = Objects.requireNonNull(scope, "scope").getNativeLinker();
@@ -147,7 +137,7 @@ final class FridaRuntime implements AutoCloseable
 	 * @throws IllegalStateException if called by another thread, after a start attempt or after close
 	 * @throws IOException if loading, symbol resolution, version validation or the JVM-wide initialization claim fails
 	 */
-	void start() throws IOException
+	public void start() throws IOException
 	{
 		requireThread();
 		if (startAttempted || closed)
@@ -175,20 +165,22 @@ final class FridaRuntime implements AutoCloseable
 		enumerateDevices = function("frida_device_manager_enumerate_devices_sync", FunctionDescriptor.of(ADDRESS, ADDRESS, ADDRESS, ADDRESS));
 		findLocalDevice = function("frida_device_manager_get_device_by_type_sync",
 			FunctionDescriptor.of(ADDRESS, ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ADDRESS, ADDRESS));
-		unref = function("frida_unref", FunctionDescriptor.ofVoid(ADDRESS));
+		MethodHandle unref = function("frida_unref", FunctionDescriptor.ofVoid(ADDRESS));
 		String glibPrefix = System.getProperty("os.name", "").startsWith("Linux") ? "_frida_" : "";
-		errorFree = function(glibPrefix + "g_error_free", FunctionDescriptor.ofVoid(ADDRESS));
-		quarkToString = function(glibPrefix + "g_quark_to_string", FunctionDescriptor.of(ADDRESS, ValueLayout.JAVA_INT));
+		MethodHandle errorFree = function(glibPrefix + "g_error_free", FunctionDescriptor.ofVoid(ADDRESS));
+		MethodHandle quarkToString = function(glibPrefix + "g_quark_to_string",
+			FunctionDescriptor.of(ADDRESS, ValueLayout.JAVA_INT));
 		attach = function("frida_device_attach_sync",
 			FunctionDescriptor.of(ADDRESS, ADDRESS, ValueLayout.JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
 		detach = function("frida_session_detach_sync", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
-		isDetached = function("frida_session_is_detached", FunctionDescriptor.of(ValueLayout.JAVA_INT, ADDRESS));
+		MethodHandle isDetached = function("frida_session_is_detached", FunctionDescriptor.of(ValueLayout.JAVA_INT, ADDRESS));
 		newOptions = function("frida_script_options_new", FunctionDescriptor.of(ADDRESS));
 		setRuntime = function("frida_script_options_set_runtime", FunctionDescriptor.ofVoid(ADDRESS, ValueLayout.JAVA_INT));
 		createScript = function("frida_session_create_script_sync", FunctionDescriptor.of(ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
 		loadScript = function("frida_script_load_sync", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
-		unloadScript = function("frida_script_unload_sync", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
-		isDestroyed = function("frida_script_is_destroyed", FunctionDescriptor.of(ValueLayout.JAVA_INT, ADDRESS));
+		MethodHandle unloadScript = function("frida_script_unload_sync", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
+		MethodHandle isDestroyed = function("frida_script_is_destroyed", FunctionDescriptor.of(ValueLayout.JAVA_INT, ADDRESS));
+		lifecycle = new NativeLifecycle(unref, errorFree, quarkToString, isDetached, unloadScript, isDestroyed);
 		post = function("frida_script_post", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
 		connect = function(glibPrefix + "g_signal_connect_data", FunctionDescriptor.of(signalIdLayout, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ValueLayout.JAVA_INT));
 		disconnect = function(glibPrefix + "g_signal_handler_disconnect", FunctionDescriptor.ofVoid(ADDRESS, signalIdLayout));
@@ -218,7 +210,7 @@ final class FridaRuntime implements AutoCloseable
 	 * @return a distinct owner retained by this runtime until cleanup succeeds
 	 * @throws IllegalStateException if called by another thread or the runtime is unstarted, closing or closed
 	 */
-	Manager newManager()
+	public Manager newManager()
 	{
 		requireActive();
 		Manager manager = new Manager();
@@ -266,7 +258,7 @@ final class FridaRuntime implements AutoCloseable
 	 * Owns one manager without owning the shared dispatcher. Operations are confined to the runtime's owner thread.
 	 * A failed close retains its native reference and failure, preventing global teardown; it never retries silently.
 	 */
-	final class Manager implements AutoCloseable
+	public final class Manager implements AutoCloseable
 	{
 		/** Manager reference assigned immediately after acquisition; NULL before acquisition succeeds. */
 		private MemorySegment handle = MemorySegment.NULL;
@@ -309,7 +301,7 @@ final class FridaRuntime implements AutoCloseable
 		 * @throws IllegalStateException if called by another thread, after start or close, or while the runtime is inactive
 		 * @throws IOException if native acquisition, enumeration, local-device selection or callback registration fails
 		 */
-		void start() throws IOException
+		public void start() throws IOException
 		{
 			requireActive();
 			if (startAttempted || closed)
@@ -334,7 +326,7 @@ final class FridaRuntime implements AutoCloseable
 						throw new IOException("Frida device enumeration returned NULL without a native error");
 					fullStartupComplete = true;
 				}
-				invoke(unref, startupDevices);
+				lifecycle.unref(startupDevices);
 				startupDevices = MemorySegment.NULL;
 
 				try (Arena arena = Arena.ofConfined())
@@ -372,7 +364,7 @@ final class FridaRuntime implements AutoCloseable
 		 * @throws IllegalArgumentException if the process identity is outside 1 through 4294967295
 		 * @throws IllegalStateException if the manager is not started and open on its owner thread
 		 */
-		Session newSession(long pid)
+		public Session newSession(long pid)
 		{
 			requireManager();
 			Session session = new Session(pid);
@@ -469,10 +461,10 @@ final class FridaRuntime implements AutoCloseable
 					}
 					if (device.equals(MemorySegment.NULL) == false)
 					{
-						invoke(unref, device);
+						lifecycle.unref(device);
 						device = MemorySegment.NULL;
 					}
-					invoke(unref, handle);
+					lifecycle.unref(handle);
 					handle = MemorySegment.NULL;
 				}
 				managers.remove(this);
@@ -493,7 +485,7 @@ final class FridaRuntime implements AutoCloseable
 		/**
 		 * Owns one native attachment and its scripts, independently of target process ownership.
 		 */
-		final class Session implements AutoCloseable
+		public final class Session implements AutoCloseable
 		{
 			/** Verified target identity supplied by the process owner. */
 			private final long pid;
@@ -528,7 +520,7 @@ final class FridaRuntime implements AutoCloseable
 			 * @throws IllegalStateException if already attempted, closed, or the manager is inactive
 			 * @throws IOException if attachment fails, retaining native domain and code
 			 */
-			void start() throws IOException
+			public void start() throws IOException
 			{
 				requireManager();
 				if (startAttempted || closed)
@@ -551,10 +543,10 @@ final class FridaRuntime implements AutoCloseable
 			 * @return true only when the native session reports detached
 			 * @throws IllegalStateException if the attachment or manager is inactive
 			 */
-			boolean detached()
+			public boolean detached()
 			{
 				requireSession();
-				return (int) invoke(isDetached, handle) != 0;
+				return lifecycle.isDetached(handle) != 0;
 			}
 
 			/**
@@ -580,7 +572,7 @@ final class FridaRuntime implements AutoCloseable
 			 * @throws IllegalArgumentException if source contains NUL
 			 * @throws IllegalStateException if this attachment is inactive or closed
 			 */
-			Script newScript(String source)
+			public Script newScript(String source)
 			{
 				requireSession();
 				Script script = new Script(source);
@@ -619,9 +611,9 @@ final class FridaRuntime implements AutoCloseable
 				{
 					if (handle.equals(MemorySegment.NULL) == false)
 					{
-						if ((int) invoke(isDetached, handle) == 0)
+						if (lifecycle.isDetached(handle) == 0)
 							checkedVoid("frida_session_detach_sync", detach, handle);
-						invoke(unref, handle);
+						lifecycle.unref(handle);
 						handle = MemorySegment.NULL;
 					}
 					sessions.remove(this);
@@ -643,7 +635,7 @@ final class FridaRuntime implements AutoCloseable
 			 * Owns a QuickJS script, its message registration and copied JSON messages.
 			 * Native callback stubs stay in the runtime's library arena until global teardown, even after this owner closes.
 			 */
-			final class Script implements AutoCloseable
+			public final class Script implements AutoCloseable
 			{
 				/** Source executed only after registration of its message callback. */
 				private final String source;
@@ -683,7 +675,7 @@ final class FridaRuntime implements AutoCloseable
 				 * @throws IllegalStateException if already attempted, closed, or the attachment is inactive
 				 * @throws IOException if native acquisition, callback registration or loading fails
 				 */
-				void start() throws IOException
+				public void start() throws IOException
 				{
 					requireSession();
 					if (startAttempted || closed)
@@ -724,7 +716,7 @@ final class FridaRuntime implements AutoCloseable
 				 * @throws IllegalStateException if called by another thread
 				 * @throws IOException if any native callback failed while copying a message
 				 */
-				Optional<String> pollMessage() throws IOException
+				public Optional<String> pollMessage() throws IOException
 				{
 					requireThread();
 					return receiver.poll();
@@ -736,7 +728,7 @@ final class FridaRuntime implements AutoCloseable
 				 * @throws NullPointerException if json is null
 				 * @throws IllegalStateException if this script or its attachment is inactive
 				 */
-				void post(JsonNode json)
+				public void post(JsonNode json)
 				{
 					Objects.requireNonNull(json, "json may not be null");
 					requireSession();
@@ -772,11 +764,11 @@ final class FridaRuntime implements AutoCloseable
 						}
 						if (handle.equals(MemorySegment.NULL) == false)
 						{
-							if (loadAttempted && (int) invoke(isDestroyed, handle) == 0)
+							if (loadAttempted && lifecycle.isDestroyed(handle) == 0)
 							{
 								try
 								{
-									checkedVoid("frida_script_unload_sync", unloadScript, handle);
+									unload(handle);
 								}
 								catch (NativeFailure failure)
 								{
@@ -787,7 +779,7 @@ final class FridaRuntime implements AutoCloseable
 										throw failure;
 									try
 									{
-										if ((int) invoke(isDestroyed, handle) == 0)
+										if (lifecycle.isDestroyed(handle) == 0)
 											throw failure;
 									}
 									catch (RuntimeException | Error observationFailure)
@@ -797,12 +789,12 @@ final class FridaRuntime implements AutoCloseable
 									}
 								}
 							}
-							invoke(unref, handle);
+							lifecycle.unref(handle);
 							handle = MemorySegment.NULL;
 						}
 						if (options.equals(MemorySegment.NULL) == false)
 						{
-							invoke(unref, options);
+							lifecycle.unref(options);
 							options = MemorySegment.NULL;
 						}
 						scripts.remove(this);
@@ -830,7 +822,7 @@ final class FridaRuntime implements AutoCloseable
 	 * @param origin native FridaChildOrigin value: fork 0, exec 1, spawn 2
 	 * @param path copied executable path, or null when the native event provides none
 	 */
-	record Child(long pid, long parentPid, int origin, String path) {}
+	public record Child(long pid, long parentPid, int origin, String path) {}
 
 	/** Copies child notifications without retaining the manager or borrowed native objects. */
 	private static final class ChildReceiver
@@ -1054,6 +1046,210 @@ final class FridaRuntime implements AutoCloseable
 	}
 
 	/**
+	 * Unloads a script, retaining its typed error before disposal.
+	 * @param script loaded native script
+	 * @throws NativeFailure if the native operation returns an error
+	 */
+	private void unload(MemorySegment script) throws NativeFailure
+	{
+		try (Arena arena = Arena.ofConfined())
+		{
+			MemorySegment error = arena.allocate(ADDRESS);
+			lifecycle.unloadScript(script, MemorySegment.NULL, error);
+			throwNativeFailure("frida_script_unload_sync", error.get(ADDRESS, 0));
+		}
+	}
+
+	/**
+	 * The native operations whose outcomes decide how owned references are retired.
+	 * <p>
+	 * Production binds them to the producer's exports; ownership tests supply controlled outcomes instead.
+	 */
+	public interface Lifecycle
+	{
+		/**
+		 * Releases one native reference.
+		 * @param reference owned reference
+		 */
+		void unref(MemorySegment reference);
+
+		/**
+		 * Frees a native error record.
+		 * @param error owned error
+		 */
+		void errorFree(MemorySegment error);
+
+		/**
+		 * Returns the borrowed name of a native error domain.
+		 * @param quark native domain identifier
+		 * @return the borrowed NUL-terminated name
+		 */
+		MemorySegment quarkToString(int quark);
+
+		/**
+		 * Reports whether a session is detached.
+		 * @param session native session
+		 * @return nonzero if detached
+		 */
+		int isDetached(MemorySegment session);
+
+		/**
+		 * Unloads a script synchronously.
+		 * @param script native script
+		 * @param cancellable native cancellable, or NULL
+		 * @param error receives an owned error record, or NULL on success
+		 */
+		void unloadScript(MemorySegment script, MemorySegment cancellable, MemorySegment error);
+
+		/**
+		 * Reports whether a script is destroyed.
+		 * @param script native script
+		 * @return nonzero if destroyed
+		 */
+		int isDestroyed(MemorySegment script);
+	}
+
+	/**
+	 * Binds {@link Lifecycle} to the producer's exports.
+	 * @param unref {@code frida_unref}
+	 * @param errorFree {@code g_error_free}
+	 * @param quarkToString {@code g_quark_to_string}
+	 * @param isDetached {@code frida_session_is_detached}
+	 * @param unloadScript {@code frida_script_unload_sync}
+	 * @param isDestroyed {@code frida_script_is_destroyed}
+	 */
+	private record NativeLifecycle(MethodHandle unref, MethodHandle errorFree, MethodHandle quarkToString,
+		MethodHandle isDetached, MethodHandle unloadScript, MethodHandle isDestroyed) implements Lifecycle
+	{
+		@Override
+		public void unref(MemorySegment reference)
+		{
+			invoke(unref, reference);
+		}
+
+		@Override
+		public void errorFree(MemorySegment error)
+		{
+			invoke(errorFree, error);
+		}
+
+		@Override
+		public MemorySegment quarkToString(int quark)
+		{
+			return (MemorySegment) invoke(quarkToString, quark);
+		}
+
+		@Override
+		public int isDetached(MemorySegment session)
+		{
+			return (int) invoke(isDetached, session);
+		}
+
+		@Override
+		public void unloadScript(MemorySegment script, MemorySegment cancellable, MemorySegment error)
+		{
+			invoke(unloadScript, script, cancellable, error);
+		}
+
+		@Override
+		public int isDestroyed(MemorySegment script)
+		{
+			return (int) invoke(isDestroyed, script);
+		}
+	}
+
+	/**
+	 * Builds owners in controlled states for ownership tests, without loading a producer.
+	 */
+	public static final class SharedSecrets
+	{
+		/**
+		 * Prevents construction.
+		 */
+		private SharedSecrets()
+		{
+		}
+
+		/**
+		 * Marks an unstarted runtime initialized and binds its lifecycle operations.
+		 * @param runtime unstarted runtime
+		 * @param lifecycle controlled lifecycle operations
+		 */
+		public static void initialize(FridaRuntime runtime, Lifecycle lifecycle)
+		{
+			runtime.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
+			runtime.initialized = true;
+		}
+
+		/**
+		 * Creates an unregistered manager owner.
+		 * @param runtime enclosing runtime
+		 * @param started whether the manager reports full startup
+		 * @return the manager
+		 */
+		public static Manager manager(FridaRuntime runtime, boolean started)
+		{
+			Manager manager = runtime.new Manager();
+			manager.started = started;
+			return manager;
+		}
+
+		/**
+		 * Creates an unregistered session owner.
+		 * @param manager enclosing manager
+		 * @param pid target identity
+		 * @param handle attached native session, or NULL for an unattached owner
+		 * @return the session
+		 */
+		public static Manager.Session session(Manager manager, long pid, MemorySegment handle)
+		{
+			Manager.Session session = manager.new Session(pid);
+			session.handle = handle;
+			session.started = handle.equals(MemorySegment.NULL) == false;
+			return session;
+		}
+
+		/**
+		 * Records an uncertain cleanup failure on a session.
+		 * @param session session owner
+		 * @param failure retained failure
+		 */
+		public static void failCleanup(Manager.Session session, IOException failure)
+		{
+			session.closeFailure = Objects.requireNonNull(failure, "failure");
+		}
+
+		/**
+		 * Creates a script whose load was attempted, registered with its session.
+		 * @param session enclosing session
+		 * @param source script source
+		 * @param handle native script
+		 * @param options native script options
+		 * @return the script
+		 */
+		public static Manager.Session.Script loadedScript(Manager.Session session, String source,
+			MemorySegment handle, MemorySegment options)
+		{
+			Manager.Session.Script script = session.new Script(source);
+			script.handle = handle;
+			script.options = options;
+			script.loadAttempted = true;
+			session.scripts.add(script);
+			return script;
+		}
+
+		/**
+		 * Returns the number of scripts a session still owns.
+		 * @param session session owner
+		 * @return the registered script count
+		 */
+		public static int scripts(Manager.Session session)
+		{
+			return session.scripts.size();
+		}
+	}
+
+	/**
 	 * Validates text before passing it to a native C-string operation.
 	 * @param text input text
 	 * @param description input's diagnostic name
@@ -1072,7 +1268,7 @@ final class FridaRuntime implements AutoCloseable
 	/**
 	 * Native operation failure whose code is interpreted only within its native domain.
 	 */
-	static final class NativeFailure extends IOException
+	public static final class NativeFailure extends IOException
 	{
 		/** Serialization version of the retained native failure record. */
 		private static final long serialVersionUID = 1L;
@@ -1090,7 +1286,7 @@ final class FridaRuntime implements AutoCloseable
 		 * @param code native error code within that domain
 		 * @param message native diagnostic
 		 */
-		NativeFailure(String operation, String domain, int code, String message)
+		public NativeFailure(String operation, String domain, int code, String message)
 		{
 			super(operation + " failed: domain=" + domain + ", code=" + code + ", message=" + message);
 			this.operation = operation;
@@ -1102,7 +1298,7 @@ final class FridaRuntime implements AutoCloseable
 		 * Returns the native function that failed.
 		 * @return the operation name
 		 */
-		String operation()
+		public String operation()
 		{
 			return operation;
 		}
@@ -1111,7 +1307,7 @@ final class FridaRuntime implements AutoCloseable
 		 * Returns the copied native error-domain name.
 		 * @return the domain qualifying the error code
 		 */
-		String domain()
+		public String domain()
 		{
 			return domain;
 		}
@@ -1120,7 +1316,7 @@ final class FridaRuntime implements AutoCloseable
 		 * Returns the domain-specific native error code.
 		 * @return the code within domain(), not errno
 		 */
-		int code()
+		public int code()
 		{
 			return code;
 		}
@@ -1141,13 +1337,13 @@ final class FridaRuntime implements AutoCloseable
 			MemorySegment fields = error.reinterpret(8 + ADDRESS.byteSize());
 			int domain = fields.get(ValueLayout.JAVA_INT, 0);
 			int code = fields.get(ValueLayout.JAVA_INT, 4);
-			String domainName = string((MemorySegment) invoke(quarkToString, domain));
+			String domainName = string(lifecycle.quarkToString(domain));
 			String message = string(fields.get(ADDRESS, 8));
 			throw new NativeFailure(operation, domainName, code, message);
 		}
 		finally
 		{
-			invoke(errorFree, error);
+			lifecycle.errorFree(error);
 		}
 	}
 

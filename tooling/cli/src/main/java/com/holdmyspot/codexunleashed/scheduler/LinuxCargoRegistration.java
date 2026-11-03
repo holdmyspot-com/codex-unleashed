@@ -25,7 +25,7 @@ import java.util.Set;
  * This observation does not prove a historical spawn instruction or prevent later process state changes.
  * Duplicate action reservation, socket ownership and transfer-time kernel peer authentication remain caller duties.
  */
-final class LinuxCargoRegistration
+public final class LinuxCargoRegistration
 {
     /**
      * Supported byte bound for each native vector, matching the complete control payload bound.
@@ -61,7 +61,7 @@ final class LinuxCargoRegistration
      * @throws NullPointerException if an input is null
      * @throws IllegalArgumentException if Cargo credentials differ from the trusted workload identity
      */
-    LinuxCargoRegistration(Configuration configuration, LinuxBorrowedStreams.Peer cargo)
+    public LinuxCargoRegistration(Configuration configuration, LinuxBorrowedStreams.Peer cargo)
     {
         this(configuration, cargo, new NativeObserver(), null);
     }
@@ -74,7 +74,7 @@ final class LinuxCargoRegistration
      * @throws NullPointerException if an input is null
      * @throws IllegalArgumentException if Cargo credentials differ from the trusted workload identity
      */
-    LinuxCargoRegistration(Configuration configuration, LinuxBorrowedStreams.Peer cargo, CargoMemoryEstimates estimates)
+    public LinuxCargoRegistration(Configuration configuration, LinuxBorrowedStreams.Peer cargo, CargoMemoryEstimates estimates)
     {
         this(configuration, cargo, new NativeObserver(), Objects.requireNonNull(estimates, "estimates"));
     }
@@ -84,7 +84,7 @@ final class LinuxCargoRegistration
      * @param configuration trusted invocation policy
      * @param parent independently retained parent birth, image and readiness generation
      */
-    LinuxCargoRegistration(Configuration configuration, Parent parent)
+    public LinuxCargoRegistration(Configuration configuration, Parent parent)
     {
         this(parent.policy(configuration), parent.peer(), new NativeObserver(), null, parent.image());
     }
@@ -95,7 +95,7 @@ final class LinuxCargoRegistration
      * @param parent independently retained ready image
      * @param estimates explicitly owned compiler profile source
      */
-    LinuxCargoRegistration(Configuration configuration, Parent parent, CargoMemoryEstimates estimates)
+    public LinuxCargoRegistration(Configuration configuration, Parent parent, CargoMemoryEstimates estimates)
     {
         this(parent.policy(configuration), parent.peer(), new NativeObserver(), Objects.requireNonNull(estimates, "estimates"), parent.image());
     }
@@ -108,7 +108,7 @@ final class LinuxCargoRegistration
      * @param generation retained image readiness ordinal, or zero for the independently prepared root
      * @param image immutable executable inode observations captured independently during readiness
      */
-    record Parent(LinuxBorrowedStreams.Peer peer, Path executable, long generation, Map<String, Object> image)
+    public record Parent(LinuxBorrowedStreams.Peer peer, Path executable, long generation, Map<String, Object> image)
     {
         /**
          * Rejects incomplete retained image observations before they can select registration policy.
@@ -119,7 +119,7 @@ final class LinuxCargoRegistration
          * @throws NullPointerException if a required observation is null
          * @throws IllegalArgumentException if the executable or generation is invalid
          */
-        Parent
+        public Parent
         {
             Objects.requireNonNull(peer, "peer");
             Objects.requireNonNull(executable, "executable");
@@ -183,7 +183,7 @@ final class LinuxCargoRegistration
      * @throws NullPointerException if an input is null
      * @throws IOException if native observations are unavailable, unsupported, changing or inconsistent
      */
-    CargoCompilerRequest authenticate(LinuxBorrowedStreams.Peer captured,
+    public CargoCompilerRequest authenticate(LinuxBorrowedStreams.Peer captured,
         LinuxBorrowedStreams.Binding registration) throws IOException
     {
         Objects.requireNonNull(captured, "captured");
@@ -289,7 +289,7 @@ final class LinuxCargoRegistration
      * parent images may supply Cargo-selected ordinary values or omissions, while execution and jobserver authority
      * stays fixed and PWD must identify the actual compiler directory
      */
-    record Configuration(Path cargoExecutable, Path wrapperExecutable, Path rustcExecutable,
+    public record Configuration(Path cargoExecutable, Path wrapperExecutable, Path rustcExecutable,
         List<String> wrapperPrefix, Path registrationRoot, LinuxProcessTree.Launch context,
         Map<String, String> requiredEnvironment)
     {
@@ -305,7 +305,7 @@ final class LinuxCargoRegistration
          * @throws NullPointerException if any required value or collection member is null
          * @throws IllegalArgumentException if paths, prefix, native text or attached execution mode are invalid
          */
-        Configuration
+        public Configuration
         {
             for (Path path : List.of(cargoExecutable, wrapperExecutable, rustcExecutable, registrationRoot))
             {
@@ -357,7 +357,7 @@ final class LinuxCargoRegistration
      * @param uid native inode owner
      * @param mode native inode type and permission bits
      */
-    record Entry(Object key, int uid, int mode)
+    public record Entry(Object key, int uid, int mode)
     {
         /**
          * Requires an established native file identity.
@@ -365,13 +365,13 @@ final class LinuxCargoRegistration
          * @param uid native inode owner
          * @param mode native inode type and permission bits
          */
-        Entry { Objects.requireNonNull(key, "key"); }
+        public Entry { Objects.requireNonNull(key, "key"); }
     }
 
     /**
      * Supplies independent native facts without receiving authority from a registration.
      */
-    interface Observer
+    public interface Observer
     {
         /**
          * Checks live birth, credentials and common PID namespace.
@@ -536,7 +536,7 @@ final class LinuxCargoRegistration
     /**
      * Exposes observation injection and real vector reading to focused contract checks.
      */
-    static final class SharedSecrets
+    public static final class SharedSecrets
     {
         /**
          * Prevents construction of the scoped test access facade.
@@ -549,7 +549,7 @@ final class LinuxCargoRegistration
          * @param observer independent observation source
          * @return authenticator executing the production policy
          */
-        static LinuxCargoRegistration create(Configuration configuration, LinuxBorrowedStreams.Peer cargo, Observer observer)
+        public static LinuxCargoRegistration create(Configuration configuration, LinuxBorrowedStreams.Peer cargo, Observer observer)
         {
             return new LinuxCargoRegistration(configuration, cargo, observer, null);
         }
@@ -560,7 +560,7 @@ final class LinuxCargoRegistration
          * @param observer controlled native observation boundary
          * @return production authenticator for that retained image
          */
-        static LinuxCargoRegistration create(Configuration configuration, Parent parent, Observer observer)
+        public static LinuxCargoRegistration create(Configuration configuration, Parent parent, Observer observer)
         {
             return new LinuxCargoRegistration(parent.policy(configuration), parent.peer(), observer, null, parent.image());
         }
@@ -572,7 +572,7 @@ final class LinuxCargoRegistration
          * @param estimates actual owned profile source
          * @return production authenticator with profile composition
          */
-        static LinuxCargoRegistration create(Configuration configuration, LinuxBorrowedStreams.Peer cargo,
+        public static LinuxCargoRegistration create(Configuration configuration, LinuxBorrowedStreams.Peer cargo,
             Observer observer, CargoMemoryEstimates estimates)
         {
             return new LinuxCargoRegistration(configuration, cargo, observer, Objects.requireNonNull(estimates, "estimates"));
@@ -583,13 +583,13 @@ final class LinuxCargoRegistration
          * @return exact decoded argument entries
          * @throws IOException if native framing or decoding fails
          */
-        static List<String> arguments(InputStream input) throws IOException { return vector(input, false); }
+        public static List<String> arguments(InputStream input) throws IOException { return vector(input, false); }
         /**
          * Exercises the production native environment reader with a caller-owned fixture stream.
          * @param input caller-owned raw environment vector
          * @return exact decoded environment
          * @throws IOException if native framing, names or decoding fails
          */
-        static Map<String, String> environment(InputStream input) throws IOException { return environmentVector(input); }
+        public static Map<String, String> environment(InputStream input) throws IOException { return environmentVector(input); }
     }
 }

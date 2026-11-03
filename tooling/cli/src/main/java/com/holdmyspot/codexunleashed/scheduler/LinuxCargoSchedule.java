@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Comparator;
 
 /** Constructs one explicitly privileged, installed Linux Cargo invocation. */
-final class LinuxCargoSchedule
+public final class LinuxCargoSchedule
 {
     /** Prevents construction of this command composition boundary. */
     private LinuxCargoSchedule() {}
@@ -145,7 +145,7 @@ final class LinuxCargoSchedule
      * @param scratch absolute caller-selected scratch parent
      * @throws IOException if UTF-8 pathname bytes cannot fit before the required terminating NUL
      */
-    static void requireSocketNamespace(Path scratch) throws IOException
+    public static void requireSocketNamespace(Path scratch) throws IOException
     {
         String longest = scratch.resolve("c-" + "9".repeat(20)).resolve("r").resolve("9".repeat(10))
             .resolve("streams.sock").toString();

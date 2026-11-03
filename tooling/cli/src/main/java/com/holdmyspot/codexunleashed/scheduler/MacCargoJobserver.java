@@ -18,7 +18,7 @@ import java.util.Set;
  * wrappers and every compiler descendant are collected; this component cannot establish that barrier itself.
  * The native library owner and parent namespace remain caller-owned. All operations use the constructing thread.
  */
-final class MacCargoJobserver implements AutoCloseable
+public final class MacCargoJobserver implements AutoCloseable
 {
     /** Root make variables exclusively supplied by this invocation. */
     private static final Set<String> MAKE_VARIABLES = Set.of("CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS");
@@ -101,7 +101,7 @@ final class MacCargoJobserver implements AutoCloseable
      * @throws IllegalStateException if off-thread, already attempted or closing
      * @throws IOException if filesystem preparation, native publication or access verification fails
      */
-    void open(Path scratchParent, int uid, int gid, int jobs) throws IOException
+    public void open(Path scratchParent, int uid, int gid, int jobs) throws IOException
     {
         requireOwner();
         Objects.requireNonNull(scratchParent, "scratchParent may not be null");
@@ -137,7 +137,7 @@ final class MacCargoJobserver implements AutoCloseable
      * @throws IllegalStateException if off-thread, unavailable, closing or already retained
      * @throws IOException if the make front end cannot be created
      */
-    CargoLease retainCargo(Map<String, String> environment) throws IOException
+    public CargoLease retainCargo(Map<String, String> environment) throws IOException
     {
         requireOwner();
         Map<String, String> copy = new HashMap<>(Map.copyOf(environment));
@@ -248,7 +248,7 @@ final class MacCargoJobserver implements AutoCloseable
     /**
      * Borrows the native FIFO through the entire root invocation and every whole-attempt capability.
      */
-    final class CargoLease implements AutoCloseable
+    public final class CargoLease implements AutoCloseable
     {
         /** Exact immutable environment inherited by root Cargo and compiler contexts. */
         private final Map<String, String> environment;
@@ -268,7 +268,7 @@ final class MacCargoJobserver implements AutoCloseable
          * @return immutable environment with exact FIFO make flags
          * @throws IllegalStateException if off-thread or released
          */
-        Map<String, String> environment() { requireLive(); return environment; }
+        public Map<String, String> environment() { requireLive(); return environment; }
 
         /**
          * Reads descriptor-bound FIFO identity before installing an authenticated image hook.
@@ -285,7 +285,7 @@ final class MacCargoJobserver implements AutoCloseable
          * @throws IllegalStateException if off-thread or released
          * @throws IOException if an earlier transfer left the FIFO state uncertain
          */
-        LinuxCargoTokens.Attempt retainAttempt() throws IOException { requireLive(); return tokens.retainAttempt(); }
+        public LinuxCargoTokens.Attempt retainAttempt() throws IOException { requireLive(); return tokens.retainAttempt(); }
 
         /**
          * Requires a live invocation borrow on the controller thread.
@@ -315,7 +315,7 @@ final class MacCargoJobserver implements AutoCloseable
     /**
      * Retains partial native acquisition and supplies successful native FIFO transports.
      */
-    interface Provider
+    public interface Provider
     {
         /**
          * Creates a private fresh directory owned by this invocation.
@@ -354,7 +354,7 @@ final class MacCargoJobserver implements AutoCloseable
     /**
      * Owns native transport and descriptor identity through the invocation's terminal barrier.
      */
-    interface Endpoint extends LinuxCargoTokens.Transfer, AutoCloseable
+    public interface Endpoint extends LinuxCargoTokens.Transfer, AutoCloseable
     {
         /**
          * Reads exact retained descriptor identity without pathname authority.
@@ -446,7 +446,7 @@ final class MacCargoJobserver implements AutoCloseable
     /**
      * Provides typed access to the real acquisition boundary for isolated native-result fixtures.
      */
-    static final class SharedSecrets
+    public static final class SharedSecrets
     {
         /**
          * Prevents construction.
@@ -458,6 +458,6 @@ final class MacCargoJobserver implements AutoCloseable
          * @param provider controlled native boundary
          * @return new unacquired owner
          */
-        static MacCargoJobserver create(Provider provider) { return new MacCargoJobserver(provider); }
+        public static MacCargoJobserver create(Provider provider) { return new MacCargoJobserver(provider); }
     }
 }

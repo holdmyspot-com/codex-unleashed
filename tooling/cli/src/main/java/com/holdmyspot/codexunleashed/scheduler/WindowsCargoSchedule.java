@@ -13,7 +13,7 @@ import java.util.Map;
  * Composes installed Windows Cargo execution under the caller's existing identity.
  * Complete explicit input identities are checked before native bindings, handles or processes are acquired.
  */
-final class WindowsCargoSchedule
+public final class WindowsCargoSchedule
 {
     /** Installed wrapper application subtree relative to the current bundled runtime. */
     private static final Path WRAPPER = Path.of("wrapper-image", "codex-cargo-wrapper", "codex-cargo-wrapper.exe");
@@ -31,7 +31,7 @@ final class WindowsCargoSchedule
      * @throws IOException if input identity, execution or cleanup cannot be established
      * @throws Scheduler.PendingCleanup if native borrowers retain resources after failure
      */
-    static int run(ToolingScope tooling, Scheduler.Settings settings) throws IOException
+    public static int run(ToolingScope tooling, Scheduler.Settings settings) throws IOException
     {
         Path runtime = Path.of(System.getProperty("java.home")).toRealPath();
         return run(tooling, settings, runtime, WindowsCargoSchedule::execute);
@@ -47,7 +47,7 @@ final class WindowsCargoSchedule
      * @throws IOException if configuration or pinned inputs cannot be verified
      * @throws Scheduler.PendingCleanup if execution retains the invocation scope until native cleanup
      */
-    static int run(ToolingScope tooling, Scheduler.Settings settings, Path runtime, Execution execution) throws IOException
+    public static int run(ToolingScope tooling, Scheduler.Settings settings, Path runtime, Execution execution) throws IOException
     {
         WindowsCargoScope scope = new WindowsCargoScope(tooling);
         boolean pending = false;
@@ -73,7 +73,7 @@ final class WindowsCargoSchedule
      * @param streams retained original local native standard handles
      * @return immutable native invocation configuration
      */
-    static WindowsCargoInvocation.Configuration inputs(Scheduler.Settings settings,
+    public static WindowsCargoInvocation.Configuration inputs(Scheduler.Settings settings,
         WindowsCargoLaunchConfiguration configuration, Path wrapper, WindowsCargoStreams.Root streams)
     {
         List<String> arguments = new ArrayList<>();
@@ -143,7 +143,7 @@ final class WindowsCargoSchedule
      * Runs native execution only after explicit input and installed-image preflight.
      */
     @FunctionalInterface
-    interface Execution
+    public interface Execution
     {
         /**
          * Borrows verified configuration and keeps the invocation scope alive until all native borrowers finish.
@@ -156,7 +156,7 @@ final class WindowsCargoSchedule
          * @throws IOException if native execution fails
          * @throws Scheduler.PendingCleanup if native cleanup retains the scope
          */
-        int run(WindowsCargoScope scope, Scheduler.Settings settings,
+        public int run(WindowsCargoScope scope, Scheduler.Settings settings,
             WindowsCargoLaunchConfiguration configuration, Path wrapper) throws IOException;
     }
 }

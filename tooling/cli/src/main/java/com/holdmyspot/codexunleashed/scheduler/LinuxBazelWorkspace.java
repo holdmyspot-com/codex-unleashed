@@ -31,7 +31,7 @@ import java.util.stream.Stream;
  * Original worker input and temporary directories are borrowed and never removed. Closing removes only the fresh
  * owned tree after every attempt has been discarded or promoted; uncertain rollback retains that tree and fails close.
  */
-final class LinuxBazelWorkspace implements AutoCloseable
+public final class LinuxBazelWorkspace implements AutoCloseable
 {
     /** Immutable independent input directory under the invocation-owned workspace. */
     private static final String SNAPSHOT = "lower";
@@ -99,7 +99,7 @@ final class LinuxBazelWorkspace implements AutoCloseable
      * @throws IOException if roots contain symlink ancestors, are replaced, copy fails or atomic storage is unavailable
      * @throws UnsupportedOperationException if secure directory streams or stable file keys are unavailable
      */
-    static LinuxBazelWorkspace open(Path originalInputRoot, Path originalTmp, Path ownedRoot) throws IOException
+    public static LinuxBazelWorkspace open(Path originalInputRoot, Path originalTmp, Path ownedRoot) throws IOException
     {
         absolute(originalInputRoot);
         absolute(originalTmp);
@@ -142,7 +142,7 @@ final class LinuxBazelWorkspace implements AutoCloseable
      * The producer must prevent action access that could mutate this owner-only storage.
      * @return independent immutable snapshot path, retained until successful close
      */
-    Path immutableSnapshot() { return immutableSnapshot; }
+    public Path immutableSnapshot() { return immutableSnapshot; }
 
     /**
      * Creates administrative storage with immutable host-owned ancestors regardless of the process umask.
@@ -166,7 +166,7 @@ final class LinuxBazelWorkspace implements AutoCloseable
      * @throws IllegalStateException if closed or the previous attempt still owns storage
      * @throws IOException if the original roots are detached/replaced or private directories cannot be created
      */
-    Attempt begin(long sequence) throws IOException
+    public Attempt begin(long sequence) throws IOException
     {
         if (closed || active != null) throw new IllegalStateException("Workspace is closed or has an outstanding attempt lease");
         if (sequence < 0 || !sequences.add(sequence))
@@ -224,7 +224,7 @@ final class LinuxBazelWorkspace implements AutoCloseable
      * view, obtains the authentic closed final outcome, and calls promote while its publication lease remains valid.
      * Failure and cancellation call discard only after native zero and unmapping; neither operation asserts those facts.
      */
-    final class Attempt
+    public final class Attempt
     {
         /** Private root reserved for this attempt alone. */
         private final Path root;
@@ -274,7 +274,7 @@ final class LinuxBazelWorkspace implements AutoCloseable
          * Returns private writable overlay storage, excluded from the worker's original input root.
          * @return fresh attempt upper directory
          */
-        Path upper() { return upper; }
+        public Path upper() { return upper; }
 
         /**
          * Returns the private empty native overlay work directory.
@@ -303,7 +303,7 @@ final class LinuxBazelWorkspace implements AutoCloseable
          * @throws IllegalArgumentException if {@code merged} is relative or unnormalized
          * @throws IOException if the merged root is not a real no-follow directory
          */
-        void bindMerged(Path merged) throws IOException
+        public void bindMerged(Path merged) throws IOException
         {
             absolute(merged);
             if (state != State.PREPARED || this.merged != null)
@@ -324,7 +324,7 @@ final class LinuxBazelWorkspace implements AutoCloseable
          * @throws IllegalStateException if a view is already bound or the attempt is no longer prepared
          * @throws IOException if the capability or remaining no-follow directories cannot be opened
          */
-        void bindMerged(Path merged, Path authenticatedProcRoot) throws IOException
+        public void bindMerged(Path merged, Path authenticatedProcRoot) throws IOException
         {
             absolute(merged);
             absolute(authenticatedProcRoot);
@@ -351,7 +351,7 @@ final class LinuxBazelWorkspace implements AutoCloseable
          * @throws IllegalStateException if no merged view is bound or the attempt is not prepared
          * @throws IOException if a stable complete supported merged view cannot be staged
          */
-        void freeze() throws IOException
+        public void freeze() throws IOException
         {
             if (state != State.PREPARED || merged == null)
                 throw new IllegalStateException("Freezing requires one prepared bound merged view");
@@ -387,7 +387,7 @@ final class LinuxBazelWorkspace implements AutoCloseable
          * @throws IllegalStateException if the attempt is neither prepared nor frozen
          * @throws IOException if cancelled, root identity changes, publication fails or rollback cannot be proven
          */
-        void promote(BooleanSupplier publicationAllowed) throws IOException
+        public void promote(BooleanSupplier publicationAllowed) throws IOException
         {
             Objects.requireNonNull(publicationAllowed, "publicationAllowed");
             if (state == State.PREPARED) freeze();
@@ -449,7 +449,7 @@ final class LinuxBazelWorkspace implements AutoCloseable
          * @throws IllegalStateException if publication is in progress or rollback remains uncertain
          * @throws IOException if private storage cannot be removed
          */
-        void discard() throws IOException
+        public void discard() throws IOException
         {
             if (state == State.PROMOTING || state == State.RECOVERY_REQUIRED)
                 throw new IllegalStateException("An unresolved publication journal cannot be discarded");

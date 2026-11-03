@@ -8,7 +8,7 @@ import java.util.Objects;
  * Decides whether an attempt whose start failed is retried instead of failing the build, and bounds those retries
  * per action. Instances are confined to the scheduler's queue thread.
  */
-final class LeaderDispatchRetries
+public final class LeaderDispatchRetries
 {
 	/**
 	 * Number of consecutive attempts of one action whose leader dispatch fails before the failure becomes fatal. A
@@ -23,7 +23,7 @@ final class LeaderDispatchRetries
 	/**
 	 * Creates a policy that has recorded no failures.
 	 */
-	LeaderDispatchRetries()
+	public LeaderDispatchRetries()
 	{
 	}
 
@@ -35,7 +35,7 @@ final class LeaderDispatchRetries
 	 *     attempts of the action failed that way; {@code false} if the failure must fail the build
 	 * @throws NullPointerException if any argument is null
 	 */
-	boolean retry(String name, Throwable cause)
+	public boolean retry(String name, Throwable cause)
 	{
 		Objects.requireNonNull(name, "name");
 		Objects.requireNonNull(cause, "cause");
@@ -63,7 +63,7 @@ final class LeaderDispatchRetries
 	 * @param name the action name
 	 * @throws NullPointerException if {@code name} is null
 	 */
-	void started(String name)
+	public void started(String name)
 	{
 		failures.remove(Objects.requireNonNull(name, "name"));
 	}

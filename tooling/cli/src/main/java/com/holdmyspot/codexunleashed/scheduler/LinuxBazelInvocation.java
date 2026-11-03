@@ -32,7 +32,7 @@ import java.util.UUID;
  * Owns original Bazel discovery and dependencies while its session owns registered actions.
  * All operations belong to the constructing thread. Construction acquires no resources.
  */
-final class LinuxBazelInvocation implements LinuxBazelSession.Invocation
+public final class LinuxBazelInvocation implements LinuxBazelSession.Invocation
 {
     /** Original operation thread, also used by the session and its queue. */
     private final Thread owner = Thread.currentThread();
@@ -58,7 +58,7 @@ final class LinuxBazelInvocation implements LinuxBazelSession.Invocation
      * @param resources original acquisition, discovery and cleanup owner
      * @throws NullPointerException if {@code resources} is null
      */
-    LinuxBazelInvocation(Resources resources)
+    public LinuxBazelInvocation(Resources resources)
     {
         this.resources = Objects.requireNonNull(resources, "resources");
     }
@@ -69,7 +69,7 @@ final class LinuxBazelInvocation implements LinuxBazelSession.Invocation
      * @param configuration trusted launch, declared actions and privileged helper inputs
      * @throws NullPointerException if an input is null
      */
-    LinuxBazelInvocation(ToolingScope scope, Configuration configuration)
+    public LinuxBazelInvocation(ToolingScope scope, Configuration configuration)
     {
         this(new NativeResources(Objects.requireNonNull(scope, "scope"),
             Objects.requireNonNull(configuration, "configuration")));
@@ -80,7 +80,7 @@ final class LinuxBazelInvocation implements LinuxBazelSession.Invocation
      * @param scope borrowed pouch values retained through complete cleanup
      * @param configuration original consumer and authenticated worker runtime
      */
-    LinuxBazelInvocation(ToolingScope scope, ProductionConfiguration configuration)
+    public LinuxBazelInvocation(ToolingScope scope, ProductionConfiguration configuration)
     {
         this(new ProductionResources(Objects.requireNonNull(scope, "scope"),
             Objects.requireNonNull(configuration, "configuration")));
@@ -91,7 +91,7 @@ final class LinuxBazelInvocation implements LinuxBazelSession.Invocation
      * @param paths original action-visible input, temporary, control, execution or runtime target paths
      * @throws IOException if an original path intersects the private temporary alias
      */
-    static void requireOutsidePrivateTemporary(Path... paths) throws IOException
+    public static void requireOutsidePrivateTemporary(Path... paths) throws IOException
     {
         Path alias = Path.of("/tmp");
         for (Path path : paths)
@@ -146,7 +146,7 @@ final class LinuxBazelInvocation implements LinuxBazelSession.Invocation
      * @throws IOException if acquisition or original root release fails
      * @throws IllegalStateException if start was already attempted or another thread calls
      */
-    void start() throws IOException
+    public void start() throws IOException
     {
         requireOwner();
         if (startAttempted || closed) throw new IllegalStateException("Bazel invocation start is permitted once");
@@ -170,7 +170,7 @@ final class LinuxBazelInvocation implements LinuxBazelSession.Invocation
      * @return original installed session
      * @throws IllegalStateException if startup failed or another thread calls
      */
-    LinuxBazelSession session()
+    public LinuxBazelSession session()
     {
         requireOwner();
         if (!started) throw new IllegalStateException("Bazel invocation did not start successfully");
@@ -261,7 +261,7 @@ final class LinuxBazelInvocation implements LinuxBazelSession.Invocation
      * Owns native root, authenticated discovery, measurements and ordered dependency cleanup.
      * No operation calls the queue; returned actions remain owned until registration succeeds.
      */
-    interface Resources extends AutoCloseable
+    public interface Resources extends AutoCloseable
     {
         /**
          * Acquires dependencies once while retaining partial cleanup authority.
@@ -419,7 +419,7 @@ final class LinuxBazelInvocation implements LinuxBazelSession.Invocation
      * Aborted attempts never acquire this owner. Capture paths are private; worker endpoints remain absent until commit.
      * The host caller supplies immutable directory ancestry and whole-attempt zero before freeze.
      */
-    static final class Diagnostics
+    public static final class Diagnostics
     {
         /** Private immutable snapshots in stdout/stderr order. */
         private final List<Path> snapshots;
@@ -445,7 +445,7 @@ final class LinuxBazelInvocation implements LinuxBazelSession.Invocation
          * @return independent diagnostic publication owner
          * @throws IOException if snapshots cannot be completely frozen
          */
-        static Diagnostics freeze(List<Path> captures, List<Path> destinations, Path directory) throws IOException
+        public static Diagnostics freeze(List<Path> captures, List<Path> destinations, Path directory) throws IOException
         {
             if (captures.size() != 2 || destinations.size() != 2)
                 throw new IllegalArgumentException("Diagnostics require exactly stdout and stderr");
@@ -471,7 +471,7 @@ final class LinuxBazelInvocation implements LinuxBazelSession.Invocation
          * @param outputs original private workspace promotion, or an empty transaction for authentic ordinary nonzero
          * @throws IOException if the guard withdraws, a path is occupied, copying fails or output promotion fails
          */
-        void publish(java.util.function.BooleanSupplier permitted, LinuxBazelRunner.Publication outputs) throws IOException
+        public void publish(java.util.function.BooleanSupplier permitted, LinuxBazelRunner.Publication outputs) throws IOException
         {
             Map<Path, Object> created = new LinkedHashMap<>();
             try
@@ -1554,7 +1554,7 @@ final class LinuxBazelInvocation implements LinuxBazelSession.Invocation
      * @return absolute action-visible executable name
      * @throws IOException if no executable is visible at the original lookup position
      */
-    static Path executable(String argument, Path directory, Map<String, String> environment) throws IOException
+    public static Path executable(String argument, Path directory, Map<String, String> environment) throws IOException
     {
         List<Path> candidates = new ArrayList<>();
         if (argument.indexOf('/') >= 0) candidates.add(directory.resolve(argument).normalize());
@@ -1579,7 +1579,7 @@ final class LinuxBazelInvocation implements LinuxBazelSession.Invocation
      * @return actual held ELF execution and kernel-rewritten argument vector
      * @throws IOException if an image is outside the visible roots, malformed or exceeds kernel script depth
      */
-    static LinuxBazelIdentity.Execution interpretedExecution(LinuxBazelIdentity.Execution launch,
+    public static LinuxBazelIdentity.Execution interpretedExecution(LinuxBazelIdentity.Execution launch,
         Path snapshot, Path visibleInput, List<LinuxBazelProducer.RuntimeBinding> bindings) throws IOException
     {
         Path image = launch.image().executable();

@@ -34,7 +34,7 @@ import java.util.OptionalInt;
  * for every retained incarnation and the genuine original root wait. Neither a PID scan nor coalition
  * count alone establishes that observation. An orphan's exit observation never grants waitpid authority.
  */
-interface MacWorkloadNative extends MacImages.Operations, MacImages.WorkloadAuthority, AutoCloseable
+public interface MacWorkloadNative extends MacImages.Operations, MacImages.WorkloadAuthority, AutoCloseable
 {
     /**
      * Authenticates a copied held event using this invocation's native authority.
@@ -146,12 +146,12 @@ interface MacWorkloadNative extends MacImages.Operations, MacImages.WorkloadAuth
      * Reports a native cohort or image change that invalidates a measurement without granting completion.
      * A measurement adapter must correlate this change to its exact registered attempt before issuing retry permission.
      */
-    final class MembershipChanged extends IOException
+    public final class MembershipChanged extends IOException
     {
         /** Serialization version for this stateless checked native observation failure. */
         private static final long serialVersionUID = 1L;
         /** Creates the bridge's independently observed measurement-churn result. */
-        MembershipChanged()
+        public MembershipChanged()
         {
             super("Authenticated native workload membership or image changed during residency observation");
         }
@@ -161,12 +161,12 @@ interface MacWorkloadNative extends MacImages.Operations, MacImages.WorkloadAuth
      * Reports independently incomplete native process or executable-region inventory without claiming churn or supplying partial rows.
      * The measurement adapter must correlate the rejection to the exact retained registered attempt.
      */
-    final class IncompleteInventory extends IOException
+    public final class IncompleteInventory extends IOException
     {
         /** Serialization version for this stateless checked observation failure. */
         private static final long serialVersionUID = 1L;
         /** Creates the native incomplete-inventory result. */
-        IncompleteInventory()
+        public IncompleteInventory()
         {
             super("Authenticated native process or executable-region inventory is incomplete");
         }

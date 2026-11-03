@@ -12,7 +12,7 @@ import java.util.Optional;
  * One thread performs all operations. A failed command or malformed receipt permanently withdraws authority;
  * uncertain sends are never repeated. Native reaping and host whole-tree zero are separate barriers.
  */
-final class LinuxBazelControl implements AutoCloseable
+public final class LinuxBazelControl implements AutoCloseable
 {
     /** Thread exclusively operating this original action connection. */
     private final Thread owner = Thread.currentThread();
@@ -48,7 +48,7 @@ final class LinuxBazelControl implements AutoCloseable
      * @throws IllegalArgumentException if the capability is malformed
      * @throws IOException if receipt validation or connection cleanup fails
      */
-    LinuxBazelControl(Connection connection, String capability) throws IOException
+    public LinuxBazelControl(Connection connection, String capability) throws IOException
     {
         Objects.requireNonNull(capability, "capability");
         if (!capability.matches("[0-9a-f]{64}"))
@@ -101,7 +101,7 @@ final class LinuxBazelControl implements AutoCloseable
      * @throws IllegalStateException if another attempt is active or the connection is terminal
      * @throws IOException if publication or receipt is uncertain or malformed
      */
-    Identity prepare() throws IOException
+    public Identity prepare() throws IOException
     {
         requireHealthy();
         if (active) throw new IllegalStateException("Bazel action already has an active attempt");
@@ -125,7 +125,7 @@ final class LinuxBazelControl implements AutoCloseable
      * @throws IllegalStateException if no attempt is prepared or collection was already requested
      * @throws IOException if an earlier control operation has uncertain effects
      */
-    void collect() throws IOException
+    public void collect() throws IOException
     {
         requireHealthy();
         if (!active || waiting) throw new IllegalStateException("Bazel attempt cannot begin collection");
@@ -139,7 +139,7 @@ final class LinuxBazelControl implements AutoCloseable
      * @throws IllegalStateException if collection was not requested
      * @throws IOException if the original receipt is malformed or native transport fails
      */
-    Optional<Result> pollResult() throws IOException
+    public Optional<Result> pollResult() throws IOException
     {
         requireHealthy();
         if (!waiting) throw new IllegalStateException("Bazel attempt collection was not requested");
@@ -174,7 +174,7 @@ final class LinuxBazelControl implements AutoCloseable
      * @throws IllegalStateException if no native status was collected
      * @throws IOException if zero is unknown, invalidation fails or a command has uncertain effects
      */
-    void resetAborted(AllocationHook.ExecutionBarrier barrier) throws IOException
+    public void resetAborted(AllocationHook.ExecutionBarrier barrier) throws IOException
     {
         requireCollected(barrier);
         try
@@ -198,7 +198,7 @@ final class LinuxBazelControl implements AutoCloseable
      * @throws IllegalStateException if no native status was collected
      * @throws IOException if zero is unknown or final delivery has uncertain effects
      */
-    int finish(AllocationHook.ExecutionBarrier barrier) throws IOException
+    public int finish(AllocationHook.ExecutionBarrier barrier) throws IOException
     {
         requireCollected(barrier);
         int status = result.signaled() ? 128 + result.status() : result.status();
@@ -328,7 +328,7 @@ final class LinuxBazelControl implements AutoCloseable
      * @param pid positive PID in the original action namespace
      * @param birth positive kernel start ticks in that namespace's proc view
      */
-    record Identity(long pid, long birth)
+    public record Identity(long pid, long birth)
     {
         /**
          * Rejects nonpositive native identity claims.
@@ -336,7 +336,7 @@ final class LinuxBazelControl implements AutoCloseable
          * @param birth positive native birth ticks
          * @throws IllegalArgumentException if either value is nonpositive
          */
-        Identity { if (pid <= 0 || birth <= 0) throw new IllegalArgumentException("Bazel process identities must be positive"); }
+        public Identity { if (pid <= 0 || birth <= 0) throw new IllegalArgumentException("Bazel process identities must be positive"); }
     }
 
     /**
@@ -344,7 +344,7 @@ final class LinuxBazelControl implements AutoCloseable
      * @param signaled indicates whether the child died from a signal rather than exiting
      * @param status original signal from 1 through 64, or original exit status from zero through 255
      */
-    record Result(boolean signaled, int status)
+    public record Result(boolean signaled, int status)
     {
         /**
          * Validates the native status domain without inferring retries.
@@ -352,7 +352,7 @@ final class LinuxBazelControl implements AutoCloseable
          * @param status original native status value
          * @throws IllegalArgumentException if the value lies outside its native status domain
          */
-        Result
+        public Result
         {
             if (status < (signaled ? 1 : 0) || status > (signaled ? 64 : 255))
                 throw new IllegalArgumentException("Bazel wait result has an invalid native status");
@@ -386,7 +386,7 @@ final class LinuxBazelControl implements AutoCloseable
      * Owns bounded opaque frames; implementations retain kernel peer evidence separately for authentication.
      * A failed operation must prohibit later frames, and polling must not wait for absent input.
      */
-    interface Connection extends AutoCloseable
+    public interface Connection extends AutoCloseable
     {
         /**
          * Sends one complete bounded frame without retry after uncertain delivery.

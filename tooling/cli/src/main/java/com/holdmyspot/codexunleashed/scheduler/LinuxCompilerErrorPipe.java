@@ -16,7 +16,7 @@ import java.util.Objects;
  * the read end itself, so abandoning an owner releases the pipe when the attempt's processes exit. Instances are
  * confined to the wrapper's protocol thread, apart from that relay thread.
  */
-final class LinuxCompilerErrorPipe
+public final class LinuxCompilerErrorPipe
 {
 	/** Size in bytes of each read from the pipe. */
 	private static final int READ_SIZE = 65_536;
@@ -43,7 +43,7 @@ final class LinuxCompilerErrorPipe
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the pipe cannot be created
 	 */
-	LinuxCompilerErrorPipe(LinuxBorrowedStreams.NativeBindings bindings, CompilerErrorRelay relay) throws IOException
+	public LinuxCompilerErrorPipe(LinuxBorrowedStreams.NativeBindings bindings, CompilerErrorRelay relay) throws IOException
 	{
 		this.bindings = Objects.requireNonNull(bindings, "bindings");
 		this.relay = Objects.requireNonNull(relay, "relay");
@@ -59,7 +59,7 @@ final class LinuxCompilerErrorPipe
 	 * @return the open write descriptor
 	 * @throws IllegalStateException if the write end was already closed
 	 */
-	int writeEnd()
+	public int writeEnd()
 	{
 		if (writeEnd < 0)
 			throw new IllegalStateException("Compiler standard-error write end is closed");
@@ -71,7 +71,7 @@ final class LinuxCompilerErrorPipe
 	 * Has no effect if the copy is already closed.
 	 * @throws IOException if the descriptor cannot be closed
 	 */
-	void closeWriteEnd() throws IOException
+	public void closeWriteEnd() throws IOException
 	{
 		if (writeEnd < 0)
 			return;
@@ -88,7 +88,7 @@ final class LinuxCompilerErrorPipe
 	 * @throws IOException if the pipe stays open for {@code timeout}, reading or closing it fails, or writing to Cargo
 	 *     fails
 	 */
-	void end(boolean superseded, Duration timeout) throws IOException
+	public void end(boolean superseded, Duration timeout) throws IOException
 	{
 		closeWriteEnd();
 		if (ended)

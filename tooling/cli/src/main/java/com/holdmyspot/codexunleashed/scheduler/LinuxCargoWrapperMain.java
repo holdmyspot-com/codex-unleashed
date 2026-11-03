@@ -76,7 +76,7 @@ public final class LinuxCargoWrapperMain
      * @throws NullPointerException if a required input or member is null
      * @throws IllegalArgumentException if the directory or environment is invalid
      */
-    static LinuxProcessTree.Launch launch(LinuxCargoLaunchConfiguration.Wrapper configuration,
+    public static LinuxProcessTree.Launch launch(LinuxCargoLaunchConfiguration.Wrapper configuration,
         List<String> arguments, Map<String, String> environment, Path directory) throws IOException
     {
         if (arguments.isEmpty() || !arguments.getFirst().equals(configuration.rustc().toString()))

@@ -17,7 +17,7 @@ import java.util.OptionalLong;
  * Creates fresh native compiler attempts and defers their allocation notifications outside queue controls.
  * Constructing-thread confinement applies; peer descriptors and invocation services remain borrowed.
  */
-final class MacAttempts implements JobQueue.AttemptFactory<Integer>
+public final class MacAttempts implements JobQueue.AttemptFactory<Integer>
 {
     /** Native controller thread. */
     private final Thread thread = Thread.currentThread();
@@ -76,7 +76,7 @@ final class MacAttempts implements JobQueue.AttemptFactory<Integer>
      * @param attemptSequence queue-wide original attempt ordinal
      * @param denial genuine immutable decoder receipt, never reconstructed from queue notifications
      */
-    record AllocationReceipt(String name, long attemptSequence, AllocationHook.Denial denial) {}
+    public record AllocationReceipt(String name, long attemptSequence, AllocationHook.Denial denial) {}
 
     /**
      * Returns successful native attempt retirements in their publication order.
@@ -283,7 +283,7 @@ final class MacAttempts implements JobQueue.AttemptFactory<Integer>
      * @param aborted indicates whether termination was requested for this attempt
      * @param retirementSequence zero-based successful retirement publication order for this invocation
      */
-    record Retirement(String name, long attemptSequence, List<Long> rootAuthority, int result,
+    public record Retirement(String name, long attemptSequence, List<Long> rootAuthority, int result,
         boolean aborted, long retirementSequence)
     {
         /**
@@ -295,7 +295,7 @@ final class MacAttempts implements JobQueue.AttemptFactory<Integer>
          * @param aborted indicates whether termination was requested for this attempt
          * @param retirementSequence zero-based retirement order
          */
-        Retirement
+        public Retirement
         {
             new Blocked(name, attemptSequence, retirementSequence);
             rootAuthority = new MacAttempt.Collected(rootAuthority, result, aborted).rootAuthority();
@@ -303,13 +303,13 @@ final class MacAttempts implements JobQueue.AttemptFactory<Integer>
     }
 
     /** Retains successful native retirements independently of the live attempt registry. */
-    static final class Retirements
+    public static final class Retirements
     {
         /** Completed receipts in deterministic publication order. */
         private final List<Retirement> completed = new ArrayList<>();
 
         /** Creates an empty invocation-owned ledger without external effects. */
-        Retirements() {}
+        public Retirements() {}
 
         /**
          * Appends one exact terminal receipt after its owner finishes successful cleanup.
@@ -330,6 +330,6 @@ final class MacAttempts implements JobQueue.AttemptFactory<Integer>
          * Copies successful receipts without transferring ledger ownership.
          * @return immutable receipts in successful retirement order
          */
-        List<Retirement> snapshot() { return List.copyOf(completed); }
+        public List<Retirement> snapshot() { return List.copyOf(completed); }
     }
 }

@@ -36,7 +36,7 @@ import tools.jackson.databind.node.ObjectNode;
  * helper alone calls Frida; copied native messages are decoded on the host without entering the allocation queue.
  * This implementation requires root-owned, sealed runtime inputs already visible in the action mount namespace.
  */
-final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
+public final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
 {
     /** Borrowed pouch values, retained by the invoking scheduler. */
     private final ToolingScope scope;
@@ -66,7 +66,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
      * @throws NullPointerException if an input is null
      * @throws IllegalArgumentException if the timeout is nonpositive or cannot fit nanoseconds
      */
-    LinuxBazelNamespaceHooks(ToolingScope scope, UUID attempt, LinuxBazelIdentity.Owner owner,
+    public LinuxBazelNamespaceHooks(ToolingScope scope, UUID attempt, LinuxBazelIdentity.Owner owner,
         LinuxBazelIdentity.Execution execution, Launch launch, Duration timeout)
     {
         this(scope, attempt, owner, execution, execution, launch, timeout);
@@ -82,7 +82,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
      * @param launch sealed helper runtime policy
      * @param timeout positive bounded command observation duration
      */
-    LinuxBazelNamespaceHooks(ToolingScope scope, UUID attempt, LinuxBazelIdentity.Owner owner,
+    public LinuxBazelNamespaceHooks(ToolingScope scope, UUID attempt, LinuxBazelIdentity.Owner owner,
         LinuxBazelIdentity.Execution execution, LinuxBazelIdentity.Execution launchExecution, Launch launch, Duration timeout)
     {
         this(scope, attempt, owner, execution, launchExecution, launch, null, timeout);
@@ -99,7 +99,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
      * @param images explicit private input/runtime roots, or null for strict initial-image-only operation
      * @param timeout positive bounded observation duration
      */
-    LinuxBazelNamespaceHooks(ToolingScope scope, UUID attempt, LinuxBazelIdentity.Owner owner,
+    public LinuxBazelNamespaceHooks(ToolingScope scope, UUID attempt, LinuxBazelIdentity.Owner owner,
         LinuxBazelIdentity.Execution execution, LinuxBazelIdentity.Execution launchExecution, Launch launch,
         ActionImages images, Duration timeout)
     {
@@ -131,14 +131,14 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
      * @param inputRoot current private attempt input tree, including generated programs
      * @param runtimeRoots exact runtime binding targets and independently mapped private temporary roots
      */
-    record ActionImages(Path inputRoot, List<Path> runtimeRoots)
+    public record ActionImages(Path inputRoot, List<Path> runtimeRoots)
     {
         /**
          * Copies normalized absolute roots without observing an action-supplied process.
          * @param inputRoot private current attempt input tree
          * @param runtimeRoots configured runtime and private temporary targets
          */
-        ActionImages
+        public ActionImages
         {
             requireImagePath(inputRoot);
             runtimeRoots = List.copyOf(runtimeRoots);
@@ -152,7 +152,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
          * @param executable independently observed namespace-local executable path
          * @return whether the executable belongs to an explicit supported mapping
          */
-        boolean permits(Path executable)
+        public boolean permits(Path executable)
         {
             requireImagePath(executable);
             return executable.startsWith(inputRoot) || runtimeRoots.stream().anyMatch(executable::startsWith);
@@ -183,7 +183,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
      * @param pidNamespace actual PID namespace inode link
      * @param mountNamespace actual mount namespace inode link
      */
-    record ImageObservation(long hostPid, long localPid, long birth, long parent, Path executable,
+    public record ImageObservation(long hostPid, long localPid, long birth, long parent, Path executable,
         String sha256, Map<String, Object> inode, List<String> arguments, String cgroup,
         String pidNamespace, String mountNamespace)
     {
@@ -201,7 +201,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
          * @param pidNamespace PID namespace link
          * @param mountNamespace mount namespace link
          */
-        ImageObservation
+        public ImageObservation
         {
             inode = Map.copyOf(inode);
             arguments = List.copyOf(arguments);
@@ -213,7 +213,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
          * @param current independently repeated observation
          * @throws IOException if any authenticated fact changed
          */
-        void requireUnchanged(ImageObservation current) throws IOException
+        public void requireUnchanged(ImageObservation current) throws IOException
         {
             if (!equals(current)) throw new IOException("Held image changed across independent readiness authentication");
         }
@@ -227,7 +227,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
      * @param path absolute normalized pathname; the nsenter seal is host-local, all others are namespace-local
      * @param sha256 lowercase SHA-256 supplied by the trusted invocation manifest
      */
-    record Seal(Path path, String sha256)
+    public record Seal(Path path, String sha256)
     {
         /**
          * Validates policy without inspecting or acquiring filesystem resources.
@@ -236,7 +236,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
          * @throws IllegalArgumentException if the path or digest is malformed
          * @throws NullPointerException if an input is null
          */
-        Seal
+        public Seal
         {
             Objects.requireNonNull(path, "path");
             Objects.requireNonNull(sha256, "sha256");
@@ -253,7 +253,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
      * @param classpath ordered sealed namespace-visible jars or class/resource directories
      * @param producer namespace-visible Frida producer library seal
      */
-    record Launch(Seal nsenter, Seal runtime, Seal java, List<Seal> classpath, Seal producer)
+    public record Launch(Seal nsenter, Seal runtime, Seal java, List<Seal> classpath, Seal producer)
     {
         /**
          * Copies execution policy and requires the Java image to belong to the sealed runtime tree.
@@ -265,7 +265,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
          * @throws NullPointerException if an input or collection member is null
          * @throws IllegalArgumentException if Java is outside runtime or classpath is empty
          */
-        Launch
+        public Launch
         {
             Objects.requireNonNull(nsenter, "nsenter");
             Objects.requireNonNull(runtime, "runtime");
@@ -280,7 +280,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
          * Builds the exact JVM argv, with native access explicitly enabled for the owned Frida binding.
          * @return immutable executable and arguments
          */
-        List<String> arguments()
+        public List<String> arguments()
         {
             return List.of(java.path().toString(), "--enable-native-access=ALL-UNNAMED", "-cp",
                 String.join(":", classpath.stream().map(seal -> seal.path().toString()).toList()),
@@ -298,7 +298,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
      * @param observedBirth independently observed post-exec leader birth
      * @return true only for the exact authorized migration and one retained original birth
      */
-    static boolean authenticatedExecMigration(LinuxAllocationTrace.Held migration,
+    public static boolean authenticatedExecMigration(LinuxAllocationTrace.Held migration,
         LinuxAllocationTrace.Identity authorized, long localPid, long originalBirth, long observedBirth)
     {
         return migration != null && migration.origin() == 1 && authorized != null &&
@@ -317,7 +317,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
      * @param observedParent descendant's independently observed current host parent
      * @return true only for exact ordinary-root identity and reparenting to the original namespace owner
      */
-    static boolean authenticatedOrdinaryRootParent(LinuxAllocationTrace.Terminal terminal, ImageObservation original,
+    public static boolean authenticatedOrdinaryRootParent(LinuxAllocationTrace.Terminal terminal, ImageObservation original,
         long ownerPid, long priorParent, long observedParent)
     {
         return terminal != null && terminal.waitStatus() >= 0 && (terminal.waitStatus() & 127) == 0 &&
@@ -327,7 +327,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
 
     /** One live-image admission sequence, retaining its original checked observation failure. */
     @FunctionalInterface
-    interface LiveImageAdmission
+    public interface LiveImageAdmission
     {
         /**
          * Performs the original live-image admission once.
@@ -344,7 +344,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
      * @param admission original admission operation, invoked exactly once
      * @throws IOException if image admission is uncertain while native execution remains possible
      */
-    static void admitLiveImages(LinuxBazelContainment containment, LiveImageAdmission admission) throws IOException
+    public static void admitLiveImages(LinuxBazelContainment containment, LiveImageAdmission admission) throws IOException
     {
         try { admission.admit(); }
         catch (java.nio.file.NoSuchFileException | LinuxBazelIdentity.EmptyCommandVectorException ended)
@@ -1247,7 +1247,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
      * @return whether the original birth is absent, replaced, zombie or dead
      * @throws IOException if a surviving kernel stat record is malformed or unavailable for another reason
      */
-    static boolean originalImageEnded(Path proc, long originalBirth) throws IOException
+    public static boolean originalImageEnded(Path proc, long originalBirth) throws IOException
     {
         String stat;
         try { stat = Files.readString(proc.resolve("stat")); }
@@ -1268,7 +1268,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
      * @return immutable executable, arguments, parent, birth and isolation facts
      * @throws IOException if a source inode, path or process fact is inconsistent
      */
-    static ImageObservation observeImage(Path proc, long hostPid, long localPid) throws IOException
+    public static ImageObservation observeImage(Path proc, long hostPid, long localPid) throws IOException
     {
         String before = birth(proc);
         String stat = Files.readString(proc.resolve("stat"));
@@ -1356,7 +1356,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
      * @param policy explicit current action/runtime image roots
      * @throws IOException if source mapping, interpreter chain or kernel argv prefix differs
      */
-    static void requireRequestedImage(Path proc, FridaRuntime.Child event, Path parentExecutable,
+    public static void requireRequestedImage(Path proc, FridaRuntime.Child event, Path parentExecutable,
         List<String> arguments, ActionImages policy) throws IOException
     {
         Path requested;

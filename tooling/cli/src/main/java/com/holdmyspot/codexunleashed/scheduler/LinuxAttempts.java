@@ -16,7 +16,7 @@ import java.util.UUID;
  * All operations belong to the constructing thread. Runtime, authority and live attempts are borrowed;
  * JobQueue exclusively owns attempt cleanup. A failed cleanup remains visible through hasOpenAttempts.
  */
-final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Result>
+public final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Result>
 {
 	/** Thread permitted to mutate the borrowed registry and notifications. */
 	private final Thread owner = Thread.currentThread();
@@ -55,7 +55,7 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	 * @throws NullPointerException if an input is null
 	 * @throws IllegalArgumentException if a name or timeout is invalid
 	 */
-	LinuxAttempts(ToolingScope scope, UUID build, FridaRuntime runtime, LinuxAuthority authority, Map<String, Command> commands,
+	public LinuxAttempts(ToolingScope scope, UUID build, FridaRuntime runtime, LinuxAuthority authority, Map<String, Command> commands,
 		Duration timeout)
     {
         this(scope, build, runtime, authority, commands, timeout, new AllocationHooks.Routing());
@@ -70,7 +70,7 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
      * @param timeout bounded native control interval
      * @param routing invocation-owned image event routing
      */
-    LinuxAttempts(ToolingScope scope, UUID build, FridaRuntime runtime, LinuxAuthority authority, Map<String, Command> commands,
+    public LinuxAttempts(ToolingScope scope, UUID build, FridaRuntime runtime, LinuxAuthority authority, Map<String, Command> commands,
         Duration timeout, AllocationHooks.Routing routing)
 
 	{
@@ -100,7 +100,7 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
      * @param command validated immutable launch inputs
      * @throws IllegalArgumentException if the name is blank or already reserved
      */
-    void register(String name, Command command)
+    public void register(String name, Command command)
     {
         requireOwner();
         commands.register(name, command);
@@ -129,7 +129,7 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	/** Services a fair snapshot without reentering JobQueue.
 	 * @throws IOException if native delivery or batch publication fails
 	 */
-	void pumpAll() throws IOException
+	public void pumpAll() throws IOException
 	{
 		requireOwner();
 		for (LinuxAttempt attempt : java.util.List.copyOf(live.values()))
@@ -144,7 +144,7 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	/** Returns the oldest deferred event for delivery outside queue controls.
 	 * @return oldest event, or empty
 	 */
-	Optional<Blocked> pollBlocked()
+	public Optional<Blocked> pollBlocked()
 	{
 		requireOwner();
 		return notifications.poll();
@@ -153,7 +153,7 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	/** Checks whether borrowed native ownership must remain available.
 	 * @return whether an attempt still retains cleanup ownership
 	 */
-	boolean hasOpenAttempts()
+	public boolean hasOpenAttempts()
 	{
 		requireOwner();
 		return live.isEmpty() == false;
@@ -175,7 +175,7 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	 * @return deterministic distinct attempt correlation
 	 * @throws IllegalArgumentException if the ordinal is negative
 	 */
-	static UUID attemptIdentity(UUID build, long attemptSequence)
+	public static UUID attemptIdentity(UUID build, long attemptSequence)
 	{
 		Objects.requireNonNull(build, "build");
 		if (attemptSequence < 0)
@@ -189,7 +189,7 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	 * @return original validated value
 	 * @throws IllegalArgumentException if timeout is nonpositive or too large
 	 */
-	static Duration checkedTimeout(Duration timeout)
+	public static Duration checkedTimeout(Duration timeout)
 	{
 		Objects.requireNonNull(timeout, "timeout");
 		if (timeout.isZero() || timeout.isNegative())
@@ -207,7 +207,7 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	}
 
 	/** Immutable attached workload configuration; constructing it acquires no native owners. */
-	sealed interface Command permits FilesCommand, BorrowedCommand, CargoCommand
+	public sealed interface Command permits FilesCommand, BorrowedCommand, CargoCommand
 	{
 		/** Returns the exact approved execution inputs.
 		 * @return immutable attached launch
@@ -219,12 +219,12 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	 * @param launch copied validated launch
 	 * @param files caller-owned standard endpoints
 	 */
-	record FilesCommand(LinuxProcessTree.Launch launch, LinuxProcessTree.StandardFiles files) implements Command
+	public record FilesCommand(LinuxProcessTree.Launch launch, LinuxProcessTree.StandardFiles files) implements Command
 	{
 		/** Validates attached execution without inspecting any filesystem paths.
 		 * @throws IllegalArgumentException if execution is not explicitly instrumented
 		 */
-		FilesCommand
+		public FilesCommand
 		{
 			Objects.requireNonNull(launch, "launch");
 			Objects.requireNonNull(files, "files");
@@ -238,7 +238,7 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	 * This boundary does not create registration authority or transfer their ownership to the attempt.
 	 */
 	@FunctionalInterface
-	interface Bindings
+	public interface Bindings
 	{
 		/** Selects a fresh receipt without starting the compiler or resending a prior transfer.
 		 * The producer maps this queue-wide ordinal to the retained Cargo action-local ordinal.
@@ -253,13 +253,13 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	 * @param launch exact approved compiler execution
 	 * @param bindings borrowed provider of independently authenticated per-attempt receipts
 	 */
-	record BorrowedCommand(LinuxProcessTree.Launch launch, Bindings bindings) implements Command
+	public record BorrowedCommand(LinuxProcessTree.Launch launch, Bindings bindings) implements Command
 	{
 		/** Validates configuration without requesting a binding or acquiring native resources.
 		 * @throws NullPointerException if either input is null
 		 * @throws IllegalArgumentException if execution is not explicitly attached
 		 */
-		BorrowedCommand
+		public BorrowedCommand
 		{
 			Objects.requireNonNull(launch, "launch");
 			Objects.requireNonNull(bindings, "bindings");
@@ -275,7 +275,7 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 		 * @throws IllegalArgumentException if the ordinal is negative
 		 * @throws IOException if selection fails, returns no receipt or supplies another action or execution
 		 */
-		LinuxBorrowedStreams.Binding binding(String name, long attemptSequence) throws IOException
+		public LinuxBorrowedStreams.Binding binding(String name, long attemptSequence) throws IOException
 		{
 			Objects.requireNonNull(name, "name");
 			if (attemptSequence < 0) throw new IllegalArgumentException("Attempt ordinal must be nonnegative");
@@ -319,12 +319,12 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	 * @param attemptSequence queue attempt ordinal
 	 * @param waitSequence per-attempt batch ordinal
 	 */
-	record Blocked(String name, long attemptSequence, long waitSequence)
+	public record Blocked(String name, long attemptSequence, long waitSequence)
 	{
 		/** Validates the three distinct queue correlation components.
 		 * @throws IllegalArgumentException if an identity is invalid
 		 */
-		Blocked
+		public Blocked
 		{
 			Objects.requireNonNull(name, "name");
 			if (name.isBlank() || attemptSequence < 0 || waitSequence < 0)
@@ -333,36 +333,36 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	}
 
 	/** Owns production notification order independently of the queue's active controls. */
-	static final class Notifications
+	public static final class Notifications
 	{
 		/** Events in first-observed order, including those observed during permission acknowledgement. */
 		private final ArrayDeque<Blocked> pending = new ArrayDeque<>();
 		/** Creates an empty resource-free FIFO. */
-		Notifications() {}
+		public Notifications() {}
 		/** Appends a deferred event in observation order.
 		 * @param blocked validated event to append
 		 */
-		void add(Blocked blocked) { pending.addLast(Objects.requireNonNull(blocked, "blocked")); }
+		public void add(Blocked blocked) { pending.addLast(Objects.requireNonNull(blocked, "blocked")); }
 		/** Consumes the next event outside queue controls.
 		 * @return oldest event, or empty
 		 */
-		Optional<Blocked> poll() { return Optional.ofNullable(pending.pollFirst()); }
+		public Optional<Blocked> poll() { return Optional.ofNullable(pending.pollFirst()); }
 	}
     /** Retains immutable launch inputs independently of native runtime acquisition. */
-    static final class Commands
+    public static final class Commands
     {
         /** Only thread allowed to append or retrieve commands. */
         private final Thread owner = Thread.currentThread();
         /** Names stay reserved for the whole invocation. */
         private final Map<String, Command> values = new LinkedHashMap<>();
         /** Creates an empty resource-free registry. */
-        Commands() {}
+        public Commands() {}
         /**
          * Appends one command atomically without filesystem access.
          * @param name nonblank unused identity
          * @param command immutable validated input
          */
-        void register(String name, Command command)
+        public void register(String name, Command command)
         {
             requireOwner();
             Objects.requireNonNull(name, "name");
@@ -376,7 +376,7 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
          * @param name action identity
          * @return configured command, or null for unknown identity
          */
-        Command get(String name) { requireOwner(); return values.get(name); }
+        public Command get(String name) { requireOwner(); return values.get(name); }
         /** Rejects cross-thread registry access before observing inputs. */
         private void requireOwner()
         {

@@ -103,7 +103,7 @@ public final class LinuxBazelBackend implements AutoCloseable
      * @throws IOException if product identity, pins, membership or native format differs
      * @throws UnsupportedOperationException if the host is not Linux x64 or ARM64
      */
-    static Map<String, Path> validateDistribution(ToolingScope scope, Path distribution,
+    public static Map<String, Path> validateDistribution(ToolingScope scope, Path distribution,
         String operatingSystem, String architecture) throws IOException
     {
         return BazelNativeBackend.validateDistribution(scope, linuxTarget(operatingSystem, architecture), distribution)
@@ -489,7 +489,7 @@ public final class LinuxBazelBackend implements AutoCloseable
     /**
      * Selects action-cache acceptance separately from the original Bazel consumer argv.
      */
-    enum CachePolicy
+    public enum CachePolicy
     {
         /** Ordinary builds may accept matching remote action-cache entries. */
         ACCEPT_CACHED,
@@ -510,7 +510,7 @@ public final class LinuxBazelBackend implements AutoCloseable
      * @param actionCacheBytes explicit action-cache data-file capacity in bytes
      * @param cachePolicy explicit ordinary or uncached recovery behavior
      */
-    record Configuration(Path distribution, Path invocationRoot, String runnerAddress, Credentials credentials,
+    public record Configuration(Path distribution, Path invocationRoot, String runnerAddress, Credentials credentials,
         int concurrency, int trustedUid, int trustedGid, long casBytes, long actionCacheBytes, CachePolicy cachePolicy)
     {
         /**
@@ -525,7 +525,7 @@ public final class LinuxBazelBackend implements AutoCloseable
          * @param casBytes explicit CAS capacity
          * @param actionCacheBytes explicit action-cache capacity
          */
-        Configuration(Path distribution, Path invocationRoot, String runnerAddress, Credentials credentials,
+        public Configuration(Path distribution, Path invocationRoot, String runnerAddress, Credentials credentials,
             int concurrency, int trustedUid, int trustedGid, long casBytes, long actionCacheBytes)
         {
             this(distribution, invocationRoot, runnerAddress, credentials, concurrency, trustedUid, trustedGid,
@@ -546,7 +546,7 @@ public final class LinuxBazelBackend implements AutoCloseable
          * @param cachePolicy explicit ordinary or uncached recovery behavior
          * @throws IllegalArgumentException if address, capacity or identity is invalid
          */
-        Configuration
+        public Configuration
         {
             distribution = distribution.toAbsolutePath().normalize();
             invocationRoot = invocationRoot.toAbsolutePath().normalize();
@@ -566,7 +566,7 @@ public final class LinuxBazelBackend implements AutoCloseable
      * @param workerCertificate PEM authenticated worker/client certificate
      * @param workerKey PKCS8 PEM worker private key
      */
-    record Credentials(Path certificateAuthority, Path serverCertificate, Path serverKey,
+    public record Credentials(Path certificateAuthority, Path serverCertificate, Path serverKey,
         Path workerCertificate, Path workerKey)
     {
         /**
@@ -577,7 +577,7 @@ public final class LinuxBazelBackend implements AutoCloseable
          * @param workerCertificate PEM client certificate
          * @param workerKey PEM client key
          */
-        Credentials
+        public Credentials
         {
             certificateAuthority = certificateAuthority.toAbsolutePath().normalize();
             serverCertificate = serverCertificate.toAbsolutePath().normalize();

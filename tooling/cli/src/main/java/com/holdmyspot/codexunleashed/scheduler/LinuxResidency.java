@@ -123,7 +123,7 @@ public final class LinuxResidency
 	}
 
 	/** Indicates independently observed membership churn, without supplying any substitute memory value. */
-	static final class MembershipChanged extends IOException
+	public static final class MembershipChanged extends IOException
 	{
 		/**
 		 * Retains the observation that invalidated the complete sample.

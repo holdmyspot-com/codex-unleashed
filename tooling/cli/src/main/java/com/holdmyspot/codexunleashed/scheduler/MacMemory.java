@@ -167,7 +167,7 @@ public final class MacMemory
 	/**
 	 * Supplies system queries and ABI-compatible functions for one acquisition.
 	 */
-	interface NativeCalls
+	public interface NativeCalls
 	{
 		/**
 		 * Reads a signed 64-bit sysctl value.
@@ -252,7 +252,7 @@ public final class MacMemory
 	/**
 	 * Gives package tests typed access to the production acquisition without loading a platform library.
 	 */
-	static final class SharedSecrets
+	public static final class SharedSecrets
 	{
 		/**
 		 * Prevents construction of this access facade.
@@ -267,7 +267,7 @@ public final class MacMemory
 		 * @return the acquired sample after successful cleanup
 		 * @throws IOException if acquisition or cleanup fails
 		 */
-		static Sample read(NativeCalls calls) throws IOException
+		public static Sample read(NativeCalls calls) throws IOException
 		{
 			return MacMemory.read(calls);
 		}

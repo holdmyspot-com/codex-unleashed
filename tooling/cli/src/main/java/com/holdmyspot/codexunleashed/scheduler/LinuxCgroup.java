@@ -129,7 +129,7 @@ public final class LinuxCgroup implements AutoCloseable
 	 * @return true when the kernel reports live processes in that group or its descendants
 	 * @throws IOException if events are missing, unreadable or have no valid population field
 	 */
-	static boolean isPopulated(Path directory) throws IOException
+	public static boolean isPopulated(Path directory) throws IOException
 	{
 		Properties events = new Properties();
 		try (Reader input = Files.newBufferedReader(directory.resolve(EVENTS_FILE)))

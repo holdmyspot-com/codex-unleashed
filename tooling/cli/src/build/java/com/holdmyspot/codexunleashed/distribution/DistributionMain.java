@@ -192,7 +192,7 @@ public final class DistributionMain
      * @param modules exclusively owned runtime staging directory
      * @throws IOException if descriptor generation, compilation or publication fails
      */
-    private static void modularizeToml(Path modules) throws IOException
+    public static void modularizeToml(Path modules) throws IOException
     {
         Path toml = modules.resolve("tomlj-1.1.1.jar");
         Path antlr = modules.resolve("antlr4-runtime-4.11.1.jar");
@@ -265,7 +265,7 @@ public final class DistributionMain
      * @param backend original prebuilt native backend
      * @throws IOException if staging or publication fails
      */
-    private static void stageBazelCompanion(Path modules, Path output, Path backend) throws IOException
+    public static void stageBazelCompanion(Path modules, Path output, Path backend) throws IOException
     {
         stageBazelCompanion(modules, output, backend, System.getProperty("os.name"),
             Path.of(System.getProperty("java.home")), Path.of(System.getProperty("java.io.tmpdir")),
@@ -285,7 +285,7 @@ public final class DistributionMain
      * @param tools owned external packaging operation
      * @throws IOException if assembly, native validation or publication fails
      */
-    static void stageBazelCompanion(Path modules, Path output, Path backend, String operatingSystem,
+    public static void stageBazelCompanion(Path modules, Path output, Path backend, String operatingSystem,
         Path javaHome, Path temporaryDirectory, StageTool tools) throws IOException
     {
         boolean windows = operatingSystem.startsWith("Windows");
@@ -341,7 +341,7 @@ public final class DistributionMain
 
     /** One owned external stage operation; the returned value is its authentic process exit status. */
     @FunctionalInterface
-    interface StageTool
+    public interface StageTool
     {
         /**
          * Executes one packaging command with captured diagnostics.
@@ -378,7 +378,7 @@ public final class DistributionMain
      * @param sources ordinary native support source directory, or null when unused
      * @param backend optional prebuilt backend, or null for ordinary packaging
      */
-    record PackagingArguments(Path modules, Path output, Path sources, Path backend)
+    public record PackagingArguments(Path modules, Path output, Path sources, Path backend)
     {
         /**
          * Selects the supported argument form before any packaging effect.
@@ -388,7 +388,7 @@ public final class DistributionMain
          * @throws IllegalArgumentException if the argument form omits required native sources
          * @throws UnsupportedOperationException if optional packaging names an unsupported operating system
          */
-        static PackagingArguments parse(String[] args, String operatingSystem)
+        public static PackagingArguments parse(String[] args, String operatingSystem)
         {
             boolean mac = operatingSystem.equals("Mac OS X") || operatingSystem.equals("Darwin");
             boolean linux = operatingSystem.equals("Linux");

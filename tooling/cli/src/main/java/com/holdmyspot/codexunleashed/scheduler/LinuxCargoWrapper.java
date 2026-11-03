@@ -8,7 +8,7 @@ import java.util.Objects;
  * Instances are confined to one operation thread and execute once. The caller retains its Cargo scope through
  * execution; the session opener establishes native controller authority and owns cleanup of partial acquisition.
  */
-final class LinuxCargoWrapper
+public final class LinuxCargoWrapper
 {
     /** Codec borrowing invocation-scoped parsing services. */
     private final LinuxCargoMessages messages;
@@ -26,7 +26,7 @@ final class LinuxCargoWrapper
      * @param opener creates one authenticated owned session and cleans up any partial acquisition
      * @throws NullPointerException if any input is null
      */
-    LinuxCargoWrapper(LinuxCargoScope scope, LinuxProcessTree.Launch launch, Opener opener)
+    public LinuxCargoWrapper(LinuxCargoScope scope, LinuxProcessTree.Launch launch, Opener opener)
     {
         this.messages = new LinuxCargoMessages(Objects.requireNonNull(scope, "scope"));
         this.launch = Objects.requireNonNull(launch, "launch");
@@ -40,7 +40,7 @@ final class LinuxCargoWrapper
      * @throws IllegalStateException if execution was already attempted or the borrowed scope is closed
      * @throws IOException if acquisition, protocol interpretation, transfer or cleanup fails
      */
-    int run() throws IOException
+    public int run() throws IOException
     {
         if (started) throw new IllegalStateException("Cargo wrapper execution was already attempted");
         started = true;
@@ -72,7 +72,7 @@ final class LinuxCargoWrapper
      * Acquires one native session only after its controller authority has been established.
      */
     @FunctionalInterface
-    interface Opener
+    public interface Opener
     {
         /**
          * Opens a session or retains responsibility for cleaning up partial acquisition.
@@ -86,7 +86,7 @@ final class LinuxCargoWrapper
      * Owns one wrapper's stream listener, control connection and private directory.
      * Originals 0, 1 and 2 and invocation scopes remain borrowed. Each failed transfer consumes its authority.
      */
-    interface Session extends AutoCloseable
+    public interface Session extends AutoCloseable
     {
         /**
          * Supplies the captured wrapper receipt without an attempt capability.

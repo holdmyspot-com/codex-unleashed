@@ -764,7 +764,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 	/**
 	 * Gives focused tests typed access to native ABI selection and the held-directory classifier without changing mounts.
 	 */
-	static final class SharedSecrets
+	public static final class SharedSecrets
 	{
         /**
          * Exercises production sandbox identity validation using an isolated proc-shaped fixture.
@@ -790,7 +790,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		 * @return true only for the exact missing-leaf topology with independently verified native absence
 		 * @throws IOException if enumeration, acquisition, cleanup or another topology check fails
 		 */
-		static boolean requiresLeafRecheck(ToolingScope scope, Path root, Path directory, Path leaf) throws IOException
+		public static boolean requiresLeafRecheck(ToolingScope scope, Path root, Path directory, Path leaf) throws IOException
 		{
 			try (LinuxAuthorityReader reader = new LinuxAuthorityReader(scope, root, root, root, root))
 			{
@@ -813,7 +813,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		 * @param checks controlled workload observations
 		 * @throws IOException if any required observation fails
 		 */
-		static void verifyWorkloads(List<Check> checks) throws IOException
+		public static void verifyWorkloads(List<Check> checks) throws IOException
 		{
 			LinuxAuthorityReader.verifyWorkloads(checks);
 		}
@@ -823,7 +823,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		 * @param checks complete controlled workload observations
 		 * @throws IOException if authority or a registered observation is unavailable
 		 */
-		static void verifyObservation(Check context, List<Check> checks) throws IOException
+		public static void verifyObservation(Check context, List<Check> checks) throws IOException
 		{
 			LinuxAuthorityReader.verifyObservation(context, checks);
 		}
@@ -832,7 +832,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		 * @param attempt registered action identity
 		 * @return modeled reader outcome
 		 */
-		static IOException removedLeaf(LinuxMeasurements.Attempt attempt)
+		public static IOException removedLeaf(LinuxMeasurements.Attempt attempt)
 		{
 			return new RemovedLeaf(attempt);
 		}
@@ -845,7 +845,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		 * @return original native failure or verified removed-leaf rejection
 		 * @throws IOException if the complete authority verification fails differently
 		 */
-		static IOException observationFailure(String operation, int errno, boolean cleanup, Check verification) throws IOException
+		public static IOException observationFailure(String operation, int errno, boolean cleanup, Check verification) throws IOException
 		{
 			NativeFailure failure = new NativeFailure("controlled core read", errno);
 			if (cleanup) failure.addSuppressed(new IOException("controlled cleanup failure"));
@@ -861,7 +861,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		 * @return original failure or verified removed-leaf rejection
 		 * @throws IOException if the complete authority verification fails differently
 		 */
-		static IOException observationFailure(String operation, IOException failure, Check verification) throws IOException
+		public static IOException observationFailure(String operation, IOException failure, Check verification) throws IOException
 		{
 			return LinuxAuthorityReader.observationFailure(operation, failure, verification);
 		}
@@ -871,7 +871,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		 * @param failure observation result to serialize
 		 * @return structured failed reply
 		 */
-		static Properties rejection(IOException failure) { return LinuxAuthorityReader.rejection(failure); }
+		public static Properties rejection(IOException failure) { return LinuxAuthorityReader.rejection(failure); }
 
 		/**
 		 * Prevents construction of the resource-free test facade.
@@ -887,7 +887,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		 * @return architecture-specific flags
 		 * @throws UnsupportedOperationException if this architecture is unsupported
 		 */
-		static int openFlags(String architecture, boolean directory)
+		public static int openFlags(String architecture, boolean directory)
 		{
 			return NativeCalls.openFlags(architecture, directory);
 		}
@@ -898,7 +898,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		 * @param directory directory whose actual-root evidence is being checked
 		 * @throws IOException if this directory cannot establish actual-root evidence
 		 */
-		static void requireActualRoot(ToolingScope scope, Path directory) throws IOException
+		public static void requireActualRoot(ToolingScope scope, Path directory) throws IOException
 		{
 			try (LinuxAuthorityReader reader = new LinuxAuthorityReader(scope, directory, directory, directory, directory))
 			{
@@ -1032,7 +1032,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 	 * One complete authority or workload observation.
 	 */
 	@FunctionalInterface
-	interface Check
+	public interface Check
 	{
 		/**
 		 * Verifies one observation.

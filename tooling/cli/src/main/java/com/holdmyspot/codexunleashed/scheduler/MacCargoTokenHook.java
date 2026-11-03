@@ -15,7 +15,7 @@ import java.util.function.LongSupplier;
  * Live-image closure requires whole-workload execution impossibility; detached-image closure never retires the borrowed attempt capability.
  * Instances are confined to their constructing controller thread.
  */
-final class MacCargoTokenHook
+public final class MacCargoTokenHook
 {
     /** Packaged Darwin token mediation source. */
     private static final String RESOURCE = "mac-cargo-tokens.js";
@@ -36,7 +36,7 @@ final class MacCargoTokenHook
      * @throws NullPointerException if a reference input is null
      * @throws IllegalArgumentException if identities, program or timeout are invalid
      */
-    MacCargoTokenHook(ToolingScope scope, UUID attempt, long installation, long pid,
+    public MacCargoTokenHook(ToolingScope scope, UUID attempt, long installation, long pid,
         MacCargoNative.FifoIdentity fifo, FridaRuntime.Manager manager, LinuxCargoTokens.Attempt tokens,
         String program, Duration timeout)
     {
@@ -59,7 +59,7 @@ final class MacCargoTokenHook
      * @throws NullPointerException if a reference input is null
      * @throws IllegalArgumentException if identity, program or timeout is invalid
      */
-    MacCargoTokenHook(ToolingScope scope, UUID attempt, long installation, long pid,
+    public MacCargoTokenHook(ToolingScope scope, UUID attempt, long installation, long pid,
         MacCargoNative.FifoIdentity fifo, AllocationHook.Connection connection, LinuxCargoTokens.Attempt tokens,
         String program, Duration timeout, LongSupplier nanoTime)
     {
@@ -89,7 +89,7 @@ final class MacCargoTokenHook
      * @throws IOException if acquisition fails or authority has been withdrawn
      * @throws IllegalStateException if off-thread or already attempted
      */
-    void start() throws IOException { delegate.start(); }
+    public void start() throws IOException { delegate.start(); }
 
     /**
      * Awaits matching readiness while servicing peer images and gated children.
@@ -97,14 +97,14 @@ final class MacCargoTokenHook
      * @throws IOException if readiness, delivery, peer service or interruption fails
      * @throws IllegalStateException if off-thread or start did not complete
      */
-    void awaitReady(AllocationHook.Pump peers) throws IOException { delegate.awaitReady(peers); }
+    public void awaitReady(AllocationHook.Pump peers) throws IOException { delegate.awaitReady(peers); }
 
     /**
      * Services bounded copied messages and available grants without blocking pending writes behind empty reads.
      * @throws IOException if framing, ordering, transfer or delivery fails, permanently withdrawing authority
      * @throws IllegalStateException if off-thread or start did not complete
      */
-    void pump() throws IOException { delegate.pump(); }
+    public void pump() throws IOException { delegate.pump(); }
 
     /**
      * Permanently withdraws controls while retaining all native and attempt ownership.
@@ -118,7 +118,7 @@ final class MacCargoTokenHook
      * @throws IOException if the barrier is false or unknown, or destruction fails
      * @throws IllegalStateException if off-thread
      */
-    void close(AllocationHook.ExecutionBarrier barrier) throws IOException { delegate.close(barrier); }
+    public void close(AllocationHook.ExecutionBarrier barrier) throws IOException { delegate.close(barrier); }
 
     /**
      * Observes exact-image detachment without granting whole-workload terminal authority.
@@ -126,19 +126,19 @@ final class MacCargoTokenHook
      * @throws IOException if observation is uncertain
      * @throws IllegalStateException if called off-thread
      */
-    boolean detached() throws IOException { return delegate.detached(); }
+    public boolean detached() throws IOException { return delegate.detached(); }
 
     /**
      * Releases only an independently detached image, retaining the borrowed attempt capability.
      * @throws IOException if detachment is unproven or destruction remains uncertain
      * @throws IllegalStateException if called off-thread
      */
-    void closeDetached() throws IOException { delegate.closeDetached(); }
+    public void closeDetached() throws IOException { delegate.closeDetached(); }
 
     /**
      * Observes the first retained operational failure.
      * @return first failure, or null if none has occurred
      * @throws IllegalStateException if off-thread
      */
-    IOException failure() { return delegate.failure(); }
+    public IOException failure() { return delegate.failure(); }
 }

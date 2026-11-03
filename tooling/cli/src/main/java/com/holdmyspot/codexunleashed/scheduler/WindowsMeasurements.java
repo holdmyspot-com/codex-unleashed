@@ -33,7 +33,7 @@ public final class WindowsMeasurements implements Controller.Measurements
      * Reads one complete instantaneous host sample; acquisition failure must throw rather than return null.
      */
     @FunctionalInterface
-    interface Host
+    public interface Host
     {
         /**
          * Reads the current host sample.
@@ -59,7 +59,7 @@ public final class WindowsMeasurements implements Controller.Measurements
      * @param host the borrowed instantaneous host reader
      * @throws NullPointerException if {@code host} is null
      */
-    WindowsMeasurements(Host host)
+    public WindowsMeasurements(Host host)
     {
         this.host = Objects.requireNonNull(host, "host may not be null");
     }

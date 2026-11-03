@@ -6,7 +6,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
 /** Implements the native AArch64 Linux register and instruction ABI for the sole allocation tracer. */
-final class LinuxAarch64Trace
+public final class LinuxAarch64Trace
 {
     /** Native mmap syscall number from the AArch64 Linux syscall ABI. */
     static final long MMAP = 222;
@@ -46,7 +46,7 @@ final class LinuxAarch64Trace
      * @return complete native general registers
      * @throws IOException if ptrace fails or reports a different regset size
      */
-    static MemorySegment readRegisters(LinuxAllocationTrace.NativeTrace trace, int tid, Arena arena)
+    public static MemorySegment readRegisters(LinuxAllocationTrace.NativeTrace trace, int tid, Arena arena)
         throws IOException
     {
         MemorySegment registers = arena.allocate(REGISTER_BYTES, 8);
@@ -62,7 +62,7 @@ final class LinuxAarch64Trace
      * @param registers complete prepared native registers
      * @throws IOException if either native regset cannot be written
      */
-    static void writeRegisters(LinuxAllocationTrace.NativeTrace trace, int tid, MemorySegment registers)
+    public static void writeRegisters(LinuxAllocationTrace.NativeTrace trace, int tid, MemorySegment registers)
         throws IOException
     {
         try (Arena arena = Arena.ofConfined())
@@ -104,7 +104,7 @@ final class LinuxAarch64Trace
      * @param arguments native syscall arguments in x0..x5 order
      * @throws IllegalArgumentException if more than six arguments are supplied or PC is unaligned
      */
-    static void prepareSyscall(MemorySegment registers, long pc, long number, long... arguments)
+    public static void prepareSyscall(MemorySegment registers, long pc, long number, long... arguments)
     {
         if (arguments.length > 6 || (pc & 3) != 0)
             throw new IllegalArgumentException("AArch64 syscall requires aligned PC and at most six arguments");
@@ -119,7 +119,7 @@ final class LinuxAarch64Trace
      * @param registers complete native register storage
      * @return unmodified signed syscall result
      */
-    static long result(MemorySegment registers)
+    public static long result(MemorySegment registers)
     {
         return registers.get(ValueLayout.JAVA_LONG, 0);
     }
@@ -129,7 +129,7 @@ final class LinuxAarch64Trace
      * @param registers complete native register storage
      * @return native PC
      */
-    static long pc(MemorySegment registers)
+    public static long pc(MemorySegment registers)
     {
         return registers.get(ValueLayout.JAVA_LONG, PC_OFFSET);
     }
@@ -141,7 +141,7 @@ final class LinuxAarch64Trace
      * @return original instruction, retaining all 32 bits
      * @throws IllegalArgumentException if the address is not instruction-aligned
      */
-    static int originalInstruction(long word, long address)
+    public static int originalInstruction(long word, long address)
     {
         return (int) ((word >>> shift(address)) & INSTRUCTION_MASK);
     }
@@ -153,7 +153,7 @@ final class LinuxAarch64Trace
      * @return patched native text word for PTRACE_POKETEXT
      * @throws IllegalArgumentException if the address is not instruction-aligned
      */
-    static long patchTrap(long word, long address)
+    public static long patchTrap(long word, long address)
     {
         int shift = shift(address);
         long mask = INSTRUCTION_MASK << shift;

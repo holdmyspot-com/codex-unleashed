@@ -13,14 +13,14 @@ import java.util.Set;
  * Residency is a directly observed lower bound; it grants neither a peak estimate nor completion authority.
  * All calls and borrowed sources are confined to the constructing thread.
  */
-final class MacMeasurements implements Controller.Measurements
+public final class MacMeasurements implements Controller.Measurements
 {
     /**
      * Identifies a registered workload attempt independently of native image changes.
      * @param name nonblank stable action name
      * @param sequence nonnegative controller attempt ordinal
      */
-    record Attempt(String name, long sequence)
+    public record Attempt(String name, long sequence)
     {
         /**
          * Validates exact action correlation fields.
@@ -29,7 +29,7 @@ final class MacMeasurements implements Controller.Measurements
          * @throws NullPointerException if name is null
          * @throws IllegalArgumentException if name is blank or sequence is negative
          */
-        Attempt
+        public Attempt
         {
             Objects.requireNonNull(name, "name");
             if (name.isBlank() || sequence < 0) throw new IllegalArgumentException("Attempt requires a nonblank name and nonnegative sequence");
@@ -42,7 +42,7 @@ final class MacMeasurements implements Controller.Measurements
      * @param generation nonnegative native-owner registration generation
      * @param attempts exact live registered attempts
      */
-    record Observation(MacMemory.Sample memory, long generation, Set<Attempt> attempts)
+    public record Observation(MacMemory.Sample memory, long generation, Set<Attempt> attempts)
     {
         /**
          * Validates and freezes a complete host and registry observation.
@@ -52,7 +52,7 @@ final class MacMeasurements implements Controller.Measurements
          * @throws NullPointerException if memory, attempts or an attempt is null
          * @throws IllegalArgumentException if generation is negative
          */
-        Observation
+        public Observation
         {
             Objects.requireNonNull(memory, "memory");
             attempts = Set.copyOf(attempts);
@@ -61,7 +61,7 @@ final class MacMeasurements implements Controller.Measurements
     }
 
     /** Supplies complete native observations while retaining every registered owner through acceptance. */
-    interface Source
+    public interface Source
     {
         /**
          * Reads fresh host counters and freezes the current native-owner registry.
@@ -196,7 +196,7 @@ final class MacMeasurements implements Controller.Measurements
      * @param source borrowed host, registry and authenticated residency producer
      * @throws NullPointerException if source is null
      */
-    MacMeasurements(Source source)
+    public MacMeasurements(Source source)
     {
         this.source = Objects.requireNonNull(source, "source");
     }

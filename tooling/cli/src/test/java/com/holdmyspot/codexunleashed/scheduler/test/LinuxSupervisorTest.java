@@ -1,0 +1,148 @@
+package com.holdmyspot.codexunleashed.scheduler.test;
+
+import com.holdmyspot.codexunleashed.scheduler.LinuxProcessTree;
+import com.holdmyspot.codexunleashed.scheduler.LinuxSupervisor;
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+
+
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
+
+import static com.holdmyspot.codexunleashed.scheduler.test.TestRequirements.requireException;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+/**
+ * Verifies supervisor input rejection before resource acquisition and immutable accepted outcomes.
+ */
+public final class LinuxSupervisorTest
+{
+	/**
+	 * Creates supervisor contract tests.
+	 */
+	public LinuxSupervisorTest()
+	{
+	}
+
+	/**
+	 * Supplies waits that must be rejected before the nonexistent cgroup parent is resolved.
+	 * @return nonpositive and overflowing waits
+	 */
+	@DataProvider
+	public Object[][] invalidTimeouts()
+	{
+		return new Object[][] {{Duration.ZERO}, {Duration.ofNanos(-1)}, {Duration.ofSeconds(Long.MAX_VALUE)}};
+	}
+
+	/**
+	 * Rejects the wait at the caller boundary, rather than failing later during cgroup acquisition.
+	 * @param timeout the invalid wait
+	 */
+	@Test(dataProvider = "invalidTimeouts")
+	public void rejectsInvalidTimeoutBeforeAcquisition(Duration timeout)
+	{
+		requireException(IllegalArgumentException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), timeout));
+		requireException(IllegalArgumentException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), unresolvedFiles(), timeout));
+	}
+
+	/**
+	 * Rejects a missing launch before acquiring resources.
+	 */
+	@Test
+	public void rejectsNullLaunch()
+	{
+		requireException(NullPointerException.class, () -> LinuxSupervisor.prepare(null, Duration.ofSeconds(1)));
+		requireException(NullPointerException.class, () -> LinuxSupervisor.prepare(null, unresolvedFiles(), Duration.ofSeconds(1)));
+	}
+
+	/**
+	 * Rejects a missing wait before resolving the cgroup parent.
+	 */
+	@Test
+	public void rejectsNullTimeout()
+	{
+		requireException(NullPointerException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), null));
+		requireException(NullPointerException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), unresolvedFiles(), null));
+	}
+
+	/** Rejects absent explicit endpoints before resolving the nonexistent cgroup parent. */
+	@Test
+	public void rejectsNullStandardFilesBeforeAcquisition()
+	{
+		requireException(NullPointerException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), null, Duration.ofSeconds(1)));
+		try (var scope = new DefaultToolingScope())
+		{
+			requireException(NullPointerException.class, () -> LinuxProcessTree.prepare(scope, unresolvedLaunch(), null));
+		}
+	}
+
+	/**
+	 * Keeps accepted child outcomes independent of later caller mutations and returned-map mutations.
+	 */
+	@Test
+	public void copiesAcceptedChildOutcomes()
+	{
+		Map<Long, Integer> children = new HashMap<>();
+		children.put(42L, -9);
+		LinuxSupervisor.Result result = new LinuxSupervisor.Result(7, children, true);
+
+		children.clear();
+		requireThat(result.adoptedExits(), "result.adoptedExits()").isEqualTo(Map.of(42L, -9));
+		requireException(UnsupportedOperationException.class, () -> result.adoptedExits().clear());
+	}
+
+	/**
+	 * Accepts a job that succeeded before its requested termination took effect, and retries one it actually stopped.
+	 */
+	@Test
+	public void retriesOnlyTerminatedJobsThatDidNotSucceed()
+	{
+		requireThat(new LinuxSupervisor.Result(0, Map.of(42L, 0), true).aborted(), "succeededAfterRequest").isFalse();
+		requireThat(new LinuxSupervisor.Result(137, Map.of(), true).aborted(), "killedRoot").isTrue();
+		requireThat(new LinuxSupervisor.Result(0, Map.of(42L, -9), true).aborted(), "killedChild").isTrue();
+		requireThat(new LinuxSupervisor.Result(1, Map.of(), false).aborted(), "ordinaryFailure").isFalse();
+	}
+
+	/**
+	 * Refuses outcomes that cannot identify an ordinary root exit or a real adopted process.
+	 */
+	@Test
+	public void rejectsInvalidProcessOutcomes()
+	{
+		requireException(IllegalArgumentException.class, () -> new LinuxSupervisor.Result(-1, Map.of(), false));
+		requireException(IllegalArgumentException.class, () -> new LinuxSupervisor.Result(256, Map.of(), false));
+		requireException(IllegalArgumentException.class, () -> new LinuxSupervisor.Result(0, Map.of(0L, 0), false));
+		requireException(NullPointerException.class, () -> new LinuxSupervisor.Result(0, null, false));
+	}
+
+	/**
+	 * Creates a valid value whose nonexistent filesystem context must never be reached by validation tests.
+	 * @return explicit launch inputs without acquiring state
+	 */
+	private LinuxProcessTree.Launch unresolvedLaunch()
+	{
+		Path parent = Path.of("unresolved-supervisor-parent").toAbsolutePath();
+		return new LinuxProcessTree.Launch(parent, parent, parent.resolve("java"), parent.resolve("classes"),
+			List.of(parent.resolve("workload").toString()), Map.of(), parent, 1001, 1001);
+	}
+
+	/**
+	 * Creates absolute endpoints that require no filesystem state during validation.
+	 * @return unresolved caller-owned standard-stream endpoints
+	 */
+	private LinuxProcessTree.StandardFiles unresolvedFiles()
+	{
+		Path parent = Path.of("unresolved-supervisor-parent").toAbsolutePath();
+		return new LinuxProcessTree.StandardFiles(parent.resolve("input"), parent.resolve("output"), parent.resolve("error"));
+	}
+
+    /** A missing registration receipt is rejected before process or cgroup acquisition. */
+    @Test
+    public void borrowedPreparationRejectsMissingReceiptBeforeAcquisition() {
+        requireException(NullPointerException.class, () -> LinuxSupervisor.prepareInstrumentedBorrowed(null, Duration.ofSeconds(1)));
+    }
+}

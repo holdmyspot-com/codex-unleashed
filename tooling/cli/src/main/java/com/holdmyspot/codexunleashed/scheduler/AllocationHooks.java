@@ -22,7 +22,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Forked children and verified held exec replacements receive fresh hooks before resume. Replaced image owners remain
  * retained until actual whole-workload zero; their pending allocation waits lose grant authority before replacement.
  */
-final class AllocationHooks
+public final class AllocationHooks
 {
     /**
      * Invocation-owned device-event dispatcher. Current containment selects a controller; that controller still
@@ -32,7 +32,7 @@ final class AllocationHooks
      * transition (a manager reports each hold once), while another source's first copy is a late duplicate that grants
      * nothing. A delivery after an uncertain continuation is rejected.
      */
-    static final class Routing
+    public static final class Routing
     {
         /** Exclusive controller thread. */
         private final Thread thread = Thread.currentThread();
@@ -42,7 +42,7 @@ final class AllocationHooks
         private final Map<FridaRuntime.Child, Transition> transitions = new LinkedHashMap<>();
 
         /** Creates an empty invocation-owned route with no native resources. */
-        Routing() {}
+        public Routing() {}
 
         /**
          * Registers one original controller before polling shared device events.
@@ -50,7 +50,7 @@ final class AllocationHooks
          * @param delivery original controller's held-event queue
          * @return source and ownership capability retained until successful controller closure
          */
-        Registration register(Membership membership, Delivery delivery)
+        public Registration register(Membership membership, Delivery delivery)
         {
             requireThread();
             var registration = new Registration(Objects.requireNonNull(membership, "membership"),
@@ -65,7 +65,7 @@ final class AllocationHooks
          * @param child copied held-image event
          * @throws IOException if current ownership is absent, ambiguous, canceled or already continued
          */
-        void route(Registration source, FridaRuntime.Child child) throws IOException
+        public void route(Registration source, FridaRuntime.Child child) throws IOException
         {
             requireThread();
             if (!owners.contains(source)) throw new IOException("Device event source is not retained");
@@ -110,7 +110,7 @@ final class AllocationHooks
          * @param child exact dequeued held event
          * @throws IOException if ownership was canceled or continuation was already attempted
          */
-        void prepare(Registration owner, FridaRuntime.Child child) throws IOException
+        public void prepare(Registration owner, FridaRuntime.Child child) throws IOException
         {
             requireThread();
             Transition transition = transitions.get(child);
@@ -125,7 +125,7 @@ final class AllocationHooks
          * @param child exact dequeued transition
          * @throws IOException if the continuation owner or transition differs
          */
-        void completed(Registration owner, FridaRuntime.Child child) throws IOException
+        public void completed(Registration owner, FridaRuntime.Child child) throws IOException
         {
             requireThread();
             Transition transition = transitions.get(child);
@@ -141,7 +141,7 @@ final class AllocationHooks
         }
 
         /** One current controller's membership, original event queue and terminal cancellation state. */
-        final class Registration implements AutoCloseable
+        public final class Registration implements AutoCloseable
         {
             /** Independent current containment reader. */
             private final Membership membership;
@@ -158,7 +158,7 @@ final class AllocationHooks
             { this.membership = membership; this.delivery = delivery; }
 
             /** Prevents further automatic continuation while retaining ownership for cleanup. */
-            void cancel() { requireThread(); canceled = true; }
+            public void cancel() { requireThread(); canceled = true; }
 
             /** Removes selection only after the caller's authentic native controller closure. */
             @Override public void close() { requireThread(); canceled = true; owners.remove(this); }
@@ -185,7 +185,7 @@ final class AllocationHooks
 
     /** Independent containment selection; a positive result alone grants no image or action authority. */
     @FunctionalInterface
-    interface Membership
+    public interface Membership
     {
         /** Checks actual current membership.
          * @param pid candidate process
@@ -197,7 +197,7 @@ final class AllocationHooks
 
     /** Original controller's retained held-event queue. */
     @FunctionalInterface
-    interface Delivery
+    public interface Delivery
     {
         /** Retains one event without resuming or granting allocation permission.
          * @param child copied held event
@@ -450,7 +450,7 @@ final class AllocationHooks
      * @return positive generation-bound queue wait for the actual allocating process
      * @throws IOException if no active native image owns the actual allocating process
      */
-    static AllocationWaits.Wait nativeWait(LinuxAllocationTrace.Denial denial, Map<Long, Long> active,
+    public static AllocationWaits.Wait nativeWait(LinuxAllocationTrace.Denial denial, Map<Long, Long> active,
         java.util.Set<Long> nativeGenerations) throws IOException
     {
         Long installation = active.get((long) denial.processId());
@@ -737,7 +737,7 @@ final class AllocationHooks
 	 * @param executable the absolute executable the notification requested
 	 * @throws IOException if the held image did not come from {@code executable}
 	 */
-	static void requireHeldExecutable(Path process, Path executable) throws IOException
+	public static void requireHeldExecutable(Path process, Path executable) throws IOException
 	{
 		Path image = process.resolve("exe");
 		if (executable.isAbsolute() && Files.isSameFile(image, executable)) return;
@@ -762,7 +762,7 @@ final class AllocationHooks
 	 * @return positive kernel start-time ticks
 	 * @throws IOException if required identity is malformed
 	 */
-	static long startTime(String stat) throws IOException
+	public static long startTime(String stat) throws IOException
 	{
 		try
 		{
@@ -781,7 +781,7 @@ final class AllocationHooks
 	 * @param gid required group identity
 	 * @return true only for complete exact identity
 	 */
-	static boolean credentialsMatch(String status, int uid, int gid)
+	public static boolean credentialsMatch(String status, int uid, int gid)
 	{
 		boolean user = false;
 		boolean group = false;
@@ -808,7 +808,7 @@ final class AllocationHooks
 	 * @param executable expected executable path
 	 * @throws IOException if native event does not identify the exact root replacement
 	 */
-	static void verifyRootEvent(FridaRuntime.Child event, long root, String executable) throws IOException
+	public static void verifyRootEvent(FridaRuntime.Child event, long root, String executable) throws IOException
 	{
 		if (event.pid() != root || event.parentPid() != root || event.origin() != 1 || executable.equals(event.path()) == false)
 			throw new IOException("Unexpected held root replacement: " + event);
@@ -818,7 +818,7 @@ final class AllocationHooks
 	 * @param origin native origin code
 	 * @throws IOException if the native origin is unknown
 	 */
-	static void verifyOrigin(int origin) throws IOException
+	public static void verifyOrigin(int origin) throws IOException
 	{
 		if (origin != 0 && origin != 1 && origin != 2)
 			throw new IOException("Held origin is unsupported: " + origin);
@@ -830,7 +830,7 @@ final class AllocationHooks
 	 * @return exact retained owner
 	 * @throws IOException if installation is not owned
 	 */
-	static AllocationHook installation(Map<Long, AllocationHook> installations, AllocationWaits.Wait wait) throws IOException
+	public static AllocationHook installation(Map<Long, AllocationHook> installations, AllocationWaits.Wait wait) throws IOException
 	{
 		AllocationHook hook = installations.get(wait.installation());
 		if (hook == null) throw new IOException("Allocation wait installation is not owned: " + wait);
@@ -845,7 +845,7 @@ final class AllocationHooks
 	 * @return initialized leader program
 	 * @throws IOException if marker or serialization is invalid
 	 */
-	static String leaderProgram(ToolingScope scope, String template, LinuxProcessTree.Launch launch,
+	public static String leaderProgram(ToolingScope scope, String template, LinuxProcessTree.Launch launch,
 		LinuxCargoJobserver.Descriptors jobserver) throws IOException
 	{
 		int marker = template.indexOf(LAUNCH_MARKER);

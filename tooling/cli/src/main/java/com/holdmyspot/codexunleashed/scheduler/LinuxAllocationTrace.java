@@ -34,7 +34,7 @@ import java.util.concurrent.locks.LockSupport;
  * A denied mmap can be reported only after its genuine return executes an injected trap, while the return remains
  * held. This operation supports whole-attempt termination, rather than restoring and retrying the denied instruction.
  */
-final class LinuxAllocationTrace
+public final class LinuxAllocationTrace
 {
 	/** Linux ptrace requests from linux/ptrace.h. */
 	private static final int PEEK = 1, POKE = 4, CONT = 7, GETREGS = 12, SYSCALL = 24,
@@ -81,7 +81,7 @@ final class LinuxAllocationTrace
 
     /** Borrows the existing tracing owner's checked ptrace operation without acquiring another owner. */
     @FunctionalInterface
-    interface NativeTrace
+    public interface NativeTrace
     {
         /**
          * Performs one checked native ptrace request on the exclusive owner thread.

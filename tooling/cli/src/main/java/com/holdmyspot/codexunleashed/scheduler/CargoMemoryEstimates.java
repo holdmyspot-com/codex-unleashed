@@ -13,7 +13,7 @@ import java.util.HashMap;
  * Calls belong to one invocation's coordination thread. The borrowed measurement source and history directory remain
  * owned by the caller. Native memory recovery remains necessary because sampled past demand cannot bound future work.
  */
-final class CargoMemoryEstimates implements Controller.Measurements
+public final class CargoMemoryEstimates implements Controller.Measurements
 {
     /** Multiplier applied to a compiler's greatest measured sample for its unmeasured work. */
     private static final long PROVISIONAL_FACTOR = 2;
@@ -46,7 +46,7 @@ final class CargoMemoryEstimates implements Controller.Measurements
      * @param identities reusable authenticated work identity source
      * @throws NullPointerException if an input is null
      */
-    CargoMemoryEstimates(Controller.Measurements measurements, CargoMemoryHistory history, CargoWorkIdentity identities)
+    public CargoMemoryEstimates(Controller.Measurements measurements, CargoMemoryHistory history, CargoWorkIdentity identities)
     {
         this.measurements = Objects.requireNonNull(measurements, "measurements");
         this.history = Objects.requireNonNull(history, "history");
@@ -58,7 +58,7 @@ final class CargoMemoryEstimates implements Controller.Measurements
      * @param request independently authenticated request
      * @return request carrying reusable sampled demand, or unknown demand when no applicable history exists
      */
-    CargoCompilerRequest register(CargoCompilerRequest request)
+    public CargoCompilerRequest register(CargoCompilerRequest request)
     {
         Objects.requireNonNull(request, "request");
         if (work.containsKey(request.name()))
@@ -83,7 +83,7 @@ final class CargoMemoryEstimates implements Controller.Measurements
      * @param sequence original global attempt ordinal
      * @param successful indicates whether the native complete result succeeded without termination
      */
-    void completed(String name, long sequence, boolean successful)
+    public void completed(String name, long sequence, boolean successful)
     {
         Objects.requireNonNull(name, "name");
         Work registered = work.get(name);
@@ -130,7 +130,7 @@ final class CargoMemoryEstimates implements Controller.Measurements
      * Returns completed prediction/observation pairs without claiming exact process peaks or calibrated accuracy.
      * @return immutable completed outcome observations
      */
-    List<Observation> observations() { return List.copyOf(observations); }
+    public List<Observation> observations() { return List.copyOf(observations); }
 
     /**
      * Returns failures that made best-effort reuse unavailable without failing compiler execution.
@@ -183,7 +183,7 @@ final class CargoMemoryEstimates implements Controller.Measurements
      * Supplies an explicitly owned history directory and complete compiler content boundaries across invocations.
      * The directory must be outside source and toolchain trees so publishing a profile cannot change work identity.
      */
-    static final class Settings
+    public static final class Settings
     {
         /** Caller-owned immutable completed samples retained across invocations. */
         private final CargoMemoryHistory history;
@@ -199,7 +199,7 @@ final class CargoMemoryEstimates implements Controller.Measurements
          * @throws NullPointerException if a required value or collection member is null
          * @throws IllegalArgumentException if paths are invalid or history overlaps source or toolchain
          */
-        Settings(Path historyDirectory, Path inputRoot, List<Path> outputRoots, Path toolchainRoot)
+        public Settings(Path historyDirectory, Path inputRoot, List<Path> outputRoots, Path toolchainRoot)
         {
             this.identities = new CargoWorkIdentity(inputRoot, outputRoots, toolchainRoot);
             this.history = new CargoMemoryHistory(historyDirectory);
@@ -213,7 +213,7 @@ final class CargoMemoryEstimates implements Controller.Measurements
          * @return invocation-local estimate source
          * @throws NullPointerException if {@code measurements} is null
          */
-        CargoMemoryEstimates observe(Controller.Measurements measurements)
+        public CargoMemoryEstimates observe(Controller.Measurements measurements)
         {
             return new CargoMemoryEstimates(measurements, history, identities);
         }
@@ -222,7 +222,7 @@ final class CargoMemoryEstimates implements Controller.Measurements
     /**
      * Eligibility result for one completed attempt's reusable training sample.
      */
-    enum Status
+    public enum Status
     {
         /** A successful completed attempt published an accepted sampled maximum. */
         RECORDED,
@@ -245,7 +245,7 @@ final class CargoMemoryEstimates implements Controller.Measurements
      * @param observedBytes greatest accepted sampled residency, or null without an accepted live sample
      * @param status training eligibility/publication result
      */
-    record Observation(String name, long sequence, String identity, Long predictedBytes, Long observedBytes, Status status) {}
+    public record Observation(String name, long sequence, String identity, Long predictedBytes, Long observedBytes, Status status) {}
 
     /**
      * Retains the native attempt identity independently of reusable compiler-work identity.

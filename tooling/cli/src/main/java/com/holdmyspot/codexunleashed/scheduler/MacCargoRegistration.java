@@ -18,7 +18,7 @@ import java.util.UUID;
  * the original Cargo owner, peers, immutable installed binary namespace and optional profile source through use.
  * This class grants no process, borrowed-stream, FIFO-token or terminal-result authority by decoding a frame.
  */
-final class MacCargoRegistration
+public final class MacCargoRegistration
 {
     /** Explicit immutable installed binary and workload policy. */
     private final Configuration configuration;
@@ -148,7 +148,7 @@ final class MacCargoRegistration
      * @param gid original positive workload group identifier
      * @param requiredEnvironment invocation-owned required environment names and values
      */
-    record Configuration(Path cargoExecutable, Path wrapperExecutable, Path rustcExecutable, int uid, int gid,
+    public record Configuration(Path cargoExecutable, Path wrapperExecutable, Path rustcExecutable, int uid, int gid,
         Map<String, String> requiredEnvironment)
     {
         /**
@@ -162,7 +162,7 @@ final class MacCargoRegistration
          * @throws NullPointerException if a value or collection entry is null
          * @throws IllegalArgumentException if a path is relative, credentials are nonpositive or an environment entry is invalid
          */
-        Configuration
+        public Configuration
         {
             if (!cargoExecutable.isAbsolute() || !wrapperExecutable.isAbsolute() || !rustcExecutable.isAbsolute() || uid <= 0 || gid <= 0)
                 throw new IllegalArgumentException("Cargo registration requires absolute installed binaries and positive workload credentials");

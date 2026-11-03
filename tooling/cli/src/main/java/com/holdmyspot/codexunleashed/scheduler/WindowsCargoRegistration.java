@@ -26,7 +26,7 @@ import java.util.TreeSet;
  * This class neither opens a process by PID nor submits to the queue. A source must originate in the
  * invocation's native creation observer, retaining its process handle and approved launcher ancestry.
  */
-final class WindowsCargoRegistration
+public final class WindowsCargoRegistration
 {
     /**
      * Prevents construction of stateless authentication operations.
@@ -42,7 +42,7 @@ final class WindowsCargoRegistration
      * @throws IOException if native identity, liveness or launch facts do not agree
      * @throws NullPointerException if an input is null
      */
-    static CargoCompilerRequest authenticate(CargoCompilerRequest request, Source source,
+    public static CargoCompilerRequest authenticate(CargoCompilerRequest request, Source source,
         Configuration configuration) throws IOException
     {
         Objects.requireNonNull(request, "request");
@@ -125,13 +125,13 @@ final class WindowsCargoRegistration
      * @param parentBirth creator creation time
      * @param executable absolute native image path
      */
-    record Link(long pid, long birth, long parentPid, long parentBirth, Path executable)
+    public record Link(long pid, long birth, long parentPid, long parentBirth, Path executable)
     {
         /**
          * Validates the link.
          * @throws NullPointerException if executable is null
          */
-        Link { Objects.requireNonNull(executable, "executable"); }
+        public Link { Objects.requireNonNull(executable, "executable"); }
     }
 
     /**
@@ -158,7 +158,7 @@ final class WindowsCargoRegistration
      * @throws IOException if the peer is not the wrapper, a wrapper reappears above another image, a creator is not
      *     retained, a birth differs, or the ancestry contains a cycle
      */
-    static List<Link> wrapperChain(Link peer, java.util.function.LongFunction<java.util.Optional<Link>> creator,
+    public static List<Link> wrapperChain(Link peer, java.util.function.LongFunction<java.util.Optional<Link>> creator,
         long cargoPid, long cargoBirth, Path wrapper) throws IOException
     {
         List<Link> wrappers = new ArrayList<>();
@@ -287,7 +287,7 @@ final class WindowsCargoRegistration
      * @param cargoBirth retained Cargo creation FILETIME
      * @param requiredEnvironment complete required caller-owned environment entries
      */
-    record Configuration(Path rustc, long cargoPid, long cargoBirth, Map<String, String> requiredEnvironment)
+    public record Configuration(Path rustc, long cargoPid, long cargoBirth, Map<String, String> requiredEnvironment)
     {
         /**
          * Checks caller boundaries without opening files or acquiring native resources.
@@ -298,7 +298,7 @@ final class WindowsCargoRegistration
          * @throws NullPointerException if an input is null
          * @throws IllegalArgumentException if a native identity or executable boundary is invalid
          */
-        Configuration
+        public Configuration
         {
             Objects.requireNonNull(rustc, "rustc");
             requiredEnvironment = Map.copyOf(requiredEnvironment);
@@ -313,7 +313,7 @@ final class WindowsCargoRegistration
      * Implementations authenticate the permitted packaged-launcher-to-JVM ancestry and executable images
      * before exposing this boundary; PID values alone cannot construct native authority.
      */
-    interface Source
+    public interface Source
     {
         /**
          * Supplies the registering JVM's native process ID.

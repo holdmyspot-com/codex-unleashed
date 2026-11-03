@@ -89,7 +89,7 @@ public final class PrepareReleaseSchedulerNative
      * @throws IOException if native inputs cannot be authenticated or produced
      * @throws InterruptedException if a command wait is interrupted
      */
-    static void produce(Path output, Path runnerTemp, String runnerOs, String host, String machine, Path support)
+    public static void produce(Path output, Path runnerTemp, String runnerOs, String host, String machine, Path support)
         throws IOException, InterruptedException
     {
         String platform = selectPlatform(runnerOs, host, machine);
@@ -149,7 +149,7 @@ public final class PrepareReleaseSchedulerNative
      * @throws IOException if producer or determining support bytes cannot be read
      * @throws UnsupportedOperationException if the host or architecture is unsupported
      */
-    static Properties inputReceipt(String platform, String machine, Path support) throws IOException
+    public static Properties inputReceipt(String platform, String machine, Path support) throws IOException
     {
         selectPlatform(platform, platform, machine);
         String architecture = normalizeArchitecture(machine);
@@ -203,7 +203,7 @@ public final class PrepareReleaseSchedulerNative
      * @param receipt current native inputs from {@link #inputReceipt(String, String, Path)}
      * @throws IOException if a required product is missing, linked or unreadable, or publication fails
      */
-    static void completeReceipt(Path output, Properties receipt) throws IOException
+    public static void completeReceipt(Path output, Properties receipt) throws IOException
     {
         for (String name : products(receipt.getProperty("host")))
         {
@@ -299,7 +299,7 @@ public final class PrepareReleaseSchedulerNative
      * @return Linux, macOS or Windows for the matching supported native runner
      * @throws UnsupportedOperationException if identities disagree or the pair is unsupported
      */
-    static String selectPlatform(String runnerOs, String host, String machine)
+    public static String selectPlatform(String runnerOs, String host, String machine)
     {
         String platform;
         if (host.startsWith("Windows"))
@@ -340,7 +340,7 @@ public final class PrepareReleaseSchedulerNative
      * @throws IllegalArgumentException if output is relative, existing or outside that namespace
      * @throws IOException if the parent cannot be inspected
      */
-    static void validateOutput(Path output, Path runnerTemp) throws IOException
+    public static void validateOutput(Path output, Path runnerTemp) throws IOException
     {
         if (!output.isAbsolute() || output.getParent() == null ||
             !output.equals(output.normalize()) || !output.getParent().toRealPath().equals(runnerTemp.toRealPath()) ||
@@ -385,7 +385,7 @@ public final class PrepareReleaseSchedulerNative
      * @param maximum largest accepted byte count
      * @throws IOException if reading, writing or the byte bound fails
      */
-    static void copyBounded(InputStream input, OutputStream output, long maximum) throws IOException
+    public static void copyBounded(InputStream input, OutputStream output, long maximum) throws IOException
     {
         byte[] buffer = new byte[1024 * 1024];
         long count = 0;
@@ -404,7 +404,7 @@ public final class PrepareReleaseSchedulerNative
      * @param expected exact lowercase SHA-256 identity
      * @throws IOException if reading fails or bytes have a different identity
      */
-    static void authenticate(Path input, String expected) throws IOException
+    public static void authenticate(Path input, String expected) throws IOException
     {
         String actual = sha256(input);
         if (!actual.equals(expected))
@@ -452,7 +452,7 @@ public final class PrepareReleaseSchedulerNative
      * @throws IOException if tar fails or a member is unsafe
      * @throws InterruptedException if a listing wait is interrupted
      */
-    static void validateArchive(Path archive, Commands commands) throws IOException, InterruptedException
+    public static void validateArchive(Path archive, Commands commands) throws IOException, InterruptedException
     {
         Path names = commands.run(List.of("tar", "-tf", archive.toString()));
         Path verbose = commands.run(List.of("tar", "-tvf", archive.toString()));
@@ -468,7 +468,7 @@ public final class PrepareReleaseSchedulerNative
      * @param verbose tar's complete verbose listing in the same order
      * @throws IOException if a name, type or listing pairing is unsafe or ambiguous
      */
-    static void validateMembers(List<String> names, List<String> verbose) throws IOException
+    public static void validateMembers(List<String> names, List<String> verbose) throws IOException
     {
         if (names.isEmpty() || names.size() != verbose.size())
             throw new IOException("Native archive listings must contain the same nonempty member sequence");
@@ -511,7 +511,7 @@ public final class PrepareReleaseSchedulerNative
      * @throws IOException if listing, validation, directory creation or extraction fails
      * @throws InterruptedException if a command wait is interrupted
      */
-    static void extract(Path archive, Path destination, Commands commands) throws IOException, InterruptedException
+    public static void extract(Path archive, Path destination, Commands commands) throws IOException, InterruptedException
     {
         validateArchive(archive, commands);
         Files.createDirectory(destination);
@@ -602,7 +602,7 @@ public final class PrepareReleaseSchedulerNative
     }
 
     /** Owns the request, environment, logs and lifecycle of producer subprocesses. */
-    static final class Commands
+    public static final class Commands
     {
         /** Exclusive directory receiving command receipts and logs. */
         private final Path output;
@@ -613,7 +613,7 @@ public final class PrepareReleaseSchedulerNative
          * Creates a command owner for an existing owned directory.
          * @param output exclusive existing producer output directory
          */
-        Commands(Path output)
+        public Commands(Path output)
         {
             this.output = output;
         }

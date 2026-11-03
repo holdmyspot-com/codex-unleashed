@@ -62,7 +62,7 @@ public final class CargoLaunchConfigurationCommand
      * @throws IOException if an installed input, generated document or exclusive publication is invalid
      * @throws IllegalArgumentException if options, paths or platform selection are invalid
      */
-    static int run(ToolingScope tooling, String[] arguments, Map<String, String> callerEnvironment, PrintStream out)
+    public static int run(ToolingScope tooling, String[] arguments, Map<String, String> callerEnvironment, PrintStream out)
         throws IOException
     {
         Map<String, String> options = options(arguments);

@@ -26,7 +26,7 @@ import tools.jackson.databind.json.JsonMapper;
  * whole-workload execution barrier. Closing this image never retires its borrowed attempt, closes the FIFO, or closes
  * its tooling scope or manager. The attempt must retire its ledger capability after all descendants cannot execute.
  */
-final class CargoTokenHook
+public final class CargoTokenHook
 {
 	/** Packaged Linux token mediation source, loaded before native installation. */
 	private static final String LINUX_RESOURCE = "linux-cargo-tokens.js";
@@ -87,7 +87,7 @@ final class CargoTokenHook
 	 * @throws NullPointerException if a reference input is null
 	 * @throws IllegalArgumentException if an identity, source or readiness duration is invalid
 	 */
-	CargoTokenHook(ToolingScope scope, UUID attempt, long installation, long pid, LinuxFifoBindings.Identity fifo,
+	public CargoTokenHook(ToolingScope scope, UUID attempt, long installation, long pid, LinuxFifoBindings.Identity fifo,
 		FridaRuntime.Manager manager, LinuxCargoTokens.Attempt tokens, String program, Duration timeout)
 	{
 		this(scope, attempt, installation, pid, fifo, AllocationHook.newNativeConnection(manager, pid), tokens, program,
@@ -109,7 +109,7 @@ final class CargoTokenHook
 	 * @throws NullPointerException if a reference input is null
 	 * @throws IllegalArgumentException if an identity, source or readiness duration is invalid
 	 */
-	CargoTokenHook(ToolingScope scope, UUID attempt, long installation, long pid, LinuxFifoBindings.Identity fifo,
+	public CargoTokenHook(ToolingScope scope, UUID attempt, long installation, long pid, LinuxFifoBindings.Identity fifo,
 		AllocationHook.Connection connection, LinuxCargoTokens.Attempt tokens, String program, Duration timeout,
 		LongSupplier nanoTime)
 	{
@@ -155,7 +155,7 @@ final class CargoTokenHook
 	 * @throws IllegalStateException if called off-thread or after a previous start attempt
 	 * @throws IOException if stopped or native acquisition fails
 	 */
-	void start() throws IOException
+	public void start() throws IOException
 	{
 		requireOwner();
 		requireAuthority();
@@ -179,7 +179,7 @@ final class CargoTokenHook
 	 * @throws IllegalStateException if called off-thread or before successful start
 	 * @throws IOException if delivery, peer service, interruption or the readiness deadline fails
 	 */
-	void awaitReady(AllocationHook.Pump peers) throws IOException
+	public void awaitReady(AllocationHook.Pump peers) throws IOException
 	{
 		Objects.requireNonNull(peers, "peers may not be null");
 		requireStarted();
@@ -217,7 +217,7 @@ final class CargoTokenHook
 	 * @throws IllegalStateException if called off-thread or before successful start
 	 * @throws IOException if stopped, framing, ordering, native delivery, FIFO transfer or posting fails
 	 */
-	void pump() throws IOException
+	public void pump() throws IOException
 	{
 		requireStarted();
 		try
@@ -313,7 +313,7 @@ final class CargoTokenHook
 	 * @throws IllegalStateException if called off-thread
 	 * @throws IOException if the barrier is false or unknown, or native cleanup fails
 	 */
-	void close(AllocationHook.ExecutionBarrier barrier) throws IOException
+	public void close(AllocationHook.ExecutionBarrier barrier) throws IOException
 	{
 		Objects.requireNonNull(barrier, "barrier may not be null");
 		requireOwner();
@@ -333,7 +333,7 @@ final class CargoTokenHook
 	 * @throws IOException if the observation is uncertain
 	 * @throws IllegalStateException if called off-thread
 	 */
-	boolean detached() throws IOException
+	public boolean detached() throws IOException
 	{
 		requireOwner();
 		return !closed && closeFailure == null && connection.detached();
@@ -345,7 +345,7 @@ final class CargoTokenHook
 	 * @throws IOException if detach is unproven or destruction is uncertain
 	 * @throws IllegalStateException if called off-thread
 	 */
-	void closeDetached() throws IOException
+	public void closeDetached() throws IOException
 	{
 		requireOwner();
 		if (closed) return;
@@ -375,7 +375,7 @@ final class CargoTokenHook
 	 * @return retained first failure, or null when no operational failure was observed
 	 * @throws IllegalStateException if called off-thread
 	 */
-	IOException failure() { requireOwner(); return failure; }
+	public IOException failure() { requireOwner(); return failure; }
 
 	/**
 	 * Retains the first operational failure and stops controls before another native effect.

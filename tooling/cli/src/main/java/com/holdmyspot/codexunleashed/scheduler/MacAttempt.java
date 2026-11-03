@@ -17,7 +17,7 @@ import java.util.UUID;
  * Owns one fresh native compiler workload until its complete terminal composition and token retirement.
  * Original peer descriptors remain borrowed; only the invocation closes them after all retries retire.
  */
-final class MacAttempt implements JobQueue.Attempt<Integer>
+public final class MacAttempt implements JobQueue.Attempt<Integer>
 {
     /** Retained native execution and cleanup boundary. */
     private final Backend backend;
@@ -56,7 +56,7 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
      * @param sequence queue ordinal
      * @param command authenticated command and borrowed capabilities
      */
-    MacAttempt(ToolingScope scope, MacAttempts attempts, FridaRuntime runtime,
+    public MacAttempt(ToolingScope scope, MacAttempts attempts, FridaRuntime runtime,
         MacMeasurements.NativeSource measurements, Path library, Path helper, Path directory,
         Duration timeout, String name, long sequence, MacAttempts.Command command)
     {
@@ -71,7 +71,7 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
      * @param name nonblank logical action identity
      * @param sequence nonnegative queue ordinal
      */
-    MacAttempt(Backend backend, MacAttempts attempts, String name, long sequence)
+    public MacAttempt(Backend backend, MacAttempts attempts, String name, long sequence)
     {
         this(backend, attempts, name, sequence, null);
     }
@@ -84,7 +84,7 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
      * @param sequence nonnegative queue-wide ordinal
      * @param retirements caller-owned history, or null when receipt retention is not needed
      */
-    MacAttempt(Backend backend, MacAttempts attempts, String name, long sequence, MacAttempts.Retirements retirements)
+    public MacAttempt(Backend backend, MacAttempts attempts, String name, long sequence, MacAttempts.Retirements retirements)
     {
         new MacAttempts.Blocked(name, sequence, 0);
         this.backend = Objects.requireNonNull(backend, "backend");
@@ -187,7 +187,7 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
      * Reads genuine decoded allocation receipts independently of native cleanup and outcome acceptance.
      * @return immutable retained native report history, including after successful close
      */
-    List<AllocationHook.Denial> denials() { requireThread(); return List.copyOf(backend.denials()); }
+    public List<AllocationHook.Denial> denials() { requireThread(); return List.copyOf(backend.denials()); }
 
     /**
      * Services native frames without entering queue controls.
@@ -220,7 +220,7 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
      * @param timeout positive bound for an acquired root's complete terminal collection
      * @throws IOException if cancellation, terminal collection or native destruction fails
      */
-    static void collectPartial(boolean rootAcquired, PartialOwner owner, Duration timeout) throws IOException
+    public static void collectPartial(boolean rootAcquired, PartialOwner owner, Duration timeout) throws IOException
     {
         Objects.requireNonNull(owner, "owner");
         LinuxAttempts.checkedTimeout(timeout);
@@ -241,7 +241,7 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
     }
 
     /** Retained native operations for collecting an incompletely constructed compiler workload. */
-    interface PartialOwner
+    public interface PartialOwner
     {
         /**
          * Requests exact native cancellation after successful original root acquisition.
@@ -265,13 +265,13 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
      * Owns external execution; outcomes require the complete native workload and instrumentation barrier.
      * Cleanup retains every uncertain acquisition until terminal collection is established.
      */
-    interface Backend extends JobQueue.Attempt<Integer>
+    public interface Backend extends JobQueue.Attempt<Integer>
     {
         /**
          * Copies already decoded native allocation reports without advancing execution.
          * @return immutable genuine reports, empty before instrumentation observes a denial
          */
-        default List<AllocationHook.Denial> denials() { return List.of(); }
+        public default List<AllocationHook.Denial> denials() { return List.of(); }
 
         /**
          * Returns complete original-root collection after native closure, token retirement and registry removal.
@@ -298,7 +298,7 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
      * @param result actual original root exit status
      * @param aborted indicates whether termination was requested for the attempt
      */
-    record Collected(List<Long> rootAuthority, int result, boolean aborted)
+    public record Collected(List<Long> rootAuthority, int result, boolean aborted)
     {
         /**
          * Freezes complete native authority and rejects an invalid original result.
@@ -306,7 +306,7 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
          * @param result original root result in 0 through 255
          * @param aborted indicates whether termination was requested for the attempt
          */
-        Collected
+        public Collected
         {
             rootAuthority = List.copyOf(rootAuthority);
             if (rootAuthority.size() != 18 || rootAuthority.get(0) <= 0 || rootAuthority.get(1) <= 0)
@@ -316,7 +316,7 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
     }
 
     /** Retains execution faults independently of the outcome of later mandatory cleanup. */
-    static final class Fault
+    public static final class Fault
     {
         /** Context bound to this exact compiler attempt. */
         private final String context;
@@ -328,7 +328,7 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
          * @param name authenticated compiler action
          * @param sequence queue-wide attempt ordinal
          */
-        Fault(String name, long sequence)
+        public Fault(String name, long sequence)
         {
             new MacAttempts.Blocked(name, sequence, 0);
             context = "Mac compiler attempt failed: " + name + "/" + sequence;
@@ -339,7 +339,7 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
          * @param cause observed execution or cleanup fault
          * @return original contextual fault
          */
-        IOException failed(Throwable cause)
+        public IOException failed(Throwable cause)
         {
             Objects.requireNonNull(cause, "cause");
             if (failure == null) failure = new IOException(context, cause);
@@ -351,14 +351,14 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
          * Rejects further execution after an observed fault.
          * @throws IOException if execution has failed
          */
-        void requireCertain() throws IOException { if (failure != null) throw failure; }
+        public void requireCertain() throws IOException { if (failure != null) throw failure; }
 
         /**
          * Runs independently required cleanup while retaining execution diagnostics.
          * @param cleanup exact owned cleanup, returning only after every ownership barrier succeeds
          * @throws IOException if this cleanup fails; a previously reported execution fault alone does not fail cleanup
          */
-        void cleanup(Cleanup cleanup) throws IOException
+        public void cleanup(Cleanup cleanup) throws IOException
         {
             Objects.requireNonNull(cleanup, "cleanup");
             try { cleanup.close(); }
@@ -368,7 +368,7 @@ final class MacAttempt implements JobQueue.Attempt<Integer>
 
     /** Supplies the actual native cleanup operation without transferring its ownership authority. */
     @FunctionalInterface
-    interface Cleanup
+    public interface Cleanup
     {
         /**
          * Closes exact owned resources after their supported terminal and instrumentation barriers.

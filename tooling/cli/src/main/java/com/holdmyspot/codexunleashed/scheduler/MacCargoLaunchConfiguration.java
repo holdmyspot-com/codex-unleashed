@@ -35,7 +35,7 @@ import tools.jackson.databind.JsonNode;
  * @param identities exact lowercase SHA256 identities for tools, installed bridges, runtime and toolchain
  * @param memory optional explicit production history boundary, or null for conservative unknown demand
  */
-record MacCargoLaunchConfiguration(Path source, String sourceDigest, int uid, int gid, Path cargo, Path rustc,
+public record MacCargoLaunchConfiguration(Path source, String sourceDigest, int uid, int gid, Path cargo, Path rustc,
     Path toolchainRoot, Map<String, String> environment, Map<String, String> identities, CargoMemoryEstimates.Settings memory)
 {
     /** Exact version-one fields; memory alone may be absent. */
@@ -61,7 +61,7 @@ record MacCargoLaunchConfiguration(Path source, String sourceDigest, int uid, in
      * @param identities complete pinned byte identities
      * @param memory optional invocation-owned history
      */
-    MacCargoLaunchConfiguration
+    public MacCargoLaunchConfiguration
     {
         for (Path path : List.of(source, cargo, rustc, toolchainRoot)) requireAbsolute(path);
         requireDigest(sourceDigest);
@@ -87,7 +87,7 @@ record MacCargoLaunchConfiguration(Path source, String sourceDigest, int uid, in
      * @return parsed values that still require authority preflight
      * @throws IOException if file identity, size, JSON or semantic validation fails
      */
-    static MacCargoLaunchConfiguration read(MacCargoScope scope, Path source) throws IOException
+    public static MacCargoLaunchConfiguration read(MacCargoScope scope, Path source) throws IOException
     {
         return decode(scope, source, readBytes(source));
     }
@@ -100,7 +100,7 @@ record MacCargoLaunchConfiguration(Path source, String sourceDigest, int uid, in
      * @return immutable resource-free authorization values
      * @throws IOException if fields, paths, credentials, schema or identities are invalid
      */
-    static MacCargoLaunchConfiguration decode(MacCargoScope scope, Path source, byte[] bytes) throws IOException
+    public static MacCargoLaunchConfiguration decode(MacCargoScope scope, Path source, byte[] bytes) throws IOException
     {
         JsonNode root = document(scope, bytes, FIELDS, Set.of("memory"));
         version(root);
@@ -123,7 +123,7 @@ record MacCargoLaunchConfiguration(Path source, String sourceDigest, int uid, in
      * @param installed actual bundled runtime files and explicitly supplied Frida producer
      * @throws IOException if any input is mutable by workload identities, changed, symlinked or not pinned
      */
-    void requireTrusted(Installed installed) throws IOException
+    public void requireTrusted(Installed installed) throws IOException
     {
         requireRootControlled(source);
         if (((int) Files.getAttribute(source, "unix:mode", LinkOption.NOFOLLOW_LINKS) & 0222) != 0)
@@ -172,7 +172,7 @@ record MacCargoLaunchConfiguration(Path source, String sourceDigest, int uid, in
      * @return exact installed paths without source-tree or working-directory fallback
      * @throws IOException if the actual runtime cannot be resolved
      */
-    static Installed installed(Path runtime, Path frida) throws IOException
+    public static Installed installed(Path runtime, Path frida) throws IOException
     {
         requireAbsolute(runtime); requireAbsolute(frida);
         Path home = runtime.toRealPath();
@@ -189,7 +189,7 @@ record MacCargoLaunchConfiguration(Path source, String sourceDigest, int uid, in
      * @param frida explicit instrumentation producer
      * @param javaRuntime actual installed jlink modules file
      */
-    record Installed(Path cargoBridge, Path workload, Path wrapper, Path anchor, Path frida, Path javaRuntime)
+    public record Installed(Path cargoBridge, Path workload, Path wrapper, Path anchor, Path frida, Path javaRuntime)
     {
         /**
          * Rejects relative installed product paths.
@@ -200,7 +200,7 @@ record MacCargoLaunchConfiguration(Path source, String sourceDigest, int uid, in
          * @param frida instrumentation producer
          * @param javaRuntime installed runtime modules
          */
-        Installed
+        public Installed
         {
             for (Path path : List.of(cargoBridge, workload, wrapper, anchor, frida, javaRuntime)) requireAbsolute(path);
         }

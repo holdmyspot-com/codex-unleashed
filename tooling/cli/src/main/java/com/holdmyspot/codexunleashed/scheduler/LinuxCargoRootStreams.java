@@ -11,7 +11,7 @@ import java.util.UUID;
  * The caller's descriptors remain borrowed. Close joins the sender before closing its private listener.
  * Construction and cleanup belong to the invocation thread; only the sender accesses the authorized transfer.
  */
-final class LinuxCargoRootStreams implements AutoCloseable
+public final class LinuxCargoRootStreams implements AutoCloseable
 {
     /** Immutable receipt containing the final jobserver environment. */
     private final LinuxBorrowedStreams.Binding binding;
@@ -67,7 +67,7 @@ final class LinuxCargoRootStreams implements AutoCloseable
      * @throws NullPointerException if an input is null
      * @throws IllegalArgumentException if the timeout is nonpositive or exceeds signed nanoseconds
      */
-    LinuxCargoRootStreams(LinuxBorrowedStreams.Binding binding, LinuxAttempt.Close transfer,
+    public LinuxCargoRootStreams(LinuxBorrowedStreams.Binding binding, LinuxAttempt.Close transfer,
         LinuxAttempt.Close endpoint, Duration timeout)
     {
         this.binding = Objects.requireNonNull(binding, "binding");
@@ -89,13 +89,13 @@ final class LinuxCargoRootStreams implements AutoCloseable
      * Returns the immutable root receipt supplied to the existing borrowed supervisor preparation.
      * @return final lease-adjusted launch receipt
      */
-    LinuxBorrowedStreams.Binding binding() { return binding; }
+    public LinuxBorrowedStreams.Binding binding() { return binding; }
 
     /**
      * Waits for transfer acknowledgement and propagates its original failure.
      * @throws IOException if transfer fails, remains live after the bound or the caller is interrupted
      */
-    void await() throws IOException
+    public void await() throws IOException
     {
         if (Thread.currentThread().isInterrupted()) throw new IOException("Cargo root descriptor transfer interrupted");
         join();

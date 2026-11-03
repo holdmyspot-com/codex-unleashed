@@ -59,7 +59,7 @@ public final class ObservationRejected extends IOException
      * @param attempts nonempty distinct exact registered attempts
      * @param cause retained diagnostic cause
      */
-    ObservationRejected(Operation operation, Reason reason, List<Attempt> attempts, IOException cause)
+    public ObservationRejected(Operation operation, Reason reason, List<Attempt> attempts, IOException cause)
     {
         super("Memory observation rejected: " + reason, Objects.requireNonNull(cause, "cause"));
         this.operation = Objects.requireNonNull(operation, "operation");

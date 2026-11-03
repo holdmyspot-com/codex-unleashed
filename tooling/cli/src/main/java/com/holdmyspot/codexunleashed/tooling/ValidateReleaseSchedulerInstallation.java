@@ -44,7 +44,7 @@ public final class ValidateReleaseSchedulerInstallation
      * @param root the installation directory, without normalization or symlink substitution
      * @throws IOException if any declared authority or input is unsafe or unreadable
      */
-    static void validate(Path root) throws IOException
+    public static void validate(Path root) throws IOException
     {
         if (!root.isAbsolute() || !(Path.of("/var/lib").equals(root.getParent()) || Path.of("/Library").equals(root.getParent())) ||
             !root.getFileName().toString().startsWith(ROOT_PREFIX) || !root.normalize().equals(root))
@@ -83,7 +83,7 @@ public final class ValidateReleaseSchedulerInstallation
      * @param expectedOwner the Unix owner required for every directory, file and symbolic link
      * @throws IOException if a link escapes, ownership differs or any input is mutable or unsupported
      */
-    static void validateTree(Path tree, int expectedOwner) throws IOException
+    public static void validateTree(Path tree, int expectedOwner) throws IOException
     {
         if (!Files.isDirectory(tree, LinkOption.NOFOLLOW_LINKS))
             throw new IOException("Installed tree must be a nonsymlink directory");

@@ -162,7 +162,7 @@ public final class Scheduler
      * Native scheduling execution after command/platform/stream preflight.
      */
     @FunctionalInterface
-    interface Adapter
+    public interface Adapter
     {
         /**
          * Executes the selected adapter while borrowing the supplied services.
@@ -177,7 +177,7 @@ public final class Scheduler
     /**
      * Typed access to command dispatch with explicit platform and native-boundary inputs.
      */
-    static final class SharedSecrets
+    public static final class SharedSecrets
     {
         /**
          * Prevents construction.
@@ -195,7 +195,7 @@ public final class Scheduler
          * @param adapter native execution boundary
          * @return unchanged native status or production preflight failure status
          */
-        static int run(ToolingScope scope, String[] arguments, InputStream in, PrintStream out, PrintStream err,
+        public static int run(ToolingScope scope, String[] arguments, InputStream in, PrintStream out, PrintStream err,
             String platform, Adapter adapter)
         {
             return dispatch(scope, arguments, in, out, err, platform, adapter);
@@ -346,7 +346,7 @@ public final class Scheduler
      * @return copied, validated resource-free settings
      * @throws IllegalArgumentException if configuration is missing, duplicate, unknown or invalid
      */
-    static Settings parse(String[] arguments)
+    public static Settings parse(String[] arguments)
     {
         Map<String, String> options = new HashMap<>();
         int index = 0;
@@ -411,7 +411,7 @@ public final class Scheduler
      * @param macLaunchConfiguration optional explicit macOS construction document
      * @param arguments unchanged tool arguments, copied by the parser
      */
-    record Settings(String tool, Path workspace, Path scratch, Path fridaLibrary, Policy.Budget budget,
+    public record Settings(String tool, Path workspace, Path scratch, Path fridaLibrary, Policy.Budget budget,
         Duration controlTimeout, List<String> arguments, Path linuxLaunchConfiguration, Path windowsLaunchConfiguration, Path macLaunchConfiguration)
     {
         /**
@@ -426,7 +426,7 @@ public final class Scheduler
          * @param linuxLaunchConfiguration optional Linux authority
          * @param windowsLaunchConfiguration optional Windows authority
          */
-        Settings(String tool, Path workspace, Path scratch, Path fridaLibrary, Policy.Budget budget,
+        public Settings(String tool, Path workspace, Path scratch, Path fridaLibrary, Policy.Budget budget,
             Duration controlTimeout, List<String> arguments, Path linuxLaunchConfiguration, Path windowsLaunchConfiguration)
         {
             this(tool, workspace, scratch, fridaLibrary, budget, controlTimeout, arguments,

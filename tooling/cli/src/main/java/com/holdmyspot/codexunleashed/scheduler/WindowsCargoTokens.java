@@ -13,7 +13,7 @@ import java.util.UUID;
  * All operations belong to the constructing thread. A failed count-changing effect poisons the entire invocation;
  * outstanding state remains retained and no uncertain effect is repeated.
  */
-final class WindowsCargoTokens implements AutoCloseable
+public final class WindowsCargoTokens implements AutoCloseable
 {
  /** Exclusive owner of every count transition. */
  private final Thread controller = Thread.currentThread();
@@ -32,7 +32,7 @@ final class WindowsCargoTokens implements AutoCloseable
   * @throws NullPointerException if lease is null
   * @throws IllegalStateException if the lease is released or used off-thread
   */
- WindowsCargoTokens(WindowsCargoJobserver.CargoLease lease)
+ public WindowsCargoTokens(WindowsCargoJobserver.CargoLease lease)
  {
   this.lease = Objects.requireNonNull(lease, "lease may not be null");
   lease.retainTokenLedger();
@@ -47,7 +47,7 @@ final class WindowsCargoTokens implements AutoCloseable
   * @throws IllegalStateException if closed or used off-thread
   * @throws IOException if a previous token effect is uncertain
   */
- Domain retain(UUID identity) throws IOException
+ public Domain retain(UUID identity) throws IOException
  {
   Objects.requireNonNull(identity, "identity may not be null");
   requireAuthority();
@@ -63,7 +63,7 @@ final class WindowsCargoTokens implements AutoCloseable
   * @return tokens definitely held and tokens outstanding, including uncertain acquisitions
   * @throws IllegalStateException if called off-thread
   */
- Accounting accounting()
+ public Accounting accounting()
  {
   requireController();
   int held = 0;
@@ -89,7 +89,7 @@ final class WindowsCargoTokens implements AutoCloseable
   * @param held tokens definitely held
   * @param outstanding held tokens plus acquisitions whose result is uncertain
   */
- record Accounting(int held, int outstanding) { }
+ public record Accounting(int held, int outstanding) { }
 
  /**
   * Releases the invocation borrow only when every domain has reached whole-Job quiescence.
@@ -137,7 +137,7 @@ final class WindowsCargoTokens implements AutoCloseable
  }
 
  /** Retains grants through image exit until its complete Job cannot execute. */
- final class Domain
+ public final class Domain
  {
   /** Grants retained before native acquisition; uncertain entries cannot be inferred away. */
   private final Map<UUID, Boolean> grants = new HashMap<>();
@@ -156,7 +156,7 @@ final class WindowsCargoTokens implements AutoCloseable
    * @throws IllegalStateException if retired, closed, or called off-thread
    * @throws IOException if a token operation fails, retaining uncertain acquisition ownership
    */
-  boolean tryReserve(UUID grant) throws IOException
+  public boolean tryReserve(UUID grant) throws IOException
   {
    Objects.requireNonNull(grant, "grant may not be null");
    requireLive();
@@ -187,7 +187,7 @@ final class WindowsCargoTokens implements AutoCloseable
    * @throws IllegalStateException if retired, closed, or called off-thread
    * @throws IOException if a count-changing effect is uncertain; its grant remains retained
    */
-  void returnToken(UUID grant) throws IOException
+  public void returnToken(UUID grant) throws IOException
   {
    Objects.requireNonNull(grant, "grant may not be null");
    requireLive();
@@ -213,7 +213,7 @@ final class WindowsCargoTokens implements AutoCloseable
    * @throws IllegalStateException if closed or called off-thread
    * @throws IOException if quiescence is false or a count-changing effect fails
    */
-  void retire(AllocationHook.ExecutionBarrier barrier) throws IOException
+  public void retire(AllocationHook.ExecutionBarrier barrier) throws IOException
   {
    Objects.requireNonNull(barrier, "barrier may not be null");
    requireController();
@@ -256,7 +256,7 @@ final class WindowsCargoTokens implements AutoCloseable
    * @return count of this domain's retained grants
    * @throws IllegalStateException if called off-thread
    */
-  int outstanding() { requireController(); return grants.size(); }
+  public int outstanding() { requireController(); return grants.size(); }
 
   /**
    * Checks this domain's authority before a count-changing operation.

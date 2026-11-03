@@ -25,7 +25,7 @@ import java.util.OptionalInt;
  * only the consumer's verified whole-attempt barrier permits closing that peer. Native captures grant neither
  * direct Cargo parenting nor compiler executable authority, which registration must independently authenticate.
  */
-final class MacCargoNative implements AutoCloseable
+public final class MacCargoNative implements AutoCloseable
 {
     /** Shared native linker borrowed through final closure. */
     private final ToolingScope scope;
@@ -214,7 +214,7 @@ final class MacCargoNative implements AutoCloseable
      * @param device native FIFO device identifier
      * @param inode exact native FIFO inode identifier
      */
-    record FifoIdentity(long device, long inode) {}
+    public record FifoIdentity(long device, long inode) {}
 
     /** Owns exact native FIFO transport; token accounting and consumer terminal authority belong to the invocation. */
     final class Fifo implements LinuxCargoTokens.Transfer, AutoCloseable

@@ -29,14 +29,14 @@ import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.node.ObjectNode;
 
 /** Transfers build-step output groups through the authenticated inherited ORAS environment and GNU tar. */
-final class CargoCacheParts
+public final class CargoCacheParts
 {
     /** Current multipart artifact format. */
     static final String ARTIFACT = "application/vnd.codex-unleashed.cargo-target.v2";
     /** Compressed tar layer format. */
     private static final String LAYER = "application/vnd.codex-unleashed.cargo-target.tar+zstd";
     /** Durable target-relative ownership record. */
-    static final String OWNERS = ".codex-cache-groups.json";
+    public static final String OWNERS = ".codex-cache-groups.json";
     /** Ownership map field. */
     private static final String PATHS = "target_relative_owners";
     /** Layer annotation identifying the saving step. */
@@ -58,7 +58,7 @@ final class CargoCacheParts
      * @param err borrowed diagnostics
      * @return original subprocess status, three for missing, four for unsupported format, two for invalid CLI, zero on success
      */
-    static int run(ToolingScope scope, String[] arguments, Map<String, String> environment, PrintStream out, PrintStream err)
+    public static int run(ToolingScope scope, String[] arguments, Map<String, String> environment, PrintStream out, PrintStream err)
     {
         if (arguments.length < 6 || (!arguments[0].equals("push") && !arguments[0].equals("pull")))
         { err.println("Expected push|pull repository reference previous-reference target temporary [--step STEP] [--reuse-reference REF]"); return 2; }
@@ -168,7 +168,7 @@ final class CargoCacheParts
      * @return sorted groups of sorted content/metadata entries
      * @throws IOException if stored owners, path types or filesystem operations are invalid
      */
-    static Map<String, List<List<Object>>> collect(ToolingScope scope, Path target, String step) throws IOException
+    public static Map<String, List<List<Object>>> collect(ToolingScope scope, Path target, String step) throws IOException
     {
         Path ownership = target.resolve(OWNERS);
         Map<String, String> previous = new HashMap<>();

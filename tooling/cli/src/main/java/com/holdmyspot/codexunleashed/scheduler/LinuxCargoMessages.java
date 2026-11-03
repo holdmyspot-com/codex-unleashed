@@ -16,7 +16,7 @@ import tools.jackson.databind.JsonNode;
  * The invocation authenticates those values before registration or native execution. Instances borrow their scope
  * and may be used concurrently while it remains open.
  */
-final class LinuxCargoMessages
+public final class LinuxCargoMessages
 {
     /** Registration field containing the existing borrowed-stream property representation. */
     private static final String BINDING = "binding";
@@ -40,7 +40,7 @@ final class LinuxCargoMessages
      * @param scope caller-owned services retained open through all codec calls
      * @throws NullPointerException if {@code scope} is null
      */
-    LinuxCargoMessages(LinuxCargoScope scope)
+    public LinuxCargoMessages(LinuxCargoScope scope)
     {
         this.scope = Objects.requireNonNull(scope, "scope");
     }
@@ -53,7 +53,7 @@ final class LinuxCargoMessages
      * @throws IllegalStateException if the borrowed scope is closed
      * @throws IOException if encoding exceeds a message or parser bound
      */
-    byte[] registration(LinuxBorrowedStreams.Binding binding) throws IOException
+    public byte[] registration(LinuxBorrowedStreams.Binding binding) throws IOException
     {
         return encode(Map.of(BINDING, properties(binding)));
     }
@@ -66,7 +66,7 @@ final class LinuxCargoMessages
      * @throws IllegalStateException if the borrowed scope is closed
      * @throws IOException if JSON, message fields, bounds or canonical binding values are invalid
      */
-    LinuxBorrowedStreams.Binding readRegistration(byte[] bytes) throws IOException
+    public LinuxBorrowedStreams.Binding readRegistration(byte[] bytes) throws IOException
     {
         return binding(decode(bytes, REGISTRATION_FIELDS).path(BINDING));
     }
@@ -79,7 +79,7 @@ final class LinuxCargoMessages
      * @throws IllegalStateException if the borrowed scope is closed
      * @throws IOException if encoding exceeds a message or parser bound
      */
-    byte[] attempt(LinuxBorrowedStreams.Binding binding) throws IOException
+    public byte[] attempt(LinuxBorrowedStreams.Binding binding) throws IOException
     {
         return encode(Map.of(KIND, ATTEMPT, VALUE, properties(binding)));
     }
@@ -92,7 +92,7 @@ final class LinuxCargoMessages
      * @throws IllegalStateException if the borrowed scope is closed
      * @throws IOException if serialization fails
      */
-    byte[] finalResult(int status) throws IOException
+    public byte[] finalResult(int status) throws IOException
     {
         return encode(Map.of(KIND, FINAL, VALUE, new Final(status).status()));
     }
@@ -105,7 +105,7 @@ final class LinuxCargoMessages
      * @throws IllegalStateException if the borrowed scope is closed
      * @throws IOException if JSON, fields, discriminator, bounds or represented values are invalid
      */
-    Response readResponse(byte[] bytes) throws IOException
+    public Response readResponse(byte[] bytes) throws IOException
     {
         JsonNode message = decode(bytes, RESPONSE_FIELDS);
         JsonNode kind = message.path(KIND);
@@ -230,14 +230,14 @@ final class LinuxCargoMessages
      * Carries a decoded attempt receipt without granting native authority.
      * @param binding represented receipt
      */
-    record Attempt(LinuxBorrowedStreams.Binding binding) implements Response
+    public record Attempt(LinuxBorrowedStreams.Binding binding) implements Response
     {
         /**
          * Requires a complete represented receipt without authenticating it.
          * @param binding represented receipt
          * @throws NullPointerException if {@code binding} is null
          */
-        Attempt
+        public Attempt
         {
             Objects.requireNonNull(binding, "binding");
         }
@@ -247,14 +247,14 @@ final class LinuxCargoMessages
      * Carries a decoded final compiler status.
      * @param status represented native exit status
      */
-    record Final(int status) implements Response
+    public record Final(int status) implements Response
     {
         /**
          * Requires a Linux compiler exit status from zero through 255.
          * @param status represented native exit status
          * @throws IllegalArgumentException if {@code status} is outside zero through 255
          */
-        Final
+        public Final
         {
             if (status < 0 || status > 255) throw new IllegalArgumentException("Cargo final status must be from zero through 255");
         }

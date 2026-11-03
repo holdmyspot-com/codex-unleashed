@@ -24,7 +24,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Root arming returns before the caller releases its native gate. Held child events receive one resume
  * after both readiness acknowledgements and identity revalidation. Any uncertain effect stops subsequent admissions and resumes.
  */
-final class MacImages
+public final class MacImages
 {
     /**
      * Constructing thread required before every operation.
@@ -104,7 +104,7 @@ final class MacImages
      * @throws IllegalArgumentException if the readiness bound is zero or negative
      * @throws ArithmeticException if the readiness bound exceeds signed nanoseconds
      */
-    MacImages(ToolingScope scope, FridaRuntime.Manager manager, InstrumentationFactory instrumentation, Identity root, Duration timeout)
+    public MacImages(ToolingScope scope, FridaRuntime.Manager manager, InstrumentationFactory instrumentation, Identity root, Duration timeout)
     {
         this(scope, new NativeOperations(manager), instrumentation, root, timeout, System::nanoTime);
     }
@@ -121,7 +121,7 @@ final class MacImages
      * @throws IllegalArgumentException if the readiness bound is zero or negative
      * @throws ArithmeticException if the readiness bound exceeds signed nanoseconds
      */
-    MacImages(ToolingScope scope, Operations operations, InstrumentationFactory instrumentation, Identity root, Duration timeout, LongSupplier clock)
+    public MacImages(ToolingScope scope, Operations operations, InstrumentationFactory instrumentation, Identity root, Duration timeout, LongSupplier clock)
     {
         this(scope, operations, identity -> {}, instrumentation, root, timeout, clock);
     }
@@ -139,7 +139,7 @@ final class MacImages
      * @throws IllegalArgumentException if timeout is zero or negative
      * @throws ArithmeticException if timeout exceeds signed nanoseconds
      */
-    MacImages(ToolingScope scope, Operations operations, Authority authority,
+    public MacImages(ToolingScope scope, Operations operations, Authority authority,
         InstrumentationFactory instrumentation, Identity root, Duration timeout, LongSupplier clock)
     {
         this.authority = Objects.requireNonNull(authority, "authority");
@@ -159,7 +159,7 @@ final class MacImages
      * @throws IllegalStateException if another thread calls or root acquisition was already attempted or stopped
      * @throws IOException if root identity, attachment or required instrumentation readiness cannot be established
      */
-    void start() throws IOException
+    public void start() throws IOException
     {
         requireThread();
         if (attempted || stopped) throw new IllegalStateException("Root arming is permitted once");
@@ -179,7 +179,7 @@ final class MacImages
      * @throws IllegalStateException if another thread calls, admission is inactive or a callback reenters admission
      * @throws IOException if lineage, required instrumentation readiness or resumption is uncertain
      */
-    void advance(FridaRuntime.Child child) throws IOException
+    public void advance(FridaRuntime.Child child) throws IOException
     {
         requireThread();
         if (!attempted || images.isEmpty() || stopped || advancing) throw new IllegalStateException("Image owner is not active");
@@ -361,7 +361,7 @@ final class MacImages
      * @throws IllegalStateException if another thread calls or an active transition reenters cleanup
      * @throws IOException if the barrier is unknown or any cleanup remains incomplete
      */
-    void close(AllocationHook.ExecutionBarrier barrier) throws IOException
+    public void close(AllocationHook.ExecutionBarrier barrier) throws IOException
     {
         requireThread();
         if (advancing || closing) throw new IllegalStateException("Image transitions cannot reenter cleanup");
@@ -423,7 +423,7 @@ final class MacImages
      * @return true after all retained dependent resources closed successfully
      * @throws IllegalStateException if another thread calls
      */
-    boolean isClosed() { requireThread(); return closed; }
+    public boolean isClosed() { requireThread(); return closed; }
 
     /**
      * Preserves the first exact operation failure for subsequent cleanup diagnostics.
@@ -487,7 +487,7 @@ final class MacImages
      * @param birth native process birth observation
      * @param parent positive actual parent identifier
      */
-    record Identity(long pid, Instant birth, long parent)
+    public record Identity(long pid, Instant birth, long parent)
     {
         /**
          * Rejects incomplete lineage observations.
@@ -495,7 +495,7 @@ final class MacImages
          * @param birth native process birth
          * @param parent actual parent identifier
          */
-        Identity
+        public Identity
         {
             if (pid <= 0 || parent <= 0 || pid == parent) throw new IllegalArgumentException("Invalid process lineage");
             Objects.requireNonNull(birth, "birth");
@@ -509,7 +509,7 @@ final class MacImages
      * Same-PID exec receives a new owner; an independently authenticated detached predecessor may retire earlier.
      */
     @FunctionalInterface
-    interface InstrumentationFactory
+    public interface InstrumentationFactory
     {
         /**
          * Configures a fresh resource-free owner bound to this exact observed image.
@@ -524,7 +524,7 @@ final class MacImages
      * The caller authenticates executable, credentials and any wider authority separately. Implementations
      * retain every partial native acquisition before its next fallible step and never resume the process.
      */
-    interface Instrumentation extends AutoCloseable
+    public interface Instrumentation extends AutoCloseable
     {
         /**
          * Installs required instrumentation once and returns only after its readiness is acknowledged.
@@ -557,7 +557,7 @@ final class MacImages
      * Supplies independent native workload, credential and executable authentication.
      */
     @FunctionalInterface
-    interface Authority
+    public interface Authority
     {
         /**
          * Authenticates exact live incarnation, workload membership, credentials and executable.
@@ -571,7 +571,7 @@ final class MacImages
      * Authenticates a held child by invocation-private native workload authority even after reparenting.
      * Callback parent fields remain observations and never grant coalition membership.
      */
-    interface WorkloadAuthority extends Authority
+    public interface WorkloadAuthority extends Authority
     {
         /**
          * Requires exact native membership, image and credential authority for this held event.
@@ -585,7 +585,7 @@ final class MacImages
     /**
      * Supplies actual native operations or independent Java-controlled observations.
      */
-    interface Operations
+    public interface Operations
     {
         /**
          * Reads one live image lineage without accepting callback fields as authority.

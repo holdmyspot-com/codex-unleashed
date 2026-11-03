@@ -19,7 +19,7 @@ import java.util.Set;
  * This object owns no native resources. The attempt retains process and instrumentation ownership independently.
  * A failed continuation permanently stops automatic grants, including unsent members of its selected batch.
  */
-final class AllocationWaits
+public final class AllocationWaits
 {
 	/** Accepted identities retained for the attempt lifetime, including previously granted waits. */
 	private final Set<Wait> seen = new LinkedHashSet<>();
@@ -41,7 +41,7 @@ final class AllocationWaits
 	private IOException failure = null;
 
 	/** Creates an empty, resource-free collection. */
-	AllocationWaits()
+	public AllocationWaits()
 	{
 	}
 
@@ -53,7 +53,7 @@ final class AllocationWaits
 	 * @return true for a previously unseen wait while grant authority has not been stopped
 	 * @throws NullPointerException if {@code wait} is null
 	 */
-	boolean blocked(Wait wait)
+	public boolean blocked(Wait wait)
 	{
 		Objects.requireNonNull(wait, "wait may not be null");
 		if (stopped || retired.contains(wait.installation()) || seen.add(wait) == false)
@@ -70,7 +70,7 @@ final class AllocationWaits
 	 * @throws ArithmeticException if another sequence cannot be reserved without overflow
 	 * @throws IOException if an earlier continuation failed; its contextual failure is retained as the cause
 	 */
-	OptionalLong poll() throws IOException
+	public OptionalLong poll() throws IOException
 	{
 		requireOutsideContinuation();
 		if (stopped)
@@ -96,7 +96,7 @@ final class AllocationWaits
 	 * @throws IllegalStateException if stopped, reentrant or the sequence does not identify the published wait
 	 * @throws IOException if a grant or acknowledgement fails; the selected batch remains retained
 	 */
-	void resume(long sequence, Continuation continuation) throws IOException
+	public void resume(long sequence, Continuation continuation) throws IOException
 	{
 		Objects.requireNonNull(continuation, "continuation may not be null");
 		requireOutsideContinuation();
@@ -146,7 +146,7 @@ final class AllocationWaits
 	 * @throws IllegalStateException if stopped or called from a continuation
 	 * @throws IOException if a previous continuation has an unresolved native effect
 	 */
-	void retireInstallation(long installation) throws IOException
+	public void retireInstallation(long installation) throws IOException
 	{
 		if (installation <= 0)
 			throw new IllegalArgumentException("Retired installation must be positive");
@@ -164,7 +164,7 @@ final class AllocationWaits
 	 *
 	 * @throws IllegalStateException if called from a continuation callback
 	 */
-	void stop()
+	public void stop()
 	{
 		requireOutsideContinuation();
 		stopped = true;
@@ -198,14 +198,14 @@ final class AllocationWaits
 	 * @param installation positive adapter-assigned generation, never reused within this attempt, including after exec
 	 * @param sequence positive native wait identity, unique within the installation
 	 */
-	record Wait(long installation, long sequence)
+	public record Wait(long installation, long sequence)
 	{
 		/**
 		 * Validates identity components without acquiring resources.
 		 *
 		 * @throws IllegalArgumentException if either component is zero or negative
 		 */
-		Wait
+		public Wait
 		{
 			if (installation <= 0 || sequence <= 0)
 				throw new IllegalArgumentException("Native wait identities must be positive");
@@ -214,7 +214,7 @@ final class AllocationWaits
 
 	/** Performs one native grant and returns only after its matching acknowledgement. */
 	@FunctionalInterface
-	interface Continuation
+	public interface Continuation
 	{
 		/**
 		 * Grants one matching native permission and awaits its acknowledgement, without claiming allocation success.

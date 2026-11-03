@@ -72,7 +72,7 @@ public final class LinuxSupervisor implements AutoCloseable
 	/**
 	 * Owns identity-bound control messages and retained kernel evidence for one action.
 	 */
-	static final class Control
+	public static final class Control
 	{
 		/**
 		 * Private exchange directory owned by the surrounding supervisor owner.
@@ -115,7 +115,7 @@ public final class LinuxSupervisor implements AutoCloseable
 		 * @param actionGroup action subtree retained by the dedicated supervisor
 		 * @param instrumentationManaged indicates whether collection requires hook-close acknowledgement
 		 */
-		Control(Path scratch, String attempt, long rootPid, Path actionGroup, boolean instrumentationManaged)
+		public Control(Path scratch, String attempt, long rootPid, Path actionGroup, boolean instrumentationManaged)
 		{
 			this.scratch = scratch;
 			this.attempt = attempt;
@@ -129,7 +129,7 @@ public final class LinuxSupervisor implements AutoCloseable
 		 * Uncertain publication is reconciled against the same immutable request on retry.
 		 * @throws IOException if publication or reconciliation fails
 		 */
-		void requestTermination() throws IOException
+		public void requestTermination() throws IOException
 		{
 			terminationIntent = true;
 			publishOnce(Phase.TERMINATE, identities());
@@ -140,7 +140,7 @@ public final class LinuxSupervisor implements AutoCloseable
 		 * @return true when this attempt requested cancellation
 		 * @throws IOException if the request cannot be read or identifies another action
 		 */
-		boolean readTerminationRequest() throws IOException
+		public boolean readTerminationRequest() throws IOException
 		{
 			if (Files.exists(file(scratch, Phase.TERMINATE)) == false)
 				return false;
@@ -154,7 +154,7 @@ public final class LinuxSupervisor implements AutoCloseable
 		 * @throws IllegalStateException if this is an automatic owner
 		 * @throws IOException if the retained group is missing or its population is unreadable or invalid
 		 */
-		boolean observeExecutionImpossible() throws IOException
+		public boolean observeExecutionImpossible() throws IOException
 		{
 			requireInstrumented();
 			if (executionImpossible == false)
@@ -167,7 +167,7 @@ public final class LinuxSupervisor implements AutoCloseable
 		 * @throws IllegalStateException if this is automatic or zero has not been observed
 		 * @throws IOException if acknowledgement publication fails; ownership remains retained
 		 */
-		void finishInstrumentation() throws IOException
+		public void finishInstrumentation() throws IOException
 		{
 			requireInstrumented();
 			if (executionImpossible == false)
@@ -184,7 +184,7 @@ public final class LinuxSupervisor implements AutoCloseable
 		 * @return true for automatic ownership or an identity-validated hook-close acknowledgement
 		 * @throws IOException if an acknowledgement is malformed or names another action
 		 */
-		boolean collectionRequested() throws IOException
+		public boolean collectionRequested() throws IOException
 		{
 			if (instrumentationManaged == false)
 				return true;
@@ -1171,7 +1171,7 @@ public final class LinuxSupervisor implements AutoCloseable
 	 * @return true when instrumentation owns the collection handoff
 	 * @throws IOException if the explicit value is neither true nor false
 	 */
-	static boolean readInstrumentationMode(Properties values) throws IOException
+	public static boolean readInstrumentationMode(Properties values) throws IOException
 	{
 		return switch (values.getProperty("instrumentation.managed", "false"))
 		{
@@ -1326,7 +1326,7 @@ public final class LinuxSupervisor implements AutoCloseable
 	 * @param primary the earlier supervision failure, or null on ordinary completion
 	 * @throws Exception if cleanup fails without an earlier supervision failure
 	 */
-	static void closeOwned(AutoCloseable owner, Throwable primary) throws Exception
+	public static void closeOwned(AutoCloseable owner, Throwable primary) throws Exception
 	{
 		try { owner.close(); }
 		catch (Exception | Error cleanup)

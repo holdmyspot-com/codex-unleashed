@@ -18,7 +18,7 @@ import java.util.Set;
  * <p>
  * Instances are confined to one thread at a time; the caller orders an attempt's output before its end.
  */
-final class CompilerErrorRelay
+public final class CompilerErrorRelay
 {
 	/** Key that names the output file in rustc's JSON artifact notification. */
 	private static final String ARTIFACT = "\"artifact\":";
@@ -37,7 +37,7 @@ final class CompilerErrorRelay
 	 * @param cargo Cargo's standard-error stream, borrowed for the relay's lifetime
 	 * @throws NullPointerException if {@code cargo} is null
 	 */
-	CompilerErrorRelay(OutputStream cargo)
+	public CompilerErrorRelay(OutputStream cargo)
 	{
 		this.cargo = Objects.requireNonNull(cargo, "cargo");
 	}
@@ -49,7 +49,7 @@ final class CompilerErrorRelay
 	 * @param length number of output bytes
 	 * @throws IOException if writing to Cargo fails
 	 */
-	void accept(byte[] bytes, int offset, int length) throws IOException
+	public void accept(byte[] bytes, int offset, int length) throws IOException
 	{
 		Objects.checkFromIndexSize(offset, length, bytes.length);
 		int start = offset;
@@ -71,7 +71,7 @@ final class CompilerErrorRelay
 	 * @param superseded {@code true} if the scheduler will retry the compiler in another attempt
 	 * @throws IOException if writing to Cargo fails
 	 */
-	void endAttempt(boolean superseded) throws IOException
+	public void endAttempt(boolean superseded) throws IOException
 	{
 		if (superseded)
 			line.reset();

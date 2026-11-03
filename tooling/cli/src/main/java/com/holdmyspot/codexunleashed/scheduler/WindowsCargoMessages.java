@@ -17,7 +17,7 @@ import tools.jackson.databind.JsonNode;
  * Native process, stream and result authority must be established independently of decoding.
  * Instances borrow invocation services and support concurrent codec calls.
  */
-final class WindowsCargoMessages
+public final class WindowsCargoMessages
 {
     /** All members required in a wrapper registration; no member grants native authority. */
     private static final Set<String> REGISTRATION_FIELDS = Set.of("identity", "pid", "birth", "parentPid",
@@ -30,7 +30,7 @@ final class WindowsCargoMessages
      * @param scope caller-owned services retained open through codec calls
      * @throws NullPointerException if {@code scope} is null
      */
-    WindowsCargoMessages(WindowsCargoScope scope)
+    public WindowsCargoMessages(WindowsCargoScope scope)
     {
         this.scope = Objects.requireNonNull(scope, "scope");
     }
@@ -41,7 +41,7 @@ final class WindowsCargoMessages
      * @return bounded complete JSON payload
      * @throws IOException if encoding exceeds protocol bounds
      */
-    byte[] registration(Registration registration) throws IOException
+    public byte[] registration(Registration registration) throws IOException
     {
         CargoCompilerRequest request = registration.request();
         CargoCompilerRequest.Wrapper wrapper = request.wrapper();
@@ -67,7 +67,7 @@ final class WindowsCargoMessages
      * @return immutable untrusted registration
      * @throws IOException if types, fields or request invariants are invalid
      */
-    Registration readRegistration(byte[] bytes) throws IOException
+    public Registration readRegistration(byte[] bytes) throws IOException
     {
         JsonNode message = decode(bytes, REGISTRATION_FIELDS);
         try
@@ -101,7 +101,7 @@ final class WindowsCargoMessages
      * @return complete acknowledgement payload
      * @throws IOException if encoding fails
      */
-    byte[] accepted() throws IOException
+    public byte[] accepted() throws IOException
     {
         return encode(Map.of("kind", "accepted", "value", 0));
     }
@@ -113,7 +113,7 @@ final class WindowsCargoMessages
      * @throws IllegalArgumentException if {@code status} is outside the DWORD range
      * @throws IOException if encoding fails
      */
-    byte[] finalResult(long status) throws IOException
+    public byte[] finalResult(long status) throws IOException
     {
         return encode(Map.of("kind", "final", "value", new Final(status).status()));
     }
@@ -124,7 +124,7 @@ final class WindowsCargoMessages
      * @return represented acknowledgement or unsigned DWORD final result
      * @throws IOException if fields, types or status range are invalid
      */
-    Response readResponse(byte[] bytes) throws IOException
+    public Response readResponse(byte[] bytes) throws IOException
     {
         JsonNode message = decode(bytes, Set.of("kind", "value"));
         String kind = text(message.path("kind"));
@@ -231,7 +231,7 @@ final class WindowsCargoMessages
      * @param output wrapper-local source stdout handle bits
      * @param error wrapper-local source stderr handle bits; it may alias output
      */
-    record Registration(CargoCompilerRequest request, long input, long output, long error)
+    public record Registration(CargoCompilerRequest request, long input, long output, long error)
     {
         /**
          * Checks represented values without importing handles or authenticating the process.
@@ -242,7 +242,7 @@ final class WindowsCargoMessages
          * @throws NullPointerException if {@code request} is null
          * @throws IllegalArgumentException if demand is supplied or a handle is NULL or INVALID_HANDLE_VALUE
          */
-        Registration
+        public Registration
         {
             Objects.requireNonNull(request, "request");
             if (request.peakBytes() != null) throw new IllegalArgumentException("Wrapper cannot supply compiler demand");
@@ -265,14 +265,14 @@ final class WindowsCargoMessages
      * Carries an exact Windows unsigned DWORD exit status.
      * @param status native status from zero through 4294967295
      */
-    record Final(long status) implements Response
+    public record Final(long status) implements Response
     {
         /**
          * Validates the unsigned native result range.
          * @param status native DWORD represented as a nonnegative long
          * @throws IllegalArgumentException if {@code status} is outside zero through 4294967295
          */
-        Final
+        public Final
         {
             if (status < 0 || status > 0xffffffffL) throw new IllegalArgumentException("Final status must be an unsigned DWORD");
         }

@@ -15,4 +15,9 @@ module com.holdmyspot.codexunleashed.tooling
 	requires static com.google.protobuf;
 	requires static com.google.common;
 	requires static java.annotation;
+
+	// Only the module's own tests see these packages; no other module can read them.
+	exports com.holdmyspot.codexunleashed.scheduler to com.holdmyspot.codexunleashed.tooling.test;
+	exports com.holdmyspot.codexunleashed.tooling to com.holdmyspot.codexunleashed.tooling.test;
+	exports buildbarn.runner to com.holdmyspot.codexunleashed.tooling.test;
 }

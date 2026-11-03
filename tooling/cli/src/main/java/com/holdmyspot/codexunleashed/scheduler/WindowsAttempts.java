@@ -20,7 +20,7 @@ import java.util.UUID;
  * The constructing thread owns the registry; JobQueue alone owns each returned attempt.
  * The invocation retains borrowed Cargo jobserver leases across these attempts and retries.
  */
-final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Result>
+public final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Result>
 {
     /** Only thread permitted to control these owners. */
     private final Thread owner = Thread.currentThread();
@@ -52,7 +52,7 @@ final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Re
      * @param commands stable-name command mapping with distinct original positions
      * @param timeout positive representable control interval
      */
-    WindowsAttempts(ToolingScope scope, UUID build, FridaRuntime runtime, WindowsMeasurements measurements,
+    public WindowsAttempts(ToolingScope scope, UUID build, FridaRuntime runtime, WindowsMeasurements measurements,
         Map<String, Command> commands, Duration timeout)
     {
         this(build, commands, timeout, nativeResources(scope, runtime, measurements));
@@ -81,7 +81,7 @@ final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Re
      * @param timeout positive representable control interval
      * @param resources resource-free acquisition plan retaining any failed preparation capsule
      */
-    WindowsAttempts(UUID build, Map<String, Command> commands, Duration timeout, ResourcesFactory resources)
+    public WindowsAttempts(UUID build, Map<String, Command> commands, Duration timeout, ResourcesFactory resources)
     {
         this.build = Objects.requireNonNull(build, "build");
         this.timeout = checkedTimeout(timeout);
@@ -96,7 +96,7 @@ final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Re
      * @param command copied command with its original queue position
      * @throws IllegalArgumentException if the name or position is already reserved or mismatched
      */
-    void register(String name, Command command)
+    public void register(String name, Command command)
     {
         requireOwner();
         Objects.requireNonNull(name, "name");
@@ -128,7 +128,7 @@ final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Re
      * Pumps a creation-order snapshot. Nested peer service copies frames without recursively advancing children.
      * @throws IOException if any live attempt reports delivery or batch-publication failure
      */
-    void pumpAll() throws IOException
+    public void pumpAll() throws IOException
     {
         requireOwner();
         boolean advance = pumping == false;
@@ -151,17 +151,17 @@ final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Re
      * Delivers the oldest copied notification; callers must drain this outside queue control operations.
      * @return oldest deferred batch, or empty
      */
-    Optional<Blocked> pollBlocked() { requireOwner(); return Optional.ofNullable(notifications.pollFirst()); }
+    public Optional<Blocked> pollBlocked() { requireOwner(); return Optional.ofNullable(notifications.pollFirst()); }
     /**
      * Reports retained attempt ownership, including failed cleanup.
      * @return whether the factory still retains any attempt owner
      */
-    boolean hasOpenAttempts() { requireOwner(); return live.isEmpty() == false; }
+    public boolean hasOpenAttempts() { requireOwner(); return live.isEmpty() == false; }
     /**
      * Describes every retained attempt owner for a stall report without changing any of them.
      * @return facts in creation order, omitting owners already cleaned
      */
-    List<StallWatch.AttemptFacts> facts()
+    public List<StallWatch.AttemptFacts> facts()
     {
         requireOwner();
         return live.values().stream().map(WindowsAttempt::facts).toList();
@@ -183,7 +183,7 @@ final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Re
      * @param sequence reserved queue attempt ordinal
      * @return deterministic correlation from the build seed and ordinal
      */
-    static UUID attemptIdentity(UUID build, long sequence)
+    public static UUID attemptIdentity(UUID build, long sequence)
     {
         Objects.requireNonNull(build, "build");
         if (sequence < 0) throw new IllegalArgumentException("Attempt ordinal must be nonnegative");
@@ -196,7 +196,7 @@ final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Re
      * @param timeout positive representable control interval
      * @return original validated timeout
      */
-    static Duration checkedTimeout(Duration timeout)
+    public static Duration checkedTimeout(Duration timeout)
     {
         Objects.requireNonNull(timeout, "timeout");
         if (timeout.isNegative() || timeout.isZero()) throw new IllegalArgumentException("Timeout must be positive");
@@ -222,11 +222,11 @@ final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Re
      * @param output borrowed standard output handle
      * @param error borrowed standard error handle
      */
-    record Command(Controller.Action action, List<String> arguments, Path directory, Map<String, String> environment,
+    public record Command(Controller.Action action, List<String> arguments, Path directory, Map<String, String> environment,
         MemorySegment input, MemorySegment output, MemorySegment error)
     {
         /** Validates and copies this immutable configuration before any native acquisition. */
-        Command
+        public Command
         {
             Objects.requireNonNull(action, "action");
             if (action.name().isBlank()) throw new IllegalArgumentException("Action name must contain text");
@@ -253,10 +253,10 @@ final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Re
      * @param attemptSequence nonnegative queue attempt ordinal
      * @param waitSequence nonnegative queue batch ordinal
      */
-    record Blocked(String name, long attemptSequence, long waitSequence)
+    public record Blocked(String name, long attemptSequence, long waitSequence)
     {
         /** Validates and copies this immutable configuration before any native acquisition. */
-        Blocked
+        public Blocked
         {
             Objects.requireNonNull(name, "name");
             if (name.isBlank() || attemptSequence < 0 || waitSequence < 0)
@@ -266,7 +266,7 @@ final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Re
 
     /** Creates a resource-free acquisition plan for one reserved attempt. */
     @FunctionalInterface
-    interface ResourcesFactory
+    public interface ResourcesFactory
     {
         /** Creates a resource-free acquisition plan for an already reserved attempt.
          * @param command copied stable action and workload

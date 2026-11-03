@@ -6,7 +6,7 @@ import java.io.IOException;
  * Reports that the Linux leader script could not run its launch callback on the leader's thread, so the compiler was
  * never executed. The leader sends this as a {@code dispatch-error:} receipt.
  */
-final class LeaderDispatchFailure extends IOException
+public final class LeaderDispatchFailure extends IOException
 {
 	/** Prefix of the leader receipt that reports a dispatch failure, as {@code linux-leader.js} sends it. */
 	private static final String PREFIX = "dispatch-error:";
@@ -29,7 +29,7 @@ final class LeaderDispatchFailure extends IOException
 	 * @return a {@code LeaderDispatchFailure} if {@code payload} reports a dispatch failure, otherwise a generic
 	 *     {@code IOException}
 	 */
-	static IOException unexpected(String payload, String receipt)
+	public static IOException unexpected(String payload, String receipt)
 	{
 		if (payload.startsWith(PREFIX))
 			return new LeaderDispatchFailure(receipt);

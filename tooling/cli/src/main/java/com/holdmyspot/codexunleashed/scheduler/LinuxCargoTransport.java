@@ -16,10 +16,10 @@ import java.util.Optional;
  * the invocation must separately authenticate Cargo ancestry and compiler context before granting request authority.
  * This transport neither transfers standard descriptors nor interprets JSON or compiler outcomes.
  */
-final class LinuxCargoTransport
+public final class LinuxCargoTransport
 {
     /** Largest complete Cargo registration or response payload; the four-byte header is separate. */
-    static final int MAX_FRAME_BYTES = 1048576;
+    public static final int MAX_FRAME_BYTES = 1048576;
 
     /** Prevents construction of the socket acquisition entry points. */
     private LinuxCargoTransport() {}
@@ -35,7 +35,7 @@ final class LinuxCargoTransport
      * @throws IOException if binding or owned cleanup fails
      * @throws LinuxBorrowedStreams.CleanupFailure if partial acquisition retains an endpoint cleanup owner
      */
-    static Listener listen(ToolingScope scope, Path endpoint, int backlog, Duration timeout) throws IOException
+    public static Listener listen(ToolingScope scope, Path endpoint, int backlog, Duration timeout) throws IOException
     {
         validate(endpoint, timeout);
         if (backlog <= 0) throw new IllegalArgumentException("Cargo control backlog must be positive");
@@ -81,7 +81,7 @@ final class LinuxCargoTransport
     }
 
     /** Retains one native listener; accepted connections have independent ownership. */
-    static final class Listener implements AutoCloseable
+    public static final class Listener implements AutoCloseable
     {
         /** Native descriptor and endpoint owner, retained immediately after acquisition and before publication. */
         private LinuxBorrowedStreams.NativeBindings.Listener nativeListener;
@@ -109,7 +109,7 @@ final class LinuxCargoTransport
          * @throws IOException if native acceptance or peer identity capture fails
          * @throws IllegalStateException if listener cleanup has begun
          */
-        Optional<Connection> poll() throws IOException
+        public Optional<Connection> poll() throws IOException
         {
             if (closeAttempted) throw new IllegalStateException("Cargo listener cleanup has begun");
             Connection owner = new Connection(timeout);
@@ -148,7 +148,7 @@ final class LinuxCargoTransport
     }
 
     /** Owns a peer connection; a failed frame permanently prevents further protocol operations. */
-    static final class Connection implements AutoCloseable
+    public static final class Connection implements AutoCloseable
     {
         /** Native connection, retained immediately after acquisition and independently of the listener. */
         private LinuxBorrowedStreams.NativeBindings.Socket socket;
@@ -179,7 +179,7 @@ final class LinuxCargoTransport
          * @throws IllegalArgumentException if payload length is outside the protocol bound
          * @throws IOException if this frame fails or an earlier frame has failed
          */
-        void send(byte[] bytes) throws IOException
+        public void send(byte[] bytes) throws IOException
         {
             Objects.requireNonNull(bytes, "bytes");
             if (bytes.length == 0 || bytes.length > MAX_FRAME_BYTES)
@@ -203,7 +203,7 @@ final class LinuxCargoTransport
          * @return newly owned exact payload bytes
          * @throws IOException if length, EOF, deadline or native transfer fails, or an earlier frame failed
          */
-        byte[] read() throws IOException
+        public byte[] read() throws IOException
         {
             requireHealthy();
             try
@@ -232,7 +232,7 @@ final class LinuxCargoTransport
          * @return complete payload, or empty when no data, closure or error is ready
          * @throws IOException if native polling or a ready frame fails, or an earlier frame failed
          */
-        Optional<byte[]> pollFrame() throws IOException
+        public Optional<byte[]> pollFrame() throws IOException
         {
             requireHealthy();
             try
@@ -255,7 +255,7 @@ final class LinuxCargoTransport
          * @return newly owned exact payload bytes
          * @throws IOException if interrupted, EOF or an invalid or stalled frame occurs, or an earlier frame failed
          */
-        byte[] awaitFrame() throws IOException
+        public byte[] awaitFrame() throws IOException
         {
             requireHealthy();
             try

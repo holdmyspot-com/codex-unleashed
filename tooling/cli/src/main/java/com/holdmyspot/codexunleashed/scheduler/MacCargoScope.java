@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * the composition boundary closes them and every borrower before closing this scope.
  * The supplied tooling scope remains caller-owned and must outlive all native destruction.
  */
-final class MacCargoScope extends AbstractScope
+public final class MacCargoScope extends AbstractScope
 {
     /** Borrowed shared parsers and native services retained by the composition boundary. */
     private final ToolingScope tooling;
@@ -53,7 +53,7 @@ final class MacCargoScope extends AbstractScope
      * @param tooling caller-owned shared tooling services
      * @throws NullPointerException if tooling is null
      */
-    MacCargoScope(ToolingScope tooling)
+    public MacCargoScope(ToolingScope tooling)
     {
         this(tooling, (services, path) ->
         {
@@ -72,7 +72,7 @@ final class MacCargoScope extends AbstractScope
      * @param tooling borrowed tooling scope
      * @param runtimeFactory creates resource-free original runtime owners
      */
-    MacCargoScope(ToolingScope tooling, RuntimeFactory runtimeFactory)
+    public MacCargoScope(ToolingScope tooling, RuntimeFactory runtimeFactory)
     {
         this.tooling = Objects.requireNonNull(tooling, "tooling");
         this.runtimeFactory = Objects.requireNonNull(runtimeFactory, "runtimeFactory");
@@ -86,7 +86,7 @@ final class MacCargoScope extends AbstractScope
      * @throws IOException if original initialization failed or producer identity differs
      * @throws IllegalStateException if off-thread or disposal has begun
      */
-    RuntimeLease runtime(Path producer) throws IOException
+    public RuntimeLease runtime(Path producer) throws IOException
     {
         requireOwner();
         tooling();
@@ -102,7 +102,7 @@ final class MacCargoScope extends AbstractScope
     }
 
     /** Creates resource-free native owners; implementations must perform no native effect. */
-    @FunctionalInterface interface RuntimeFactory
+    public @FunctionalInterface interface RuntimeFactory
     {
         /**
          * Reserves original native ownership before start.
@@ -114,7 +114,7 @@ final class MacCargoScope extends AbstractScope
     }
 
     /** Owns original runtime acquisition and destruction, independently of invocation managers. */
-    interface RuntimeOwner
+    public interface RuntimeOwner
     {
         /** Returns the original runtime.
          * @return original runtime borrowed by invocation-owned managers */
@@ -182,7 +182,7 @@ final class MacCargoScope extends AbstractScope
     }
 
     /** Retains shared runtime ownership through one invocation's complete dependency cleanup. */
-    final class RuntimeLease implements AutoCloseable
+    public final class RuntimeLease implements AutoCloseable
     {
         /** Exact scoped owner, never selected by PID or invocation UUID. */
         private final RuntimeState state;
@@ -196,7 +196,7 @@ final class MacCargoScope extends AbstractScope
          * @return original initialized runtime
          * @throws IllegalStateException if off-thread or returned
          */
-        FridaRuntime value()
+        public FridaRuntime value()
         {
             requireOwner();
             if (returned) throw new IllegalStateException("Runtime lease has returned");
@@ -217,7 +217,7 @@ final class MacCargoScope extends AbstractScope
      * @return borrowed tooling scope retained open by its caller
      * @throws IllegalStateException if this Cargo scope has begun disposal
      */
-    ToolingScope tooling()
+    public ToolingScope tooling()
     {
         if (closed.get() || disposing) throw new IllegalStateException("Mac Cargo scope is closed");
         return tooling;
@@ -228,7 +228,7 @@ final class MacCargoScope extends AbstractScope
      * @return invocation-owned immutable parser; callers must not close it
      * @throws IllegalStateException if disposal has begun
      */
-    JsonMapper launchJson()
+    public JsonMapper launchJson()
     {
         tooling();
         return launchJson.getValue();

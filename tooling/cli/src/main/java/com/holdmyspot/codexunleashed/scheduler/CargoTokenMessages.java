@@ -24,7 +24,7 @@ import tools.jackson.databind.node.ObjectNode;
  * characters, strings at most 128 characters, numeric tokens at most 20 characters and nesting at most four.
  * Duplicate members and trailing values are rejected. Concurrent calls are supported while the caller's scope is open.
  */
-final class CargoTokenMessages
+public final class CargoTokenMessages
 {
 	/** Maximum copied frame length accepted before parsing, in Java characters. */
 	private static final int MAX_MESSAGE_CHARACTERS = 8192;
@@ -65,7 +65,7 @@ final class CargoTokenMessages
 	 * @throws IllegalArgumentException if {@code installation} or {@code pid} is outside its range
 	 * @throws IllegalStateException if {@code scope} is closed
 	 */
-	CargoTokenMessages(ToolingScope scope, UUID attempt, long installation, long pid)
+	public CargoTokenMessages(ToolingScope scope, UUID attempt, long installation, long pid)
 	{
 		validateInstallation(attempt, installation, pid);
 		this.json = Objects.requireNonNull(scope, "scope may not be null").getAllocationMessageMapper();
@@ -81,7 +81,7 @@ final class CargoTokenMessages
 	 * @throws NullPointerException if {@code message} is null
 	 * @throws IOException if grammar, limits, shape, identities, version or values are invalid; parser causes are retained
 	 */
-	Event read(String message) throws IOException
+	public Event read(String message) throws IOException
 	{
 		Objects.requireNonNull(message, "message may not be null");
 		if (message.length() > MAX_MESSAGE_CHARACTERS)
@@ -152,7 +152,7 @@ final class CargoTokenMessages
 	 * @throws NullPointerException if {@code request} is null
 	 * @throws IllegalArgumentException if {@code request} belongs elsewhere or {@code value} is outside its byte range
 	 */
-	ObjectNode grant(Read request, int value)
+	public ObjectNode grant(Read request, int value)
 	{
 		Objects.requireNonNull(request, "request may not be null");
 		validateByte(value);
@@ -166,7 +166,7 @@ final class CargoTokenMessages
 	 * @throws NullPointerException if {@code request} is null
 	 * @throws IllegalArgumentException if {@code request} belongs to another attempt, installation or process
 	 */
-	ObjectNode acknowledge(Write request)
+	public ObjectNode acknowledge(Write request)
 	{
 		Objects.requireNonNull(request, "request may not be null");
 		return control(request.request(), Operation.WRITE);
@@ -359,7 +359,7 @@ final class CargoTokenMessages
 	/**
 	 * Reports matching readiness without establishing process ownership.
 	 */
-	record Ready() implements Event
+	public record Ready() implements Event
 	{
 	}
 
@@ -370,7 +370,7 @@ final class CargoTokenMessages
 	 * @param pid positive unsigned-32-bit process identity
 	 * @param sequence positive signed-long sequence unique within the installation
 	 */
-	record Request(UUID attempt, long installation, long pid, long sequence)
+	public record Request(UUID attempt, long installation, long pid, long sequence)
 	{
 		/**
 		 * Establishes the identity invariants needed by control encoding.
@@ -381,7 +381,7 @@ final class CargoTokenMessages
 		 * @throws NullPointerException if {@code attempt} is null
 		 * @throws IllegalArgumentException if an identity is outside its range
 		 */
-		Request
+		public Request
 		{
 			validateInstallation(attempt, installation, pid);
 			if (sequence <= 0)
@@ -393,14 +393,14 @@ final class CargoTokenMessages
 	 * Requests one byte from the owner's ledger-backed transport.
 	 * @param request native transfer identity
 	 */
-	record Read(Request request) implements Event
+	public record Read(Request request) implements Event
 	{
 		/**
 		 * Retains an identity without borrowing a byte.
 		 * @param request native transfer identity
 		 * @throws NullPointerException if {@code request} is null
 		 */
-		Read
+		public Read
 		{
 			Objects.requireNonNull(request, "request may not be null");
 		}
@@ -411,7 +411,7 @@ final class CargoTokenMessages
 	 * @param request native transfer identity
 	 * @param value byte magnitude from 0 through 255
 	 */
-	record Write(Request request, int value) implements Event
+	public record Write(Request request, int value) implements Event
 	{
 		/**
 		 * Retains a valid request and byte without performing the return.
@@ -420,7 +420,7 @@ final class CargoTokenMessages
 		 * @throws NullPointerException if {@code request} is null
 		 * @throws IllegalArgumentException if {@code value} is outside its byte range
 		 */
-		Write
+		public Write
 		{
 			Objects.requireNonNull(request, "request may not be null");
 			validateByte(value);
@@ -432,7 +432,7 @@ final class CargoTokenMessages
 	 * @param request parked transfer
 	 * @param operation read or write whose control was rejected
 	 */
-	record Rejected(Request request, Operation operation) implements Event
+	public record Rejected(Request request, Operation operation) implements Event
 	{
 		/**
 		 * Retains rejection values without authorizing a transfer.
@@ -440,7 +440,7 @@ final class CargoTokenMessages
 		 * @param operation rejected control's operation
 		 * @throws NullPointerException if {@code request} or {@code operation} is null
 		 */
-		Rejected
+		public Rejected
 		{
 			Objects.requireNonNull(request, "request may not be null");
 			Objects.requireNonNull(operation, "operation may not be null");
@@ -453,7 +453,7 @@ final class CargoTokenMessages
 	 * @param operation failed read or write
 	 * @param cause supported native failure category
 	 */
-	record Failure(Request request, Operation operation, FailureCause cause) implements Event
+	public record Failure(Request request, Operation operation, FailureCause cause) implements Event
 	{
 		/**
 		 * Retains failure values without native I/O or termination.
@@ -462,7 +462,7 @@ final class CargoTokenMessages
 		 * @param cause supported native failure category
 		 * @throws NullPointerException if {@code request}, {@code operation} or {@code cause} is null
 		 */
-		Failure
+		public Failure
 		{
 			Objects.requireNonNull(request, "request may not be null");
 			Objects.requireNonNull(operation, "operation may not be null");
@@ -473,14 +473,14 @@ final class CargoTokenMessages
 	/**
 	 * Reports exhaustion; no further request can be granted in this installation.
 	 */
-	record Exhausted() implements Event
+	public record Exhausted() implements Event
 	{
 	}
 
 	/**
 	 * Identifies the two supported one-byte transfer operations.
 	 */
-	enum Operation
+	public enum Operation
 	{
 		/** Borrow one opaque byte. */
 		READ,
@@ -491,7 +491,7 @@ final class CargoTokenMessages
 	/**
 	 * Identifies native failures reported before untrackable I/O proceeds.
 	 */
-	enum FailureCause
+	public enum FailureCause
 	{
 		/** Descriptor metadata could not be read. */
 		DESCRIPTOR_STATX_FAILED,

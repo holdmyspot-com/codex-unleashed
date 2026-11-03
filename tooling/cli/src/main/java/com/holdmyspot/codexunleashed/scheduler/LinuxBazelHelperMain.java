@@ -34,12 +34,12 @@ import tools.jackson.databind.node.ObjectNode;
  * Only the launching host's original anonymous pipes carry controls. Native callbacks only copy events; this
  * process's main thread performs protocol and native transitions. Whole-workload termination remains host authority.
  */
-final class LinuxBazelHelperMain
+public final class LinuxBazelHelperMain
 {
     /** Maximum encoded frame bytes retained by either pipe endpoint; oversized bursts fail closed. */
-    static final int MAX_FRAME_BYTES = ToolingScope.MAX_NAMESPACE_CONTROL_FRAME_BYTES;
+    public static final int MAX_FRAME_BYTES = ToolingScope.MAX_NAMESPACE_CONTROL_FRAME_BYTES;
     /** Fixed correlation schema for this package-owned helper and its host. */
-    static final String SCHEMA = "codex-bazel-namespace-helper-v1";
+    public static final String SCHEMA = "codex-bazel-namespace-helper-v1";
 
     /**
      * Prevents construction of the process entrypoint.
@@ -118,7 +118,7 @@ final class LinuxBazelHelperMain
      * @return true when the image has no program interpreter and uses the supported native ABI
      * @throws IOException if an ELF64 program table is malformed or truncated
      */
-    static boolean isStaticTraceImage(FileChannel image) throws IOException
+    public static boolean isStaticTraceImage(FileChannel image) throws IOException
     {
         java.nio.ByteBuffer header = imageBytes(image, 0, 64).order(java.nio.ByteOrder.LITTLE_ENDIAN);
         if (header.getInt(0) != 0x464c457f || header.get(4) != 2 || header.get(5) != 1 || (header.getShort(18) != 62 && header.getShort(18) != 183))
@@ -163,7 +163,7 @@ final class LinuxBazelHelperMain
      * @param factory creates one original resource-free native owner from host configuration
      * @throws IOException if framing, command identity, native delivery or final cleanup fails
      */
-    static void serve(ToolingScope scope, InputStream incoming, OutputStream outgoing, BackendFactory factory)
+    public static void serve(ToolingScope scope, InputStream incoming, OutputStream outgoing, BackendFactory factory)
         throws IOException
     {
         JsonMapper json = scope.getNamespaceControlMapper();
@@ -277,7 +277,7 @@ final class LinuxBazelHelperMain
      * @return one complete schema-matching request object
      * @throws IOException if framing, JSON shape or schema differs
      */
-    static ObjectNode read(DataInputStream input, JsonMapper json) throws IOException
+    public static ObjectNode read(DataInputStream input, JsonMapper json) throws IOException
     {
         int length = input.readInt();
         if (length <= 0 || length > MAX_FRAME_BYTES) throw new IOException("Namespace helper frame size is outside its bound");
@@ -296,7 +296,7 @@ final class LinuxBazelHelperMain
      * @param value complete protocol object
      * @throws IOException if encoding exceeds the bound or output has uncertain effects
      */
-    static void write(DataOutputStream output, JsonMapper json, ObjectNode value) throws IOException
+    public static void write(DataOutputStream output, JsonMapper json, ObjectNode value) throws IOException
     {
         byte[] bytes = json.writeValueAsBytes(value);
         if (bytes.length == 0 || bytes.length > MAX_FRAME_BYTES) throw new IOException("Namespace helper response exceeds its frame bound");
@@ -360,7 +360,7 @@ final class LinuxBazelHelperMain
      * @param child copied original manager event
      * @return {@code true} for the expected self-exec event
      */
-    static boolean matchesInitialExec(long pid, ObjectNode execution, ObjectNode launchExecution,
+    public static boolean matchesInitialExec(long pid, ObjectNode execution, ObjectNode launchExecution,
         FridaRuntime.Child child)
     {
         boolean expectedExecutable = Objects.equals(child.path(), launchExecution.path("executable").asString()) ||
@@ -375,7 +375,7 @@ final class LinuxBazelHelperMain
      * @param image retained descriptor for the original held executable before attachment
      * @throws IOException if its original ELF image has no supported glibc interpreter
      */
-    static void requireGlibcAllocatorImage(FileChannel image) throws IOException
+    public static void requireGlibcAllocatorImage(FileChannel image) throws IOException
     {
         java.nio.ByteBuffer header = imageBytes(image, 0, 64).order(java.nio.ByteOrder.LITTLE_ENDIAN);
         if (header.getInt(0) != 0x464c457f || header.get(4) != 2 || header.get(5) != 1)
@@ -497,7 +497,7 @@ final class LinuxBazelHelperMain
      * Supplies the sole original helper backend before native acquisition.
      */
     @FunctionalInterface
-    interface BackendFactory
+    public interface BackendFactory
     {
         /**
          * Creates a resource-free backend from the host's authenticated original pipe configuration.
@@ -511,7 +511,7 @@ final class LinuxBazelHelperMain
     /**
      * Owns helper-native operations; implementations are called only by the service thread.
      */
-    interface Backend
+    public interface Backend
     {
         /**
          * Establishes the original held target before independent host authentication.
@@ -597,7 +597,7 @@ final class LinuxBazelHelperMain
      * @param preExec original nonleader exec entries awaiting host thread authentication
      * @param migrations actual held exec observations carrying original thread identity
      */
-    record Snapshot(List<String> frames, List<FridaRuntime.Child> held, List<Long> retired,
+    public record Snapshot(List<String> frames, List<FridaRuntime.Child> held, List<Long> retired,
         List<LinuxAllocationTrace.PreExec> preExec, List<LinuxAllocationTrace.Held> migrations)
     {
         /**
@@ -608,21 +608,21 @@ final class LinuxBazelHelperMain
          * @param preExec original nonleader exec entries
          * @param migrations original exec identity transitions
          */
-        Snapshot { frames = List.copyOf(frames); held = List.copyOf(held); retired = List.copyOf(retired);
+        public Snapshot { frames = List.copyOf(frames); held = List.copyOf(held); retired = List.copyOf(retired);
             preExec = List.copyOf(preExec); migrations = List.copyOf(migrations); }
         /**
          * Copies a report batch without completed process generations.
          * @param frames original allocation frames
          * @param held copied original manager child events
          */
-        Snapshot(List<String> frames, List<FridaRuntime.Child> held) { this(frames, held, List.of()); }
+        public Snapshot(List<String> frames, List<FridaRuntime.Child> held) { this(frames, held, List.of()); }
         /**
          * Copies a report without native thread migration observations.
          * @param frames original allocation frames
          * @param held original held images
          * @param retired original dead generations
          */
-        Snapshot(List<String> frames, List<FridaRuntime.Child> held, List<Long> retired)
+        public Snapshot(List<String> frames, List<FridaRuntime.Child> held, List<Long> retired)
         { this(frames, held, retired, List.of(), List.of()); }
     }
 

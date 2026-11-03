@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * Redirected files and pipes remain borrowed. Console originals remain local and borrowed; offered pipe ends are
  * non-inherited owned handles. The controller must close imported output copies before delivering the final response.
  */
-final class WindowsCargoStreams implements AutoCloseable
+public final class WindowsCargoStreams implements AutoCloseable
 {
     /** Native binding owner, shared with relay workers and closed after they join. */
     private final Calls calls;
@@ -48,7 +48,7 @@ final class WindowsCargoStreams implements AutoCloseable
      * @return binding owner whose handles remain caller-owned
      * @throws IOException if an original standard handle is invalid
      */
-    static Root root(WindowsCargoScope scope) throws IOException
+    public static Root root(WindowsCargoScope scope) throws IOException
     {
         return root(new Native(scope));
     }
@@ -59,7 +59,7 @@ final class WindowsCargoStreams implements AutoCloseable
      * @return original handle snapshot and its binding owner
      * @throws IOException if any native standard handle is zero or INVALID_HANDLE_VALUE
      */
-    static Root root(Calls calls) throws IOException
+    public static Root root(Calls calls) throws IOException
     {
         try
         {
@@ -83,7 +83,7 @@ final class WindowsCargoStreams implements AutoCloseable
      * Keeps bindings alive while the direct Cargo child borrows this process's original standard handles.
      * Closing this owner releases bindings once and never closes a borrowed native handle.
      */
-    static final class Root implements AutoCloseable
+    public static final class Root implements AutoCloseable
     {
         /** Binding lifetime, owned until all direct child borrowers have finished. */
         private final Calls calls;
@@ -117,17 +117,17 @@ final class WindowsCargoStreams implements AutoCloseable
          * Returns original local standard input for the direct Cargo child.
          * @return borrowed native input handle
          */
-        MemorySegment input() { return input; }
+        public MemorySegment input() { return input; }
         /**
          * Returns original local standard output for the direct Cargo child.
          * @return borrowed native output handle
          */
-        MemorySegment output() { return output; }
+        public MemorySegment output() { return output; }
         /**
          * Returns original local standard error for the direct Cargo child.
          * @return borrowed native error handle, including an unchanged stdout alias
          */
-        MemorySegment error() { return error; }
+        public MemorySegment error() { return error; }
 
         @Override public void close()
         {
@@ -146,7 +146,7 @@ final class WindowsCargoStreams implements AutoCloseable
      * @return acquired persistent stream owner
      * @throws IOException if capture, pipe creation or cleanup fails
      */
-    static WindowsCargoStreams open(WindowsCargoScope scope) throws IOException
+    public static WindowsCargoStreams open(WindowsCargoScope scope) throws IOException
     {
         return open(new Native(scope));
     }
@@ -157,7 +157,7 @@ final class WindowsCargoStreams implements AutoCloseable
      * @return acquired persistent stream owner
      * @throws IOException if capture, pipe creation or cleanup fails
      */
-    static WindowsCargoStreams open(Calls calls) throws IOException
+    public static WindowsCargoStreams open(Calls calls) throws IOException
     {
         WindowsCargoStreams owner = new WindowsCargoStreams(calls);
         try
@@ -213,25 +213,25 @@ final class WindowsCargoStreams implements AutoCloseable
      * Returns the frozen wrapper-local source stdin handle bits.
      * @return handle value to import only using authenticated retained wrapper authority
      */
-    long input() { return offered[0]; }
+    public long input() { return offered[0]; }
 
     /**
      * Returns the frozen wrapper-local source stdout handle bits.
      * @return handle value to import only using authenticated retained wrapper authority
      */
-    long output() { return offered[1]; }
+    public long output() { return offered[1]; }
 
     /**
      * Returns the frozen wrapper-local source stderr handle bits, preserving stdout aliases.
      * @return handle value to import only using authenticated retained wrapper authority
      */
-    long error() { return offered[2]; }
+    public long error() { return offered[2]; }
 
     /**
      * Records imported-copy ownership without dropping source handles needed for retries.
      * @throws IOException if a relay already failed
      */
-    void accepted() throws IOException
+    public void accepted() throws IOException
     {
         if (closed || accepted) throw new IllegalStateException("Wrapper streams are closed or already accepted");
         accepted = true;
@@ -243,7 +243,7 @@ final class WindowsCargoStreams implements AutoCloseable
      * The controller must already have closed its output copies after all compiler Jobs became zero.
      * @throws IOException if a relay or cleanup fails
      */
-    void finish() throws IOException
+    public void finish() throws IOException
     {
         if (!accepted) throw new IOException("Wrapper output cannot finish before stream acceptance");
         close();
@@ -437,7 +437,7 @@ final class WindowsCargoStreams implements AutoCloseable
     }
 
     /** Owns the documented native operations used by endpoint acquisition and relay workers. */
-    interface Calls extends AutoCloseable
+    public interface Calls extends AutoCloseable
     {
         /** Supplies shared storage.
          * @return storage retained until all relay workers join

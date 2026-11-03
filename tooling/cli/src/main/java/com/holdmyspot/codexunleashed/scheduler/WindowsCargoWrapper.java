@@ -7,7 +7,7 @@ import java.util.Objects;
  * Registers one Windows compiler invocation and keeps its wrapper alive across controller-owned retries.
  * The one-shot operation never launches a compiler locally and never replays uncertain protocol effects.
  */
-final class WindowsCargoWrapper
+public final class WindowsCargoWrapper
 {
     /** Codec borrowing invocation services. */
     private final WindowsCargoMessages messages;
@@ -24,7 +24,7 @@ final class WindowsCargoWrapper
      * @param registration exact request and source stream offer
      * @param opener authenticated session acquisition owner
      */
-    WindowsCargoWrapper(WindowsCargoScope scope, WindowsCargoMessages.Registration registration, Opener opener)
+    public WindowsCargoWrapper(WindowsCargoScope scope, WindowsCargoMessages.Registration registration, Opener opener)
     {
         this.messages = new WindowsCargoMessages(scope);
         this.registration = Objects.requireNonNull(registration, "registration");
@@ -38,7 +38,7 @@ final class WindowsCargoWrapper
      * @throws IOException if acquisition, protocol, stream completion or cleanup fails
      * @throws IllegalStateException if run was already attempted
      */
-    long run() throws IOException
+    public long run() throws IOException
     {
         if (started) throw new IllegalStateException("Cargo wrapper execution was already attempted");
         started = true;
@@ -72,7 +72,7 @@ final class WindowsCargoWrapper
      * Acquires one fully authenticated wrapper session and cleans up partial acquisition on failure.
      */
     @FunctionalInterface
-    interface Opener
+    public interface Opener
     {
         /**
          * Acquires owned streams and an independently authenticated server connection.
@@ -85,7 +85,7 @@ final class WindowsCargoWrapper
     /**
      * Owns the wrapper's persistent stream endpoints and control connection through one logical compilation.
      */
-    interface Session extends AutoCloseable
+    public interface Session extends AutoCloseable
     {
         /**
          * Returns the immutable source offer retained by this session.

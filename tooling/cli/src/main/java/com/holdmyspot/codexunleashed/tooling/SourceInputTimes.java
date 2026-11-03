@@ -14,7 +14,7 @@ import tools.jackson.databind.JsonNode;
 /**
  * Converts exact schema timestamps between epoch nanoseconds and Java filesystem times.
  */
-final class SourceInputTimes
+public final class SourceInputTimes
 {
 	/** Number of nanoseconds per second for range-boundary checks. */
 	private static final long NANOS_PER_SECOND = 1_000_000_000L;
@@ -34,7 +34,7 @@ final class SourceInputTimes
 	 * @param instant the source timestamp
 	 * @return exact epoch nanoseconds
 	 */
-	static BigInteger nanos(Instant instant)
+	public static BigInteger nanos(Instant instant)
 	{
 		return BigInteger.valueOf(instant.getEpochSecond()).multiply(INTEGER_NANOS_PER_SECOND).
 			add(BigInteger.valueOf(instant.getNano()));
@@ -48,7 +48,7 @@ final class SourceInputTimes
 	 * @param time the required timestamp
 	 * @throws IOException if the filesystem update fails
 	 */
-	static void setTimes(ToolingScope scope, Path path, FileTime time) throws IOException
+	public static void setTimes(ToolingScope scope, Path path, FileTime time) throws IOException
 	{
 		Instant instant = time.toInstant();
 		BigInteger nanos = nanos(instant);
@@ -72,7 +72,7 @@ final class SourceInputTimes
 	 * @return its precise native timestamp
 	 * @throws IOException if timestamp lookup fails
 	 */
-	static Instant lastModified(ToolingScope scope, Path path) throws IOException
+	public static Instant lastModified(ToolingScope scope, Path path) throws IOException
 	{
 		return lastModified(scope, path, new LinkOption[0]);
 	}
@@ -87,7 +87,7 @@ final class SourceInputTimes
 	 * @return its precise native timestamp
 	 * @throws IOException if timestamp lookup fails
 	 */
-	static Instant lastModified(ToolingScope scope, Path path, LinkOption... options) throws IOException
+	public static Instant lastModified(ToolingScope scope, Path path, LinkOption... options) throws IOException
 	{
 		Instant result = Files.getLastModifiedTime(path, options).toInstant();
 		boolean followLinks = !java.util.Arrays.asList(options).contains(LinkOption.NOFOLLOW_LINKS);

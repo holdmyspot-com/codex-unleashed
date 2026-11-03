@@ -16,7 +16,7 @@ public final class LinuxMeasurements implements Controller.Measurements
 	 * @param name nonblank action identity
 	 * @param sequence nonnegative process-attempt ordinal
 	 */
-	record Attempt(String name, long sequence)
+	public record Attempt(String name, long sequence)
 	{
 		/**
 		 * Creates an attempt identity.
@@ -25,7 +25,7 @@ public final class LinuxMeasurements implements Controller.Measurements
 		 * @throws NullPointerException if name is null
 		 * @throws IllegalArgumentException if name is blank or sequence is negative
 		 */
-		Attempt
+		public Attempt
 		{
 			Objects.requireNonNull(name, "name");
 			if (name.isBlank() || sequence < 0)
@@ -41,7 +41,7 @@ public final class LinuxMeasurements implements Controller.Measurements
 	 * @param generation registration generation used to detect changes during a batch
 	 * @param attempts live registered attempts, copied on construction
 	 */
-	record Observation(LinuxMemory.Sample memory, long availableBytes, String bootId, long generation,
+	public record Observation(LinuxMemory.Sample memory, long availableBytes, String bootId, long generation,
 		Set<Attempt> attempts)
 	{
 		/**
@@ -54,7 +54,7 @@ public final class LinuxMeasurements implements Controller.Measurements
 		 * @throws NullPointerException if memory, bootId, attempts, or an attempt is null
 		 * @throws IllegalArgumentException if effective bytes exceed host availability, a count is negative, or bootId is blank
 		 */
-		Observation
+		public Observation
 		{
 			Objects.requireNonNull(memory, "memory");
 			Objects.requireNonNull(bootId, "bootId");
@@ -67,7 +67,7 @@ public final class LinuxMeasurements implements Controller.Measurements
 	/**
 	 * Supplies validated native readings without owning the cumulative-counter baseline.
 	 */
-	interface Source
+	public interface Source
 	{
 		/**
 		 * Reads fresh host counters and complete cgroup limits.
@@ -126,7 +126,7 @@ public final class LinuxMeasurements implements Controller.Measurements
 	 * @return primed measurements adapter
 	 * @throws IOException if the initial observation or authority verification fails
 	 */
-	static LinuxMeasurements open(Source source) throws IOException
+	public static LinuxMeasurements open(Source source) throws IOException
 	{
 		Observation initial = source.read();
 		source.verify(initial.generation());

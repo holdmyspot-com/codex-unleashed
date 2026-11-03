@@ -185,7 +185,7 @@ public final class LinuxBorrowedStreams {
          * Encodes the fixed-size action, attempt and capability handshake.
          * @return the validated result retained by this operation
          */
-        byte[] frame() {
+        public byte[] frame() {
             return ByteBuffer.allocate(FRAME_BYTES).putInt(1).putLong(actionId.getMostSignificantBits()).
                 putLong(actionId.getLeastSignificantBits()).putLong(attemptSequence).put(capability).array();
         }
@@ -195,7 +195,7 @@ public final class LinuxBorrowedStreams {
          * @param actual required operation input
          * @throws java.io.IOException if validation, native access or owned cleanup fails
          */
-        void requireGate(Peer peer, byte[] actual) throws IOException {
+        public void requireGate(Peer peer, byte[] actual) throws IOException {
             if (peer.uid() != 0) throw new IOException("Stream connector is not a privileged trusted gate");
             requireFrame(actual);
         }
@@ -213,7 +213,7 @@ public final class LinuxBorrowedStreams {
          * @param launch immutable approved execution inputs
          * @throws java.io.IOException if validation, native access or owned cleanup fails
          */
-        void requireExecution(LinuxProcessTree.Launch launch) throws IOException {
+        public void requireExecution(LinuxProcessTree.Launch launch) throws IOException {
             LinuxProcessTree.Launch approved = approvedLaunch;
             boolean sameExecution = approved.javaExecutable().equals(launch.javaExecutable()) &&
                 approved.classPath().equals(launch.classPath()) && approved.command().equals(launch.command()) &&
@@ -232,7 +232,7 @@ public final class LinuxBorrowedStreams {
     }
 
     /** Native stream transfer boundary owned by the listener, replaceable in focused policy fixtures. */
-    interface Transfer extends AutoCloseable {
+    public interface Transfer extends AutoCloseable {
         /**
          * Retains the state required by this owned native operation.
          * @param timeout positive bounded control timeout
@@ -269,7 +269,7 @@ public final class LinuxBorrowedStreams {
          * @param endpoint owned pathname Unix socket endpoint
          * @param terminal required operation input
          */
-        Listener(Transfer transport, Peer wrapper, UUID actionId, Path endpoint, TerminalContext terminal) {
+        public Listener(Transfer transport, Peer wrapper, UUID actionId, Path endpoint, TerminalContext terminal) {
             this.transport = transport; this.wrapper = wrapper; this.actionId = actionId;
             this.endpoint = endpoint; this.terminal = terminal;
         }
@@ -361,7 +361,7 @@ public final class LinuxBorrowedStreams {
     }
 
     /** Installation boundary shared by real native descriptors and focused failure fixtures. */
-    interface Installation extends AutoCloseable {
+    public interface Installation extends AutoCloseable {
         /**
          * Checks the registered terminal context before descriptor installation.
          * @param expected authorized frame or terminal context
@@ -376,7 +376,7 @@ public final class LinuxBorrowedStreams {
         @Override void close() throws IOException;
     }
     /** Gate-owned pending references. Installation is irreversible and may never be retried in this gate. */
-    static final class Pending implements AutoCloseable {
+    public static final class Pending implements AutoCloseable {
         /** Owned pending descriptor installation. */
         private final Installation installation;
         /** Whether irreversible installation has begun or cleanup has consumed it. */
@@ -387,13 +387,13 @@ public final class LinuxBorrowedStreams {
          * Creates the owner before acquiring its native resources.
          * @param installation owned pending descriptor installation
          */
-        Pending(Installation installation) { this.installation = Objects.requireNonNull(installation); }
+        public Pending(Installation installation) { this.installation = Objects.requireNonNull(installation); }
         /**
          * Retains the state required by this owned native operation.
          * @param expected authorized frame or terminal context
          * @throws java.io.IOException if validation, native access or owned cleanup fails
          */
-        void installBeforeReady(TerminalContext expected) throws IOException {
+        public void installBeforeReady(TerminalContext expected) throws IOException {
             if (consumed || closed) throw new IllegalStateException("Descriptor installation is irreversible and already consumed");
             consumed = true;
             installation.validate(expected);
@@ -434,7 +434,7 @@ public final class LinuxBorrowedStreams {
      * @param timeout positive bounded handoff deadline
      * @throws java.io.IOException if validation, native access or owned cleanup fails
      */
-    static void installBeforeReady(ToolingScope scope, Binding binding, Duration timeout) throws IOException {
+    public static void installBeforeReady(ToolingScope scope, Binding binding, Duration timeout) throws IOException {
         try (Pending pending = receive(scope, binding, timeout)) { pending.installBeforeReady(binding.terminal); }
     }
     /**
@@ -484,7 +484,7 @@ public final class LinuxBorrowedStreams {
      * @param values protected configuration properties
      * @param binding controller-authenticated registration receipt
      */
-    static void writeTo(Properties values, Binding binding) {
+    public static void writeTo(Properties values, Binding binding) {
         if (binding == null) return;
         values.setProperty(CONFIG + "action", binding.actionId.toString());
         values.setProperty(CONFIG + "sequence", Long.toString(binding.attemptSequence));
@@ -524,7 +524,7 @@ public final class LinuxBorrowedStreams {
      * @return the validated operation result
      * @throws java.io.IOException if validation, native access or owned cleanup fails
      */
-    static Binding readFrom(Properties values) throws IOException {
+    public static Binding readFrom(Properties values) throws IOException {
         if (!values.containsKey(CONFIG + "action")) {
             for (String key : values.stringPropertyNames())
                 if (key.startsWith(CONFIG)) throw new IOException("Borrowed configuration has no action identity");
@@ -576,7 +576,7 @@ public final class LinuxBorrowedStreams {
 
     /** Consumes one descriptor number with the Linux close-once contract. */
     @FunctionalInterface
-    interface CloseDescriptor {
+    public interface CloseDescriptor {
         /**
          * Closes only remaining owned references, preserving native close failures.
          * @param descriptor required operation input
@@ -585,7 +585,7 @@ public final class LinuxBorrowedStreams {
         void close(int descriptor) throws IOException;
     }
     /** Retains acquired descriptor numbers in preallocated ownership slots. */
-    static final class Descriptors implements AutoCloseable {
+    public static final class Descriptors implements AutoCloseable {
         /** Preallocated owned descriptor slots. */
         final int[] fds=new int[32];
         /** Number of descriptor slots still owned. */
@@ -598,7 +598,7 @@ public final class LinuxBorrowedStreams {
          * Creates captured-error storage before acquiring any descriptors.
          * @param bindings immutable native functions retained open by the caller
          */
-        Descriptors(NativeBindings bindings){
+        public Descriptors(NativeBindings bindings){
             this.closer=bindings.new CloseOperation();
             this.calls=bindings.CALLS;
         }
@@ -606,7 +606,7 @@ public final class LinuxBorrowedStreams {
          * Creates the owner before acquiring its native resources.
          * @param closer once-only descriptor close boundary
          */
-        Descriptors(CloseDescriptor closer){
+        public Descriptors(CloseDescriptor closer){
             this.closer=Objects.requireNonNull(closer);
             this.calls=Map.of();
         }
@@ -615,7 +615,7 @@ public final class LinuxBorrowedStreams {
          * @param fd native descriptor already retained by its owner
          * @return the validated result retained by this operation
          */
-        int add(int fd){
+        public int add(int fd){
             fds[size++]=fd;
             return fd;
         }
@@ -1033,7 +1033,7 @@ public final class LinuxBorrowedStreams {
         }
 
         /** Owns one native stream socket; payload framing and peer authorization belong to its caller. */
-        final class Socket implements AutoCloseable {
+        public final class Socket implements AutoCloseable {
             /** Preallocated descriptor and captured-errno ownership, acquired before any native socket. */
             private final Descriptors owned = new Descriptors(NativeBindings.this);
             /** Connected descriptor, or -1 before acquisition. */

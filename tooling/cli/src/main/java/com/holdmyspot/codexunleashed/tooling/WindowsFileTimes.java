@@ -228,7 +228,7 @@ public final class WindowsFileTimes
 	 * @return the precise native timestamp
 	 * @throws IOException if native file access fails
 	 */
-	Instant lastModified(Path path) throws IOException
+	public Instant lastModified(Path path) throws IOException
 	{
 		return lastModified(path, true);
 	}
@@ -241,7 +241,7 @@ public final class WindowsFileTimes
 	 * @return the precise native timestamp
 	 * @throws IOException if native opening, reading or owned handle closing fails
 	 */
-	Instant lastModified(Path path, boolean followLinks) throws IOException
+	public Instant lastModified(Path path, boolean followLinks) throws IOException
 	{
 		try (Arena arena = Arena.ofConfined(); Handle handle = new Handle(path, READ_ATTRIBUTES, arena, followLinks))
 		{

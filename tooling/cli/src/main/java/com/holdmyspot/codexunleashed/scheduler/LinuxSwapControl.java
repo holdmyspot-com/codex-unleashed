@@ -81,7 +81,7 @@ public final class LinuxSwapControl
 
 	/** Executes one literal command and returns only after capture and process cleanup complete. */
 	@FunctionalInterface
-	interface Commands
+	public interface Commands
 	{
 		/**
 		 * Executes one command without interpreting a nonzero exit as successful state verification.
@@ -116,7 +116,7 @@ public final class LinuxSwapControl
 	 * @param commands the borrowed command executor
 	 * @throws NullPointerException if commands is null
 	 */
-	LinuxSwapControl(Commands commands)
+	public LinuxSwapControl(Commands commands)
 	{
 		this.commands = Objects.requireNonNull(commands, "commands may not be null");
 	}

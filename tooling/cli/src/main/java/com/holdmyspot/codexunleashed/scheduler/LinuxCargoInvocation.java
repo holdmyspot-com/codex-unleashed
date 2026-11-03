@@ -27,7 +27,7 @@ import oshi.util.driver.linux.proc.ProcessStat.PidStat;
  * After failed session cleanup the caller retains this owner and may call close to progress safe cleanup; observation
  * never retries native effects. Failed descriptor closes and uncertain publication are never replayed.
  */
-final class LinuxCargoInvocation implements CargoSession.Invocation
+public final class LinuxCargoInvocation implements CargoSession.Invocation
 {
     /**
      * Sole native coordination thread.
@@ -84,7 +84,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
      * @param configuration trusted immutable launch and containment boundaries
      * @throws NullPointerException if an input is null
      */
-    LinuxCargoInvocation(LinuxCargoScope scope, Configuration configuration)
+    public LinuxCargoInvocation(LinuxCargoScope scope, Configuration configuration)
     {
         this(new NativeResources(Objects.requireNonNull(scope, "scope"),
             Objects.requireNonNull(configuration, "configuration"), null));
@@ -98,7 +98,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
      * @param memory caller-owned history and complete source/toolchain identity boundaries
      * @throws NullPointerException if an input is null
      */
-    LinuxCargoInvocation(LinuxCargoScope scope, Configuration configuration, CargoMemoryEstimates.Settings memory)
+    public LinuxCargoInvocation(LinuxCargoScope scope, Configuration configuration, CargoMemoryEstimates.Settings memory)
     {
         this(new NativeResources(Objects.requireNonNull(scope, "scope"),
             Objects.requireNonNull(configuration, "configuration"), Objects.requireNonNull(memory, "memory")));
@@ -109,7 +109,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
      * @param resources retained acquisition, service and cleanup owner
      * @throws NullPointerException if resources is null
      */
-    LinuxCargoInvocation(Resources resources)
+    public LinuxCargoInvocation(Resources resources)
     {
         this.resources = Objects.requireNonNull(resources, "resources");
     }
@@ -120,7 +120,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
      * @throws IllegalStateException if called from another thread or acquisition was already attempted or closed
      * @throws IOException if native acquisition or release fails
      */
-    void start() throws IOException
+    public void start() throws IOException
     {
         requireThread();
         if (startAttempted || closed) throw new IllegalStateException("Cargo invocation acquisition is permitted once");
@@ -146,7 +146,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
      * @return started coordinator session
      * @throws IllegalStateException if no successful start occurred or another thread calls
      */
-    CargoSession<LinuxSupervisor.Result> session()
+    public CargoSession<LinuxSupervisor.Result> session()
     {
         requireThread();
         if (!started) throw new IllegalStateException("Cargo invocation did not start successfully");
@@ -323,7 +323,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
     /**
      * Retains a partial invocation without changing the original failure's type or cause graph.
      */
-    static final class CleanupFailure extends IOException implements AutoCloseable
+    public static final class CleanupFailure extends IOException implements AutoCloseable
     {
         /**
          * Exception serialization format identifier.
@@ -381,7 +381,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
      * @param jobs positive FIFO capacity including Cargo's implicit token
      * @param timeout positive bounded native control wait, not a Cargo runtime deadline
      */
-    record Configuration(LinuxProcessTree.Launch cargo, RootInput root,
+    public record Configuration(LinuxProcessTree.Launch cargo, RootInput root,
         LinuxCargoRegistration.Configuration registration, Path controllerEndpoint, Path frida,
         LinuxAuthority.Settings authority, int jobs, Duration timeout)
     {
@@ -396,7 +396,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
          * @param jobs positive FIFO capacity
          * @param timeout positive native control bound
          */
-        Configuration(LinuxProcessTree.Launch cargo, LinuxProcessTree.StandardFiles files,
+        public Configuration(LinuxProcessTree.Launch cargo, LinuxProcessTree.StandardFiles files,
             LinuxCargoRegistration.Configuration registration, Path controllerEndpoint, Path frida,
             LinuxAuthority.Settings authority, int jobs, Duration timeout)
         {
@@ -416,7 +416,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
          * @throws NullPointerException if an input is null
          * @throws IllegalArgumentException if launch identities, paths or control bounds disagree
          */
-        Configuration
+        public Configuration
         {
             Objects.requireNonNull(cargo, "cargo");
             Objects.requireNonNull(root, "root");
@@ -456,21 +456,21 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
      * Selects caller-owned standard stream paths for existing native fixture and library callers.
      * @param files immutable input/output path selection
      */
-    record FileRoot(LinuxProcessTree.StandardFiles files) implements RootInput
+    public record FileRoot(LinuxProcessTree.StandardFiles files) implements RootInput
     {
         /**
          * Validates the required file-stream selection.
          * @param files immutable standard stream paths
          * @throws NullPointerException if files is null
          */
-        FileRoot { Objects.requireNonNull(files, "files"); }
+        public FileRoot { Objects.requireNonNull(files, "files"); }
     }
 
     /**
      * Selects the invoking process's borrowed fd0/1/2 through a controller-owned private endpoint.
      * @param directory existing controller-owned0700 directory retained until invocation closure
      */
-    record BorrowedRoot(Path directory) implements RootInput
+    public record BorrowedRoot(Path directory) implements RootInput
     {
         /**
          * Validates the resource-free private endpoint location.
@@ -478,7 +478,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
          * @throws NullPointerException if directory is null
          * @throws IllegalArgumentException if directory is not absolute and normalized
          */
-        BorrowedRoot
+        public BorrowedRoot
         {
             Objects.requireNonNull(directory, "directory");
             if (!directory.isAbsolute() || !directory.equals(directory.normalize()))
@@ -489,7 +489,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
     /**
      * Retains the concrete native owners through acquisition, service and staged cleanup.
      */
-    interface Resources
+    public interface Resources
     {
         /**
          * Acquires native dependencies under this retained owner.
@@ -1029,7 +1029,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
      * @throws NullPointerException if an operation is null
      * @throws IOException if a barrier observation, attachment closure or collection acknowledgement fails
      */
-    static boolean finishRootInstrumentation(AllocationHook.ExecutionBarrier barrier, LinuxAttempt.Close attachments,
+    public static boolean finishRootInstrumentation(AllocationHook.ExecutionBarrier barrier, LinuxAttempt.Close attachments,
         LinuxAttempt.Close collect) throws IOException
     {
         Objects.requireNonNull(barrier, "barrier");
@@ -1051,7 +1051,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
      * @return retained exact parent identity
      * @throws IOException if the parent was never independently enrolled
      */
-    static <T> T retainedCargoParent(Map<Long, T> retained, long parent) throws IOException
+    public static <T> T retainedCargoParent(Map<Long, T> retained, long parent) throws IOException
     {
         T result = retained.get(parent);
         if (result == null) throw new IOException("Wrapper parent is not an independently retained invocation image: " + parent);
@@ -1068,7 +1068,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
      * @param imageIdentity independently sampled running executable inode observations while the image is held
      * @throws IllegalArgumentException if readiness generation is absent, repeated or stale
      */
-    static void retainReadyParent(Map<Long, LinuxCargoRegistration.Parent> retained,
+    public static void retainReadyParent(Map<Long, LinuxCargoRegistration.Parent> retained,
         LinuxCargoImages.Identity image, long generation, Map<String, Object> imageIdentity)
     {
         if (generation <= 0) throw new IllegalArgumentException("Ready parent generation must be positive");
@@ -1118,7 +1118,7 @@ final class LinuxCargoInvocation implements CargoSession.Invocation
      * @param retained independently ready expected image, or null when never enrolled
      * @return bounded diagnostic preserving the distinction between observed and retained identity
      */
-    static String parentFailureMessage(LinuxBorrowedStreams.Peer wrapper, long parent, String currentParent,
+    public static String parentFailureMessage(LinuxBorrowedStreams.Peer wrapper, long parent, String currentParent,
         String executable, String currentBirth, LinuxCargoRegistration.Parent retained)
     {
         String expected = retained == null ? "unenrolled" : "pid=" + retained.peer().pid() +

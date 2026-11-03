@@ -25,7 +25,7 @@ import tools.jackson.databind.node.ObjectNode;
  * returns the identified reservation before acknowledgment. A lost grant remains owned until whole-Job retirement.
  * Closing this connection never retires its borrowed Job domain. This class does not authenticate a raw PID itself.
  */
-final class WindowsCargoTokenHook implements WindowsAllocationHooks.Hook
+public final class WindowsCargoTokenHook implements WindowsAllocationHooks.Hook
 {
  /** Namespace used by both the packaged native producer and controller controls. */
  private static final String PROTOCOL = "codex-windows-cargo-tokens";
@@ -94,7 +94,7 @@ final class WindowsCargoTokenHook implements WindowsAllocationHooks.Hook
   * @throws IllegalArgumentException if identity, semaphore name or program is invalid, or the positive readiness
   * duration cannot fit signed nanoseconds
   */
- WindowsCargoTokenHook(ToolingScope scope, UUID attempt, long installation, long pid, String semaphore,
+ public WindowsCargoTokenHook(ToolingScope scope, UUID attempt, long installation, long pid, String semaphore,
   AllocationHook.Connection connection, WindowsCargoTokens.Domain tokens, String program, Duration timeout, Clock clock)
  {
   Objects.requireNonNull(scope, "scope may not be null");
@@ -341,7 +341,7 @@ final class WindowsCargoTokenHook implements WindowsAllocationHooks.Hook
   * @return true after exact readiness, including when a later operation fails
   * @throws IllegalStateException if accessed off-thread
   */
- boolean ready() { requireController(); return ready; }
+ public boolean ready() { requireController(); return ready; }
 
  /**
   * Destroys native ownership only after the complete Job cannot run; never retires the borrowed ledger.
@@ -406,7 +406,7 @@ final class WindowsCargoTokenHook implements WindowsAllocationHooks.Hook
   * Complete copied frames are bounded to 8192 UTF-16 characters before parsing. A diagnostic string may use that
   * complete budget; authenticated token fields are subsequently constrained by exact schema and identity checks.
   */
- static final class MessageScope extends io.github.cowwoc.pouch10.core.AbstractScope
+ public static final class MessageScope extends io.github.cowwoc.pouch10.core.AbstractScope
  {
   /** Lazily constructed immutable parser, shared only by this installation's messages and controls. */
   private final io.github.cowwoc.pouch10.core.ConcurrentLazyFactory<JsonMapper> mapper =
@@ -420,14 +420,14 @@ final class WindowsCargoTokenHook implements WindowsAllocationHooks.Hook
   private final java.util.concurrent.atomic.AtomicBoolean closed = new java.util.concurrent.atomic.AtomicBoolean();
 
   /** Creates a token-local scope without creating a parser or acquiring native resources. */
-  MessageScope() {}
+  public MessageScope() {}
 
   /**
    * Returns the same strict immutable parser while this installation scope remains open.
    * @return token-local parser with complete-frame scalar bounds
    * @throws IllegalStateException if disposal began
    */
-  JsonMapper json()
+  public JsonMapper json()
   {
    if (closed.get()) throw new IllegalStateException("Windows token message scope is closed");
    return mapper.getValue();

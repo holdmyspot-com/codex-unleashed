@@ -33,6 +33,8 @@ tests.
 	tests use it, also ending in `.test`.
 - Place test resources that a test reads by a relative name in the resource directory of that test's package. Resource
 	directories count as packages, and a test module must not contain a package that another module also contains.
+- A test cannot read a main module's resource through `getResourceAsStream`, because the main module does not open
+	its packages. To check a main resource's content, read the file from `src/main/resources` by path.
 
 Export each test package that contains TestNG tests to `org.testng`, and export a test-support package only to the test
 modules that reuse it.

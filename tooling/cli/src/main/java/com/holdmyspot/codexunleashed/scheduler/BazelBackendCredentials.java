@@ -88,7 +88,7 @@ public record BazelBackendCredentials(Path certificateAuthority, Path serverCert
      * Runs one keytool operation in the private credential directory.
      */
     @FunctionalInterface
-    interface Keytool
+    public interface Keytool
     {
         /**
          * Runs keytool with the exact arguments, appending its combined output to the log.
@@ -110,7 +110,7 @@ public record BazelBackendCredentials(Path certificateAuthority, Path serverCert
      * @return issued PEM credentials
      * @throws IOException if issuance or protected-file creation fails
      */
-    static BazelBackendCredentials generate(Path credentialRoot, Keytool keytool, Protection protection)
+    public static BazelBackendCredentials generate(Path credentialRoot, Keytool keytool, Protection protection)
         throws IOException
     {
         Path root = credentialRoot.toAbsolutePath().normalize();

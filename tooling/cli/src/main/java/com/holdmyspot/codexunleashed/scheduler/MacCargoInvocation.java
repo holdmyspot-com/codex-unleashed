@@ -20,7 +20,7 @@ import java.util.UUID;
  * After failed session cleanup the caller retains this owner and may call close to progress safe cleanup; observation
  * never retries native effects. Failed descriptor closes and uncertain publication are never replayed.
  */
-final class MacCargoInvocation implements CargoSession.Invocation
+public final class MacCargoInvocation implements CargoSession.Invocation
 {
     /**
      * Sole native coordination thread.
@@ -77,7 +77,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
      * @param configuration trusted immutable launch and containment boundaries
      * @throws NullPointerException if an input is null
      */
-    MacCargoInvocation(MacCargoScope scope, Configuration configuration)
+    public MacCargoInvocation(MacCargoScope scope, Configuration configuration)
     {
         this(new NativeResources(Objects.requireNonNull(scope, "scope"),
             Objects.requireNonNull(configuration, "configuration"), null));
@@ -91,7 +91,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
      * @param memory caller-owned history and complete source/toolchain identity boundaries
      * @throws NullPointerException if an input is null
      */
-    MacCargoInvocation(MacCargoScope scope, Configuration configuration, CargoMemoryEstimates.Settings memory)
+    public MacCargoInvocation(MacCargoScope scope, Configuration configuration, CargoMemoryEstimates.Settings memory)
     {
         this(new NativeResources(Objects.requireNonNull(scope, "scope"),
             Objects.requireNonNull(configuration, "configuration"), Objects.requireNonNull(memory, "memory")));
@@ -102,7 +102,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
      * @param resources retained acquisition, service and cleanup owner
      * @throws NullPointerException if resources is null
      */
-    MacCargoInvocation(Resources resources)
+    public MacCargoInvocation(Resources resources)
     {
         this.resources = Objects.requireNonNull(resources, "resources");
     }
@@ -113,7 +113,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
      * @throws IllegalStateException if called from another thread or acquisition was already attempted or closed
      * @throws IOException if native acquisition or release fails
      */
-    void start() throws IOException
+    public void start() throws IOException
     {
         requireThread();
         if (startAttempted || closed) throw new IllegalStateException("Cargo invocation acquisition is permitted once");
@@ -139,7 +139,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
      * @return started coordinator session
      * @throws IllegalStateException if no successful start occurred or another thread calls
      */
-    CargoSession<Integer> session()
+    public CargoSession<Integer> session()
     {
         requireThread();
         if (!started) throw new IllegalStateException("Cargo invocation did not start successfully");
@@ -151,7 +151,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
      * @return immutable completed compiler observations, or empty when history was not supplied
      * @throws IllegalStateException if another thread calls
      */
-    List<CargoMemoryEstimates.Observation> memoryObservations()
+    public List<CargoMemoryEstimates.Observation> memoryObservations()
     {
         requireThread();
         return resources.memoryObservations();
@@ -163,7 +163,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
      * @return immutable original reports, empty before native delivery
      * @throws IllegalStateException if another thread calls
      */
-    List<MacAttempts.AllocationReceipt> allocationReceipts()
+    public List<MacAttempts.AllocationReceipt> allocationReceipts()
     {
         requireThread();
         return List.copyOf(resources.allocationReceipts());
@@ -174,7 +174,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
      * @return immutable receipts, including superseded attempts that completed collection
      * @throws IllegalStateException if another thread calls
      */
-    List<MacAttempts.Retirement> attemptRetirements()
+    public List<MacAttempts.Retirement> attemptRetirements()
     {
         requireThread();
         return resources.attemptRetirements();
@@ -185,7 +185,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
      * @return authentic root identity and result, or empty before complete consumer cleanup
      * @throws IllegalStateException if another thread calls
      */
-    Optional<RootRetirement> originalCargoRetirement()
+    public Optional<RootRetirement> originalCargoRetirement()
     {
         requireThread();
         return resources.originalCargoRetirement();
@@ -343,7 +343,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
     /**
      * Retains a partial invocation without changing the original failure's type or cause graph.
      */
-    static final class CleanupFailure extends IOException implements AutoCloseable
+    public static final class CleanupFailure extends IOException implements AutoCloseable
     {
         /**
          * Exception serialization format identifier.
@@ -392,7 +392,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
     /**
      * Retains the concrete native owners through acquisition, service and staged cleanup.
      */
-    interface Resources
+    public interface Resources
     {
         /**
          * Acquires native dependencies under this retained owner.
@@ -425,22 +425,22 @@ final class MacCargoInvocation implements CargoSession.Invocation
          * Returns completed prediction/observation pairs when profiling is configured.
          * @return immutable completed observations, or empty without profiling
          */
-        default List<CargoMemoryEstimates.Observation> memoryObservations() { return List.of(); }
+        public default List<CargoMemoryEstimates.Observation> memoryObservations() { return List.of(); }
         /**
          * Reads retained decoded compiler allocation reports without native operations.
          * @return immutable original reports with authenticated compiler correlation
          */
-        default List<MacAttempts.AllocationReceipt> allocationReceipts() { return List.of(); }
+        public default List<MacAttempts.AllocationReceipt> allocationReceipts() { return List.of(); }
         /**
          * Returns successful native compiler retirements independently of coordinator acceptance.
          * @return immutable production retirement receipts
          */
-        default List<MacAttempts.Retirement> attemptRetirements() { return List.of(); }
+        public default List<MacAttempts.Retirement> attemptRetirements() { return List.of(); }
         /**
          * Returns original Cargo retirement after successful native, image and root token closure.
          * @return authentic root receipt, or empty before complete consumer cleanup
          */
-        default Optional<RootRetirement> originalCargoRetirement() { return Optional.empty(); }
+        public default Optional<RootRetirement> originalCargoRetirement() { return Optional.empty(); }
         /**
          * Installs the session and releases held Cargo last.
          * @param session retained coordinator callbacks
@@ -510,7 +510,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
      * @param jobs total positive jobserver capacity including Cargo implicit slot
      * @param timeout positive bounded native readiness interval, not a tool runtime deadline
      */
-    record Configuration(MacWorkloadNative.Launch cargo, MacCargoRegistration.Configuration registration,
+    public record Configuration(MacWorkloadNative.Launch cargo, MacCargoRegistration.Configuration registration,
         Path controllerEndpoint, Path cargoLibrary, Path frida, Path scratchParent, int jobs, Duration timeout)
     {
         /**
@@ -526,7 +526,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
          * @throws NullPointerException if any input is null
          * @throws IllegalArgumentException if trusted commands, credentials, environment or bounds disagree
          */
-        Configuration
+        public Configuration
         {
             Objects.requireNonNull(cargo, "cargo");
             Objects.requireNonNull(registration, "registration");
@@ -813,7 +813,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
      * @param result genuine original root result
      * @param terminationRequested whether cleanup requested cancellation before terminal composition
      */
-    record RootRetirement(List<Long> rootAuthority, int result, boolean terminationRequested)
+    public record RootRetirement(List<Long> rootAuthority, int result, boolean terminationRequested)
     {
         /**
          * Retains complete immutable native identity without replacing it with a process identifier.
@@ -821,7 +821,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
          * @param result genuine original root result
          * @param terminationRequested whether cancellation preceded complete terminal composition
          */
-        RootRetirement
+        public RootRetirement
         {
             rootAuthority = List.copyOf(rootAuthority);
             if (rootAuthority.size() != 18) throw new IllegalArgumentException("Complete native root authority required");
@@ -857,7 +857,7 @@ final class MacCargoInvocation implements CargoSession.Invocation
      * @return equivalent policy whose required entries take the lease values
      * @throws IllegalArgumentException if the lease removes a required entry
      */
-    static MacCargoRegistration.Configuration registrationFor(MacCargoRegistration.Configuration trusted,
+    public static MacCargoRegistration.Configuration registrationFor(MacCargoRegistration.Configuration trusted,
         Map<String, String> lease)
     {
         Map<String, String> required = new LinkedHashMap<>();

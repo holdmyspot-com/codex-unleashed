@@ -25,7 +25,7 @@ import java.util.UUID;
  * Missing or corrupt history yields unknown demand. Profiles are best-effort predictions, not exact future peaks.
  * Concurrent readers see only complete immutable records; concurrent writers never replace one another's samples.
  */
-final class CargoMemoryHistory
+public final class CargoMemoryHistory
 {
     /** Version of the private completed-sample record and its eligibility semantics. */
     private static final int FORMAT = 1;
@@ -40,7 +40,7 @@ final class CargoMemoryHistory
      * @throws NullPointerException if {@code directory} is null
      * @throws IllegalArgumentException if {@code directory} is relative or not normalized
      */
-    CargoMemoryHistory(Path directory)
+    public CargoMemoryHistory(Path directory)
     {
         this.directory = Objects.requireNonNull(directory, "directory");
         if (!directory.isAbsolute() || !directory.equals(directory.normalize()))
@@ -53,7 +53,7 @@ final class CargoMemoryHistory
      * @return greatest observed demand in bytes, or null when history is missing, unreadable or corrupt
      * @throws IllegalArgumentException if {@code identity} is not lowercase SHA-256 text
      */
-    Long estimate(String identity)
+    public Long estimate(String identity)
     {
         requireIdentity(identity);
         if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) return null;
@@ -90,7 +90,7 @@ final class CargoMemoryHistory
      * @throws IOException if the owned directory or atomic publication is unavailable
      * @throws IllegalArgumentException if {@code identity} is invalid or {@code observedBytes} is not positive
      */
-    void record(String identity, long observedBytes) throws IOException
+    public void record(String identity, long observedBytes) throws IOException
     {
         requireIdentity(identity);
         if (observedBytes <= 0) throw new IllegalArgumentException("Completed observed residency must be positive");

@@ -17,7 +17,7 @@ import java.util.UUID;
  * @param environment complete compiler environment, including unchanged borrowed jobserver flags
  * @param peakBytes nonnegative whole-tree demand estimate, or null when unknown
  */
-record CargoCompilerRequest(UUID identity, Wrapper wrapper, List<String> arguments, Path directory,
+public record CargoCompilerRequest(UUID identity, Wrapper wrapper, List<String> arguments, Path directory,
     Map<String, String> environment, Long peakBytes)
 {
     /**
@@ -25,7 +25,7 @@ record CargoCompilerRequest(UUID identity, Wrapper wrapper, List<String> argumen
      * @throws IllegalArgumentException if a path is relative, command is empty, native text contains NUL,
      * or a demand estimate is negative
      */
-    CargoCompilerRequest
+    public CargoCompilerRequest
     {
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(wrapper, "wrapper");
@@ -50,7 +50,7 @@ record CargoCompilerRequest(UUID identity, Wrapper wrapper, List<String> argumen
      * Returns the invocation-unique name used by the queue and platform command registry.
      * @return exact UUID text, unchanged across retries
      */
-    String name() { return identity.toString(); }
+    public String name() { return identity.toString(); }
 
     /**
      * Rejects text that native null-terminated interfaces cannot preserve.
@@ -69,10 +69,10 @@ record CargoCompilerRequest(UUID identity, Wrapper wrapper, List<String> argumen
      * @param parentPid live owning Cargo or delegated parent process identifier
      * @param parentBirth parent birth identity
      */
-    record Wrapper(long pid, long birth, long parentPid, long parentBirth)
+    public record Wrapper(long pid, long birth, long parentPid, long parentBirth)
     {
         /** Rejects missing identities without claiming to authenticate them. */
-        Wrapper
+        public Wrapper
         {
             if (pid <= 0 || birth <= 0 || parentPid <= 0 || parentBirth <= 0 || pid == parentPid)
                 throw new IllegalArgumentException("Wrapper and parent require distinct positive live birth identities");

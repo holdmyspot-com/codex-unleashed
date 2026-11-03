@@ -25,7 +25,7 @@ import tools.jackson.databind.node.ObjectNode;
  * characters, strings at most 128 characters, numeric tokens at most 20 characters and object nesting at most four.
  * Duplicate or unexpected fields, trailing values and unsupported versions are rejected.
  */
-final class AllocationMessages
+public final class AllocationMessages
 {
 	/** Maximum copied-message length accepted before JSON parsing. */
 	private static final int MAX_MESSAGE_CHARACTERS = 8192;
@@ -64,7 +64,7 @@ final class AllocationMessages
 	 * @throws NullPointerException if {@code attempt} is null
 	 * @throws IllegalArgumentException if the installation or process identity is outside its range
 	 */
-	AllocationMessages(ToolingScope scope, UUID attempt, long installation, long pid)
+	public AllocationMessages(ToolingScope scope, UUID attempt, long installation, long pid)
 	{
 		this.json = Objects.requireNonNull(scope, "scope").getAllocationMessageMapper();
 		Objects.requireNonNull(attempt, "attempt may not be null");
@@ -84,7 +84,7 @@ final class AllocationMessages
 	 * @throws NullPointerException if {@code message} is null
 	 * @throws IOException if JSON, shape, identities, version or native values are invalid; parser failures retain causes
 	 */
-	Event read(String message) throws IOException
+	public Event read(String message) throws IOException
 	{
 		Objects.requireNonNull(message, "message may not be null");
 		if (message.length() > MAX_MESSAGE_CHARACTERS)
@@ -153,7 +153,7 @@ final class AllocationMessages
 	 * @throws NullPointerException if {@code wait} is null
 	 * @throws IllegalArgumentException if the wait belongs to another installation
 	 */
-	ObjectNode permission(AllocationWaits.Wait wait)
+	public ObjectNode permission(AllocationWaits.Wait wait)
 	{
 		Objects.requireNonNull(wait, "wait may not be null");
 		if (wait.installation() != installation)
@@ -234,12 +234,12 @@ final class AllocationMessages
 	}
 
 	/** Decoded values only; callers still own readiness, acknowledgement and queue transitions. */
-	sealed interface Event permits Ready, Blocked, Granted
+	public sealed interface Event permits Ready, Blocked, Granted
 	{
 	}
 
 	/** Readiness for this codec's identity, without independently establishing process ownership. */
-	record Ready() implements Event
+	public record Ready() implements Event
 	{
 	}
 
@@ -250,14 +250,14 @@ final class AllocationMessages
 	 * @param bytes positive unsigned-64-bit allocation size
 	 * @param error captured unsigned-32-bit native error value, including zero
 	 */
-	record Blocked(AllocationWaits.Wait identity, BigInteger thread, BigInteger bytes, long error) implements Event
+	public record Blocked(AllocationWaits.Wait identity, BigInteger thread, BigInteger bytes, long error) implements Event
 	{
 		/**
 		 * Validates value-only construction without acquiring resources.
 		 * @throws NullPointerException if an identity or magnitude is null
 		 * @throws IllegalArgumentException if a magnitude is outside its declared range
 		 */
-		Blocked
+		public Blocked
 		{
 			Objects.requireNonNull(identity, "identity may not be null");
 			Objects.requireNonNull(thread, "thread may not be null");
@@ -276,13 +276,13 @@ final class AllocationMessages
 	 * @param identity native wait addressed by the control
 	 * @param status native permission result, including an unknown wait requiring caller recovery
 	 */
-	record Granted(AllocationWaits.Wait identity, GrantStatus status) implements Event
+	public record Granted(AllocationWaits.Wait identity, GrantStatus status) implements Event
 	{
 		/**
 		 * Validates value-only acknowledgement construction.
 		 * @throws NullPointerException if either component is null
 		 */
-		Granted
+		public Granted
 		{
 			Objects.requireNonNull(identity, "identity may not be null");
 			Objects.requireNonNull(status, "status may not be null");
@@ -290,7 +290,7 @@ final class AllocationMessages
 	}
 
 	/** Distinct native permission outcomes; none independently establishes allocation completion. */
-	enum GrantStatus
+	public enum GrantStatus
 	{
 		/** This permission changed the matching pending wait to granted. */
 		ACCEPTED,

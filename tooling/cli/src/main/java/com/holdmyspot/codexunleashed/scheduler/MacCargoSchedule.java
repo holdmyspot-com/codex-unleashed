@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Objects;
 
 /** Composes one explicitly authorized installed Mac Cargo invocation while retaining unresolved native cleanup. */
-final class MacCargoSchedule
+public final class MacCargoSchedule
 {
     /** Prevents construction of the command composition namespace. */
     private MacCargoSchedule() {}
@@ -33,7 +33,7 @@ final class MacCargoSchedule
      * @throws IOException if authorization, streams, construction, execution or cleanup fails
      * @throws Scheduler.PendingCleanup if native or queue ownership remains; retain and close on the originating thread
      */
-    static int run(ToolingScope tooling, Scheduler.Settings settings, Path launchConfiguration) throws IOException
+    public static int run(ToolingScope tooling, Scheduler.Settings settings, Path launchConfiguration) throws IOException
     {
         return run(tooling, settings, launchConfiguration, new NativeBoundary());
     }
@@ -48,7 +48,7 @@ final class MacCargoSchedule
      * @throws IOException if preflight, execution or cleanup fails
      * @throws Scheduler.PendingCleanup if owned native resources cannot yet close
      */
-    static int run(ToolingScope tooling, Scheduler.Settings settings, Path launchConfiguration, Boundary boundary) throws IOException
+    public static int run(ToolingScope tooling, Scheduler.Settings settings, Path launchConfiguration, Boundary boundary) throws IOException
     {
         Objects.requireNonNull(settings, "settings"); Objects.requireNonNull(boundary, "boundary");
         if (!"cargo".equals(settings.tool())) throw new IOException("Mac Cargo composition requires the Cargo tool");
@@ -119,7 +119,7 @@ final class MacCargoSchedule
      * @param scratch trusted absolute scratch parent
      * @throws IOException if Darwin socket/state path byte limits cannot accommodate every generated suffix
      */
-    static void requirePathBudget(Path scratch) throws IOException
+    public static void requirePathBudget(Path scratch) throws IOException
     {
         Path longest = scratch.resolve("m-" + "9".repeat(20)).resolve("a").resolve("compiler-" + "9".repeat(20));
         if (longest.toString().getBytes(StandardCharsets.UTF_8).length > 90 ||
@@ -148,7 +148,7 @@ final class MacCargoSchedule
      * @param attempts compiler attempt scratch parent
      * @param endpoint workload-group searchable controller endpoint parent
      */
-    record Namespace(Path directory, Path state, Path attempts, Path endpoint)
+    public record Namespace(Path directory, Path state, Path attempts, Path endpoint)
     {
         /**
          * Requires the fixed exclusively owned namespace layout used by the native composition.
@@ -157,7 +157,7 @@ final class MacCargoSchedule
          * @param attempts exact compiler scratch child
          * @param endpoint exact endpoint child
          */
-        Namespace
+        public Namespace
         {
             if (!directory.isAbsolute() || !directory.equals(directory.normalize()) ||
                 !state.equals(directory.resolve("o")) || !attempts.equals(directory.resolve("a")) ||
@@ -167,7 +167,7 @@ final class MacCargoSchedule
     }
 
     /** External platform preflight and resource acquisition; controlled portable checks do not grant native acceptance. */
-    interface Boundary
+    public interface Boundary
     {
         /**
          * Retains resource-free scoped services before any native initialization.
@@ -219,7 +219,7 @@ final class MacCargoSchedule
     }
 
     /** Retains invocation/coordinator lifetime across execution, failure and pending cleanup. */
-    interface Execution extends AutoCloseable
+    public interface Execution extends AutoCloseable
     {
         /**
          * Acquires and releases the actual invocation under this retained owner.

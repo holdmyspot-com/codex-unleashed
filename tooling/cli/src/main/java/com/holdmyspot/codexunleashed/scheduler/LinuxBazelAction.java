@@ -15,7 +15,7 @@ import java.util.OptionalLong;
  * Queue-selected cancellation alone authorizes an aborted outcome. Exit status alone does not authorize replay.
  * All operations belong to the constructing thread; native callbacks must copy events for later pumping.
  */
-final class LinuxBazelAction implements LinuxBazelSession.Action
+public final class LinuxBazelAction implements LinuxBazelSession.Action
 {
     /** Exclusive operation thread. */
     private final Thread owner = Thread.currentThread();
@@ -57,7 +57,7 @@ final class LinuxBazelAction implements LinuxBazelSession.Action
      * @throws NullPointerException if a parameter is null
      * @throws IllegalArgumentException if the name is blank, the peak is negative, or the timeout is nonpositive or unrepresentable
      */
-    LinuxBazelAction(String name, Long peakBytes, LinuxBazelControl control, ResourcesFactory factory, Duration timeout)
+    public LinuxBazelAction(String name, Long peakBytes, LinuxBazelControl control, ResourcesFactory factory, Duration timeout)
     {
         this.name = Objects.requireNonNull(name, "name");
         if (name.isBlank()) throw new IllegalArgumentException("Bazel action name must be nonblank");
@@ -442,7 +442,7 @@ final class LinuxBazelAction implements LinuxBazelSession.Action
 
     /** Creates one resource-free native owner before any child admission can fail partially. */
     @FunctionalInterface
-    interface ResourcesFactory
+    public interface ResourcesFactory
     {
         /**
          * Supplies an exclusive resource-free owner for one issued attempt.
@@ -457,7 +457,7 @@ final class LinuxBazelAction implements LinuxBazelSession.Action
      * Retains authentic child containment, measurement and original instrumentation through complete cleanup.
      * Admission/start failures may be partial; this same owner remains reachable for bounded cleanup.
      */
-    interface Resources extends AutoCloseable
+    public interface Resources extends AutoCloseable
     {
         /**
          * Establishes the private attempt filesystem before native CREATE can fork its blocked child.

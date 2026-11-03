@@ -24,7 +24,7 @@ import tools.jackson.databind.node.ObjectNode;
  * Held SPAWN events require opaque live membership, not a PID crawl. Unexpected origins stay held.
  * Native callbacks only copy messages; this owner and peer service run on the constructing thread.
  */
-final class WindowsAllocationHooks implements WindowsAttempt.Hooks
+public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
 {
     /** Only thread permitted to control these owners. */
     private final Thread owner = Thread.currentThread();
@@ -48,8 +48,6 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
     private final Set<Long> deliveredChildren = new HashSet<>();
     /** Child PIDs reserved before their single possibly uncertain native continuation request. */
     private final Set<Long> resumeAttempts = new HashSet<>();
-    /** Original child continuations whose native manager call returned successfully. */
-    private final Set<Long> resumeCompletions = new HashSet<>();
     /** Monotonic observation source, controlled by modeled tests. */
     private final LongSupplier ticker;
     /** Maximum receipt join interval in nanoseconds. */
@@ -87,7 +85,7 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
      * @param timeout positive representable control interval
      * @param peers owner-thread peer pump without queue reentry
      */
-    WindowsAllocationHooks(ToolingScope scope, UUID identity, FridaRuntime runtime, WindowsProcess process, AllocationWaits waits,
+    public WindowsAllocationHooks(ToolingScope scope, UUID identity, FridaRuntime runtime, WindowsProcess process, AllocationWaits waits,
         Duration timeout, AllocationHook.Pump peers)
     {
         this(nativeBackend(scope, identity, runtime, process, waits, timeout), peers);
@@ -104,7 +102,7 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
      * @param peers owner-thread peer service
      * @param imageHooks additional resource-free image hook factory, or null when absent
      */
-    WindowsAllocationHooks(ToolingScope scope, UUID identity, FridaRuntime runtime, WindowsProcess process,
+    public WindowsAllocationHooks(ToolingScope scope, UUID identity, FridaRuntime runtime, WindowsProcess process,
         AllocationWaits waits, Duration timeout, AllocationHook.Pump peers, ImageHooks imageHooks)
     {
         this(new NativeBackend(scope, identity, runtime, process, waits, WindowsAttempts.checkedTimeout(timeout),
@@ -152,7 +150,7 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
      * @param backend resource-free native-operation adapter
      * @param peers owner-thread peer pump without queue reentry
      */
-    WindowsAllocationHooks(Backend backend, AllocationHook.Pump peers)
+    public WindowsAllocationHooks(Backend backend, AllocationHook.Pump peers)
     {
         this(backend, peers, System::nanoTime);
     }
@@ -164,7 +162,7 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
      * @param ticker monotonic nanosecond observation source
      * @throws IllegalArgumentException if the join interval is nonpositive or cannot fit nanoseconds
      */
-    WindowsAllocationHooks(Backend backend, AllocationHook.Pump peers, LongSupplier ticker)
+    public WindowsAllocationHooks(Backend backend, AllocationHook.Pump peers, LongSupplier ticker)
     {
         this.backend = Objects.requireNonNull(backend, "backend");
         this.peers = Objects.requireNonNull(peers, "peers");
@@ -326,7 +324,6 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
         member.requireLive();
         if (!resumeAttempts.add(event.pid())) throw new IOException("Held child continuation was already attempted: " + event.pid());
         manager.resume(event.pid());
-        resumeCompletions.add(event.pid());
     }
 
     /**
@@ -354,7 +351,7 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
      * @param sourceHandle parent-local retained process handle bits
      * @param launch immutable native creation facts, or null for legacy modeled receipts
      */
-    record Receipt(UUID generation, long sequence, long parentPid, long parentBirth, long childPid,
+    public record Receipt(UUID generation, long sequence, long parentPid, long parentBirth, long childPid,
         long childBirth, long sourceHandle, WindowsCreationReceipt.Launch launch)
     {
         /**
@@ -367,7 +364,7 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
          * @param childBirth descendant FILETIME bits
          * @param sourceHandle creator-local retained process handle bits
          */
-        Receipt(UUID generation, long sequence, long parentPid, long parentBirth, long childPid,
+        public Receipt(UUID generation, long sequence, long parentPid, long parentBirth, long childPid,
             long childBirth, long sourceHandle)
         {
             this(generation, sequence, parentPid, parentBirth, childPid, childBirth, sourceHandle, null);
@@ -384,7 +381,7 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
          * @param sourceHandle valid parent-local handle bits
          * @param launch native launch facts, or null when unavailable to identity-only callers
          */
-        Receipt
+        public Receipt
         {
             Objects.requireNonNull(generation, "generation");
             if (sequence <= 0 || sequence > 9007199254740991L || parentPid <= 0 || parentPid > 0xffff_ffffL ||
@@ -534,7 +531,7 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
     }
 
     /** Narrow native operations; each returned owner must be retained before starting native effects. */
-    interface Backend
+    public interface Backend
     {
         /**
          * Returns the prepared root PID.
@@ -587,7 +584,7 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
         void releaseRoot() throws IOException;
     }
     /** Owns one creating-process observer through actual whole-Job zero. */
-    interface Observer
+    public interface Observer
     {
         /** Starts the retained observer once.
          * @throws IOException if native acquisition fails
@@ -616,7 +613,7 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
         void close(AllocationHook.ExecutionBarrier barrier) throws IOException;
     }
     /** Owns an opaque native handle independently verified against this exact Job. */
-    interface Member extends AutoCloseable
+    public interface Member extends AutoCloseable
     {
         /**
          * Returns the PID associated with the retained native handle.
@@ -630,7 +627,7 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
         @Override void close() throws IOException;
     }
     /** Owns the distinct attempt manager; child notifications are copied before caller-thread processing. */
-    interface Manager extends AutoCloseable
+    public interface Manager extends AutoCloseable
     {
         /** Starts the already retained native owner once.
          * @throws IOException if startup fails after any partial acquisition
@@ -715,7 +712,7 @@ final class WindowsAllocationHooks implements WindowsAttempt.Hooks
     }
 
     /** Owns one generation of an allocation script and its attachment session. */
-    interface Hook
+    public interface Hook
     {
         /** Starts the already retained native owner once.
          * @throws IOException if startup fails after any partial acquisition

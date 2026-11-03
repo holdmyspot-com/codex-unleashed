@@ -32,7 +32,7 @@ import tools.jackson.databind.json.JsonMapper;
  * faults, uncertain posts and control deadlines permanently withdraw automatic permission authority. A silent lost
  * blocked frame is not detected by empty polling; this owner makes no loss-free transport guarantee.
  */
-final class AllocationHook
+public final class AllocationHook
 {
 	/**
 	 * Same copied-message bound as the allocation codec, enforced before inspecting Frida error frames.
@@ -130,7 +130,7 @@ final class AllocationHook
 	 * @throws NullPointerException if a reference input is null
 	 * @throws IllegalArgumentException if an identity, source or duration is invalid
 	 */
-	AllocationHook(ToolingScope scope, UUID attempt, long installation, long pid, FridaRuntime.Manager manager, AllocationWaits waits,
+	public AllocationHook(ToolingScope scope, UUID attempt, long installation, long pid, FridaRuntime.Manager manager, AllocationWaits waits,
 		String program, Duration timeout)
 	{
 		this(scope, attempt, installation, pid, newNativeConnection(manager, pid), waits, program, timeout, System::nanoTime);
@@ -150,7 +150,7 @@ final class AllocationHook
 	 * @throws NullPointerException if a reference input is null
 	 * @throws IllegalArgumentException if an identity, source or duration is invalid
 	 */
-	AllocationHook(ToolingScope scope, UUID attempt, long installation, long pid, Connection connection, AllocationWaits waits,
+	public AllocationHook(ToolingScope scope, UUID attempt, long installation, long pid, Connection connection, AllocationWaits waits,
 		String program, Duration timeout, LongSupplier nanoTime)
 	{
 		this.json = Objects.requireNonNull(scope, "scope").getAllocationEnvelopeMapper();
@@ -213,7 +213,7 @@ final class AllocationHook
 	 * @throws IllegalStateException if called off-thread or start was already attempted
 	 * @throws IOException if stopped, failed or native acquisition/loading fails
 	 */
-	void start() throws IOException
+	public void start() throws IOException
 	{
 		requireOwner();
 		requireAuthority();
@@ -243,7 +243,7 @@ final class AllocationHook
 	 * @throws IllegalStateException if called off-thread or before successful native start
 	 * @throws IOException if delivery, peer service or the readiness deadline fails
 	 */
-	void awaitReady(Pump peers) throws IOException
+	public void awaitReady(Pump peers) throws IOException
 	{
 		await(permissions::ready, peers, "Native allocation readiness deadline exceeded");
 	}
@@ -253,7 +253,7 @@ final class AllocationHook
 	 * @throws IllegalStateException if called off-thread or before successful native start
 	 * @throws IOException if stopped, previously failed, decoding fails or native delivery reports failure
 	 */
-	void pump() throws IOException
+	public void pump() throws IOException
 	{
 		requireStarted();
 		try
@@ -294,7 +294,7 @@ final class AllocationHook
      * @return immutable first reports in native delivery order, empty before a validated denial
      * @throws IllegalStateException if called off-thread
      */
-    List<Denial> denials() { requireOwner(); return List.copyOf(denials); }
+    public List<Denial> denials() { requireOwner(); return List.copyOf(denials); }
 
     /**
      * Retains exact decoder inputs and the immutable decoded frame; construction alone proves no native event.
@@ -302,7 +302,7 @@ final class AllocationHook
      * @param pid authenticated original image PID
      * @param blocked actual validated native report including installation, wait, thread, bytes and errno
      */
-    record Denial(UUID attempt, long pid, AllocationMessages.Blocked blocked) {}
+    public record Denial(UUID attempt, long pid, AllocationMessages.Blocked blocked) {}
 
 	/**
 	 * Posts one observed wait selected by the caller's frozen AllocationWaits batch and awaits its exact accepted response.
@@ -313,7 +313,7 @@ final class AllocationHook
 	 * @throws IllegalStateException if called off-thread or before native start
 	 * @throws IOException if the wait was not observed here, permission/delivery fails or its acknowledgement times out
 	 */
-	void grant(AllocationWaits.Wait wait, Pump peers) throws IOException
+	public void grant(AllocationWaits.Wait wait, Pump peers) throws IOException
 	{
 		Objects.requireNonNull(wait, "wait may not be null");
 		Objects.requireNonNull(peers, "peers may not be null");
@@ -341,7 +341,7 @@ final class AllocationHook
 	 * The attempt independently stops its shared AllocationWaits before initiating whole-tree cancellation.
 	 * @throws IllegalStateException if called off-thread
 	 */
-	void stop()
+	public void stop()
 	{
 		requireOwner();
 		stopped = true;
@@ -357,7 +357,7 @@ final class AllocationHook
 	 * @throws IllegalStateException if called off-thread
 	 * @throws IOException if the barrier is false/unknown or native cleanup fails
 	 */
-	void close(ExecutionBarrier barrier) throws IOException
+	public void close(ExecutionBarrier barrier) throws IOException
 	{
 		Objects.requireNonNull(barrier, "barrier may not be null");
 		requireOwner();
@@ -413,7 +413,7 @@ final class AllocationHook
 	 * @throws IOException if detachment is unproven or destruction is uncertain
 	 * @throws IllegalStateException if called off-thread
 	 */
-	void closeDetached() throws IOException
+	public void closeDetached() throws IOException
 	{
 		requireOwner();
 		if (closed) return;
@@ -427,14 +427,14 @@ final class AllocationHook
 	 * @return posted native wait, or null before posting and after its matching accepted response
 	 * @throws IllegalStateException if called off-thread
 	 */
-	AllocationWaits.Wait pending() { requireOwner(); return permissions.pending(); }
+	public AllocationWaits.Wait pending() { requireOwner(); return permissions.pending(); }
 
 	/**
 	 * Returns the first operational failure without clearing authority or native ownership state.
 	 * @return first failure, or null before an operational failure; stop alone is not failure
 	 * @throws IllegalStateException if called off-thread
 	 */
-	IOException failure() { requireOwner(); return failure; }
+	public IOException failure() { requireOwner(); return failure; }
 
 	/**
 	 * Services a control wait without imposing a runtime limit on ordinary workload execution.
@@ -530,7 +530,7 @@ final class AllocationHook
 	 * Owned external connection boundary; callbacks only queue copied frames for later owner-thread polling.
 	 * A failed operation retains partial native acquisition until close after the attempt's execution barrier.
 	 */
-	interface Connection
+	public interface Connection
 	{
 		/**
 		 * Attaches and loads the supplied program, retaining any partially acquired native owners.
@@ -570,7 +570,7 @@ final class AllocationHook
 
 	 */
 	@FunctionalInterface
-	interface Pump
+	public interface Pump
 	{
 		/**
 		 * Services peers without delivering notifications into an active queue control.
@@ -585,7 +585,7 @@ final class AllocationHook
 
 	 */
 	@FunctionalInterface
-	interface ExecutionBarrier
+	public interface ExecutionBarrier
 	{
 		/**
 		 * Observes the trusted whole-workload execution barrier while preserving unknown as failure.

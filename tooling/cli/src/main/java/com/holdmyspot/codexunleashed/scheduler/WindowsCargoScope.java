@@ -19,7 +19,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Getters support concurrent callers while open. The composition boundary closes this scope after its borrowers
  * finish; the supplied tooling scope remains caller-owned and must outlive it. Native owners retain their own lifetimes.
  */
-final class WindowsCargoScope extends AbstractScope
+public final class WindowsCargoScope extends AbstractScope
 {
     /** Number of random bytes in the Windows control protocol's 256-bit attempt capability. */
     private static final int CAPABILITY_BYTES = 32;
@@ -41,7 +41,7 @@ final class WindowsCargoScope extends AbstractScope
      * @param tooling caller-owned tooling scope retained open through this scope's borrowers
      * @throws NullPointerException if {@code tooling} is null
      */
-    WindowsCargoScope(ToolingScope tooling)
+    public WindowsCargoScope(ToolingScope tooling)
     {
         this.tooling = Objects.requireNonNull(tooling, "tooling");
     }
@@ -64,7 +64,7 @@ final class WindowsCargoScope extends AbstractScope
      * @return this scope's shared parser; callers must not close it
      * @throws IllegalStateException if this scope is closed
      */
-    JsonMapper json()
+    public JsonMapper json()
     {
         requireOpen();
         return json.getValue();
@@ -75,7 +75,7 @@ final class WindowsCargoScope extends AbstractScope
      * @return a new caller-owned array containing 32 unpredictable bytes
      * @throws IllegalStateException if this scope is closed
      */
-    byte[] capability()
+    public byte[] capability()
     {
         requireOpen();
         byte[] capability = new byte[CAPABILITY_BYTES];

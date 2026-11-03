@@ -10,7 +10,7 @@ import java.util.Objects;
  * Construction and factory creation acquire no native resources. A failed operation retains this same owner;
  * uncertain authority registration never permits removal of storage still potentially borrowed by the reader.
  */
-final class LinuxBazelAdmission implements LinuxBazelAction.Resources
+public final class LinuxBazelAdmission implements LinuxBazelAction.Resources
 {
     /** Authenticates kernel observations independently of native local claims. */
     private final LinuxBazelIdentity authenticator;
@@ -322,7 +322,7 @@ final class LinuxBazelAdmission implements LinuxBazelAction.Resources
      * Retains the original manager, host-owned transport and every partial native acquisition until actual zero.
      * Its implementation pins trusted executable, classpath, environment and pipe ownership before native use.
      */
-    interface HookOwner
+    public interface HookOwner
     {
         /**
          * Indicates whether a denied allocation requires a fresh attempt.

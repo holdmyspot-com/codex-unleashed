@@ -17,7 +17,7 @@ import java.util.OptionalLong;
  * original control connection across retries; the invocation owns the original
  * Bazel root and outer dependencies. All calls belong to the constructing thread.
  */
-final class LinuxBazelSession implements SchedulerCoordinator.Session<LinuxBazelControl.Result>
+public final class LinuxBazelSession implements SchedulerCoordinator.Session<LinuxBazelControl.Result>
 {
     /** Sole thread allowed to mutate this invocation. */
     private final Thread owner = Thread.currentThread();
@@ -52,7 +52,7 @@ final class LinuxBazelSession implements SchedulerCoordinator.Session<LinuxBazel
      * @param invocation original Bazel discovery/root and outer cleanup owner
      * @throws NullPointerException if either argument is null
      */
-    LinuxBazelSession(Controller.Measurements measurements, Invocation invocation)
+    public LinuxBazelSession(Controller.Measurements measurements, Invocation invocation)
     {
         this.measurements = Objects.requireNonNull(measurements, "measurements");
         this.invocation = Objects.requireNonNull(invocation, "invocation");
@@ -69,7 +69,7 @@ final class LinuxBazelSession implements SchedulerCoordinator.Session<LinuxBazel
      * @throws IllegalStateException if registration reenters or uses another thread
      * @throws IOException if discovery stopped or an earlier operation failed
      */
-    void registerAuthenticated(Action action) throws IOException
+    public void registerAuthenticated(Action action) throws IOException
     {
         requireActive();
         Objects.requireNonNull(action, "action");
@@ -304,7 +304,7 @@ final class LinuxBazelSession implements SchedulerCoordinator.Session<LinuxBazel
      * closed-attempt ledger. Methods may not call JobQueue. Queue-owned attempts
      * borrow this control; close retains it until every attempt has released it.
      */
-    interface Action extends AutoCloseable
+    public interface Action extends AutoCloseable
     {
         /**
          * Supplies the immutable invocation-local action identity.
@@ -358,7 +358,7 @@ final class LinuxBazelSession implements SchedulerCoordinator.Session<LinuxBazel
      * Owns genuine Bazel root discovery and all invocation-wide dependencies.
      * Root-only exit does not complete actions; callbacks only copy native events.
      */
-    interface Invocation extends AutoCloseable
+    public interface Invocation extends AutoCloseable
     {
         /**
          * Services discovery, registering authenticated action owners before submission.

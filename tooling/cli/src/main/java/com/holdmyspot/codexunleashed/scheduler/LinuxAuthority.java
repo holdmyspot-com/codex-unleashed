@@ -40,7 +40,7 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 	/**
 	 * Reader rejection reason for verified missing immediate workload leaves.
 	 */
-	static final String MISSING_LEAF = "registered-leaf-removed";
+	public static final String MISSING_LEAF = "registered-leaf-removed";
 	/** Reader-verified process membership churn invalidating a registered workload's residency sample. */
 	static final String CHANGED_MEMBERS = "registered-membership-changed";
 
@@ -48,7 +48,7 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 	 * Reads the owning supervisor's genuine retained execution-impossible barrier.
 	 */
 	@FunctionalInterface
-	interface ZeroBarrier
+	public interface ZeroBarrier
 	{
 		/**
 		 * Observes actual zero or its retained earlier observation.
@@ -629,7 +629,7 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 	/**
 	 * Narrow typed access to the production reply decision for focused checks.
 	 */
-	static final class SharedSecrets
+	public static final class SharedSecrets
 	{
 		/**
 		 * Prevents construction.
@@ -642,7 +642,7 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 		 * @param barriers registered retained-zero suppliers
 		 * @throws IOException if the reply is rejected
 		 */
-		static void requireSuccess(Properties response, String operation,
+		public static void requireSuccess(Properties response, String operation,
 			Map<LinuxMeasurements.Attempt, ZeroBarrier> barriers) throws IOException
 		{
 			LinuxAuthority.requireSuccess(response, operation, barriers);
@@ -677,7 +677,7 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 	 * @param name field name
 	 * @return exact count
 	 */
-	static long number(Properties values, String name)
+	public static long number(Properties values, String name)
 	{
 		String text = values.getProperty(name);
 		long value = Long.parseLong(text);

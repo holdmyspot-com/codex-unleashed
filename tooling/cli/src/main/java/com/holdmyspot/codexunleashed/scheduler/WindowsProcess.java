@@ -266,7 +266,7 @@ public final class WindowsProcess implements AutoCloseable
      * @throws IllegalArgumentException if a standard handle is not live and native
      * @throws IOException if native launch or cleanup fails
      */
-    static WindowsProcess launch(List<String> command, Path directory,
+    public static WindowsProcess launch(List<String> command, Path directory,
         Map<String,String> environment, MemorySegment input, MemorySegment output,
         MemorySegment error, Kernel kernel) throws IOException
     {
@@ -286,7 +286,7 @@ public final class WindowsProcess implements AutoCloseable
      * @return the process owner
      * @throws IOException if native launch or cleanup fails
      */
-    static WindowsProcess launchPrepared(List<String> command, Path directory,
+    public static WindowsProcess launchPrepared(List<String> command, Path directory,
         Map<String,String> environment, MemorySegment input, MemorySegment output,
         MemorySegment error, Kernel kernel) throws IOException
     {
@@ -305,7 +305,7 @@ public final class WindowsProcess implements AutoCloseable
      * @return the completed process owner
      * @throws IOException if native launch or cleanup fails
      */
-    static WindowsProcess launch(List<String> command, Path directory,
+    public static WindowsProcess launch(List<String> command, Path directory,
         Map<String,String> environment, MemorySegment output, Kernel kernel) throws IOException
     {
         return acquire(command, directory, environment, null, output, null, kernel, false);
@@ -631,7 +631,7 @@ public final class WindowsProcess implements AutoCloseable
      * @throws IllegalArgumentException if native identifiers or handle bits are invalid
      * @throws IOException if transfer, identity or native ownership cannot be established
      */
-    CreatedSource retainCreatedSource(Member parent, long parentBirth, long childPid, long childBirth,
+    public CreatedSource retainCreatedSource(Member parent, long parentBirth, long childPid, long childBirth,
         long parentLocalHandle) throws IOException
     {
         requireControllingThread();
@@ -708,7 +708,7 @@ public final class WindowsProcess implements AutoCloseable
      * @param observation authenticated native observer facts
      * @throws IOException if authority belongs elsewhere or its identity differs
      */
-    void retainReceipt(CreatedSource source, WindowsAllocationHooks.Receipt observation) throws IOException
+    public void retainReceipt(CreatedSource source, WindowsAllocationHooks.Receipt observation) throws IOException
     {
         requireControllingThread();
         Objects.requireNonNull(observation, "observation");
@@ -726,7 +726,7 @@ public final class WindowsProcess implements AutoCloseable
      * @param childPid descendant identifier supplied by the native transport
      * @return retained authority, or empty when the process has no authenticated receipt
      */
-    Optional<WindowsCreationReceipt> creationReceipt(long childPid)
+    public Optional<WindowsCreationReceipt> creationReceipt(long childPid)
     {
         requireControllingThread();
         requireOpen();
@@ -761,7 +761,7 @@ public final class WindowsProcess implements AutoCloseable
      * Owns a child process identity transferred from its creating parent's retained handle.
      * Stream imports borrow this exact identity; only the enclosing Job owner closes these process handles.
      */
-    final class CreatedSource
+    public final class CreatedSource
     {
         /** Creating process whose original retained authority supplied this handle. */
         private final long parentPid;
@@ -850,7 +850,7 @@ public final class WindowsProcess implements AutoCloseable
          * @return owned noninheritable controller-local copies, also retained by the Job owner
          * @throws IOException if source identity, transfer or partial ownership cannot be established
          */
-        StandardStreams importStandardStreams(MemorySegment input, MemorySegment output, MemorySegment error) throws IOException
+        public StandardStreams importStandardStreams(MemorySegment input, MemorySegment output, MemorySegment error) throws IOException
         {
             validateStandardHandle(input, "Input");
             validateStandardHandle(output, "Output");
@@ -985,7 +985,7 @@ public final class WindowsProcess implements AutoCloseable
          * @param state actual command line, directory and environment copied inside the held image
          * @throws IOException if original identity or receipt ownership differs
          */
-        void sealNativeState(long expectedBirth, WindowsCreationReceipt.NativeState state) throws IOException
+        public void sealNativeState(long expectedBirth, WindowsCreationReceipt.NativeState state) throws IOException
         {
             requireBirth(expectedBirth);
             WindowsCreationReceipt receipt = creationReceipts.get(pid);
@@ -1161,7 +1161,7 @@ public final class WindowsProcess implements AutoCloseable
      * A complete observation found trusted membership churn and released every invocation-owned query.
      * The measurement registration supplies action identity; this marker conveys no whole-Job completion.
      */
-    static final class MembershipChanged extends IOException
+    public static final class MembershipChanged extends IOException
     {
         /**
          * Retains a native observation diagnostic without supplying a memory value.
@@ -1946,10 +1946,10 @@ public final class WindowsProcess implements AutoCloseable
      * Binds this operation's native Windows calls with captured last-error state.
      * Package visibility permits a focused fixture to exercise cleanup-error aggregation.
      */
-    static class Kernel implements AutoCloseable
+    public static class Kernel implements AutoCloseable
     {
         /** Confined native storage retained through every owned handle release. */
-        final Arena arena;
+        public final Arena arena;
         /** Bound Kernel32 operations indexed by their exact native export names. */
         private final Map<String,MethodHandle> functions = new HashMap<>();
         /** Captured GetLastError storage reused by owner-thread native calls. */
@@ -1962,7 +1962,7 @@ public final class WindowsProcess implements AutoCloseable
          * @param scope invocation-owned shared values
          * @throws UnsupportedOperationException if the platform or required symbols are unsupported
          */
-        Kernel(ToolingScope scope)
+        public Kernel(ToolingScope scope)
         {
             if (!System.getProperty("os.name", "").startsWith("Windows") || ValueLayout.ADDRESS.byteSize() != 8)
                 throw new UnsupportedOperationException("WindowsProcess requires native 64-bit Windows");
@@ -2013,7 +2013,7 @@ public final class WindowsProcess implements AutoCloseable
          *
          * @param arena owned storage released by close
          */
-        Kernel(Arena arena)
+        public Kernel(Arena arena)
         {
             this.arena = Objects.requireNonNull(arena, "arena may not be null");
             errors = arena.allocate(ValueLayout.JAVA_INT);
@@ -2042,7 +2042,7 @@ public final class WindowsProcess implements AutoCloseable
          * @return the native return value, or null for void
          * @throws IOException if a checked native invocation fails
          */
-        Object call(String name, Object... arguments) throws IOException
+        public Object call(String name, Object... arguments) throws IOException
         {
             var values = new ArrayList<Object>();
             values.add(errors);
@@ -2119,7 +2119,7 @@ public final class WindowsProcess implements AutoCloseable
          * Returns the last native call's captured Windows error code.
          * @return the unsigned GetLastError value
          */
-        long lastError() { return Integer.toUnsignedLong(errors.get(ValueLayout.JAVA_INT,errorOffset)); }
+        public long lastError() { return Integer.toUnsignedLong(errors.get(ValueLayout.JAVA_INT,errorOffset)); }
 
         /**
          * Creates a failure preserving a captured native error.

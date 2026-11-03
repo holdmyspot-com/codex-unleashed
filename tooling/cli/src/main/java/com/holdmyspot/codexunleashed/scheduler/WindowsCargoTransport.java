@@ -23,10 +23,10 @@ import java.util.function.IntSupplier;
  * A PID is a selector for independent retained-creation authentication, never process authority by itself.
  * Native owners are thread confined. Pending OVERLAPPED storage remains owned until cancellation completes.
  */
-final class WindowsCargoTransport
+public final class WindowsCargoTransport
 {
     /** Maximum application payload, excluding its four-byte network-order length header. */
-    static final int MAX_FRAME_BYTES = 1024 * 1024;
+    public static final int MAX_FRAME_BYTES = 1024 * 1024;
     /** Private local pipe namespace; random invocation names never address remote hosts. */
     private static final String PREFIX = "\\\\.\\pipe\\codex-cargo-";
 
@@ -39,7 +39,7 @@ final class WindowsCargoTransport
      * Creates an invocation-random endpoint name without acquiring a handle.
      * @return local Windows named-pipe name
      */
-    static String endpoint()
+    public static String endpoint()
     {
         return PREFIX + UUID.randomUUID();
     }
@@ -52,7 +52,7 @@ final class WindowsCargoTransport
      * @return independently owned listener
      * @throws IOException if native acquisition fails
      */
-    static Listener listen(WindowsCargoScope scope, String endpoint, Duration timeout) throws IOException
+    public static Listener listen(WindowsCargoScope scope, String endpoint, Duration timeout) throws IOException
     {
         validate(endpoint, timeout);
         return new Listener(new Native(scope), endpoint, timeout);
@@ -66,7 +66,7 @@ final class WindowsCargoTransport
      * @return owned connection with observed server PID
      * @throws IOException if connection or acquisition fails
      */
-    static Connection connect(WindowsCargoScope scope, String endpoint, Duration timeout) throws IOException
+    public static Connection connect(WindowsCargoScope scope, String endpoint, Duration timeout) throws IOException
     {
         validate(endpoint, timeout);
         Native nativeCalls = new Native(scope);
@@ -102,7 +102,7 @@ final class WindowsCargoTransport
     }
 
     /** Separates stopping listener I/O from disposing bindings borrowed by accepted endpoints. */
-    static final class ListenerLifetime implements AutoCloseable
+    public static final class ListenerLifetime implements AutoCloseable
     {
         /** Stops pending acceptance without releasing bindings. */
         private final Closeable stop;
@@ -126,7 +126,7 @@ final class WindowsCargoTransport
          * @param dispose releases bindings after every accepted endpoint closes
          * @throws NullPointerException if any operation or borrower count is null
          */
-        ListenerLifetime(Closeable stop, IntSupplier peers, Closeable dispose)
+        public ListenerLifetime(Closeable stop, IntSupplier peers, Closeable dispose)
         {
             this.stop = Objects.requireNonNull(stop, "stop");
             this.peers = Objects.requireNonNull(peers, "peers");
@@ -137,13 +137,13 @@ final class WindowsCargoTransport
          * Reports whether polling may still transfer a newly accepted endpoint.
          * @return whether acceptance has not stopped
          */
-        boolean accepting() { return !stopAttempted; }
+        public boolean accepting() { return !stopAttempted; }
 
         /**
          * Stops acceptance once without disposing bindings borrowed by accepted peers.
          * @throws IOException if pending acceptance cancellation or release fails
          */
-        void stopAccepting() throws IOException
+        public void stopAccepting() throws IOException
         {
             if (stopAttempted) { rethrow(stopFailure); return; }
             stopAttempted = true;
@@ -185,7 +185,7 @@ final class WindowsCargoTransport
      * Stop acceptance before retiring consumers; close bindings only after accepted borrowers close.
      * Connection ownership is transferred by poll.
      */
-    static final class Listener implements AutoCloseable
+    public static final class Listener implements AutoCloseable
     {
         /** Native bindings shared with accepted borrowers. */
         private final Native calls;
@@ -231,7 +231,7 @@ final class WindowsCargoTransport
          * @return new owned connection, or null if no peer has connected
          * @throws IOException if native connection or replacement acquisition fails
          */
-        Connection poll() throws IOException
+        public Connection poll() throws IOException
         {
             requireOpen();
             if (!connected && !calls.complete(pending, operation)) return null;
@@ -279,7 +279,7 @@ final class WindowsCargoTransport
          * Cancels and drains pending acceptance while retaining bindings borrowed by accepted connections.
          * @throws IOException if cancellation or pending-instance release is uncertain
          */
-        void stopAccepting() throws IOException { lifetime.stopAccepting(); }
+        public void stopAccepting() throws IOException { lifetime.stopAccepting(); }
 
         /**
          * Stops one pending instance without releasing the accepted connections' native arena.
@@ -311,7 +311,7 @@ final class WindowsCargoTransport
      * Owns one byte-mode pipe and exactly-once frame operations.
      * Any uncertain frame failure permanently poisons this connection. No partial publication is replayed.
      */
-    static final class Connection implements AutoCloseable
+    public static final class Connection implements AutoCloseable
     {
         /** Native library and retained asynchronous buffers. */
         private final Native calls;
@@ -367,14 +367,14 @@ final class WindowsCargoTransport
          * Returns the kernel-reported peer PID for retained creation-receipt authentication.
          * @return positive peer PID
          */
-        long peerPid() { return peerPid; }
+        public long peerPid() { return peerPid; }
 
         /**
          * Reads available bytes without waiting for an idle wrapper or incomplete frame.
          * @return complete payload, or null while a frame has not finished
          * @throws IOException if the frame, deadline or native operation fails; future I/O remains poisoned
          */
-        byte[] poll() throws IOException
+        public byte[] poll() throws IOException
         {
             requireOpen();
             try (Arena temporary = Arena.ofConfined())
@@ -417,7 +417,7 @@ final class WindowsCargoTransport
          * @return complete payload
          * @throws IOException if reception or interruption fails
          */
-        byte[] awaitFrame() throws IOException
+        public byte[] awaitFrame() throws IOException
         {
             while (true)
             {
@@ -433,7 +433,7 @@ final class WindowsCargoTransport
          * @param bytes complete payload of one byte through 1 MiB
          * @throws IOException if publication fails or exceeds its deadline
          */
-        void send(byte[] bytes) throws IOException
+        public void send(byte[] bytes) throws IOException
         {
             requireOpen();
             if (bytes.length == 0 || bytes.length > MAX_FRAME_BYTES) throw new IOException("Cargo payload length is outside one byte through 1 MiB");

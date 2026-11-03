@@ -19,7 +19,7 @@ import java.util.function.LongSupplier;
  * or authorize retry. Callers deliver each native held event exactly once on the constructing thread.
  * Every retired or partial generation stays owned until the supplied barrier establishes execution impossibility.
  */
-final class LinuxCargoImages
+public final class LinuxCargoImages
 {
     /**
      * Constructing thread required before every operation.
@@ -85,7 +85,7 @@ final class LinuxCargoImages
      * @param timeout positive readiness duration
      * @throws IOException if the original supervisor identity cannot be pinned
      */
-    LinuxCargoImages(ToolingScope scope, FridaRuntime.Manager manager, Identity root, Path containment,
+    public LinuxCargoImages(ToolingScope scope, FridaRuntime.Manager manager, Identity root, Path containment,
         Policy policy, Enrollment enrollment, Duration timeout, long supervisorPid, long supervisorBirth) throws IOException
     {
         this(scope, new NativeOperations(scope, manager, containment, timeout, supervisorPid, supervisorBirth), root, policy, enrollment, timeout, System::nanoTime);
@@ -102,7 +102,7 @@ final class LinuxCargoImages
      * @param timeout positive representable readiness duration
      * @param clock monotonic readiness observations
      */
-    LinuxCargoImages(ToolingScope scope, Operations operations, Identity root, Policy policy,
+    public LinuxCargoImages(ToolingScope scope, Operations operations, Identity root, Policy policy,
         Enrollment enrollment, Duration timeout, LongSupplier clock)
     {
         connections = new HeldImageConnections(scope, timeout, clock);
@@ -116,7 +116,7 @@ final class LinuxCargoImages
      * Arms the caller-held root without releasing its external native gate.
      * @throws IOException if root identity, attachment or readiness cannot be established
      */
-    void start() throws IOException
+    public void start() throws IOException
     {
         requireThread();
         if (attempted || stopped) throw new IllegalStateException("Root arming is permitted once");
@@ -140,7 +140,7 @@ final class LinuxCargoImages
      * @param child copied native event, never itself an ownership credential
      * @throws IOException if lineage, readiness or resumption is uncertain
      */
-    void advance(FridaRuntime.Child child) throws IOException
+    public void advance(FridaRuntime.Child child) throws IOException
     {
         requireThread();
         if (!attempted || connections.size() == 0 || stopped || advancing) throw new IllegalStateException("Image owner is not active");
@@ -280,7 +280,7 @@ final class LinuxCargoImages
      * @param stat current native stat record, or null only after native file absence
      * @throws IOException if the original process has not retired or the PID was recycled
      */
-    static void requireRetiredParent(long expectedBirth, String stat) throws IOException
+    public static void requireRetiredParent(long expectedBirth, String stat) throws IOException
     {
         if (stat == null) return;
         try
@@ -324,7 +324,7 @@ final class LinuxCargoImages
      * @param arguments exact interpreter arguments, empty for a direct executable
      * @param source immutable source and interpreter observations
      */
-    record ExecutableIdentity(Path requested, Path actual, List<String> arguments, Map<String, Object> source)
+    public record ExecutableIdentity(Path requested, Path actual, List<String> arguments, Map<String, Object> source)
     {
         /** Copies observations so readiness cannot mutate the retained identity.
          * @param requested original source path
@@ -332,7 +332,7 @@ final class LinuxCargoImages
          * @param arguments exact kernel arguments
          * @param source source identity observations
          */
-        ExecutableIdentity
+        public ExecutableIdentity
         {
             arguments = List.copyOf(arguments);
             source = Map.copyOf(source);
@@ -347,7 +347,7 @@ final class LinuxCargoImages
      * @return immutable complete source identity
      * @throws IOException if arguments, source, cwd or original process identity changes
      */
-    static ExecutableIdentity executableIdentity(Identity image, Path expected, Inspector inspector) throws IOException
+    public static ExecutableIdentity executableIdentity(Identity image, Path expected, Inspector inspector) throws IOException
     {
 
         Path proc = Path.of("/proc", Long.toString(image.pid()));
@@ -381,7 +381,7 @@ final class LinuxCargoImages
      * @return immutable source and actual image observations
      * @throws IOException if source, interpreter, argv or source stability cannot be verified
      */
-    static ExecutableIdentity executableIdentity(Path actual, Path requested, List<String> arguments) throws IOException
+    public static ExecutableIdentity executableIdentity(Path actual, Path requested, List<String> arguments) throws IOException
     {
         if (!requested.isAbsolute()) throw new IOException("Absolute requested executable required");
         Map<String, Object> before = Files.readAttributes(requested, "unix:dev,ino,size,lastModifiedTime,ctime,mode,uid,gid");
@@ -414,7 +414,7 @@ final class LinuxCargoImages
      * @return exact kernel-inserted interpreter argument prefix
      * @throws IOException if the direct shebang is absent, malformed or truncated
      */
-    static List<String> directInterpreter(byte[] header) throws IOException
+    public static List<String> directInterpreter(byte[] header) throws IOException
     {
         if (header.length < 3 || header.length > 256 || header[0] != '#' || header[1] != '!')
             throw new IOException("Requested source is not a direct kernel script");
@@ -504,7 +504,7 @@ final class LinuxCargoImages
      * @param barrier caller-owned kernel-backed whole-workload execution observation
      * @throws IOException if the barrier is unknown or any cleanup remains incomplete
      */
-    void close(AllocationHook.ExecutionBarrier barrier) throws IOException
+    public void close(AllocationHook.ExecutionBarrier barrier) throws IOException
     {
         requireThread();
         Objects.requireNonNull(barrier, "barrier");
@@ -577,7 +577,7 @@ final class LinuxCargoImages
      * @param executable absolute native executable path
      * @param group absolute actual owned cgroup membership
      */
-    record Identity(long pid, long birth, long parent, int uid, int gid, Path executable, Path group)
+    public record Identity(long pid, long birth, long parent, int uid, int gid, Path executable, Path group)
     {
         /**
          * Rejects incomplete image observations.
@@ -589,7 +589,7 @@ final class LinuxCargoImages
          * @param executable native executable
          * @param group actual owned cgroup
          */
-        Identity
+        public Identity
         {
             if (pid <= 0 || birth <= 0 || parent <= 0 || pid == parent || uid < 0 || gid < 0)
                 throw new IllegalArgumentException("Invalid native identity");
@@ -609,7 +609,7 @@ final class LinuxCargoImages
      * @param gid workload GID
      * @param cargo absolute pinned Cargo executable
      */
-    record Policy(int uid, int gid, Path cargo)
+    public record Policy(int uid, int gid, Path cargo)
     {
         /**
          * Rejects incomplete workload policy.
@@ -617,7 +617,7 @@ final class LinuxCargoImages
          * @param gid workload GID
          * @param cargo pinned Cargo executable
          */
-        Policy
+        public Policy
         {
             if (uid < 0 || gid < 0 || !cargo.isAbsolute()) throw new IllegalArgumentException("Invalid workload policy");
         }
@@ -627,7 +627,7 @@ final class LinuxCargoImages
      * Consumer retained by the caller through the same authentic workload barrier.
      */
     @FunctionalInterface
-    interface Enrollment
+    public interface Enrollment
     {
         /**
          * Acknowledges readiness for the exact held image before any explicit resume.
@@ -643,7 +643,7 @@ final class LinuxCargoImages
     /**
      * Supplies actual native operations or independent Java-controlled observations.
      */
-    interface Operations
+    public interface Operations
     {
         /**
          * Reads one live image lineage without accepting callback fields as authority.
@@ -675,7 +675,7 @@ final class LinuxCargoImages
          * @return immutable source and executable binding
          * @throws IOException if the requested image cannot be independently matched
          */
-        default ExecutableIdentity executableIdentity(Identity image, Path expected) throws IOException
+        public default ExecutableIdentity executableIdentity(Identity image, Path expected) throws IOException
         {
             if (!expected.isAbsolute() || !matchesExecutable(image, expected))
                 throw new IOException("Held executable differs from independently observed image");

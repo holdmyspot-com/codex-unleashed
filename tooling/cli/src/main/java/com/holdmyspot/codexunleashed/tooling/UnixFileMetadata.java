@@ -181,7 +181,7 @@ public final class UnixFileMetadata
 	 * @return its exact modification timestamp
 	 * @throws IOException if native metadata is unavailable or cannot be read
 	 */
-	Instant lastModified(Path path) throws IOException
+	public Instant lastModified(Path path) throws IOException
 	{
 		return lastModified(path, true);
 	}
@@ -194,7 +194,7 @@ public final class UnixFileMetadata
 	 * @return its exact modification timestamp
 	 * @throws IOException if native metadata is unavailable or cannot be read
 	 */
-	Instant lastModified(Path path, boolean followLinks) throws IOException
+	public Instant lastModified(Path path, boolean followLinks) throws IOException
 	{
 		// WORKAROUND: JDK UnixFileAttributes converts timestamps outside the jlong nanosecond range to microseconds.
 		// Remove this native lookup when the unchanged far-future inventory test passes through Files metadata APIs.

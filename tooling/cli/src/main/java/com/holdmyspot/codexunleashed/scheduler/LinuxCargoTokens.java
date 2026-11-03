@@ -17,7 +17,7 @@ import java.util.Set;
  * This owner neither discovers processes nor establishes their termination boundary; callers must establish
  * whole-attempt execution impossibility before closing an attempt. Closing this owner does not close its transport.
  */
-final class LinuxCargoTokens implements AutoCloseable
+public final class LinuxCargoTokens implements AutoCloseable
 {
 	/** Native FIFO access borrowed through the invocation's complete cleanup. */
 	private final Transfer transfer;
@@ -33,7 +33,7 @@ final class LinuxCargoTokens implements AutoCloseable
 	 * @param transfer borrowed nonblocking byte transport, kept open until this ledger closes
 	 * @throws NullPointerException if {@code transfer} is null
 	 */
-	LinuxCargoTokens(Transfer transfer)
+	public LinuxCargoTokens(Transfer transfer)
 	{
 		this.transfer = Objects.requireNonNull(transfer, "transfer may not be null");
 	}
@@ -46,7 +46,7 @@ final class LinuxCargoTokens implements AutoCloseable
 	 * @throws IllegalStateException if this ledger is closed
 	 * @throws IOException if an earlier transfer left the invocation's FIFO state uncertain
 	 */
-	Attempt retainAttempt() throws IOException
+	public Attempt retainAttempt() throws IOException
 	{
 		requireAvailable();
 		Attempt attempt = new Attempt();
@@ -117,7 +117,7 @@ final class LinuxCargoTokens implements AutoCloseable
 	 * A token may be returned by a different verified process in the same attempt. The caller must not reclaim
 	 * tokens on the death of only one image while another descendant can still execute.
 	 */
-	final class Attempt implements AutoCloseable
+	public final class Attempt implements AutoCloseable
 	{
 		/** Outstanding occurrences of each unsigned byte value for this whole attempt. */
 		private final int[] outstanding = new int[1 << Byte.SIZE];
@@ -141,7 +141,7 @@ final class LinuxCargoTokens implements AutoCloseable
 		 * @throws RuntimeException if the transport or result processing fails unexpectedly
 		 * @throws Error if the transport or result processing fails fatally
 		 */
-		OptionalInt tryBorrow() throws IOException
+		public OptionalInt tryBorrow() throws IOException
 		{
 			requireOpen();
 			try
@@ -172,7 +172,7 @@ final class LinuxCargoTokens implements AutoCloseable
 		 * @throws RuntimeException if the transport fails unexpectedly
 		 * @throws Error if the transport fails fatally
 		 */
-		void returnToken(byte token) throws IOException
+		public void returnToken(byte token) throws IOException
 		{
 			requireOpen();
 			int value = Byte.toUnsignedInt(token);
@@ -198,7 +198,7 @@ final class LinuxCargoTokens implements AutoCloseable
 		 * Indicates whether this attempt owner retired after its caller's execution-impossibility boundary.
 		 * @return {@code true} after close, including close that reported a transfer failure
 		 */
-		boolean isClosed()
+		public boolean isClosed()
 		{
 			return closed;
 		}
@@ -242,7 +242,7 @@ final class LinuxCargoTokens implements AutoCloseable
 	 * A failure may occur before or after a native effect. The ledger therefore prevents every subsequent
 	 * transfer after any exception or error; implementations must never retry an operation with an unknown effect.
 	 */
-	interface Transfer
+	public interface Transfer
 	{
 		/**
 		 * Reads at most one byte without waiting for another consumer.

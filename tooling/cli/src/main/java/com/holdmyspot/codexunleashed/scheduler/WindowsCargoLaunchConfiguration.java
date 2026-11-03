@@ -34,7 +34,7 @@ import tools.jackson.databind.JsonNode;
  * @param identities exact lowercase SHA256 values for cargo, rustc, toolchain, frida, javaRuntime and wrapper
  * @param memory explicit best-effort history settings, or null for unknown demand
  */
-record WindowsCargoLaunchConfiguration(Path source, String sourceDigest, Path cargo, Path rustc, Path toolchainRoot,
+public record WindowsCargoLaunchConfiguration(Path source, String sourceDigest, Path cargo, Path rustc, Path toolchainRoot,
     Map<String, String> environment, Map<String, String> identities, CargoMemoryEstimates.Settings memory)
 {
     /** Version-one fields; only memory may be absent. */
@@ -57,7 +57,7 @@ record WindowsCargoLaunchConfiguration(Path source, String sourceDigest, Path ca
      * @throws NullPointerException if a required value or collection member is null
      * @throws IllegalArgumentException if paths, hashes or Windows environment entries are invalid
      */
-    WindowsCargoLaunchConfiguration
+    public WindowsCargoLaunchConfiguration
     {
         for (Path path : List.of(source, cargo, rustc, toolchainRoot)) requireAbsolute(path);
         requireDigest(sourceDigest);
@@ -91,7 +91,7 @@ record WindowsCargoLaunchConfiguration(Path source, String sourceDigest, Path ca
      * @return immutable represented inputs requiring identity preflight before execution
      * @throws IOException if file bytes, JSON or launch values are invalid
      */
-    static WindowsCargoLaunchConfiguration read(WindowsCargoScope scope, Path source) throws IOException
+    public static WindowsCargoLaunchConfiguration read(WindowsCargoScope scope, Path source) throws IOException
     {
         return decode(scope, source, readBytes(source));
     }
@@ -104,7 +104,7 @@ record WindowsCargoLaunchConfiguration(Path source, String sourceDigest, Path ca
      * @return immutable launch inputs
      * @throws IOException if fields or semantic values are invalid
      */
-    static WindowsCargoLaunchConfiguration decode(WindowsCargoScope scope, Path source, byte[] bytes) throws IOException
+    public static WindowsCargoLaunchConfiguration decode(WindowsCargoScope scope, Path source, byte[] bytes) throws IOException
     {
         JsonNode root = document(scope, bytes, FIELDS, Set.of("memory"));
         version(root);
@@ -127,7 +127,7 @@ record WindowsCargoLaunchConfiguration(Path source, String sourceDigest, Path ca
      * @param wrapper installed sibling wrapper executable inside that runtime
      * @throws IOException if an input is missing, changed or outside the installed runtime
      */
-    void requireIdentities(Path frida, Path runtime, Path wrapper) throws IOException
+    public void requireIdentities(Path frida, Path runtime, Path wrapper) throws IOException
     {
         if (!wrapper.startsWith(runtime)) throw new IOException("Wrapper must be inside the installed runtime");
         if (!digest(readBytes(source)).equals(sourceDigest)) throw new IOException("Windows launch configuration changed after parsing");

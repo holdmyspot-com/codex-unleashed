@@ -14,7 +14,7 @@ import java.util.Objects;
  * Borrows an authenticated descendant's retained original process authority from its Job owner.
  * The Job owner retains this authority and imported streams until whole-Job cleanup.
  */
-final class WindowsCreationReceipt
+public final class WindowsCreationReceipt
 {
     /** Original creation authority retained by the exact Job owner. */
     private final WindowsProcess.CreatedSource source;
@@ -48,13 +48,13 @@ final class WindowsCreationReceipt
      * Returns the descendant's original creation time.
      * @return raw unsigned FILETIME bits
      */
-    long birth() { return observation.childBirth(); }
+    public long birth() { return observation.childBirth(); }
 
     /**
      * Returns the creating process identifier.
      * @return unsigned DWORD creator identifier
      */
-    long parentPid() { return observation.parentPid(); }
+    public long parentPid() { return observation.parentPid(); }
 
     /**
      * Returns the creating process's original creation time.
@@ -67,7 +67,7 @@ final class WindowsCreationReceipt
      * @return immutable authentic launch facts
      * @throws IOException if the observer did not capture complete launch facts
      */
-    Launch launch() throws IOException
+    public Launch launch() throws IOException
     {
         if (observation.launch() == null) throw new IOException("Native observer has no complete launch facts");
         return observation.launch();
@@ -92,7 +92,7 @@ final class WindowsCreationReceipt
      * @return immutable actual native child state
      * @throws IOException if child observation has not sealed its state
      */
-    NativeState state() throws IOException
+    public NativeState state() throws IOException
     {
         if (state == null) throw new IOException("Native child state has not been sealed before resume");
         return state;
@@ -106,7 +106,7 @@ final class WindowsCreationReceipt
      * @throws IOException if native capture or snapshot release fails or a bounded value is too large
      * @throws UnsupportedOperationException if native 64-bit Windows is unavailable
      */
-    static NativeState currentState(ToolingScope scope) throws IOException
+    public static NativeState currentState(ToolingScope scope) throws IOException
     {
         try (WindowsProcess.Kernel kernel = new WindowsProcess.Kernel(scope))
         {
@@ -120,7 +120,7 @@ final class WindowsCreationReceipt
      * @return copied current native state
      * @throws IOException if capture, native snapshot release or a size bound fails
      */
-    static NativeState currentState(WindowsProcess.Kernel kernel) throws IOException
+    public static NativeState currentState(WindowsProcess.Kernel kernel) throws IOException
     {
         String commandLine = nativeText(kernel.pointer("GetCommandLineW"), 32768);
         MemorySegment directory = kernel.arena.allocate(32768L * Character.BYTES, Character.BYTES);
@@ -187,7 +187,7 @@ final class WindowsCreationReceipt
      * @param directory actual native working directory
      * @param environment complete actual native environment entries
      */
-    record NativeState(String commandLine, String directory, List<String> environment)
+    public record NativeState(String commandLine, String directory, List<String> environment)
     {
         /**
          * Copies actual child state for registration after its native observer becomes ready.
@@ -197,7 +197,7 @@ final class WindowsCreationReceipt
          * @throws NullPointerException if a value or environment entry is null
          * @throws IllegalArgumentException if text contains NUL or the directory is empty
          */
-        NativeState
+        public NativeState
         {
             Objects.requireNonNull(commandLine, "commandLine");
             Launch copied = new Launch(null, commandLine, directory, environment, false, false, false, 0, 0, 0);
@@ -215,7 +215,7 @@ final class WindowsCreationReceipt
      * Returns the native executable path captured through original authority before resume.
      * @return absolute native image path
      */
-    Path executable() { return executable; }
+    public Path executable() { return executable; }
 
     /**
      * Imports authenticated stable redirected endpoints from this exact process.
@@ -245,7 +245,7 @@ final class WindowsCreationReceipt
      * @param output raw original child standard-output handle bits
      * @param error raw original child standard-error handle bits
      */
-    record Launch(String application, String commandLine, String directory, List<String> environment,
+    public record Launch(String application, String commandLine, String directory, List<String> environment,
         boolean inheritedEnvironment, boolean inheritedDirectory, boolean standardHandles,
         long input, long output, long error)
     {
@@ -264,7 +264,7 @@ final class WindowsCreationReceipt
          * @throws NullPointerException if directory, environment or an environment entry is null
          * @throws IllegalArgumentException if native text contains NUL or the directory is empty
          */
-        Launch
+        public Launch
         {
             Objects.requireNonNull(directory, "directory");
             environment = List.copyOf(environment);

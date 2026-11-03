@@ -13,7 +13,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /** Retains the held-image descriptor admission protocol independently of allocation instrumentation. */
-final class MacDescriptorProtection
+public final class MacDescriptorProtection
 {
     /** Scoped mapper borrowed for this image's admission. */
     private final JsonMapper json;
@@ -329,13 +329,13 @@ final class MacDescriptorProtection
      * @param number nonnegative descriptor number within the native registry bound
      * @param type native SDK descriptor type
      */
-    record Descriptor(int number, int type)
+    public record Descriptor(int number, int type)
     {
         /**
          * Rejects a descriptor outside the supported complete observation range.
          * @throws IllegalArgumentException if a number or type is invalid
          */
-        Descriptor
+        public Descriptor
         {
             if (number < 0 || number >= 65536 || type < 0)
                 throw new IllegalArgumentException("Native descriptor is outside its supported range");
@@ -348,14 +348,14 @@ final class MacDescriptorProtection
      * @param kqueueType native SDK descriptor kind
      * @param descriptors complete immutable observed rows
      */
-    record Inventory(int kqueueSyscall, int kqueueType, List<Descriptor> descriptors)
+    public record Inventory(int kqueueSyscall, int kqueueType, List<Descriptor> descriptors)
     {
         /**
          * Copies complete rows without allowing duplicate numeric identities.
          * @throws NullPointerException if rows or a member are null
          * @throws IllegalArgumentException if constants, capacity or duplicate descriptors are invalid
          */
-        Inventory
+        public Inventory
         {
             if (kqueueSyscall <= 0 || kqueueType <= 0)
                 throw new IllegalArgumentException("Native SDK descriptor constants are unavailable");
@@ -370,7 +370,7 @@ final class MacDescriptorProtection
          * Returns the sorted queue numbers from this complete authenticated observation.
          * @return immutable sorted native queue descriptors
          */
-        List<Integer> queues()
+        public List<Integer> queues()
         {
             return descriptors.stream().filter(value -> value.type() == kqueueType)
                 .map(Descriptor::number).sorted().toList();
@@ -386,7 +386,7 @@ final class MacDescriptorProtection
      * @return copied ready payload
      * @throws IOException if the envelope does not acknowledge this exact held image
      */
-    static JsonNode ready(JsonMapper json, String frame, long pid, String marker) throws IOException
+    public static JsonNode ready(JsonMapper json, String frame, long pid, String marker) throws IOException
     {
         Objects.requireNonNull(marker, "marker");
         JsonNode envelope = json.readTree(frame);

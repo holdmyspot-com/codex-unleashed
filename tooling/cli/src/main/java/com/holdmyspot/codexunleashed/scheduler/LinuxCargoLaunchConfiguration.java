@@ -44,7 +44,7 @@ import tools.jackson.databind.JsonNode;
  * @param identities required lowercase SHA256 values for cargo, rustc, toolchain, unshare, libcgroup, frida and javaRuntime
  * @param memory explicit estimate settings, or null for unknown demand
  */
-record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, int uid, int gid, Path cargo, Path rustc,
+public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, int uid, int gid, Path cargo, Path rustc,
     Path toolchainRoot, Map<String, String> environment, Path unshare, Path libcgroup, Path cgroupRoot,
     Path procRoot, Path delegationParent, Map<String, String> identities, CargoMemoryEstimates.Settings memory)
 {
@@ -87,7 +87,7 @@ record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, int uid, 
      * @throws NullPointerException if a required value or collection member is null
      * @throws IllegalArgumentException if paths, identities, environment or credentials are invalid
      */
-    LinuxCargoLaunchConfiguration
+    public LinuxCargoLaunchConfiguration
     {
         for (Path path : List.of(source, cargo, rustc, toolchainRoot, unshare, libcgroup, cgroupRoot, procRoot,
             delegationParent)) requireAbsolute(path);
@@ -117,7 +117,7 @@ record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, int uid, 
      * @return validated represented inputs requiring authority preflight before use
      * @throws IOException if the file, document or semantic configuration is invalid
      */
-    static LinuxCargoLaunchConfiguration read(LinuxCargoScope scope, Path source) throws IOException
+    public static LinuxCargoLaunchConfiguration read(LinuxCargoScope scope, Path source) throws IOException
     {
         return decode(scope, source, readBytes(source));
     }
@@ -130,7 +130,7 @@ record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, int uid, 
      * @return immutable validated represented inputs
      * @throws IOException if JSON, fields, paths, values or credentials are invalid
      */
-    static LinuxCargoLaunchConfiguration decode(LinuxCargoScope scope, Path source, byte[] bytes) throws IOException
+    public static LinuxCargoLaunchConfiguration decode(LinuxCargoScope scope, Path source, byte[] bytes) throws IOException
     {
         JsonNode root = document(scope, bytes, CONFIG_FIELDS, Set.of("memory"));
         version(root);
@@ -205,7 +205,7 @@ record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, int uid, 
      * @return lowercase SHA256 of the UTF-8 row stream
      * @throws IOException if an entry is unreadable, special or escapes the root
      */
-    static String toolchainDigest(Path root) throws IOException
+    public static String toolchainDigest(Path root) throws IOException
     {
         requireAbsolute(root);
         if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS))
@@ -248,7 +248,7 @@ record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, int uid, 
      * @param gid positive configured workload group
      * @param timeout positive bounded control-frame timeout
      */
-    record Wrapper(Path controller, Path registrationDirectory, Path cgroupParent, Path scratchParent,
+    public record Wrapper(Path controller, Path registrationDirectory, Path cgroupParent, Path scratchParent,
         Path javaExecutable, Path classPath, Path rustc, int uid, int gid, Duration timeout)
     {
         /**
@@ -266,7 +266,7 @@ record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, int uid, 
          * @throws NullPointerException if a required value is null
          * @throws IllegalArgumentException if a path, credential or timeout is invalid
          */
-        Wrapper
+        public Wrapper
         {
             for (Path path : List.of(controller, registrationDirectory, cgroupParent, scratchParent, javaExecutable,
                 classPath, rustc)) requireAbsolute(path);
@@ -319,7 +319,7 @@ record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, int uid, 
      * @return bounded encoded JSON document
      * @throws IOException if encoding exceeds the protocol bound
      */
-    static byte[] encodeWrapper(LinuxCargoScope scope, Wrapper wrapper) throws IOException
+    public static byte[] encodeWrapper(LinuxCargoScope scope, Wrapper wrapper) throws IOException
     {
         Map<String, Object> values = new HashMap<>();
         values.put("version", 1);
@@ -344,7 +344,7 @@ record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, int uid, 
      * @return validated represented wrapper inputs
      * @throws IOException if the context's JSON, fields or semantic values are invalid
      */
-    static Wrapper decodeWrapper(LinuxCargoScope scope, byte[] bytes) throws IOException
+    public static Wrapper decodeWrapper(LinuxCargoScope scope, byte[] bytes) throws IOException
     {
         JsonNode root = document(scope, bytes, WRAPPER_FIELDS, Set.of());
         version(root);

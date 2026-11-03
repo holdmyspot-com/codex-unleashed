@@ -28,7 +28,7 @@ import java.util.Objects;
  * Standard-input compilation is inapplicable because its source bytes are not captured by authenticated registration.
  * Toolchain contents and configuration distinguish reusable work; native action UUIDs and births do not.
  */
-final class CargoWorkIdentity
+public final class CargoWorkIdentity
 {
     /** Complete caller-declared source and configuration input tree. */
     private final Path inputRoot;
@@ -45,7 +45,7 @@ final class CargoWorkIdentity
      * @throws NullPointerException if a required value or collection member is null
      * @throws IllegalArgumentException if a path is relative, not normalized or an output is outside the input root
      */
-    CargoWorkIdentity(Path inputRoot, List<Path> outputRoots, Path toolchainRoot)
+    public CargoWorkIdentity(Path inputRoot, List<Path> outputRoots, Path toolchainRoot)
     {
         this.inputRoot = absolute(inputRoot);
         this.toolchainRoot = absolute(toolchainRoot);
@@ -64,7 +64,7 @@ final class CargoWorkIdentity
      * @return lowercase SHA-256 identity for the declared inputs
      * @throws IOException if complete stable content cannot be read or work is outside the declared roots
      */
-    String identify(CargoCompilerRequest request) throws IOException
+    public String identify(CargoCompilerRequest request) throws IOException
     {
         Objects.requireNonNull(request, "request");
         if (request.arguments().contains("-"))

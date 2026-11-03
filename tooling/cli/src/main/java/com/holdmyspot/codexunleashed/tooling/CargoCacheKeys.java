@@ -9,7 +9,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
 /** Derives exact and compatible cache tags from the unchanged ordered recorded input bytes. */
-final class CargoCacheKeys
+public final class CargoCacheKeys
 {
     /** Prevents construction. */
     private CargoCacheKeys() {}
@@ -48,7 +48,7 @@ final class CargoCacheKeys
      * Acquires an independent standard digest with no shared mutable algorithm state.
      * @return the required platform SHA-256 implementation
      */
-    static MessageDigest digest()
+    public static MessageDigest digest()
     {
         try { return MessageDigest.getInstance("SHA-256"); }
         catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException("Required SHA-256 unavailable", impossible); }

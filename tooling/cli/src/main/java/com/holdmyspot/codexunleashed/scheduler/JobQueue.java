@@ -22,7 +22,7 @@ import java.util.Optional;
  *
  * @param <R> the complete native accepted result payload, retained unchanged
  */
-final class JobQueue<R> implements AutoCloseable
+public final class JobQueue<R> implements AutoCloseable
 {
 	/** Selects controls from fresh measurements and immutable owned-state projections. */
 	private final Controller controller;
@@ -65,7 +65,7 @@ final class JobQueue<R> implements AutoCloseable
 	 * @param attempts resource-free factory configured for each action identity and attempt sequence
 	 * @throws NullPointerException if a parameter is null
 	 */
-	JobQueue(Policy.Budget budget, Controller.Measurements measurements, AttemptFactory<R> attempts)
+	public JobQueue(Policy.Budget budget, Controller.Measurements measurements, AttemptFactory<R> attempts)
 	{
 		this.budget = Objects.requireNonNull(budget, "budget may not be null");
 		Objects.requireNonNull(measurements, "measurements may not be null");
@@ -105,7 +105,7 @@ final class JobQueue<R> implements AutoCloseable
 	 * @throws IllegalStateException if closing or an unresolved control, {@code outcome}, factory or cleanup prevents scheduling
 	 * @throws ArithmeticException if another submission position cannot be reserved without overflow
 	 */
-	void submit(String name, Long peakBytes)
+	public void submit(String name, Long peakBytes)
 	{
 		requireScheduling();
 		Objects.requireNonNull(name, "name may not be null");
@@ -140,7 +140,7 @@ final class JobQueue<R> implements AutoCloseable
 	 * completion-free recovery fails;
 	 * uncertain controls retain their original contextual failure until accepted completion and successful cleanup
 	 */
-	Policy.Decision cycle() throws IOException
+	public Policy.Decision cycle() throws IOException
 	{
 		requireOpen();
 		if (fatalFailure != null)
@@ -174,7 +174,7 @@ final class JobQueue<R> implements AutoCloseable
 	 * the rejected notification leaves state unchanged
 	 * @throws ArithmeticException if another denial ordinal cannot be reserved without overflow
 	 */
-	boolean allocationBlocked(String name, long attemptSequence, long waitSequence)
+	public boolean allocationBlocked(String name, long attemptSequence, long waitSequence)
 	{
 		requireScheduling();
 		Objects.requireNonNull(name, "name may not be null");
@@ -208,7 +208,7 @@ final class JobQueue<R> implements AutoCloseable
 	 * @return unfinished jobs, omitting completed actions
 	 * @throws IllegalStateException if closing or an unresolved effect, accepted {@code outcome} or cleanup prevents projection
 	 */
-	List<Policy.Job> jobs()
+	public List<Policy.Job> jobs()
 	{
 		requireScheduling();
 		return List.copyOf(entries.values().stream().filter(entry -> entry.finished == false).map(Entry::snapshot).toList());
@@ -221,7 +221,7 @@ final class JobQueue<R> implements AutoCloseable
 	 * @return immutable diagnostic snapshot
 	 * @throws IllegalStateException if closing or an unresolved effect prevents projection
 	 */
-	Snapshot diagnostics()
+	public Snapshot diagnostics()
 	{
 		return new Snapshot(jobs(), completions, nextAttempt + completed.size(), controller.memoryDemands(), sampledHost,
 			budget);
@@ -233,7 +233,7 @@ final class JobQueue<R> implements AutoCloseable
 	 *
 	 * @return the nonnegative completion count
 	 */
-	long completions()
+	public long completions()
 	{
 		return completions;
 	}
@@ -244,7 +244,7 @@ final class JobQueue<R> implements AutoCloseable
 	 *
 	 * @return all accepted attempt outcomes, independent of later additions
 	 */
-	List<Completion<R>> completedAttempts()
+	public List<Completion<R>> completedAttempts()
 	{
 		return List.copyOf(completed);
 	}
@@ -582,11 +582,11 @@ final class JobQueue<R> implements AutoCloseable
 	 * @param host latest accepted host reading, or null before the first reading
 	 * @param budget reserved headroom and live-attempt ceiling
 	 */
-	record Snapshot(List<Policy.Job> jobs, long completions, long progress,
+	public record Snapshot(List<Policy.Job> jobs, long completions, long progress,
 		Map<Controller.Action, Controller.MemoryDemand> demands, Controller.Memory host, Policy.Budget budget)
 	{
 		/** Copies the collections so later queue changes cannot alter the snapshot. */
-		Snapshot
+		public Snapshot
 		{
 			jobs = List.copyOf(jobs);
 			demands = Map.copyOf(demands);
@@ -667,7 +667,7 @@ final class JobQueue<R> implements AutoCloseable
 	 * @param <R> complete accepted native result payload
 	 */
 	@FunctionalInterface
-	interface AttemptFactory<R>
+	public interface AttemptFactory<R>
 	{
 		/**
 		 * Creates a fresh resource-free owner configured for exactly this identity; ownership transfers on return.
@@ -686,7 +686,7 @@ final class JobQueue<R> implements AutoCloseable
 	 *
 	 * @param <R> complete accepted native result payload
 	 */
-	interface Attempt<R> extends AutoCloseable
+	public interface Attempt<R> extends AutoCloseable
 	{
 		/**
 		 * Starts/releases the configured workload at most once. Success permits a RUNNING projection.
@@ -751,7 +751,7 @@ final class JobQueue<R> implements AutoCloseable
 	 * @param result nonnull original payload, including any descendant/adopted statuses
 	 * @param aborted native owner's accepted abortion classification, independent of root status or queue intent
 	 */
-	record Outcome<R>(R result, boolean aborted)
+	public record Outcome<R>(R result, boolean aborted)
 	{
 		/**
 		 * Creates an accepted outcome with its original payload.
@@ -760,7 +760,7 @@ final class JobQueue<R> implements AutoCloseable
 		 * @param aborted native owner's accepted abortion classification
 		 * @throws NullPointerException if {@code result} is null
 		 */
-		Outcome
+		public Outcome
 		{
 			Objects.requireNonNull(result, "result may not be null");
 		}
@@ -774,7 +774,7 @@ final class JobQueue<R> implements AutoCloseable
 	 * @param attemptSequence nonnegative queue-wide attempt ordinal
 	 * @param outcome nonnull accepted whole-job outcome
 	 */
-	record Completion<R>(String name, long attemptSequence, Outcome<R> outcome)
+	public record Completion<R>(String name, long attemptSequence, Outcome<R> outcome)
 	{
 		/**
 		 * Creates an immutable accepted-attempt record.
@@ -785,7 +785,7 @@ final class JobQueue<R> implements AutoCloseable
 		 * @throws NullPointerException if {@code name} or {@code outcome} is null
 		 * @throws IllegalArgumentException if {@code name} is empty or {@code attemptSequence} is negative
 		 */
-		Completion
+		public Completion
 		{
 			Objects.requireNonNull(name, "name may not be null");
 			Objects.requireNonNull(outcome, "outcome may not be null");

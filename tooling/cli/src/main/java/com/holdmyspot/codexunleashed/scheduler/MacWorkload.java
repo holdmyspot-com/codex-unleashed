@@ -12,7 +12,7 @@ import java.util.Optional;
  * All operations belong to the constructing thread. The native owner and its original Frida manager
  * remain retained after failures until exact cancellation, native terminal observation and cleanup finish.
  */
-final class MacWorkload
+public final class MacWorkload
 {
     /** Constructing thread required before every operation. */
     private final Thread thread = Thread.currentThread();
@@ -48,7 +48,7 @@ final class MacWorkload
      * @throws ArithmeticException if timeout exceeds signed nanoseconds
      * @throws IOException if the original held root cannot be authenticated
      */
-    MacWorkload(ToolingScope scope, MacWorkloadNative nativeOwner,
+    public MacWorkload(ToolingScope scope, MacWorkloadNative nativeOwner,
         MacImages.InstrumentationFactory instrumentation, Duration timeout) throws IOException
     {
         this.nativeOwner = Objects.requireNonNull(nativeOwner, "nativeOwner");
@@ -61,7 +61,7 @@ final class MacWorkload
      * @throws IllegalStateException if called by another thread or after the first attempt
      * @throws IOException if authentication, instrumentation or release fails
      */
-    void start() throws IOException
+    public void start() throws IOException
     {
         requireIdle();
         transitioning = true;
@@ -90,7 +90,7 @@ final class MacWorkload
      * @throws IllegalStateException if called by another thread or before start
      * @throws IOException if observation, instrumentation, cancellation or cleanup fails
      */
-    OptionalInt advance() throws IOException
+    public OptionalInt advance() throws IOException
     {
         requireIdle();
         transitioning = true;
@@ -135,7 +135,7 @@ final class MacWorkload
      * @return original root result after complete cleanup, or empty while any owned resource remains
      * @throws IllegalStateException if another thread calls or a transition reenters observation
      */
-    OptionalInt completedResult()
+    public OptionalInt completedResult()
     {
         requireIdle();
         return closed ? result : OptionalInt.empty();
@@ -146,7 +146,7 @@ final class MacWorkload
      * @throws IllegalStateException if called by another thread
      * @throws IOException if exact cancellation cannot be confirmed
      */
-    void cancel() throws IOException
+    public void cancel() throws IOException
     {
         requireIdle();
         transitioning = true;

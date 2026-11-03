@@ -12,7 +12,7 @@ import java.util.UUID;
 /** Owns one prepared Windows Job, instrumentation and measurement registration.
  * Only actual whole-Job collection creates an outcome. Faults remain visible after safe cleanup.
  */
-final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
+public final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
 {
     /** Only thread permitted to control these owners. */
     private final Thread owner = Thread.currentThread();
@@ -92,7 +92,7 @@ final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
      * @return phase, root pid and liveness; pid and liveness are null before a Job exists, and liveness is null if it
      *   cannot be observed
      */
-    StallWatch.AttemptFacts facts()
+    public StallWatch.AttemptFacts facts()
     {
         requireOwner();
         String phase;
@@ -365,7 +365,7 @@ final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
     }
 
     /** Narrow ports preserve the production ownership sequence in controlled lifecycle tests. */
-    interface Resources
+    public interface Resources
     {
         /** Prepares a suspended Job or retains its checked failure capsule within this acquisition plan.
          * @return newly owned prepared Job
@@ -392,7 +392,7 @@ final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
         void closePreparationFailure() throws IOException;
     }
     /** Owns an authoritative Job; its result is empty until root and every Job member are terminal. */
-    interface Process extends AutoCloseable
+    public interface Process extends AutoCloseable
     {
         /** Reads actual complete Job status.
          * @return authentic unsigned root status and abortion flag, or empty while any member can execute
@@ -410,7 +410,7 @@ final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
         @Override void close() throws IOException;
     }
     /** Owns instrumentation independently of the Job and requires actual Job zero before destruction. */
-    interface Hooks
+    public interface Hooks
     {
         /** Attaches and awaits readiness before releasing the prepared root.
          * @throws IOException if membership, attachment, readiness or release fails
@@ -436,7 +436,7 @@ final class WindowsAttempt implements JobQueue.Attempt<WindowsProcess.Result>
     }
     /** Retires a previously retained registration; it never closes its borrowed Job owner. */
     @FunctionalInterface
-    interface Close
+    public interface Close
     {
         /**
          * Releases this registration.

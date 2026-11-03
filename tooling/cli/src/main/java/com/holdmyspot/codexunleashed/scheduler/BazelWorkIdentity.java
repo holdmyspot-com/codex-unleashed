@@ -36,7 +36,7 @@ import java.util.stream.Stream;
  * environment strings are always hashed verbatim, so their meaningful path and flag distinctions remain intact.
  * Linux executable permission bits and symlink targets are included; special files and escaping input links fail closed.
  */
-final class BazelWorkIdentity
+public final class BazelWorkIdentity
 {
     /** Versioned domain separating Bazel ready-tree keys from other work and future identity schemas. */
     private static final String DOMAIN = "bazel-ready-input-v3";
@@ -58,7 +58,7 @@ final class BazelWorkIdentity
      * @throws IllegalArgumentException if paths are relative or unnormalized, argv is empty or identity is blank
      * @throws IOException if the complete stable tree, executable or interpreter cannot be identified
      */
-    static String identify(Path immutableReadyInputRoot, List<String> argv, Map<String, String> environment,
+    public static String identify(Path immutableReadyInputRoot, List<String> argv, Map<String, String> environment,
         Path actionWorkingDirectory, String backendToolchainPlatformIdentity) throws IOException
     {
         return identify(immutableReadyInputRoot, immutableReadyInputRoot, argv, environment, actionWorkingDirectory,
@@ -85,7 +85,7 @@ final class BazelWorkIdentity
      * @throws IllegalArgumentException if paths are relative or unnormalized, argv is empty or identity is blank
      * @throws IOException if an input escapes its root, an entry is unsupported, files change or a tool is unavailable
      */
-    static String identify(Path immutableReadyInputRoot, Path actionVisibleInputRoot, List<String> argv,
+    public static String identify(Path immutableReadyInputRoot, Path actionVisibleInputRoot, List<String> argv,
         Map<String, String> environment, Path actionWorkingDirectory, String backendToolchainPlatformIdentity)
         throws IOException
     {
@@ -341,13 +341,13 @@ final class BazelWorkIdentity
      * always traversed anew; only complete regular-file SHA-256 values are reused by stable inode metadata.
      * Keep this object confined to one invocation coordinator and release it when that invocation ends.
      */
-    static final class ImmutableFiles
+    public static final class ImmutableFiles
     {
         /** Full content digests retained only for this explicitly trusted invocation. */
         private final Map<FileIdentity, byte[]> contents = new HashMap<>();
 
         /** Creates an empty cache after the caller establishes the immutable-inode contract. */
-        ImmutableFiles() {}
+        public ImmutableFiles() {}
 
         /**
          * Identifies a complete tree using this invocation's trusted immutable file digests.
@@ -360,7 +360,7 @@ final class BazelWorkIdentity
          * @return complete content identity, equal to the uncached operation
          * @throws IOException if complete supported stable content cannot be identified
          */
-        String identify(Path snapshot, Path visibleRoot, List<String> argv, Map<String, String> environment,
+        public String identify(Path snapshot, Path visibleRoot, List<String> argv, Map<String, String> environment,
             Path workingDirectory, String platform) throws IOException
         {
             return BazelWorkIdentity.identify(snapshot, visibleRoot, argv, environment, workingDirectory, platform, contents);

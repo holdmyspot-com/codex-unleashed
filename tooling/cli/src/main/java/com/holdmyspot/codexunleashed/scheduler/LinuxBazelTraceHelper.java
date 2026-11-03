@@ -21,7 +21,7 @@ import tools.jackson.databind.node.ObjectNode;
  * Owns syscall tracing of the authenticated original child and reports copied observations over the helper pipe.
  * Every image remains held until the host independently admits its original kernel identity and executable.
  */
-final class LinuxBazelTraceHelper implements LinuxBazelHelperMain.Backend
+public final class LinuxBazelTraceHelper implements LinuxBazelHelperMain.Backend
 {
     /** Borrowed process values supplying the mapper and native linker. */
     private final ToolingScope scope;
@@ -216,7 +216,7 @@ final class LinuxBazelTraceHelper implements LinuxBazelHelperMain.Backend
      * @param observedBirth independently observed held image birth
      * @return true only for an unchanged leader identity or an authenticated nonleader migration
      */
-    static boolean authenticatedHeldExec(LinuxAllocationTrace.Held event, LinuxAllocationTrace.Identity former,
+    public static boolean authenticatedHeldExec(LinuxAllocationTrace.Held event, LinuxAllocationTrace.Identity former,
         long target, long originalBirth, long observedBirth)
     {
         if (event == null || event.origin() != 1 || former == null || !former.equals(event.formerThread()) ||

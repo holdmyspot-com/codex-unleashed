@@ -24,7 +24,7 @@ import tools.jackson.databind.JsonNode;
  * Connects the unchanged Bazel dependency producer to one private Buildbarn backend and the real action coordinator.
  * Host runtime configuration is supplied outside all action roots; it never grants action-selected privileged paths.
  */
-final class LinuxBazelProducer
+public final class LinuxBazelProducer
 {
     /** Prevents construction of the invocation composition namespace. */
     private LinuxBazelProducer() {}
@@ -250,7 +250,7 @@ final class LinuxBazelProducer
      * Appends ordered production events outside action namespaces without allowing a failed writer to prevent cleanup.
      * The first append failure aborts scheduling; later cleanup events are omitted and the original failure remains fatal.
      */
-    static final class Audit implements SchedulerCoordinator.Observer, AutoCloseable
+    public static final class Audit implements SchedulerCoordinator.Observer, AutoCloseable
     {
         /** Original invocation Pouch mapper. */
         private final tools.jackson.databind.json.JsonMapper mapper;
@@ -269,7 +269,7 @@ final class LinuxBazelProducer
          * @param path absent host-owned evidence file outside action roots
          * @throws IOException if the exclusive stream cannot be created
          */
-        Audit(ToolingScope scope, Path path) throws IOException
+        public Audit(ToolingScope scope, Path path) throws IOException
         {
             mapper = scope.getJsonMapper();
             writer = Files.newBufferedWriter(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
@@ -338,7 +338,7 @@ final class LinuxBazelProducer
          * Rejects incomplete evidence after native cleanup has had its independent chance to finish.
          * @throws IOException if an earlier append failed
          */
-        void verify() throws IOException { if (failure != null) throw failure; }
+        public void verify() throws IOException { if (failure != null) throw failure; }
 
         /**
          * Closes the owned stream after every native resource has acknowledged retirement.
@@ -642,5 +642,5 @@ final class LinuxBazelProducer
      * @param source host runtime inode/tree
      * @param target unchanged absolute action-visible runtime path
      */
-    record RuntimeBinding(Path source, Path target) {}
+    public record RuntimeBinding(Path source, Path target) {}
 }

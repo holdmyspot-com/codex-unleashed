@@ -18,7 +18,7 @@ import java.util.OptionalInt;
  * queue-owned attempts borrow those resources and cannot close them.
  * @param <R> unchanged native whole-action result payload
  */
-final class CargoSession<R> implements SchedulerCoordinator.Session<R>
+public final class CargoSession<R> implements SchedulerCoordinator.Session<R>
 {
     /** Sole mutation thread. */
     private final Thread owner = Thread.currentThread();
@@ -66,7 +66,7 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
      * @param registration appends platform command inputs before submission
      * @param invocation root/wrapper and outer dependency owner
      */
-    CargoSession(JobQueue.AttemptFactory<R> factory, Controller.Measurements measurements,
+    public CargoSession(JobQueue.AttemptFactory<R> factory, Controller.Measurements measurements,
         Registration registration, Invocation invocation)
     {
         this(factory, measurements, registration, invocation, completion -> {});
@@ -81,7 +81,7 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
      * @param outcomeObserver observes consumed native outcomes before final wrapper response publication
      * @throws NullPointerException if an input is null
      */
-    CargoSession(JobQueue.AttemptFactory<R> factory, Controller.Measurements measurements,
+    public CargoSession(JobQueue.AttemptFactory<R> factory, Controller.Measurements measurements,
         Registration registration, Invocation invocation, OutcomeObserver<R> outcomeObserver)
     {
         this.outcomeObserver = Objects.requireNonNull(outcomeObserver, "outcomeObserver");
@@ -99,7 +99,7 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
      * @throws IOException if registration has uncertain effects or the session already failed
      * @throws IllegalArgumentException if the identity is already reserved
      */
-    void registerAuthenticated(CargoCompilerRequest request, Response<R> response) throws IOException
+    public void registerAuthenticated(CargoCompilerRequest request, Response<R> response) throws IOException
     {
         requireActive();
         if (registering) throw new IllegalStateException("Compiler registration cannot reenter its collaborator");
@@ -125,7 +125,7 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
      * @throws IllegalArgumentException if {@code name} is not registered
      * @throws IOException if final publication has not succeeded or the session is already failed or stopping
      */
-    void wrapperDisconnected(String name) throws IOException
+    public void wrapperDisconnected(String name) throws IOException
     {
         requireActive();
         Pending<R> pending = requests.get(name);
@@ -163,13 +163,13 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
      * @param sequence global queue attempt ordinal
      * @return issued attempt receipt, or empty
      */
-    Optional<Attempt> attempt(long sequence) { requireOwner(); return Optional.ofNullable(attempts.get(sequence)); }
+    public Optional<Attempt> attempt(long sequence) { requireOwner(); return Optional.ofNullable(attempts.get(sequence)); }
 
     /**
      * Returns retained accepted native outcomes, including an outcome whose final response was uncertain.
      * @return immutable outcome snapshot
      */
-    List<JobQueue.Completion<R>> acceptedOutcomes() { requireOwner(); return List.copyOf(outcomes); }
+    public List<JobQueue.Completion<R>> acceptedOutcomes() { requireOwner(); return List.copyOf(outcomes); }
 
     @Override public void pump() throws IOException
     {
@@ -296,14 +296,14 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
      * @param globalSequence global nonnegative queue attempt ordinal
      * @param actionSequence positive ordinal for this action only
      */
-    record Attempt(CargoCompilerRequest request, long globalSequence, long actionSequence) {}
+    public record Attempt(CargoCompilerRequest request, long globalSequence, long actionSequence) {}
 
     /**
      * Receives already accepted consumed whole-tree outcomes; it cannot grant native control authority.
      * @param <R> unchanged native whole-tree result
      */
     @FunctionalInterface
-    interface OutcomeObserver<R>
+    public interface OutcomeObserver<R>
     {
         /**
          * Observes one consumed native outcome, including aborted attempts.
@@ -315,7 +315,7 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
 
     /** Resource-free append-only platform command registration. */
     @FunctionalInterface
-    interface Registration
+    public interface Registration
     {
         /**
          * Registers exact launch inputs before corresponding queue submission.
@@ -330,7 +330,7 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
      * @param <R> unchanged native result payload
      */
     @FunctionalInterface
-    interface Response<R>
+    public interface Response<R>
     {
         /**
          * Publishes one actual final native result; an exception may follow successful publication.
@@ -343,7 +343,7 @@ final class CargoSession<R> implements SchedulerCoordinator.Session<R>
      * Supplies authentic root/peer service and owns consumers, transport, streams and one invocation lease.
      * Implementations copy callbacks and never invoke JobQueue; native integrations remain separately gated.
      */
-    interface Invocation extends AutoCloseable
+    public interface Invocation extends AutoCloseable
     {
         /** Services wrapper registrations and platform peers on the coordinator thread.
          * @throws IOException if producer service fails */

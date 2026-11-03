@@ -13,7 +13,7 @@ import java.util.Objects;
  * the logical work, validates original success plus whole-containment zero, then reports completion. Retried attempts
  * retain the original logical name and prediction; their measurements never mix. Missing history remains null demand.
  */
-final class BazelMemoryEstimates implements Controller.Measurements
+public final class BazelMemoryEstimates implements Controller.Measurements
 {
     /** Borrowed source of complete native host and whole-containment measurement batches. */
     private final Controller.Measurements measurements;
@@ -38,7 +38,7 @@ final class BazelMemoryEstimates implements Controller.Measurements
      * @param history explicitly owned Bazel-compatible completed-sample history
      * @throws NullPointerException if either input is null
      */
-    BazelMemoryEstimates(Controller.Measurements measurements, BazelMemoryHistory history)
+    public BazelMemoryEstimates(Controller.Measurements measurements, BazelMemoryHistory history)
     {
         this.measurements = Objects.requireNonNull(measurements, "measurements");
         this.history = Objects.requireNonNull(history, "history");
@@ -53,7 +53,7 @@ final class BazelMemoryEstimates implements Controller.Measurements
      * @throws NullPointerException if either input is null
      * @throws IllegalArgumentException if the name is blank/already registered or the content key is invalid
      */
-    SchedulerCoordinator.Submission register(String name, String identity)
+    public SchedulerCoordinator.Submission register(String name, String identity)
     {
         Objects.requireNonNull(name, "name");
         if (name.isBlank() || work.containsKey(name))
@@ -75,7 +75,7 @@ final class BazelMemoryEstimates implements Controller.Measurements
      * @throws NullPointerException if {@code name} is null
      * @throws IllegalArgumentException if the name is unregistered or sequence is negative
      */
-    void completed(String name, long sequence, boolean successful)
+    public void completed(String name, long sequence, boolean successful)
     {
         Objects.requireNonNull(name, "name");
         Work registered = work.get(name);

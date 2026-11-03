@@ -22,7 +22,7 @@ import java.util.Set;
  * terminated and been reaped, including after failure. This owner starts no processes and cannot establish that
  * condition itself. A lease accounts for mediated attempt borrows; unmediated native consumers remain untracked.
  */
-final class LinuxCargoJobserver implements AutoCloseable
+public final class LinuxCargoJobserver implements AutoCloseable
 {
 	/** Environment entries owned by this root jobserver, following jobserver 0.1.34 configure_make. */
 	private static final Set<String> MAKE_VARIABLES = Set.of("CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS");
@@ -47,7 +47,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 	 * every process in the invocation shares one make-flags value; they sit above the descriptors a held gate normally
 	 * has open, and installation fails rather than replacing a descriptor already open at this number.
 	 */
-	static final int READ_DESCRIPTOR = 200;
+	public static final int READ_DESCRIPTOR = 200;
 	/** Descriptor number on which every Cargo-tree leader installs the FIFO for jobserver writes. */
 	static final int WRITE_DESCRIPTOR = 201;
 	/** Directory, inside the owned directory, holding the make front end that PATH names first. */
@@ -110,7 +110,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 	 * @throws IOException if setup or nonblocking seeding fails
 	 * @throws PreparationFailure if failed setup leaves owned path cleanup requiring retry
 	 */
-	static LinuxCargoJobserver create(ToolingScope scope, Path scratchParent, int workloadGroup, int jobs) throws IOException
+	public static LinuxCargoJobserver create(ToolingScope scope, Path scratchParent, int workloadGroup, int jobs) throws IOException
 	{
 		Objects.requireNonNull(scope, "scope");
 		Path parent = validate(scratchParent, workloadGroup, jobs);
@@ -250,7 +250,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 	 * @throws IllegalStateException if closing has begun or the single invocation was already retained
 	 * @throws IOException if the make front end cannot be created
 	 */
-	CargoLease retainCargo(Map<String, String> environment) throws IOException
+	public CargoLease retainCargo(Map<String, String> environment) throws IOException
 	{
 		Map<String, String> copy = new HashMap<>(Map.copyOf(environment));
 		for (String name : MAKE_VARIABLES)
@@ -404,7 +404,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 	/**
 	 * Retains the transport while one Cargo invocation and its descendants can still open it.
 	 */
-	final class CargoLease implements AutoCloseable
+	public final class CargoLease implements AutoCloseable
 	{
 		/** Complete immutable launch environment, retained only while this borrow is live. */
 		private final Map<String, String> environment;
@@ -431,7 +431,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 		 * @throws IllegalStateException if this lease was released
 		 * @throws IOException if an earlier uncertain transfer prevents further FIFO operations
 		 */
-		LinuxCargoTokens.Attempt retainAttempt() throws IOException
+		public LinuxCargoTokens.Attempt retainAttempt() throws IOException
 		{
 			if (released)
 				throw new IllegalStateException("Cargo jobserver lease was released");
@@ -446,7 +446,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 		 * @throws IllegalStateException if this lease was released
 		 * @throws IOException if retained descriptor metadata is unavailable, incomplete or not a FIFO
 		 */
-		LinuxFifoBindings.Identity identity() throws IOException
+		public LinuxFifoBindings.Identity identity() throws IOException
 		{
 			if (released)
 				throw new IllegalStateException("Cargo jobserver lease was released");
@@ -459,7 +459,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 		 * @return the FIFO and its inherited read and write descriptor numbers
 		 * @throws IllegalStateException if this lease was released
 		 */
-		Descriptors descriptors()
+		public Descriptors descriptors()
 		{
 			if (released)
 				throw new IllegalStateException("Cargo jobserver lease was released");
@@ -471,7 +471,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 		 * @return immutable root environment whose make flags name the lease's descriptor numbers
 		 * @throws IllegalStateException if this lease was released
 		 */
-		Map<String, String> environment()
+		public Map<String, String> environment()
 		{
 			if (released)
 				throw new IllegalStateException("Cargo jobserver lease was released");
@@ -503,7 +503,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 	 * @param read descriptor number that the make flags name for token reads
 	 * @param write descriptor number that the make flags name for token writes
 	 */
-	record Descriptors(Path fifo, int read, int write)
+	public record Descriptors(Path fifo, int read, int write)
 	{
 		/**
 		 * Validates a descriptor plan.
@@ -513,7 +513,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 		 * @throws NullPointerException if {@code fifo} is null
 		 * @throws IllegalArgumentException if {@code fifo} is relative, or the numbers are equal or not above standard error
 		 */
-		Descriptors
+		public Descriptors
 		{
 			if (!Objects.requireNonNull(fifo, "fifo").isAbsolute())
 				throw new IllegalArgumentException("fifo must be absolute: " + fifo);
@@ -525,7 +525,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 	/**
 	 * Preserves failed acquisition whose owned path cleanup requires retry.
 	 */
-	static final class PreparationFailure extends IOException implements AutoCloseable
+	public static final class PreparationFailure extends IOException implements AutoCloseable
 	{
 		/** Serialization version inherited from the checked failure API. */
 		@java.io.Serial
@@ -598,7 +598,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 	/**
 	 * Narrow Linux FIFO access boundary; implementations return actual positive write progress or throw.
 	 */
-	interface Calls
+	public interface Calls
 	{
 		/**
 		 * Creates a new FIFO without replacing an existing entry.
@@ -651,7 +651,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 	/**
 	 * Provides typed access to the same acquisition operation for controlled native-failure checks.
 	 */
-	static final class SharedSecrets
+	public static final class SharedSecrets
 	{
 		/**
 		 * Prevents construction.
@@ -662,7 +662,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 		 * @param scope borrowed native services, retained open by the fixture through all operations
 		 * @return the scope's shared resource-free native access
 		 */
-		static Calls nativeCalls(ToolingScope scope) { return scope.getLinuxFifoBindings(); }
+		public static Calls nativeCalls(ToolingScope scope) { return scope.getLinuxFifoBindings(); }
 		/**
 		 * Executes normal validated acquisition with controlled external access.
 		 * @param scratchParent existing caller-owned parent
@@ -672,7 +672,7 @@ final class LinuxCargoJobserver implements AutoCloseable
 		 * @return normally owned FIFO
 		 * @throws IOException if acquisition or cleanup fails
 		 */
-		static LinuxCargoJobserver create(Path scratchParent, int workloadGroup, int jobs, Calls calls) throws IOException
+		public static LinuxCargoJobserver create(Path scratchParent, int workloadGroup, int jobs, Calls calls) throws IOException
 		{
 			return acquire(validate(scratchParent, workloadGroup, jobs), workloadGroup, jobs, calls);
 		}

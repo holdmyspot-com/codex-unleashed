@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Decodes the bounded application-owned native registration frame without granting execution authority. */
-final class MacCargoMessages
+public final class MacCargoMessages
 {
     /** Prevents construction of this stateless decoder. */
     private MacCargoMessages() {}
@@ -25,7 +25,7 @@ final class MacCargoMessages
      * @throws NullPointerException if payload is null
      * @throws IOException if bounds, UTF-8, environment, command or directory are invalid
      */
-    static Invocation decode(byte[] payload) throws IOException
+    public static Invocation decode(byte[] payload) throws IOException
     {
         Objects.requireNonNull(payload, "payload");
         if (payload.length == 0 || payload.length > 1024 * 1024)
@@ -101,7 +101,7 @@ final class MacCargoMessages
      * @param environment exact environment names and values
      * @param directory absolute working directory
      */
-    record Invocation(List<String> arguments, Map<String, String> environment, Path directory)
+    public record Invocation(List<String> arguments, Map<String, String> environment, Path directory)
     {
         /**
          * Copies represented inputs without normalizing text or acquiring native authority.
@@ -110,7 +110,7 @@ final class MacCargoMessages
          * @param directory absolute represented working directory
          * @throws NullPointerException if an input or collection entry is null
          */
-        Invocation
+        public Invocation
         {
             arguments = List.copyOf(arguments);
             environment = Map.copyOf(environment);

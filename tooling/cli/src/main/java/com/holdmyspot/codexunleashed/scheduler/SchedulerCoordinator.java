@@ -13,7 +13,7 @@ import java.util.OptionalInt;
  * This class neither discovers native actions nor substitutes a root build invocation for an action.
  * @param <R> original native whole-action result type
  */
-final class SchedulerCoordinator<R>
+public final class SchedulerCoordinator<R>
 {
     /** Maximum consecutive rejected batches before recovery reports ordinary failure. */
     static final int MAX_CONSECUTIVE_REJECTED_OBSERVATIONS = 32;
@@ -40,7 +40,7 @@ final class SchedulerCoordinator<R>
      * @param budget physical reserve and concurrency ceiling
      * @param idle bounded idle operation
      */
-    SchedulerCoordinator(Session<R> session, Policy.Budget budget, Idle idle)
+    public SchedulerCoordinator(Session<R> session, Policy.Budget budget, Idle idle)
     {
         this(session, budget, idle, (event, payload) -> {});
     }
@@ -53,7 +53,7 @@ final class SchedulerCoordinator<R>
      * @param idle bounded idle operation
      * @param observer durable event recorder; failure aborts through normal retained cleanup
      */
-    SchedulerCoordinator(Session<R> session, Policy.Budget budget, Idle idle, Observer observer)
+    public SchedulerCoordinator(Session<R> session, Policy.Budget budget, Idle idle, Observer observer)
     {
         this(session, budget, idle, observer, (decision, snapshot) -> {});
     }
@@ -66,7 +66,7 @@ final class SchedulerCoordinator<R>
      * @param observer durable event recorder; failure aborts through normal retained cleanup
      * @param waits owner-thread listener called before every policy idle wait; it must not throw
      */
-    SchedulerCoordinator(Session<R> session, Policy.Budget budget, Idle idle, Observer observer, WaitObserver waits)
+    public SchedulerCoordinator(Session<R> session, Policy.Budget budget, Idle idle, Observer observer, WaitObserver waits)
     {
         this.waits = Objects.requireNonNull(waits, "waits");
         this.observer = Objects.requireNonNull(observer, "observer");
@@ -86,7 +86,7 @@ final class SchedulerCoordinator<R>
      * @throws IOException if protocol, measurements, controls or cleanup fail
      * @throws IllegalStateException if called again or from another thread
      */
-    int run() throws IOException
+    public int run() throws IOException
     {
         if (Thread.currentThread() != owner || attempted)
             throw new IllegalStateException("Coordinator runs once on its constructing thread");
@@ -201,7 +201,7 @@ final class SchedulerCoordinator<R>
      * @return immutable accepted attempt outcomes
      * @throws IllegalStateException if called from another thread
      */
-    List<JobQueue.Completion<R>> acceptedAttempts()
+    public List<JobQueue.Completion<R>> acceptedAttempts()
     {
         if (Thread.currentThread() != owner)
             throw new IllegalStateException("Coordinator outcomes belong to its constructing thread");
@@ -227,10 +227,10 @@ final class SchedulerCoordinator<R>
      * @param name nonblank stable identity, reserved for this invocation even after completion
      * @param peakBytes nonnegative caller-supplied estimate, or null for unknown demand
      */
-    record Submission(String name, Long peakBytes)
+    public record Submission(String name, Long peakBytes)
     {
         /** Validates identity and preserves unknown demand separately from zero. */
-        Submission
+        public Submission
         {
             Objects.requireNonNull(name, "name");
             if (name.isBlank() || (peakBytes != null && peakBytes < 0))
@@ -244,10 +244,10 @@ final class SchedulerCoordinator<R>
      * @param attemptSequence current queue attempt identity
      * @param waitSequence monotonic per-attempt allocation batch identity
      */
-    record Blocked(String name, long attemptSequence, long waitSequence)
+    public record Blocked(String name, long attemptSequence, long waitSequence)
     {
         /** Validates the three independent correlation fields. */
-        Blocked
+        public Blocked
         {
             Objects.requireNonNull(name, "name");
             if (name.isBlank() || attemptSequence < 0 || waitSequence < 0)
@@ -261,7 +261,7 @@ final class SchedulerCoordinator<R>
      * The terminal payload is the authentic integer root status after all cleanup has succeeded.
      */
     @FunctionalInterface
-    interface Observer
+    public interface Observer
     {
         /**
          * Records one event before its associated boundary is allowed to proceed.
@@ -277,7 +277,7 @@ final class SchedulerCoordinator<R>
      * Calls run on the constructing thread, must not reenter the coordinator and must not throw.
      */
     @FunctionalInterface
-    interface WaitObserver
+    public interface WaitObserver
     {
         /**
          * Records one policy wait, immediately before the idle operation.
@@ -289,7 +289,7 @@ final class SchedulerCoordinator<R>
 
     /** Bounded cooperative wait after policy WAIT or a rejected memory observation. */
     @FunctionalInterface
-    interface Idle
+    public interface Idle
     {
         /** Waits for the bounded idle interval.
          * @throws InterruptedException if cancellation interrupts the wait
@@ -305,7 +305,7 @@ final class SchedulerCoordinator<R>
      * Native adapters must establish action/result authority before implementing this boundary.
      * @param <R> unchanged native whole-action result payload
      */
-    interface Session<R> extends AutoCloseable
+    public interface Session<R> extends AutoCloseable
     {
         /** Supplies the configured action factory without acquiring an attempt.
          * @return borrowed resource-free attempt factory with registered immutable action inputs */

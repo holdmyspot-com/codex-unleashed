@@ -53,7 +53,7 @@ public final class LinuxProcessTree implements AutoCloseable {
          * Stores this mode for the next launch consumer.
          * @param values launch properties receiving the mode
          */
-        void writeTo(Properties values) {
+        public void writeTo(Properties values) {
             values.setProperty(PROPERTY, name());
         }
 
@@ -63,7 +63,7 @@ public final class LinuxProcessTree implements AutoCloseable {
          * @return the explicit mode, or DIRECT_EXEC when absent
          * @throws IOException if the property does not name a supported mode
          */
-        static ExecutionMode readFrom(Properties values) throws IOException {
+        public static ExecutionMode readFrom(Properties values) throws IOException {
             String value = values.getProperty(PROPERTY);
             if (value == null) return DIRECT_EXEC;
             try {
@@ -94,7 +94,7 @@ public final class LinuxProcessTree implements AutoCloseable {
     /**
      * Typed access to the private gate dispatch boundary for focused behavioral tests.
      */
-    static final class SharedSecrets {
+    public static final class SharedSecrets {
         /**
          * Prevents construction of this access facade.
          */
@@ -108,7 +108,7 @@ public final class LinuxProcessTree implements AutoCloseable {
          * @throws IOException if external replacement expires
          * @throws InterruptedException if the replacement wait is interrupted
          */
-        static void executeAfterRelease(ExecutionMode mode, Runnable execution, long replacementDeadline)
+        public static void executeAfterRelease(ExecutionMode mode, Runnable execution, long replacementDeadline)
                 throws IOException, InterruptedException {
             LinuxProcessTree.executeAfterRelease(mode, execution::run, replacementDeadline);
         }
@@ -178,7 +178,7 @@ public final class LinuxProcessTree implements AutoCloseable {
          * Writes the three endpoint paths into supervisor launch properties.
          * @param values supervisor launch properties to update
          */
-        void writeTo(Properties values) {
+        public void writeTo(Properties values) {
             values.setProperty(INPUT, input.toString());
             values.setProperty(OUTPUT, output.toString());
             values.setProperty(ERROR, error.toString());
@@ -190,7 +190,7 @@ public final class LinuxProcessTree implements AutoCloseable {
          * @return the endpoints, or null only when all three properties are absent
          * @throws IOException if endpoint properties are incomplete or invalid
          */
-        static StandardFiles readFrom(Properties values) throws IOException {
+        public static StandardFiles readFrom(Properties values) throws IOException {
             String input = values.getProperty(INPUT);
             String output = values.getProperty(OUTPUT);
             String error = values.getProperty(ERROR);
@@ -209,7 +209,7 @@ public final class LinuxProcessTree implements AutoCloseable {
          * The caller must arrange FIFO peers before starting the trusted gate.
          * @param builder trusted gate process builder
          */
-        void redirect(ProcessBuilder builder) {
+        public void redirect(ProcessBuilder builder) {
             builder.redirectErrorStream(false);
             builder.redirectInput(input.toFile());
             builder.redirectOutput(output.toFile());
@@ -330,7 +330,7 @@ public final class LinuxProcessTree implements AutoCloseable {
     /**
      * Writes one owned subtree kill, retrying a failed or uncertain write until it succeeds.
      */
-    static final class KillRequest {
+    public static final class KillRequest {
         /**
          * Borrowed cgroup whose existing owner retains its lifetime.
          */
@@ -344,7 +344,7 @@ public final class LinuxProcessTree implements AutoCloseable {
          * Retains the action subtree to which all retries belong.
          * @param group the exclusive retained action cgroup
          */
-        KillRequest(Path group) { this.group = group; }
+        public KillRequest(Path group) { this.group = group; }
 
         /**
          * Requests subtree termination without collecting statuses or waiting for task exit.
@@ -352,7 +352,7 @@ public final class LinuxProcessTree implements AutoCloseable {
          * has no effect. Only a successful write prevents further writes.
          * @throws IOException if the owned kill file cannot be written
          */
-        void request() throws IOException {
+        public void request() throws IOException {
             if (written) return;
             Files.writeString(group.resolve("cgroup.kill"), "1\n", StandardOpenOption.WRITE);
             written = true;
@@ -418,7 +418,7 @@ public final class LinuxProcessTree implements AutoCloseable {
      * @return the validated operation result
      * @throws java.io.IOException if validation, native access or owned cleanup fails
      */
-    static LinuxProcessTree prepareBorrowed(ToolingScope scope, Launch launch, LinuxBorrowedStreams.Binding streams) throws IOException {
+    public static LinuxProcessTree prepareBorrowed(ToolingScope scope, Launch launch, LinuxBorrowedStreams.Binding streams) throws IOException {
         Objects.requireNonNull(streams, "streams may not be null").requireExecution(launch);
         return prepareOwned(scope, launch, null, streams);
     }
@@ -776,7 +776,7 @@ public final class LinuxProcessTree implements AutoCloseable {
      * @return a new command containing the matching native-access grant and absolute runtime search paths
      * @throws NullPointerException if a required input or argument is null
      */
-    static List<String> javaCommand(Launch launch, Class<?> entryPoint, String... arguments) {
+    public static List<String> javaCommand(Launch launch, Class<?> entryPoint, String... arguments) {
         List<String> command = new ArrayList<>();
         command.add(launch.javaExecutable().toString());
         Module module = entryPoint.getModule();
@@ -835,7 +835,7 @@ public final class LinuxProcessTree implements AutoCloseable {
     /** Installation boundary used by the trusted gate before publishing readiness. */
     @FunctionalInterface
     /** Installs the pending descriptors in the dedicated gate. */
-    interface StreamInstallation {
+    public interface StreamInstallation {
         /**
          * Installs the complete borrowed descriptor triple before readiness.
          * @throws IOException if installation fails and workload execution must remain impossible
@@ -849,7 +849,7 @@ public final class LinuxProcessTree implements AutoCloseable {
      * @param installation descriptor installation completed before readiness
      * @throws java.io.IOException if validation, native access or owned cleanup fails
      */
-    static void publishBorrowedReady(Path scratch, StreamInstallation installation) throws IOException {
+    public static void publishBorrowedReady(Path scratch, StreamInstallation installation) throws IOException {
         installation.install();
         Files.writeString(scratch.resolve("ready"), Long.toString(ProcessHandle.current().pid()), StandardOpenOption.CREATE_NEW);
     }

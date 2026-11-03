@@ -1,0 +1,101 @@
+package com.holdmyspot.codexunleashed.tooling.test;
+
+import com.holdmyspot.codexunleashed.tooling.Main;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.HexFormat;
+import java.util.List;
+import org.testng.annotations.Test;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+/** Verifies public cache identities from independent immutable method fixtures. */
+public final class CargoCacheKeysTest
+{
+    /** Creates independent method fixtures. */
+    public CargoCacheKeysTest() {}
+
+    /**
+     * Retains exact input byte order, including binary bytes and line endings; seeds omit only wrappers.
+     * @throws Exception if fixture allocation or digest acquisition fails
+     */
+    @Test public void exactBytesAndCompatibleSeeds() throws Exception
+    {
+        try (Fixture fixture = new Fixture())
+        {
+            byte[][] bytes = {new byte[]{65, 0, 13, 10}, "wrapper\n".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                "helper\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8), "compiler λ".getBytes(java.nio.charset.StandardCharsets.UTF_8)};
+            for (int i = 0; i < bytes.length; ++i) Files.write(fixture.inputs.get(i), bytes[i]);
+            requireThat(fixture.run("target"), "publicStatus").isEqualTo(0);
+            MessageDigest exact = MessageDigest.getInstance("SHA-256"); MessageDigest seed = MessageDigest.getInstance("SHA-256");
+            for (int i = 0; i < bytes.length; ++i) { exact.update(bytes[i]); if (i != 1) seed.update(bytes[i]); }
+            requireThat(fixture.output.toString(), "orderedIdentityBytes").isEqualTo("tag=cargo-v3-target-" + HexFormat.of().formatHex(exact.digest()) +
+                "\nseed_tag=cargo-seed-v1-target-" + HexFormat.of().formatHex(seed.digest()) + "\n");
+            String originalSeed = fixture.output.toString().lines().toList().getLast();
+            fixture.output.reset(); Files.writeString(fixture.inputs.get(1), "wrapper repair");
+            requireThat(fixture.run("target"), "repairStatus").isEqualTo(0);
+            requireThat(fixture.output.toString().lines().toList().getLast(), "wrapperIndependentSeed").isEqualTo(originalSeed);
+            fixture.output.reset(); Files.writeString(fixture.inputs.get(2), "new helper"); fixture.run("target");
+            requireThat(fixture.output.toString().lines().toList().getLast().equals(originalSeed), "helperPartitionsSeed").isFalse();
+        }
+    }
+
+    /**
+     * Invalid targets and unreadable inputs return two without publishing partial tags.
+     * @throws IOException if fixture storage fails
+     */
+    @Test public void invalidInputsPublishNoTags() throws IOException
+    {
+        try (Fixture fixture = new Fixture())
+        {
+            for (String target : List.of("", "../target", "target:other", "λ", "target with spaces"))
+                requireThat(fixture.run(target), "invalidTarget").isEqualTo(2);
+            Files.delete(fixture.inputs.getLast());
+            requireThat(fixture.run("target"), "missingInput").isEqualTo(2);
+            requireThat(fixture.output.size(), "noPartialOutputs").isEqualTo(0);
+        }
+    }
+
+    /** Owns independent original recorded bytes and borrowed command output. */
+    private static final class Fixture implements AutoCloseable
+    {
+        /** Owned source root. */ private final Path root;
+        /** Exact input files. */ private final List<Path> inputs = new ArrayList<>();
+        /** Public command output. */ private final ByteArrayOutputStream output = new ByteArrayOutputStream();
+        /** Borrowed output wrapper. */ private final PrintStream out = new PrintStream(output);
+        /** Independent diagnostics. */ private final PrintStream err = new PrintStream(new ByteArrayOutputStream());
+        /**
+         * Writes four independent source records.
+         * @throws IOException if storage fails
+         */
+        private Fixture() throws IOException
+        {
+            root = Files.createTempDirectory("keys-");
+            for (String name : List.of("upstream", "wrappers", "helper", "compiler"))
+            { Path file = root.resolve(name); Files.writeString(file, name); inputs.add(file); }
+        }
+        /**
+         * Invokes the actual public command without closing borrowed streams.
+         * @param target supplied target name
+         * @return public status
+         */
+        private int run(String target)
+        {
+            List<String> args = new ArrayList<>(List.of("cargo-cache-keys", target)); inputs.forEach(path -> args.add(path.toString()));
+            return Main.run(args.toArray(String[]::new), new ByteArrayInputStream(new byte[0]), out, err);
+        }
+        /**
+         * Deletes only the owned fixture.
+         * @throws IOException if deletion fails
+         */
+        @Override public void close() throws IOException
+        {
+            out.close(); err.close(); for (Path input : inputs) Files.deleteIfExists(input); Files.delete(root);
+        }
+    }
+}

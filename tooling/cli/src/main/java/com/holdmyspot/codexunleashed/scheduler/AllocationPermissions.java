@@ -16,7 +16,7 @@ import java.util.Set;
  * ownership, selected batch membership and transport health, pump copied messages, enforce acknowledgement deadlines,
  * and terminate and clean native resources after failure. That native composition remains separately unaccepted.
  */
-final class AllocationPermissions
+public final class AllocationPermissions
 {
 	/** Borrowed codec that validates this installation's native frames and constructs its permissions. */
 	private final AllocationMessages messages;
@@ -43,7 +43,7 @@ final class AllocationPermissions
 	 * @param poster borrowed operation that posts a serialized permission once
 	 * @throws NullPointerException if either collaborator is null
 	 */
-	AllocationPermissions(AllocationMessages messages, Poster poster)
+	public AllocationPermissions(AllocationMessages messages, Poster poster)
 	{
 		this.messages = Objects.requireNonNull(messages, "messages may not be null");
 		this.poster = Objects.requireNonNull(poster, "poster may not be null");
@@ -60,7 +60,7 @@ final class AllocationPermissions
 	 * @throws IllegalStateException if called outside the constructing thread
 	 * @throws IOException if stopped, a prior failure exists, or decoding or the event transition fails
 	 */
-	AllocationMessages.Event read(String message) throws IOException
+	public AllocationMessages.Event read(String message) throws IOException
 	{
 		requireOwner();
 		requireAuthority();
@@ -122,7 +122,7 @@ final class AllocationPermissions
 	 * previously failed, or posting fails; operational runtime failures retain their cause
 	 * @throws Error if posting throws an error, after grant authority has been withdrawn and its cause retained
 	 */
-	void grant(AllocationWaits.Wait wait) throws IOException
+	public void grant(AllocationWaits.Wait wait) throws IOException
 	{
 		requireOwner();
 		String permission = messages.permission(wait).toString();
@@ -166,7 +166,7 @@ final class AllocationPermissions
 	 * @return true after accepted readiness
 	 * @throws IllegalStateException if called outside the constructing thread
 	 */
-	boolean ready()
+	public boolean ready()
 	{
 		requireOwner();
 		return ready;
@@ -177,7 +177,7 @@ final class AllocationPermissions
 	 * @return the retained pending wait, or null before posting and after matching accepted acknowledgement
 	 * @throws IllegalStateException if called outside the constructing thread
 	 */
-	AllocationWaits.Wait pending()
+	public AllocationWaits.Wait pending()
 	{
 		requireOwner();
 		return pending;
@@ -191,7 +191,7 @@ final class AllocationPermissions
 	 * @throws NullPointerException if {@code wait} is null
 	 * @throws IllegalStateException if called outside the constructing thread
 	 */
-	boolean acknowledged(AllocationWaits.Wait wait)
+	public boolean acknowledged(AllocationWaits.Wait wait)
 	{
 		requireOwner();
 		Objects.requireNonNull(wait, "wait may not be null");
@@ -203,7 +203,7 @@ final class AllocationPermissions
 	 * @return the first failure, or null before any failure; an explicit stop alone is not a failure
 	 * @throws IllegalStateException if called outside the constructing thread
 	 */
-	IOException failure()
+	public IOException failure()
 	{
 		requireOwner();
 		return failure;
@@ -215,7 +215,7 @@ final class AllocationPermissions
 	 * @throws NullPointerException if {@code cause} is null
 	 * @throws IllegalStateException if called outside the constructing thread
 	 */
-	void transportFailed(IOException cause)
+	public void transportFailed(IOException cause)
 	{
 		requireOwner();
 		Objects.requireNonNull(cause, "cause may not be null");
@@ -228,7 +228,7 @@ final class AllocationPermissions
 	 * Pending and acknowledged identities and the first failure remain available for diagnosis. Repeated calls are harmless.
 	 * @throws IllegalStateException if called outside the constructing thread
 	 */
-	void stop()
+	public void stop()
 	{
 		requireOwner();
 		stopped = true;
@@ -279,7 +279,7 @@ final class AllocationPermissions
 	 * Supplies one serialized native script post. Native callbacks must queue copied messages for later owner-thread reads.
 	 */
 	@FunctionalInterface
-	interface Poster
+	public interface Poster
 	{
 		/**
 		 * Posts one complete serialized permission exactly once for this invocation.

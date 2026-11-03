@@ -19,7 +19,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Getters support concurrent callers while open. The composition boundary closes this scope after its borrowers
  * finish; the supplied tooling scope remains caller-owned and must outlive it. Native owners retain their own lifetimes.
  */
-final class LinuxCargoScope extends AbstractScope
+public final class LinuxCargoScope extends AbstractScope
 {
     /** Number of random bytes in the borrowed-stream protocol's 256-bit attempt capability. */
     private static final int CAPABILITY_BYTES = 32;
@@ -41,7 +41,7 @@ final class LinuxCargoScope extends AbstractScope
      * @param tooling caller-owned tooling scope retained open through this scope's borrowers
      * @throws NullPointerException if {@code tooling} is null
      */
-    LinuxCargoScope(ToolingScope tooling)
+    public LinuxCargoScope(ToolingScope tooling)
     {
         this.tooling = Objects.requireNonNull(tooling, "tooling");
     }
@@ -51,7 +51,7 @@ final class LinuxCargoScope extends AbstractScope
      * @return borrowed tooling scope, retained open after this scope closes
      * @throws IllegalStateException if this scope is closed
      */
-    ToolingScope tooling()
+    public ToolingScope tooling()
     {
         requireOpen();
         return tooling;
@@ -64,7 +64,7 @@ final class LinuxCargoScope extends AbstractScope
      * @return this scope's shared parser; callers must not close it
      * @throws IllegalStateException if this scope is closed
      */
-    JsonMapper json()
+    public JsonMapper json()
     {
         requireOpen();
         return json.getValue();
@@ -75,7 +75,7 @@ final class LinuxCargoScope extends AbstractScope
      * @return a new caller-owned array containing 32 unpredictable bytes
      * @throws IllegalStateException if this scope is closed
      */
-    byte[] capability()
+    public byte[] capability()
     {
         requireOpen();
         byte[] capability = new byte[CAPABILITY_BYTES];

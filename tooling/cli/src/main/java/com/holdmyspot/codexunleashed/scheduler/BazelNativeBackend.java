@@ -456,7 +456,7 @@ public final class BazelNativeBackend implements AutoCloseable
          * @param scope borrowed mapper scope
          * @throws IOException if any original product or directory object changed
          */
-        void revalidate(ToolingScope scope) throws IOException
+        public void revalidate(ToolingScope scope) throws IOException
         {
             if (!equals(validateDistribution(scope, target, root, authority)))
                 throw new IOException("Original validated native backend distribution was substituted or changed");
@@ -696,7 +696,7 @@ public final class BazelNativeBackend implements AutoCloseable
      * @param privateKey exact host-owned private key path
      * @return typed file-certificate configuration shared by server and client TLS
      */
-    static Map<String, Object> fileKeyPair(Path certificate, Path privateKey)
+    public static Map<String, Object> fileKeyPair(Path certificate, Path privateKey)
     {
         return Map.of("files", Map.of("certificatePath", certificate.toString(),
             "privateKeyPath", privateKey.toString(), "refreshInterval", "3600s"));
@@ -742,7 +742,7 @@ public final class BazelNativeBackend implements AutoCloseable
      * @return complete private Bazel rc, preserving the original consumer argument vector
      * @throws IOException if the packaged policy template cannot be read
      */
-    static String startupRc(Configuration configuration, int storagePort) throws IOException
+    public static String startupRc(Configuration configuration, int storagePort) throws IOException
     {
         String template;
         try (InputStream input = BazelNativeBackend.class.getResourceAsStream(RESOURCE_ROOT + "backend.bazelrc.template"))

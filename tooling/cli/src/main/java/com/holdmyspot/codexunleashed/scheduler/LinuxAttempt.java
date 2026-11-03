@@ -13,7 +13,7 @@ import java.util.UUID;
  * Only the constructing controller thread may call it. Genuine faults remain sticky even after safe cleanup.
  * Cancellation acknowledges a request; only authentic collected whole-tree results become queue outcomes.
  */
-final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
+public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 {
 	/** Exclusive calling thread. */
 	private final Thread owner = Thread.currentThread();
@@ -335,7 +335,7 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 	 * unchecked token fault
 	 * @throws Error if attachment closure or collection fails fatally, or collection fails after a fatal token fault
 	 */
-	static Throwable closeInstrumentationOwners(Close instrumentation, Close tokens, Close collect) throws IOException
+	public static Throwable closeInstrumentationOwners(Close instrumentation, Close tokens, Close collect) throws IOException
 	{
 		Objects.requireNonNull(instrumentation, "instrumentation");
 		Objects.requireNonNull(tokens, "tokens");
@@ -453,7 +453,7 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 	 * @param registration exact registration closure, or an empty operation if no handle was returned
 	 * @throws IOException if an owner cannot close; later dependent closure is not attempted
 	 */
-	static void closeCollectedOwners(boolean fault, Close supervisor, Close registration) throws IOException
+	public static void closeCollectedOwners(boolean fault, Close supervisor, Close registration) throws IOException
 	{
 		if (fault)
 		{
@@ -469,7 +469,7 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 
 	/** One checked owner-release operation; it supplies no fabricated process outcome. */
 	@FunctionalInterface
-	interface Close
+	public interface Close
 	{
 		/** Releases an already retained owner.
 		 * @throws IOException if ownership remains unresolved

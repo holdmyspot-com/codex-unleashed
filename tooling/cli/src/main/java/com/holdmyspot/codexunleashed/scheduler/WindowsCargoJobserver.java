@@ -30,7 +30,7 @@ import java.util.function.Consumer;
  * remains live while consumers import its name. Default creator security permits same-user use; this class
  * does not establish another user's authorization. Missing tokens are reported at quiescent close, never minted.
  */
-final class WindowsCargoJobserver implements AutoCloseable
+public final class WindowsCargoJobserver implements AutoCloseable
 {
 	/** Variables emitted by pinned jobserver 0.1.34 configure_make. */
 	private static final Set<String> MAKE_VARIABLES = Set.of("CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS");
@@ -79,7 +79,7 @@ final class WindowsCargoJobserver implements AutoCloseable
 	 * @throws IOException if creation or cleanup fails
 	 * @throws PreparationFailure if failed acquisition retains an unresolved cleanup failure
 	 */
-	static WindowsCargoJobserver create(ToolingScope scope, int jobs) throws IOException
+	public static WindowsCargoJobserver create(ToolingScope scope, int jobs) throws IOException
 	{
 		Objects.requireNonNull(scope, "scope");
 		validateJobs(jobs);
@@ -152,7 +152,7 @@ final class WindowsCargoJobserver implements AutoCloseable
 	 * @throws IllegalArgumentException if any owned make variable is present
 	 * @throws IllegalStateException if called from another thread, closing, or already retained
 	 */
-	CargoLease retainCargo(Map<String, String> environment)
+	public CargoLease retainCargo(Map<String, String> environment)
 	{
 		requireController();
 		Map<String, String> copy = new HashMap<>(Map.copyOf(environment));
@@ -281,7 +281,7 @@ final class WindowsCargoJobserver implements AutoCloseable
 	}
 
 	/** Retains one immutable launch context until the coordinator proves complete consumer quiescence. */
-	final class CargoLease implements AutoCloseable
+	public final class CargoLease implements AutoCloseable
 	{
 		/** Copied root environment shared unchanged through all invocation launch boundaries. */
 		private final Map<String, String> environment;
@@ -309,7 +309,7 @@ final class WindowsCargoJobserver implements AutoCloseable
 		 * @return immutable named-jobserver environment
 		 * @throws IllegalStateException if released or accessed from another thread
 		 */
-		Map<String, String> environment()
+		public Map<String, String> environment()
 		{
 			requireController();
 			if (released)
@@ -450,7 +450,7 @@ final class WindowsCargoJobserver implements AutoCloseable
 	}
 
 	/** Reports an observed quiescent capacity mismatch without claiming which consumer lost or added tokens. */
-	static final class CapacityMismatch extends IOException
+	public static final class CapacityMismatch extends IOException
 	{
 		/** Serialization version for the immutable count discrepancy. */
 		@Serial
@@ -476,16 +476,16 @@ final class WindowsCargoJobserver implements AutoCloseable
 		 * Returns the invocation's initial explicit token capacity.
 		 * @return expected explicit tokens, excluding the implicit slot
 		 */
-		int expectedTokens() { return expectedTokens; }
+		public int expectedTokens() { return expectedTokens; }
 		/**
 		 * Returns the actual count observed during quiescent close.
 		 * @return observed tokens, without inferring an individual consumer's borrow
 		 */
-		int observedTokens() { return observedTokens; }
+		public int observedTokens() { return observedTokens; }
 	}
 
 	/** Retains a failed acquisition and its terminal unresolved cleanup owner; close never retries a raw handle. */
-	static final class PreparationFailure extends IOException implements AutoCloseable
+	public static final class PreparationFailure extends IOException implements AutoCloseable
 	{
 		/** Serialization version inherited from the checked failure API. */
 		@Serial
@@ -516,7 +516,7 @@ final class WindowsCargoJobserver implements AutoCloseable
 	}
 
 	/** Native operations preserving acquired/timeout/failed outcomes and explicit handle ownership. */
-	interface Calls extends AutoCloseable
+	public interface Calls extends AutoCloseable
 	{
 		/**
 		 * Creates or opens the generated name without changing an existing pool's count.
@@ -557,7 +557,7 @@ final class WindowsCargoJobserver implements AutoCloseable
 	}
 
 	/** Typed access to the production acquisition path for controlled native-outcome tests. */
-	static final class SharedSecrets
+	public static final class SharedSecrets
 	{
 		/** Prevents construction. */
 		private SharedSecrets() { }
@@ -568,7 +568,7 @@ final class WindowsCargoJobserver implements AutoCloseable
 		 * @return normally owned jobserver
 		 * @throws IOException if acquisition or cleanup fails
 		 */
-		static WindowsCargoJobserver create(int jobs, Calls calls) throws IOException
+		public static WindowsCargoJobserver create(int jobs, Calls calls) throws IOException
 		{
 			validateJobs(jobs);
 			return acquire(jobs, calls);
@@ -585,7 +585,7 @@ final class WindowsCargoJobserver implements AutoCloseable
 		 * @param close handle-close binding with leading captured-state argument
 		 * @return owned access through the production native adapter
 		 */
-		static Calls nativeCalls(Arena arena, MemorySegment errors, long errorOffset, MethodHandle create,
+		public static Calls nativeCalls(Arena arena, MemorySegment errors, long errorOffset, MethodHandle create,
 			MethodHandle wait, MethodHandle release, MethodHandle close)
 		{
 			return new NativeCalls(arena, errors, errorOffset, create, wait, release, close);

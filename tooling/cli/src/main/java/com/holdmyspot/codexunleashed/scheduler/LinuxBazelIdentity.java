@@ -18,7 +18,7 @@ import java.util.Objects;
  * establish current identity only; the caller must retain the owner and stopped child through containment and use.
  * Instances belong to one operation thread. Authentication does not authorize execution or install hooks.
  */
-final class LinuxBazelIdentity
+public final class LinuxBazelIdentity
 {
     /** Trusted original parent birth and image, retained by the invocation owner. */
     private final Parent parent;
@@ -33,7 +33,7 @@ final class LinuxBazelIdentity
      * @param execution trusted action-owner execution
      * @throws NullPointerException if an input is null
      */
-    LinuxBazelIdentity(Parent parent, Execution execution)
+    public LinuxBazelIdentity(Parent parent, Execution execution)
     {
         this(parent, execution, new NativeObserver());
     }
@@ -45,7 +45,7 @@ final class LinuxBazelIdentity
      * @param observer independent native observation boundary
      * @throws NullPointerException if an input is null
      */
-    LinuxBazelIdentity(Parent parent, Execution execution, Observer observer)
+    public LinuxBazelIdentity(Parent parent, Execution execution, Observer observer)
     {
         this.parent = Objects.requireNonNull(parent, "parent");
         this.execution = Objects.requireNonNull(execution, "execution");
@@ -62,7 +62,7 @@ final class LinuxBazelIdentity
      * @throws IllegalArgumentException if {@code localPid} is nonpositive
      * @throws IOException if birth, parent, image, credentials, execution or namespace mapping differs or changes
      */
-    Owner authenticate(LinuxBorrowedStreams.Peer captured, long localPid) throws IOException
+    public Owner authenticate(LinuxBorrowedStreams.Peer captured, long localPid) throws IOException
     {
         Objects.requireNonNull(captured, "captured");
         requirePositive(localPid, "localPid");
@@ -89,7 +89,7 @@ final class LinuxBazelIdentity
      * @throws IllegalArgumentException if a process ID or birth is nonpositive, or {@code owner} belongs elsewhere
      * @throws IOException if no unique child matches or any retained identity or execution changes
      */
-    Child authenticateChild(Owner owner, long localPid, long startTicks, Execution prepared) throws IOException
+    public Child authenticateChild(Owner owner, long localPid, long startTicks, Execution prepared) throws IOException
     {
         requireOwner(owner);
         requirePositive(localPid, "localPid");
@@ -124,7 +124,7 @@ final class LinuxBazelIdentity
      * @throws IllegalArgumentException if either retained identity belongs to another authenticator or the child belongs to another owner
      * @throws IOException if the child birth, parent, namespaces, credentials or held execution differs or changes
      */
-    void requireHeld(Owner owner, Child child, Execution held) throws IOException
+    public void requireHeld(Owner owner, Child child, Execution held) throws IOException
     {
         requireOwner(owner);
         Objects.requireNonNull(child, "child");
@@ -150,7 +150,7 @@ final class LinuxBazelIdentity
      * @throws IllegalArgumentException if the child or owner belongs to another policy or original owner
      * @throws IOException if birth, parentage, namespaces or workload credentials differ or cannot be observed
      */
-    void requireChildIdentity(Owner owner, Child child) throws IOException
+    public void requireChildIdentity(Owner owner, Child child) throws IOException
     {
         requireOwner(owner);
         Objects.requireNonNull(child, "child");
@@ -176,7 +176,7 @@ final class LinuxBazelIdentity
      * @throws IllegalArgumentException if either identity value is nonpositive or the thread names the process leader
      * @throws IOException if current root identity, thread membership or stable native facts differ
      */
-    ExecAuthorization prepareExec(Owner owner, Child child, long localThreadPid, long startTicks) throws IOException
+    public ExecAuthorization prepareExec(Owner owner, Child child, long localThreadPid, long startTicks) throws IOException
     {
         requirePositive(localThreadPid, "localThreadPid");
         requirePositive(startTicks, "startTicks");
@@ -204,7 +204,7 @@ final class LinuxBazelIdentity
      * @throws IllegalArgumentException if receipts belong to different authorities or processes
      * @throws IOException if authorization was consumed or native identity differs
      */
-    Child authenticateExec(Owner owner, Child child, ExecAuthorization authorization) throws IOException
+    public Child authenticateExec(Owner owner, Child child, ExecAuthorization authorization) throws IOException
     {
         Objects.requireNonNull(authorization, "authorization");
         if (authorization.authenticator != this || authorization.owner != owner)
@@ -401,7 +401,7 @@ final class LinuxBazelIdentity
      * @param executable normalized absolute pathname as seen inside the observed process root
      * @param sha256 lowercase hexadecimal SHA-256 of the approved executable bytes
      */
-    record Image(Path executable, String sha256)
+    public record Image(Path executable, String sha256)
     {
         /**
          * Validates the trusted namespace-local path and exact digest representation.
@@ -410,7 +410,7 @@ final class LinuxBazelIdentity
          * @throws NullPointerException if an input is null
          * @throws IllegalArgumentException if the path or digest representation is invalid
          */
-        Image
+        public Image
         {
             requireAbsolute(executable);
             Objects.requireNonNull(sha256, "sha256");
@@ -425,7 +425,7 @@ final class LinuxBazelIdentity
      * @param startTicks retained kernel birth tick count since boot
      * @param image trusted original parent executable
      */
-    record Parent(long pid, long startTicks, Image image)
+    public record Parent(long pid, long startTicks, Image image)
     {
         /**
          * Validates the retained parent identity before observations.
@@ -435,7 +435,7 @@ final class LinuxBazelIdentity
          * @throws NullPointerException if {@code image} is null
          * @throws IllegalArgumentException if PID or birth is nonpositive
          */
-        Parent
+        public Parent
         {
             requirePositive(pid, "pid");
             requirePositive(startTicks, "startTicks");
@@ -452,7 +452,7 @@ final class LinuxBazelIdentity
      * @param uid approved unprivileged real/effective/saved/filesystem user ID
      * @param gid approved real/effective/saved/filesystem group ID
      */
-    record Execution(Image image, List<String> arguments, Map<String, String> environment, Path directory, int uid, int gid)
+    public record Execution(Image image, List<String> arguments, Map<String, String> environment, Path directory, int uid, int gid)
     {
         /**
          * Copies execution inputs and rejects native text that cannot be represented faithfully.
@@ -465,7 +465,7 @@ final class LinuxBazelIdentity
          * @throws NullPointerException if an input or collection member is null
          * @throws IllegalArgumentException if arguments, credentials, native text or paths are invalid
          */
-        Execution
+        public Execution
         {
             Objects.requireNonNull(image, "image");
             if (uid <= 0 || gid < 0) throw new IllegalArgumentException("Execution requires an unprivileged UID and nonnegative GID");
@@ -486,7 +486,7 @@ final class LinuxBazelIdentity
     /**
      * Authentication receipt whose constructor is inaccessible to registration callers.
      */
-    static final class Owner
+    public static final class Owner
     {
         /** Policy that issued this receipt. */
         private final LinuxBazelIdentity authenticator;
@@ -516,13 +516,13 @@ final class LinuxBazelIdentity
          * Returns the authenticated connection identity in the controller namespace.
          * @return kernel-captured owner birth and credentials
          */
-        LinuxBorrowedStreams.Peer peer() { return peer; }
+        public LinuxBorrowedStreams.Peer peer() { return peer; }
 
         /**
          * Returns the independently verified owner PID inside its namespace.
          * @return positive innermost namespace PID
          */
-        long localPid() { return localPid; }
+        public long localPid() { return localPid; }
     }
 
     /**
@@ -531,7 +531,7 @@ final class LinuxBazelIdentity
      * @param processId controller-visible thread-group ID
      * @param observation stable thread birth, credentials and namespace mapping
      */
-    record ThreadObservation(long hostPid, long processId, Observation observation)
+    public record ThreadObservation(long hostPid, long processId, Observation observation)
     {
         /**
          * Validates native identity values before retaining them.
@@ -541,7 +541,7 @@ final class LinuxBazelIdentity
          * @throws IllegalArgumentException if either ID is nonpositive
          * @throws NullPointerException if observation is null
          */
-        ThreadObservation
+        public ThreadObservation
         {
             requirePositive(hostPid, "hostPid");
             requirePositive(processId, "processId");
@@ -553,7 +553,7 @@ final class LinuxBazelIdentity
      * One-use authority to recognize the birth change caused by one independently observed original thread exec.
      * Only the issuing operation thread may consume it.
      */
-    static final class ExecAuthorization
+    public static final class ExecAuthorization
     {
         /** Issuing policy, checked when this capability is consumed. */
         private final LinuxBazelIdentity authenticator;
@@ -586,7 +586,7 @@ final class LinuxBazelIdentity
     /**
      * Mapped direct-child receipt, retained across its gate-to-workload exec transition.
      */
-    static final class Child
+    public static final class Child
     {
         /** Issuing authentication policy. */
         private final LinuxBazelIdentity authenticator;
@@ -625,13 +625,13 @@ final class LinuxBazelIdentity
          * Returns the mapped child PID for host containment and instrumentation.
          * @return positive controller-visible child PID
          */
-        long hostPid() { return hostPid; }
+        public long hostPid() { return hostPid; }
 
         /**
          * Returns the kernel birth captured by this immutable receipt.
          * @return positive kernel clock tick count since boot
          */
-        long startTicks() { return observation.startTicks(); }
+        public long startTicks() { return observation.startTicks(); }
     }
 
     /**
@@ -648,7 +648,7 @@ final class LinuxBazelIdentity
      * @param environment complete observed native environment
      * @param directory observed namespace-local absolute cwd link
      */
-    record Observation(long startTicks, long parentPid, String status, List<Long> namespacePids,
+    public record Observation(long startTicks, long parentPid, String status, List<Long> namespacePids,
         String pidNamespace, String mountNamespace, boolean sameExecutable, String executableSha256,
         List<String> arguments, Map<String, String> environment, Path directory)
     {
@@ -668,7 +668,7 @@ final class LinuxBazelIdentity
          * @throws NullPointerException if an input or collection member is null
          * @throws IllegalArgumentException if identity, namespaces or paths are incomplete
          */
-        Observation
+        public Observation
         {
             requirePositive(startTicks, "startTicks");
             if (parentPid < 0) throw new IllegalArgumentException("parentPid must be nonnegative");
@@ -689,7 +689,7 @@ final class LinuxBazelIdentity
     /**
      * Supplies kernel and proc facts independently of the untrusted connection payload.
      */
-    interface Observer
+    public interface Observer
     {
         /**
          * Captures one process's complete facts and verifies stable birth across that collection.
@@ -730,7 +730,7 @@ final class LinuxBazelIdentity
     }
 
     /** Identifies an actually empty native procfs command vector, independently of other decoder failures. */
-    static final class EmptyCommandVectorException extends IOException
+    public static final class EmptyCommandVectorException extends IOException
     {
         /** Stable serialization identity of this native observation distinction. */
         private static final long serialVersionUID = 1L;
@@ -752,7 +752,7 @@ final class LinuxBazelIdentity
      * @return unchanged native argument vector
      * @throws IOException if the native vector is empty, malformed or unavailable
      */
-    static List<String> readNativeArguments(long pid, InputStream input) throws IOException
+    public static List<String> readNativeArguments(long pid, InputStream input) throws IOException
     {
         java.io.PushbackInputStream observed = new java.io.PushbackInputStream(input, 1);
         int first = observed.read();
