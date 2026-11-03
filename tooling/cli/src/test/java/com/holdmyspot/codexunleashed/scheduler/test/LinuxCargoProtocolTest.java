@@ -30,6 +30,7 @@ public final class LinuxCargoProtocolTest
     @Test
     public void decodesRegistration() throws IOException
     {
+        TestRequirements.requirePosixFileSystem();
         var register = (LinuxCargoProtocol.Register) LinuxCargoProtocol.decode(payload("register", "2", "/work", "3",
             "/usr/bin/rustc", "", "é b", "2", "B=x=y", "A="));
         requireThat(register.directory(), "directory").isEqualTo(Path.of("/work"));

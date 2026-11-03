@@ -130,6 +130,7 @@ public final class LinuxCargoLaunchConfigurationTest
     @Test
     public void encodesVersionTwoWrapperConfiguration()
     {
+        TestRequirements.requirePosixFileSystem();
         requireThat(new String(LinuxCargoLaunchConfiguration.encodeWrapper(Path.of("/run/c"), 3000),
             StandardCharsets.US_ASCII), "configuration").isEqualTo("version=2\ncontroller=/run/c\ntimeout_millis=3000\n");
         requireThat(new String(LinuxCargoLaunchConfiguration.encodeWrapper(Path.of("/run/c"),
