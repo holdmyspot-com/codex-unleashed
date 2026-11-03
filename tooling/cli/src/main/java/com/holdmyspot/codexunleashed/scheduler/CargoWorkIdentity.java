@@ -36,6 +36,8 @@ public final class CargoWorkIdentity
     private final List<Path> outputRoots;
     /** Caller-pinned compiler and sysroot content tree. */
     private final Path toolchainRoot;
+    /** Resolves an argument value against the compiler's working directory. */
+    private final Resolver resolver;
 
     /**
      * Retains explicit content boundaries without acquiring resources.
@@ -47,6 +49,21 @@ public final class CargoWorkIdentity
      */
     public CargoWorkIdentity(Path inputRoot, List<Path> outputRoots, Path toolchainRoot)
     {
+        this(inputRoot, outputRoots, toolchainRoot, Path::resolve);
+    }
+
+    /**
+     * Retains explicit content boundaries and the argument resolver.
+     * @param inputRoot absolute normalized source/configuration root
+     * @param outputRoots absolute normalized generated output trees, strictly below the input root
+     * @param toolchainRoot absolute normalized immutable compiler/sysroot root
+     * @param resolver resolves an argument value against the compiler's working directory
+     * @throws NullPointerException if a required value or collection member is null
+     * @throws IllegalArgumentException if a path is relative, not normalized or an output is outside the input root
+     */
+    private CargoWorkIdentity(Path inputRoot, List<Path> outputRoots, Path toolchainRoot, Resolver resolver)
+    {
+        this.resolver = Objects.requireNonNull(resolver, "resolver");
         this.inputRoot = absolute(inputRoot);
         this.toolchainRoot = absolute(toolchainRoot);
         this.outputRoots = List.copyOf(outputRoots);
@@ -102,7 +119,7 @@ public final class CargoWorkIdentity
                 Path candidate;
                 try
                 {
-                    candidate = request.directory().resolve(value).normalize();
+                    candidate = resolver.resolve(request.directory(), value).normalize();
                 }
                 catch (InvalidPathException ignored)
                 {
@@ -190,5 +207,46 @@ public final class CargoWorkIdentity
         if (!path.isAbsolute() || !path.equals(path.normalize()))
             throw new IllegalArgumentException("Compiler identity roots must be absolute and normalized");
         return path;
+    }
+
+    /** Resolves an argument value against a working directory. */
+    @FunctionalInterface
+    public interface Resolver
+    {
+        /**
+         * Resolves a value.
+         * @param directory the compiler's working directory
+         * @param value argument text
+         * @return the resolved path
+         * @throws InvalidPathException if the value is not path syntax on this file system
+         */
+        Path resolve(Path directory, String value);
+    }
+
+    /** Gives this module's tests access to the argument resolver. */
+    public static final class SharedSecrets
+    {
+        /**
+         * Prevents construction.
+         */
+        private SharedSecrets()
+        {
+        }
+
+        /**
+         * Creates an identity that resolves argument values through the given resolver.
+         * @param inputRoot absolute normalized source/configuration root
+         * @param outputRoots absolute normalized generated output trees, strictly below the input root
+         * @param toolchainRoot absolute normalized immutable compiler/sysroot root
+         * @param resolver resolves an argument value against the compiler's working directory
+         * @return the identity
+         * @throws NullPointerException if a required value or collection member is null
+         * @throws IllegalArgumentException if a path is relative, not normalized or an output is outside the input root
+         */
+        public static CargoWorkIdentity withResolver(Path inputRoot, List<Path> outputRoots, Path toolchainRoot,
+            Resolver resolver)
+        {
+            return new CargoWorkIdentity(inputRoot, outputRoots, toolchainRoot, resolver);
+        }
     }
 }

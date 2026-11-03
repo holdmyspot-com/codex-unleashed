@@ -4,6 +4,7 @@ import com.holdmyspot.codexunleashed.scheduler.CargoCompilerRequest;
 import com.holdmyspot.codexunleashed.scheduler.CargoWorkIdentity;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
@@ -24,8 +25,8 @@ public final class CargoWorkIdentityTest
     public CargoWorkIdentityTest() {}
 
     /**
-     * Hashes a quoted {@code --cfg} value as option text while still hashing real argument files. Windows rejects the
-     * quote as path syntax, so there the value takes the rejected-path branch; elsewhere it resolves to no file.
+     * Hashes option text that the file system rejects as path syntax, while still hashing real argument files. The
+     * resolver rejects quoted values, as Windows does for a quoted {@code --cfg} value.
      * @throws IOException if fixture files cannot be used or cleaned
      */
     @Test
@@ -40,7 +41,13 @@ public final class CargoWorkIdentityTest
             Path compiler = Files.writeString(toolchain.resolve("rustc"), "compiler");
             Files.writeString(source.resolve("main.rs"), "fn main() {}\n");
             Path external = Files.writeString(root.resolve("external.rmeta"), "external1");
-            CargoWorkIdentity identities = new CargoWorkIdentity(source, List.of(target), toolchain);
+            CargoWorkIdentity identities = CargoWorkIdentity.SharedSecrets.withResolver(source, List.of(target), toolchain,
+                (directory, value) ->
+                {
+                    if (value.indexOf('"') >= 0)
+                        throw new InvalidPathException(value, "Quoted option is not a Windows path");
+                    return directory.resolve(value);
+                });
             CargoCompilerRequest original = request(source, compiler, "fifo:first",
                 List.of("--cfg", "codex_fixture=\"quoted value\"", external.toString()));
             CargoCompilerRequest first = new CargoCompilerRequest(original.identity(), original.wrapper(),
