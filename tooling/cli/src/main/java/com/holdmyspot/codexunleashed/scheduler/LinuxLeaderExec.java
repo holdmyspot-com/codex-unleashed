@@ -7,7 +7,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayDeque;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -16,8 +15,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Replaces a prepared Linux gate on its verified leader thread and retains its native attachments through workload zero.
- * The constructing thread owns every transition. Peer service may copy events into this owner's queue during a wait.
- * Callers retain the scope, runtime and supervisor until this owner's successful closure.
+ * The constructing thread owns every transition. Callers retain the scope, device and supervisor until this owner's
+ * successful closure; after start, the device routes every later child event of the Cargo tree.
  */
 final class LinuxLeaderExec
 {
@@ -38,9 +37,9 @@ final class LinuxLeaderExec
 	 */
 	private final JsonMapper json;
 	/**
-	 * Borrowed started runtime.
+	 * Borrowed build device whose manager gates and resumes the Cargo root; never closed here.
 	 */
-	private final FridaRuntime runtime;
+	private final LinuxFridaDevice device;
 	/**
 	 * Immutable launch configuration.
 	 */
@@ -62,7 +61,7 @@ final class LinuxLeaderExec
 	 */
 	private final AllocationHook.Pump peers;
 	/**
-	 * Native owner retained before its start.
+	 * Borrowed device manager, null until start reaches the device.
 	 */
 	private FridaRuntime.Manager manager;
 	/**
@@ -73,10 +72,6 @@ final class LinuxLeaderExec
 	 * Original gate script retained before its start.
 	 */
 	private FridaRuntime.Manager.Session.Script gateScript;
-	/**
-	 * Copied events remain held until the controller validates and consumes them.
-	 */
-	private final ArrayDeque<FridaRuntime.Child> children = new ArrayDeque<>();
 	/**
 	 * One start reservation, including uncertain failures.
 	 */
@@ -101,7 +96,7 @@ final class LinuxLeaderExec
 	/**
 	 * Borrows launch and native owners without acquiring native resources.
 	 * @param scope serializer scope retained until closure
-	 * @param runtime started runtime retained until closure
+	 * @param device started build device retained until closure
 	 * @param launch immutable workload configuration
 	 * @param jobserver FIFO and descriptor numbers to install before exec, or null when the launch has no jobserver
 	 * @param supervisor prepared contained workload retained until closure
@@ -110,13 +105,13 @@ final class LinuxLeaderExec
 	 * @throws NullPointerException if an input is null
 	 * @throws IllegalArgumentException if {@code timeout} is nonpositive or exceeds the supported interval
 	 */
-	LinuxLeaderExec(ToolingScope scope, FridaRuntime runtime, LinuxProcessTree.Launch launch,
+	LinuxLeaderExec(ToolingScope scope, LinuxFridaDevice device, LinuxProcessTree.Launch launch,
 		LinuxCargoJobserver.Descriptors jobserver,
 		LinuxSupervisor supervisor, Duration timeout, AllocationHook.Pump peers)
 	{
 		this.scope = scope;
 		this.json = scope.getLeaderJsonMapper();
-		this.runtime = Objects.requireNonNull(runtime, "runtime");
+		this.device = Objects.requireNonNull(device, "device");
 		this.launch = Objects.requireNonNull(launch, "launch");
 		this.jobserver = jobserver;
 		this.supervisor = Objects.requireNonNull(supervisor, "supervisor");
@@ -150,8 +145,7 @@ final class LinuxLeaderExec
 			}
 			long root = supervisor.rootPid();
 			HeldImage gateIdentity = inspect(root, false, null);
-			manager = runtime.newManager();
-			manager.start();
+			manager = device.manager();
 			gate = manager.newSession(root);
 			gate.start();
 			gate.enableChildGating();
@@ -164,14 +158,17 @@ final class LinuxLeaderExec
 				waitForPeer(began, "Requested workload identity was not established");
 			gateScript.post(json.createObjectNode().put("type", "execute"));
 			awaitLeader("leader-enter:" + root + ":" + root + ":" + launch.uid() + ":" + launch.gid());
+			// The root exec is read from the manager directly rather than through the device's routing: until this
+			// method resumes Cargo, no wrapper has connected and no attempt or image controller exists to receive it.
 			began = System.nanoTime();
-			while (children.isEmpty())
+			FridaRuntime.Child event;
+			while (true)
 			{
-				copyChildren();
-				if (children.isEmpty())
-					waitForPeer(began, "Held root executable was not delivered");
+				event = manager.pollChild().orElse(null);
+				if (event != null)
+					break;
+				waitForPeer(began, "Held root executable was not delivered");
 			}
-			FridaRuntime.Child event = children.removeFirst();
 			verifyRootEvent(event, root, launch.command().getFirst());
 			HeldImage image = inspect(root, true, Path.of(launch.command().getFirst()));
 			if (image.started() != gateIdentity.started())
@@ -194,27 +191,6 @@ final class LinuxLeaderExec
 	}
 
 	/**
-	 * Indicates whether a copied held-image event awaits controller validation.
-	 * @return true if at least one event is retained
-	 */
-	boolean hasChildren()
-	{
-		requireOwner();
-		return !children.isEmpty();
-	}
-
-	/**
-	 * Removes the oldest copied event for controller validation without resuming it.
-	 * @return oldest retained event
-	 * @throws java.util.NoSuchElementException if no event is retained
-	 */
-	FridaRuntime.Child removeChild()
-	{
-		requireOwner();
-		return children.removeFirst();
-	}
-
-	/**
 	 * Withdraws start authority without unloading code or resuming a held process.
 	 * @throws IllegalStateException if called from another thread
 	 */
@@ -225,7 +201,7 @@ final class LinuxLeaderExec
 	}
 
 	/**
-	 * Destroys the original gate script, gate session and manager after actual whole-workload zero.
+	 * Destroys the original gate script and gate session after actual whole-workload zero; the device keeps the manager.
 	 * Failed destruction remains retained and cannot be retried. Successful repeated closure is harmless.
 	 * @param barrier trusted actual whole-workload-zero observation
 	 * @throws NullPointerException if {@code barrier} is null
@@ -246,7 +222,6 @@ final class LinuxLeaderExec
 		{
 			if (gateScript != null) gateScript.close();
 			if (gate != null) gate.close();
-			if (manager != null) manager.close();
 			closed = true;
 		}
 		catch (IOException | RuntimeException cause)
@@ -291,22 +266,6 @@ final class LinuxLeaderExec
 	{
 		if (Thread.currentThread() != owner)
 			throw new IllegalStateException("Linux leader belongs to its constructing thread");
-	}
-
-	/**
-	 * Copies a bounded number of native child events, retaining held children until validated.
-	 * @throws IOException if callback transport failed
-	 */
-	void copyChildren() throws IOException
-	{
-		requireOwner();
-		for (int count = 0; count < 64; count++)
-		{
-			FridaRuntime.Child event = manager.pollChild().orElse(null);
-			if (event == null)
-				return;
-			children.addLast(event);
-		}
 	}
 
 	/**

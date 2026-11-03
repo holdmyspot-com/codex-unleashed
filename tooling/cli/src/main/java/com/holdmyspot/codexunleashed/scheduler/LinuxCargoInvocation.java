@@ -626,6 +626,10 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
          */
         private FridaRuntime runtime;
         /**
+         * Build device whose manager the leader and every attempt borrow, retained until they close.
+         */
+        private LinuxFridaDevice device;
+        /**
          * Retained native memory authority, including failed acquisition.
          */
         private LinuxAuthority authority;
@@ -716,9 +720,10 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
             lease = jobserver.retainCargo(config.cargo().environment());
             runtime = new FridaRuntime(scope.tooling(), config.frida());
             runtime.start();
+            device = LinuxFridaDevice.open(runtime, routing);
             try { authority = LinuxAuthority.open(config.authority()); }
             catch (LinuxAuthority.AcquisitionFailure failure) { authority = failure.owner(); throw failure; }
-            attempts = new LinuxAttempts(UUID.randomUUID(), new LinuxAttempts.NativeOwners(scope.tooling(), runtime,
+            attempts = new LinuxAttempts(UUID.randomUUID(), new LinuxAttempts.NativeOwners(scope.tooling(), device,
                 authority, routing, config.authority().cgroupRoot(), lease, config.timeout()), config.timeout());
             measurements = LinuxMeasurements.open(authority);
             if (memory != null) estimates = memory.observe(measurements);
@@ -775,7 +780,7 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
             this.session = session;
             Configuration config = configuration;
             LinuxProcessTree.Launch launch = withEnvironment(config.cargo(), lease.environment());
-            leader = new LinuxLeaderExec(scope.tooling(), runtime, launch, lease.descriptors(), cargo, config.timeout(),
+            leader = new LinuxLeaderExec(scope.tooling(), device, launch, lease.descriptors(), cargo, config.timeout(),
                 attempts::pumpAll);
             leader.start((image, manager) ->
             {
@@ -799,13 +804,12 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
         {
             if (!stopping && !instrumentationClosed && leader != null)
             {
-                leader.copyChildren();
                 if (images != null)
                 {
                     FridaRuntime.Child nativeChild = images.pollNativeChild();
                     if (nativeChild != null) routing.route(imageRoute, nativeChild);
                 }
-                while (leader.hasChildren()) routing.route(imageRoute, leader.removeChild());
+                device.copy();
                 if (!advancingImage && !imageChildren.isEmpty())
                 {
                     FridaRuntime.Child child = imageChildren.removeFirst();
@@ -963,6 +967,11 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
             if (authority != null)
             {
                 try { authority.close(); authority = null; }
+                catch (IOException | RuntimeException | Error cleanup) { failure = combine(failure, cleanup); }
+            }
+            if (device != null)
+            {
+                try { device.close(); device = null; }
                 catch (IOException | RuntimeException | Error cleanup) { failure = combine(failure, cleanup); }
             }
             if (runtime != null)

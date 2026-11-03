@@ -232,8 +232,8 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
 	private final Thread owner = Thread.currentThread();
 	/** Native attempt correlation. */
 	private final UUID identity;
-	/** Borrowed runtime; this owner closes only its own manager. */
-	private final FridaRuntime runtime;
+	/** Borrowed build device whose manager reports, gates and resumes this attempt's held images; never closed here. */
+	private final LinuxFridaDevice device;
 	/** Immutable launch configuration. */
 	private final LinuxProcessTree.Launch launch;
 	/** Held root process and the owned cgroup subtree that contains the whole attempt. */
@@ -251,7 +251,7 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
     /** This controller's source/ownership capability retained through actual native closure. */
     private Routing.Registration route;
 
-	/** Owned manager retained before native start. */
+	/** Borrowed device manager, null until start reaches the device. */
 	private FridaRuntime.Manager manager;
     /** Sole static-image native owners retained through authentic whole-workload zero. */
     private final LinuxAllocationTrace.Images nativeImages;
@@ -294,7 +294,7 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
      * Borrows explicit invocation routing without acquiring resources or granting image/action authority.
      * @param scope borrowed shared values
      * @param identity authentic attempt correlation
-     * @param runtime borrowed started runtime
+     * @param device borrowed build device whose manager this attempt's sessions use
      * @param launch immutable admitted attempt launch, whose first argument is the executable the root execs
      * @param root held root process, already moved into and verified in its owned cgroup subtree
      * @param waits authentic attempt allocation waits
@@ -303,14 +303,14 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
      * @param cargoTokens authentic optional attempt FIFO/ledger
      * @param routing invocation-owned original-controller event dispatcher
      */
-    AllocationHooks(ToolingScope scope, UUID identity, FridaRuntime runtime, LinuxProcessTree.Launch launch, Root root,
+    AllocationHooks(ToolingScope scope, UUID identity, LinuxFridaDevice device, LinuxProcessTree.Launch launch, Root root,
         AllocationWaits waits, Duration timeout, AllocationHook.Pump peers, Optional<CargoTokens> cargoTokens,
         Routing routing)
 	{
 		this.routing = Objects.requireNonNull(routing, "routing");
 		this.scope = Objects.requireNonNull(scope, "scope");
 		this.identity = Objects.requireNonNull(identity, "identity");
-		this.runtime = Objects.requireNonNull(runtime, "runtime");
+		this.device = Objects.requireNonNull(device, "device");
 		this.launch = Objects.requireNonNull(launch, "launch");
 		this.root = Objects.requireNonNull(root, "root");
 		this.waits = Objects.requireNonNull(waits, "waits");
@@ -352,8 +352,7 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
 			if (held.started() != root.started())
 				throw new IOException("Held attempt root differs from its verified identity");
 			route = routing.register(member -> contains(root.directory(), member), children::addLast);
-			manager = runtime.newManager();
-			manager.start();
+			manager = device.manager();
 			gate = manager.newSession(pid);
 			gate.start();
 			gate.enableChildGating();
@@ -548,7 +547,6 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
 			if (cleanup != null)
 				throw cleanup;
 			if (gate != null) gate.close();
-			if (manager != null) manager.close();
 			closed = true;
             if (route != null) route.close();
 		}
@@ -560,20 +558,14 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
 		catch (Error cause) { closeFailure = new IOException("Native instrumentation destruction did not complete", cause); throw cause; }
 	}
 
-	/** Copies a bounded number of native child events, retaining held children until validated.
-	 * @throws IOException if callback transport failed
+	/** Routes this attempt's native tracer event and a bounded number of shared device events to their controllers.
+	 * @throws IOException if callback transport failed or routing rejects an event
 	 */
 	private void copyChildren() throws IOException
 	{
         FridaRuntime.Child nativeChild = nativeImages.pollChild();
         if (nativeChild != null) routing.route(route, nativeChild);
-		for (int count = 0; count < 64; count++)
-		{
-			var event = manager.pollChild();
-			if (event.isEmpty())
-				return;
-            routing.route(route, event.orElseThrow());
-		}
+		device.copy();
 	}
 
 	/** Verifies and instruments one supported held image before resume.

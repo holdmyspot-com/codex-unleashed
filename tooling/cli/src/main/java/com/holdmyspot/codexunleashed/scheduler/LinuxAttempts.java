@@ -306,8 +306,8 @@ public final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervi
 	{
 		/** Borrowed shared values. */
 		private final ToolingScope scope;
-		/** Borrowed started runtime. */
-		private final FridaRuntime runtime;
+		/** Borrowed build device whose manager every attempt's instrumentation uses. */
+		private final LinuxFridaDevice device;
 		/** Borrowed opened memory authority. */
 		private final LinuxAuthority authority;
 		/** Invocation-owned image event routing. */
@@ -322,7 +322,7 @@ public final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervi
 		/**
 		 * Borrows the invocation's native owners without acquiring anything.
 		 * @param scope      borrowed shared values
-		 * @param runtime    borrowed started runtime
+		 * @param device     borrowed build device
 		 * @param authority  borrowed opened memory authority
 		 * @param routing    invocation-owned image event routing
 		 * @param cgroupRoot absolute cgroup-v2 mountpoint
@@ -331,11 +331,11 @@ public final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervi
 		 * @throws NullPointerException     if an input is null
 		 * @throws IllegalArgumentException if the timeout is invalid
 		 */
-		public NativeOwners(ToolingScope scope, FridaRuntime runtime, LinuxAuthority authority,
+		NativeOwners(ToolingScope scope, LinuxFridaDevice device, LinuxAuthority authority,
 			AllocationHooks.Routing routing, Path cgroupRoot, LinuxCargoJobserver.CargoLease lease, Duration timeout)
 		{
 			this.scope = Objects.requireNonNull(scope, "scope");
-			this.runtime = Objects.requireNonNull(runtime, "runtime");
+			this.device = Objects.requireNonNull(device, "device");
 			this.authority = Objects.requireNonNull(authority, "authority");
 			this.routing = Objects.requireNonNull(routing, "routing");
 			this.cgroupRoot = Objects.requireNonNull(cgroupRoot, "cgroupRoot");
@@ -394,7 +394,7 @@ public final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervi
 			LinuxCargoTokens.Attempt tokens, AllocationWaits waits, AllocationHook.Pump peers) throws IOException
 		{
 			var cargoTokens = new AllocationHooks.CargoTokens(lease.identity(), tokens);
-			return new AllocationHooks(scope, identity, runtime, launch, root, waits, timeout, peers,
+			return new AllocationHooks(scope, identity, device, launch, root, waits, timeout, peers,
 				Optional.of(cargoTokens), routing);
 		}
 	}
