@@ -88,7 +88,7 @@ public final class LinuxCargoImagesTest
                 mutation.equals("containment") ? fixture.group.resolveSibling("foreign") : fixture.group.resolve("workload"));
             fixture.nativeImages.put(10L, actual);
             var owner = new LinuxCargoImages(fixture.scope, fixture, expected,
-                new LinuxCargoImages.Policy(1000, 1001, fixture.cargo), (image, generation) -> {},
+                new LinuxCargoImages.Policy(1000, 1001, fixture.cargo, fixture.wrapper), (image, generation) -> {},
                 Duration.ofSeconds(1), () -> 0L);
             requireException(IOException.class, owner::start);
             owner.close(() -> true);
@@ -455,6 +455,52 @@ public final class LinuxCargoImagesTest
         }
     }
 
+    /** Supplies the held-image origins through which Cargo can start the native wrapper.
+     * @return first exec and spawn native origins
+     */
+    @DataProvider(parallel = true)
+    public Object[][] wrapperStarts() { return new Object[][] {{1}, {2}}; }
+
+    /** The pinned native wrapper resumes without a Frida attachment or enrollment, because each compiler attempt it
+     * forks is attached and admitted separately, and this owner then rejects a held fork whose parent is the wrapper.
+     * @param origin first exec or spawn native value
+     * @throws IOException if controlled readiness unexpectedly fails
+     */
+    @Test(dataProvider = "wrapperStarts")
+    public void resumesNativeWrapperWithoutInstrumentation(int origin) throws IOException
+    {
+        try (var fixture = new Fixture())
+        {
+            fixture.putChild(2, fixture.wrapper, fixture.group, 1000, 1001, 10);
+            fixture.owner.advance(new FridaRuntime.Child(11, origin == 1 ? 11 : 10, origin, fixture.wrapper.toString()));
+            requireThat(fixture.resumed, "resumed").isEqualTo(List.of(11L));
+            requireThat(fixture.enrolled, "enrolled").isEmpty();
+            requireThat(fixture.attachments, "attachments").isEqualTo(0);
+            fixture.nativeImages.put(12L, fixture.identity(12, 3, 11, fixture.wrapper));
+            requireException(IOException.class, () -> fixture.owner.advance(new FridaRuntime.Child(12, 11, 0, null)));
+            requireThat(fixture.resumed, "resumedAfterWrapperFork").isEqualTo(List.of(11L));
+        }
+    }
+
+    /** The native wrapper keeps every workload credential and containment check of other held images.
+     * @throws IOException if root fixture setup fails
+     */
+    @Test
+    public void rejectsNativeWrapperOutsideWorkloadIdentity() throws IOException
+    {
+        for (int mutation = 0; mutation < 2; mutation++)
+        {
+            try (var fixture = new Fixture())
+            {
+                if (mutation == 0) fixture.putChild(2, fixture.wrapper, fixture.group, 0, 1001, 10);
+                else fixture.putChild(2, fixture.wrapper, fixture.group.resolveSibling("foreign"), 1000, 1001, 10);
+                requireException(IOException.class, () ->
+                    fixture.owner.advance(new FridaRuntime.Child(11, 11, 1, fixture.wrapper.toString())));
+                requireThat(fixture.resumed, "resumed").isEmpty();
+            }
+        }
+    }
+
     /** A same-birth Cargo root may exec its independently matched useful output without compiler adoption.
      * @throws IOException if controlled root setup fails
      */
@@ -577,6 +623,10 @@ public final class LinuxCargoImagesTest
         private final Path cargo = Path.of("cargo-fixture").toAbsolutePath();
         /** Independently observed metadata executable. */
         private final Path compiler = Path.of("rustc-fixture").toAbsolutePath();
+        /** Pinned native Cargo wrapper executable. */
+        private final Path wrapper = Path.of("wrapper-fixture").toAbsolutePath();
+        /** Number of Frida attachments requested for held images after the root. */
+        private int attachments;
         /** Current native observations, independent of notification metadata. */
         private final Map<Long, LinuxCargoImages.Identity> nativeImages = new HashMap<>();
         /** Observable sequencing for post-readiness checks. */
@@ -643,10 +693,11 @@ public final class LinuxCargoImagesTest
             Path actualGroup = nested ? group.resolve("workload") : group;
             nativeImages.put(10L, new LinuxCargoImages.Identity(10, 1, 9, 1000, 1001, cargo, actualGroup));
             putChild(2, compiler, actualGroup, 1000, 1001, 10);
-            owner = new LinuxCargoImages(scope, this, root, new LinuxCargoImages.Policy(1000, 1001, cargo),
+            owner = new LinuxCargoImages(scope, this, root, new LinuxCargoImages.Policy(1000, 1001, cargo, wrapper),
                 (image, generation) -> { enrolled.add(image.pid()); onEnrollment.run(); }, Duration.ofSeconds(1), () -> 0L);
             owner.start();
             steps.clear();
+            attachments = 0;
         }
 
         /** Constructs a complete immutable observation.
@@ -697,6 +748,7 @@ public final class LinuxCargoImagesTest
         @Override public AllocationHook.Connection connection(long pid)
         {
             if (nativeImage) throw new AssertionError("Static native image must not receive a Frida attachment");
+            attachments++;
             return new AllocationHook.Connection()
             {
                 /** One copied exact receipt. */

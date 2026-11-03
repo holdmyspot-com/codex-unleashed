@@ -791,7 +791,8 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
                 LinuxCargoImages.Identity root = new LinuxCargoImages.Identity(image.pid(), image.started(), image.parent(),
                     launch.uid(), launch.gid(), image.executable(), cargo.directory());
                 images = new LinuxCargoImages(scope.tooling(), manager, root, cargo.directory(),
-                    new LinuxCargoImages.Policy(launch.uid(), launch.gid(), config.registration().cargoExecutable()),
+                    new LinuxCargoImages.Policy(launch.uid(), launch.gid(), config.registration().cargoExecutable(),
+                        config.registration().wrapperExecutable()),
                     (readyImage, generation) ->
                     {
                         // Readiness supplies independently checked lineage and containment, never receipt-derived authority.

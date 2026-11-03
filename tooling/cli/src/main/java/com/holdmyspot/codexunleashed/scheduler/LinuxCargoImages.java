@@ -155,6 +155,11 @@ public final class LinuxCargoImages
             if (!observed.group().startsWith(root.group())) throw new IOException("Held image left retained root containment");
             if (observed.uid() != policy.uid() || observed.gid() != policy.gid())
                 throw new IOException("Held image credentials differ from workload identity");
+            if (child.origin() != 0 && operations.matchesExecutable(observed, policy.wrapper()))
+            {
+                resumeWrapper(child, observed, lineage);
+                return;
+            }
             Path executable = executable(child, parent == null ? null : parent.executable());
             ExecutableIdentity source = operations.executableIdentity(observed, executable);
             install(observed, true);
@@ -168,6 +173,28 @@ public final class LinuxCargoImages
         }
         catch (IOException | RuntimeException | Error cause) { fail(cause); throw cause; }
         finally { advancing = false; }
+    }
+
+    /**
+     * Resumes a held start of the pinned native Cargo wrapper without attaching to it or enrolling it.
+     * <p>
+     * The wrapper allocates almost nothing itself and runs each compiler attempt in a forked child that the attempt's
+     * own owner attaches to after moving it into the attempt's cgroup. Attaching here as well would give that child
+     * two Frida agents and two exec gates. The wrapper is removed from the retained images, which a forked Cargo image
+     * that executes it was part of, so a later event that names it as a parent is rejected.
+     * @param child copied held start event
+     * @param observed independently inspected wrapper image with workload credentials inside root containment
+     * @param lineage retained source lineage of the start
+     * @throws IOException if lineage or the wrapper image changes before resumption, or resumption is uncertain
+     */
+    private void resumeWrapper(FridaRuntime.Child child, Identity observed, Lineage lineage) throws IOException
+    {
+        lineage.verify(observed, operations);
+        if (!observed.equals(operations.inspect(child.pid())))
+            throw new IOException("Native wrapper image changed before held resume");
+        if (Thread.currentThread().isInterrupted()) throw new IOException("Held resume interrupted");
+        current.remove(child.pid());
+        operations.resume(child.pid());
     }
 
     /** Authenticates live ancestry or the kernel's adoption of a held descendant by its original supervisor.
@@ -604,22 +631,27 @@ public final class LinuxCargoImages
     }
 
     /**
-     * Defines exact required workload credentials and pinned root Cargo image.
+     * Defines exact required workload credentials, the pinned root Cargo image and the pinned native compiler wrapper.
      * @param uid workload UID
      * @param gid workload GID
      * @param cargo absolute pinned Cargo executable
+     * @param wrapper absolute pinned native Cargo wrapper executable, whose held starts resume without attachment
      */
-    public record Policy(int uid, int gid, Path cargo)
+    public record Policy(int uid, int gid, Path cargo, Path wrapper)
     {
         /**
          * Rejects incomplete workload policy.
          * @param uid workload UID
          * @param gid workload GID
          * @param cargo pinned Cargo executable
+         * @param wrapper pinned native Cargo wrapper executable
+         * @throws NullPointerException if {@code cargo} or {@code wrapper} is null
+         * @throws IllegalArgumentException if a credential is negative or an executable path is relative
          */
         public Policy
         {
-            if (uid < 0 || gid < 0 || !cargo.isAbsolute()) throw new IllegalArgumentException("Invalid workload policy");
+            if (uid < 0 || gid < 0 || !cargo.isAbsolute() || !wrapper.isAbsolute())
+                throw new IllegalArgumentException("Invalid workload policy");
         }
     }
 
