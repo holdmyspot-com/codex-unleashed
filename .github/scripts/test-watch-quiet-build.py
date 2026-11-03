@@ -1,0 +1,72 @@
+"""Check that the quiet-build watchdog reports and stops a silent command but leaves an active one alone."""
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+import unittest
+
+WATCHER = Path(__file__).with_name("watch-quiet-build.py").resolve()
+
+
+def run_watcher(directory, command, *limits):
+    """Runs the watcher over one test-owned directory with the given timing limits in seconds.
+
+    The report lives inside the watched directory, as it does in the release build, so writing it must not count as
+    build output."""
+    watched = Path(directory) / "logs"
+    watched.mkdir()
+    report = watched / "quiet-report.log"
+    result = subprocess.run(
+        [sys.executable, "-I", str(WATCHER), "--watch", str(watched), "--report", str(report), *limits,
+         "--", sys.executable, "-c", command],
+        cwd=directory, capture_output=True, text=True, timeout=60)
+    return result, report
+
+
+class QuietBuildWatchTest(unittest.TestCase):
+    """Each test owns its temporary directory, command and report."""
+
+    def test_reports_and_stops_a_silent_command(self):
+        """A command that stops writing gets a process report naming its blocked child, then is terminated."""
+        command = (
+            "import subprocess, sys, time; "
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)']); "
+            "print('quiet-child-pid=' + str(child.pid), flush=True); "
+            "time.sleep(600)"
+        )
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+            result, report = run_watcher(directory, command, "--first-report", "1", "--interval", "1",
+                "--stop-after", "2.5")
+            self.assertEqual(result.returncode, 124, result.stdout + result.stderr)
+            child = next(line.removeprefix("quiet-child-pid=") for line in result.stdout.splitlines()
+                if line.startswith("quiet-child-pid="))
+            text = report.read_text()
+            self.assertIn("quiet_seconds=", text)
+            self.assertRegex(text, rf"(?m)^pid={child} ")
+            self.assertRegex(text, rf"(?m)^pid={child} .*state=S")
+            self.assertRegex(text, rf"(?m)^pid={child} .*wchan=")
+            quiet = [int(value) for value in re.findall(r"quiet_seconds=(\d+)", text)]
+            self.assertGreaterEqual(len(quiet), 2)
+            self.assertEqual(quiet, sorted(set(quiet)), "writing a report restarted the quiet period")
+            self.assertIn("stopping quiet build", result.stderr)
+            alive = subprocess.run(["kill", "-0", child], capture_output=True)
+            self.assertNotEqual(alive.returncode, 0, "the silent command's child survived the stop")
+
+    def test_preserves_an_active_command_and_its_status(self):
+        """A command that keeps writing to the watched directory is never reported and keeps its exit status."""
+        command = (
+            "import pathlib, sys, time; "
+            "log = pathlib.Path('logs/build.log'); "
+            "[(log.write_text(str(i)), time.sleep(0.2)) for i in range(15)]; "
+            "sys.exit(7)"
+        )
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+            result, report = run_watcher(directory, command, "--first-report", "1", "--interval", "1",
+                "--stop-after", "2")
+            self.assertEqual(result.returncode, 7, result.stdout + result.stderr)
+            self.assertFalse(report.exists(), "an active command was reported as quiet")
+
+
+if __name__ == "__main__":
+    unittest.main()

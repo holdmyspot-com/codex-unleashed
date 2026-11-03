@@ -174,6 +174,7 @@ jobs:
             done
           fi
           cp restart-metadata/.github/scripts/probe-runner-signals.py "$RUNNER_TEMP/probe-runner-signals.py"
+          cp restart-metadata/.github/scripts/watch-quiet-build.py "$RUNNER_TEMP/watch-quiet-build.py"
           sha256sum restart-metadata/.github/scripts/build-upstream-release.sh > "$evidence/build-command-inputs.sha256"
           sha256sum restart-metadata/.github/workflows/baseline-release-builds.yml \
             restart-metadata/.github/scripts/{ghcr-cargo-target-cache,checkpoint-upstream-release}.sh \
@@ -534,6 +535,11 @@ jobs:
           SCRIPT
             release_command=(bash "$RUNNER_TEMP/build-and-check-upstream-release.sh")
           fi
+          # A build whose evidence logs stay quiet gets process reports naming what each process waits on, then is
+          # stopped well before the step timeout. A healthy build went at most about ten minutes without output.
+          release_command=(python3 -I "$RUNNER_TEMP/watch-quiet-build.py" --watch "$RUNNER_TEMP/baseline-evidence"
+            --report "$RUNNER_TEMP/baseline-evidence/quiet-build-report.log"
+            --first-report 900 --interval 900 --stop-after 4500 -- "${release_command[@]}")
 
           if [[ "$TRACE_SIGNALS" == true ]]; then
             sudo apt-get update -y
