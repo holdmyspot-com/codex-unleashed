@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.scheduler.test;
 
+import com.holdmyspot.codexunleashed.secrets.FridaRuntimeSecrets;
 import com.holdmyspot.codexunleashed.scheduler.FridaRuntime;
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
@@ -34,13 +35,13 @@ public final class FridaRuntimeTest
 	{
 		try (var fixture = new ScriptCleanup())
 		{
-			var unattached = FridaRuntime.SharedSecrets.session(fixture.manager, 124L,
+			var unattached = FridaRuntimeSecrets.getFridaRuntimeAccess().session(fixture.manager, 124L,
 				java.lang.foreign.MemorySegment.NULL);
 			requireException(IllegalStateException.class, unattached::detached);
 			requireThat(fixture.session.detached(), "attachedNativeObservation").isFalse();
 			fixture.detached = true;
 			requireThat(fixture.session.detached(), "detachedNativeObservation").isTrue();
-			FridaRuntime.SharedSecrets.failCleanup(fixture.session, new IOException("Uncertain reference release"));
+			FridaRuntimeSecrets.getFridaRuntimeAccess().failCleanup(fixture.session, new IOException("Uncertain reference release"));
 			requireException(IllegalStateException.class, fixture.session::detached);
 		}
 	}
@@ -154,7 +155,7 @@ public final class FridaRuntimeTest
 			requireThat(fixture.unloads, "unloadAttempts").isEqualTo(1);
 			requireThat(fixture.unrefs, "releasedReferences").isEqualTo(2);
 			requireThat(fixture.freedErrors, "freedNativeErrors").isEqualTo(1);
-			requireThat(FridaRuntime.SharedSecrets.scripts(fixture.session), "scriptRegistrationRetired").isEqualTo(0);
+			requireThat(FridaRuntimeSecrets.getFridaRuntimeAccess().scripts(fixture.session), "scriptRegistrationRetired").isEqualTo(0);
 		}
 	}
 
@@ -186,7 +187,7 @@ public final class FridaRuntimeTest
 			requireThat(fixture.unloads, "uncertainUnloadNotRepeated").isEqualTo(1);
 			requireThat(fixture.unrefs, "uncertainUnrefNotRepeated").isEqualTo(unrefs);
 			requireThat(fixture.observations, "uncertainObservationNotRepeated").isEqualTo(observations);
-			requireThat(FridaRuntime.SharedSecrets.scripts(fixture.session), "uncertainScriptRemainsRegistered").isEqualTo(1);
+			requireThat(FridaRuntimeSecrets.getFridaRuntimeAccess().scripts(fixture.session), "uncertainScriptRemainsRegistered").isEqualTo(1);
 			requireThat(fixture.freedErrors, "nativeErrorFreedOnce").isEqualTo(1);
 		}
 	}
@@ -253,10 +254,10 @@ public final class FridaRuntimeTest
 		 */
 		ScriptCleanup()
 		{
-			FridaRuntime.SharedSecrets.initialize(runtime, this);
-			manager = FridaRuntime.SharedSecrets.manager(runtime, true);
-			session = FridaRuntime.SharedSecrets.session(manager, 123L, arena.allocate(8));
-			script = FridaRuntime.SharedSecrets.loadedScript(session, "send('unused')", arena.allocate(8),
+			FridaRuntimeSecrets.getFridaRuntimeAccess().initialize(runtime, this);
+			manager = FridaRuntimeSecrets.getFridaRuntimeAccess().manager(runtime, true);
+			session = FridaRuntimeSecrets.getFridaRuntimeAccess().session(manager, 123L, arena.allocate(8));
+			script = FridaRuntimeSecrets.getFridaRuntimeAccess().loadedScript(session, "send('unused')", arena.allocate(8),
 				arena.allocate(8));
 		}
 

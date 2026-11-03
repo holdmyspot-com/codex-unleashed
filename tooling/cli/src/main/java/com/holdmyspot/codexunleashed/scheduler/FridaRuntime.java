@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.secrets.FridaRuntimeAccess;
+import com.holdmyspot.codexunleashed.secrets.FridaRuntimeSecrets;
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 
 import java.io.IOException;
@@ -41,6 +43,60 @@ public final class FridaRuntime implements AutoCloseable
 	private static final String VERSION = "17.24.3";
 	/** Process-wide native one-time initialization cannot be reversed by deinit. Guarded by the class monitor. */
 	private static boolean initializationClaimed = false;
+	static
+	{
+		FridaRuntimeSecrets.setFridaRuntimeAccess(new FridaRuntimeAccess()
+		{
+			@Override
+			public void initialize(FridaRuntime runtime, Lifecycle lifecycle)
+			{
+				runtime.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
+				runtime.initialized = true;
+			}
+
+			@Override
+			public Manager manager(FridaRuntime runtime, boolean started)
+			{
+				Manager manager = runtime.new Manager();
+				manager.started = started;
+				return manager;
+			}
+
+			@Override
+			public Manager.Session session(Manager manager, long pid, MemorySegment handle)
+			{
+				Manager.Session session = manager.new Session(pid);
+				session.handle = handle;
+				session.started = handle.equals(MemorySegment.NULL) == false;
+				return session;
+			}
+
+			@Override
+			public void failCleanup(Manager.Session session, IOException failure)
+			{
+				session.closeFailure = Objects.requireNonNull(failure, "failure");
+			}
+
+			@Override
+			public Manager.Session.Script loadedScript(Manager.Session session, String source, MemorySegment handle,
+				MemorySegment options)
+			{
+				Manager.Session.Script script = session.new Script(source);
+				script.handle = handle;
+				script.options = options;
+				script.loadAttempted = true;
+				session.scripts.add(script);
+				return script;
+			}
+
+			@Override
+			public int scripts(Manager.Session session)
+			{
+				return session.scripts.size();
+			}
+		});
+	}
+
 	/** Trusted native file selected and verified by the caller's acquisition workflow. */
 	private final Path producer;
 	/** The only thread permitted to operate on this runtime and its manager owners. */
@@ -1159,97 +1215,6 @@ public final class FridaRuntime implements AutoCloseable
 		public int isDestroyed(MemorySegment script)
 		{
 			return (int) invoke(isDestroyed, script);
-		}
-	}
-
-	/**
-	 * Builds owners in controlled states for ownership tests, without loading a producer.
-	 */
-	public static final class SharedSecrets
-	{
-		/**
-		 * Prevents construction.
-		 */
-		private SharedSecrets()
-		{
-		}
-
-		/**
-		 * Marks an unstarted runtime initialized and binds its lifecycle operations.
-		 * @param runtime unstarted runtime
-		 * @param lifecycle controlled lifecycle operations
-		 */
-		public static void initialize(FridaRuntime runtime, Lifecycle lifecycle)
-		{
-			runtime.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
-			runtime.initialized = true;
-		}
-
-		/**
-		 * Creates an unregistered manager owner.
-		 * @param runtime enclosing runtime
-		 * @param started whether the manager reports full startup
-		 * @return the manager
-		 */
-		public static Manager manager(FridaRuntime runtime, boolean started)
-		{
-			Manager manager = runtime.new Manager();
-			manager.started = started;
-			return manager;
-		}
-
-		/**
-		 * Creates an unregistered session owner.
-		 * @param manager enclosing manager
-		 * @param pid target identity
-		 * @param handle attached native session, or NULL for an unattached owner
-		 * @return the session
-		 */
-		public static Manager.Session session(Manager manager, long pid, MemorySegment handle)
-		{
-			Manager.Session session = manager.new Session(pid);
-			session.handle = handle;
-			session.started = handle.equals(MemorySegment.NULL) == false;
-			return session;
-		}
-
-		/**
-		 * Records an uncertain cleanup failure on a session.
-		 * @param session session owner
-		 * @param failure retained failure
-		 */
-		public static void failCleanup(Manager.Session session, IOException failure)
-		{
-			session.closeFailure = Objects.requireNonNull(failure, "failure");
-		}
-
-		/**
-		 * Creates a script whose load was attempted, registered with its session.
-		 * @param session enclosing session
-		 * @param source script source
-		 * @param handle native script
-		 * @param options native script options
-		 * @return the script
-		 */
-		public static Manager.Session.Script loadedScript(Manager.Session session, String source,
-			MemorySegment handle, MemorySegment options)
-		{
-			Manager.Session.Script script = session.new Script(source);
-			script.handle = handle;
-			script.options = options;
-			script.loadAttempted = true;
-			session.scripts.add(script);
-			return script;
-		}
-
-		/**
-		 * Returns the number of scripts a session still owns.
-		 * @param session session owner
-		 * @return the registered script count
-		 */
-		public static int scripts(Manager.Session session)
-		{
-			return session.scripts.size();
 		}
 	}
 
