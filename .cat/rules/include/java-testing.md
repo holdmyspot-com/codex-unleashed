@@ -5,7 +5,6 @@
 - Use self-contained Java tests that demonstrate behavior without duplicating external-tool coverage.
 - Keep every Java test eligible for the project's configured parallel execution; test isolation must come from owned
 	inputs and collaborators, not from reducing concurrency.
-- Keep smoke scenarios focused on integration or lifecycle behavior not already established by a unit test.
 
 ## Guidance
 
@@ -39,20 +38,11 @@ making the production or test design safe under the project's required execution
 
 Do not use `Thread.sleep()` in tests; trigger the required condition directly.
 
-Assume a third-party tool works as documented. Do not test our code by running a fake executable in place of a tool
-it invokes, such as a stub `make`, `java` or ORAS script. Have production code reach the tool through a method or
-interface that returns the result, such as a command runner or a method that returns generated script text, and have
-the test call that method or supply an in-process implementation. A script may still be an input to our own product,
-such as a compiler that our wrapper executes.
-
 Make every test double model only the collaborator behavior that the test claims to observe. For example, a test that
 checks an outgoing protocol request may supply request and response streams, but it must not invent process-tree,
 shutdown, retry, or ownership behavior merely to make an unrelated production cleanup path run. Use a collaborator
 whose ordinary lifecycle already satisfies that cleanup, or add a narrow owned seam. A lifecycle test is different: it
 may model lifecycle behavior because the test must exercise and assert that behavior directly.
-
-Do not add a smoke scenario solely to repeat an observable contract already covered by a unit test. Retain a smoke
-scenario only when it exercises a distinct integration or lifecycle boundary that the unit test does not reach.
 
 ### Meaningful Assertions
 
