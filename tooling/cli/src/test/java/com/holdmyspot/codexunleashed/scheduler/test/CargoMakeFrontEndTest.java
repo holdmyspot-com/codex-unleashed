@@ -34,6 +34,7 @@ public final class CargoMakeFrontEndTest
 	@Test
 	public void executesTheGivenMake()
 	{
+		TestRequirements.requirePosixFileSystem();
 		Path make = Path.of("/usr/bin/make");
 		String inherited = CargoMakeFrontEnd.script(make, FIFO, 200, 201, false);
 		requireThat(inherited, "inheritedScript").startsWith("#!/bin/sh\n").endsWith("\nexec '/usr/bin/make' \"$@\"\n");
