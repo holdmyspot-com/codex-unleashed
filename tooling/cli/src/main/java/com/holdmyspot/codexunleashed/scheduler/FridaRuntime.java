@@ -340,6 +340,8 @@ public final class FridaRuntime implements AutoCloseable
 				children = new ChildReceiver(childPid, childParent, childOrigin, childPath);
 				try
 				{
+					// Linker.upcallStub accepts only a MethodHandle, so a direct call or lambda cannot become the native
+					// callback; the lookup is the only way the FFM API lets us obtain a handle to this instance method.
 					MethodHandle callback = MethodHandles.lookup().findVirtual(ChildReceiver.class, "onChild",
 						MethodType.methodType(void.class, MemorySegment.class, MemorySegment.class, MemorySegment.class)).bindTo(children);
 					childHandler = registerSignal(device, "child-added", callback, FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
@@ -695,6 +697,8 @@ public final class FridaRuntime implements AutoCloseable
 						MethodHandle callback;
 						try
 						{
+							// Linker.upcallStub accepts only a MethodHandle, so a direct call or lambda cannot become the native
+							// callback; the lookup is the only way the FFM API lets us obtain a handle to this instance method.
 							callback = MethodHandles.lookup().findVirtual(Receiver.class, "onMessage",
 								MethodType.methodType(void.class, MemorySegment.class, MemorySegment.class, MemorySegment.class, MemorySegment.class)).bindTo(receiver);
 						}

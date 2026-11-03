@@ -135,8 +135,7 @@ public final class BazelNativeBackendTest
             {
                 Files.createDirectory(fixture.root.resolve("licenses"));
                 Files.writeString(fixture.root.resolve("licenses/NOTICE"), "retained upstream license");
-                BazelNativeBackend.class.getMethod("main", String[].class).invoke(null,
-                    (Object) new String[]{fixture.root.toString(), destination.toString()});
+                BazelNativeBackend.main(new String[]{fixture.root.toString(), destination.toString()});
                 requireThat(Files.readString(destination.resolve("licenses/NOTICE")), "stagedLicense")
                     .isEqualTo("retained upstream license");
                 requireThat(BazelNativeBackend.validateDistribution(fixture.scope, target, destination).hashes(),
