@@ -3,9 +3,7 @@ package com.holdmyspot.codexunleashed.scheduler.test;
 import com.holdmyspot.codexunleashed.scheduler.CargoCompilerRequest;
 import com.holdmyspot.codexunleashed.scheduler.CargoWorkIdentity;
 import java.io.IOException;
-import java.lang.reflect.Proxy;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
@@ -26,9 +24,8 @@ public final class CargoWorkIdentityTest
     public CargoWorkIdentityTest() {}
 
     /**
-     * Retains opaque compiler options when the working directory rejects their path syntax, while hashing files.
-     * The directory proxy models the observed Windows rejection of quoted cfg values during path resolution;
-     * actual temporary files supply all content observations. This exercises identity handling, not Windows parsing.
+     * Hashes a quoted {@code --cfg} value as option text while still hashing real argument files. Windows rejects the
+     * quote as path syntax, so there the value takes the rejected-path branch; elsewhere it resolves to no file.
      * @throws IOException if fixture files cannot be used or cleaned
      */
     @Test
@@ -43,26 +40,18 @@ public final class CargoWorkIdentityTest
             Path compiler = Files.writeString(toolchain.resolve("rustc"), "compiler");
             Files.writeString(source.resolve("main.rs"), "fn main() {}\n");
             Path external = Files.writeString(root.resolve("external.rmeta"), "external1");
-            Path directory = (Path) Proxy.newProxyInstance(Path.class.getClassLoader(), new Class<?>[]{Path.class},
-                (proxy, method, arguments) ->
-                {
-                    if (method.getName().equals("resolve") && arguments[0] instanceof String value &&
-                        value.indexOf('"') >= 0)
-                        throw new InvalidPathException(value, "Quoted option is not a Windows path");
-                    return method.invoke(source, arguments);
-                });
             CargoWorkIdentity identities = new CargoWorkIdentity(source, List.of(target), toolchain);
             CargoCompilerRequest original = request(source, compiler, "fifo:first",
                 List.of("--cfg", "codex_fixture=\"quoted value\"", external.toString()));
             CargoCompilerRequest first = new CargoCompilerRequest(original.identity(), original.wrapper(),
-                original.arguments(), directory, original.environment(), null);
+                original.arguments(), source, original.environment(), null);
 
             String identity = identities.identify(first);
             requireThat(identity, "sameOptionsReuseWork").isEqualTo(identities.identify(first));
             CargoCompilerRequest changed = request(source, compiler, "fifo:first",
                 List.of("--cfg", "codex_fixture=\"different value\"", external.toString()));
             CargoCompilerRequest changedOptions = new CargoCompilerRequest(changed.identity(), changed.wrapper(),
-                changed.arguments(), directory, changed.environment(), null);
+                changed.arguments(), source, changed.environment(), null);
             requireThat(identities.identify(changedOptions), "opaqueOptionChangesInvalidateWork")
                 .isNotEqualTo(identity);
             Files.writeString(external, "external2");
