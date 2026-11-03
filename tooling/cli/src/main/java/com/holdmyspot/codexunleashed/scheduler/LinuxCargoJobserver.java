@@ -239,9 +239,9 @@ public final class LinuxCargoJobserver implements AutoCloseable
 	 * The make flags name the FIFO by path. With numeric descriptors, the jobserver crate adds a pre-exec hook to
 	 * every Cargo child, which forces fork; concurrent forks under Frida child gating abort the forking process.
 	 * GNU Make before 4.4 rejects a FIFO path, so when {@code PATH} names a {@code make}, the lease prepends an owned
-	 * directory whose {@code make} front end rewrites the FIFO path to the descriptor numbers in
-	 * {@link CargoLease#descriptors()} and executes that make. Every process that receives the environment must start
-	 * with the FIFO open on those numbers.
+	 * directory whose {@code make} front end opens the FIFO on the descriptor numbers in
+	 * {@link CargoLease#descriptors()}, rewrites the FIFO path to those numbers and executes that make. A process that
+	 * receives the environment therefore needs no jobserver descriptor of its own, and the front end needs Bash.
 	 * @param environment complete root environment without CARGO_MAKEFLAGS, MAKEFLAGS or MFLAGS
 	 * @return lease that must outlive every consumer and every retry of this Cargo invocation
 	 * @throws NullPointerException if the map or an entry is null
@@ -276,7 +276,8 @@ public final class LinuxCargoJobserver implements AutoCloseable
 	}
 
 	/**
-	 * Creates the make front end that replaces the FIFO path in make flags with the lease's descriptor numbers.
+	 * Creates the make front end that opens the FIFO on the lease's descriptor numbers and replaces the FIFO path in
+	 * make flags with them.
 	 * The workload can look the front end up and execute it but cannot modify or replace it.
 	 * @param make real path of the make to execute
 	 * @return front-end directory
@@ -284,7 +285,7 @@ public final class LinuxCargoJobserver implements AutoCloseable
 	 */
 	private Path createFrontEnd(Path make) throws IOException
 	{
-		String script = CargoMakeFrontEnd.script(make, fifo, READ_DESCRIPTOR, WRITE_DESCRIPTOR, false);
+		String script = CargoMakeFrontEnd.script(make, fifo, READ_DESCRIPTOR, WRITE_DESCRIPTOR, true);
 		frontEndDirectory = Files.createDirectory(directory.resolve(FRONT_END_DIRECTORY),
 			PosixFilePermissions.asFileAttribute(SETUP_PERMISSIONS));
 		frontEnd = Files.createFile(frontEndDirectory.resolve("make"),

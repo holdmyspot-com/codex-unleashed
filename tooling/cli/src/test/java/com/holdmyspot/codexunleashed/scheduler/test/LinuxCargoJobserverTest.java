@@ -136,7 +136,8 @@ public final class LinuxCargoJobserverTest
 
 	/**
 	 * The lease puts the make front end for the make a build script would find ahead of the caller's search path. The
-	 * front end expects the trusted leader to have opened the FIFO onto the lease's descriptors.
+	 * front end opens the FIFO onto the lease's descriptors itself, because a compiler that the native Cargo wrapper
+	 * starts inherits no jobserver descriptor.
 	 * @throws Exception if fixture setup or cleanup fails
 	 */
 	@Test
@@ -160,7 +161,7 @@ public final class LinuxCargoJobserverTest
 					requireThat(path, "leasePath").endsWith(":" + search);
 					frontEnd = Path.of(path.substring(0, path.indexOf(':')), "make");
 					requireThat(Files.readString(frontEnd), "frontEnd").isEqualTo(CargoMakeFrontEnd.script(
-						make.toRealPath(), descriptors.fifo(), descriptors.read(), descriptors.write(), false));
+						make.toRealPath(), descriptors.fifo(), descriptors.read(), descriptors.write(), true));
 					requireThat(Files.isExecutable(frontEnd), "frontEndExecutable").isTrue();
 					requireThat(lease.environment().get("MAKEFLAGS"), "leaseFlags").contains("fifo:" + descriptors.fifo());
 				}
