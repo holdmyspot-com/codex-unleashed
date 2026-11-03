@@ -12,7 +12,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -20,7 +19,7 @@ import static com.holdmyspot.codexunleashed.scheduler.test.TestRequirements.requ
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Verifies standard-file validation, XML handoff and actual JDK stream redirection.
+ * Verifies standard-file validation, XML handoff and stream redirect configuration.
  * These tests do not acquire cgroups or prove supervisor containment and gate release.
  */
 public final class LinuxStandardFilesTest
@@ -32,68 +31,37 @@ public final class LinuxStandardFilesTest
     public LinuxStandardFilesTest() { }
 
     /**
-     * Transfers binary stdin to stdout while keeping stderr separate and truncating both outputs.
-     * @throws Exception if fixture launch, stream I/O, waiting or cleanup fails
+     * Points each standard stream at its own endpoint file, replacing earlier redirects and merged error output,
+     * without opening or truncating any endpoint.
+     * <p>
+     * What a configured redirect does when the process starts is the JDK's documented behavior, so the test checks
+     * the configuration rather than launching a process.
+     * @throws IOException if fixture files cannot be written or removed
      */
     @Test
-    public void redirectsBinaryInputAndSeparateOutputs() throws Exception
+    public void redirectsEachStreamToItsOwnFile() throws IOException
     {
         Path scratch = Files.createTempDirectory("linux-standard-files-");
         try
         {
-            byte[] payload = new byte[256];
-            for (int index = 0; index < payload.length; index++) payload[index] = (byte) index;
             Path input = scratch.resolve("input");
-            Path output = scratch.resolve("output");
-            Path error = scratch.resolve("error");
-            Path staleInput = scratch.resolve("stale-input");
-            Files.write(input, payload);
-            Files.write(output, new byte[700]);
-            Files.write(error, new byte[700]);
-            Files.writeString(staleInput, "wrong input");
+            Path output = Files.write(scratch.resolve("output"), new byte[700]);
+            Path error = Files.write(scratch.resolve("error"), new byte[700]);
             var files = new LinuxProcessTree.StandardFiles(input, output, error);
-            Path java = Path.of(System.getProperty("java.home"), "bin",
-                System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java");
-            Path fixtures = Path.of(StreamChild.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-            ProcessBuilder builder = new ProcessBuilder(java.toString(), "-cp", fixtures.toString(),
-                StreamChild.class.getName());
-            builder.redirectInput(staleInput.toFile());
+            ProcessBuilder builder = new ProcessBuilder("unused");
+            builder.redirectInput(scratch.resolve("stale-input").toFile());
             builder.redirectOutput(scratch.resolve("stale-output").toFile());
             builder.redirectError(scratch.resolve("stale-error").toFile());
             builder.redirectErrorStream(true);
 
             files.redirect(builder);
-            requireThat(Files.size(output), "Files.size(output)")
-                .withContext("Configuring redirects must not open their endpoints", "diagnostic")
-                .isEqualTo(700L);
-            requireThat(Files.size(error), "Files.size(error)")
-                .withContext("Configuring redirects must not truncate their endpoints", "diagnostic")
-                .isEqualTo(700L);
-            Process child = builder.start();
-            try
-            {
-                child.getOutputStream().close();
-                requireThat(child.waitFor(10, TimeUnit.SECONDS), "child")
-                    .withContext("Stream fixture must finish", "diagnostic")
-                    .isTrue();
-                requireThat(child.exitValue(), "child.exitValue()").isEqualTo(7);
-                requireThat(Files.readAllBytes(error), "Files.readAllBytes(error)")
-                    .isEqualTo(new byte[] {0, 13, 10, (byte) 255, 42});
-                requireThat(Files.readAllBytes(output), "Files.readAllBytes(output)").isEqualTo(payload);
-                requireThat(Files.readAllBytes(input), "Files.readAllBytes(input)")
-                    .withContext("The input endpoint remains caller-owned", "diagnostic")
-                    .isEqualTo(payload);
-            }
-            finally
-            {
-                if (child.isAlive())
-                {
-                    child.destroyForcibly();
-                    requireThat(child.waitFor(10, TimeUnit.SECONDS), "child")
-                        .withContext("Stream fixture must be reaped", "diagnostic")
-                        .isTrue();
-                }
-            }
+            requireThat(builder.redirectInput(), "redirectInput").isEqualTo(ProcessBuilder.Redirect.from(input.toFile()));
+            requireThat(builder.redirectOutput(), "redirectOutput").isEqualTo(ProcessBuilder.Redirect.to(output.toFile()));
+            requireThat(builder.redirectError(), "redirectError").isEqualTo(ProcessBuilder.Redirect.to(error.toFile()));
+            requireThat(builder.redirectErrorStream(), "redirectErrorStream").isFalse();
+            requireThat(Files.exists(input), "inputOpened").isFalse();
+            requireThat(Files.size(output), "Files.size(output)").isEqualTo(700L);
+            requireThat(Files.size(error), "Files.size(error)").isEqualTo(700L);
         }
         finally
         {
@@ -243,26 +211,5 @@ public final class LinuxStandardFilesTest
         Properties decoded = new Properties();
         decoded.loadFromXML(new ByteArrayInputStream(output.toByteArray()));
         return decoded;
-    }
-
-    /** Java child that echoes binary stdin, writes distinct stderr bytes and exits seven. */
-    public static final class StreamChild
-    {
-        /** Prevents construction of the fixture entry point. */
-        private StreamChild() { }
-
-        /**
-         * Transfers actual native standard streams for the redirection test.
-         * @param args unused fixture arguments
-         * @throws IOException if standard-stream transfer fails
-         */
-        public static void main(String[] args) throws IOException
-        {
-            System.in.transferTo(System.out);
-            System.out.flush();
-            System.err.write(new byte[] {0, 13, 10, (byte) 255, 42});
-            System.err.flush();
-            System.exit(7);
-        }
     }
 }
