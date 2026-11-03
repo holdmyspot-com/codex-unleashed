@@ -167,10 +167,15 @@ final class BazelRunner<A extends BazelRunner.Admission> implements AutoCloseabl
         try
         {
             stopAccepting();
-            if (server != null) server.shutdownNow();
+            // The server reports termination from tasks on the transport's event loops, so the loops stop only after
+            // the server has terminated.
+            if (server != null)
+            {
+                server.shutdownNow();
+                if (!server.awaitTermination(10, TimeUnit.SECONDS))
+                    throw new IOException("Runner listener termination remains unresolved");
+            }
             if (transport != null) transport.shutdownGracefully(0, 10, TimeUnit.SECONDS);
-            if (server != null && !server.awaitTermination(10, TimeUnit.SECONDS))
-                throw new IOException("Runner listener termination remains unresolved");
             if (transport != null && !transport.awaitTermination(10, TimeUnit.SECONDS))
                 throw new IOException("Runner transport termination remains unresolved");
         }
