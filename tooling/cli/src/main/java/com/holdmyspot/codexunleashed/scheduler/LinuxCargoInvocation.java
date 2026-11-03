@@ -752,7 +752,7 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
             var birth = new LinuxBorrowedStreams.Peer(pid, birth(pid), config.cargo().uid(), config.cargo().gid());
             var trusted = config.registration();
             LinuxCargoRegistration.Configuration policy = new LinuxCargoRegistration.Configuration(trusted.cargoExecutable(),
-                trusted.wrapperExecutable(), trusted.rustcExecutable(), trusted.wrapperPrefix(), trusted.registrationRoot(),
+                trusted.wrapperExecutable(), trusted.rustcExecutable(), trusted.wrapperPrefix(),
                 trusted.context(), lease.environment());
             registrationPolicy = policy;
             cargoParents.put(birth.pid(), new LinuxCargoRegistration.Parent(birth, trusted.cargoExecutable(), 0,
@@ -846,7 +846,9 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
                         LinuxCargoRegistration.Parent retained = retainedCargoParent(cargoParents, parent);
                         LinuxCargoRegistration registration = estimates == null ? new LinuxCargoRegistration(registrationPolicy, retained) :
                             new LinuxCargoRegistration(registrationPolicy, retained, estimates);
-                        request = registration.authenticate(captured, original);
+                        var launch = original.approvedLaunch();
+                        request = registration.authenticate(captured,
+                            new LinuxCargoProtocol.Register(launch.directory(), launch.command(), launch.environment()));
                     }
                     catch (IOException failure)
                     {

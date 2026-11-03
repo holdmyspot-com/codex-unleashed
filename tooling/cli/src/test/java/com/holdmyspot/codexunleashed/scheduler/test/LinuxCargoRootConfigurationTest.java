@@ -72,7 +72,7 @@ public final class LinuxCargoRootConfigurationTest
         LinuxProcessTree.Launch launch = new LinuxProcessTree.Launch(work, scratch, java, jar,
             List.of(cargo.toString()), environment, root, 1000, 1000, mode);
         LinuxCargoRegistration.Configuration registration = new LinuxCargoRegistration.Configuration(cargo, java, rustc,
-            List.of(java.toString(), "Wrapper"), root.resolve("registrations"), context, environment);
+            List.of(java.toString(), "Wrapper"), context, environment);
         LinuxAuthority.Settings authority = new LinuxAuthority.Settings(java, root.resolve("unshare"), root.resolve("libcgroup.so"),
             scratch, groups, root.resolve("proc"), work, groups.resolve("helper"), timeout);
         return new LinuxCargoInvocation.Configuration(launch, new LinuxProcessTree.StandardFiles(root.resolve("stdin"),

@@ -81,7 +81,7 @@ public final class LinuxCargoSchedule
                     LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC);
                 var registration = new LinuxCargoRegistration.Configuration(configuration.cargo(), java,
                     configuration.rustc(), LinuxProcessTree.javaCommand(context, LinuxCargoWrapperMain.class),
-                    registrations, context, environment);
+                    context, environment);
                 var authority = new LinuxAuthority.Settings(java, configuration.unshare(), configuration.libcgroup(),
                     directory, configuration.cgroupRoot(), configuration.procRoot(), actions, helpers, settings.controlTimeout());
                 var inputs = new LinuxCargoInvocation.Configuration(root, new LinuxCargoInvocation.BorrowedRoot(streams),

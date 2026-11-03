@@ -6,24 +6,22 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 
 /**
- * Authenticates current approved wrapper execution and direct retained compiler-parent image identity before publication.
+ * Authenticates a native wrapper registration against the wrapper process and its retained compiler parent.
  * Construction acquires no resources. Instances and their borrowed native observations belong to one operation
  * thread. The caller retains the compiler parent and immutable invocation configuration namespace through authentication and use.
  * This observation does not prove a historical spawn instruction or prevent later process state changes.
- * Duplicate action reservation, socket ownership and transfer-time kernel peer authentication remain caller duties.
+ * Socket ownership and kernel peer capture at acceptance remain caller duties.
  */
 public final class LinuxCargoRegistration
 {
@@ -138,7 +136,7 @@ public final class LinuxCargoRegistration
         private Configuration policy(Configuration invocation)
         {
             return new Configuration(executable, invocation.wrapperExecutable(), invocation.rustcExecutable(),
-                invocation.wrapperPrefix(), invocation.registrationRoot(), invocation.context(), invocation.requiredEnvironment());
+                invocation.wrapperPrefix(), invocation.context(), invocation.requiredEnvironment());
         }
     }
 
@@ -176,42 +174,31 @@ public final class LinuxCargoRegistration
     }
 
     /**
-     * Authenticates one decoded receipt without publishing it or granting an attempt capability.
-     * @param captured kernel-captured peer from the accepted control connection
-     * @param registration untrusted canonical receipt from LinuxCargoMessages
-     * @return independently checked compiler inputs and wrapper/Cargo births, with a best-effort completed-work estimate, or unknown demand
-     * @throws NullPointerException if an input is null
-     * @throws IOException if native observations are unavailable, unsupported, changing or inconsistent
+     * Authenticates one wrapper registration against the wrapper's own native process before it is queued.
+     * <p>
+     * The registration is accepted only when the captured peer runs the trusted wrapper executable as a direct child of
+     * the retained compiler parent, under the workload credentials, and its native argv, initial environment and working
+     * directory match the registration. Invocation-owned environment entries must keep their trusted values, except that
+     * PWD may name the registered directory and, below an independently retained parent image, an ordinary entry may
+     * take that parent's observed value.
+     * @param captured kernel-captured peer of the accepted wrapper connection
+     * @param register untrusted decoded registration from that connection
+     * @return compiler request with a fresh action identity, the wrapper and parent births and a best-effort
+     * completed-work estimate, or unknown demand
+     * @throws NullPointerException if {@code captured} or {@code register} is null
+     * @throws IOException if native observations are unavailable, changing or inconsistent with the registration or
+     * the invocation policy
      */
-    public CargoCompilerRequest authenticate(LinuxBorrowedStreams.Peer captured,
-        LinuxBorrowedStreams.Binding registration) throws IOException
+    public CargoCompilerRequest authenticate(LinuxBorrowedStreams.Peer captured, LinuxCargoProtocol.Register register)
+        throws IOException
     {
         Objects.requireNonNull(captured, "captured");
-        Objects.requireNonNull(registration, "registration");
+        Objects.requireNonNull(register, "register");
         var context = configuration.context();
         if (captured.pid() == cargo.pid() || captured.uid() != context.uid() || captured.gid() != context.gid())
             throw new IOException("Wrapper credentials differ from invocation policy");
-        var properties = new Properties();
-        LinuxBorrowedStreams.writeTo(properties, registration);
-        if (!Long.toString(captured.pid()).equals(properties.getProperty("borrowed.pid")) ||
-            !Long.toString(captured.startTicks()).equals(properties.getProperty("borrowed.birth")) ||
-            !Integer.toString(captured.uid()).equals(properties.getProperty("borrowed.uid")) ||
-            !Integer.toString(captured.gid()).equals(properties.getProperty("borrowed.gid")))
-            throw new IOException("Registration differs from captured native wrapper identity");
-        if (registration.attemptSequence() != 1 ||
-            !Base64.getEncoder().encodeToString(new byte[32]).equals(properties.getProperty("borrowed.capability")))
-            throw new IOException("Initial registration must not carry an attempt capability");
-        var launch = registration.approvedLaunch();
-        if (!configuration.rustcExecutable().toString().equals(launch.command().getFirst()))
+        if (!configuration.rustcExecutable().toString().equals(register.arguments().getFirst()))
             throw new IOException("Registration names another compiler");
-        var expected = new LinuxProcessTree.Launch(context.cgroupParent(), context.scratchParent(),
-            context.javaExecutable(), context.classPath(), launch.command(), launch.environment(), launch.directory(),
-            context.uid(), context.gid(), context.executionMode());
-        registration.requireExecution(expected);
-        Path directory = configuration.registrationRoot().resolve(Long.toString(captured.pid()));
-        Path endpoint = directory.resolve("streams.sock");
-        if (!endpoint.toString().equals(properties.getProperty("borrowed.endpoint")))
-            throw new IOException("Registration names another stream endpoint");
 
         requireIdentity(captured);
         // Cargo gives build scripts target-specific inputs, including TARGET and removed RUSTFLAGS.
@@ -219,10 +206,35 @@ public final class LinuxCargoRegistration
         Map<String, String> parentEnvironment = parentImage == null ? null : Map.copyOf(observer.environment(cargo.pid()));
         var arguments = List.copyOf(observer.arguments(captured.pid()));
         var expectedArguments = new ArrayList<>(configuration.wrapperPrefix());
-        expectedArguments.addAll(launch.command());
-        if (!arguments.equals(expectedArguments)) throw new IOException("Native wrapper command differs from approved prefix and compiler command");
+        expectedArguments.addAll(register.arguments());
+        if (!arguments.equals(expectedArguments))
+            throw new IOException("Native wrapper command differs from approved prefix and compiler command");
         var environment = Map.copyOf(observer.environment(captured.pid()));
-        if (!environment.equals(launch.environment())) throw new IOException("Native initial environment differs from registration");
+        if (!environment.equals(register.environment()))
+            throw new IOException("Native initial environment differs from registration");
+        requireInvocationEnvironment(environment, parentEnvironment, register.directory());
+        if (!observer.sameFile(process(captured.pid()).resolve("cwd"), register.directory()))
+            throw new IOException("Native working directory differs from registration");
+        if (parentEnvironment != null && !parentEnvironment.equals(observer.environment(cargo.pid())))
+            throw new IOException("Retained compiler-parent initial environment changed during registration");
+        requireIdentity(captured);
+
+        CargoCompilerRequest request = new CargoCompilerRequest(UUID.randomUUID(),
+            new CargoCompilerRequest.Wrapper(captured.pid(), captured.startTicks(), cargo.pid(), cargo.startTicks()),
+            register.arguments(), register.directory(), environment, null);
+        return estimates == null ? request : estimates.register(request);
+    }
+
+    /**
+     * Requires every invocation-owned environment entry to keep its trusted value.
+     * @param environment complete native initial environment of the wrapper
+     * @param parentEnvironment initial environment of an independently retained parent image, or null for the root
+     * @param directory registered compiler working directory
+     * @throws IOException if an entry changed in a way neither PWD nor the retained parent accounts for
+     */
+    private void requireInvocationEnvironment(Map<String, String> environment, Map<String, String> parentEnvironment,
+        Path directory) throws IOException
+    {
         for (var entry : configuration.requiredEnvironment().entrySet())
         {
             if (entry.getValue().equals(environment.get(entry.getKey()))) continue;
@@ -231,30 +243,13 @@ public final class LinuxCargoRegistration
             if (entry.getKey().equals("PWD") && environment.containsKey("PWD"))
             {
                 Path compilerDirectory = Path.of(environment.get("PWD"));
-                if (compilerDirectory.isAbsolute() && observer.sameFile(compilerDirectory, launch.directory())) continue;
+                if (compilerDirectory.isAbsolute() && observer.sameFile(compilerDirectory, directory)) continue;
             }
             if (parentEnvironment != null && !FIXED_ENVIRONMENT.contains(entry.getKey()) &&
                 parentEnvironment.containsKey(entry.getKey()) == environment.containsKey(entry.getKey()) &&
                 Objects.equals(parentEnvironment.get(entry.getKey()), environment.get(entry.getKey()))) continue;
             throw new IOException("Native environment changed an invocation-owned entry: " + entry.getKey());
         }
-        if (!observer.sameFile(process(captured.pid()).resolve("cwd"), launch.directory()))
-            throw new IOException("Native working directory differs from registration");
-        Entry directoryBefore = observer.entry(directory);
-        Entry endpointBefore = observer.entry(endpoint);
-        if (directoryBefore.uid() != captured.uid() || (directoryBefore.mode() & 0170000) != 0040000 ||
-            (directoryBefore.mode() & 07777) != 0700 || endpointBefore.uid() != captured.uid() ||
-            (endpointBefore.mode() & 0170000) != 0140000)
-            throw new IOException("Stream endpoint is not an owned socket in an exclusive 0700 wrapper directory");
-        if (parentEnvironment != null && !parentEnvironment.equals(observer.environment(cargo.pid())))
-            throw new IOException("Retained compiler-parent initial environment changed during registration");
-        requireIdentity(captured);
-        if (!directoryBefore.equals(observer.entry(directory)) || !endpointBefore.equals(observer.entry(endpoint)))
-            throw new IOException("Stream endpoint identity changed during registration");
-        CargoCompilerRequest request = new CargoCompilerRequest(registration.actionId(), new CargoCompilerRequest.Wrapper(captured.pid(),
-            captured.startTicks(), cargo.pid(), cargo.startTicks()),
-            arguments.subList(configuration.wrapperPrefix().size(), arguments.size()), launch.directory(), environment, null);
-        return estimates == null ? request : estimates.register(request);
     }
 
     /**
@@ -283,14 +278,13 @@ public final class LinuxCargoRegistration
      * @param wrapperExecutable pinned executable actually running the wrapper, such as the Java executable
      * @param rustcExecutable exact allowed compiler executable
      * @param wrapperPrefix complete immutable native argv prefix before the compiler executable
-     * @param registrationRoot normalized absolute parent of exclusive PID directories
      * @param context trusted attached launch context used to reconstruct execution authority
      * @param requiredEnvironment invocation-owned entries, including borrowed jobserver flags; independently retained
      * parent images may supply Cargo-selected ordinary values or omissions, while execution and jobserver authority
      * stays fixed and PWD must identify the actual compiler directory
      */
     public record Configuration(Path cargoExecutable, Path wrapperExecutable, Path rustcExecutable,
-        List<String> wrapperPrefix, Path registrationRoot, LinuxProcessTree.Launch context,
+        List<String> wrapperPrefix, LinuxProcessTree.Launch context,
         Map<String, String> requiredEnvironment)
     {
         /**
@@ -299,7 +293,6 @@ public final class LinuxCargoRegistration
          * @param wrapperExecutable pinned executable actually running the wrapper
          * @param rustcExecutable exact allowed compiler executable
          * @param wrapperPrefix complete native argv prefix before the compiler executable
-         * @param registrationRoot normalized absolute parent of exclusive PID directories
          * @param context trusted attached execution context, with compiler inputs supplied during authentication
          * @param requiredEnvironment invocation entries requiring exact preservation, except a compiler PWD authenticated by file identity
          * @throws NullPointerException if any required value or collection member is null
@@ -307,7 +300,7 @@ public final class LinuxCargoRegistration
          */
         public Configuration
         {
-            for (Path path : List.of(cargoExecutable, wrapperExecutable, rustcExecutable, registrationRoot))
+            for (Path path : List.of(cargoExecutable, wrapperExecutable, rustcExecutable))
             {
                 if (!path.isAbsolute() || !path.normalize().equals(path))
                     throw new IllegalArgumentException("Trusted paths must be normalized and absolute");
@@ -349,23 +342,6 @@ public final class LinuxCargoRegistration
         requireText(name);
         if (name.isEmpty() || name.indexOf('=') >= 0)
             throw new IllegalArgumentException("Native environment name is empty or contains '='");
-    }
-
-    /**
-     * Represents one no-follow native inode observation; mode includes type and permission bits.
-     * @param key filesystem identity of this specific inode
-     * @param uid native inode owner
-     * @param mode native inode type and permission bits
-     */
-    public record Entry(Object key, int uid, int mode)
-    {
-        /**
-         * Requires an established native file identity.
-         * @param key filesystem identity of this specific inode
-         * @param uid native inode owner
-         * @param mode native inode type and permission bits
-         */
-        public Entry { Objects.requireNonNull(key, "key"); }
     }
 
     /**
@@ -418,17 +394,10 @@ public final class LinuxCargoRegistration
          * @throws IOException if reading, framing, names or decoding fails
          */
         Map<String, String> environment(long pid) throws IOException;
-        /**
-         * Captures native inode attributes without following the final link.
-         * @param path exact pathname to inspect
-         * @return independently captured inode identity, owner and native mode
-         * @throws IOException if observation is unavailable or unsupported
-         */
-        Entry entry(Path path) throws IOException;
     }
 
     /**
-     * Reads actual Linux proc entries and no-follow filesystem attributes.
+     * Reads actual Linux proc entries and file identities.
      */
     private static final class NativeObserver implements Observer
     {
@@ -463,13 +432,6 @@ public final class LinuxCargoRegistration
             {
                 return environmentVector(input);
             }
-        }
-        @Override public Entry entry(Path path) throws IOException
-        {
-            Map<String, Object> values = Files.readAttributes(path, "unix:fileKey,uid,mode", LinkOption.NOFOLLOW_LINKS);
-            Object key = values.get("fileKey");
-            if (key == null) throw new IOException("Native inode identity is unavailable");
-            return new Entry(key, ((Number) values.get("uid")).intValue(), ((Number) values.get("mode")).intValue());
         }
     }
 

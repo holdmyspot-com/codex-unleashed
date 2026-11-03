@@ -18,7 +18,6 @@ import static com.holdmyspot.codexunleashed.scheduler.test.TestRequirements.requ
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import org.testng.annotations.Test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -41,7 +40,7 @@ public final class LinuxCargoRegistrationTest
     public void authenticatesExactNativeCompilerInputs() throws IOException
     {
         var fixture = new Fixture();
-        CargoCompilerRequest result = fixture.authenticator().authenticate(fixture.wrapper, fixture.binding());
+        CargoCompilerRequest result = fixture.authenticator().authenticate(fixture.wrapper, fixture.register());
         requireThat(result.arguments(), "exactArguments").isEqualTo(fixture.launch.command());
         requireThat(result.environment(), "completeEnvironment").isEqualTo(fixture.launch.environment());
         requireThat(result.wrapper(), "authenticatedBirths").isEqualTo(new CargoCompilerRequest.Wrapper(71, 81, 61, 91));
@@ -66,10 +65,10 @@ public final class LinuxCargoRegistrationTest
         var required = new LinkedHashMap<>(policy.requiredEnvironment());
         required.put("PWD", fixture.root.toString());
         var configuration = new LinuxCargoRegistration.Configuration(policy.cargoExecutable(), policy.wrapperExecutable(),
-            policy.rustcExecutable(), policy.wrapperPrefix(), policy.registrationRoot(), policy.context(), required);
+            policy.rustcExecutable(), policy.wrapperPrefix(), policy.context(), required);
         var authenticator = LinuxCargoRegistration.SharedSecrets.create(configuration, fixture.cargo, fixture);
         CargoCompilerRequest result = authenticator.authenticate(fixture.wrapper,
-            fixture.binding(1, new byte[32], fixture.wrapper, fixture.endpoint(), represented));
+            fixture.register(represented));
         requireThat(result.directory(), "authenticatedCompilerDirectory").isEqualTo(fixture.nativeDirectory);
         requireThat(result.environment(), "completeAuthenticatedCompilerEnvironment").isEqualTo(fixture.nativeEnvironment);
     }
@@ -84,11 +83,10 @@ public final class LinuxCargoRegistrationTest
         var required = new LinkedHashMap<>(policy.requiredEnvironment());
         required.put("PWD", fixture.root.toString());
         var configuration = new LinuxCargoRegistration.Configuration(policy.cargoExecutable(), policy.wrapperExecutable(),
-            policy.rustcExecutable(), policy.wrapperPrefix(), policy.registrationRoot(), policy.context(), required);
+            policy.rustcExecutable(), policy.wrapperPrefix(), policy.context(), required);
         var authenticator = LinuxCargoRegistration.SharedSecrets.create(configuration, fixture.cargo, fixture);
         requireException(IOException.class, () -> authenticator.authenticate(fixture.wrapper,
-            fixture.binding(1, new byte[32], fixture.wrapper, fixture.endpoint(),
-                fixture.withEnvironment(fixture.nativeEnvironment))));
+            fixture.register(fixture.withEnvironment(fixture.nativeEnvironment))));
     }
 
     /**
@@ -107,7 +105,7 @@ public final class LinuxCargoRegistrationTest
         LinuxCargoInvocation.retainReadyParent(retained, ready, 7, fixture.nativeParentImage);
         var parent = LinuxCargoInvocation.retainedCargoParent(retained, fixture.cargo.pid());
         var authenticator = LinuxCargoRegistration.SharedSecrets.create(fixture.configuration(), parent, fixture);
-        var request = authenticator.authenticate(fixture.wrapper, fixture.binding());
+        var request = authenticator.authenticate(fixture.wrapper, fixture.register());
         requireThat(request.arguments(), "exactBuildScriptCompilerRequest").isEqualTo(fixture.launch.command());
         requireThat(request.wrapper().parentPid(), "independentlyRetainedBuildScriptPid").isEqualTo(fixture.cargo.pid());
     }
@@ -131,11 +129,11 @@ public final class LinuxCargoRegistrationTest
                 fixture.nativeParentEnvironment.put(key, "cargo-selected-host-target");
             }
             var configuration = new LinuxCargoRegistration.Configuration(policy.cargoExecutable(), policy.wrapperExecutable(),
-                policy.rustcExecutable(), policy.wrapperPrefix(), policy.registrationRoot(), policy.context(), required);
+                policy.rustcExecutable(), policy.wrapperPrefix(), policy.context(), required);
             var parent = new LinuxCargoRegistration.Parent(fixture.cargo, fixture.nativeParentExecutable, 7, fixture.nativeParentImage);
             var authenticator = LinuxCargoRegistration.SharedSecrets.create(configuration, parent, fixture);
             var result = authenticator.authenticate(fixture.wrapper,
-                fixture.binding(1, new byte[32], fixture.wrapper, fixture.endpoint(), fixture.withEnvironment(fixture.nativeEnvironment)));
+                fixture.register(fixture.withEnvironment(fixture.nativeEnvironment)));
             requireThat(result.environment(), "completeNativeCompilerEnvironment").isEqualTo(fixture.nativeEnvironment);
         }
     }
@@ -150,11 +148,11 @@ public final class LinuxCargoRegistrationTest
         var required = new LinkedHashMap<>(policy.requiredEnvironment());
         required.put("ADDED", "a=b");
         var configuration = new LinuxCargoRegistration.Configuration(policy.cargoExecutable(), policy.wrapperExecutable(),
-            policy.rustcExecutable(), policy.wrapperPrefix(), policy.registrationRoot(), policy.context(), required);
+            policy.rustcExecutable(), policy.wrapperPrefix(), policy.context(), required);
         var parent = new LinuxCargoRegistration.Parent(fixture.cargo, fixture.nativeParentExecutable, 7, fixture.nativeParentImage);
         var authenticator = LinuxCargoRegistration.SharedSecrets.create(configuration, parent, fixture);
         requireException(IOException.class, () -> authenticator.authenticate(fixture.wrapper,
-            fixture.binding(1, new byte[32], fixture.wrapper, fixture.endpoint(), fixture.withEnvironment(fixture.nativeEnvironment))));
+            fixture.register(fixture.withEnvironment(fixture.nativeEnvironment))));
     }
 
     /** Rejects changed jobserver authority even when the retained parent's environment contains the same change. */
@@ -167,7 +165,7 @@ public final class LinuxCargoRegistrationTest
         var parent = new LinuxCargoRegistration.Parent(fixture.cargo, fixture.nativeParentExecutable, 7, fixture.nativeParentImage);
         var authenticator = LinuxCargoRegistration.SharedSecrets.create(fixture.configuration(), parent, fixture);
         requireException(IOException.class, () -> authenticator.authenticate(fixture.wrapper,
-            fixture.binding(1, new byte[32], fixture.wrapper, fixture.endpoint(), fixture.withEnvironment(fixture.nativeEnvironment))));
+            fixture.register(fixture.withEnvironment(fixture.nativeEnvironment))));
     }
 
     /** Rejects an independently observed parent environment that changes between native registration boundaries. */
@@ -178,7 +176,7 @@ public final class LinuxCargoRegistrationTest
         fixture.replaceParentEnvironmentAt = 2;
         var parent = new LinuxCargoRegistration.Parent(fixture.cargo, fixture.nativeParentExecutable, 7, fixture.nativeParentImage);
         var authenticator = LinuxCargoRegistration.SharedSecrets.create(fixture.configuration(), parent, fixture);
-        requireException(IOException.class, () -> authenticator.authenticate(fixture.wrapper, fixture.binding()));
+        requireException(IOException.class, () -> authenticator.authenticate(fixture.wrapper, fixture.register()));
     }
 
     /**
@@ -195,7 +193,7 @@ public final class LinuxCargoRegistrationTest
             fixture.sameFileFailures.add(changedAt);
             var parent = new LinuxCargoRegistration.Parent(fixture.cargo, retainedExecutable, 7, fixture.nativeParentImage);
             var authenticator = LinuxCargoRegistration.SharedSecrets.create(fixture.configuration(), parent, fixture);
-            requireException(IOException.class, () -> authenticator.authenticate(fixture.wrapper, fixture.binding()));
+            requireException(IOException.class, () -> authenticator.authenticate(fixture.wrapper, fixture.register()));
         }
     }
 
@@ -212,39 +210,53 @@ public final class LinuxCargoRegistrationTest
                 fixture.nativeParentImage);
             fixture.replaceImageAt = changedAt;
             var authenticator = LinuxCargoRegistration.SharedSecrets.create(fixture.configuration(), parent, fixture);
-            requireException(IOException.class, () -> authenticator.authenticate(fixture.wrapper, fixture.binding()));
+            requireException(IOException.class, () -> authenticator.authenticate(fixture.wrapper, fixture.register()));
         }
     }
 
     /**
-     * Rejects claimed identities that differ from the captured native socket credentials.
+     * Rejects a captured wrapper whose credentials differ from the workload or that is the compiler parent itself.
      */
     @Test
-    public void rejectsClaimedAndCapturedIdentityChanges()
+    public void rejectsCapturedIdentityChanges()
     {
         var fixture = new Fixture();
-        for (var claimed : List.of(new LinuxBorrowedStreams.Peer(72, 81, 1000, 1000),
-            new LinuxBorrowedStreams.Peer(71, 82, 1000, 1000), new LinuxBorrowedStreams.Peer(71, 81, 1001, 1000),
-            new LinuxBorrowedStreams.Peer(71, 81, 1000, 1001)))
-            requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.wrapper,
-                fixture.binding(1, new byte[32], claimed, fixture.endpoint(), fixture.launch)));
-        requireException(IOException.class, () -> fixture.authenticator().authenticate(
-            new LinuxBorrowedStreams.Peer(71, 81, 1001, 1000), fixture.binding()));
-        requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.cargo, fixture.binding()));
+        for (var captured : List.of(new LinuxBorrowedStreams.Peer(71, 81, 1001, 1000),
+            new LinuxBorrowedStreams.Peer(71, 81, 1000, 1001), fixture.cargo))
+            requireException(IOException.class, () -> fixture.authenticator().authenticate(captured, fixture.register()));
     }
 
     /**
-     * Rejects attempted registration with a controller-only sequence or capability.
+     * Rejects a registration whose compiler is not the pinned rustc, even when the native process agrees with it.
      */
     @Test
-    public void rejectsInitialAttemptAuthority()
+    public void rejectsRegistrationNamingAnotherCompiler()
     {
         var fixture = new Fixture();
-        byte[] capability = new byte[32];
-        capability[7] = 42;
-        for (var binding : List.of(fixture.binding(9, new byte[32], fixture.wrapper, fixture.endpoint(), fixture.launch),
-            fixture.binding(1, capability, fixture.wrapper, fixture.endpoint(), fixture.launch)))
-            requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.wrapper, binding));
+        var command = new ArrayList<>(fixture.launch.command());
+        command.set(0, fixture.root.resolve("other-rustc").toString());
+        fixture.nativeArguments = new ArrayList<>(fixture.prefix);
+        fixture.nativeArguments.addAll(command);
+        var registered = new LinuxCargoProtocol.Register(fixture.launch.directory(), command, fixture.launch.environment());
+        requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.wrapper, registered));
+    }
+
+    /**
+     * Rejects registered arguments, environment or directory that differ from the wrapper's native process.
+     */
+    @Test
+    public void rejectsRegistrationDifferingFromNativeProcess()
+    {
+        var fixture = new Fixture();
+        var launch = fixture.launch;
+        var arguments = new ArrayList<>(launch.command());
+        arguments.add("extra-argument");
+        var environment = new LinkedHashMap<>(launch.environment());
+        environment.put("ADDED", "changed");
+        for (var registered : List.of(new LinuxCargoProtocol.Register(launch.directory(), arguments, launch.environment()),
+            new LinuxCargoProtocol.Register(launch.directory(), launch.command(), environment),
+            new LinuxCargoProtocol.Register(fixture.root.resolve("other-directory"), launch.command(), launch.environment())))
+            requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.wrapper, registered));
     }
 
     /**
@@ -264,7 +276,7 @@ public final class LinuxCargoRegistrationTest
                 case 3 -> fixture.nativeArguments.add("extra-argument");
                 default -> throw new AssertionError(change);
             }
-            requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.wrapper, fixture.binding()));
+            requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.wrapper, fixture.register()));
         }
     }
 
@@ -278,7 +290,7 @@ public final class LinuxCargoRegistrationTest
         {
             var fixture = new Fixture();
             fixture.sameFileFailures.add(failedObservation);
-            requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.wrapper, fixture.binding()));
+            requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.wrapper, fixture.register()));
         }
     }
 
@@ -292,7 +304,7 @@ public final class LinuxCargoRegistrationTest
         {
             var fixture = new Fixture();
             fixture.parentFailureAt = failureAt;
-            requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.wrapper, fixture.binding()));
+            requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.wrapper, fixture.register()));
         }
     }
 
@@ -308,7 +320,7 @@ public final class LinuxCargoRegistrationTest
             fixture.liveFailureAt = failureAt;
             fixture.liveFailure = new IOException("Native birth, credentials or common namespace changed");
             requireThat(requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.wrapper,
-                fixture.binding())), "exactNativeFailure").isEqualTo(fixture.liveFailure);
+                fixture.register())), "exactNativeFailure").isEqualTo(fixture.liveFailure);
         }
     }
 
@@ -325,7 +337,7 @@ public final class LinuxCargoRegistrationTest
             fixture.liveFailureAt = 1;
             fixture.liveFailure = failure;
             requireThat(requireException(failure.getClass(), () -> fixture.authenticator().authenticate(fixture.wrapper,
-                fixture.binding())), "exactUnexpectedFailure").isEqualTo(failure);
+                fixture.register())), "exactUnexpectedFailure").isEqualTo(failure);
         }
     }
 
@@ -339,73 +351,10 @@ public final class LinuxCargoRegistrationTest
         fixture.nativeEnvironment.put("CARGO_MAKEFLAGS", "--jobserver-auth=fifo:/other");
         var represented = fixture.withEnvironment(fixture.nativeEnvironment);
         requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.wrapper,
-            fixture.binding(1, new byte[32], fixture.wrapper, fixture.endpoint(), represented)));
+            fixture.register(represented)));
         var mismatch = new Fixture();
         mismatch.nativeEnvironment.put("ADDED", "changed");
-        requireException(IOException.class, () -> mismatch.authenticator().authenticate(mismatch.wrapper, mismatch.binding()));
-    }
-
-    /**
-     * Uses trusted execution context while permitting self-reported containment to be discarded.
-     * @throws IOException if valid trusted containment derivation fails
-     */
-    @Test
-    public void reconstructsTrustedExecutionContext() throws IOException
-    {
-        var fixture = new Fixture();
-        var context = fixture.launch;
-        var derived = new LinuxProcessTree.Launch(fixture.root.resolve("untrusted-group"), fixture.root.resolve("untrusted-scratch"),
-            context.javaExecutable(), context.classPath(), context.command(), context.environment(), context.directory(),
-            context.uid(), context.gid(), context.executionMode());
-        requireThat(fixture.authenticator().authenticate(fixture.wrapper,
-            fixture.binding(1, new byte[32], fixture.wrapper, fixture.endpoint(), derived)).arguments(), "verifiedCommand").
-            isEqualTo(context.command());
-        var changed = new LinuxProcessTree.Launch(context.cgroupParent(), context.scratchParent(), fixture.root.resolve("other-java"),
-            context.classPath(), context.command(), context.environment(), context.directory(), context.uid(), context.gid(), context.executionMode());
-        requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.wrapper,
-            fixture.binding(1, new byte[32], fixture.wrapper, fixture.endpoint(), changed)));
-    }
-
-    /**
-     * Requires the exact normalized PID endpoint rather than any socket inside the registration tree.
-     */
-    @Test
-    public void rejectsWrongEndpointNames()
-    {
-        var fixture = new Fixture();
-        for (Path path : List.of(fixture.endpoint().resolveSibling("other.sock"),
-            fixture.endpoint().getParent().resolve("../71/streams.sock"), fixture.root.resolve("streams.sock")))
-            requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.wrapper,
-                fixture.binding(1, new byte[32], fixture.wrapper, path, fixture.launch)));
-    }
-
-    /**
-     * Rejects wrong inode types, owners, permissions and observed directory or endpoint replacements.
-     */
-    @Test
-    public void rejectsEndpointAttributesAndReplacements()
-    {
-        for (int change = 0; change < 10; change++)
-        {
-            var fixture = new Fixture();
-            Path directory = fixture.endpoint().getParent();
-            Path endpoint = fixture.endpoint();
-            switch (change)
-            {
-                case 0 -> fixture.entries.put(directory, new LinuxCargoRegistration.Entry(directory, 1001, 0040700));
-                case 1 -> fixture.entries.put(directory, new LinuxCargoRegistration.Entry(directory, 1000, 0040755));
-                case 2 -> fixture.entries.put(directory, new LinuxCargoRegistration.Entry(directory, 1000, 0120700));
-                case 3 -> fixture.entries.put(directory, new LinuxCargoRegistration.Entry(directory, 1000, 0100700));
-                case 4 -> fixture.entries.put(endpoint, new LinuxCargoRegistration.Entry(endpoint, 1001, 0140600));
-                case 5 -> fixture.entries.put(endpoint, new LinuxCargoRegistration.Entry(endpoint, 1000, 0120600));
-                case 6 -> fixture.entries.put(endpoint, new LinuxCargoRegistration.Entry(endpoint, 1000, 0100600));
-                case 7 -> fixture.replacements.put(directory, new LinuxCargoRegistration.Entry("replacement", 1000, 0040700));
-                case 8 -> fixture.replacements.put(endpoint, new LinuxCargoRegistration.Entry("replacement", 1000, 0140600));
-                case 9 -> fixture.replacements.put(directory, new LinuxCargoRegistration.Entry(directory, 1000, 0040755));
-                default -> throw new AssertionError(change);
-            }
-            requireException(IOException.class, () -> fixture.authenticator().authenticate(fixture.wrapper, fixture.binding()));
-        }
+        requireException(IOException.class, () -> mismatch.authenticator().authenticate(mismatch.wrapper, mismatch.register()));
     }
 
     /**
@@ -417,11 +366,11 @@ public final class LinuxCargoRegistrationTest
         var fixture = new Fixture();
         var policy = fixture.configuration();
         requireException(IllegalArgumentException.class, () -> new LinuxCargoRegistration.Configuration(Path.of("relative"),
-            policy.wrapperExecutable(), policy.rustcExecutable(), policy.wrapperPrefix(), policy.registrationRoot(), policy.context(), policy.requiredEnvironment()));
+            policy.wrapperExecutable(), policy.rustcExecutable(), policy.wrapperPrefix(), policy.context(), policy.requiredEnvironment()));
         requireException(IllegalArgumentException.class, () -> new LinuxCargoRegistration.Configuration(policy.cargoExecutable(),
-            policy.wrapperExecutable(), policy.rustcExecutable(), List.of(), policy.registrationRoot(), policy.context(), policy.requiredEnvironment()));
+            policy.wrapperExecutable(), policy.rustcExecutable(), List.of(), policy.context(), policy.requiredEnvironment()));
         requireException(IllegalArgumentException.class, () -> new LinuxCargoRegistration.Configuration(policy.cargoExecutable(),
-            policy.wrapperExecutable(), policy.rustcExecutable(), policy.wrapperPrefix(), policy.registrationRoot(), policy.context(), Map.of("A=B", "value")));
+            policy.wrapperExecutable(), policy.rustcExecutable(), policy.wrapperPrefix(), policy.context(), Map.of("A=B", "value")));
         requireException(IllegalArgumentException.class, () -> new LinuxCargoRegistration(policy,
             new LinuxBorrowedStreams.Peer(61, 91, 1001, 1000)));
         requireThat(fixture.liveCalls, "noNativeInspection").isEqualTo(0);
@@ -538,18 +487,6 @@ public final class LinuxCargoRegistrationTest
         /** Observation that supplies a changed parent environment, or zero when stable. */
         private int replaceParentEnvironmentAt;
         /**
-         * Independent original no-follow inode observations.
-         */
-        private final Map<Path, LinuxCargoRegistration.Entry> entries = new LinkedHashMap<>();
-        /**
-         * Inodes observed instead at the final observation boundary.
-         */
-        private final Map<Path, LinuxCargoRegistration.Entry> replacements = new LinkedHashMap<>();
-        /**
-         * Number of inode observations for each independent path.
-         */
-        private final Map<Path, Integer> entryCalls = new LinkedHashMap<>();
-        /**
          * File identity observations selected to fail.
          */
         private final Set<Integer> sameFileFailures = new HashSet<>();
@@ -595,46 +532,32 @@ public final class LinuxCargoRegistrationTest
         private Fixture()
         {
             nativeArguments.addAll(launch.command());
-            entries.put(endpoint().getParent(), new LinuxCargoRegistration.Entry(endpoint().getParent(), 1000, 0040700));
-            entries.put(endpoint(), new LinuxCargoRegistration.Entry(endpoint(), 1000, 0140600));
         }
         /**
-         * Constructs trusted policy independent of the receipt.
+         * Constructs trusted policy independent of the registration.
          * @return complete invocation configuration
          */
         private LinuxCargoRegistration.Configuration configuration()
         {
             return new LinuxCargoRegistration.Configuration(root.resolve("cargo"), root.resolve("java"), root.resolve("rustc"),
-                prefix, root.resolve("registrations"), launch, Map.of("CARGO_MAKEFLAGS", "--jobserver-auth=fifo:/fixture"));
+                prefix, launch, Map.of("CARGO_MAKEFLAGS", "--jobserver-auth=fifo:/fixture"));
         }
         /**
-         * Locates the one represented PID endpoint.
-         * @return exact absolute endpoint
+         * Supplies the untrusted registration that matches the represented native process.
+         * @return wrapper registration
          */
-        private Path endpoint() { return root.resolve("registrations").resolve("71").resolve("streams.sock"); }
-        /**
-         * Supplies untrusted receipt values matching the represented native process.
-         * @return initial canonical binding
-         */
-        private LinuxBorrowedStreams.Binding binding()
+        private LinuxCargoProtocol.Register register()
         {
-            return binding(1, new byte[32], wrapper, endpoint(), launch);
+            return register(launch);
         }
         /**
-         * Represents one changed receipt independently of trusted policy and actual native facts.
-         * @param sequence claimed sequence
-         * @param capability claimed capability
-         * @param peer claimed native identity
-         * @param endpoint claimed endpoint
-         * @param represented claimed compiler execution context
-         * @return untrusted receipt
+         * Represents one registration independently of trusted policy and actual native facts.
+         * @param represented claimed compiler directory, arguments and environment
+         * @return untrusted wrapper registration
          */
-        private LinuxBorrowedStreams.Binding binding(long sequence, byte[] capability, LinuxBorrowedStreams.Peer peer,
-            Path endpoint, LinuxProcessTree.Launch represented)
+        private LinuxCargoProtocol.Register register(LinuxProcessTree.Launch represented)
         {
-            var stream = new LinuxBorrowedStreams.Terminal(false, "", 0, 0, List.of());
-            return new LinuxBorrowedStreams.Binding(new UUID(1, 2), sequence, peer, endpoint, capability,
-                new LinuxBorrowedStreams.TerminalContext(1, 1, List.of(stream, stream, stream)), represented);
+            return new LinuxCargoProtocol.Register(represented.directory(), represented.command(), represented.environment());
         }
         /**
          * Copies represented execution with an independently supplied environment.
@@ -688,13 +611,6 @@ public final class LinuxCargoRegistrationTest
                 return Map.copyOf(changed);
             }
             return Map.copyOf(nativeParentEnvironment);
-        }
-        @Override public LinuxCargoRegistration.Entry entry(Path path) throws IOException
-        {
-            int observation = entryCalls.merge(path, 1, Integer::sum);
-            var entry = observation > 1 && replacements.containsKey(path) ? replacements.get(path) : entries.get(path);
-            if (entry == null) throw new IOException("No native fixture inode exists");
-            return entry;
         }
     }
 }

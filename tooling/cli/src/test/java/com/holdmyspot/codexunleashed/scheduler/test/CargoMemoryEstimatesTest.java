@@ -179,10 +179,8 @@ public final class CargoMemoryEstimatesTest
             Map<String, String> environment = Map.of("LANG", "C");
             LinuxProcessTree.Launch launch = new LinuxProcessTree.Launch(root, root, java, root.resolve("classes"),
                 command, environment, source, 1000, 1000, LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC);
-            Path registrations = root.resolve("registrations");
-            Path endpoint = registrations.resolve("71/streams.sock");
             LinuxCargoRegistration.Configuration configuration = new LinuxCargoRegistration.Configuration(root.resolve("cargo"),
-                java, compiler, prefix, registrations, launch, Map.of());
+                java, compiler, prefix, launch, Map.of());
             LinuxCargoRegistration.Observer nativeObservations = new LinuxCargoRegistration.Observer()
             {
                 @Override public void requireLive(LinuxBorrowedStreams.Peer peer) {}
@@ -195,16 +193,10 @@ public final class CargoMemoryEstimatesTest
                     return arguments;
                 }
                 @Override public Map<String, String> environment(long pid) { return environment; }
-                @Override public LinuxCargoRegistration.Entry entry(Path path)
-                {
-                    return new LinuxCargoRegistration.Entry(path, 1000, path.equals(endpoint) ? 0140600 : 0040700);
-                }
             };
-            LinuxBorrowedStreams.Terminal terminal = new LinuxBorrowedStreams.Terminal(false, "", 0, 0, List.of());
-            LinuxBorrowedStreams.Binding binding = new LinuxBorrowedStreams.Binding(UUID.randomUUID(), 1, wrapper, endpoint,
-                new byte[32], new LinuxBorrowedStreams.TerminalContext(1, 1, List.of(terminal, terminal, terminal)), launch);
+            var register = new LinuxCargoProtocol.Register(source, command, environment);
             CargoCompilerRequest cold = LinuxCargoRegistration.SharedSecrets.create(configuration, cargo, nativeObservations).
-                authenticate(wrapper, binding);
+                authenticate(wrapper, register);
             estimates.register(cold);
             estimates.readHost();
             estimates.readResidentBytes(new Policy.Job(cold.name(), Policy.State.RUNNING, 0, null, 0, 2L, null, 0));
@@ -212,7 +204,7 @@ public final class CargoMemoryEstimatesTest
             estimates.completed(cold.name(), 2, true);
             CargoMemoryEstimates next = new CargoMemoryEstimates(new SampleSource(), new CargoMemoryHistory(history), identities);
             CargoCompilerRequest warm = LinuxCargoRegistration.SharedSecrets.create(configuration, cargo, nativeObservations, next).
-                authenticate(wrapper, binding);
+                authenticate(wrapper, register);
             requireThat(warm.peakBytes(), "authenticatedProductionEstimate").isEqualTo(200L);
         }
         finally { remove(root); }
