@@ -32,8 +32,6 @@
 	surrounding code meaningfully harder to read?” If not, keep the value inline.
 - When choosing type or member visibility or removing unused methods, lazy load
 	`${CAT_PROJECT_ROOT}/.cat/rules/include/java-class-design.md`.
-- Initialize constant or parameter-independent fields inline. Initialize fields in a constructor only when they depend
-	on constructor input or require multi-step setup.
 - Use interface types for declarations unless concrete-only operations are required.
 - Use `Duration` for time values; do not pass timeouts as ambiguous numeric units.
 - In addition to what the bundled Java Optional rule permits, a record component, or a `final` field that a getter
