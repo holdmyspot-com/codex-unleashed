@@ -2,13 +2,13 @@ package com.holdmyspot.codexunleashed.scheduler.test;
 
 import com.holdmyspot.codexunleashed.scheduler.BazelBackendCredentials;
 import com.holdmyspot.codexunleashed.scheduler.BazelNativeBackend;
+import com.holdmyspot.codexunleashed.tooling.CargoCacheKeys;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -49,10 +49,10 @@ public final class BazelNativeBackendTest
     /**
      * Accepts exactly hashed native machine headers and rejects changed bytes before any launch authority.
      * These portable synthetic files exercise validation only; they are never executed.
-     * @throws Exception if owned fixture creation or validation fails
+     * @throws IOException if owned fixture creation or validation fails
      */
     @Test
-    public void validatesNativeManifestAndArchitecture() throws Exception
+    public void validatesNativeManifestAndArchitecture() throws IOException
     {
         for (String[] host : new String[][]{{"Mac OS X", "aarch64"}, {"Mac OS X", "x86_64"},
             {"Windows 11", "aarch64"}, {"Windows 11", "amd64"}})
@@ -73,10 +73,10 @@ public final class BazelNativeBackendTest
 
     /**
      * Correctly hashed files for the wrong processor do not become native launch authority.
-     * @throws Exception if fixture creation or manifest serialization fails
+     * @throws IOException if fixture creation or manifest serialization fails
      */
     @Test
-    public void rejectsHashedWrongMachine() throws Exception
+    public void rejectsHashedWrongMachine() throws IOException
     {
         BazelNativeBackend.NativeTarget target = BazelNativeBackend.NativeTarget.forHost("Windows 11", "aarch64");
         try (Fixture fixture = Fixture.open(target))
@@ -89,10 +89,10 @@ public final class BazelNativeBackendTest
 
     /**
      * Moving a validated distribution object away and recreating identical bytes cannot reuse its native authority.
-     * @throws Exception if fixture creation or original object replacement fails
+     * @throws IOException if fixture creation or original object replacement fails
      */
     @Test
-    public void rejectsReplacedOriginalRoot() throws Exception
+    public void rejectsReplacedOriginalRoot() throws IOException
     {
         BazelNativeBackend.NativeTarget target = BazelNativeBackend.NativeTarget.forHost("Mac OS X", "aarch64");
         try (Fixture fixture = Fixture.open(target))
@@ -121,10 +121,10 @@ public final class BazelNativeBackendTest
 
     /**
      * The compiler-free entry point selects this actual host and stages every original product and license.
-     * @throws Exception if the owned fixture or staging entry point fails
+     * @throws IOException if the owned fixture or staging entry point fails
      */
     @Test
-    public void stagesCurrentHostDistribution() throws Exception
+    public void stagesCurrentHostDistribution() throws IOException
     {
         BazelNativeBackend.NativeTarget target = BazelNativeBackend.NativeTarget.forHost(
             System.getProperty("os.name"), System.getProperty("os.arch"));
@@ -148,10 +148,10 @@ public final class BazelNativeBackendTest
 
     /**
      * Every supported target stages its exact filenames, manifest and direct licenses through one authority.
-     * @throws Exception if an independent synthetic target fixture or staging check fails
+     * @throws IOException if an independent synthetic target fixture or staging check fails
      */
     @Test
-    public void stagesEveryTargetWithoutExecutingProducts() throws Exception
+    public void stagesEveryTargetWithoutExecutingProducts() throws IOException
     {
         for (BazelNativeBackend.NativeTarget target : BazelNativeBackend.NativeTarget.values())
             try (Fixture fixture = Fixture.open(target))
@@ -178,10 +178,10 @@ public final class BazelNativeBackendTest
 
     /**
      * Existing caller-owned destination contents survive rejected staging unchanged.
-     * @throws Exception if fixture ownership or rejection verification fails
+     * @throws IOException if fixture ownership or rejection verification fails
      */
     @Test
-    public void preservesExistingStagingDestination() throws Exception
+    public void preservesExistingStagingDestination() throws IOException
     {
         try (Fixture fixture = Fixture.open(BazelNativeBackend.NativeTarget.forHost("Mac OS X", "aarch64")))
         {
@@ -197,10 +197,10 @@ public final class BazelNativeBackendTest
 
     /**
      * A changed original cannot cause the creation of any staging destination.
-     * @throws Exception if fixture creation or changed-source verification fails
+     * @throws IOException if fixture creation or changed-source verification fails
      */
     @Test
-    public void rejectsChangedSourceBeforeCreatingDestination() throws Exception
+    public void rejectsChangedSourceBeforeCreatingDestination() throws IOException
     {
         try (Fixture fixture = Fixture.open(BazelNativeBackend.NativeTarget.forHost("Windows 11", "amd64")))
         {
@@ -215,10 +215,10 @@ public final class BazelNativeBackendTest
 
     /**
      * Linked license files and linked destination ancestry never become copy authority.
-     * @throws Exception if owned link fixtures or rejection checks fail
+     * @throws IOException if owned link fixtures or rejection checks fail
      */
     @Test
-    public void rejectsLinkedLicenseAndDestinationParent() throws Exception
+    public void rejectsLinkedLicenseAndDestinationParent() throws IOException
     {
         try (Fixture fixture = Fixture.open(BazelNativeBackend.NativeTarget.forHost("Mac OS X", "aarch64")))
         {
@@ -244,10 +244,10 @@ public final class BazelNativeBackendTest
 
     /**
      * A failed copy retains the exact primary failure while collecting all authenticated created objects.
-     * @throws Exception if fixture ownership or cleanup verification fails
+     * @throws IOException if fixture ownership or cleanup verification fails
      */
     @Test
-    public void collectsOwnedStageAfterCopyFailure() throws Exception
+    public void collectsOwnedStageAfterCopyFailure() throws IOException
     {
         try (Fixture fixture = Fixture.open(BazelNativeBackend.NativeTarget.forHost("Mac OS X", "aarch64")))
         {
@@ -272,10 +272,10 @@ public final class BazelNativeBackendTest
 
     /**
      * Unknown created-file identity prevents recursive deletion and remains attached to the primary failure.
-     * @throws Exception if fixture setup or retained-cleanup verification fails
+     * @throws IOException if fixture setup or retained-cleanup verification fails
      */
     @Test
-    public void retainsUncertainStageWithoutMaskingPrimaryFailure() throws Exception
+    public void retainsUncertainStageWithoutMaskingPrimaryFailure() throws IOException
     {
         try (Fixture fixture = Fixture.open(BazelNativeBackend.NativeTarget.forHost("Windows 11", "amd64")))
         {
@@ -374,9 +374,9 @@ public final class BazelNativeBackendTest
          * Creates synthetic validator inputs without launching or extracting a native executable.
          * @param target exact native format under test
          * @return fully owned portable fixture
-         * @throws Exception if fixture creation fails after retained cleanup
+         * @throws IOException if fixture creation fails after retained cleanup
          */
-        private static Fixture open(BazelNativeBackend.NativeTarget target) throws Exception
+        private static Fixture open(BazelNativeBackend.NativeTarget target) throws IOException
         {
             Path root = Files.createTempDirectory("native-backend-validator-");
             DefaultToolingScope scope = new DefaultToolingScope();
@@ -392,26 +392,26 @@ public final class BazelNativeBackendTest
                 fixture.writeManifest();
                 return fixture;
             }
-            catch (Exception | Error failure)
+            catch (IOException | RuntimeException | Error failure)
             {
                 try { fixture.close(); }
-                catch (Exception cleanup) { failure.addSuppressed(cleanup); }
+                catch (IOException cleanup) { failure.addSuppressed(cleanup); }
                 throw failure;
             }
         }
 
         /**
          * Serializes the exact current file identities into the fixture manifest.
-         * @throws Exception if hashing or scope-owned serialization fails
+         * @throws IOException if hashing or scope-owned serialization fails
          */
-        private void writeManifest() throws Exception
+        private void writeManifest() throws IOException
         {
             Map<String, Object> files = new LinkedHashMap<>();
             for (String name : fixtureNames(target))
             {
                 String filename = name + target.suffix();
                 files.put(name, Map.of("path", filename, "sha256", HexFormat.of().formatHex(
-                    MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(root.resolve(filename))))));
+                    CargoCacheKeys.digest().digest(Files.readAllBytes(root.resolve(filename))))));
             }
             scope.getJsonMapper().writeValue(root.resolve(BazelNativeBackend.MANIFEST).toFile(), Map.of(
                 "schema", 1, "target", target.triple(), "executionCommit", BazelNativeBackend.EXECUTION_COMMIT,
