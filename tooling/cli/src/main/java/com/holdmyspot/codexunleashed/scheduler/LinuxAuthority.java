@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.secrets.LinuxAuthoritySecrets;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
@@ -43,6 +44,11 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 	public static final String MISSING_LEAF = "registered-leaf-removed";
 	/** Reader-verified process membership churn invalidating a registered workload's residency sample. */
 	static final String CHANGED_MEMBERS = "registered-membership-changed";
+
+	static
+	{
+		LinuxAuthoritySecrets.setLinuxAuthorityAccess(LinuxAuthority::requireSuccess);
+	}
 
 	/**
 	 * Reads the owning supervisor's genuine retained execution-impossible barrier.
@@ -630,29 +636,6 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 			{
 				throw new IOException("Memory reader returned an invalid response status: " + response.getProperty("status"));
 			}
-		}
-	}
-
-	/**
-	 * Narrow typed access to the production reply decision for focused checks.
-	 */
-	public static final class SharedSecrets
-	{
-		/**
-		 * Prevents construction.
-		 */
-		private SharedSecrets() { }
-		/**
-		 * Exercises the actual reply decision with controlled retained-owner observations.
-		 * @param response acknowledged reply
-		 * @param operation request operation
-		 * @param barriers registered retained-zero suppliers
-		 * @throws IOException if the reply is rejected
-		 */
-		public static void requireSuccess(Properties response, String operation,
-			Map<LinuxMeasurements.Attempt, ZeroBarrier> barriers) throws IOException
-		{
-			LinuxAuthority.requireSuccess(response, operation, barriers);
 		}
 	}
 

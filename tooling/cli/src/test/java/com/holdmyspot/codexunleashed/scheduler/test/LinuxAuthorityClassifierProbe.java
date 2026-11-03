@@ -2,6 +2,7 @@ package com.holdmyspot.codexunleashed.scheduler.test;
 
 import com.holdmyspot.codexunleashed.scheduler.LinuxAuthorityReader;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+import com.holdmyspot.codexunleashed.secrets.LinuxAuthorityReaderSecrets;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,16 +30,16 @@ public final class LinuxAuthorityClassifierProbe
 	 */
 	public static void main(String[] arguments) throws IOException
 	{
-		requireThat(LinuxAuthorityReader.SharedSecrets.openFlags("amd64", true), "x64DirectoryFlags")
+		requireThat(LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().openFlags("amd64", true), "x64DirectoryFlags")
 			.isEqualTo(02600000, "expected");
-		requireThat(LinuxAuthorityReader.SharedSecrets.openFlags("x86_64", false), "x64FileFlags")
+		requireThat(LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().openFlags("x86_64", false), "x64FileFlags")
 			.isEqualTo(02400000, "expected");
-		requireThat(LinuxAuthorityReader.SharedSecrets.openFlags("aarch64", true), "arm64DirectoryFlags")
+		requireThat(LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().openFlags("aarch64", true), "arm64DirectoryFlags")
 			.isEqualTo(02140000, "expected");
-		requireThat(LinuxAuthorityReader.SharedSecrets.openFlags("aarch64", false), "arm64FileFlags")
+		requireThat(LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().openFlags("aarch64", false), "arm64FileFlags")
 			.isEqualTo(02100000, "expected");
 		requireException(UnsupportedOperationException.class,
-			() -> LinuxAuthorityReader.SharedSecrets.openFlags("unsupported", true));
+			() -> LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().openFlags("unsupported", true));
 		System.out.println("open_flags=x64_and_arm64_verified; unsupported_architecture=rejected");
 		Path directory = Files.createTempDirectory(Path.of(arguments[0]), "classifier-");
 		try (var scope = new DefaultToolingScope())
@@ -47,7 +48,7 @@ public final class LinuxAuthorityClassifierProbe
 			Files.writeString(directory.resolve("cgroup.controllers"), "memory\n");
 			requireThat(openFixtureDescriptors(directory), "fixtureDescriptorsBeforeRead").isEqualTo(0L, "expected");
 			IOException failure = requireException(IOException.class,
-				() -> LinuxAuthorityReader.SharedSecrets.requireActualRoot(scope, directory));
+				() -> LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().requireActualRoot(scope, directory));
 			requireThat(failure.getMessage().contains("filesystem magic"), "ordinaryFilesystemRejected").isTrue();
 			requireThat(openFixtureDescriptors(directory), "fixtureDescriptorsAfterRejectedRead").isEqualTo(0L, "expected");
 			System.out.println("ordinary_filesystem=UNAVAILABLE; native_classifier_invoked=true; owned_descriptors_after=0");

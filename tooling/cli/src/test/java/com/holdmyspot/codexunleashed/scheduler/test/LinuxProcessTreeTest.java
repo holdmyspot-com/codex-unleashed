@@ -1,6 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler.test;
 
 import com.holdmyspot.codexunleashed.scheduler.LinuxProcessTree;
+import com.holdmyspot.codexunleashed.secrets.LinuxProcessTreeSecrets;
 
 import java.io.IOException;
 import java.io.ByteArrayInputStream;
@@ -26,7 +27,7 @@ public final class LinuxProcessTreeTest {
     @Test
     public void expiresAttachedGateWithoutExecutingWorkload() {
         long expiredDeadline = System.nanoTime();
-        requireException(IOException.class, () -> LinuxProcessTree.SharedSecrets.executeAfterRelease(
+        requireException(IOException.class, () -> LinuxProcessTreeSecrets.getLinuxProcessTreeAccess().executeAfterRelease(
             LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC,
             () -> { throw new AssertionError("Attached mode selected direct workload exec"); }, expiredDeadline));
     }
@@ -35,7 +36,7 @@ public final class LinuxProcessTreeTest {
     @Test
     public void executesDirectWorkloadWithoutWaitingForReplacement() throws IOException, InterruptedException {
         AtomicInteger executions = new AtomicInteger();
-        LinuxProcessTree.SharedSecrets.executeAfterRelease(LinuxProcessTree.ExecutionMode.DIRECT_EXEC,
+        LinuxProcessTreeSecrets.getLinuxProcessTreeAccess().executeAfterRelease(LinuxProcessTree.ExecutionMode.DIRECT_EXEC,
             executions::incrementAndGet, System.nanoTime());
         requireThat(executions.get(), "executions.get()").isEqualTo(1);
     }
@@ -46,7 +47,7 @@ public final class LinuxProcessTreeTest {
         boolean previouslyInterrupted = Thread.interrupted();
         try {
             Thread.currentThread().interrupt();
-            requireException(InterruptedException.class, () -> LinuxProcessTree.SharedSecrets.executeAfterRelease(
+            requireException(InterruptedException.class, () -> LinuxProcessTreeSecrets.getLinuxProcessTreeAccess().executeAfterRelease(
                 LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC,
                 () -> { throw new AssertionError("Interrupted attached mode selected direct workload exec"); },
                 System.nanoTime() + TimeUnit.MINUTES.toNanos(1)));
@@ -63,7 +64,7 @@ public final class LinuxProcessTreeTest {
         var launch = new LinuxProcessTree.Launch(parent, parent, parent.resolve("java"), parent.resolve("classes"),
             List.of(parent.resolve("workload").toString()), Map.of(), parent, 1001, 1001);
         AtomicInteger executions = new AtomicInteger();
-        LinuxProcessTree.SharedSecrets.executeAfterRelease(launch.executionMode(), executions::incrementAndGet,
+        LinuxProcessTreeSecrets.getLinuxProcessTreeAccess().executeAfterRelease(launch.executionMode(), executions::incrementAndGet,
             System.nanoTime());
         requireThat(executions.get(), "executions.get()").isEqualTo(1);
     }
@@ -72,7 +73,7 @@ public final class LinuxProcessTreeTest {
     @Test
     public void absentXmlModeExecutesDirectly() throws IOException, InterruptedException {
         AtomicInteger executions = new AtomicInteger();
-        LinuxProcessTree.SharedSecrets.executeAfterRelease(
+        LinuxProcessTreeSecrets.getLinuxProcessTreeAccess().executeAfterRelease(
             LinuxProcessTree.ExecutionMode.readFrom(xmlRoundTrip(new Properties())), executions::incrementAndGet,
             System.nanoTime());
         requireThat(executions.get(), "executions.get()").isEqualTo(1);
@@ -104,11 +105,11 @@ public final class LinuxProcessTreeTest {
         LinuxProcessTree.ExecutionMode gateMode = LinuxProcessTree.ExecutionMode.readFrom(xmlRoundTrip(supervisor));
         AtomicInteger executions = new AtomicInteger();
         if (mode == LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC) {
-            requireException(IOException.class, () -> LinuxProcessTree.SharedSecrets.executeAfterRelease(gateMode,
+            requireException(IOException.class, () -> LinuxProcessTreeSecrets.getLinuxProcessTreeAccess().executeAfterRelease(gateMode,
                 executions::incrementAndGet, System.nanoTime()));
             requireThat(executions.get(), "executions.get()").isEqualTo(0);
         } else {
-            LinuxProcessTree.SharedSecrets.executeAfterRelease(gateMode, executions::incrementAndGet, System.nanoTime());
+            LinuxProcessTreeSecrets.getLinuxProcessTreeAccess().executeAfterRelease(gateMode, executions::incrementAndGet, System.nanoTime());
             requireThat(executions.get(), "executions.get()").isEqualTo(1);
         }
     }

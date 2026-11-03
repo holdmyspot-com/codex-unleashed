@@ -3,6 +3,7 @@ package com.holdmyspot.codexunleashed.scheduler.test;
 import com.holdmyspot.codexunleashed.scheduler.LinuxCargoJobserver;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+import com.holdmyspot.codexunleashed.secrets.LinuxCargoJobserverSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,12 +34,12 @@ public final class LinuxCargoJobserverNativeTest
 		LinuxCargoJobserverTest.requireLinux();
 		try (var first = new DefaultToolingScope(); var second = new DefaultToolingScope())
 		{
-			var bindings = LinuxCargoJobserver.SharedSecrets.nativeCalls(first);
-			requireThat(LinuxCargoJobserver.SharedSecrets.nativeCalls(first), "sharedNativeBindings")
+			var bindings = LinuxCargoJobserverSecrets.getLinuxCargoJobserverAccess().nativeCalls(first);
+			requireThat(LinuxCargoJobserverSecrets.getLinuxCargoJobserverAccess().nativeCalls(first), "sharedNativeBindings")
 				.isReferenceEqualTo(bindings, "sameScope");
-			requireThat(LinuxCargoJobserver.SharedSecrets.nativeCalls(second) == bindings, "independentScopes").isFalse();
+			requireThat(LinuxCargoJobserverSecrets.getLinuxCargoJobserverAccess().nativeCalls(second) == bindings, "independentScopes").isFalse();
 			first.close();
-			requireException(IllegalStateException.class, () -> LinuxCargoJobserver.SharedSecrets.nativeCalls(first));
+			requireException(IllegalStateException.class, () -> LinuxCargoJobserverSecrets.getLinuxCargoJobserverAccess().nativeCalls(first));
 		}
 	}
 
@@ -138,7 +139,7 @@ public final class LinuxCargoJobserverNativeTest
 			var owner = LinuxCargoJobserver.create(fixture.scope, fixture.directory, fixture.group, 3);
 			var lease = owner.retainCargo(Map.of()); var a = lease.retainAttempt(); var b = lease.retainAttempt())
 		{
-			var calls = LinuxCargoJobserver.SharedSecrets.nativeCalls(fixture.scope);
+			var calls = LinuxCargoJobserverSecrets.getLinuxCargoJobserverAccess().nativeCalls(fixture.scope);
 			int observer = calls.open(LinuxCargoJobserverTest.fifo(lease));
 			try
 			{
@@ -207,7 +208,7 @@ public final class LinuxCargoJobserverNativeTest
 		 */
 		private Peer(ToolingScope scope, Path fifo) throws IOException
 		{
-			this.calls = LinuxCargoJobserver.SharedSecrets.nativeCalls(scope);
+			this.calls = LinuxCargoJobserverSecrets.getLinuxCargoJobserverAccess().nativeCalls(scope);
 			this.descriptor = calls.open(fifo);
 		}
 

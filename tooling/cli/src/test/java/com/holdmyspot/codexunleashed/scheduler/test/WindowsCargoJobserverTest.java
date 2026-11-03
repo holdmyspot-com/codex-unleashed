@@ -2,11 +2,10 @@ package com.holdmyspot.codexunleashed.scheduler.test;
 
 import com.holdmyspot.codexunleashed.scheduler.WindowsCargoJobserver;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+import com.holdmyspot.codexunleashed.secrets.WindowsCargoJobserverSecrets;
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,14 +23,13 @@ public final class WindowsCargoJobserverTest
 {
 	/**
 	 * Closes an acquired handle if reading its captured creation outcome fails before publication.
-	 * @throws Exception if controlled binding construction fails
 	 */
 	@Test
-	public void nativeCreationFailureClosesUnpublishedHandle() throws Exception
+	public void nativeCreationFailureClosesUnpublishedHandle()
 	{
 		NativeModel model = new NativeModel();
 		requireException(IndexOutOfBoundsException.class,
-			() -> WindowsCargoJobserver.SharedSecrets.create(2, model.calls()));
+			() -> WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(2, model.calls()));
 		requireThat(model.creates, "successfulNativeAcquisitions").isEqualTo(1, "expected");
 		requireThat(model.closes, "unpublishedHandleCloseAttempts").isEqualTo(1, "expected");
 		requireThat(model.accessCloses, "nativeAccessCloseAttempts").isEqualTo(1, "expected");
@@ -39,18 +37,17 @@ public final class WindowsCargoJobserverTest
 
 	/**
 	 * Retains both failed creation publication and its independent ambiguous handle cleanup failure.
-	 * @throws Exception if controlled binding construction fails
 	 */
 	@Test
-	public void nativeCreationFailureRetainsHandleCloseFailure() throws Exception
+	public void nativeCreationFailureRetainsHandleCloseFailure()
 	{
 		NativeModel model = new NativeModel();
 		model.failClose = true;
 		var failure = requireException(WindowsCargoJobserver.PreparationFailure.class,
-			() -> WindowsCargoJobserver.SharedSecrets.create(2, model.calls()));
+			() -> WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(2, model.calls()));
 		requireThat(failure.getCause() instanceof IndexOutOfBoundsException, "originalPublicationFailure").isTrue();
 		requireThat(failure.getCause().getSuppressed().length, "cleanupFailures").isEqualTo(1, "expected");
-		requireThat(failure.getCause().getSuppressed()[0].getCause() == model.closeFailure, "originalCleanupFailureIdentity").isTrue();
+		requireThat(failure.getCause().getSuppressed()[0] == model.closeFailure, "originalCleanupFailureIdentity").isTrue();
 		requireException(IOException.class, failure::close);
 		requireThat(model.creates, "successfulNativeAcquisitions").isEqualTo(1, "expected");
 		requireThat(model.closes, "singleHandleCloseAttempt").isEqualTo(1, "expected");
@@ -58,7 +55,7 @@ public final class WindowsCargoJobserverTest
 	}
 
 	/** Runs the actual NativeCalls transfer algorithm with deterministic downcall outcomes. */
-	private static final class NativeModel implements Arena
+	private static final class NativeModel implements Arena, WindowsCargoJobserver.NativeFunctions
 	{
 		/** Backing memory scope whose close is counted independently from HANDLE cleanup. */
 		private final Arena arena = Arena.ofConfined();
@@ -77,41 +74,55 @@ public final class WindowsCargoJobserverTest
 		private NativeModel() { }
 
 		/**
-		 * Supplies native-shaped bindings and deliberately undersized captured-state storage.
+		 * Supplies native-shaped functions and deliberately undersized captured-state storage.
 		 * @return production native adapter owning this scope
-		 * @throws ReflectiveOperationException if fixture binding lookup fails
 		 */
-		private WindowsCargoJobserver.Calls calls() throws ReflectiveOperationException
+		private WindowsCargoJobserver.Calls calls()
 		{
-			var lookup = MethodHandles.lookup();
-			var create = lookup.findVirtual(NativeModel.class, "create",
-				MethodType.methodType(MemorySegment.class)).bindTo(this);
-			create = MethodHandles.dropArguments(create, 0, MemorySegment.class, MemorySegment.class,
-				int.class, int.class, MemorySegment.class, int.class, int.class);
-			var close = lookup.findVirtual(NativeModel.class, "closeHandle",
-				MethodType.methodType(int.class, MemorySegment.class)).bindTo(this);
-			close = MethodHandles.dropArguments(close, 0, MemorySegment.class);
-			return WindowsCargoJobserver.SharedSecrets.nativeCalls(this, arena.allocate(0), 0,
-				create, null, null, close);
+			return WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().nativeCalls(this, arena.allocate(0), 0,
+				this);
 		}
 
 		/**
 		 * Models successful native acquisition before the captured-state read fails.
+		 * @param errors captured native error storage
+		 * @param attributes security attributes
+		 * @param initial initial count
+		 * @param maximum maximum count
+		 * @param name wide semaphore name
+		 * @param flags creation flags
+		 * @param access requested access rights
 		 * @return acquired raw HANDLE
 		 */
-		private MemorySegment create()
+		@Override
+		public MemorySegment createSemaphore(MemorySegment errors, MemorySegment attributes, int initial, int maximum,
+			MemorySegment name, int flags, int access)
 		{
 			creates++;
 			return MemorySegment.ofAddress(42);
 		}
 
+		@Override
+		public int waitForSingleObject(MemorySegment errors, MemorySegment handle, int milliseconds)
+		{
+			throw new AssertionError("The model never waits on the semaphore");
+		}
+
+		@Override
+		public int releaseSemaphore(MemorySegment errors, MemorySegment handle, int count, MemorySegment previous)
+		{
+			throw new AssertionError("The model never returns tokens to the semaphore");
+		}
+
 		/**
 		 * Counts the one native close attempt, optionally preserving an ambiguous failure.
+		 * @param errors captured native error storage
 		 * @param handle acquired HANDLE
 		 * @return native success BOOL
 		 * @throws IOException if requested cleanup fails
 		 */
-		private int closeHandle(MemorySegment handle) throws IOException
+		@Override
+		public int closeHandle(MemorySegment errors, MemorySegment handle) throws IOException
 		{
 			requireThat(handle.address(), "closedHandle").isEqualTo(42L, "acquiredHandle");
 			closes++;
@@ -143,7 +154,7 @@ public final class WindowsCargoJobserverTest
 	public void retainsOneImplicitSlotAndOneCargoLease() throws Exception
 	{
 		Model calls = new Model();
-		try (var owner = WindowsCargoJobserver.SharedSecrets.create(2, calls))
+		try (var owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(2, calls))
 		{
 			requireThat(calls.available, "explicitTokens").isEqualTo(1, "jobsMinusOne");
 			requireThat(calls.maximum, "maximumTokens").isEqualTo(2, "jobs");
@@ -182,7 +193,7 @@ public final class WindowsCargoJobserverTest
 	public void oneJobHasNoExplicitTokens() throws Exception
 	{
 		Model calls = new Model();
-		var owner = WindowsCargoJobserver.SharedSecrets.create(1, calls);
+		var owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(1, calls);
 		requireThat(calls.available, "initialExplicitTokens").isEqualTo(0, "expected");
 		requireThat(calls.maximum, "nativeMaximum").isEqualTo(1, "expected");
 		owner.close();
@@ -198,7 +209,7 @@ public final class WindowsCargoJobserverTest
 	@Test
 	public void rejectsEnvironmentConflictsBeforeRetention() throws Exception
 	{
-		try (var owner = WindowsCargoJobserver.SharedSecrets.create(1, new Model()))
+		try (var owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(1, new Model()))
 		{
 			for (String variable : List.of("CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS", "cargo_makeflags", "MakeFlags", "mflags"))
 				for (String value : List.of("", "-j8"))
@@ -226,11 +237,11 @@ public final class WindowsCargoJobserverTest
 		{
 			for (int jobs : List.of(0, -1))
 			{
-				requireException(IllegalArgumentException.class, () -> WindowsCargoJobserver.SharedSecrets.create(jobs, calls));
+				requireException(IllegalArgumentException.class, () -> WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(jobs, calls));
 				requireException(IllegalArgumentException.class, () -> WindowsCargoJobserver.create(scope, jobs));
 			}
 		}
-		requireException(NullPointerException.class, () -> WindowsCargoJobserver.SharedSecrets.create(1, null));
+		requireException(NullPointerException.class, () -> WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(1, null));
 		requireThat(calls.creates, "nativeCreates").isEqualTo(0, "expected");
 		requireThat(calls.accessCloses, "transfersBeforeValidation").isEqualTo(0, "expected");
 	}
@@ -243,7 +254,7 @@ public final class WindowsCargoJobserverTest
 	public void lostCapacityRemainsExplicitWithoutReseeding() throws Exception
 	{
 		Model calls = new Model();
-		var owner = WindowsCargoJobserver.SharedSecrets.create(2, calls);
+		var owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(2, calls);
 		calls.available = 0;
 		var mismatch = requireException(WindowsCargoJobserver.CapacityMismatch.class, owner::close);
 		requireThat(mismatch.expectedTokens(), "expectedTokens").isEqualTo(1, "expected");
@@ -263,7 +274,7 @@ public final class WindowsCargoJobserverTest
 	public void excessCapacityRestoresOnlyObservedTokens() throws Exception
 	{
 		Model calls = new Model();
-		var owner = WindowsCargoJobserver.SharedSecrets.create(2, calls);
+		var owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(2, calls);
 		calls.available = 2;
 		var mismatch = requireException(WindowsCargoJobserver.CapacityMismatch.class, owner::close);
 		requireThat(mismatch.observedTokens(), "observedTokens").isEqualTo(2, "expected");
@@ -279,7 +290,7 @@ public final class WindowsCargoJobserverTest
 	public void failedWaitRestoresKnownAcquisitionsAndPreservesFailure() throws Exception
 	{
 		Model calls = new Model();
-		var owner = WindowsCargoJobserver.SharedSecrets.create(3, calls);
+		var owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(3, calls);
 		calls.failWait = 2;
 		IOException failure = requireException(IOException.class, owner::close);
 		requireThat(failure == calls.waitFailure, "originalWaitFailure").isTrue();
@@ -296,7 +307,7 @@ public final class WindowsCargoJobserverTest
 	public void failedReturnAndCleanupRemainExplicit() throws Exception
 	{
 		Model calls = new Model();
-		var owner = WindowsCargoJobserver.SharedSecrets.create(2, calls);
+		var owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(2, calls);
 		calls.failReturn = true;
 		calls.failHandleClose = true;
 		calls.failAccessClose = true;
@@ -317,7 +328,7 @@ public final class WindowsCargoJobserverTest
 	{
 		Model calls = new Model();
 		calls.existing = true;
-		requireException(IOException.class, () -> WindowsCargoJobserver.SharedSecrets.create(2, calls));
+		requireException(IOException.class, () -> WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(2, calls));
 		requireThat(calls.waits, "foreignPoolAcquires").isEqualTo(0, "expected");
 		requireThat(calls.returns, "foreignPoolReturns").isEqualTo(0, "expected");
 		requireThat(calls.handleCloses, "openedHandleClose").isEqualTo(1, "expected");
@@ -335,7 +346,7 @@ public final class WindowsCargoJobserverTest
 		calls.existing = true;
 		calls.failHandleClose = true;
 		var failure = requireException(WindowsCargoJobserver.PreparationFailure.class,
-			() -> WindowsCargoJobserver.SharedSecrets.create(2, calls));
+			() -> WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(2, calls));
 		requireThat(failure.getCause().getSuppressed()[0] == calls.handleFailure, "setupCleanupFailure").isTrue();
 		requireException(IOException.class, failure::close);
 		requireThat(calls.handleCloses, "noRawHandleRetry").isEqualTo(1, "expected");
@@ -350,7 +361,7 @@ public final class WindowsCargoJobserverTest
 	public void repeatedFailedCloseDoesNotSelfSuppress() throws Exception
 	{
 		Model calls = new Model();
-		var owner = WindowsCargoJobserver.SharedSecrets.create(1, calls);
+		var owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(1, calls);
 		calls.failHandleClose = true;
 		IOException failure = requireException(IOException.class, () ->
 		{
@@ -370,7 +381,7 @@ public final class WindowsCargoJobserverTest
 	public void controllerThreadOwnsLeaseAndCleanup() throws Exception
 	{
 		Model calls = new Model();
-		try (var owner = WindowsCargoJobserver.SharedSecrets.create(1, calls);
+		try (var owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(1, calls);
 			var lease = owner.retainCargo(Map.of()))
 		{
 			AtomicReference<Throwable> observed = new AtomicReference<>();
@@ -400,7 +411,7 @@ public final class WindowsCargoJobserverTest
 	public void sharedFailureIdentityDoesNotSkipCleanup() throws Exception
 	{
 		Model calls = new Model();
-		var owner = WindowsCargoJobserver.SharedSecrets.create(2, calls);
+		var owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(2, calls);
 		calls.failReturn = true;
 		calls.failHandleClose = true;
 		calls.failAccessClose = true;

@@ -10,6 +10,7 @@ import com.holdmyspot.codexunleashed.scheduler.LinuxBazelIdentity;
 import com.holdmyspot.codexunleashed.scheduler.LinuxBazelNamespaceHooks;
 import com.holdmyspot.codexunleashed.scheduler.LinuxBorrowedStreams;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+import com.holdmyspot.codexunleashed.secrets.LinuxBazelContainmentSecrets;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Files;
@@ -170,7 +171,7 @@ public final class LinuxBazelNamespaceHooksTest
             @Override public void close() { moved = false; }
         };
         try (DefaultToolingScope scope = new DefaultToolingScope();
-            LinuxBazelContainment containment = LinuxBazelContainment.SharedSecrets.admit(authenticator,
+            LinuxBazelContainment containment = LinuxBazelContainmentSecrets.getLinuxBazelContainmentAccess().admit(authenticator,
                 owner, child, execution, directory, Duration.ofSeconds(1), (parent, timeout) -> group))
         {
             LinuxBazelNamespaceHooks.Launch launch = new LinuxBazelNamespaceHooks.Launch(seal("/usr/bin/nsenter"),

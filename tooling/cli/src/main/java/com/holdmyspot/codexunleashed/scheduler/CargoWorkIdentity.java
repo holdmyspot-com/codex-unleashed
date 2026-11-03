@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.secrets.CargoWorkIdentitySecrets;
 import java.io.IOException;
 import java.io.DataOutputStream;
 import java.io.OutputStream;
@@ -30,6 +31,11 @@ import java.util.Objects;
  */
 public final class CargoWorkIdentity
 {
+	static
+	{
+		CargoWorkIdentitySecrets.setCargoWorkIdentityAccess(CargoWorkIdentity::new);
+	}
+
     /** Complete caller-declared source and configuration input tree. */
     private final Path inputRoot;
     /** Compiler output trees excluded from the source-content identity. */
@@ -221,32 +227,5 @@ public final class CargoWorkIdentity
          * @throws InvalidPathException if the value is not path syntax on this file system
          */
         Path resolve(Path directory, String value);
-    }
-
-    /** Gives this module's tests access to the argument resolver. */
-    public static final class SharedSecrets
-    {
-        /**
-         * Prevents construction.
-         */
-        private SharedSecrets()
-        {
-        }
-
-        /**
-         * Creates an identity that resolves argument values through the given resolver.
-         * @param inputRoot absolute normalized source/configuration root
-         * @param outputRoots absolute normalized generated output trees, strictly below the input root
-         * @param toolchainRoot absolute normalized immutable compiler/sysroot root
-         * @param resolver resolves an argument value against the compiler's working directory
-         * @return the identity
-         * @throws NullPointerException if a required value or collection member is null
-         * @throws IllegalArgumentException if a path is relative, not normalized or an output is outside the input root
-         */
-        public static CargoWorkIdentity withResolver(Path inputRoot, List<Path> outputRoots, Path toolchainRoot,
-            Resolver resolver)
-        {
-            return new CargoWorkIdentity(inputRoot, outputRoots, toolchainRoot, resolver);
-        }
     }
 }

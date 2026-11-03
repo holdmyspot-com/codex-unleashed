@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.secrets.MacCargoJobserverSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -43,6 +44,11 @@ public final class MacCargoJobserver implements AutoCloseable
         Set.copyOf(PosixFilePermissions.fromString("rwxr-x---"));
     /** Preferred jobserver authentication option. */
     private static final String AUTH_OPTION = "--jobserver-auth=";
+	static
+	{
+		MacCargoJobserverSecrets.setMacCargoJobserverAccess(MacCargoJobserver::new);
+	}
+
     /** Borrowed native access and partial-owner inventory. */
     private final Provider provider;
     /** Constructing controller thread. */
@@ -441,23 +447,5 @@ public final class MacCargoJobserver implements AutoCloseable
         @Override public java.util.OptionalInt tryRead() throws IOException { return fifo.tryRead(); }
         @Override public void write(byte token) throws IOException { fifo.write(token); }
         @Override public void close() throws IOException { fifo.close(); }
-    }
-
-    /**
-     * Provides typed access to the real acquisition boundary for isolated native-result fixtures.
-     */
-    public static final class SharedSecrets
-    {
-        /**
-         * Prevents construction.
-         */
-        private SharedSecrets() {}
-
-        /**
-         * Retains a resource-free provider for the same normal filesystem and accounting operations.
-         * @param provider controlled native boundary
-         * @return new unacquired owner
-         */
-        public static MacCargoJobserver create(Provider provider) { return new MacCargoJobserver(provider); }
     }
 }

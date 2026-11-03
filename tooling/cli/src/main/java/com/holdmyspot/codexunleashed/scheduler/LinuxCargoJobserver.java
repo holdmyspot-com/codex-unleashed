@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.secrets.LinuxCargoJobserverAccess;
+import com.holdmyspot.codexunleashed.secrets.LinuxCargoJobserverSecrets;
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import java.io.IOException;
 import java.lang.foreign.ValueLayout;
@@ -59,6 +61,24 @@ public final class LinuxCargoJobserver implements AutoCloseable
 	private static final Set<PosixFilePermission> FRONT_END_PERMISSIONS = Set.copyOf(PosixFilePermissions.fromString("rwxr-x---"));
 	/** Numeric group attribute supplied by the pinned Linux JDK filesystem provider. */
 	private static final String GROUP_ATTRIBUTE = "unix:gid";
+	static
+	{
+		LinuxCargoJobserverSecrets.setLinuxCargoJobserverAccess(new LinuxCargoJobserverAccess()
+		{
+			@Override
+			public Calls nativeCalls(ToolingScope scope)
+			{
+				return scope.getLinuxFifoBindings();
+			}
+
+			@Override
+			public LinuxCargoJobserver create(Path scratchParent, int workloadGroup, int jobs, Calls calls) throws IOException
+			{
+				return acquire(validate(scratchParent, workloadGroup, jobs), workloadGroup, jobs, calls);
+			}
+		});
+	}
+
 	/** Native operations; the retained descriptor belongs to this owner rather than an arena. */
 	private final Calls calls;
 	/** Exclusive setup directory, or null before acquisition and after deletion. */
@@ -647,36 +667,6 @@ public final class LinuxCargoJobserver implements AutoCloseable
 		 * @throws IOException if close reports an error
 		 */
 		void close(int descriptor) throws IOException;
-	}
-
-	/**
-	 * Provides typed access to the same acquisition operation for controlled native-failure checks.
-	 */
-	public static final class SharedSecrets
-	{
-		/**
-		 * Prevents construction.
-		 */
-		private SharedSecrets() { }
-		/**
-		 * Uses actual native operations as the delegate of a focused fault fixture.
-		 * @param scope borrowed native services, retained open by the fixture through all operations
-		 * @return the scope's shared resource-free native access
-		 */
-		public static Calls nativeCalls(ToolingScope scope) { return scope.getLinuxFifoBindings(); }
-		/**
-		 * Executes normal validated acquisition with controlled external access.
-		 * @param scratchParent existing caller-owned parent
-		 * @param workloadGroup workload GID
-		 * @param jobs total initial capacity
-		 * @param calls native access controlling the boundary under test
-		 * @return normally owned FIFO
-		 * @throws IOException if acquisition or cleanup fails
-		 */
-		public static LinuxCargoJobserver create(Path scratchParent, int workloadGroup, int jobs, Calls calls) throws IOException
-		{
-			return acquire(validate(scratchParent, workloadGroup, jobs), workloadGroup, jobs, calls);
-		}
 	}
 
 }

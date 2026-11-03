@@ -8,6 +8,7 @@ import com.holdmyspot.codexunleashed.scheduler.LinuxCargoProtocol;
 import com.holdmyspot.codexunleashed.scheduler.LinuxCargoRegistration;
 import com.holdmyspot.codexunleashed.scheduler.LinuxCargoTransport;
 import com.holdmyspot.codexunleashed.scheduler.LinuxProcessTree;
+import com.holdmyspot.codexunleashed.secrets.LinuxCargoRegistrationSecrets;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -67,7 +68,7 @@ public final class LinuxCargoRegistrationTest
         required.put("PWD", fixture.root.toString());
         var configuration = new LinuxCargoRegistration.Configuration(policy.cargoExecutable(), policy.wrapperExecutable(),
             policy.rustcExecutable(), policy.wrapperPrefix(), policy.context(), required);
-        var authenticator = LinuxCargoRegistration.SharedSecrets.create(configuration, fixture.cargo, fixture);
+        var authenticator = LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().create(configuration, fixture.cargo, fixture);
         CargoCompilerRequest result = authenticator.authenticate(fixture.wrapper,
             fixture.register(represented));
         requireThat(result.directory(), "authenticatedCompilerDirectory").isEqualTo(fixture.nativeDirectory);
@@ -85,7 +86,7 @@ public final class LinuxCargoRegistrationTest
         required.put("PWD", fixture.root.toString());
         var configuration = new LinuxCargoRegistration.Configuration(policy.cargoExecutable(), policy.wrapperExecutable(),
             policy.rustcExecutable(), policy.wrapperPrefix(), policy.context(), required);
-        var authenticator = LinuxCargoRegistration.SharedSecrets.create(configuration, fixture.cargo, fixture);
+        var authenticator = LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().create(configuration, fixture.cargo, fixture);
         requireException(IOException.class, () -> authenticator.authenticate(fixture.wrapper,
             fixture.register(fixture.withEnvironment(fixture.nativeEnvironment))));
     }
@@ -105,7 +106,7 @@ public final class LinuxCargoRegistrationTest
             fixture.cargo.uid(), fixture.cargo.gid(), fixture.nativeParentExecutable, fixture.root);
         LinuxCargoInvocation.retainReadyParent(retained, ready, 7, fixture.nativeParentImage);
         var parent = LinuxCargoInvocation.retainedCargoParent(retained, fixture.cargo.pid());
-        var authenticator = LinuxCargoRegistration.SharedSecrets.create(fixture.configuration(), parent, fixture);
+        var authenticator = LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().create(fixture.configuration(), parent, fixture);
         var request = authenticator.authenticate(fixture.wrapper, fixture.register());
         requireThat(request.arguments(), "exactBuildScriptCompilerRequest").isEqualTo(fixture.launch.command());
         requireThat(request.wrapper().parentPid(), "independentlyRetainedBuildScriptPid").isEqualTo(fixture.cargo.pid());
@@ -132,7 +133,7 @@ public final class LinuxCargoRegistrationTest
             var configuration = new LinuxCargoRegistration.Configuration(policy.cargoExecutable(), policy.wrapperExecutable(),
                 policy.rustcExecutable(), policy.wrapperPrefix(), policy.context(), required);
             var parent = new LinuxCargoRegistration.Parent(fixture.cargo, fixture.nativeParentExecutable, 7, fixture.nativeParentImage);
-            var authenticator = LinuxCargoRegistration.SharedSecrets.create(configuration, parent, fixture);
+            var authenticator = LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().create(configuration, parent, fixture);
             var result = authenticator.authenticate(fixture.wrapper,
                 fixture.register(fixture.withEnvironment(fixture.nativeEnvironment)));
             requireThat(result.environment(), "completeNativeCompilerEnvironment").isEqualTo(fixture.nativeEnvironment);
@@ -151,7 +152,7 @@ public final class LinuxCargoRegistrationTest
         var configuration = new LinuxCargoRegistration.Configuration(policy.cargoExecutable(), policy.wrapperExecutable(),
             policy.rustcExecutable(), policy.wrapperPrefix(), policy.context(), required);
         var parent = new LinuxCargoRegistration.Parent(fixture.cargo, fixture.nativeParentExecutable, 7, fixture.nativeParentImage);
-        var authenticator = LinuxCargoRegistration.SharedSecrets.create(configuration, parent, fixture);
+        var authenticator = LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().create(configuration, parent, fixture);
         requireException(IOException.class, () -> authenticator.authenticate(fixture.wrapper,
             fixture.register(fixture.withEnvironment(fixture.nativeEnvironment))));
     }
@@ -164,7 +165,7 @@ public final class LinuxCargoRegistrationTest
         fixture.nativeEnvironment.put("CARGO_MAKEFLAGS", "--jobserver-auth=foreign");
         fixture.nativeParentEnvironment.put("CARGO_MAKEFLAGS", "--jobserver-auth=foreign");
         var parent = new LinuxCargoRegistration.Parent(fixture.cargo, fixture.nativeParentExecutable, 7, fixture.nativeParentImage);
-        var authenticator = LinuxCargoRegistration.SharedSecrets.create(fixture.configuration(), parent, fixture);
+        var authenticator = LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().create(fixture.configuration(), parent, fixture);
         requireException(IOException.class, () -> authenticator.authenticate(fixture.wrapper,
             fixture.register(fixture.withEnvironment(fixture.nativeEnvironment))));
     }
@@ -176,7 +177,7 @@ public final class LinuxCargoRegistrationTest
         var fixture = new Fixture();
         fixture.replaceParentEnvironmentAt = 2;
         var parent = new LinuxCargoRegistration.Parent(fixture.cargo, fixture.nativeParentExecutable, 7, fixture.nativeParentImage);
-        var authenticator = LinuxCargoRegistration.SharedSecrets.create(fixture.configuration(), parent, fixture);
+        var authenticator = LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().create(fixture.configuration(), parent, fixture);
         requireException(IOException.class, () -> authenticator.authenticate(fixture.wrapper, fixture.register()));
     }
 
@@ -193,7 +194,7 @@ public final class LinuxCargoRegistrationTest
             fixture.nativeParentExecutable = retainedExecutable;
             fixture.sameFileFailures.add(changedAt);
             var parent = new LinuxCargoRegistration.Parent(fixture.cargo, retainedExecutable, 7, fixture.nativeParentImage);
-            var authenticator = LinuxCargoRegistration.SharedSecrets.create(fixture.configuration(), parent, fixture);
+            var authenticator = LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().create(fixture.configuration(), parent, fixture);
             requireException(IOException.class, () -> authenticator.authenticate(fixture.wrapper, fixture.register()));
         }
     }
@@ -210,7 +211,7 @@ public final class LinuxCargoRegistrationTest
             var parent = new LinuxCargoRegistration.Parent(fixture.cargo, fixture.nativeParentExecutable, 7,
                 fixture.nativeParentImage);
             fixture.replaceImageAt = changedAt;
-            var authenticator = LinuxCargoRegistration.SharedSecrets.create(fixture.configuration(), parent, fixture);
+            var authenticator = LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().create(fixture.configuration(), parent, fixture);
             requireException(IOException.class, () -> authenticator.authenticate(fixture.wrapper, fixture.register()));
         }
     }
@@ -387,19 +388,19 @@ public final class LinuxCargoRegistrationTest
         byte[] arguments = new byte[] {'a', 0, 0, ' ', 'b', ' ', 0};
         try (var input = new ByteArrayInputStream(arguments))
         {
-            requireThat(LinuxCargoRegistration.SharedSecrets.arguments(input), "nativeArguments").isEqualTo(List.of("a", "", " b "));
+            requireThat(LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().arguments(input), "nativeArguments").isEqualTo(List.of("a", "", " b "));
         }
         try (var input = new ByteArrayInputStream(new byte[] {0}))
         {
-            requireThat(LinuxCargoRegistration.SharedSecrets.arguments(input), "singleEmptyArgument").isEqualTo(List.of(""));
+            requireThat(LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().arguments(input), "singleEmptyArgument").isEqualTo(List.of(""));
         }
         try (var input = new ByteArrayInputStream(new byte[0]))
         {
-            requireThat(LinuxCargoRegistration.SharedSecrets.environment(input), "emptyEnvironment").isEqualTo(Map.of());
+            requireThat(LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().environment(input), "emptyEnvironment").isEqualTo(Map.of());
         }
         try (var input = bytes("EMPTY=\0EQ=a=b\0"))
         {
-            requireThat(LinuxCargoRegistration.SharedSecrets.environment(input), "nativeEnvironment").isEqualTo(Map.of("EMPTY", "", "EQ", "a=b"));
+            requireThat(LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().environment(input), "nativeEnvironment").isEqualTo(Map.of("EMPTY", "", "EQ", "a=b"));
         }
     }
 
@@ -415,14 +416,14 @@ public final class LinuxCargoRegistrationTest
         {
             try (var input = new ByteArrayInputStream(invalid))
             {
-                requireException(IOException.class, () -> LinuxCargoRegistration.SharedSecrets.arguments(input));
+                requireException(IOException.class, () -> LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().arguments(input));
             }
         }
         for (String invalid : List.of("A=1\0A=2\0", "=value\0", "MISSING\0", "\0"))
         {
             try (var input = bytes(invalid))
             {
-                requireException(IOException.class, () -> LinuxCargoRegistration.SharedSecrets.environment(input));
+                requireException(IOException.class, () -> LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().environment(input));
             }
         }
         byte[] maximum = new byte[LinuxCargoTransport.MAX_FRAME_BYTES];
@@ -430,7 +431,7 @@ public final class LinuxCargoRegistrationTest
         maximum[maximum.length - 1] = 0;
         try (var input = new ByteArrayInputStream(maximum))
         {
-            requireThat(LinuxCargoRegistration.SharedSecrets.arguments(input).getFirst().length(), "supportedByteBoundary").
+            requireThat(LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().arguments(input).getFirst().length(), "supportedByteBoundary").
                 isEqualTo(maximum.length - 1);
         }
     }
@@ -576,7 +577,7 @@ public final class LinuxCargoRegistrationTest
          */
         private LinuxCargoRegistration authenticator()
         {
-            return LinuxCargoRegistration.SharedSecrets.create(configuration(), cargo, this);
+            return LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().create(configuration(), cargo, this);
         }
         @Override public void requireLive(LinuxBorrowedStreams.Peer peer) throws IOException
         {

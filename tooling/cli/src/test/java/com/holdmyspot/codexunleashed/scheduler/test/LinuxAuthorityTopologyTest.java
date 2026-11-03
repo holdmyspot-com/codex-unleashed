@@ -2,6 +2,7 @@ package com.holdmyspot.codexunleashed.scheduler.test;
 
 import com.holdmyspot.codexunleashed.scheduler.LinuxAuthorityReader;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+import com.holdmyspot.codexunleashed.secrets.LinuxAuthorityReaderSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -84,9 +85,9 @@ public final class LinuxAuthorityTopologyTest
 			Path selectedLeaf = leaf;
 			if (expected == null)
 				requireException(IOException.class,
-					() -> LinuxAuthorityReader.SharedSecrets.requiresLeafRecheck(scope, fixture, directory, selectedLeaf));
+					() -> LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().requiresLeafRecheck(scope, fixture, directory, selectedLeaf));
 			else
-				requireThat(LinuxAuthorityReader.SharedSecrets.requiresLeafRecheck(scope, fixture, directory, selectedLeaf),
+				requireThat(LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().requiresLeafRecheck(scope, fixture, directory, selectedLeaf),
 					"requiresLeafRecheck").isEqualTo(expected);
 		}
 		finally

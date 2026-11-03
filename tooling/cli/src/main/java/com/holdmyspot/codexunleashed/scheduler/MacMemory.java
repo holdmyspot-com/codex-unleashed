@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.secrets.MacMemorySecrets;
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import java.io.IOException;
 import java.lang.foreign.Arena;
@@ -18,6 +19,11 @@ import oshi.ffm.util.platform.mac.SysctlUtilFFM;
  */
 public final class MacMemory
 {
+	static
+	{
+		MacMemorySecrets.setMacMemoryAccess(MacMemory::read);
+	}
+
 	/**
 	 * Prevents construction of this stateless reader.
 	 */
@@ -110,23 +116,18 @@ public final class MacMemory
 
 		try (Arena arena = Arena.ofConfined())
 		{
-			var hostSelf = calls.bind(arena, "mach_host_self", FunctionDescriptor.of(ValueLayout.JAVA_INT));
-			var taskSelf = calls.bind(arena, "mach_task_self", FunctionDescriptor.of(ValueLayout.JAVA_INT));
-			var release = calls.bind(arena, "mach_port_deallocate",
-				FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-			var statisticsQuery = calls.bind(arena, "host_statistics", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-				ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-			int task = invoke("mach_task_self", taskSelf);
-			int host = invoke("mach_host_self", hostSelf);
+			MachCalls mach = calls.mach(arena);
+			int task = mach.taskSelf();
+			int host = mach.hostSelf();
 			if (host == 0)
 				throw new IOException("mach_host_self returned a null host port");
 
-			try (HostPort port = new HostPort(release, task, host))
+			try (HostPort port = new HostPort(mach, task, host))
 			{
 				var statistics = arena.allocate(60, 4);
 				var count = arena.allocate(ValueLayout.JAVA_INT);
 				count.set(ValueLayout.JAVA_INT, 0, 15);
-				int status = invoke("host_statistics", statisticsQuery, host, 2, statistics, count);
+				int status = mach.hostStatistics(host, 2, statistics, count);
 				if (status != 0)
 					throw new IOException("host_statistics failed with Mach status " + status);
 				int returnedCount = count.get(ValueLayout.JAVA_INT, 0);
@@ -194,13 +195,52 @@ public final class MacMemory
 		boolean sysctl(String name, MemorySegment result);
 
 		/**
-		 * Binds one required native function within the acquisition scope.
+		 * Supplies the Mach functions within the acquisition scope.
 		 * @param arena the scope that owns the loaded library
-		 * @param name the required native function name
-		 * @param descriptor the exact return and parameter layouts
-		 * @return the native function with the supplied ABI
+		 * @return the typed Mach functions
+		 * @throws UnsupportedOperationException if a required native symbol is absent
 		 */
-		MethodHandle bind(Arena arena, String name, FunctionDescriptor descriptor);
+		MachCalls mach(Arena arena);
+	}
+
+	/**
+	 * Calls the Mach functions that one acquisition requires with their accepted native ABI.
+	 */
+	public interface MachCalls
+	{
+		/**
+		 * Borrows the current-task port.
+		 * @return the current-task port
+		 * @throws IOException if the native invocation raises a checked failure
+		 */
+		int taskSelf() throws IOException;
+
+		/**
+		 * Acquires the host-port send right.
+		 * @return the host port, or MACH_PORT_NULL
+		 * @throws IOException if the native invocation raises a checked failure
+		 */
+		int hostSelf() throws IOException;
+
+		/**
+		 * Releases a port right held by a task.
+		 * @param task the task that holds the right
+		 * @param port the port right to release
+		 * @return the Mach release status
+		 * @throws IOException if the native invocation raises a checked failure
+		 */
+		int portDeallocate(int task, int port) throws IOException;
+
+		/**
+		 * Reads VM statistics for a host.
+		 * @param host the acquired host port
+		 * @param flavor the requested Mach statistics flavor
+		 * @param result the writable VM_STATISTICS buffer
+		 * @param count the input capacity and output field count
+		 * @return the Mach acquisition status
+		 * @throws IOException if the native invocation raises a checked failure
+		 */
+		int hostStatistics(int host, int flavor, MemorySegment result, MemorySegment count) throws IOException;
 	}
 
 	/**
@@ -241,35 +281,73 @@ public final class MacMemory
 		}
 
 		@Override
-		public MethodHandle bind(Arena arena, String name, FunctionDescriptor descriptor)
+		public MachCalls mach(Arena arena)
 		{
 			if (library == null)
 				library = SymbolLookup.libraryLookup("/usr/lib/libSystem.B.dylib", arena);
-			return MacMemory.bind(linker, library, name, descriptor);
+			return new BoundMachCalls(
+				MacMemory.bind(linker, library, "mach_task_self", FunctionDescriptor.of(ValueLayout.JAVA_INT)),
+				MacMemory.bind(linker, library, "mach_host_self", FunctionDescriptor.of(ValueLayout.JAVA_INT)),
+				MacMemory.bind(linker, library, "mach_port_deallocate",
+					FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT)),
+				MacMemory.bind(linker, library, "host_statistics", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+					ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS)));
 		}
 	}
 
 	/**
-	 * Gives package tests typed access to the production acquisition without loading a platform library.
+	 * Calls the bound system-library functions without discarding checked invocation failures.
 	 */
-	public static final class SharedSecrets
+	private static final class BoundMachCalls implements MachCalls
 	{
-		/**
-		 * Prevents construction of this access facade.
-		 */
-		private SharedSecrets()
-		{
-		}
+		/** The bound {@code mach_task_self}. */
+		private final MethodHandle taskSelf;
+		/** The bound {@code mach_host_self}. */
+		private final MethodHandle hostSelf;
+		/** The bound {@code mach_port_deallocate}. */
+		private final MethodHandle portDeallocate;
+		/** The bound {@code host_statistics}. */
+		private final MethodHandle hostStatistics;
 
 		/**
-		 * Runs the same acquisition and cleanup operation used by the public reader.
-		 * @param calls the controlled native outcomes for this acquisition
-		 * @return the acquired sample after successful cleanup
-		 * @throws IOException if acquisition or cleanup fails
+		 * Retains the bound functions.
+		 *
+		 * @param taskSelf the bound {@code mach_task_self}
+		 * @param hostSelf the bound {@code mach_host_self}
+		 * @param portDeallocate the bound {@code mach_port_deallocate}
+		 * @param hostStatistics the bound {@code host_statistics}
 		 */
-		public static Sample read(NativeCalls calls) throws IOException
+		private BoundMachCalls(MethodHandle taskSelf, MethodHandle hostSelf, MethodHandle portDeallocate,
+			MethodHandle hostStatistics)
 		{
-			return MacMemory.read(calls);
+			this.taskSelf = taskSelf;
+			this.hostSelf = hostSelf;
+			this.portDeallocate = portDeallocate;
+			this.hostStatistics = hostStatistics;
+		}
+
+		@Override
+		public int taskSelf() throws IOException
+		{
+			return invoke("mach_task_self", taskSelf);
+		}
+
+		@Override
+		public int hostSelf() throws IOException
+		{
+			return invoke("mach_host_self", hostSelf);
+		}
+
+		@Override
+		public int portDeallocate(int task, int port) throws IOException
+		{
+			return invoke("mach_port_deallocate", portDeallocate, task, port);
+		}
+
+		@Override
+		public int hostStatistics(int host, int flavor, MemorySegment result, MemorySegment count) throws IOException
+		{
+			return invoke("host_statistics", hostStatistics, host, flavor, result, count);
 		}
 	}
 
@@ -318,11 +396,11 @@ public final class MacMemory
 	/**
 	 * Owns one host-port send right and releases it before the enclosing native scope closes.
 	 *
-	 * @param release the native port-release function
+	 * @param mach the Mach functions that release the right
 	 * @param task the borrowed current-task port, which this resource never releases
 	 * @param host the acquired host-port send right released by this resource
 	 */
-	private record HostPort(MethodHandle release, int task, int host) implements AutoCloseable
+	private record HostPort(MachCalls mach, int task, int host) implements AutoCloseable
 	{
 		/**
 		 * Releases the owned host-port send right.
@@ -332,7 +410,7 @@ public final class MacMemory
 		@Override
 		public void close() throws IOException
 		{
-			int status = invoke("mach_port_deallocate", release, task, host);
+			int status = mach.portDeallocate(task, host);
 			if (status != 0)
 				throw new IOException("mach_port_deallocate failed with Mach status " + status);
 		}

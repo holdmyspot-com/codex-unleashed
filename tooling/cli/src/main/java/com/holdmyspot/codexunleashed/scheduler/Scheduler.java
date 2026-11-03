@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.secrets.SchedulerSecrets;
 import java.io.PrintStream;
 import java.io.InputStream;
 import java.io.IOException;
@@ -33,6 +34,11 @@ public final class Scheduler
 
     /** Optional macOS construction input, required only for the explicit Mac adapter. */
     private static final String MAC_CONFIGURATION = "--mac-launch-config";
+
+	static
+	{
+		SchedulerSecrets.setSchedulerAccess(Scheduler::dispatch);
+	}
 
     /** Prevents construction. */
     private Scheduler() {}
@@ -172,34 +178,6 @@ public final class Scheduler
          * @throws IOException if native construction or execution fails
          */
         int run(ToolingScope scope, Settings settings) throws IOException;
-    }
-
-    /**
-     * Typed access to command dispatch with explicit platform and native-boundary inputs.
-     */
-    public static final class SharedSecrets
-    {
-        /**
-         * Prevents construction.
-         */
-        private SharedSecrets() {}
-
-        /**
-         * Runs the production dispatcher with controlled external platform and native execution boundaries.
-         * @param scope borrowed services
-         * @param arguments scheduler options and tool arguments
-         * @param in borrowed input
-         * @param out borrowed output
-         * @param err borrowed diagnostics
-         * @param platform explicit operating-system observation
-         * @param adapter native execution boundary
-         * @return unchanged native status or production preflight failure status
-         */
-        public static int run(ToolingScope scope, String[] arguments, InputStream in, PrintStream out, PrintStream err,
-            String platform, Adapter adapter)
-        {
-            return dispatch(scope, arguments, in, out, err, platform, adapter);
-        }
     }
 
     /**

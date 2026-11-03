@@ -5,6 +5,7 @@ import com.holdmyspot.codexunleashed.scheduler.LinuxCargoJobserver;
 import com.holdmyspot.codexunleashed.scheduler.LinuxFifoBindings;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+import com.holdmyspot.codexunleashed.secrets.LinuxCargoJobserverSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,7 +59,7 @@ public final class LinuxCargoJobserverTest
 		try (var fixture = new Fixture())
 		{
 			var faults = new Faults(fixture.scope);
-			try (var owner = LinuxCargoJobserver.SharedSecrets.create(fixture.directory, fixture.group, 2, faults);
+			try (var owner = LinuxCargoJobserverSecrets.getLinuxCargoJobserverAccess().create(fixture.directory, fixture.group, 2, faults);
 				var lease = owner.retainCargo(Map.of()); var attempt = lease.retainAttempt())
 			{
 				requireThat(attempt.tryBorrow().getAsInt(), "borrowedByte").isEqualTo((int) '+', "seedByte");
@@ -261,7 +262,7 @@ public final class LinuxCargoJobserverTest
 			calls.failWrite = true;
 			calls.blockCleanup = true;
 			LinuxCargoJobserver.PreparationFailure failure = requireException(LinuxCargoJobserver.PreparationFailure.class,
-				() -> LinuxCargoJobserver.SharedSecrets.create(fixture.directory, fixture.group, 2, calls));
+				() -> LinuxCargoJobserverSecrets.getLinuxCargoJobserverAccess().create(fixture.directory, fixture.group, 2, calls));
 			requireThat(failure.getCause().getCause() == calls.writeFailure, "originalNativeFailure").isTrue();
 			requireThat(failure.getCause().getSuppressed().length, "suppressedCleanupErrors").isEqualTo(1, "expected");
 			requireThat(Files.exists(calls.blocker), "retainedCleanupPath").isTrue();
@@ -286,7 +287,7 @@ public final class LinuxCargoJobserverTest
 		try (Fixture fixture = new Fixture())
 		{
 			Faults calls = new Faults(fixture.scope);
-			LinuxCargoJobserver owner = LinuxCargoJobserver.SharedSecrets.create(fixture.directory, fixture.group, 1, calls);
+			LinuxCargoJobserver owner = LinuxCargoJobserverSecrets.getLinuxCargoJobserverAccess().create(fixture.directory, fixture.group, 1, calls);
 			calls.failClose = true;
 			calls.blocker = Files.writeString(calls.fifo.getParent().resolve("fixture-blocker"), "owned by test");
 			IOException failure = requireException(IOException.class, owner::close);
@@ -313,7 +314,7 @@ public final class LinuxCargoJobserverTest
 			Faults calls = new Faults(fixture.scope);
 			calls.zeroWrite = true;
 			requireException(IOException.class,
-				() -> LinuxCargoJobserver.SharedSecrets.create(fixture.directory, fixture.group, 2, calls));
+				() -> LinuxCargoJobserverSecrets.getLinuxCargoJobserverAccess().create(fixture.directory, fixture.group, 2, calls));
 			requireThat(calls.closes, "closedOwnerEndpoint").isEqualTo(1, "expected");
 			requireThat(Files.exists(calls.fifo.getParent()), "setupDirectory").isFalse();
 		}
@@ -332,7 +333,7 @@ public final class LinuxCargoJobserverTest
 		{
 			Faults calls = new Faults(fixture.scope);
 			calls.restrictCreation = true;
-			try (var owner = LinuxCargoJobserver.SharedSecrets.create(fixture.directory, fixture.group, 2, calls);
+			try (var owner = LinuxCargoJobserverSecrets.getLinuxCargoJobserverAccess().create(fixture.directory, fixture.group, 2, calls);
 				var lease = owner.retainCargo(Map.of()))
 			{
 				requireThat(Files.exists(fifo(lease)), "accessibleOwnerPool").isTrue();
@@ -428,7 +429,7 @@ public final class LinuxCargoJobserverTest
 		 * Creates controlled external access without acquiring native resources.
 		 * @param scope borrowed native linker, retained open by the enclosing fixture
 		 */
-		private Faults(ToolingScope scope) { actual = LinuxCargoJobserver.SharedSecrets.nativeCalls(scope); }
+		private Faults(ToolingScope scope) { actual = LinuxCargoJobserverSecrets.getLinuxCargoJobserverAccess().nativeCalls(scope); }
 
 		@Override
 		public void createFifo(Path path, int mode) throws IOException

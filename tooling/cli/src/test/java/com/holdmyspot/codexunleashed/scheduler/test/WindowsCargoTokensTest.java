@@ -2,6 +2,7 @@ package com.holdmyspot.codexunleashed.scheduler.test;
 
 import com.holdmyspot.codexunleashed.scheduler.WindowsCargoJobserver;
 import com.holdmyspot.codexunleashed.scheduler.WindowsCargoTokens;
+import com.holdmyspot.codexunleashed.secrets.WindowsCargoJobserverSecrets;
 import java.io.IOException;
 import java.lang.foreign.MemorySegment;
 import java.util.Map;
@@ -21,7 +22,7 @@ public final class WindowsCargoTokensTest
  @Test public void reclaimsOnlyAfterWholeJobCannotExecute() throws Exception
  {
   Pool pool = new Pool();
-  try (WindowsCargoJobserver owner = WindowsCargoJobserver.SharedSecrets.create(3, pool);
+  try (WindowsCargoJobserver owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(3, pool);
        WindowsCargoJobserver.CargoLease lease = owner.retainCargo(Map.of());
        WindowsCargoTokens tokens = new WindowsCargoTokens(lease))
   {
@@ -49,7 +50,7 @@ public final class WindowsCargoTokensTest
  @Test public void accountingCountsHeldTokensOfLiveDomains() throws IOException
  {
   Pool pool = new Pool();
-  try (WindowsCargoJobserver owner = WindowsCargoJobserver.SharedSecrets.create(4, pool);
+  try (WindowsCargoJobserver owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(4, pool);
        WindowsCargoJobserver.CargoLease lease = owner.retainCargo(Map.of());
        WindowsCargoTokens tokens = new WindowsCargoTokens(lease))
   {
@@ -74,7 +75,7 @@ public final class WindowsCargoTokensTest
  @Test public void uncertainAcquisitionIsOutstandingButNotHeld() throws IOException
  {
   Pool pool = new Pool();
-  WindowsCargoJobserver owner = WindowsCargoJobserver.SharedSecrets.create(4, pool);
+  WindowsCargoJobserver owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(4, pool);
   WindowsCargoJobserver.CargoLease lease = owner.retainCargo(Map.of());
   WindowsCargoTokens tokens = new WindowsCargoTokens(lease);
   WindowsCargoTokens.Domain domain = tokens.retain(UUID.randomUUID());
@@ -89,7 +90,7 @@ public final class WindowsCargoTokensTest
  @Test public void failedReturnIsNeverReplayed() throws Exception
  {
   Pool pool = new Pool();
-  WindowsCargoJobserver owner = WindowsCargoJobserver.SharedSecrets.create(2, pool);
+  WindowsCargoJobserver owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(2, pool);
   WindowsCargoJobserver.CargoLease lease = owner.retainCargo(Map.of());
   WindowsCargoTokens tokens = new WindowsCargoTokens(lease);
   WindowsCargoTokens.Domain domain = tokens.retain(UUID.randomUUID());

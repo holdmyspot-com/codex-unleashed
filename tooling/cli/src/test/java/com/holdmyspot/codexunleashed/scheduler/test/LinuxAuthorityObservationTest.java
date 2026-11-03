@@ -5,6 +5,8 @@ import com.holdmyspot.codexunleashed.scheduler.LinuxAuthorityReader;
 import com.holdmyspot.codexunleashed.scheduler.LinuxMeasurements;
 import com.holdmyspot.codexunleashed.scheduler.LinuxResidency;
 import com.holdmyspot.codexunleashed.scheduler.ObservationRejected;
+import com.holdmyspot.codexunleashed.secrets.LinuxAuthoritySecrets;
+import com.holdmyspot.codexunleashed.secrets.LinuxAuthorityReaderSecrets;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
@@ -38,16 +40,16 @@ public final class LinuxAuthorityObservationTest
 				() -> LinuxResidency.read(directory, directory, directory.resolve("completed-leaf")));
 			LinuxMeasurements.Attempt attempt = new LinuxMeasurements.Attempt("compile", 7);
 			// The callback models the reader's full native authority check reporting this exact absent leaf.
-			IOException removed = LinuxAuthorityReader.SharedSecrets.removedLeaf(attempt);
-			IOException result = LinuxAuthorityReader.SharedSecrets.observationFailure("resident", missing,
+			IOException removed = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().removedLeaf(attempt);
+			IOException result = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().observationFailure("resident", missing,
 				() -> { throw removed; });
-			Properties reply = LinuxAuthorityReader.SharedSecrets.rejection(result);
+			Properties reply = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().rejection(result);
 			requireThat(reply.getProperty("reason"), "javaRemovalHasStructuredRejection").isEqualTo(LinuxAuthority.MISSING_LEAF);
 			requireThat(result.getSuppressed()[0] == missing, "originalJavaLookupFailureRetained").isTrue();
-			IOException rejected = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(
+			IOException rejected = requireException(IOException.class, () -> LinuxAuthoritySecrets.getLinuxAuthorityAccess().requireSuccess(
 				reply, "resident", Map.of(attempt, () -> true)));
 			requireThat(rejected instanceof ObservationRejected, "authenticZeroPermitsReconciliation").isTrue();
-			IOException live = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(
+			IOException live = requireException(IOException.class, () -> LinuxAuthoritySecrets.getLinuxAuthorityAccess().requireSuccess(
 				reply, "resident", Map.of(attempt, () -> false)));
 			requireThat(live instanceof ObservationRejected, "missingPathDoesNotProveZero").isFalse();
 		}
@@ -64,14 +66,14 @@ public final class LinuxAuthorityObservationTest
 		for (String operation : List.of("host", "resident", "verify"))
 		{
 			IOException missing = new NoSuchFileException("completed-leaf");
-			IOException live = LinuxAuthorityReader.SharedSecrets.observationFailure(operation, missing, () -> { });
+			IOException live = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().observationFailure(operation, missing, () -> { });
 			requireThat(live == missing, "liveLeafRetainsOriginalJavaFailure").isTrue();
 			IOException trust = new IOException("Another workload identity changed");
-			IOException observed = requireException(IOException.class, () -> LinuxAuthorityReader.SharedSecrets.observationFailure(
+			IOException observed = requireException(IOException.class, () -> LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().observationFailure(
 				operation, missing, () -> { throw trust; }));
 			requireThat(observed == trust, "changedAuthorityDefeatsJavaAbsence").isTrue();
 			missing.addSuppressed(new IOException("Uncertain descriptor cleanup"));
-			IOException uncertain = LinuxAuthorityReader.SharedSecrets.observationFailure(operation, missing,
+			IOException uncertain = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().observationFailure(operation, missing,
 				() -> { throw new AssertionError("Uncertain cleanup prevents recovery"); });
 			requireThat(uncertain == missing, "uncertainCleanupRemainsFatal").isTrue();
 		}
@@ -87,13 +89,13 @@ public final class LinuxAuthorityObservationTest
 		for (String operation : List.of("register", "unregister", "terminate", "unknown"))
 		{
 			IOException missing = new NoSuchFileException("completed-leaf");
-			IOException result = LinuxAuthorityReader.SharedSecrets.observationFailure(operation, missing,
+			IOException result = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().observationFailure(operation, missing,
 				() -> { throw new AssertionError("Mutations must not recover missing paths"); });
 			requireThat(result == missing, "mutationKeepsOriginalJavaFailure").isTrue();
 		}
 		for (IOException failure : List.of(new AccessDeniedException("completed-leaf"), new IOException("unknown I/O failure")))
 		{
-			IOException result = LinuxAuthorityReader.SharedSecrets.observationFailure("resident", failure,
+			IOException result = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().observationFailure("resident", failure,
 				() -> { throw new AssertionError("Access and unknown failures must not recover"); });
 			requireThat(result == failure, "unrelatedJavaFailureRetained").isTrue();
 		}
@@ -109,12 +111,12 @@ public final class LinuxAuthorityObservationTest
 		for (int errno : new int[] {2, 19})
 			for (String operation : List.of("host", "resident", "verify"))
 			{
-				var removed = LinuxAuthorityReader.SharedSecrets.removedLeaf(new LinuxMeasurements.Attempt("compile", 7));
-				var result = LinuxAuthorityReader.SharedSecrets.observationFailure(operation, errno, false,
+				var removed = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().removedLeaf(new LinuxMeasurements.Attempt("compile", 7));
+				var result = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().observationFailure(operation, errno, false,
 					() -> { throw removed; });
 				requireThat(result == removed, "completeVerifiedRemoval").isTrue();
 				requireThat(result.getSuppressed().length, "originalNativeFaultRetained").isEqualTo(1);
-				requireThat(LinuxAuthorityReader.SharedSecrets.rejection(result).getProperty("reason"),
+				requireThat(LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().rejection(result).getProperty("reason"),
 					"verifiedMissingLeafOnly").isEqualTo(LinuxAuthority.MISSING_LEAF);
 			}
 	}
@@ -128,13 +130,13 @@ public final class LinuxAuthorityObservationTest
 	{
 		for (int errno : new int[] {2, 19})
 		{
-			var live = LinuxAuthorityReader.SharedSecrets.observationFailure("host", errno, false, () -> { });
-			requireThat(LinuxAuthorityReader.SharedSecrets.rejection(live).containsKey("reason"), "liveLeafIsNotMissing").isFalse();
+			var live = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().observationFailure("host", errno, false, () -> { });
+			requireThat(LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().rejection(live).containsKey("reason"), "liveLeafIsNotMissing").isFalse();
 			var trust = new IOException("Authority changed during recheck");
-			var observed = requireException(IOException.class, () -> LinuxAuthorityReader.SharedSecrets.observationFailure(
+			var observed = requireException(IOException.class, () -> LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().observationFailure(
 				"host", errno, false, () -> { throw trust; }));
 			requireThat(observed == trust, "authorityFailureRetained").isTrue();
-			var uncertain = LinuxAuthorityReader.SharedSecrets.observationFailure("host", errno, true,
+			var uncertain = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().observationFailure("host", errno, true,
 				() -> { throw new AssertionError("Uncertain cleanup must prevent rechecking"); });
 			requireThat(uncertain.getSuppressed().length, "uncertainCleanupRetained").isEqualTo(1);
 		}
@@ -150,12 +152,12 @@ public final class LinuxAuthorityObservationTest
 		for (int errno : new int[] {2, 19})
 			for (String operation : List.of("register", "unregister", "terminate", "unknown"))
 			{
-				var result = LinuxAuthorityReader.SharedSecrets.observationFailure(operation, errno, false,
+				var result = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().observationFailure(operation, errno, false,
 					() -> { throw new AssertionError("Mutation must not recheck"); });
-				requireThat(LinuxAuthorityReader.SharedSecrets.rejection(result).containsKey("reason"), "mutationRemainsFailure").isFalse();
+				requireThat(LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().rejection(result).containsKey("reason"), "mutationRemainsFailure").isFalse();
 			}
 		for (int errno : new int[] {5, 13, 116})
-			LinuxAuthorityReader.SharedSecrets.observationFailure("host", errno, false,
+			LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().observationFailure("host", errno, false,
 				() -> { throw new AssertionError("Unrelated native failure must not recheck"); });
 	}
 
@@ -172,7 +174,7 @@ public final class LinuxAuthorityObservationTest
 		reply.setProperty("attempt.0", "0");
 		reply.setProperty("name.1", "B");
 		reply.setProperty("attempt.1", "1");
-		var failure = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(
+		var failure = requireException(IOException.class, () -> LinuxAuthoritySecrets.getLinuxAuthorityAccess().requireSuccess(
 			reply, "host", Map.of(first, () -> true, second, () -> true)));
 		requireThat(failure instanceof ObservationRejected, "allCompletedLeavesRejectedTogether").isTrue();
 		var rejected = (ObservationRejected) failure;
@@ -181,11 +183,11 @@ public final class LinuxAuthorityObservationTest
 		for (LinuxAuthority.ZeroBarrier secondBarrier : List.<LinuxAuthority.ZeroBarrier>of(
 			() -> false, () -> { throw new IOException("zero unavailable"); }))
 		{
-			var denied = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(
+			var denied = requireException(IOException.class, () -> LinuxAuthoritySecrets.getLinuxAuthorityAccess().requireSuccess(
 				reply, "host", Map.of(first, () -> true, second, secondBarrier)));
 			requireThat(denied instanceof ObservationRejected, "oneZeroCannotAuthorizeAnotherLeaf").isFalse();
 		}
-		var stale = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(
+		var stale = requireException(IOException.class, () -> LinuxAuthoritySecrets.getLinuxAuthorityAccess().requireSuccess(
 			reply, "host", Map.of(first, () -> true,
 				new LinuxMeasurements.Attempt("B", 2), () -> true)));
 		requireThat(stale instanceof ObservationRejected, "noStaleAttemptAuthority").isFalse();
@@ -193,13 +195,13 @@ public final class LinuxAuthorityObservationTest
 		{
 			var malformed = (Properties) reply.clone();
 			malformed.remove(field);
-			var denied = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(
+			var denied = requireException(IOException.class, () -> LinuxAuthoritySecrets.getLinuxAuthorityAccess().requireSuccess(
 				malformed, "host", Map.of(first, () -> true, second, () -> true)));
 			requireThat(denied instanceof ObservationRejected, "noPartialCandidateList").isFalse();
 		}
 		reply.setProperty("name.1", "A");
 		reply.setProperty("attempt.1", "0");
-		var duplicate = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(
+		var duplicate = requireException(IOException.class, () -> LinuxAuthoritySecrets.getLinuxAuthorityAccess().requireSuccess(
 			reply, "host", Map.of(first, () -> true, second, () -> true)));
 		requireThat(duplicate instanceof ObservationRejected, "noDuplicateCandidateAuthority").isFalse();
 	}
@@ -215,7 +217,7 @@ public final class LinuxAuthorityObservationTest
 		var attempt = new LinuxMeasurements.Attempt("compile", 7);
 		var reply = removed(attempt);
 		reply.setProperty("reason", "registered-membership-changed");
-		var failure = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(
+		var failure = requireException(IOException.class, () -> LinuxAuthoritySecrets.getLinuxAuthorityAccess().requireSuccess(
 			reply, "resident", Map.of(attempt, () -> { throw new IOException("No zero observation is required"); })));
 		requireThat(failure instanceof ObservationRejected, "verifiedMembershipRetry").isTrue();
 		var rejected = (ObservationRejected) failure;
@@ -223,7 +225,7 @@ public final class LinuxAuthorityObservationTest
 		requireThat(rejected.attempts(), "exactAttempt").isEqualTo(List.of(new ObservationRejected.Attempt("compile", 7)));
 		assertOrdinary(reply, "host", attempt);
 		assertOrdinary(reply, "verify", attempt);
-		var unknown = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(reply, "resident", Map.of()));
+		var unknown = requireException(IOException.class, () -> LinuxAuthoritySecrets.getLinuxAuthorityAccess().requireSuccess(reply, "resident", Map.of()));
 		requireThat(unknown instanceof ObservationRejected, "unknownAttempt").isFalse();
 		reply.setProperty("extra", "untrusted");
 		assertOrdinary(reply, "resident", attempt);
@@ -238,7 +240,7 @@ public final class LinuxAuthorityObservationTest
 	{
 		var attempt = new LinuxMeasurements.Attempt("compile", 7);
 		var reply = removed(attempt);
-		IOException observed = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(
+		IOException observed = requireException(IOException.class, () -> LinuxAuthoritySecrets.getLinuxAuthorityAccess().requireSuccess(
 			reply, "host", Map.of(attempt, () -> true)));
 
 		requireThat(observed instanceof ObservationRejected, "acknowledgedObservationRetry").isTrue();
@@ -260,7 +262,7 @@ public final class LinuxAuthorityObservationTest
 			Map.<LinuxMeasurements.Attempt, LinuxAuthority.ZeroBarrier>of(), Map.of(attempt, () -> false),
 			Map.of(attempt, () -> { throw new IOException("Zero observation unavailable"); })))
 		{
-			IOException failure = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(
+			IOException failure = requireException(IOException.class, () -> LinuxAuthoritySecrets.getLinuxAuthorityAccess().requireSuccess(
 				removed(attempt), "resident", barriers));
 			requireThat(failure instanceof ObservationRejected, "noRetryWithoutZero").isFalse();
 		}
@@ -305,14 +307,14 @@ public final class LinuxAuthorityObservationTest
 	@Test
 	public void checksEveryWorkloadBeforeClassifying()
 	{
-		var missing = LinuxAuthorityReader.SharedSecrets.removedLeaf(new LinuxMeasurements.Attempt("compile", 7));
+		var missing = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().removedLeaf(new LinuxMeasurements.Attempt("compile", 7));
 		var trust = new IOException("Another retained cgroup identity changed");
 		LinuxAuthorityReader.Check absent = () -> { throw missing; };
 		LinuxAuthorityReader.Check invalid = () -> { throw trust; };
 		for (var checks : List.of(List.of(absent, invalid), List.of(invalid, absent)))
 		{
 			var failure = requireException(IOException.class,
-				() -> LinuxAuthorityReader.SharedSecrets.verifyWorkloads(checks));
+				() -> LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().verifyWorkloads(checks));
 			requireThat(failure == trust, "trustFailureDefeatsCandidate").isTrue();
 		}
 	}
@@ -323,10 +325,10 @@ public final class LinuxAuthorityObservationTest
 	@Test
 	public void checksContextAfterCandidate()
 	{
-		var missing = LinuxAuthorityReader.SharedSecrets.removedLeaf(new LinuxMeasurements.Attempt("compile", 7));
+		var missing = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().removedLeaf(new LinuxMeasurements.Attempt("compile", 7));
 		var trust = new IOException("Reader mount namespace changed");
 		int[] checks = {0};
-		var failure = requireException(IOException.class, () -> LinuxAuthorityReader.SharedSecrets.verifyObservation(
+		var failure = requireException(IOException.class, () -> LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().verifyObservation(
 			() -> { if (++checks[0] == 2) throw trust; }, List.of(() -> { throw missing; })));
 		requireThat(failure == trust, "finalContextDefeatsCandidate").isTrue();
 	}
@@ -337,14 +339,14 @@ public final class LinuxAuthorityObservationTest
 	@Test
 	public void retainsEveryVerifiedCandidate()
 	{
-		var missing = LinuxAuthorityReader.SharedSecrets.removedLeaf(new LinuxMeasurements.Attempt("compile", 7));
-		var observed = requireException(IOException.class, () -> LinuxAuthorityReader.SharedSecrets.verifyObservation(
+		var missing = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().removedLeaf(new LinuxMeasurements.Attempt("compile", 7));
+		var observed = requireException(IOException.class, () -> LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().verifyObservation(
 			() -> { }, List.of(() -> { throw missing; }, () -> { })));
-		requireThat(LinuxAuthorityReader.SharedSecrets.rejection(observed).getProperty("count"), "soleVerifiedCandidate").isEqualTo("1");
-		var another = LinuxAuthorityReader.SharedSecrets.removedLeaf(new LinuxMeasurements.Attempt("other", 8));
-		var rejected = requireException(IOException.class, () -> LinuxAuthorityReader.SharedSecrets.verifyWorkloads(
+		requireThat(LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().rejection(observed).getProperty("count"), "soleVerifiedCandidate").isEqualTo("1");
+		var another = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().removedLeaf(new LinuxMeasurements.Attempt("other", 8));
+		var rejected = requireException(IOException.class, () -> LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().verifyWorkloads(
 			List.of(() -> { throw missing; }, () -> { throw another; })));
-		var serialized = LinuxAuthorityReader.SharedSecrets.rejection(rejected);
+		var serialized = LinuxAuthorityReaderSecrets.getLinuxAuthorityReaderAccess().rejection(rejected);
 		requireThat(serialized.getProperty("count"), "everyVerifiedCandidate").isEqualTo("2");
 		requireThat(serialized.getProperty("name.0"), "firstCandidate").isEqualTo("compile");
 		requireThat(serialized.getProperty("name.1"), "secondCandidate").isEqualTo("other");
@@ -360,7 +362,7 @@ public final class LinuxAuthorityObservationTest
 		var reply = new Properties();
 		reply.setProperty("status", "ok");
 		reply.setProperty("resident", "0");
-		LinuxAuthority.SharedSecrets.requireSuccess(reply, "resident", Map.of());
+		LinuxAuthoritySecrets.getLinuxAuthorityAccess().requireSuccess(reply, "resident", Map.of());
 		requireThat(LinuxAuthority.number(reply, "resident"), "successfulMeasuredZero").isEqualTo(0L, "expected");
 	}
 
@@ -389,7 +391,7 @@ public final class LinuxAuthorityObservationTest
 	 */
 	private static void assertOrdinary(Properties reply, String operation, LinuxMeasurements.Attempt attempt)
 	{
-		var failure = requireException(IOException.class, () -> LinuxAuthority.SharedSecrets.requireSuccess(
+		var failure = requireException(IOException.class, () -> LinuxAuthoritySecrets.getLinuxAuthorityAccess().requireSuccess(
 			reply, operation, Map.of(attempt, () -> true)));
 		requireThat(failure instanceof ObservationRejected, "ordinaryFailure").isFalse();
 	}

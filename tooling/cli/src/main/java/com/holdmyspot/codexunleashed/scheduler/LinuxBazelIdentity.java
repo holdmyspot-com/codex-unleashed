@@ -758,7 +758,7 @@ public final class LinuxBazelIdentity
         int first = observed.read();
         if (first == -1) throw new EmptyCommandVectorException(pid);
         observed.unread(first);
-        return LinuxCargoRegistration.SharedSecrets.arguments(observed);
+        return LinuxCargoRegistration.vector(observed, false);
     }
 
     /**
@@ -793,7 +793,7 @@ public final class LinuxBazelIdentity
             Map<String, String> environment;
             try (InputStream input = Files.newInputStream(process.resolve("environ")))
             {
-                environment = LinuxCargoRegistration.SharedSecrets.environment(input);
+                environment = LinuxCargoRegistration.environmentVector(input);
             }
             Path directory = Files.readSymbolicLink(process.resolve("cwd"));
             if (birth != AllocationHooks.startTime(Files.readString(process.resolve("stat"))))

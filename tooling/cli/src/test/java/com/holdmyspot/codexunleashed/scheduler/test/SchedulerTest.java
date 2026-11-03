@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
+import com.holdmyspot.codexunleashed.secrets.SchedulerSecrets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -47,7 +48,7 @@ public final class SchedulerTest
         AtomicInteger calls = new AtomicInteger();
         try (DefaultToolingScope scope = new DefaultToolingScope())
         {
-            int result = Scheduler.SharedSecrets.run(scope, options.toArray(String[]::new), System.in, System.out, System.err,
+            int result = SchedulerSecrets.getSchedulerAccess().run(scope, options.toArray(String[]::new), System.in, System.out, System.err,
                 "Windows 11", (services, settings) ->
                 {
                     calls.incrementAndGet();
@@ -75,12 +76,12 @@ public final class SchedulerTest
         try (DefaultToolingScope scope = new DefaultToolingScope(); PrintStream err = new PrintStream(errors))
         {
             Scheduler.Adapter nativeBoundary = (services, settings) -> calls.incrementAndGet();
-            int wrongPlatform = Scheduler.SharedSecrets.run(scope, options.toArray(String[]::new), System.in, System.out,
+            int wrongPlatform = SchedulerSecrets.getSchedulerAccess().run(scope, options.toArray(String[]::new), System.in, System.out,
                 err, "Linux", nativeBoundary);
             requireThat(wrongPlatform, "wrongPlatformStatus").isEqualTo(2);
             requireThat(errors.toString(), "wrongPlatformDiagnostic").contains("requires Windows");
             errors.reset();
-            int customStreams = Scheduler.SharedSecrets.run(scope, options.toArray(String[]::new), System.in, System.out,
+            int customStreams = SchedulerSecrets.getSchedulerAccess().run(scope, options.toArray(String[]::new), System.in, System.out,
                 err, "Windows 11", nativeBoundary);
             requireThat(customStreams, "customStreamsStatus").isEqualTo(1);
             requireThat(errors.toString(), "customStreamsDiagnostic").contains("inherited System");
@@ -97,7 +98,7 @@ public final class SchedulerTest
         AtomicInteger calls = new AtomicInteger();
         try (DefaultToolingScope scope = new DefaultToolingScope())
         {
-            int result = Scheduler.SharedSecrets.run(scope, options.toArray(String[]::new), System.in, System.out, System.err,
+            int result = SchedulerSecrets.getSchedulerAccess().run(scope, options.toArray(String[]::new), System.in, System.out, System.err,
                 "Mac OS X", (services, settings) ->
                 {
                     calls.incrementAndGet();
@@ -124,12 +125,12 @@ public final class SchedulerTest
             AtomicInteger calls = new AtomicInteger();
             Scheduler.Adapter boundary = (services, settings) -> calls.incrementAndGet();
             String[] configured = macOptions().toArray(String[]::new);
-            requireThat(Scheduler.SharedSecrets.run(scope, configured, System.in, System.out, errors,
+            requireThat(SchedulerSecrets.getSchedulerAccess().run(scope, configured, System.in, System.out, errors,
                 "Linux", boundary), "wrongMacPlatform").isEqualTo(2);
-            requireThat(Scheduler.SharedSecrets.run(scope, configured, System.in, System.out, errors,
+            requireThat(SchedulerSecrets.getSchedulerAccess().run(scope, configured, System.in, System.out, errors,
                 "Mac OS X", boundary), "customMacStreams").isEqualTo(1);
             List<String> missing = new ArrayList<>(List.of(valid())); missing.set(1, "cargo");
-            requireThat(Scheduler.SharedSecrets.run(scope, missing.toArray(String[]::new), System.in, System.out, errors,
+            requireThat(SchedulerSecrets.getSchedulerAccess().run(scope, missing.toArray(String[]::new), System.in, System.out, errors,
                 "Mac OS X", boundary), "missingMacAuthority").isEqualTo(2);
             requireThat(calls.get(), "noUnauthorizedNativeEffects").isEqualTo(0);
         }
@@ -153,7 +154,7 @@ public final class SchedulerTest
             AtomicInteger closes = new AtomicInteger();
             Scheduler.PendingCleanup pending = new Scheduler.PendingCleanup(new IOException("Mac native owner retained"), closes::incrementAndGet);
             Scheduler.PendingCleanup observed = requireException(Scheduler.PendingCleanup.class, () ->
-                Scheduler.SharedSecrets.run(scope, macOptions().toArray(String[]::new), System.in, System.out, System.err,
+                SchedulerSecrets.getSchedulerAccess().run(scope, macOptions().toArray(String[]::new), System.in, System.out, System.err,
                     "Mac OS X", (services, settings) -> { throw pending; }));
             requireThat(observed == pending, "originalMacCleanupOwner").isTrue();
             requireThat(scope.isClosed(), "borrowedServicesOutliveNativeOwner").isFalse();
@@ -194,7 +195,7 @@ public final class SchedulerTest
         options.addAll(0, List.of("--linux-launch-config", "linux.json"));
         try (DefaultToolingScope scope = new DefaultToolingScope())
         {
-            int status = Scheduler.SharedSecrets.run(scope, options.toArray(String[]::new), System.in, System.out, System.err,
+            int status = SchedulerSecrets.getSchedulerAccess().run(scope, options.toArray(String[]::new), System.in, System.out, System.err,
                 "Linux", (services, settings) ->
                 {
                     requireThat(settings.macLaunchConfiguration(), "noMacFallback").isNull();

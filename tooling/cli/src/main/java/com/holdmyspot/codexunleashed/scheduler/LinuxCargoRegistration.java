@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.secrets.LinuxCargoRegistrationAccess;
+import com.holdmyspot.codexunleashed.secrets.LinuxCargoRegistrationSecrets;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -35,6 +37,44 @@ public final class LinuxCargoRegistration
      */
     private static final Set<String> FIXED_ENVIRONMENT = Set.of("CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS",
         "RUSTC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "PWD");
+	static
+	{
+		LinuxCargoRegistrationSecrets.setLinuxCargoRegistrationAccess(new LinuxCargoRegistrationAccess()
+		{
+			@Override
+			public LinuxCargoRegistration create(Configuration configuration, LinuxBorrowedStreams.Peer cargo, Observer observer)
+			{
+				return new LinuxCargoRegistration(configuration, cargo, observer, null);
+			}
+
+			@Override
+			public LinuxCargoRegistration create(Configuration configuration, Parent parent, Observer observer)
+			{
+				return new LinuxCargoRegistration(parent.policy(configuration), parent.peer(), observer, null, parent.image());
+			}
+
+			@Override
+			public LinuxCargoRegistration create(Configuration configuration, LinuxBorrowedStreams.Peer cargo, Observer observer,
+				CargoMemoryEstimates estimates)
+			{
+				return new LinuxCargoRegistration(configuration, cargo, observer,
+					Objects.requireNonNull(estimates, "estimates"));
+			}
+
+			@Override
+			public List<String> arguments(InputStream input) throws IOException
+			{
+				return vector(input, false);
+			}
+
+			@Override
+			public Map<String, String> environment(InputStream input) throws IOException
+			{
+				return environmentVector(input);
+			}
+		});
+	}
+
     /**
      * Trusted immutable invocation policy, never derived from a receipt.
      */
@@ -462,7 +502,7 @@ public final class LinuxCargoRegistration
      * @return immutable complete decoded entries
      * @throws IOException if input exceeds 1 MiB or has malformed UTF-8 or missing framing
      */
-    private static List<String> vector(InputStream input, boolean allowEmpty) throws IOException
+    static List<String> vector(InputStream input, boolean allowEmpty) throws IOException
     {
         byte[] bytes = input.readNBytes(MAX_VECTOR_BYTES + 1);
         if (bytes.length > MAX_VECTOR_BYTES) throw new IOException("Native vector exceeds supported 1 MiB limit");
@@ -483,7 +523,7 @@ public final class LinuxCargoRegistration
      * @return immutable native variable values
      * @throws IOException if reading, framing, decoding or names are invalid
      */
-    private static Map<String, String> environmentVector(InputStream input) throws IOException
+    static Map<String, String> environmentVector(InputStream input) throws IOException
     {
         Map<String, String> result = new LinkedHashMap<>();
         for (String entry : vector(input, true))
@@ -493,65 +533,5 @@ public final class LinuxCargoRegistration
                 throw new IOException("Native environment has an invalid or duplicate name");
         }
         return Map.copyOf(result);
-    }
-
-    /**
-     * Exposes observation injection and real vector reading to focused contract checks.
-     */
-    public static final class SharedSecrets
-    {
-        /**
-         * Prevents construction of the scoped test access facade.
-         */
-        private SharedSecrets() {}
-        /**
-         * Constructs the real authentication policy with controlled independent native observations.
-         * @param configuration validated trusted policy
-         * @param cargo retained Cargo identity
-         * @param observer independent observation source
-         * @return authenticator executing the production policy
-         */
-        public static LinuxCargoRegistration create(Configuration configuration, LinuxBorrowedStreams.Peer cargo, Observer observer)
-        {
-            return new LinuxCargoRegistration(configuration, cargo, observer, null);
-        }
-        /**
-         * Exercises ready-image parent composition with independent native observations.
-         * @param configuration trusted invocation policy
-         * @param parent independently retained ready parent image
-         * @param observer controlled native observation boundary
-         * @return production authenticator for that retained image
-         */
-        public static LinuxCargoRegistration create(Configuration configuration, Parent parent, Observer observer)
-        {
-            return new LinuxCargoRegistration(parent.policy(configuration), parent.peer(), observer, null, parent.image());
-        }
-        /**
-         * Exercises native authentication followed by explicit production profile lookup.
-         * @param configuration trusted immutable policy
-         * @param cargo retained native Cargo identity
-         * @param observer controlled independent native observations
-         * @param estimates actual owned profile source
-         * @return production authenticator with profile composition
-         */
-        public static LinuxCargoRegistration create(Configuration configuration, LinuxBorrowedStreams.Peer cargo,
-            Observer observer, CargoMemoryEstimates estimates)
-        {
-            return new LinuxCargoRegistration(configuration, cargo, observer, Objects.requireNonNull(estimates, "estimates"));
-        }
-        /**
-         * Exercises the production native argument reader with a caller-owned bounded fixture stream.
-         * @param input caller-owned raw argument vector
-         * @return exact decoded argument entries
-         * @throws IOException if native framing or decoding fails
-         */
-        public static List<String> arguments(InputStream input) throws IOException { return vector(input, false); }
-        /**
-         * Exercises the production native environment reader with a caller-owned fixture stream.
-         * @param input caller-owned raw environment vector
-         * @return exact decoded environment
-         * @throws IOException if native framing, names or decoding fails
-         */
-        public static Map<String, String> environment(InputStream input) throws IOException { return environmentVector(input); }
     }
 }

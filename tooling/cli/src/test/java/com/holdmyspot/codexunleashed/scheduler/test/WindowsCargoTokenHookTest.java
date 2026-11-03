@@ -5,6 +5,7 @@ import com.holdmyspot.codexunleashed.scheduler.WindowsCargoJobserver;
 import com.holdmyspot.codexunleashed.scheduler.WindowsCargoTokenHook;
 import com.holdmyspot.codexunleashed.scheduler.WindowsCargoTokens;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+import com.holdmyspot.codexunleashed.secrets.WindowsCargoJobserverSecrets;
 import java.io.IOException;
 import java.lang.foreign.MemorySegment;
 import java.time.Clock;
@@ -35,7 +36,7 @@ public final class WindowsCargoTokenHookTest
  {
   Pool pool = new Pool();
   try (DefaultToolingScope scope = new DefaultToolingScope();
-       WindowsCargoJobserver owner = WindowsCargoJobserver.SharedSecrets.create(2, pool);
+       WindowsCargoJobserver owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(2, pool);
        WindowsCargoJobserver.CargoLease lease = owner.retainCargo(Map.of());
        WindowsCargoTokens tokens = new WindowsCargoTokens(lease))
   {
@@ -86,7 +87,7 @@ public final class WindowsCargoTokenHookTest
  {
   Pool pool = new Pool();
   try (DefaultToolingScope scope = new DefaultToolingScope();
-       WindowsCargoJobserver owner = WindowsCargoJobserver.SharedSecrets.create(2, pool);
+       WindowsCargoJobserver owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(2, pool);
        WindowsCargoJobserver.CargoLease lease = owner.retainCargo(Map.of());
        WindowsCargoTokens tokens = new WindowsCargoTokens(lease))
   {
@@ -117,7 +118,7 @@ public final class WindowsCargoTokenHookTest
  {
   Pool pool = new Pool();
   try (DefaultToolingScope scope = new DefaultToolingScope();
-       WindowsCargoJobserver owner = WindowsCargoJobserver.SharedSecrets.create(3, pool);
+       WindowsCargoJobserver owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(3, pool);
        WindowsCargoJobserver.CargoLease lease = owner.retainCargo(Map.of());
        WindowsCargoTokens tokens = new WindowsCargoTokens(lease))
   {
@@ -147,7 +148,7 @@ public final class WindowsCargoTokenHookTest
  {
   Pool pool = new Pool();
   try (DefaultToolingScope scope = new DefaultToolingScope();
-       WindowsCargoJobserver owner = WindowsCargoJobserver.SharedSecrets.create(2, pool);
+       WindowsCargoJobserver owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(2, pool);
        WindowsCargoJobserver.CargoLease lease = owner.retainCargo(Map.of());
        WindowsCargoTokens tokens = new WindowsCargoTokens(lease))
   {
@@ -173,7 +174,7 @@ public final class WindowsCargoTokenHookTest
  {
   Pool pool = new Pool();
   try (DefaultToolingScope scope = new DefaultToolingScope();
-       WindowsCargoJobserver owner = WindowsCargoJobserver.SharedSecrets.create(2, pool);
+       WindowsCargoJobserver owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(2, pool);
        WindowsCargoJobserver.CargoLease lease = owner.retainCargo(Map.of());
        WindowsCargoTokens tokens = new WindowsCargoTokens(lease))
   {
@@ -228,7 +229,7 @@ public final class WindowsCargoTokenHookTest
   {
    Pool pool = new Pool();
    try (DefaultToolingScope scope = new DefaultToolingScope();
-        WindowsCargoJobserver owner = WindowsCargoJobserver.SharedSecrets.create(2, pool);
+        WindowsCargoJobserver owner = WindowsCargoJobserverSecrets.getWindowsCargoJobserverAccess().create(2, pool);
         WindowsCargoJobserver.CargoLease lease = owner.retainCargo(Map.of());
         WindowsCargoTokens tokens = new WindowsCargoTokens(lease))
    {

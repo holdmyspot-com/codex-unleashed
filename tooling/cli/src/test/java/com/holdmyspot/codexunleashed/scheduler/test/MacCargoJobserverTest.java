@@ -4,6 +4,7 @@ import com.holdmyspot.codexunleashed.scheduler.CargoMakeFrontEnd;
 import com.holdmyspot.codexunleashed.scheduler.LinuxCargoTokens;
 import com.holdmyspot.codexunleashed.scheduler.MacCargoJobserver;
 import com.holdmyspot.codexunleashed.scheduler.MacCargoNative;
+import com.holdmyspot.codexunleashed.secrets.MacCargoJobserverSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -171,7 +172,7 @@ public final class MacCargoJobserverTest
         /** Controlled native boundary; the production jobserver owns all policy decisions. */
         private final Provider provider = new Provider();
         /** Resource-free owner retained before every filesystem or native effect. */
-        private final MacCargoJobserver owner = MacCargoJobserver.SharedSecrets.create(provider);
+        private final MacCargoJobserver owner = MacCargoJobserverSecrets.getMacCargoJobserverAccess().create(provider);
         /** Logical attempts retained for assertion-failure cleanup. */
         private final List<LinuxCargoTokens.Attempt> attempts = new ArrayList<>();
         /** Invocation borrow retained for fixture cleanup. */

@@ -20,4 +20,5 @@ module com.holdmyspot.codexunleashed.tooling
 	exports com.holdmyspot.codexunleashed.scheduler to com.holdmyspot.codexunleashed.tooling.test;
 	exports com.holdmyspot.codexunleashed.tooling to com.holdmyspot.codexunleashed.tooling.test;
 	exports buildbarn.runner to com.holdmyspot.codexunleashed.tooling.test;
+	exports com.holdmyspot.codexunleashed.secrets to com.holdmyspot.codexunleashed.tooling.test;
 }

@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.secrets.LinuxProcessTreeSecrets;
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
 
@@ -79,6 +80,12 @@ public final class LinuxProcessTree implements AutoCloseable {
      */
     private static final long EXTERNAL_EXEC_WAIT_NANOS = TimeUnit.SECONDS.toNanos(30);
 
+	static
+	{
+		LinuxProcessTreeSecrets.setLinuxProcessTreeAccess((mode, execution, replacementDeadline) ->
+			executeAfterRelease(mode, execution::run, replacementDeadline));
+	}
+
     /**
      * Native workload replacement, which returns only on failure.
      */
@@ -89,29 +96,6 @@ public final class LinuxProcessTree implements AutoCloseable {
          * @throws IOException if replacement fails or returns unexpectedly
          */
         void execute() throws IOException;
-    }
-
-    /**
-     * Typed access to the private gate dispatch boundary for focused behavioral tests.
-     */
-    public static final class SharedSecrets {
-        /**
-         * Prevents construction of this access facade.
-         */
-        private SharedSecrets() { }
-
-        /**
-         * Dispatches using a local action representing the native exec boundary.
-         * @param mode release execution mode
-         * @param execution action observing whether direct exec is selected
-         * @param replacementDeadline absolute monotonic deadline for external replacement
-         * @throws IOException if external replacement expires
-         * @throws InterruptedException if the replacement wait is interrupted
-         */
-        public static void executeAfterRelease(ExecutionMode mode, Runnable execution, long replacementDeadline)
-                throws IOException, InterruptedException {
-            LinuxProcessTree.executeAfterRelease(mode, execution::run, replacementDeadline);
-        }
     }
 
     /**

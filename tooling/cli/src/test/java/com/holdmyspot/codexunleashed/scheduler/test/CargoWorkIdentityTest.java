@@ -2,6 +2,7 @@ package com.holdmyspot.codexunleashed.scheduler.test;
 
 import com.holdmyspot.codexunleashed.scheduler.CargoCompilerRequest;
 import com.holdmyspot.codexunleashed.scheduler.CargoWorkIdentity;
+import com.holdmyspot.codexunleashed.secrets.CargoWorkIdentitySecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -41,7 +42,7 @@ public final class CargoWorkIdentityTest
             Path compiler = Files.writeString(toolchain.resolve("rustc"), "compiler");
             Files.writeString(source.resolve("main.rs"), "fn main() {}\n");
             Path external = Files.writeString(root.resolve("external.rmeta"), "external1");
-            CargoWorkIdentity identities = CargoWorkIdentity.SharedSecrets.withResolver(source, List.of(target), toolchain,
+            CargoWorkIdentity identities = CargoWorkIdentitySecrets.getCargoWorkIdentityAccess().withResolver(source, List.of(target), toolchain,
                 (directory, value) ->
                 {
                     if (value.indexOf('"') >= 0)

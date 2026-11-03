@@ -4,6 +4,7 @@ import com.holdmyspot.codexunleashed.scheduler.LinuxBazelContainment;
 import com.holdmyspot.codexunleashed.scheduler.LinuxBazelIdentity;
 import com.holdmyspot.codexunleashed.scheduler.LinuxBazelNamespaceHooks;
 import com.holdmyspot.codexunleashed.scheduler.LinuxBorrowedStreams;
+import com.holdmyspot.codexunleashed.secrets.LinuxBazelContainmentSecrets;
 import java.io.IOException;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -582,7 +583,7 @@ public final class LinuxBazelContainmentTest
          */
         private LinuxBazelContainment admit() throws IOException
         {
-            return LinuxBazelContainment.SharedSecrets.admit(identity, owner, child, execution, Path.of("/groups"),
+            return LinuxBazelContainmentSecrets.getLinuxBazelContainmentAccess().admit(identity, owner, child, execution, Path.of("/groups"),
                 Duration.ofSeconds(1), (parent, timeout) -> { allocations++; return group; });
         }
 

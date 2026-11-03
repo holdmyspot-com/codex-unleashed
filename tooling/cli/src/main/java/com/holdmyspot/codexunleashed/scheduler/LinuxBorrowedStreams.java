@@ -724,33 +724,6 @@ public final class LinuxBorrowedStreams {
         }
     }
     /**
-     * Typed access to native entry behavior that ordinary callers cannot reach before receiving descriptors.
-     */
-    static final class SharedSecrets {
-        /**
-         * Prevents construction of this test access facade.
-         */
-        private SharedSecrets() { }
-        /**
-         * Captures the standard descriptor context through the production operation.
-         * @param bindings invocation-owned native functions
-         * @return captured context
-         * @throws IOException if inspection fails
-         * @throws UnsupportedOperationException if descriptor borrowing is unverified on this architecture
-         */
-        static TerminalContext context(NativeBindings bindings) throws IOException {
-            return LinuxBorrowedStreams.context(bindings, new int[] {0, 1, 2});
-        }
-        /**
-         * Creates an empty installation owner without receiving any descriptors.
-         * @param bindings invocation-owned native functions
-         * @return empty owner that must be closed by the caller
-         */
-        static NativeBindings.Received pending(NativeBindings bindings) {
-            return bindings.new Received();
-        }
-    }
-    /**
      * Immutable Linux glibc functions for x64 and ARM64 descriptor transport and control sockets; descriptors remain operation-owned.
      */
     public static final class NativeBindings {

@@ -10,6 +10,7 @@ import com.holdmyspot.codexunleashed.scheduler.LinuxCargoProtocol;
 import com.holdmyspot.codexunleashed.scheduler.LinuxCargoRegistration;
 import com.holdmyspot.codexunleashed.scheduler.LinuxProcessTree;
 import com.holdmyspot.codexunleashed.scheduler.Policy;
+import com.holdmyspot.codexunleashed.secrets.LinuxCargoRegistrationSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -196,7 +197,7 @@ public final class CargoMemoryEstimatesTest
                 @Override public Map<String, String> environment(long pid) { return environment; }
             };
             var register = new LinuxCargoProtocol.Register(source, command, environment);
-            CargoCompilerRequest cold = LinuxCargoRegistration.SharedSecrets.create(configuration, cargo, nativeObservations).
+            CargoCompilerRequest cold = LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().create(configuration, cargo, nativeObservations).
                 authenticate(wrapper, register);
             estimates.register(cold);
             estimates.readHost();
@@ -204,7 +205,7 @@ public final class CargoMemoryEstimatesTest
             estimates.acceptReadings();
             estimates.completed(cold.name(), 2, true);
             CargoMemoryEstimates next = new CargoMemoryEstimates(new SampleSource(), new CargoMemoryHistory(history), identities);
-            CargoCompilerRequest warm = LinuxCargoRegistration.SharedSecrets.create(configuration, cargo, nativeObservations, next).
+            CargoCompilerRequest warm = LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().create(configuration, cargo, nativeObservations, next).
                 authenticate(wrapper, register);
             requireThat(warm.peakBytes(), "authenticatedProductionEstimate").isEqualTo(200L);
         }

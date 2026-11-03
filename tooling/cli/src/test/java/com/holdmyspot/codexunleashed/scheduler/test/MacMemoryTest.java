@@ -1,13 +1,11 @@
 package com.holdmyspot.codexunleashed.scheduler.test;
 
 import com.holdmyspot.codexunleashed.scheduler.MacMemory;
+import com.holdmyspot.codexunleashed.secrets.MacMemorySecrets;
 import java.io.IOException;
 import java.lang.foreign.Arena;
-import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.List;
 import org.testng.annotations.DataProvider;
@@ -95,7 +93,7 @@ public final class MacMemoryTest
 		var calls = new NativeOutcomes();
 		calls.host = 0;
 
-		var failure = requireException(IOException.class, () -> MacMemory.SharedSecrets.read(calls));
+		var failure = requireException(IOException.class, () -> MacMemorySecrets.getMacMemoryAccess().read(calls));
 		requireThat(failure.getMessage(), "nullPortFailure").isEqualTo(
 			"mach_host_self returned a null host port", "expected");
 		requireThat(calls.released, "unacquiredRights").isEmpty();
@@ -130,7 +128,7 @@ public final class MacMemoryTest
 		calls.count = count;
 		calls.freePages = freePages;
 
-		var failure = requireException(IOException.class, () -> MacMemory.SharedSecrets.read(calls));
+		var failure = requireException(IOException.class, () -> MacMemorySecrets.getMacMemoryAccess().read(calls));
 		requireThat(failure.getMessage(), "acquisitionFailure").isEqualTo(message, "expected");
 		requireThat(calls.released, "releasedRights").isEqualTo(List.of("11:22"), "expected");
 	}
@@ -144,7 +142,7 @@ public final class MacMemoryTest
 		var calls = new NativeOutcomes();
 		calls.releaseStatus = 17;
 
-		var failure = requireException(IOException.class, () -> MacMemory.SharedSecrets.read(calls));
+		var failure = requireException(IOException.class, () -> MacMemorySecrets.getMacMemoryAccess().read(calls));
 		requireThat(failure.getMessage(), "releaseFailure").isEqualTo(
 			"mach_port_deallocate failed with Mach status 17", "expected");
 		requireThat(calls.released, "singleReleaseAttempt").isEqualTo(List.of("11:22"), "expected");
@@ -160,7 +158,7 @@ public final class MacMemoryTest
 		calls.status = 5;
 		calls.releaseStatus = 17;
 
-		var failure = requireException(IOException.class, () -> MacMemory.SharedSecrets.read(calls));
+		var failure = requireException(IOException.class, () -> MacMemorySecrets.getMacMemoryAccess().read(calls));
 		requireThat(failure.getMessage(), "primaryFailure").isEqualTo(
 			"host_statistics failed with Mach status 5", "expected");
 		requireThat(failure.getSuppressed().length, "suppressedCount").isEqualTo(1, "expected");
@@ -195,7 +193,7 @@ public final class MacMemoryTest
 		var calls = new NativeOutcomes();
 		calls.pressure = flag;
 
-		var sample = MacMemory.SharedSecrets.read(calls);
+		var sample = MacMemorySecrets.getMacMemoryAccess().read(calls);
 		requireThat(sample, "acquiredSample").isEqualTo(
 			new MacMemory.Sample(16384, 8192, 0, 0, pressure), "expected");
 		requireThat(calls.released, "releasedBeforeReturn").isEqualTo(List.of("11:22"), "expected");
@@ -205,7 +203,7 @@ public final class MacMemoryTest
 	 * Models Mach integer statuses and sysctl structures at the same ABI boundary as the accepted native reader.
 	 * These controlled outcomes establish Java interpretation and cleanup, not kernel acquisition.
 	 */
-	private static final class NativeOutcomes implements MacMemory.NativeCalls
+	private static final class NativeOutcomes implements MacMemory.NativeCalls, MacMemory.MachCalls
 	{
 		/** Acquired Mach host send right; zero models MACH_PORT_NULL. */
 		private int host = 22;
@@ -258,65 +256,32 @@ public final class MacMemoryTest
 		}
 
 		@Override
-		public MethodHandle bind(Arena arena, String name, FunctionDescriptor descriptor)
+		public MacMemory.MachCalls mach(Arena arena)
 		{
-			String method = switch (name)
-			{
-				case "mach_host_self" -> "hostSelf";
-				case "mach_task_self" -> "taskSelf";
-				case "mach_port_deallocate" -> "release";
-				case "host_statistics" -> "statistics";
-				default -> throw new AssertionError("Unexpected Mach function: " + name);
-			};
-			try
-			{
-				return MethodHandles.lookup().findVirtual(NativeOutcomes.class, method, descriptor.toMethodType()).bindTo(this);
-			}
-			catch (ReflectiveOperationException e)
-			{
-				throw new AssertionError("Native fixture does not match the production ABI", e);
-			}
+			return this;
 		}
 
-		/**
-		 * Acquires the scripted host send right.
-		 * @return the host port or MACH_PORT_NULL
-		 */
-		private int hostSelf()
-		{
-			return host;
-		}
-
-		/**
-		 * Borrows the scripted current-task port.
-		 * @return the current-task port
-		 */
-		private int taskSelf()
+		@Override
+		public int taskSelf()
 		{
 			return 11;
 		}
 
-		/**
-		 * Records release of the acquired host right by the current task.
-		 * @param task the borrowing task
-		 * @param host the host send right
-		 * @return the scripted Mach release status
-		 */
-		private int release(int task, int host)
+		@Override
+		public int hostSelf()
 		{
-			released.add(task + ":" + host);
+			return host;
+		}
+
+		@Override
+		public int portDeallocate(int task, int port)
+		{
+			released.add(task + ":" + port);
 			return releaseStatus;
 		}
 
-		/**
-		 * Supplies the VM_STATISTICS free and inactive fields and returned count.
-		 * @param host the acquired host right
-		 * @param flavor the requested Mach statistics flavor
-		 * @param result the writable VM_STATISTICS buffer
-		 * @param count the input capacity and output field count
-		 * @return the scripted Mach acquisition status
-		 */
-		private int statistics(int host, int flavor, MemorySegment result, MemorySegment count)
+		@Override
+		public int hostStatistics(int host, int flavor, MemorySegment result, MemorySegment count)
 		{
 			requireThat(host, "queriedHost").isEqualTo(22, "expected");
 			requireThat(flavor, "statisticsFlavor").isEqualTo(2, "expected");

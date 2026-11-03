@@ -1,5 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.secrets.WindowsCargoJobserverAccess;
+import com.holdmyspot.codexunleashed.secrets.WindowsCargoJobserverSecrets;
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import java.io.IOException;
 import java.io.Serial;
@@ -11,9 +13,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -34,6 +34,25 @@ public final class WindowsCargoJobserver implements AutoCloseable
 {
 	/** Variables emitted by pinned jobserver 0.1.34 configure_make. */
 	private static final Set<String> MAKE_VARIABLES = Set.of("CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS");
+
+	static
+	{
+		WindowsCargoJobserverSecrets.setWindowsCargoJobserverAccess(new WindowsCargoJobserverAccess()
+		{
+			@Override
+			public WindowsCargoJobserver create(int jobs, Calls calls) throws IOException
+			{
+				validateJobs(jobs);
+				return acquire(jobs, calls);
+			}
+
+			@Override
+			public Calls nativeCalls(Arena arena, MemorySegment errors, long errorOffset, NativeFunctions functions)
+			{
+				return new NativeCalls(arena, errors, errorOffset, functions);
+			}
+		});
+	}
 	/** The only thread allowed to mutate this owner or release its lease. */
 	private final Thread controller = Thread.currentThread();
 	/** Same-session ASCII name interoperable with pinned jobserver's OpenSemaphoreA. */
@@ -556,39 +575,121 @@ public final class WindowsCargoJobserver implements AutoCloseable
 		void close() throws IOException;
 	}
 
-	/** Typed access to the production acquisition path for controlled native-outcome tests. */
-	public static final class SharedSecrets
+	/** Native semaphore functions with their Windows ABI; each receives the storage that captures GetLastError. */
+	public interface NativeFunctions
 	{
-		/** Prevents construction. */
-		private SharedSecrets() { }
 		/**
-		 * Runs normal acquisition with owned external operations after validating capacity.
-		 * @param jobs positive capacity including the implicit slot
-		 * @param calls access transferred only after input validation
-		 * @return normally owned jobserver
-		 * @throws IOException if acquisition or cleanup fails
+		 * Creates or opens a named semaphore.
+		 * @param errors captured native error storage
+		 * @param attributes security attributes, or NULL
+		 * @param initial initial count
+		 * @param maximum maximum count
+		 * @param name wide name
+		 * @param flags creation flags
+		 * @param access requested access rights
+		 * @return the semaphore HANDLE, or NULL on failure
+		 * @throws IOException if the native invocation raises a checked failure
 		 */
-		public static WindowsCargoJobserver create(int jobs, Calls calls) throws IOException
+		MemorySegment createSemaphore(MemorySegment errors, MemorySegment attributes, int initial, int maximum,
+			MemorySegment name, int flags, int access) throws IOException;
+
+		/**
+		 * Waits on a handle.
+		 * @param errors captured native error storage
+		 * @param handle waited handle
+		 * @param milliseconds wait duration
+		 * @return the native wait result
+		 * @throws IOException if the native invocation raises a checked failure
+		 */
+		int waitForSingleObject(MemorySegment errors, MemorySegment handle, int milliseconds) throws IOException;
+
+		/**
+		 * Returns tokens to a semaphore.
+		 * @param errors captured native error storage
+		 * @param handle semaphore handle
+		 * @param count returned tokens
+		 * @param previous previous-count output, or NULL
+		 * @return the native BOOL result
+		 * @throws IOException if the native invocation raises a checked failure
+		 */
+		int releaseSemaphore(MemorySegment errors, MemorySegment handle, int count, MemorySegment previous)
+			throws IOException;
+
+		/**
+		 * Closes a handle.
+		 * @param errors captured native error storage
+		 * @param handle closed handle
+		 * @return the native BOOL result
+		 * @throws IOException if the native invocation raises a checked failure
+		 */
+		int closeHandle(MemorySegment errors, MemorySegment handle) throws IOException;
+	}
+
+	/** Calls the bound Kernel32 functions without collapsing native wait failures into timeouts. */
+	private static final class BoundFunctions implements NativeFunctions
+	{
+		/** HANDLE CreateSemaphoreExW(SECURITY_ATTRIBUTES*,LONG,LONG,LPCWSTR,DWORD,DWORD). */
+		private final MethodHandle create;
+		/** DWORD WaitForSingleObject(HANDLE,DWORD). */
+		private final MethodHandle wait;
+		/** BOOL ReleaseSemaphore(HANDLE,LONG,LONG*). */
+		private final MethodHandle release;
+		/** BOOL CloseHandle(HANDLE). */
+		private final MethodHandle close;
+
+		/**
+		 * Retains the bound functions.
+		 * @param create the bound CreateSemaphoreExW
+		 * @param wait the bound WaitForSingleObject
+		 * @param release the bound ReleaseSemaphore
+		 * @param close the bound CloseHandle
+		 */
+		private BoundFunctions(MethodHandle create, MethodHandle wait, MethodHandle release, MethodHandle close)
 		{
-			validateJobs(jobs);
-			return acquire(jobs, calls);
+			this.create = create;
+			this.wait = wait;
+			this.release = release;
+			this.close = close;
+		}
+
+		@Override
+		public MemorySegment createSemaphore(MemorySegment errors, MemorySegment attributes, int initial, int maximum,
+			MemorySegment name, int flags, int access) throws IOException
+		{
+			return (MemorySegment) call(create, errors, attributes, initial, maximum, name, flags, access);
+		}
+
+		@Override
+		public int waitForSingleObject(MemorySegment errors, MemorySegment handle, int milliseconds) throws IOException
+		{
+			return (int) call(wait, errors, handle, milliseconds);
+		}
+
+		@Override
+		public int releaseSemaphore(MemorySegment errors, MemorySegment handle, int count, MemorySegment previous)
+			throws IOException
+		{
+			return (int) call(release, errors, handle, count, previous);
+		}
+
+		@Override
+		public int closeHandle(MemorySegment errors, MemorySegment handle) throws IOException
+		{
+			return (int) call(close, errors, handle);
 		}
 
 		/**
-		 * Retains controlled bindings through the same production creation and cleanup operations.
-		 * @param arena owned native-access scope
-		 * @param errors captured native error storage
-		 * @param errorOffset offset of the captured DWORD
-		 * @param create semaphore creation binding with leading captured-state argument
-		 * @param wait zero-time wait binding with leading captured-state argument
-		 * @param release token-return binding with leading captured-state argument
-		 * @param close handle-close binding with leading captured-state argument
-		 * @return owned access through the production native adapter
+		 * Invokes a bound operation with its captured-state storage.
+		 * @param operation bound native operation
+		 * @param arguments the operation's complete arguments, including captured-state storage
+		 * @return raw native result
+		 * @throws IOException if a checked invocation fails before a result is obtained
 		 */
-		public static Calls nativeCalls(Arena arena, MemorySegment errors, long errorOffset, MethodHandle create,
-			MethodHandle wait, MethodHandle release, MethodHandle close)
+		private static Object call(MethodHandle operation, Object... arguments) throws IOException
 		{
-			return new NativeCalls(arena, errors, errorOffset, create, wait, release, close);
+			try { return operation.invokeWithArguments(arguments); }
+			catch (RuntimeException | Error failure) { throw failure; }
+			catch (Throwable failure) { throw new IOException("Windows jobserver native invocation failed", failure); }
 		}
 	}
 
@@ -607,14 +708,8 @@ public final class WindowsCargoJobserver implements AutoCloseable
 		private final MemorySegment errors;
 		/** Offset of the JDK-captured error field. */
 		private final long errorOffset;
-		/** HANDLE CreateSemaphoreExW(SECURITY_ATTRIBUTES*,LONG,LONG,LPCWSTR,DWORD,DWORD). */
-		private final MethodHandle create;
-		/** DWORD WaitForSingleObject(HANDLE,DWORD). */
-		private final MethodHandle wait;
-		/** BOOL ReleaseSemaphore(HANDLE,LONG,LONG*). */
-		private final MethodHandle release;
-		/** BOOL CloseHandle(HANDLE). */
-		private final MethodHandle close;
+		/** The native semaphore functions, each taking the captured-state storage as its leading argument. */
+		private final NativeFunctions functions;
 
 		/** Acquires bindings with same-call error capture, releasing the library scope if any binding fails.
 		 * @param scope borrowed shared native linker, retained open through this adapter's operations */
@@ -630,14 +725,15 @@ public final class WindowsCargoJobserver implements AutoCloseable
 				this.errors = arena.allocate(Linker.Option.captureStateLayout());
 				this.errorOffset = Linker.Option.captureStateLayout()
 					.byteOffset(MemoryLayout.PathElement.groupElement("GetLastError"));
-				this.create = bind(linker, library, "CreateSemaphoreExW", FunctionDescriptor.of(ValueLayout.ADDRESS,
-					ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-					ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-				this.wait = bind(linker, library, "WaitForSingleObject", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-					ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-				this.release = bind(linker, library, "ReleaseSemaphore", FunctionDescriptor.of(ValueLayout.JAVA_INT,
-					ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-				this.close = bind(linker, library, "CloseHandle", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+				this.functions = new BoundFunctions(
+					bind(linker, library, "CreateSemaphoreExW", FunctionDescriptor.of(ValueLayout.ADDRESS,
+						ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+						ValueLayout.JAVA_INT, ValueLayout.JAVA_INT)),
+					bind(linker, library, "WaitForSingleObject", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+						ValueLayout.ADDRESS, ValueLayout.JAVA_INT)),
+					bind(linker, library, "ReleaseSemaphore", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+						ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS)),
+					bind(linker, library, "CloseHandle", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS)));
 			}
 			catch (RuntimeException | Error failure)
 			{
@@ -648,25 +744,18 @@ public final class WindowsCargoJobserver implements AutoCloseable
 		}
 
 		/**
-		 * Retains controlled bindings without loading platform libraries; ownership still follows native creation.
+		 * Retains controlled functions without loading platform libraries; ownership still follows native creation.
 		 * @param arena owned access scope
 		 * @param errors captured native error storage
 		 * @param errorOffset captured DWORD offset
-		 * @param create creation binding
-		 * @param wait wait binding
-		 * @param release return binding
-		 * @param close handle-close binding
+		 * @param functions native semaphore functions
 		 */
-		private NativeCalls(Arena arena, MemorySegment errors, long errorOffset, MethodHandle create,
-			MethodHandle wait, MethodHandle release, MethodHandle close)
+		private NativeCalls(Arena arena, MemorySegment errors, long errorOffset, NativeFunctions functions)
 		{
 			this.arena = arena;
 			this.errors = errors;
 			this.errorOffset = errorOffset;
-			this.create = create;
-			this.wait = wait;
-			this.release = release;
-			this.close = close;
+			this.functions = functions;
 		}
 
 		/**
@@ -684,23 +773,6 @@ public final class WindowsCargoJobserver implements AutoCloseable
 			MemorySegment address = library.find(name)
 				.orElseThrow(() -> new UnsupportedOperationException("Missing Windows semaphore symbol: " + name));
 			return linker.downcallHandle(address, signature, Linker.Option.captureCallState("GetLastError"));
-		}
-
-		/**
-		 * Invokes with this owner's call-state scope without collapsing native wait failures into timeouts.
-		 * @param operation bound native operation
-		 * @param arguments arguments after captured state
-		 * @return raw native result
-		 * @throws IOException if a checked invocation fails before a result is obtained
-		 */
-		private Object call(MethodHandle operation, Object... arguments) throws IOException
-		{
-			List<Object> values = new ArrayList<>();
-			values.add(errors);
-			values.addAll(List.of(arguments));
-			try { return operation.invokeWithArguments(values); }
-			catch (RuntimeException | Error failure) { throw failure; }
-			catch (Throwable failure) { throw new IOException("Windows jobserver native invocation failed", failure); }
 		}
 
 		/**
@@ -722,7 +794,8 @@ public final class WindowsCargoJobserver implements AutoCloseable
 				MemorySegment wide = text.allocate((name.length() + 1L) * Character.BYTES, Character.BYTES);
 				for (int i = 0; i < name.length(); i++)
 					wide.set(ValueLayout.JAVA_CHAR, (long) i * Character.BYTES, name.charAt(i));
-				MemorySegment handle = (MemorySegment) call(create, MemorySegment.NULL, initial, maximum, wide, 0, ACCESS);
+				MemorySegment handle = (MemorySegment) functions.createSemaphore(errors, MemorySegment.NULL, initial, maximum, wide, 0,
+					ACCESS);
 				// Publish ownership before error inspection or temporary name-scope cleanup can fail.
 				acquired.accept(handle);
 				if (handle.address() == 0)
@@ -734,7 +807,7 @@ public final class WindowsCargoJobserver implements AutoCloseable
 		@Override
 		public boolean tryAcquire(MemorySegment handle) throws IOException
 		{
-			int result = (int) call(wait, handle, 0);
+			int result = functions.waitForSingleObject(errors, handle, 0);
 			return switch (result)
 			{
 				case 0 -> true;
@@ -746,14 +819,14 @@ public final class WindowsCargoJobserver implements AutoCloseable
 		@Override
 		public void release(MemorySegment handle, int count) throws IOException
 		{
-			if ((int) call(release, handle, count, MemorySegment.NULL) == 0)
+			if (functions.releaseSemaphore(errors, handle, count, MemorySegment.NULL) == 0)
 				throw failure("ReleaseSemaphore");
 		}
 
 		@Override
 		public void closeHandle(MemorySegment handle) throws IOException
 		{
-			if ((int) call(close, handle) == 0)
+			if (functions.closeHandle(errors, handle) == 0)
 				throw failure("CloseHandle " + Long.toUnsignedString(handle.address()));
 		}
 

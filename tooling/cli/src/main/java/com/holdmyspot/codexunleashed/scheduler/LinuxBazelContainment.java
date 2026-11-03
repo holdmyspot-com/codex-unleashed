@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import com.holdmyspot.codexunleashed.secrets.LinuxBazelContainmentSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,6 +16,11 @@ import java.util.Objects;
  */
 public final class LinuxBazelContainment implements AutoCloseable
 {
+	static
+	{
+		LinuxBazelContainmentSecrets.setLinuxBazelContainmentAccess(LinuxBazelContainment::admit);
+	}
+
     /** Original authentication policy retained through the child lifetime. */
     private final LinuxBazelIdentity authenticator;
     /** Authenticated native parent whose wait authority remains outside the attempt group. */
@@ -473,35 +479,5 @@ public final class LinuxBazelContainment implements AutoCloseable
         @Override public boolean isPopulated() throws IOException { return group.isPopulated(); }
         @Override public void terminate() throws IOException { group.terminate(); }
         @Override public void close() throws IOException { group.close(); }
-    }
-
-    /**
-     * Provides typed access to controlled allocation while exercising the single production admission operation.
-     */
-    public static final class SharedSecrets
-    {
-        /**
-         * Prevents construction of the focused access facade.
-         */
-        private SharedSecrets() {}
-
-        /**
-         * Runs production admission with a controlled independent group boundary.
-         * @param authenticator issuing policy
-         * @param owner authenticated native parent
-         * @param child authenticated prepared child
-         * @param preparedExecution complete trusted gate execution
-         * @param cgroupParent absolute normalized delegated parent
-         * @param timeout positive cleanup timeout
-         * @param groups independent exclusive group allocator
-         * @return production containment decision and retained lifecycle owner
-         * @throws IOException if native facts, migration, membership or cleanup fail
-         */
-        public static LinuxBazelContainment admit(LinuxBazelIdentity authenticator, LinuxBazelIdentity.Owner owner,
-            LinuxBazelIdentity.Child child, LinuxBazelIdentity.Execution preparedExecution, Path cgroupParent,
-            Duration timeout, Groups groups) throws IOException
-        {
-            return LinuxBazelContainment.admit(authenticator, owner, child, preparedExecution, cgroupParent, timeout, groups);
-        }
     }
 }
