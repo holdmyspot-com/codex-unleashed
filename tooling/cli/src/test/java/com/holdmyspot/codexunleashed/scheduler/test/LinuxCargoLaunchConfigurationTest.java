@@ -8,7 +8,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.time.Duration;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -126,19 +125,56 @@ public final class LinuxCargoLaunchConfigurationTest
     }
 
     /**
-     * Wrapper encoding and decoding preserve the complete immutable invocation context.
-     * @throws IOException if strict encoding or decoding fails
+     * The wrapper configuration is the exact three-line version 2 document the native wrapper parses.
      */
     @Test
-    public void roundTripsCompleteWrapperContext() throws IOException
+    public void encodesVersionTwoWrapperConfiguration()
     {
-        try (var tooling = new DefaultToolingScope(); var scope = new LinuxCargoScope(tooling))
+        requireThat(new String(LinuxCargoLaunchConfiguration.encodeWrapper(Path.of("/run/c"), 3000),
+            StandardCharsets.US_ASCII), "configuration").isEqualTo("version=2\ncontroller=/run/c\ntimeout_millis=3000\n");
+        requireThat(new String(LinuxCargoLaunchConfiguration.encodeWrapper(Path.of("/run/c"),
+            LinuxCargoLaunchConfiguration.WRAPPER_TIMEOUT_MILLIS), StandardCharsets.US_ASCII), "largest")
+            .isEqualTo("version=2\ncontroller=/run/c\ntimeout_millis=" + Long.MAX_VALUE / 4 + "\n");
+    }
+
+    /**
+     * Values the native parser cannot represent are rejected before any file is created.
+     */
+    @Test
+    public void rejectsUnrepresentableWrapperConfiguration()
+    {
+        requireException(IllegalArgumentException.class, () -> LinuxCargoLaunchConfiguration.encodeWrapper(Path.of("run/c"), 1));
+        requireException(IllegalArgumentException.class, () -> LinuxCargoLaunchConfiguration.encodeWrapper(Path.of("/run/c\nx"), 1));
+        requireException(IllegalArgumentException.class, () -> LinuxCargoLaunchConfiguration.encodeWrapper(Path.of("/run/\u00e9"), 1));
+        requireException(IllegalArgumentException.class, () -> LinuxCargoLaunchConfiguration.encodeWrapper(Path.of("/run/c"), 0));
+        requireException(IllegalArgumentException.class, () -> LinuxCargoLaunchConfiguration.encodeWrapper(Path.of("/run/c"),
+            Long.MAX_VALUE / 4 + 1));
+    }
+
+    /**
+     * Publication creates a new world-readable, read-only file holding the exact encoding and never replaces one.
+     * @throws IOException if test-local file creation, reading or removal fails
+     */
+    @Test
+    public void publishesReadOnlyWrapperConfiguration() throws IOException
+    {
+        TestRequirements.requirePosixFileSystem();
+        Path directory = Files.createTempDirectory("wrapper-config-");
+        Path source = directory.resolve("w");
+        try
         {
-            LinuxCargoLaunchConfiguration.Wrapper expected = wrapper();
-            byte[] encoded = LinuxCargoLaunchConfiguration.encodeWrapper(scope, expected);
-            requireThat(LinuxCargoLaunchConfiguration.decodeWrapper(scope, encoded).equals(expected), "context").isTrue();
-            String invalid = new String(encoded, StandardCharsets.UTF_8).replace("\"timeoutMillis\":3000", "\"timeoutMillis\":0");
-            requireException(IOException.class, () -> LinuxCargoLaunchConfiguration.decodeWrapper(scope, invalid.getBytes(StandardCharsets.UTF_8)));
+            LinuxCargoLaunchConfiguration.writeWrapper(source, Path.of("/run/c"), 5);
+            requireThat(Files.readAllBytes(source), "bytes").isEqualTo(
+                LinuxCargoLaunchConfiguration.encodeWrapper(Path.of("/run/c"), 5));
+            requireThat(java.nio.file.attribute.PosixFilePermissions.toString(Files.getPosixFilePermissions(source)),
+                "permissions").isEqualTo("r--r--r--");
+            requireException(java.nio.file.FileAlreadyExistsException.class,
+                () -> LinuxCargoLaunchConfiguration.writeWrapper(source, Path.of("/run/c"), 5));
+        }
+        finally
+        {
+            Files.deleteIfExists(source);
+            Files.delete(directory);
         }
     }
 
@@ -215,17 +251,6 @@ public final class LinuxCargoLaunchConfigurationTest
     private static LinuxCargoLaunchConfiguration decode(LinuxCargoScope scope, byte[] bytes) throws IOException
     {
         return LinuxCargoLaunchConfiguration.decode(scope, path("/admin/launch.json"), bytes);
-    }
-
-    /**
-     * Supplies a complete resource-free invocation context.
-     * @return independent immutable wrapper context
-     */
-    private static LinuxCargoLaunchConfiguration.Wrapper wrapper()
-    {
-        return new LinuxCargoLaunchConfiguration.Wrapper(path("/run/controller"), path("/run/registrations"),
-            path("/cgroup/actions"), path("/run/invocation"), path("/runtime/bin/java"),
-            path("/runtime/lib/modules"), path("/tools/rustc"), 1001, 1002, Duration.ofSeconds(3));
     }
 
     /**

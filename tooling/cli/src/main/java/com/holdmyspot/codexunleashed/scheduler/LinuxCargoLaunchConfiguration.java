@@ -63,6 +63,11 @@ public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, in
     /** Environment members owned by invocation/controller construction, forbidden in administrator input. */
     private static final Set<String> OWNED_ENV = Set.of("RUSTC", "RUSTC_WRAPPER", WRAPPER_CONFIG_ENV,
         "CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS", "RUSTC_WORKSPACE_WRAPPER");
+    /**
+     * Largest wrapper read timeout. The wrapper sends {@code child} before queue admission, so its reads must outlast
+     * any wait for memory; the value stays far below the native {@code int64} millisecond limit.
+     */
+    static final long WRAPPER_TIMEOUT_MILLIS = Long.MAX_VALUE / 4;
     /** Immutable permissions for a context readable by the workload but writable only before publication. */
     private static final Set<PosixFilePermission> WRAPPER_PERMISSIONS =
         Set.copyOf(PosixFilePermissions.fromString("r--r--r--"));
@@ -281,6 +286,44 @@ public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, in
             if (milliseconds <= 0 || !Duration.ofMillis(milliseconds).equals(timeout))
                 throw new IllegalArgumentException("Wrapper timeout must be positive integral milliseconds");
         }
+    }
+
+    /**
+     * Publishes a new version 2 native wrapper configuration; an existing path is never replaced.
+     * The elevated caller owns removal after every wrapper has exited, and owns the root-controlled namespace the
+     * wrapper requires of the file and each ancestor.
+     * @param source        new absolute configuration file
+     * @param controller    absolute controller socket the wrapper connects to
+     * @param timeoutMillis bound on every blocking wrapper read of the controller
+     * @throws IllegalArgumentException if a value cannot be represented in the native configuration
+     * @throws IOException              if exclusive creation, writing or permission setting fails
+     */
+    static void writeWrapper(Path source, Path controller, long timeoutMillis) throws IOException
+    {
+        requireAbsolute(source);
+        byte[] bytes = encodeWrapper(controller, timeoutMillis);
+        Files.write(source, bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        Files.setPosixFilePermissions(source, WRAPPER_PERMISSIONS);
+    }
+
+    /**
+     * Encodes the exact version 2 native wrapper configuration.
+     * @param controller    absolute controller socket path, printable ASCII
+     * @param timeoutMillis positive bound on every blocking wrapper read, at most {@link #WRAPPER_TIMEOUT_MILLIS}
+     * @return ASCII {@code key=value} lines in the order the wrapper requires
+     * @throws NullPointerException     if {@code controller} is null
+     * @throws IllegalArgumentException if a value cannot be represented in the native configuration
+     */
+    static byte[] encodeWrapper(Path controller, long timeoutMillis)
+    {
+        requireAbsolute(controller);
+        String path = controller.toString();
+        if (!path.chars().allMatch(c -> c >= 0x20 && c < 0x7f))
+            throw new IllegalArgumentException("Wrapper controller path must be printable ASCII");
+        if (timeoutMillis <= 0 || timeoutMillis > WRAPPER_TIMEOUT_MILLIS)
+            throw new IllegalArgumentException("Wrapper timeout must be positive and at most " + WRAPPER_TIMEOUT_MILLIS);
+        return ("version=2\ncontroller=" + path + "\ntimeout_millis=" + timeoutMillis + "\n").
+            getBytes(StandardCharsets.US_ASCII);
     }
 
     /**
