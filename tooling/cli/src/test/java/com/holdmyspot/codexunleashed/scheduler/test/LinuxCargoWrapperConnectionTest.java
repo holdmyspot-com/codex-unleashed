@@ -1,5 +1,9 @@
-package com.holdmyspot.codexunleashed.scheduler;
+package com.holdmyspot.codexunleashed.scheduler.test;
 
+import com.holdmyspot.codexunleashed.scheduler.AllocationHooks;
+import com.holdmyspot.codexunleashed.scheduler.LinuxCargoProtocol;
+import com.holdmyspot.codexunleashed.scheduler.LinuxCargoTransport;
+import com.holdmyspot.codexunleashed.scheduler.LinuxCargoWrapperConnection;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -15,7 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
-import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static com.holdmyspot.codexunleashed.scheduler.test.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**

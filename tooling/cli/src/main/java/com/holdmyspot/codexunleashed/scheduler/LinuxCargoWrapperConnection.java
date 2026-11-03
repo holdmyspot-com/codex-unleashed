@@ -17,10 +17,10 @@ import java.util.Objects;
  * <p>
  * Only the constructing thread may call this owner. It owns the accepted connection.
  */
-final class LinuxCargoWrapperConnection implements AutoCloseable
+public final class LinuxCargoWrapperConnection implements AutoCloseable
 {
     /** Position of the connection in the protocol. */
-    enum State
+    public enum State
     {
         /** Accepted; the registration has not been read. */
         REGISTERING,
@@ -60,7 +60,7 @@ final class LinuxCargoWrapperConnection implements AutoCloseable
      * @param connection accepted connection whose peer is the wrapper process
      * @throws NullPointerException if {@code connection} is null
      */
-    LinuxCargoWrapperConnection(LinuxCargoTransport.Connection connection)
+    public LinuxCargoWrapperConnection(LinuxCargoTransport.Connection connection)
     {
         this.connection = Objects.requireNonNull(connection, "connection");
         this.peer = connection.peer();
@@ -70,7 +70,7 @@ final class LinuxCargoWrapperConnection implements AutoCloseable
      * Returns the kernel peer captured at acceptance; this alone authenticates nothing.
      * @return wrapper process identity and effective credentials
      */
-    LinuxBorrowedStreams.Peer peer()
+    public LinuxBorrowedStreams.Peer peer()
     {
         return peer;
     }
@@ -81,7 +81,7 @@ final class LinuxCargoWrapperConnection implements AutoCloseable
      * @throws IllegalStateException if the registration was already read
      * @throws IOException           if the first frame is missing, late, malformed or not a registration
      */
-    LinuxCargoProtocol.Register register() throws IOException
+    public LinuxCargoProtocol.Register register() throws IOException
     {
         requireOwner();
         requireState(State.REGISTERING);
@@ -103,7 +103,7 @@ final class LinuxCargoWrapperConnection implements AutoCloseable
      * Consumes at most one message that is already readable, without waiting for an idle wrapper.
      * @throws IOException if the connection is lost or the wrapper breaks the protocol
      */
-    void pump() throws IOException
+    public void pump() throws IOException
     {
         requireOwner();
         requireHealthy();
@@ -126,7 +126,7 @@ final class LinuxCargoWrapperConnection implements AutoCloseable
      * @throws IllegalStateException if the connection is neither awaiting nor holding a child
      * @throws IOException           if the report is late or invalid, or the connection is lost
      */
-    LinuxCargoProtocol.Child awaitChild() throws IOException
+    public LinuxCargoProtocol.Child awaitChild() throws IOException
     {
         requireOwner();
         requireHealthy();
@@ -149,7 +149,7 @@ final class LinuxCargoWrapperConnection implements AutoCloseable
      * Returns the protocol position.
      * @return current state
      */
-    State state()
+    public State state()
     {
         requireOwner();
         return state;
@@ -160,7 +160,7 @@ final class LinuxCargoWrapperConnection implements AutoCloseable
      * @return child reported for the current attempt
      * @throws IllegalStateException if the current attempt has not reported a child
      */
-    LinuxCargoProtocol.Child child()
+    public LinuxCargoProtocol.Child child()
     {
         requireOwner();
         if (child == null) throw new IllegalStateException("The current attempt has no child");
@@ -172,7 +172,7 @@ final class LinuxCargoWrapperConnection implements AutoCloseable
      * @return wait status reported by {@code exited}
      * @throws IllegalStateException if the current attempt has not exited
      */
-    long waitStatus()
+    public long waitStatus()
     {
         requireOwner();
         requireState(State.EXITED);
@@ -184,7 +184,7 @@ final class LinuxCargoWrapperConnection implements AutoCloseable
      * @throws IllegalStateException if no child is held
      * @throws IOException           if sending fails
      */
-    void release() throws IOException
+    public void release() throws IOException
     {
         command(State.HELD, LinuxCargoProtocol.release(attempt), State.RELEASED);
     }
@@ -194,7 +194,7 @@ final class LinuxCargoWrapperConnection implements AutoCloseable
      * @throws IllegalStateException if no child is held
      * @throws IOException           if sending fails
      */
-    void abort() throws IOException
+    public void abort() throws IOException
     {
         command(State.HELD, LinuxCargoProtocol.abort(attempt), State.ABORTED);
     }
@@ -204,7 +204,7 @@ final class LinuxCargoWrapperConnection implements AutoCloseable
      * @throws IllegalStateException if the current attempt has not exited
      * @throws IOException           if sending fails or the attempt number would overflow
      */
-    void retry() throws IOException
+    public void retry() throws IOException
     {
         long next;
         try
@@ -227,7 +227,7 @@ final class LinuxCargoWrapperConnection implements AutoCloseable
      * @throws IllegalStateException    if the current attempt has not exited
      * @throws IOException              if sending or closing fails
      */
-    void finish(int status) throws IOException
+    public void finish(int status) throws IOException
     {
         command(State.EXITED, LinuxCargoProtocol.finalStatus(status), State.FINISHED);
         connection.close();
@@ -237,7 +237,7 @@ final class LinuxCargoWrapperConnection implements AutoCloseable
      * Reports whether the connection is closed, either after the final status or after a failure.
      * @return whether no further message can be exchanged
      */
-    boolean isClosed()
+    public boolean isClosed()
     {
         return connection.isClosed();
     }

@@ -1,5 +1,6 @@
-package com.holdmyspot.codexunleashed.scheduler;
+package com.holdmyspot.codexunleashed.scheduler.test;
 
+import com.holdmyspot.codexunleashed.scheduler.LinuxCargoProtocol;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -9,7 +10,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import org.testng.annotations.Test;
-import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static com.holdmyspot.codexunleashed.scheduler.test.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**

@@ -6,6 +6,7 @@ import com.holdmyspot.codexunleashed.scheduler.CargoMemoryHistory;
 import com.holdmyspot.codexunleashed.scheduler.CargoWorkIdentity;
 import com.holdmyspot.codexunleashed.scheduler.Controller;
 import com.holdmyspot.codexunleashed.scheduler.LinuxBorrowedStreams;
+import com.holdmyspot.codexunleashed.scheduler.LinuxCargoProtocol;
 import com.holdmyspot.codexunleashed.scheduler.LinuxCargoRegistration;
 import com.holdmyspot.codexunleashed.scheduler.LinuxProcessTree;
 import com.holdmyspot.codexunleashed.scheduler.Policy;

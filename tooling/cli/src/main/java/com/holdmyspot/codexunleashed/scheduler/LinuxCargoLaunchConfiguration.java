@@ -67,7 +67,7 @@ public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, in
      * Largest wrapper read timeout. The wrapper sends {@code child} before queue admission, so its reads must outlast
      * any wait for memory; the value stays far below the native {@code int64} millisecond limit.
      */
-    static final long WRAPPER_TIMEOUT_MILLIS = Long.MAX_VALUE / 4;
+    public static final long WRAPPER_TIMEOUT_MILLIS = Long.MAX_VALUE / 4;
     /** Immutable permissions for a context readable by the workload but writable only before publication. */
     private static final Set<PosixFilePermission> WRAPPER_PERMISSIONS =
         Set.copyOf(PosixFilePermissions.fromString("r--r--r--"));
@@ -298,7 +298,7 @@ public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, in
      * @throws IllegalArgumentException if a value cannot be represented in the native configuration
      * @throws IOException              if exclusive creation, writing or permission setting fails
      */
-    static void writeWrapper(Path source, Path controller, long timeoutMillis) throws IOException
+    public static void writeWrapper(Path source, Path controller, long timeoutMillis) throws IOException
     {
         requireAbsolute(source);
         byte[] bytes = encodeWrapper(controller, timeoutMillis);
@@ -314,7 +314,7 @@ public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, in
      * @throws NullPointerException     if {@code controller} is null
      * @throws IllegalArgumentException if a value cannot be represented in the native configuration
      */
-    static byte[] encodeWrapper(Path controller, long timeoutMillis)
+    public static byte[] encodeWrapper(Path controller, long timeoutMillis)
     {
         requireAbsolute(controller);
         String path = controller.toString();

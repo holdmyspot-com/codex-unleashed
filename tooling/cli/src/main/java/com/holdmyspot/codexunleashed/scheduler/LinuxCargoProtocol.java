@@ -23,7 +23,7 @@ import java.util.Objects;
  * contract fails closed instead of being half understood. Decoding grants no process authority: the controller
  * authenticates every decoded identity against {@code /proc} before acting on it. The codec holds no state.
  */
-final class LinuxCargoProtocol
+public final class LinuxCargoProtocol
 {
     /** Protocol version the wrapper and this controller both speak. */
     private static final String VERSION = "2";
@@ -38,7 +38,7 @@ final class LinuxCargoProtocol
     /**
      * One decoded wrapper-to-controller message.
      */
-    sealed interface Message permits Register, Child, Exited {}
+    public sealed interface Message permits Register, Child, Exited {}
 
     /**
      * The wrapper's one registration, sent right after it connects.
@@ -46,7 +46,7 @@ final class LinuxCargoProtocol
      * @param arguments   complete compiler argument vector, beginning with the compiler path Cargo passed
      * @param environment complete compiler environment in wrapper order
      */
-    record Register(Path directory, List<String> arguments, Map<String, String> environment) implements Message
+    public record Register(Path directory, List<String> arguments, Map<String, String> environment) implements Message
     {
         /**
          * Copies the represented values so later mutation cannot change an authenticated registration.
@@ -56,7 +56,7 @@ final class LinuxCargoProtocol
          * @throws NullPointerException     if any argument or element is null
          * @throws IllegalArgumentException if {@code directory} is relative or {@code arguments} is empty
          */
-        Register
+        public Register
         {
             Objects.requireNonNull(directory, "directory");
             if (!directory.isAbsolute()) throw new IllegalArgumentException("directory must be absolute");
@@ -72,14 +72,14 @@ final class LinuxCargoProtocol
      * @param pid       child process id
      * @param startTime field 22 of the child's {@code /proc/<pid>/stat}
      */
-    record Child(long attempt, long pid, long startTime) implements Message {}
+    public record Child(long attempt, long pid, long startTime) implements Message {}
 
     /**
      * A reaped attempt whose standard error has reached end of file.
      * @param attempt    attempt number the status belongs to
      * @param waitStatus raw {@code waitpid} status
      */
-    record Exited(long attempt, long waitStatus) implements Message {}
+    public record Exited(long attempt, long waitStatus) implements Message {}
 
     /**
      * Decodes one complete payload.
@@ -88,7 +88,7 @@ final class LinuxCargoProtocol
      * @throws NullPointerException if {@code bytes} is null
      * @throws IOException          if the payload violates the version 2 contract
      */
-    static Message decode(byte[] bytes) throws IOException
+    public static Message decode(byte[] bytes) throws IOException
     {
         List<String> fields = fields(bytes);
         return switch (fields.getFirst())
@@ -115,7 +115,7 @@ final class LinuxCargoProtocol
      * @return payload without its length prefix
      * @throws IllegalArgumentException if {@code attempt} is not positive
      */
-    static byte[] release(long attempt)
+    public static byte[] release(long attempt)
     {
         return encode("release", positive(attempt));
     }
@@ -126,7 +126,7 @@ final class LinuxCargoProtocol
      * @return payload without its length prefix
      * @throws IllegalArgumentException if {@code attempt} is not positive
      */
-    static byte[] abort(long attempt)
+    public static byte[] abort(long attempt)
     {
         return encode("abort", positive(attempt));
     }
@@ -135,7 +135,7 @@ final class LinuxCargoProtocol
      * Encodes a request that the wrapper discard the finished attempt and fork the next one.
      * @return payload without its length prefix
      */
-    static byte[] retry()
+    public static byte[] retry()
     {
         return encode("retry");
     }
@@ -146,7 +146,7 @@ final class LinuxCargoProtocol
      * @return payload without its length prefix
      * @throws IllegalArgumentException if {@code status} is outside 0 through 255
      */
-    static byte[] finalStatus(int status)
+    public static byte[] finalStatus(int status)
     {
         if (status < 0 || status > 255) throw new IllegalArgumentException("status must be from 0 through 255");
         return encode("final", Integer.toString(status));
@@ -158,7 +158,7 @@ final class LinuxCargoProtocol
      * @return exit code for a normal exit, or 128 plus the signal number for a signal
      * @throws IOException if the status reports a stop, a continue or bits a terminated process cannot have
      */
-    static int exitStatus(long waitStatus) throws IOException
+    public static int exitStatus(long waitStatus) throws IOException
     {
         long signal = waitStatus & 0x7f;
         if (signal == 0 && waitStatus < 0x1_0000) return (int) (waitStatus >> 8);
