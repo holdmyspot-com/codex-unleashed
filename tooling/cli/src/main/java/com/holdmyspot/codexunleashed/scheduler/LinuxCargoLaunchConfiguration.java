@@ -12,14 +12,12 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -57,9 +55,6 @@ public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, in
     /** Pinned byte identities the administrator must supply before native acquisition. */
     private static final Set<String> IDENTITY_FIELDS = Set.of("cargo", "rustc", "toolchain", "unshare", "libcgroup",
         "frida", "javaRuntime");
-    /** Wrapper context members, all required and immutable within one invocation. */
-    private static final Set<String> WRAPPER_FIELDS = Set.of("version", "controller", "registrationDirectory",
-        "cgroupParent", "scratchParent", "javaExecutable", "classPath", "rustc", "uid", "gid", "timeoutMillis");
     /** Environment members owned by invocation/controller construction, forbidden in administrator input. */
     private static final Set<String> OWNED_ENV = Set.of("RUSTC", "RUSTC_WRAPPER", WRAPPER_CONFIG_ENV,
         "CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS", "RUSTC_WORKSPACE_WRAPPER");
@@ -241,54 +236,6 @@ public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, in
     }
 
     /**
-     * Supplies immutable per-invocation wrapper context; the workload cannot replace this context.
-     * @param controller absolute root controller endpoint
-     * @param registrationDirectory absolute workload-owned registration parent
-     * @param cgroupParent absolute action containment parent
-     * @param scratchParent absolute invocation runtime parent
-     * @param javaExecutable absolute bundled Java executable
-     * @param classPath absolute helper runtime identity
-     * @param rustc exact approved absolute compiler executable
-     * @param uid positive configured workload user
-     * @param gid positive configured workload group
-     * @param timeout positive bounded control-frame timeout
-     */
-    public record Wrapper(Path controller, Path registrationDirectory, Path cgroupParent, Path scratchParent,
-        Path javaExecutable, Path classPath, Path rustc, int uid, int gid, Duration timeout)
-    {
-        /**
-         * Establishes immutable wrapper path, credential and timeout invariants.
-         * @param controller absolute controller endpoint
-         * @param registrationDirectory absolute registration parent
-         * @param cgroupParent absolute action containment parent
-         * @param scratchParent absolute invocation runtime parent
-         * @param javaExecutable absolute bundled Java executable
-         * @param classPath absolute helper runtime identity
-         * @param rustc absolute approved compiler
-         * @param uid positive workload user
-         * @param gid positive workload group
-         * @param timeout positive control timeout representable as integral milliseconds
-         * @throws NullPointerException if a required value is null
-         * @throws IllegalArgumentException if a path, credential or timeout is invalid
-         */
-        public Wrapper
-        {
-            for (Path path : List.of(controller, registrationDirectory, cgroupParent, scratchParent, javaExecutable,
-                classPath, rustc)) requireAbsolute(path);
-            Objects.requireNonNull(timeout, "timeout");
-            if (uid <= 0 || gid <= 0) throw new IllegalArgumentException("Wrapper UID and GID must be positive");
-            long milliseconds;
-            try { milliseconds = timeout.toMillis(); }
-            catch (ArithmeticException overflow)
-            {
-                throw new IllegalArgumentException("Wrapper timeout must fit integral milliseconds in a long", overflow);
-            }
-            if (milliseconds <= 0 || !Duration.ofMillis(milliseconds).equals(timeout))
-                throw new IllegalArgumentException("Wrapper timeout must be positive integral milliseconds");
-        }
-    }
-
-    /**
      * Publishes a new version 2 native wrapper configuration; an existing path is never replaced.
      * The elevated caller owns removal after every wrapper has exited, and owns the root-controlled namespace the
      * wrapper requires of the file and each ancestor.
@@ -324,83 +271,6 @@ public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, in
             throw new IllegalArgumentException("Wrapper timeout must be positive and at most " + WRAPPER_TIMEOUT_MILLIS);
         return ("version=2\ncontroller=" + path + "\ntimeout_millis=" + timeoutMillis + "\n").
             getBytes(StandardCharsets.US_ASCII);
-    }
-
-    /**
-     * Publishes a new read-only context; an existing path is never replaced.
-     * The elevated caller owns removal after all wrapper consumers finish.
-     * @param scope borrowed invocation parser and serializer
-     * @param source new absolute context file within the invocation's root-controlled namespace
-     * @param wrapper immutable complete wrapper context
-     * @throws IOException if serialization, exclusive creation or permission setting fails
-     */
-    static void writeWrapper(LinuxCargoScope scope, Path source, Wrapper wrapper) throws IOException
-    {
-        requireAbsolute(source);
-        byte[] bytes = encodeWrapper(scope, wrapper);
-        Files.write(source, bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-        Files.setPosixFilePermissions(source, WRAPPER_PERMISSIONS);
-    }
-
-    /**
-     * Reads a bounded root-controlled wrapper context without accepting workload-modifiable configuration.
-     * @param scope borrowed strict invocation parser
-     * @param source absolute root-controlled read-only context file
-     * @return complete immutable wrapper context
-     * @throws IOException if namespace authority, file identity, JSON or values are invalid
-     */
-    static Wrapper readWrapper(LinuxCargoScope scope, Path source) throws IOException
-    {
-        requireRootControlled(source);
-        return decodeWrapper(scope, readBytes(source));
-    }
-
-    /**
-     * Encodes the exact version-one wrapper context using scoped JSON services.
-     * @param scope borrowed strict parser and serializer
-     * @param wrapper immutable complete context
-     * @return bounded encoded JSON document
-     * @throws IOException if encoding exceeds the protocol bound
-     */
-    public static byte[] encodeWrapper(LinuxCargoScope scope, Wrapper wrapper) throws IOException
-    {
-        Map<String, Object> values = new HashMap<>();
-        values.put("version", 1);
-        values.put("controller", wrapper.controller().toString());
-        values.put("registrationDirectory", wrapper.registrationDirectory().toString());
-        values.put("cgroupParent", wrapper.cgroupParent().toString());
-        values.put("scratchParent", wrapper.scratchParent().toString());
-        values.put("javaExecutable", wrapper.javaExecutable().toString());
-        values.put("classPath", wrapper.classPath().toString());
-        values.put("rustc", wrapper.rustc().toString());
-        values.put("uid", wrapper.uid()); values.put("gid", wrapper.gid());
-        values.put("timeoutMillis", wrapper.timeout().toMillis());
-        byte[] bytes = scope.json().writeValueAsBytes(values);
-        requireBound(bytes);
-        return bytes;
-    }
-
-    /**
-     * Decodes exact wrapper fields without granting controller or native authority.
-     * @param scope borrowed strict parser
-     * @param bytes complete bounded version-one context document
-     * @return validated represented wrapper inputs
-     * @throws IOException if the context's JSON, fields or semantic values are invalid
-     */
-    public static Wrapper decodeWrapper(LinuxCargoScope scope, byte[] bytes) throws IOException
-    {
-        JsonNode root = document(scope, bytes, WRAPPER_FIELDS, Set.of());
-        version(root);
-        try
-        {
-            JsonNode timeout = root.path("timeoutMillis");
-            if (!timeout.isIntegralNumber() || !timeout.canConvertToLong() || timeout.longValue() <= 0)
-                throw new IOException("timeoutMillis must be a positive integer representable as a long");
-            return new Wrapper(path(root, "controller"), path(root, "registrationDirectory"), path(root, "cgroupParent"),
-                path(root, "scratchParent"), path(root, "javaExecutable"), path(root, "classPath"), path(root, "rustc"),
-                positiveInt(root, "uid"), positiveInt(root, "gid"), Duration.ofMillis(timeout.longValue()));
-        }
-        catch (IllegalArgumentException invalid) { throw new IOException("Invalid wrapper context: " + invalid.getMessage(), invalid); }
     }
 
     /**

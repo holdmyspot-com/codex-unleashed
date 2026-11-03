@@ -4,7 +4,6 @@ import com.holdmyspot.codexunleashed.scheduler.AllocationWaits;
 import com.holdmyspot.codexunleashed.scheduler.Controller;
 import com.holdmyspot.codexunleashed.scheduler.JobQueue;
 import com.holdmyspot.codexunleashed.scheduler.LinuxAttempts;
-import com.holdmyspot.codexunleashed.scheduler.LinuxProcessTree;
 import com.holdmyspot.codexunleashed.scheduler.Policy;
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
@@ -111,41 +110,54 @@ public final class LinuxAttemptsTest
 		var events = new LinuxAttempts.Notifications();
 		requireThat(events.poll().isEmpty(), "initiallyEmpty").isEqualTo(true, "expected");
 	}
-    /** Dynamic inputs remain immutable and reserved without creating runtime or authority owners. */
-    @Test public void appendsCommandsWithoutNativeAcquisition()
-    {
-        var commands = new LinuxAttempts.Commands();
-        var launch = AllocationHooksTest.launch(List.of("/missing-compiler", "", "λ"), java.util.Map.of("CARGO_MAKEFLAGS", "borrowed"));
-        var files = new LinuxProcessTree.StandardFiles(java.nio.file.Path.of("/missing-in").toAbsolutePath(),
-            java.nio.file.Path.of("/missing-out").toAbsolutePath(), java.nio.file.Path.of("/missing-err").toAbsolutePath());
-        var command = new LinuxAttempts.FilesCommand(launch, files);
-        commands.register("first", command);
-        requireException(IllegalArgumentException.class, () -> commands.register("first", command));
-        requireException(IllegalArgumentException.class, () -> commands.register(" ", command));
-        requireException(NullPointerException.class, () -> commands.register("second", null));
-        commands.register("second", command);
-        requireThat(commands.get("second"), "exactLaunchAndBorrowedEndpoints").isReferenceEqualTo(command, "expected");
-        requireThat(commands.get("first").launch().environment(), "jobserverUnchanged").isEqualTo(launch.environment());
-        requireThat(commands.get("unknown"), "unknownRemainsUnavailable").isNull();
-    }
 
-    /** Rejected cross-thread registration does not reserve the name.
-     * @throws InterruptedException if joining the modeled caller fails */
-    @Test public void rejectsCrossThreadRegistrationBeforeMutation() throws InterruptedException
-    {
-        var commands = new LinuxAttempts.Commands();
-        var command = new LinuxAttempts.FilesCommand(AllocationHooksTest.launch(List.of("/missing"), java.util.Map.of()),
-            new LinuxProcessTree.StandardFiles(java.nio.file.Path.of("/in").toAbsolutePath(),
-                java.nio.file.Path.of("/out").toAbsolutePath(), java.nio.file.Path.of("/err").toAbsolutePath()));
-        var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
-        Thread thread = Thread.ofPlatform().start(() ->
-        {
-            try { commands.register("compile", command); }
-            catch (Throwable caught) { failure.set(caught); }
-        });
-        thread.join();
-        requireThat(failure.get() instanceof IllegalStateException, "wrongThreadRejected").isTrue();
-        commands.register("compile", command);
-        requireThat(commands.get("compile"), "nameNotReservedByRejectedCaller").isReferenceEqualTo(command, "expected");
-    }
+	/**
+	 * Commands remain immutable and their names stay reserved, without acquiring native owners.
+	 * @throws IOException if the fake wrapper's socket fails
+	 */
+	@Test
+	public void appendsCommandsWithoutNativeAcquisition() throws IOException
+	{
+		try (var wrapper = FakeCargoWrapper.connect())
+		{
+			var commands = new LinuxAttempts.Commands();
+			var launch = AllocationHooksTest.launch(List.of("/missing-compiler", "", "λ"),
+				java.util.Map.of("CARGO_MAKEFLAGS", "borrowed"));
+			var command = new LinuxAttempts.Command(launch, wrapper.connection());
+			commands.register("first", command);
+			requireException(IllegalArgumentException.class, () -> commands.register("first", command));
+			requireException(IllegalArgumentException.class, () -> commands.register(" ", command));
+			requireException(NullPointerException.class, () -> commands.register("second", null));
+			commands.register("second", command);
+			requireThat(commands.get("second"), "exactCommand").isReferenceEqualTo(command, "expected");
+			requireThat(commands.get("first").launch().environment(), "jobserverUnchanged").isEqualTo(launch.environment());
+			requireThat(commands.get("unknown"), "unknownRemainsUnavailable").isNull();
+		}
+	}
+
+	/**
+	 * Rejected cross-thread registration does not reserve the name.
+	 * @throws IOException          if the fake wrapper's socket fails
+	 * @throws InterruptedException if joining the modeled caller fails
+	 */
+	@Test
+	public void rejectsCrossThreadRegistrationBeforeMutation() throws IOException, InterruptedException
+	{
+		try (var wrapper = FakeCargoWrapper.connect())
+		{
+			var commands = new LinuxAttempts.Commands();
+			var command = new LinuxAttempts.Command(AllocationHooksTest.launch(List.of("/missing"), java.util.Map.of()),
+				wrapper.connection());
+			var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+			Thread thread = Thread.ofPlatform().start(() ->
+			{
+				try { commands.register("compile", command); }
+				catch (Throwable caught) { failure.set(caught); }
+			});
+			thread.join();
+			requireThat(failure.get() instanceof IllegalStateException, "wrongThreadRejected").isTrue();
+			commands.register("compile", command);
+			requireThat(commands.get("compile"), "nameNotReservedByRejectedCaller").isReferenceEqualTo(command, "expected");
+		}
+	}
 }

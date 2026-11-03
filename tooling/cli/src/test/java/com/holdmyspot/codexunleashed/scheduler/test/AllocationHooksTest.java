@@ -5,7 +5,6 @@ import com.holdmyspot.codexunleashed.scheduler.AllocationHooks;
 import com.holdmyspot.codexunleashed.scheduler.AllocationWaits;
 import com.holdmyspot.codexunleashed.scheduler.FridaRuntime;
 import com.holdmyspot.codexunleashed.scheduler.LinuxAllocationTrace;
-import com.holdmyspot.codexunleashed.scheduler.LinuxCargoJobserver;
 import com.holdmyspot.codexunleashed.scheduler.LinuxProcessTree;
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
@@ -127,48 +126,6 @@ public final class AllocationHooksTest
 		requireThat(AllocationHooks.startTime(stat), "startTicks").isEqualTo(42L, "expected");
 		requireException(IOException.class, () -> AllocationHooks.startTime("missing"));
 		requireException(IOException.class, () -> AllocationHooks.startTime("5 (a) S 1"));
-	}
-
-	/** Embedding preserves argv/environment values without executing shell syntax.
-	 * @throws IOException if valid marker/JSON is rejected
-	 */
-	@Test
-	public void preservesLeaderArguments() throws IOException
-	{
-		try (var scope = new DefaultToolingScope())
-		{
-			var launch = launch(List.of("/worker", "a b", "quote\"", "é", ""), Map.of("VALUE", "$(x)\n'\""));
-			String result = AllocationHooks.leaderProgram(scope, "__LAUNCH__", launch, null);
-			JsonNode node = scope.getLeaderJsonMapper().readTree(result);
-			requireThat(node.path("command").get(0).asString(), "executable")
-				.isEqualTo(launch.command().getFirst(), "hostAbsoluteFixtureExecutable");
-			requireThat(node.path("command").get(1).asString(), "space").isEqualTo("a b", "expected");
-			requireThat(node.path("command").get(4).asString(), "empty").isEqualTo("", "expected");
-			requireThat(node.path("environment").path("VALUE").asString(), "literalEnvironment").isEqualTo("$(x)\n'\"", "expected");
-			requireException(IOException.class, () -> AllocationHooks.leaderProgram(scope, "", launch, null));
-			requireException(IOException.class, () -> AllocationHooks.leaderProgram(scope, "__LAUNCH____LAUNCH__", launch, null));
-		}
-	}
-
-	/**
-	 * A Cargo attempt's leader program carries the jobserver descriptor plan that its leader installs before exec, and a
-	 * launch without a jobserver carries none.
-	 * @throws IOException if valid marker/JSON is rejected
-	 */
-	@Test
-	public void embedsJobserverDescriptorPlan() throws IOException
-	{
-		try (var scope = new DefaultToolingScope())
-		{
-			var launch = launch(List.of("/worker"), Map.of());
-			var plan = new LinuxCargoJobserver.Descriptors(Path.of("/scratch/cargo-jobserver-1/tokens").toAbsolutePath(), 200, 201);
-			JsonNode node = scope.getLeaderJsonMapper().readTree(AllocationHooks.leaderProgram(scope, "__LAUNCH__", launch, plan));
-			requireThat(node.path("jobserver").path("fifo").asString(), "fifo").isEqualTo(plan.fifo().toString(), "expected");
-			requireThat(node.path("jobserver").path("read").asInt(), "read").isEqualTo(200, "expected");
-			requireThat(node.path("jobserver").path("write").asInt(), "write").isEqualTo(201, "expected");
-			JsonNode plain = scope.getLeaderJsonMapper().readTree(AllocationHooks.leaderProgram(scope, "__LAUNCH__", launch, null));
-			requireThat(plain.has("jobserver"), "plainJobserver").isFalse();
-		}
 	}
 
 	/** New routing never posts to another generation or resends an uncertain permission.

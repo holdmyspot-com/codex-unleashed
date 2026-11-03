@@ -6,7 +6,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,7 +13,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
-import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 import oshi.util.driver.linux.proc.ProcessStat;
@@ -591,10 +589,6 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
          * Trusted immutable launch boundaries.
          */
         private final Configuration configuration;
-        /**
-         * Codec borrowing the supplied Cargo scope.
-         */
-        private final LinuxCargoMessages messages;
         /** Explicit caller-owned completed profile boundary, or null without history. */
         private final CargoMemoryEstimates.Settings memory;
         /** Invocation-local profile source borrowing complete native readings, or null without history. */
@@ -604,13 +598,9 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
          */
         private final List<LinuxCargoTransport.Connection> connections = new ArrayList<>();
         /**
-         * Authenticated wrapper requests and their original receipts.
+         * Connections of authenticated wrappers by action name; each owns its accepted connection.
          */
-        private final Map<String, Wrapper> wrappers = new LinkedHashMap<>();
-        /**
-         * Reserved global attempt publications, never repeated after uncertainty.
-         */
-        private final Set<Long> publications = new HashSet<>();
+        private final Map<String, LinuxCargoWrapperConnection> wrappers = new LinkedHashMap<>();
         /**
          * Partial stream acquisitions retained before a listener or connection can be returned.
          */
@@ -710,7 +700,6 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
         {
             this.scope = scope;
             this.configuration = configuration;
-            this.messages = new LinuxCargoMessages(scope);
             this.memory = memory;
         }
 
@@ -729,7 +718,8 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
             runtime.start();
             try { authority = LinuxAuthority.open(config.authority()); }
             catch (LinuxAuthority.AcquisitionFailure failure) { authority = failure.owner(); throw failure; }
-            attempts = new LinuxAttempts(scope.tooling(), UUID.randomUUID(), runtime, authority, Map.of(), config.timeout(), routing);
+            attempts = new LinuxAttempts(UUID.randomUUID(), new LinuxAttempts.NativeOwners(scope.tooling(), runtime,
+                authority, routing, config.authority().cgroupRoot(), lease, config.timeout()), config.timeout());
             measurements = LinuxMeasurements.open(authority);
             if (memory != null) estimates = memory.observe(measurements);
             LinuxProcessTree.Launch rootLaunch = withEnvironment(config.cargo(), lease.environment());
@@ -771,13 +761,14 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
         {
             return estimates == null ? List.of() : estimates.observations();
         }
-        @Override public void register(CargoCompilerRequest request, long position)
+        @Override public void register(CargoCompilerRequest request, long position) throws IOException
         {
+            var wrapper = wrappers.get(request.name());
+            if (wrapper == null) throw new IOException("Cargo compiler request has no authenticated wrapper");
             var context = configuration.registration().context();
             var launch = new LinuxProcessTree.Launch(context.cgroupParent(), context.scratchParent(), context.javaExecutable(),
                 context.classPath(), request.arguments(), request.environment(), request.directory(), context.uid(), context.gid(), context.executionMode());
-            attempts.register(request.name(), new LinuxAttempts.CargoCommand(
-                new LinuxAttempts.BorrowedCommand(launch, sequence -> authorize(request.name(), sequence)), lease));
+            attempts.register(request.name(), new LinuxAttempts.Command(launch, wrapper));
         }
         @Override public void release(CargoSession<LinuxSupervisor.Result> session) throws IOException
         {
@@ -837,8 +828,9 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
                 {
                     var connection = next.orElseThrow();
                     connections.add(connection);
-                    var original = messages.readRegistration(connection.read());
-                    LinuxBorrowedStreams.Peer captured = connection.peer();
+                    var wrapper = new LinuxCargoWrapperConnection(connection);
+                    var register = wrapper.register();
+                    LinuxBorrowedStreams.Peer captured = wrapper.peer();
                     long parent = ProcessHandle.of(captured.pid()).flatMap(ProcessHandle::parent).
                         orElseThrow(() -> new IOException("Wrapper parent is unavailable")).pid();
                     CargoCompilerRequest request;
@@ -847,25 +839,26 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
                         LinuxCargoRegistration.Parent retained = retainedCargoParent(cargoParents, parent);
                         LinuxCargoRegistration registration = estimates == null ? new LinuxCargoRegistration(registrationPolicy, retained) :
                             new LinuxCargoRegistration(registrationPolicy, retained, estimates);
-                        var launch = original.approvedLaunch();
-                        request = registration.authenticate(captured,
-                            new LinuxCargoProtocol.Register(launch.directory(), launch.command(), launch.environment()));
+                        request = registration.authenticate(captured, register);
                     }
                     catch (IOException failure)
                     {
                         throw parentFailure(captured, parent, cargoParents.get(parent), failure);
                     }
-                    var wrapper = new Wrapper(request, original, connection);
                     if (wrappers.putIfAbsent(request.name(), wrapper) != null) throw new IOException("Duplicate Cargo wrapper action");
-                    session.registerAuthenticated(request, nativeResult -> connection.send(messages.finalResult(nativeResult.rootExit())));
+                    session.registerAuthenticated(request, nativeResult -> wrapper.finish(nativeResult.rootExit()));
                 }
                 else if (result.isPresent()) drained = true;
             }
             attempts.pumpAll();
-            for (var wrapper : wrappers.values())
+            for (var entry : wrappers.entrySet())
             {
-                try { requireWrapperLive(wrapper); }
-                catch (IOException failure) { session.wrapperDisconnected(wrapper.request().name()); }
+                var wrapper = entry.getValue();
+                if (wrapper.isClosed()) continue;
+                // A wrapper that is between attempts reports its next child unprompted; reading it promptly keeps the
+                // wrapper's bounded send from expiring before the queue starts that attempt.
+                try { wrapper.pump(); }
+                catch (IOException failure) { session.wrapperDisconnected(entry.getKey()); }
             }
         }
         @Override public Optional<SchedulerCoordinator.Blocked> pollBlocked()
@@ -979,47 +972,7 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
             }
             rethrow(failure);
         }
-
-        /**
-         * Rechecks the registered birth and trusted credentials before publication or disconnection handling.
-         * @param wrapper retained authenticated wrapper
-         * @throws IOException if native birth, credentials or namespace changed
-         */
-        private void requireWrapperLive(Wrapper wrapper) throws IOException
-        {
-            var identity = wrapper.request().wrapper();
-            var context = configuration.registration().context();
-            new LinuxBorrowedStreams.Peer(identity.pid(), identity.birth(), context.uid(), context.gid()).requireLive();
-        }
-
-        /**
-         * Publishes one fresh local receipt before the corresponding borrowed native preparation.
-         * @param name exact authenticated wrapper action
-         * @param sequence issued global attempt ordinal
-         * @return exact published receipt
-         * @throws IOException if identity, sequence or publication is uncertain
-         */
-        private LinuxBorrowedStreams.Binding authorize(String name, long sequence) throws IOException
-        {
-            var wrapper = wrappers.get(name);
-            var issued = session.attempt(sequence).orElseThrow(() -> new IOException("Cargo attempt was not issued"));
-            if (wrapper == null || !issued.request().equals(wrapper.request()) || !publications.add(sequence))
-                throw new IOException("Cargo attempt does not match a fresh wrapper authorization");
-            requireWrapperLive(wrapper);
-            var properties = new Properties();
-            LinuxBorrowedStreams.writeTo(properties, wrapper.original());
-            properties.setProperty("borrowed.sequence", Long.toString(issued.actionSequence()));
-            properties.setProperty("borrowed.capability", Base64.getEncoder().encodeToString(scope.capability()));
-            var context = configuration.registration().context();
-            properties.setProperty("borrowed.cgroup", context.cgroupParent().toString());
-            properties.setProperty("borrowed.scratch", context.scratchParent().toString());
-            var binding = LinuxBorrowedStreams.readFrom(properties);
-            wrapper.connection().send(messages.attempt(binding));
-            return binding;
-        }
     }
-
-
 
     /**
      * Closes Cargo attachments and acknowledges collection only after the supplied whole-workload barrier.
@@ -1143,15 +1096,6 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
         String bounded = value.substring(0, Math.min(512, value.length()));
         return bounded.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ');
     }
-
-    /**
-     * Retains an authenticated request with its original stream receipt and control endpoint.
-     * @param request immutable authenticated compiler inputs
-     * @param original initial wrapper receipt without controller capability
-     * @param connection retained independently owned control socket
-     */
-    private record Wrapper(CargoCompilerRequest request, LinuxBorrowedStreams.Binding original,
-        LinuxCargoTransport.Connection connection) {}
 
     /**
      * Copies a trusted launch while installing the complete retained jobserver environment.

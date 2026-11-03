@@ -1,15 +1,21 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
-import com.holdmyspot.codexunleashed.tooling.ToolingScope;
-
 import java.io.IOException;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
 
-/** Owns one instrumented workload, its measurement registration and retained native resources.
+/** Owns one Cargo compiler attempt: the wrapper's held child, its containment, registration and instrumentation.
+ * <p>
+ * Start waits for the wrapper's report of the held child, contains and registers it, retains its tokens, attaches
+ * instrumentation and only then releases the child. The outcome is the wrapper's report of the child's wait status,
+ * accepted once the containment is empty so that no descendant can still execute. Termination kills the whole
+ * containment; the wrapper reaps the child and reports its exit. An outcome that termination aborted makes the
+ * wrapper retry; the final status of any other outcome is sent by the session.
+ * <p>
  * Only the constructing controller thread may call it. Genuine faults remain sticky even after safe cleanup.
  * Cancellation acknowledges a request; only authentic collected whole-tree results become queue outcomes.
  */
@@ -19,10 +25,8 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 	private final Thread owner = Thread.currentThread();
 	/** Borrowed factory and peer pump. */
 	private final LinuxAttempts attempts;
-	/** Borrowed started runtime. */
-	private final FridaRuntime runtime;
-	/** Borrowed opened authority. */
-	private final LinuxAuthority authority;
+	/** Borrowed acquisition of native owners. */
+	private final LinuxAttempts.Natives natives;
 	/** Stable action name. */
 	private final String name;
 	/** Queue-wide attempt ordinal. */
@@ -35,27 +39,21 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 	private final Duration timeout;
 	/** Shared native wait batches, never inferred from process memory. */
 	private final AllocationWaits waits = new AllocationWaits();
-	/** Supervisor retained before any instrumentation acquisition. */
-	private LinuxSupervisor supervisor;
-	/** Cleanup owner retained when prepare itself fails partially. */
-	private LinuxSupervisor.PreparationFailure preparationFailure;
-	/** Exact acknowledged registration, or null when none was returned. */
-	private LinuxAuthority.Registration registration;
+	/** Containment retained before any instrumentation acquisition. */
+	private LinuxAttempts.Containment containment;
 	/** Instrumentation owner retained before start. */
-	private AllocationHooks hooks;
-	/** Whole-attempt token owner retained before any instrumented Cargo image is released. */
+	private LinuxAttempts.Instrumentation hooks;
+	/** Whole-attempt token owner retained before the child is released. */
 	private LinuxCargoTokens.Attempt tokens;
-	/** Borrowed shared values retained through native cleanup. */
-	private final ToolingScope scope;
 	/** One-time start reservation made before any acquisition. */
 	private boolean startAttempted;
 	/** Active queue control blocks publication of this attempt's next batch. */
 	private boolean controlling;
 	/** Terminal grant-authority withdrawal. */
 	private boolean stopping;
-	/** Indicates whether start terminated the attempt because its leader could not dispatch the launch. */
-	private boolean startAborted;
-	/** Whether instrumentation closed and its COLLECT acknowledgement was published successfully. */
+	/** Whether this attempt asked its containment to kill the workload. */
+	private boolean terminationRequested;
+	/** Whether instrumentation closed and token ownership was retired. */
 	private boolean instrumentationClosed;
 	/** Successful exclusive cleanup. */
 	private boolean closed;
@@ -67,23 +65,19 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 	private JobQueue.Outcome<LinuxSupervisor.Result> outcome;
 
 	/** Validates resource-free identity/configuration and borrows build owners.
-	 * @param scope borrowed shared values; the caller retains ownership through all operations
 	 * @param attempts peer coordinator
-	 * @param runtime started runtime
-	 * @param authority opened authority
+	 * @param natives borrowed acquisition of native owners
 	 * @param name stable action
 	 * @param attemptSequence queue ordinal
 	 * @param identity native correlation
 	 * @param command immutable workload configuration
 	 * @param timeout positive control bound
 	 */
-	LinuxAttempt(ToolingScope scope, LinuxAttempts attempts, FridaRuntime runtime, LinuxAuthority authority, String name,
-		long attemptSequence, UUID identity, LinuxAttempts.Command command, Duration timeout)
+	LinuxAttempt(LinuxAttempts attempts, LinuxAttempts.Natives natives, String name, long attemptSequence, UUID identity,
+		LinuxAttempts.Command command, Duration timeout)
 	{
-		this.scope = Objects.requireNonNull(scope, "scope");
 		this.attempts = Objects.requireNonNull(attempts, "attempts");
-		this.runtime = Objects.requireNonNull(runtime, "runtime");
-		this.authority = Objects.requireNonNull(authority, "authority");
+		this.natives = Objects.requireNonNull(natives, "natives");
 		new LinuxAttempts.Blocked(name, attemptSequence, 0);
 		this.name = name;
 		sequence = attemptSequence;
@@ -101,8 +95,9 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 	 */
 	long sequence() { requireOwner(); return sequence; }
 
-	/** Starts the configured contained instrumented workload once.
-	 * @throws IOException if acquisition, registration or native release fails
+	/** Contains, registers and instruments the wrapper's held child, then releases it.
+	 * A failure before the release aborts the held child instead.
+	 * @throws IOException if the child report, containment, registration, instrumentation or release fails
 	 */
 	@Override
 	public void start() throws IOException
@@ -113,61 +108,42 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 			throw new IllegalStateException("Attempt cannot be started again");
 		startAttempted = true;
 		controlling = true;
+		LinuxCargoWrapperConnection wrapper = command.wrapper();
 		try
 		{
-			try
-			{
-				supervisor = switch (command)
-				{
-					case LinuxAttempts.FilesCommand files ->
-						LinuxSupervisor.prepareInstrumented(files.launch(), files.files(), timeout);
-					case LinuxAttempts.BorrowedCommand borrowed ->
-						LinuxSupervisor.prepareInstrumentedBorrowed(borrowed.binding(name, sequence), timeout);
-					case LinuxAttempts.CargoCommand cargo ->
-						LinuxSupervisor.prepareInstrumentedBorrowed(cargo.command().binding(name, sequence), timeout);
-				};
-			}
-			catch (LinuxSupervisor.PreparationFailure cause) { preparationFailure = cause; throw cause; }
-			registration = authority.register(name, sequence, supervisor);
-			receipt("registered root=" + supervisor.rootPid() + " supervisor=" + supervisor.pid() + " group=" + supervisor.directory());
-			Optional<AllocationHooks.CargoTokens> cargoTokens = Optional.empty();
-			if (command instanceof LinuxAttempts.CargoCommand cargo)
-			{
-				LinuxFifoBindings.Identity fifo = cargo.lease().identity();
-				tokens = cargo.lease().retainAttempt();
-				cargoTokens = Optional.of(new AllocationHooks.CargoTokens(fifo, tokens, cargo.lease().descriptors()));
-			}
-			hooks = new AllocationHooks(scope, identity, runtime, command.launch(), supervisor, waits, timeout,
-				attempts::pumpAll, cargoTokens, attempts.routing());
-			hooks.start();
-			attempts.leaderDispatchRetries().started(name);
+			LinuxCargoProtocol.Child child = wrapper.awaitChild();
+			long parent = wrapper.peer().pid();
+			containment = natives.contain(name, sequence, command.launch(), child, parent);
+			receipt("contained root=" + child.pid() + " wrapper=" + parent + " group=" + containment.directory());
+			tokens = natives.retainTokens();
+			var root = new AllocationHooks.Root(child.pid(), child.startTime(), parent, containment.directory());
+			hooks = natives.instrument(identity, command.launch(), root, tokens, waits, attempts::pumpAll);
+			hooks.start(wrapper::release);
+			if (wrapper.state() != LinuxCargoWrapperConnection.State.RELEASED)
+				throw new IOException("Instrumentation did not release the held attempt root");
 		}
 		catch (IOException | RuntimeException cause)
 		{
-			if (hooks == null || attempts.leaderDispatchRetries().retry(name, cause) == false)
-				throw failed("Start", cause);
-			abortStart(cause);
+			IOException failed = failed("Start", cause);
+			abortHeld(failed);
+			throw failed;
 		}
-		catch (Error cause) { failed("Start", cause); throw cause; }
+		catch (Error cause) { failed("Start", cause); abortHeld(cause); throw cause; }
 		finally { controlling = false; }
 	}
 
-	/** Terminates an attempt whose leader could not dispatch the launch, so that poll reports it as aborted after the
-	 * workload is collected and the queue retries the action.
-	 * @param cause the start failure, recorded as a receipt
-	 * @throws IOException if termination cannot be requested; the attempt then fails as for any other start failure
+	/** Makes the wrapper kill a child that is still held, so that it never executes.
+	 * @param cause start failure that receives any abort failure as suppressed
 	 */
-	private void abortStart(Throwable cause) throws IOException
+	private void abortHeld(Throwable cause)
 	{
-		receipt("leader-dispatch-failed retrying: " + cause.getCause());
-		startAborted = true;
-		stopGrants();
-		try { supervisor.requestTermination(); }
-		catch (IOException | RuntimeException termination)
+		LinuxCargoWrapperConnection wrapper = command.wrapper();
+		try
 		{
-			termination.addSuppressed(cause);
-			throw failed("Start", termination);
+			if (!wrapper.isClosed() && wrapper.state() == LinuxCargoWrapperConnection.State.HELD)
+				wrapper.abort();
 		}
+		catch (IOException | RuntimeException abort) { cause.addSuppressed(abort); }
 	}
 
 	/** Acknowledges exactly the selected frozen allocation batch.
@@ -188,7 +164,7 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 		finally { controlling = false; }
 	}
 
-	/** Withdraws grants and requests whole-workload cancellation.
+	/** Withdraws grants and kills every process of the attempt through its containment.
 	 * @throws IOException if cancellation cannot be acknowledged
 	 */
 	@Override
@@ -196,9 +172,10 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 	{
 		requireOwner();
 		stopGrants();
-		if (supervisor != null)
+		if (containment != null)
 		{
-			try { supervisor.requestTermination(); }
+			terminationRequested = true;
+			try { containment.terminate(); }
 			catch (IOException | RuntimeException cause) { throw failed("Cancellation request", cause); }
 			catch (Error cause) { failed("Cancellation request", cause); throw cause; }
 		}
@@ -231,11 +208,10 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 		return waits.poll();
 	}
 
-	/** Observes only authentic complete collected results, preserving first faults.
-	 * After actual subtree zero and instrumentation closure, waits within the control timeout for the final
-	 * supervisor receipt so a removed collection leaf cannot be sampled as an active registered workload.
+	/** Observes the wrapper's report of the child's exit and accepts it once no process of the attempt can execute.
+	 * An aborted outcome, one that termination stopped without success, makes the wrapper retry.
 	 * @return accepted outcome, or empty while whole-tree execution can still occur
-	 * @throws IOException if any retained fault prevents accepting an outcome
+	 * @throws IOException if the wrapper connection is lost or any retained fault prevents accepting an outcome
 	 */
 	@Override
 	public Optional<JobQueue.Outcome<LinuxSupervisor.Result>> poll() throws IOException
@@ -244,13 +220,16 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 		requireCertain();
 		if (outcome != null)
 			return Optional.of(outcome);
-		if (supervisor == null)
+		if (containment == null)
 			return Optional.empty();
+		LinuxCargoWrapperConnection wrapper = command.wrapper();
 		try
 		{
-			supervisor.observeCompletion();
-			if (supervisor.observeExecutionImpossible() == false)
+			wrapper.pump();
+			if (wrapper.state() != LinuxCargoWrapperConnection.State.EXITED || containment.isPopulated())
 			{
+				if (wrapper.isClosed())
+					throw new IOException("Cargo wrapper connection was lost before the attempt exited");
 				pumpEvents();
 				return Optional.empty();
 			}
@@ -259,18 +238,13 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 				throw cause;
 			if (failure != null)
 				throw failure;
-			// COLLECT can remove its cgroup before publishing the final supervisor receipt.
-			// Finish that bounded handshake before the coordinator requests another registered-leaf sample.
-			long collectedAt = System.nanoTime();
-			while (supervisor.observeCompletion() == false)
-			{
-				if (System.nanoTime() - collectedAt >= timeout.toNanos())
-					throw new IOException("Attempt observation awaits collected whole-job statuses");
-				pause();
-			}
-			LinuxSupervisor.Result result = supervisor.result();
+			var result = new LinuxSupervisor.Result(LinuxCargoProtocol.exitStatus(wrapper.waitStatus()), Map.of(),
+				terminationRequested);
 			receipt("accepted-result " + result);
-			outcome = new JobQueue.Outcome<>(result, startAborted || result.aborted());
+			JobQueue.Outcome<LinuxSupervisor.Result> accepted = new JobQueue.Outcome<>(result, result.aborted());
+			if (accepted.aborted())
+				wrapper.retry();
+			outcome = accepted;
 			return Optional.of(outcome);
 		}
 		catch (IOException | RuntimeException cause) { throw failed("Whole-job observation", cause); }
@@ -286,8 +260,8 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 			hooks.stop();
 	}
 
-	/** Closes instrumentation only after actual subtree zero, then publishes COLLECT.
-	 * @return the token retirement fault after collection, or null if token retirement succeeded
+	/** Closes instrumentation and retires token ownership once no process of the attempt can execute.
+	 * @return the token retirement fault, or null if token retirement succeeded
 	 * @throws IOException if zero or complete native destruction cannot be established
 	 */
 	private Throwable closeInstrumentation() throws IOException
@@ -295,28 +269,22 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 		if (instrumentationClosed)
 			return null;
 		stopGrants();
-		if (supervisor.observeExecutionImpossible() == false)
+		if (containment.isPopulated())
 			throw new IOException("Instrumentation retains ownership while workload can execute");
-		receipt("actual-zero group=" + supervisor.directory());
+		receipt("actual-zero group=" + containment.directory());
 		Throwable tokenFailure = closeInstrumentationOwners(() ->
 		{
 			if (hooks != null)
-				hooks.close(supervisor::observeExecutionImpossible);
+				hooks.close(() -> !containment.isPopulated());
 			receipt("instrumentation-closed");
 		}, () ->
 		{
 			if (tokens != null) tokens.close();
-		}, () ->
-		{
-			supervisor.finishInstrumentation();
-			instrumentationClosed = true;
-			receipt("collect-published");
-		});
+		}, () -> instrumentationClosed = true);
 		if (tokenFailure != null)
 			failed("Cargo token retirement", tokenFailure);
 		return tokenFailure;
 	}
-
 	/**
 	 * Runs instrumentation closure, logical token retirement and supervisor collection in their established order.
 	 * The caller must first establish whole-workload execution impossibility. Token retirement has no native
@@ -371,6 +339,9 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 
 	/**
 	 * Performs bounded complete cleanup without inventing a queue outcome.
+	 * <p>
+	 * An attempt without an accepted outcome is killed through its containment first; the wrapper reaps its child.
+	 * An attempt with an outcome is already empty, and its wrapper is left waiting for its retry or final status.
 	 * A fatal logical token-retirement fault is deferred until dependent owner cleanup has been attempted.
 	 * @throws IOException if ownership remains unresolved or a genuine fault was retained
 	 * @throws Error if cleanup fails fatally or token retirement reported a fatal fault
@@ -387,15 +358,14 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 		try
 		{
 			stopGrants();
-			if (preparationFailure != null)
-				preparationFailure.close();
-			if (supervisor != null)
+			if (containment != null)
 			{
 				if (outcome == null)
 				{
-					supervisor.requestTermination();
+					terminationRequested = true;
+					containment.terminate();
 					long started = System.nanoTime();
-					while (supervisor.observeExecutionImpossible() == false)
+					while (containment.isPopulated())
 					{
 						if (System.nanoTime() - started >= timeout.toNanos())
 							throw new IOException("Attempt cleanup awaits actual workload zero");
@@ -403,29 +373,8 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 					}
 				}
 				tokenFailure = closeInstrumentation();
-				// The supervisor's close collects authentic receipts even after its sticky supervision fault.
-				// Unregister must precede removal of final owner storage and the next measurement batch.
-				long started = System.nanoTime();
-				if (failure == null)
-					while (supervisor.observeCompletion() == false)
-					{
-						if (System.nanoTime() - started >= timeout.toNanos())
-							throw new IOException("Attempt cleanup awaits collected whole-job statuses");
-						pause();
-					}
-				closeCollectedOwners(failure != null, () ->
-				{
-					supervisor.close();
-					receipt("cleanup-result " + supervisor.result());
-				}, () ->
-				{
-					if (registration != null)
-					{
-						registration.close();
-						registration = null;
-						receipt("unregistered");
-					}
-				});
+				containment.close();
+				receipt("containment-closed");
 			}
 			attempts.forget(this);
 			closed = true;
@@ -445,26 +394,6 @@ public final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Resu
 			throw cause;
 		if (failure != null)
 			throw failure;
-	}
-
-	/** Orders real owner closure after instrumentation COLLECT; fault cleanup needs the supervisor's private receipt path.
-	 * @param fault whether genuine fault prevents public completion observation
-	 * @param supervisor retained supervisor closure
-	 * @param registration exact registration closure, or an empty operation if no handle was returned
-	 * @throws IOException if an owner cannot close; later dependent closure is not attempted
-	 */
-	public static void closeCollectedOwners(boolean fault, Close supervisor, Close registration) throws IOException
-	{
-		if (fault)
-		{
-			supervisor.close();
-			registration.close();
-		}
-		else
-		{
-			registration.close();
-			supervisor.close();
-		}
 	}
 
 	/** One checked owner-release operation; it supplies no fabricated process outcome. */

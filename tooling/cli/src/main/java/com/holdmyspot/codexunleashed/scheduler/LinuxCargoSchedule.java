@@ -55,14 +55,10 @@ public final class LinuxCargoSchedule
                 Path actions = Files.createDirectory(containment.resolve("actions"));
                 Path helpers = Files.createDirectory(containment.resolve("helpers"));
                 Path cargo = Files.createDirectory(containment.resolve("cargo"));
-                Path registrations = Files.createDirectory(directory.resolve("r"),
-                    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
-                Files.setAttribute(registrations, "unix:uid", configuration.uid(), LinkOption.NOFOLLOW_LINKS);
-                Files.setAttribute(registrations, "unix:gid", configuration.gid(), LinkOption.NOFOLLOW_LINKS);
                 Path streams = Files.createDirectory(directory.resolve("s"),
                     PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
                 Path controller = directory.resolve("c");
-                Path contextPath = directory.resolve("w.json");
+                Path contextPath = directory.resolve("w.conf");
                 var environment = new HashMap<>(configuration.environment());
                 environment.put("RUSTC", configuration.rustc().toString());
                 environment.put("RUSTC_WRAPPER", wrapper.toString());
@@ -70,18 +66,18 @@ public final class LinuxCargoSchedule
                 var context = new LinuxProcessTree.Launch(actions, directory, java, modules,
                     List.of(configuration.rustc().toString()), environment, settings.workspace(),
                     configuration.uid(), configuration.gid(), LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC);
-                LinuxCargoLaunchConfiguration.writeWrapper(scope, contextPath,
-                    new LinuxCargoLaunchConfiguration.Wrapper(controller, registrations, actions, directory, java,
-                        modules, configuration.rustc(), configuration.uid(), configuration.gid(), settings.controlTimeout()));
+                // The wrapper waits on the controller while the queue holds its attempt, so its read bound must not
+                // expire; a lost controller still ends the wrapper through end of file.
+                LinuxCargoLaunchConfiguration.writeWrapper(contextPath, controller,
+                    LinuxCargoLaunchConfiguration.WRAPPER_TIMEOUT_MILLIS);
                 var command = new ArrayList<String>();
                 command.add(configuration.cargo().toString());
                 command.addAll(settings.arguments());
                 var root = new LinuxProcessTree.Launch(cargo, directory, java, modules, command, environment,
                     settings.workspace(), configuration.uid(), configuration.gid(),
                     LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC);
-                var registration = new LinuxCargoRegistration.Configuration(configuration.cargo(), java,
-                    configuration.rustc(), LinuxProcessTree.javaCommand(context, LinuxCargoWrapperMain.class),
-                    context, environment);
+                var registration = new LinuxCargoRegistration.Configuration(configuration.cargo(), wrapper,
+                    configuration.rustc(), List.of(wrapper.toString()), context, environment);
                 var authority = new LinuxAuthority.Settings(java, configuration.unshare(), configuration.libcgroup(),
                     directory, configuration.cgroupRoot(), configuration.procRoot(), actions, helpers, settings.controlTimeout());
                 var inputs = new LinuxCargoInvocation.Configuration(root, new LinuxCargoInvocation.BorrowedRoot(streams),
@@ -140,15 +136,15 @@ public final class LinuxCargoSchedule
     }
 
     /**
-     * Rejects scratch paths whose longest owned wrapper socket would exceed Linux sockaddr_un.
-     * The bound includes the complete twenty-digit exclusive suffix and ten-digit native PID.
+     * Rejects scratch paths whose longest owned socket would exceed Linux sockaddr_un.
+     * The longest is the Cargo root's stream socket below the invocation directory, whose exclusive suffix the bound
+     * takes at its full twenty digits; the wrapper controller socket is shorter.
      * @param scratch absolute caller-selected scratch parent
      * @throws IOException if UTF-8 pathname bytes cannot fit before the required terminating NUL
      */
     public static void requireSocketNamespace(Path scratch) throws IOException
     {
-        String longest = scratch.resolve("c-" + "9".repeat(20)).resolve("r").resolve("9".repeat(10))
-            .resolve("streams.sock").toString();
+        String longest = scratch.resolve("c-" + "9".repeat(20)).resolve("s").resolve("streams.sock").toString();
         if (longest.getBytes(java.nio.charset.StandardCharsets.UTF_8).length >= 108)
             throw new IOException("Linux scheduler scratch path is too long for authenticated wrapper sockets: " + scratch);
     }

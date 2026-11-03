@@ -256,18 +256,25 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 	}
 
 	/**
-	 * Retains an exact gated supervisor attempt in the native reader until registration close succeeds.
-	 * @param name nonblank stable action name
-	 * @param sequence nonnegative attempt ordinal
-	 * @param supervisor borrowed live owner, whose root and owned group must still exist
+	 * Retains an attempt's owned cgroup, whose leaf holds the attempt's root process, in the native reader until
+	 * registration close succeeds.
+	 * @param name      nonblank stable action name
+	 * @param sequence  nonnegative attempt ordinal
+	 * @param directory owned group below the admission parent; the root process must be in a group strictly below it
+	 * @param rootPid   live root process of the attempt
+	 * @param barrier   operation reporting that no process of the attempt can still execute
 	 * @return registration to close after workload termination and before the next measurement batch
-	 * @throws IOException if authority or actual ancestry cannot be verified
+	 * @throws NullPointerException     if {@code name}, {@code directory} or {@code barrier} is null
+	 * @throws IllegalArgumentException if the attempt identity is invalid or already registered
+	 * @throws IOException              if authority or actual ancestry cannot be verified
 	 */
-	public Registration register(String name, long sequence, LinuxSupervisor supervisor) throws IOException
+	public Registration register(String name, long sequence, Path directory, long rootPid, ZeroBarrier barrier)
+		throws IOException
 	{
 		LinuxMeasurements.Attempt attempt = new LinuxMeasurements.Attempt(name, sequence);
-		Objects.requireNonNull(supervisor, "supervisor");
-		return register(attempt, supervisor.directory(), supervisor.rootPid(), supervisor::observeExecutionImpossible);
+		Objects.requireNonNull(directory, "directory");
+		Objects.requireNonNull(barrier, "barrier");
+		return register(attempt, directory, rootPid, barrier);
 	}
 
 	/**

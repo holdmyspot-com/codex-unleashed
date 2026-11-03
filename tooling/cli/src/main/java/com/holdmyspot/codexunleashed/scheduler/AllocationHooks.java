@@ -3,7 +3,6 @@ package com.holdmyspot.codexunleashed.scheduler;
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -14,15 +13,18 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 
-/** Owns leader gating and per-image allocation and optional Cargo token hooks for one contained Linux workload.
+/** Owns exec gating and per-image allocation and optional Cargo token hooks for one contained Linux workload.
+ * <p>
+ * The workload root is a process that its native parent holds before {@code execve}. Instrumentation attaches to that
+ * held process, enables child gating, and only then lets the parent release it, so the root's exec is reported as a
+ * held child event and the compiler image is instrumented before its first instruction runs.
+ * <p>
  * Native callbacks copy messages only. All transitions and peer service run on the constructing thread.
  * Forked children and verified held exec replacements receive fresh hooks before resume. Replaced image owners remain
  * retained until actual whole-workload zero; their pending allocation waits lose grant authority before replacement.
  */
-public final class AllocationHooks
+public final class AllocationHooks implements LinuxAttempts.Instrumentation
 {
     /**
      * Invocation-owned device-event dispatcher. Current containment selects a controller; that controller still
@@ -224,12 +226,8 @@ public final class AllocationHooks
     }
 
 
-	/** Serializer for leader configuration and copied envelopes. */
-	private final JsonMapper json;
 	/** Borrowed invocation values; the attempt never closes this scope. */
 	private final ToolingScope scope;
-	/** Packaged leader configuration insertion point. */
-	private static final String LAUNCH_MARKER = "__LAUNCH__";
 	/** Exclusive controller thread. */
 	private final Thread owner = Thread.currentThread();
 	/** Native attempt correlation. */
@@ -238,8 +236,8 @@ public final class AllocationHooks
 	private final FridaRuntime runtime;
 	/** Immutable launch configuration. */
 	private final LinuxProcessTree.Launch launch;
-	/** Borrowed authoritative whole-tree owner. */
-	private final LinuxSupervisor supervisor;
+	/** Held root process and the owned cgroup subtree that contains the whole attempt. */
+	private final Root root;
 	/** Borrowed attempt wait batches. */
 	private final AllocationWaits waits;
 	/** Bounded control interval. */
@@ -261,10 +259,8 @@ public final class AllocationHooks
     private final java.util.Set<Long> nativeInstallations = new java.util.HashSet<>();
     /** Whether a genuine executed native denial requires whole-attempt retry. */
     private boolean nativeRetry;
-	/** Owned original gate attachment retained before native start. */
+	/** Owned attachment to the held root before its exec, which gates the exec and every later child. */
 	private FridaRuntime.Manager.Session gate;
-	/** Owned original gate script retained before native start. */
-	private FridaRuntime.Manager.Session.Script gateScript;
 	/** Retained copied held-child events. */
 	private final ArrayDeque<FridaRuntime.Child> children = new ArrayDeque<>();
 	/** Every acquired installation, including partial starts and retired images. */
@@ -294,48 +290,29 @@ public final class AllocationHooks
 	/** First actual native destruction failure. */
 	private IOException closeFailure;
 
-	/** Borrows configured build/attempt owners without native acquisition.
-	 * @param scope borrowed shared values; the caller retains ownership through all operations
-	 * @param identity attempt correlation
-	 * @param runtime started runtime
-	 * @param launch workload configuration
-	 * @param supervisor prepared contained workload
-	 * @param waits shared allocation batches
-	 * @param timeout bounded control interval
-	 * @param peers fair peer service without queue reentry
-	 * @param cargoTokens optional independently observed FIFO identity and borrowed whole-attempt ledger
-	 */
-	AllocationHooks(ToolingScope scope, UUID identity, FridaRuntime runtime, LinuxProcessTree.Launch launch, LinuxSupervisor supervisor,
-		AllocationWaits waits, Duration timeout, AllocationHook.Pump peers, Optional<CargoTokens> cargoTokens)
-    {
-        this(scope, identity, runtime, launch, supervisor, waits, timeout, peers, cargoTokens, new Routing());
-    }
-
     /**
      * Borrows explicit invocation routing without acquiring resources or granting image/action authority.
      * @param scope borrowed shared values
      * @param identity authentic attempt correlation
      * @param runtime borrowed started runtime
-     * @param launch immutable admitted attempt launch
-     * @param supervisor authentic contained attempt owner
+     * @param launch immutable admitted attempt launch, whose first argument is the executable the root execs
+     * @param root held root process, already moved into and verified in its owned cgroup subtree
      * @param waits authentic attempt allocation waits
      * @param timeout bounded native control interval
      * @param peers peer pumping without queue reentry
      * @param cargoTokens authentic optional attempt FIFO/ledger
      * @param routing invocation-owned original-controller event dispatcher
      */
-    AllocationHooks(ToolingScope scope, UUID identity, FridaRuntime runtime, LinuxProcessTree.Launch launch,
-        LinuxSupervisor supervisor, AllocationWaits waits, Duration timeout, AllocationHook.Pump peers,
-        Optional<CargoTokens> cargoTokens, Routing routing)
-
+    AllocationHooks(ToolingScope scope, UUID identity, FridaRuntime runtime, LinuxProcessTree.Launch launch, Root root,
+        AllocationWaits waits, Duration timeout, AllocationHook.Pump peers, Optional<CargoTokens> cargoTokens,
+        Routing routing)
 	{
 		this.routing = Objects.requireNonNull(routing, "routing");
 		this.scope = Objects.requireNonNull(scope, "scope");
-		this.json = scope.getLeaderJsonMapper();
 		this.identity = Objects.requireNonNull(identity, "identity");
 		this.runtime = Objects.requireNonNull(runtime, "runtime");
 		this.launch = Objects.requireNonNull(launch, "launch");
-		this.supervisor = Objects.requireNonNull(supervisor, "supervisor");
+		this.root = Objects.requireNonNull(root, "root");
 		this.waits = Objects.requireNonNull(waits, "waits");
 		timeoutNanos = LinuxAttempts.checkedTimeout(timeout).toNanos();
         nativeImages = new LinuxAllocationTrace.Images(scope.getNativeLinker(), timeout);
@@ -343,12 +320,24 @@ public final class AllocationHooks
 		this.cargoTokens = Objects.requireNonNull(cargoTokens, "cargoTokens");
 	}
 
-	/** Acquires and verifies the gate, replaces its leader and installs before resuming the held root image.
-	 * @throws IOException if any identity, acquisition or control cannot be established
+	/**
+	 * Attaches to the held root, releases it, and instruments the image it executes before that image runs.
+	 * <p>
+	 * The root is blocked before its exec by the process that forked it, so attaching first precedes every instruction
+	 * of the compiler. Child gating holds the root at its exec, which Frida reports as a child event of origin 1 whose
+	 * pid and parent pid are both the root; the new image is verified and instrumented before it is resumed, and later
+	 * forks and execs go through the same gate. If the root stops running before its exec is reported, the exec failed
+	 * or the root was killed: nothing is installed and the attempt's outcome comes from the root's exit status.
+	 * @param release lets the held root run its exec; called once, after the attachment gates the exec
+	 * @throws NullPointerException  if {@code release} is null
+	 * @throws IllegalStateException if instrumentation was already started or stopped
+	 * @throws IOException           if any identity, acquisition or control cannot be established
 	 */
-	void start() throws IOException
+	@Override
+	public void start(Release release) throws IOException
 	{
 		requireOwner();
+		Objects.requireNonNull(release, "release");
 		requireCertain();
 		if (startAttempted || stopped)
 			throw new IllegalStateException("Instrumentation cannot start again");
@@ -358,45 +347,37 @@ public final class AllocationHooks
 		{
 			program = AllocationHook.linuxProgram();
 			if (cargoTokens.isPresent()) tokenProgram = CargoTokenHook.linuxProgram();
-			String leader;
-			try (var input = AllocationHooks.class.getResourceAsStream("linux-leader.js"))
-			{
-				if (input == null)
-					throw new IOException("Packaged Linux leader program is missing");
-				leader = leaderProgram(scope, new String(input.readAllBytes(), StandardCharsets.UTF_8), launch,
-					cargoTokens.map(CargoTokens::descriptors).orElse(null));
-			}
-			long root = supervisor.rootPid();
-			Image gateIdentity = inspect(root, false, null);
-            route = routing.register(pid -> contains(supervisor.directory(), pid), children::addLast);
+			long pid = root.pid();
+			Image held = inspect(pid, true, null);
+			if (held.started() != root.started())
+				throw new IOException("Held attempt root differs from its verified identity");
+			route = routing.register(member -> contains(root.directory(), member), children::addLast);
 			manager = runtime.newManager();
 			manager.start();
-			gate = manager.newSession(root);
+			gate = manager.newSession(pid);
 			gate.start();
 			gate.enableChildGating();
-			gateScript = gate.newScript(leader);
-			gateScript.start();
-			awaitLeader("leader-script-ready:" + root);
-			supervisor.release();
+			if (!held.equals(inspect(pid, true, null)))
+				throw new IOException("Held attempt root changed during attachment");
+			release.release();
 			long began = System.nanoTime();
-			while (credentialsMatch(Files.readString(proc(root).resolve("status")), launch.uid(), launch.gid()) == false)
-				waitForPeer(began, "Requested workload identity was not established");
-			gateScript.post(json.createObjectNode().put("type", "execute"));
-			awaitLeader("leader-enter:" + root + ":" + root + ":" + launch.uid() + ":" + launch.gid());
-			began = System.nanoTime();
 			while (children.isEmpty())
 			{
 				copyChildren();
 				if (children.isEmpty())
+				{
+					if (!isRunning(pid, root.started()))
+						return;
 					waitForPeer(began, "Held root executable was not delivered");
+				}
 			}
 			FridaRuntime.Child event = children.removeFirst();
-			verifyRootEvent(event, root, launch.command().getFirst());
-			Image image = inspect(root, true, Path.of(launch.command().getFirst()));
-			if (image.started() != gateIdentity.started())
-				throw new IOException("Prepared root identity changed before held exec");
+			verifyRootEvent(event, pid, launch.command().getFirst());
+			Image image = inspect(pid, true, Path.of(launch.command().getFirst()));
+			if (image.started() != root.started())
+				throw new IOException("Attempt root identity changed before its held exec");
 			install(image);
-            if (!image.equals(inspect(root, true, image.executable())))
+            if (!image.equals(inspect(pid, true, image.executable())))
                 throw new IOException("Attempt root changed during allocation/token readiness");
             resume(event);
 		}
@@ -405,10 +386,33 @@ public final class AllocationHooks
 		finally { advancing = false; }
 	}
 
+	/**
+	 * Reports whether a process with the given start time still exists and has not exited.
+	 * @param pid     process to look for
+	 * @param started kernel start time of that process in clock ticks
+	 * @return false if no such process exists, its pid now names another process, or it is a zombie
+	 * @throws IOException if the process record exists but cannot be read
+	 */
+	private static boolean isRunning(long pid, long started) throws IOException
+	{
+		String stat;
+		try
+		{
+			stat = Files.readString(proc(pid).resolve("stat"));
+		}
+		catch (java.nio.file.NoSuchFileException _)
+		{
+			return false;
+		}
+		String state = stat.substring(stat.lastIndexOf(')') + 1).strip();
+		return startTime(stat) == started && !state.startsWith("Z") && !state.startsWith("X");
+	}
+
 	/** Services one bounded frame round and at most one held child transition.
 	 * @throws IOException if delivery or native image identity cannot be established
 	 */
-	void pump() throws IOException
+	@Override
+	public void pump() throws IOException
 	{
 		requireOwner();
 		requireCertain();
@@ -468,7 +472,8 @@ public final class AllocationHooks
 	 * @param wait authentic wait selected by AllocationWaits
 	 * @throws IOException if ownership or accepted permission cannot be established
 	 */
-	void grant(AllocationWaits.Wait wait) throws IOException
+	@Override
+	public void grant(AllocationWaits.Wait wait) throws IOException
 	{
 		requireOwner();
 		requireCertain();
@@ -485,7 +490,8 @@ public final class AllocationHooks
 	}
 
 	/** Withdraws grants without unloading code or resuming parked tasks. */
-	void stop()
+	@Override
+	public void stop()
 	{
 		requireOwner();
 		stopped = true;
@@ -500,7 +506,8 @@ public final class AllocationHooks
 	 * @param barrier trusted actual workload-zero observation
 	 * @throws IOException if the barrier is unknown or native cleanup remains retained
 	 */
-	void close(AllocationHook.ExecutionBarrier barrier) throws IOException
+	@Override
+	public void close(AllocationHook.ExecutionBarrier barrier) throws IOException
 	{
 		requireOwner();
 		Objects.requireNonNull(barrier, "barrier");
@@ -540,7 +547,6 @@ public final class AllocationHooks
             }
 			if (cleanup != null)
 				throw cleanup;
-			if (gateScript != null) gateScript.close();
 			if (gate != null) gate.close();
 			if (manager != null) manager.close();
 			closed = true;
@@ -672,23 +678,59 @@ public final class AllocationHooks
 	 * This value does not authenticate an image, own the descriptor or retire the ledger.
 	 * @param fifo independently observed identity from the invocation's retained lease
 	 * @param tokens whole-attempt ledger retained by LinuxAttempt until trusted whole-descendant zero
-	 * @param descriptors FIFO and descriptor numbers that the attempt's leader opens before exec
 	 */
-	record CargoTokens(LinuxFifoBindings.Identity fifo, LinuxCargoTokens.Attempt tokens, LinuxCargoJobserver.Descriptors descriptors)
+	public record CargoTokens(LinuxFifoBindings.Identity fifo, LinuxCargoTokens.Attempt tokens)
 	{
 		/**
 		 * Validates borrowed inputs without acquiring native resources.
 		 * @param fifo independently observed identity from the invocation's retained lease
 		 * @param tokens whole-attempt ledger retained by LinuxAttempt until trusted whole-descendant zero
-		 * @param descriptors FIFO and descriptor numbers that the attempt's leader opens before exec
 		 * @throws NullPointerException if any input is null
 		 */
-		CargoTokens
+		public CargoTokens
 		{
 			Objects.requireNonNull(fifo, "fifo");
 			Objects.requireNonNull(tokens, "tokens");
-			Objects.requireNonNull(descriptors, "descriptors");
 		}
+	}
+
+	/**
+	 * Identifies the held root process of one attempt and the cgroup subtree that contains it.
+	 * @param pid       root process, blocked before its exec by the process that forked it
+	 * @param started   kernel start time of the root process in clock ticks
+	 * @param parent    process that forked the root and holds it until release
+	 * @param directory owned cgroup subtree containing the root and every descendant
+	 */
+	public record Root(long pid, long started, long parent, Path directory)
+	{
+		/**
+		 * Validates the identity.
+		 * @param pid       root process, blocked before its exec by the process that forked it
+		 * @param started   kernel start time of the root process in clock ticks
+		 * @param parent    process that forked the root and holds it until release
+		 * @param directory owned cgroup subtree containing the root and every descendant
+		 * @throws NullPointerException     if {@code directory} is null
+		 * @throws IllegalArgumentException if a number is nonpositive or {@code directory} is relative
+		 */
+		public Root
+		{
+			Objects.requireNonNull(directory, "directory");
+			if (pid <= 0 || started <= 0 || parent <= 0 || !directory.isAbsolute())
+				throw new IllegalArgumentException("Attempt root requires positive identities and an absolute group");
+		}
+	}
+
+	/**
+	 * Lets the held root process run its exec, called once after the root is attached and gated.
+	 */
+	@FunctionalInterface
+	public interface Release
+	{
+		/**
+		 * Releases the held root process.
+		 * @throws IOException if the release cannot be delivered
+		 */
+		void release() throws IOException;
 	}
 
 	/** Reads a stable actual process identity and checks retained cgroup membership.
@@ -707,13 +749,13 @@ public final class AllocationHooks
 			throw new IOException("Held process credentials differ from workload identity");
 		long parent = status.lines().filter(line -> line.startsWith("PPid:")).mapToLong(line ->
 			Long.parseLong(line.substring(5).strip())).findFirst().orElseThrow(() -> new IOException("Process PPid is missing"));
-		if (pid == supervisor.rootPid() && parent != supervisor.pid())
-			throw new IOException("Prepared workload root has changed supervisor parent");
+		if (pid == root.pid() && parent != root.parent())
+			throw new IOException("Attempt root has changed parent");
 		Path actual = Files.readSymbolicLink(process.resolve("exe"));
 		if (executable != null) requireHeldExecutable(process, executable);
 		String group = Files.readString(process.resolve("cgroup"));
 		Path contained = null;
-		try (var groups = Files.walk(supervisor.directory()))
+		try (var groups = Files.walk(root.directory()))
 		{
 			for (Path directory : groups.filter(Files::isDirectory).toList())
 			{
@@ -835,48 +877,6 @@ public final class AllocationHooks
 		AllocationHook hook = installations.get(wait.installation());
 		if (hook == null) throw new IOException("Allocation wait installation is not owned: " + wait);
 		return hook;
-	}
-
-	/** Embeds complete argv/environment using JSON, without shell interpolation.
-	 * @param scope borrowed shared values; the caller retains ownership through all operations
-	 * @param template packaged program with exactly one marker
-	 * @param launch immutable launch
-	 * @param jobserver FIFO and descriptor numbers the leader opens before exec, or null when the launch has no jobserver
-	 * @return initialized leader program
-	 * @throws IOException if marker or serialization is invalid
-	 */
-	public static String leaderProgram(ToolingScope scope, String template, LinuxProcessTree.Launch launch,
-		LinuxCargoJobserver.Descriptors jobserver) throws IOException
-	{
-		int marker = template.indexOf(LAUNCH_MARKER);
-		if (marker < 0 || template.indexOf(LAUNCH_MARKER, marker + LAUNCH_MARKER.length()) >= 0)
-			throw new IOException("Leader program must contain exactly one launch marker");
-		return template.substring(0, marker) + scope.getLeaderJsonMapper().writeValueAsString(
-			LinuxLeaderExec.launchValues(launch, jobserver)) + template.substring(marker + LAUNCH_MARKER.length());
-	}
-
-	/** Awaits one exact leader receipt, rejecting script errors and unexpected messages.
-	 * @param expected exact payload
-	 * @throws LeaderDispatchFailure if the leader could not dispatch the launch
-	 * @throws IOException if another receipt is invalid or the receipt timed out
-	 */
-	private void awaitLeader(String expected) throws IOException
-	{
-		long began = System.nanoTime();
-		while (true)
-		{
-			var frame = gateScript.pollMessage();
-			if (frame.isPresent())
-			{
-				JsonNode envelope = json.readTree(frame.get());
-				if (envelope == null || envelope.path("type").asString().equals("send") == false ||
-					envelope.path("payload").asString().equals(expected) == false)
-					throw LeaderDispatchFailure.unexpected(envelope == null ? "" : envelope.path("payload").asString(),
-						frame.get());
-				return;
-			}
-			waitForPeer(began, "Leader receipt deadline exceeded: " + expected);
-		}
 	}
 
 	/** Services peers and waits a bounded interval without losing interruption.

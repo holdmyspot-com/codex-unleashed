@@ -4,6 +4,9 @@ import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.LinkedHashMap;
@@ -12,9 +15,13 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Creates resource-free Linux owners and defers their allocation notifications until outside queue controls.
- * All operations belong to the constructing thread. Runtime, authority and live attempts are borrowed;
- * JobQueue exclusively owns attempt cleanup. A failed cleanup remains visible through hasOpenAttempts.
+/** Creates resource-free Linux Cargo compiler attempts and defers their allocation notifications until outside queue
+ * controls.
+ * <p>
+ * Each attempt runs one child that the native Cargo wrapper holds before its {@code execve}; the attempt contains,
+ * registers and instruments that child, then releases it through the wrapper connection. All operations belong to the
+ * constructing thread. Native owners and live attempts are borrowed; JobQueue exclusively owns attempt cleanup. A
+ * failed cleanup remains visible through hasOpenAttempts.
  */
 public final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Result>
 {
@@ -22,18 +29,12 @@ public final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervi
 	private final Thread owner = Thread.currentThread();
 	/** Correlation seed shared by this build's distinct attempt ordinals. */
 	private final UUID build;
-	/** Borrowed shared values for every attempt. */
-	private final ToolingScope scope;
-	/** Borrowed started native runtime. */
-	private final FridaRuntime runtime;
-	/** Borrowed opened measurement authority. */
-	private final LinuxAuthority authority;
+	/** Borrowed acquisition of each attempt's native owners. */
+	private final Natives natives;
 	/** Validated immutable action inputs. */
 	private final Commands commands = new Commands();
 	/** Positive native control deadline. */
 	private final Duration timeout;
-    /** Explicit build/invocation event routing; no queue or action admission authority. */
-    private final AllocationHooks.Routing routing;
 
 	/** Borrowed owners in creation order, retained after failed cleanup. */
 	private final Map<Long, LinuxAttempt> live = new LinkedHashMap<>();
@@ -41,57 +42,21 @@ public final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervi
 	private long lastSequence = -1;
 	/** Deferred notifications; no queue callback is retained. */
 	private final Notifications notifications = new Notifications();
-	/** Bounds the retries of attempts whose leader could not dispatch the launch, across each action's attempts. */
-	private final LeaderDispatchRetries leaderDispatchRetries = new LeaderDispatchRetries();
 
 	/**
-	 * Validates and copies configuration without native calls or filesystem access.
-	 * @param scope borrowed shared values; the caller retains ownership through all operations
-	 * @param build correlation seed
-	 * @param runtime borrowed started runtime
-	 * @param authority borrowed opened authority
-	 * @param commands complete action mapping
+	 * Validates configuration without native calls or filesystem access.
+	 * @param build   correlation seed
+	 * @param natives borrowed acquisition of each attempt's native owners
 	 * @param timeout positive control timeout
-	 * @throws NullPointerException if an input is null
-	 * @throws IllegalArgumentException if a name or timeout is invalid
+	 * @throws NullPointerException     if an input is null
+	 * @throws IllegalArgumentException if the timeout is invalid
 	 */
-	public LinuxAttempts(ToolingScope scope, UUID build, FridaRuntime runtime, LinuxAuthority authority, Map<String, Command> commands,
-		Duration timeout)
-    {
-        this(scope, build, runtime, authority, commands, timeout, new AllocationHooks.Routing());
-    }
-
-    /** Borrows an explicit invocation dispatcher shared by all authentic attempt controllers.
-     * @param scope borrowed shared values
-     * @param build correlation seed
-     * @param runtime borrowed runtime
-     * @param authority borrowed memory authority
-     * @param commands immutable action mapping
-     * @param timeout bounded native control interval
-     * @param routing invocation-owned image event routing
-     */
-    public LinuxAttempts(ToolingScope scope, UUID build, FridaRuntime runtime, LinuxAuthority authority, Map<String, Command> commands,
-        Duration timeout, AllocationHooks.Routing routing)
-
+	public LinuxAttempts(UUID build, Natives natives, Duration timeout)
 	{
-		this.routing = Objects.requireNonNull(routing, "routing");
-		this.scope = Objects.requireNonNull(scope, "scope");
 		this.build = Objects.requireNonNull(build, "build");
-		this.runtime = Objects.requireNonNull(runtime, "runtime");
-		this.authority = Objects.requireNonNull(authority, "authority");
-		Map.copyOf(commands).forEach(this::register);
+		this.natives = Objects.requireNonNull(natives, "natives");
 		this.timeout = checkedTimeout(timeout);
 	}
-
-    /** Returns the retry policy for attempts whose leader could not dispatch the launch, shared by all attempts.
-     * @return the build's leader dispatch retry policy
-     */
-    LeaderDispatchRetries leaderDispatchRetries() { requireOwner(); return leaderDispatchRetries; }
-
-    /** Borrows this invocation's original-controller dispatcher without granting action authority.
-     * @return explicit shared routing owner
-     */
-    AllocationHooks.Routing routing() { requireOwner(); return routing; }
 
     /**
      * Appends an immutable action before queue submission, without acquiring resources.
@@ -120,7 +85,7 @@ public final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervi
 		if (command == null || attemptSequence <= lastSequence)
 			throw new IllegalArgumentException("Unknown action or reused attempt ordinal: " + name + "/" + attemptSequence);
 		UUID identity = attemptIdentity(build, attemptSequence);
-		LinuxAttempt attempt = new LinuxAttempt(scope, this, runtime, authority, name, attemptSequence, identity, command, timeout);
+		LinuxAttempt attempt = new LinuxAttempt(this, natives, name, attemptSequence, identity, command, timeout);
 		live.put(attemptSequence, attempt);
 		lastSequence = attemptSequence;
 		return attempt;
@@ -206,112 +171,286 @@ public final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervi
 			throw new IllegalStateException("Linux attempts belong to their constructing thread");
 	}
 
-	/** Immutable attached workload configuration; constructing it acquires no native owners. */
-	public sealed interface Command permits FilesCommand, BorrowedCommand, CargoCommand
-	{
-		/** Returns the exact approved execution inputs.
-		 * @return immutable attached launch
-		 */
-		LinuxProcessTree.Launch launch();
-	}
-
-	/** Immutable caller-owned workload inputs with file-based standard streams.
-	 * @param launch copied validated launch
-	 * @param files caller-owned standard endpoints
+	/**
+	 * Immutable compiler action whose attempts run as children of one native Cargo wrapper.
+	 * @param launch  approved compiler execution: its command and environment are the wrapper's registration, and its
+	 *                cgroup parent, uid and gid bound every attempt
+	 * @param wrapper borrowed connection of the wrapper that forks each attempt's child; the invocation owns it
 	 */
-	public record FilesCommand(LinuxProcessTree.Launch launch, LinuxProcessTree.StandardFiles files) implements Command
+	public record Command(LinuxProcessTree.Launch launch, LinuxCargoWrapperConnection wrapper)
 	{
-		/** Validates attached execution without inspecting any filesystem paths.
-		 * @throws IllegalArgumentException if execution is not explicitly instrumented
+		/**
+		 * Retains the inputs without reading the connection or acquiring resources.
+		 * @throws NullPointerException if an input is null
 		 */
-		public FilesCommand
+		public Command
 		{
 			Objects.requireNonNull(launch, "launch");
-			Objects.requireNonNull(files, "files");
-			if (launch.executionMode() != LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC)
-				throw new IllegalArgumentException("Instrumented attempt requires attached leader execution");
-		}
-	}
-
-	/** Supplies an already authenticated stream receipt for one issued queue attempt.
-	 * The invocation retains listeners, wrapper endpoints and any partial acquisition through cleanup.
-	 * This boundary does not create registration authority or transfer their ownership to the attempt.
-	 */
-	@FunctionalInterface
-	public interface Bindings
-	{
-		/** Selects a fresh receipt without starting the compiler or resending a prior transfer.
-		 * The producer maps this queue-wide ordinal to the retained Cargo action-local ordinal.
-		 * @param attemptSequence nonnegative queue-wide ordinal already issued by CargoSession
-		 * @return independently authenticated binding for the exact action and current retry
-		 * @throws IOException if authentication or receipt selection fails; the invocation retains cleanup responsibility
-		 */
-		LinuxBorrowedStreams.Binding forAttempt(long attemptSequence) throws IOException;
-	}
-
-	/** Immutable attached execution with invocation-owned stream registration across retries.
-	 * @param launch exact approved compiler execution
-	 * @param bindings borrowed provider of independently authenticated per-attempt receipts
-	 */
-	public record BorrowedCommand(LinuxProcessTree.Launch launch, Bindings bindings) implements Command
-	{
-		/** Validates configuration without requesting a binding or acquiring native resources.
-		 * @throws NullPointerException if either input is null
-		 * @throws IllegalArgumentException if execution is not explicitly attached
-		 */
-		public BorrowedCommand
-		{
-			Objects.requireNonNull(launch, "launch");
-			Objects.requireNonNull(bindings, "bindings");
-			if (launch.executionMode() != LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC)
-				throw new IllegalArgumentException("Borrowed attempt requires attached leader execution");
-		}
-
-		/** Selects the current receipt and rejects another action or execution before native preparation.
-		 * Construction of a Binding alone does not authenticate it; the invocation supplies that authority.
-		 * @param name registered Cargo action UUID text
-		 * @param attemptSequence nonnegative issued queue-wide ordinal
-		 * @return exact selected binding, with no transfer performed
-		 * @throws IllegalArgumentException if the ordinal is negative
-		 * @throws IOException if selection fails, returns no receipt or supplies another action or execution
-		 */
-		public LinuxBorrowedStreams.Binding binding(String name, long attemptSequence) throws IOException
-		{
-			Objects.requireNonNull(name, "name");
-			if (attemptSequence < 0) throw new IllegalArgumentException("Attempt ordinal must be nonnegative");
-			LinuxBorrowedStreams.Binding binding = bindings.forAttempt(attemptSequence);
-			if (binding == null || name.equals(binding.actionId().toString()) == false)
-				throw new IOException("Borrowed stream receipt does not identify the registered action");
-			binding.requireExecution(launch);
-			return binding;
+			Objects.requireNonNull(wrapper, "wrapper");
 		}
 	}
 
 	/**
-	 * Immutable borrowed compiler execution bound to its retained invocation jobserver lease.
-	 * The invocation authenticates each stream receipt and keeps this lease open across all retries and descendants.
-	 * Constructing or registering this command neither borrows an extra token nor transfers lease ownership.
-	 * @param command independently approved borrowed compiler execution and per-attempt stream receipt provider
-	 * @param lease live invocation lease borrowed until every attempt and descendant has been retired
+	 * Acquires the native owners of one attempt, in the order the attempt needs them.
 	 */
-	record CargoCommand(BorrowedCommand command, LinuxCargoJobserver.CargoLease lease) implements Command
+	public interface Natives
 	{
 		/**
-		 * Retains immutable borrowed inputs without acquiring resources or selecting a stream receipt.
-		 * @throws NullPointerException if either input is null
+		 * Moves a held child into a fresh owned cgroup subtree and registers it with the memory authority.
+		 * @param name     stable action name
+		 * @param sequence queue attempt ordinal
+		 * @param launch   approved compiler execution
+		 * @param child    verified held child of the wrapper
+		 * @param parent   pid of the wrapper, the child's parent
+		 * @return owned containment of the whole attempt
+		 * @throws IOException if the child cannot be moved, verified or registered; partial ownership is released
 		 */
-		CargoCommand
+		Containment contain(String name, long sequence, LinuxProcessTree.Launch launch, LinuxCargoProtocol.Child child,
+			long parent) throws IOException;
+
+		/**
+		 * Retains Cargo token ownership for one whole attempt.
+		 * @return attempt token owner, closed only after the attempt can no longer execute
+		 * @throws IOException if the invocation lease cannot lend tokens
+		 */
+		LinuxCargoTokens.Attempt retainTokens() throws IOException;
+
+		/**
+		 * Creates unstarted instrumentation for a contained held root.
+		 * @param identity native attempt correlation
+		 * @param launch   approved compiler execution
+		 * @param root     held root and its containment
+		 * @param tokens   attempt token owner
+		 * @param waits    attempt allocation waits
+		 * @param peers    peer service without queue reentry
+		 * @return instrumentation that has acquired nothing yet
+		 * @throws IOException if instrumentation cannot be created
+		 */
+		Instrumentation instrument(UUID identity, LinuxProcessTree.Launch launch, AllocationHooks.Root root,
+			LinuxCargoTokens.Attempt tokens, AllocationWaits waits, AllocationHook.Pump peers) throws IOException;
+	}
+
+	/**
+	 * Owned cgroup subtree that contains one whole attempt and its memory-authority registration.
+	 */
+	public interface Containment extends AutoCloseable
+	{
+		/**
+		 * Returns the owned subtree.
+		 * @return absolute cgroup directory
+		 */
+		Path directory();
+
+		/**
+		 * Reports whether any process of the attempt is still live; zombies do not count.
+		 * @return whether a process of the attempt can still execute
+		 * @throws IOException if the population cannot be read
+		 */
+		boolean isPopulated() throws IOException;
+
+		/**
+		 * Kills every process of the attempt without waiting.
+		 * @throws IOException if the kernel rejects the request
+		 */
+		void terminate() throws IOException;
+
+		/**
+		 * Unregisters the attempt, kills anything left and removes the subtree.
+		 * @throws IOException if ownership remains unresolved; close may be retried
+		 */
+		@Override
+		void close() throws IOException;
+	}
+
+	/**
+	 * Allocation and token instrumentation of one contained attempt.
+	 */
+	public interface Instrumentation
+	{
+		/**
+		 * Attaches to the held root, lets it exec through {@code release} and instruments the image it executes.
+		 * @param release releases the held root; called once
+		 * @throws IOException if attachment or instrumentation fails
+		 */
+		void start(AllocationHooks.Release release) throws IOException;
+
+		/**
+		 * Services native events and held images without reentering the queue.
+		 * @throws IOException if delivery fails
+		 */
+		void pump() throws IOException;
+
+		/**
+		 * Grants one published allocation wait.
+		 * @param wait selected wait
+		 * @throws IOException if the grant is uncertain
+		 */
+		void grant(AllocationWaits.Wait wait) throws IOException;
+
+		/** Withdraws grant authority without unloading code or resuming parked tasks. */
+		void stop();
+
+		/**
+		 * Destroys native resources once no process of the attempt can execute.
+		 * @param barrier observation that no process of the attempt can execute
+		 * @throws IOException if the barrier is not reached or native cleanup fails
+		 */
+		void close(AllocationHook.ExecutionBarrier barrier) throws IOException;
+	}
+
+	/**
+	 * Production owners: a cgroup-v2 subtree registered with the memory authority, the invocation's jobserver lease
+	 * and Frida instrumentation.
+	 */
+	public static final class NativeOwners implements Natives
+	{
+		/** Borrowed shared values. */
+		private final ToolingScope scope;
+		/** Borrowed started runtime. */
+		private final FridaRuntime runtime;
+		/** Borrowed opened memory authority. */
+		private final LinuxAuthority authority;
+		/** Invocation-owned image event routing. */
+		private final AllocationHooks.Routing routing;
+		/** Mountpoint of the cgroup-v2 hierarchy that process membership records are relative to. */
+		private final Path cgroupRoot;
+		/** Invocation jobserver lease borrowed across all attempts. */
+		private final LinuxCargoJobserver.CargoLease lease;
+		/** Bound on each native control. */
+		private final Duration timeout;
+
+		/**
+		 * Borrows the invocation's native owners without acquiring anything.
+		 * @param scope      borrowed shared values
+		 * @param runtime    borrowed started runtime
+		 * @param authority  borrowed opened memory authority
+		 * @param routing    invocation-owned image event routing
+		 * @param cgroupRoot absolute cgroup-v2 mountpoint
+		 * @param lease      invocation jobserver lease
+		 * @param timeout    positive control bound
+		 * @throws NullPointerException     if an input is null
+		 * @throws IllegalArgumentException if the timeout is invalid
+		 */
+		public NativeOwners(ToolingScope scope, FridaRuntime runtime, LinuxAuthority authority,
+			AllocationHooks.Routing routing, Path cgroupRoot, LinuxCargoJobserver.CargoLease lease, Duration timeout)
 		{
-			Objects.requireNonNull(command, "command");
-			Objects.requireNonNull(lease, "lease");
+			this.scope = Objects.requireNonNull(scope, "scope");
+			this.runtime = Objects.requireNonNull(runtime, "runtime");
+			this.authority = Objects.requireNonNull(authority, "authority");
+			this.routing = Objects.requireNonNull(routing, "routing");
+			this.cgroupRoot = Objects.requireNonNull(cgroupRoot, "cgroupRoot");
+			this.lease = Objects.requireNonNull(lease, "lease");
+			this.timeout = checkedTimeout(timeout);
 		}
 
 		/**
-		 * Returns the exact approved compiler launch without requesting a binding.
-		 * @return the borrowed command's immutable launch
+		 * Creates subtree {@code G} with leaf {@code G/w}, moves the child into the leaf, checks through the child's
+		 * own membership record that it arrived, checks that it is still the same process with the same parent, and
+		 * registers {@code G} with the memory authority.
 		 */
 		@Override
-		public LinuxProcessTree.Launch launch() { return command.launch(); }
+		public Containment contain(String name, long sequence, LinuxProcessTree.Launch launch,
+			LinuxCargoProtocol.Child child, long parent) throws IOException
+		{
+			LinuxCgroup group = LinuxCgroup.create(launch.cgroupParent(), timeout);
+			try
+			{
+				Path leaf = Files.createDirectory(group.directory().resolve("w"));
+				Files.writeString(leaf.resolve("cgroup.procs"), Long.toString(child.pid()), StandardOpenOption.WRITE);
+				Path process = Path.of("/proc", Long.toString(child.pid()));
+				String expected = "0::/" + cgroupRoot.relativize(leaf) + "\n";
+				if (!Files.readString(process.resolve("cgroup")).equals(expected))
+					throw new IOException("Attempt root " + child.pid() + " did not enter its cgroup " + leaf);
+				String stat = Files.readString(process.resolve("stat"));
+				String[] fields = stat.substring(stat.lastIndexOf(')') + 1).strip().split(" ");
+				if (AllocationHooks.startTime(stat) != child.startTime() || !fields[1].equals(Long.toString(parent)))
+					throw new IOException("Attempt root " + child.pid() + " changed while it was contained");
+				LinuxAuthority.Registration registration = authority.register(name, sequence, group.directory(),
+					child.pid(), () -> !group.isPopulated());
+				return new CgroupContainment(group, registration);
+			}
+			catch (IOException | RuntimeException | Error failure)
+			{
+				try
+				{
+					group.close();
+				}
+				catch (IOException | RuntimeException cleanup)
+				{
+					failure.addSuppressed(cleanup);
+				}
+				throw failure;
+			}
+		}
+
+		@Override
+		public LinuxCargoTokens.Attempt retainTokens() throws IOException
+		{
+			return lease.retainAttempt();
+		}
+
+		@Override
+		public Instrumentation instrument(UUID identity, LinuxProcessTree.Launch launch, AllocationHooks.Root root,
+			LinuxCargoTokens.Attempt tokens, AllocationWaits waits, AllocationHook.Pump peers) throws IOException
+		{
+			var cargoTokens = new AllocationHooks.CargoTokens(lease.identity(), tokens);
+			return new AllocationHooks(scope, identity, runtime, launch, root, waits, timeout, peers,
+				Optional.of(cargoTokens), routing);
+		}
+	}
+
+	/**
+	 * Owned cgroup subtree and its memory-authority registration.
+	 */
+	private static final class CgroupContainment implements Containment
+	{
+		/** Owned subtree. */
+		private final LinuxCgroup group;
+		/** Registration, or null once it was removed. */
+		private LinuxAuthority.Registration registration;
+
+		/**
+		 * Takes ownership of a registered subtree.
+		 * @param group        owned subtree
+		 * @param registration its registration
+		 */
+		private CgroupContainment(LinuxCgroup group, LinuxAuthority.Registration registration)
+		{
+			this.group = group;
+			this.registration = registration;
+		}
+
+		@Override
+		public Path directory()
+		{
+			return group.directory();
+		}
+
+		@Override
+		public boolean isPopulated() throws IOException
+		{
+			return group.isPopulated();
+		}
+
+		@Override
+		public void terminate() throws IOException
+		{
+			group.terminate();
+		}
+
+		/**
+		 * Removes the registration before the subtree, so the authority never samples a removed group.
+		 */
+		@Override
+		public void close() throws IOException
+		{
+			if (registration != null)
+			{
+				registration.close();
+				registration = null;
+			}
+			group.close();
+		}
 	}
 
 	/** Queue notification, distinct from native installation and allocation identities.
