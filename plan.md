@@ -13,7 +13,7 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 
 ### Checkout
 
-- Branch `main.new`, HEAD `baa4189828` (includes this plan's previous state). No CP3 tag exists. The CI workflow "Release build checkpoint tests" passed on every push through `e217e0e850`.
+- Branch `main.new`, HEAD `9e03146991` plus this plan update. No CP3 tag exists. The CI workflow "Release build checkpoint tests" passed on every push through `e217e0e850`.
 - Local test command, from `tooling/cli`: `mvn -B -ntp -q -s <settings.xml> test`. Expect 1454 tests, 0 failures and exactly 6 errors in `SourceInputCargoTest` when no local `rustc` is installed. Native Rust, Bazel and Go builds run only on remote runners.
 - Tests live in the separate JPMS module `com.holdmyspot.codexunleashed.tooling.test`. Test access to package-private behavior goes only through `<Topic>Access`/`<Topic>Secrets` façades in package `com.holdmyspot.codexunleashed.secrets` (exported only to the test module, registered in the owner's `static {}`); no reflection and no fake executables for tools.
 
@@ -21,10 +21,17 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 
 | Operation | Identity | State and next action |
 | --- | --- | --- |
-| Linux x64 release build | Run `41650477264` ("Stable upstream release builds", `cache=true`), commit `734c216162`, job "Baseline - x86_64-unknown-linux-musl" | Started 2026-11-03T14:06Z; still in "Build the upstream release binaries with default features" at 17:12Z. It predates the shared Frida device manager. On completion read its conclusion and evidence; on failure diagnose the held-child launch, Frida attach/exec gating under root and `G/w` registration of the native C wrapper (plan step 2 below), none of which had run natively before this build. |
-| Linux ARM release build | Run `41650483339`, same commit, job "Baseline - aarch64-unknown-linux-musl" | Same state and action as x64. |
+| Linux x64 release build | Run `41739349889` (`cache=true`, `scheduler=true`), commit `9e03146991` | Started 2026-11-03T21:10Z. Read `baseline-evidence/quiet-build-report.log` in its artifact if it goes quiet. |
+| Linux ARM release build | Run `41739345208`, same commit and inputs | Same. |
+| Checkpoint tests | Run `41739313338`, commit `9e03146991` | Includes the new `test-watch-quiet-build.py` on Linux. |
 
-No local monitor, agent or SSH session remains; nothing else is running on behalf of this goal.
+### Release builds of `734c216162` (2026-11-03): both hung, reason not yet known
+
+- The C Cargo wrapper with its held child ran natively for the first time: ARM accepted 478 compiler attempts and x64 679, all with `rootExit=0`. The wrapper is not the failure.
+- ARM `41650483339`: `bwrap` took 34 s and the proxy 716 s. `codex-code-mode-host` printed Cargo's `Finished` at 14:33:04Z, then nothing until the 320-minute step timeout. The invocation never accepted Cargo's result. That needs `LinuxCargoInvocation.NativeResources.finishRootInstrumentation` to observe an empty Cargo cgroup, and nothing bounds or requests that wait during normal completion, so some process stayed in the cgroup after Cargo finished.
+- x64 `41650477264`: the first three binaries built. `codex` went silent after attempt 679 (15:33:41Z, `clap_complete`). At job cleanup, the runner killed orphan `cargo` (67762) and `build-script-build` (88669). PID 88669 was born between attempts 569 and 570 (15:05:18–20Z), right after `tikv-jemalloc-sys` began at 15:05:09Z. So jemalloc's build script, which runs `configure` and `make` with thousands of forks and execs under the Cargo cgroup's held image gating, never finished.
+- Neither run's evidence names the stuck process or what it waited on. `9e03146991` adds `.github/scripts/watch-quiet-build.py` around the release command. After 15 quiet minutes it writes each process's state, wait channel, kernel stacks and JVM thread dumps to `baseline-evidence/quiet-build-report.log`, repeats every 15 minutes, and stops the build after 75 minutes. A healthy build was at most about 10 minutes without output.
+- Next: read those reports, write the red test for the actual blocked owner, fix it, then rerun both Linux release builds with `cache=true`.
 
 ### Next deliverable: preloaded native hook library (plan step 3, second half)
 
