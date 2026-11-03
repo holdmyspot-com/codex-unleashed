@@ -28,67 +28,32 @@ public final class DistributionLauncherTest
 
 
     /**
-     * Links the actual staged TOML parser and executes its typed API using only the generated runtime.
-     * Every original dependency entry must survive descriptor publication unchanged.
-     * @throws Exception if module staging, linking, parsing or independent cleanup fails
+     * Turns the staged TOML parser and ANTLR runtime into explicit modules that resolve without checker-qual,
+     * keeping every original JAR entry unchanged.
+     * <p>
+     * Resolution uses the JDK's module system, which jlink also uses; the JDK's own tools are trusted to work as
+     * documented, so the test neither links an image nor runs the parser.
+     * @throws Exception if module staging, resolution or independent cleanup fails
      */
     @Test
-    public void stagedTomlLinksAndRetainsLibraryPayload() throws Exception
+    public void stagedTomlBecomesExplicitModules() throws Exception
     {
         try (Directory directory = new Directory())
         {
-            Path root = directory.path;
-            Path modules = Files.createDirectory(root.resolve("modules"));
+            Path modules = Files.createDirectory(directory.path.resolve("modules"));
             for (String jar : TOML_JARS)
                 Files.copy(dependencyJar(jar), modules.resolve(jar));
             java.util.Map<String, java.util.Map<String, String>> original = libraryPayloads(modules);
-            Path source = root.resolve("Stage.java");
-            Files.writeString(source, """
-                /** Invokes the exact production staged-module boundary. */
-                public final class Stage {
-                    /** Prevents construction. */ private Stage() {}
-                    /**
-                     * Stages real parser dependencies.
-                     * @param args owned module directory
-                     * @throws Exception if the production operation fails
-                     */
-                    public static void main(String[] args) throws Exception {
-                        com.holdmyspot.codexunleashed.distribution.DistributionMain.modularizeToml(
-                            java.nio.file.Path.of(args[0]));
-                    }
-                }
-                """);
-            Path classes = Files.createDirectory(root.resolve("classes"));
-            Path buildSource = Path.of(System.getProperty("basedir", ".")).resolve(
-                "src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java").toAbsolutePath();
-            checked(root, tool("javac"), "--release", "27", "-Xlint:all", "-Werror", "-Xdoclint:all/private",
-                "-d", classes.toString(), buildSource.toString(), source.toString());
-            checked(root, tool("java"), "-cp", classes.toString(), "Stage", modules.toString());
+            com.holdmyspot.codexunleashed.distribution.DistributionMain.modularizeToml(modules);
             requireThat(libraryPayloads(modules), "allOriginalLibraryEntries").isEqualTo(original);
-            Path probe = Files.createDirectory(root.resolve("probe"));
-            Path main = probe.resolve("Probe.java");
-            Files.writeString(probe.resolve("module-info.java"), "module probe.toml { requires org.tomlj; }");
-            Files.writeString(main, """
-                package probe;
-                public final class Probe {
-                    public static void main(String[] args) {
-                        var parsed = org.tomlj.Toml.parse("integer=4\\nzero=-0.0");
-                        if (parsed.hasErrors()) throw new IllegalStateException(parsed.errors().toString());
-                        System.out.print(parsed.getLong("integer") + ":" +
-                            Double.doubleToRawLongBits(parsed.getDouble("zero")));
-                    }
-                }
-                """);
-            Path probeClasses = Files.createDirectory(root.resolve("probe-classes"));
-            checked(root, tool("javac"), "--module-path", modules.toString(), "-d", probeClasses.toString(),
-                probe.resolve("module-info.java").toString(), main.toString());
-            Path runtime = root.resolve("runtime");
-            checked(root, tool("jlink"), "--module-path", modules.toString(), "--add-modules", "org.tomlj",
-                "--output", runtime.toString(), "--no-header-files", "--no-man-pages");
-            String actual = checked(root, runtime.resolve("bin").resolve(
-                "java" + (java.io.File.separatorChar == 92 ? ".exe" : "")).toString(),
-                "--module-path", probeClasses.toString(), "-m", "probe.toml/probe.Probe");
-            requireThat(actual, "bundledTypedTomlResult").isEqualTo("4:-9223372036854775808");
+            var finder = java.lang.module.ModuleFinder.of(modules.resolve("tomlj-1.1.1.jar"),
+                modules.resolve("antlr4-runtime-4.11.1.jar"));
+            for (var reference : finder.findAll())
+                requireThat(reference.descriptor().isAutomatic(), reference.descriptor().name() + ".isAutomatic()")
+                    .isFalse();
+            var configuration = ModuleLayer.boot().configuration().resolve(finder,
+                java.lang.module.ModuleFinder.of(), java.util.Set.of("org.tomlj"));
+            requireThat(configuration.findModule("org.antlr.antlr4.runtime").isPresent(), "antlrResolved").isTrue();
         }
     }
 

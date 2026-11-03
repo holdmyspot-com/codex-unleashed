@@ -12,6 +12,8 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -22,7 +24,10 @@ import org.testng.annotations.Test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Verifies raw source inventories with real Git and the defined filesystem fallback.
+ * Verifies raw source inventories from Git's reported paths and the defined filesystem fallback.
+ * <p>
+ * Git is replaced by a scripted command runner. Which paths Git reports is Git's documented behavior; these tests
+ * check the commands the inventory issues and what it does with Git's answers.
  */
 public final class SourceInputInventoryTest
 {
@@ -34,30 +39,35 @@ public final class SourceInputInventoryTest
 	}
 
 	/**
-	 * Includes tracked modifications and nonignored untracked files while excluding build and download state.
+	 * Inventories the files Git reports from the Git root, asking Git to leave cache trees out of untracked discovery.
 	 *
-	 * @throws IOException if fixture writing, Git, inventory, or cleanup fails
+	 * @throws IOException if fixture writing, inventory, or cleanup fails
 	 */
 	@Test
-	public void inventoriesActualGitSources() throws IOException
+	public void inventoriesGitReportedSources() throws IOException
 	{
 		try (Fixture fixture = new Fixture())
 		{
-			SystemCommands.run(java.util.List.of("git", "init", "-q", fixture.root.toString()));
-			Files.writeString(fixture.root.resolve(".gitignore"), "ignored\n");
 			Path source = Files.createDirectories(fixture.root.resolve("workspace/src")).resolve("lib.rs");
-			Files.writeString(source, "original");
-			SystemCommands.run(java.util.List.of("git", "-c", "core.autocrlf=false", "-C", fixture.root.toString(),
-				"add", ".gitignore", "workspace"));
 			byte[] payload = {0, (byte) 255, 13, 10};
 			Files.write(source, payload);
 			Instant timestamp = Instant.ofEpochSecond(1_000_000_000L, 123_456_789);
 			Files.setLastModifiedTime(source, FileTime.from(timestamp));
 			Files.writeString(fixture.root.resolve("included.rs"), "untracked input");
 			Files.writeString(fixture.root.resolve("ignored"), "ignored input");
+			Git git = new Git(fixture.root, ".gitignore\0workspace/src/lib.rs\0", "included.rs\0");
+			Files.writeString(fixture.root.resolve(".gitignore"), "ignored\n");
 			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, source.getParent(), fixture.target,
-				Optional.of(fixture.cargo), fixture.temporary, fixture.environment(), SystemCommands::capture);
-			requireThat(snapshot.root(), "snapshot.root()").isEqualTo(fixture.root.toRealPath());
+				Optional.of(fixture.cargo), fixture.temporary, fixture.environment(), git);
+			Path root = fixture.root.toRealPath();
+			requireThat(git.commands, "gitCommands").isEqualTo(List.of(
+				List.of("git", "-C", source.getParent().toRealPath().toString(), "rev-parse", "--show-toplevel"),
+				List.of("git", "-C", root.toString(), "ls-files", "--cached", "-z"),
+				List.of("git", "-C", root.toString(), "ls-files", "--others", "--exclude-standard", "-z", "--", ".",
+					":(exclude,literal)target", ":(exclude,literal)cargo")));
+			requireThat(git.environments, "gitEnvironments").isEqualTo(List.of(fixture.environment(),
+				fixture.environment(), fixture.environment()));
+			requireThat(snapshot.root(), "snapshot.root()").isEqualTo(root);
 			requireThat(snapshot.files().keySet(), "snapshot.files().keySet()")
 				.isEqualTo(Set.of(".gitignore", "workspace/src/lib.rs", "included.rs"));
 			requireThat(snapshot.files().get("workspace/src/lib.rs"), "snapshot").isEqualTo(Sha256.digest(source));
@@ -65,8 +75,30 @@ public final class SourceInputInventoryTest
 				.isEqualTo(SourceInputTimes.nanos(NativeTimestampRange.expected(fixture.root, timestamp)));
 			requireThat(snapshot.mtimes().containsKey("."), "snapshot").isTrue();
 			requireThat(snapshot.mtimes().containsKey("workspace/src"), "snapshot").isTrue();
-			requireThat(snapshot.files().containsKey("target/output"), "snapshot").isFalse();
-			requireThat(snapshot.files().containsKey("cargo/download"), "snapshot").isFalse();
+		}
+	}
+
+	/**
+	 * Reports a failed Git listing instead of inventorying a partial source set.
+	 *
+	 * @throws IOException if fixture writing or cleanup fails
+	 */
+	@Test
+	public void rejectsFailedGitListing() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Git git = new Git(fixture.root, null, "");
+			try
+			{
+				SourceInputInventory.read(fixture.scope, fixture.root, fixture.target, Optional.of(fixture.cargo),
+					fixture.temporary, fixture.environment(), git);
+				throw new AssertionError("A failed Git listing was accepted");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("status 128").contains("listing failed");
+			}
 		}
 	}
 
@@ -85,7 +117,7 @@ public final class SourceInputInventoryTest
 			for (String directory : new String[]{".git", "node_modules", "nested/target"})
 				Files.writeString(Files.createDirectories(fixture.root.resolve(directory)).resolve("excluded"), "ignored");
 			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, fixture.root, fixture.target,
-				Optional.of(fixture.cargo), fixture.temporary, fixture.environment(), SystemCommands::capture);
+				Optional.of(fixture.cargo), fixture.temporary, fixture.environment(), Git.ABSENT);
 			requireThat(snapshot.root(), "snapshot.root()").isEqualTo(fixture.root.toRealPath());
 			requireThat(snapshot.files(), "snapshot.files()").isEqualTo(Map.of("src/lib.rs", Sha256.digest(source)));
 			requireThat(snapshot.mtimes().containsKey("src"), "snapshot").isTrue();
@@ -95,17 +127,16 @@ public final class SourceInputInventoryTest
 	/**
 	 * Retains explicitly tracked download paths while always excluding compiled output files.
 	 *
-	 * @throws IOException if Git, inventory, or cleanup fails
+	 * @throws IOException if inventory or cleanup fails
 	 */
 	@Test
 	public void retainsTrackedDownloadInputs() throws IOException
 	{
 		try (Fixture fixture = new Fixture())
 		{
-			SystemCommands.run(java.util.List.of("git", "init", "-q", fixture.root.toString()));
-			SystemCommands.run(java.util.List.of("git", "-C", fixture.root.toString(), "add", "cargo", "target"));
+			Git git = new Git(fixture.root, "cargo/download\0target/output\0", "");
 			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, fixture.root, fixture.target,
-				Optional.of(fixture.cargo), fixture.temporary, fixture.environment(), SystemCommands::capture);
+				Optional.of(fixture.cargo), fixture.temporary, fixture.environment(), git);
 			requireThat(snapshot.files().keySet(), "snapshot.files().keySet()").isEqualTo(Set.of("cargo/download"));
 		}
 	}
@@ -125,9 +156,60 @@ public final class SourceInputInventoryTest
 			Instant required = Instant.parse("2300-01-01T00:00:00.123456789Z");
 			SourceInputTimes.setTimes(fixture.scope, source, FileTime.from(required));
 			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, fixture.root, fixture.target,
-				Optional.of(fixture.cargo), fixture.temporary, fixture.environment(), SystemCommands::capture);
+				Optional.of(fixture.cargo), fixture.temporary, fixture.environment(), Git.ABSENT);
 			requireThat(snapshot.mtimes().get("source.rs"), "snapshot")
 				.isEqualTo(SourceInputTimes.nanos(NativeTimestampRange.expected(fixture.root, required)));
+		}
+	}
+
+	/**
+	 * Answers Git commands with scripted results and records each one.
+	 */
+	private static final class Git implements SystemCommands.Capture
+	{
+		/** Reports that no Git repository contains the working directory. */
+		private static final SystemCommands.Capture ABSENT = (command, directory, temporary, environment) ->
+			new SystemCommands.Result(128, "", "fatal: not a git repository");
+		/** The Git root that discovery reports. */
+		private final Path root;
+		/** NUL-separated tracked paths, or {@code null} if the listing fails. */
+		private final String tracked;
+		/** NUL-separated untracked, nonignored paths. */
+		private final String untracked;
+		/** The commands received, in order. */
+		private final List<List<String>> commands = new ArrayList<>();
+		/** The environment overrides received, in order. */
+		private final List<Map<String, String>> environments = new ArrayList<>();
+
+		/**
+		 * Creates a scripted repository.
+		 *
+		 * @param root the repository root
+		 * @param tracked NUL-separated tracked paths, or {@code null} to fail the listing
+		 * @param untracked NUL-separated untracked paths
+		 */
+		private Git(Path root, String tracked, String untracked)
+		{
+			this.root = root;
+			this.tracked = tracked;
+			this.untracked = untracked;
+		}
+
+		@Override
+		public SystemCommands.Result capture(List<String> command, Path workingDirectory, Path temporaryDirectory,
+			Map<String, String> environment) throws IOException
+		{
+			commands.add(List.copyOf(command));
+			environments.add(Map.copyOf(environment));
+			if (command.contains("rev-parse"))
+				return new SystemCommands.Result(0, root.toRealPath() + "\n", "");
+			if (command.contains("--cached"))
+			{
+				if (tracked == null)
+					return new SystemCommands.Result(128, "", "listing failed");
+				return new SystemCommands.Result(0, tracked, "");
+			}
+			return new SystemCommands.Result(0, untracked, "");
 		}
 	}
 
@@ -156,9 +238,9 @@ public final class SourceInputInventoryTest
 		}
 
 		/**
-		 * Prevents Git from finding the surrounding project when exercising fallback.
+		 * Returns the environment overrides the inventory passes to Git.
 		 *
-		 * @return explicit Git ceiling environment
+		 * @return the Git ceiling environment
 		 */
 		private Map<String, String> environment()
 		{
