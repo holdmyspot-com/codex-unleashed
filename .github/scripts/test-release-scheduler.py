@@ -450,6 +450,19 @@ class MemoryHistoryCollectionTest(unittest.TestCase):
         collected=sorted(path.name for path in (root/'scheduler-memory-history-save').iterdir())
         return collected,output.read_text()
 
+    def test_restore_reads_the_path_the_save_stores(self):
+        """actions/cache versions an entry by its path, so a different restore path never finds the saved history."""
+        import yaml
+        workflow=yaml.load((SCRIPTS.parent/'workflows/baseline-release-builds.yml').read_text(),Loader=yaml.BaseLoader)
+        steps={step.get('name'):step for step in workflow['jobs']['build']['steps']}
+        restore=steps["Restore the scheduler's memory history"]['with']
+        save=steps['Save the memory history']['with']
+        self.assertEqual(restore['path'],save['path'])
+        self.assertEqual(restore['key'],save['key'])
+        directory=save['path'].replace('${{ runner.temp }}','$RUNNER_TEMP')
+        self.assertIn('restored="%s"'%directory,steps['Install the restored memory history']['run'])
+        self.assertIn('collected="%s"'%directory,steps['Collect the memory history for saving']['run'])
+
     def test_collects_every_profile_and_counts_them(self):
         """Profiles are copied and counted; other history files are not."""
         with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as tmp:

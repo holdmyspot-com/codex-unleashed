@@ -358,7 +358,8 @@ jobs:
         if: inputs.scheduler && inputs.cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ runner.temp }}/scheduler-memory-history
+          # actions/cache versions an entry by its path, so this must match the save step's path exactly.
+          path: ${{ runner.temp }}/scheduler-memory-history-save
           key: scheduler-memory-history-v1-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: scheduler-memory-history-v1-${{ matrix.target }}-
 
@@ -395,7 +396,7 @@ jobs:
         if: inputs.scheduler && inputs.cache
         run: |
           set -euo pipefail
-          restored="$RUNNER_TEMP/scheduler-memory-history"
+          restored="$RUNNER_TEMP/scheduler-memory-history-save"
           profiles=()
           if [[ -d "$restored" ]]; then
             while IFS= read -r -d '' profile; do profiles+=("$profile"); done \
