@@ -1,6 +1,8 @@
 """Check that the quiet-build watchdog reports and stops a silent command but leaves an active one alone."""
 from pathlib import Path
+import importlib.util
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -49,6 +51,8 @@ class QuietBuildWatchTest(unittest.TestCase):
             self.assertRegex(text, rf"(?m)^pid={child} .*state=S")
             self.assertRegex(text, rf"(?m)^pid={child} .*wchan=")
             self.assertRegex(text, rf"(?m)^pid={child} .*tracer=0 ", "the child's tracer was not reported")
+            self.assertRegex(text, rf"(?m)^pid={child} .*fds=\d+ nofile=\d+ ",
+                "the child's open descriptors and descriptor limit were not reported")
             zombie = next(line.removeprefix("quiet-zombie-pid=") for line in result.stdout.splitlines()
                 if line.startswith("quiet-zombie-pid="))
             self.assertRegex(text, rf"(?m)^pid={zombie} .*state=Z", "an exited, unreaped child was not reported")
@@ -72,6 +76,25 @@ class QuietBuildWatchTest(unittest.TestCase):
                 "--stop-after", "2")
             self.assertEqual(result.returncode, 7, result.stdout + result.stderr)
             self.assertFalse(report.exists(), "an active command was reported as quiet")
+
+
+class StopTest(unittest.TestCase):
+    """Each test owns its recorded signal list."""
+
+    def test_returns_when_remaining_members_cannot_be_signaled(self):
+        """A group whose remaining members belong to another user ends the stop instead of raising."""
+        spec = importlib.util.spec_from_file_location("watch_quiet_build", WATCHER)
+        watcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(watcher)
+        sent = []
+
+        def signal_group(pgid, sig):
+            sent.append(sig)
+            if sig == 0:
+                raise PermissionError(1, "Operation not permitted")
+
+        watcher.stop(4242, lambda: None, signal_group)
+        self.assertEqual(sent, [signal.SIGTERM, 0])
 
 
 if __name__ == "__main__":

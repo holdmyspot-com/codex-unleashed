@@ -64,6 +64,22 @@ def process_name(pid, fields):
     return None
 
 
+def descriptor_count(pid):
+    """Returns how many descriptors one process holds open, or ? when they cannot be listed."""
+    try:
+        return len(os.listdir(f"/proc/{pid}/fd"))
+    except OSError:
+        return "?"
+
+
+def descriptor_limit(pid):
+    """Returns one process's soft open-file limit, or ? when its limits cannot be read."""
+    for line in read(f"/proc/{pid}/limits").splitlines():
+        if line.startswith("Max open files"):
+            return line.split()[3]
+    return "?"
+
+
 def dump(jcmd, out):
     """Writes one line per user process, then its threads' kernel stacks and any JVM thread dump."""
     pids = sorted(int(name) for name in os.listdir("/proc") if name.isdigit())
@@ -76,10 +92,12 @@ def dump(jcmd, out):
         uid = fields.get("Uid", "-1").split()[0]
         wchan = read(f"/proc/{pid}/wchan").strip() or "0"
         syscall = read(f"/proc/{pid}/syscall").split(" ")[0].strip()
-        # The tracer names the process that must resume a tracee held in a ptrace stop.
+        # The tracer names the process that must resume a tracee held in a ptrace stop. The descriptor count and
+        # its soft limit show a process that leaks descriptors before it reaches the limit.
         out.write(f"pid={pid} ppid={fields.get('PPid', '?')} tracer={fields.get('TracerPid', '?')} uid={uid} "
                   f"state={state} wchan={wchan} "
-                  f"syscall={syscall} cmd={cmdline[:400]}\n")
+                  f"syscall={syscall} fds={descriptor_count(pid)} nofile={descriptor_limit(pid)} "
+                  f"cmd={cmdline[:400]}\n")
     for pid in pids:
         fields = status_fields(pid)
         cmdline = process_name(pid, fields)
@@ -142,20 +160,50 @@ def write_report(report, quiet, jcmd):
             out.write("<process report timed out>\n")
 
 
-def stop(process):
-    """Terminates the command's process group, escalating to SIGKILL after ten seconds."""
+def signal_group(pgid, sig):
+    """Signals one process group, as root when this user may not signal every remaining member.
+
+    Raises ProcessLookupError when the group is gone and PermissionError when its members still cannot be signaled."""
+    try:
+        os.killpg(pgid, sig)
+        return
+    except PermissionError:
+        pass
+    # The scheduler runs part of the build as root, so its members can outlive every member this user may signal.
+    if subprocess.run(["sudo", "-n", "true"], capture_output=True).returncode != 0:
+        raise PermissionError(1, f"cannot signal process group {pgid}")
+    result = subprocess.run(["sudo", "-n", "kill", f"-{int(sig)}", "--", f"-{pgid}"], capture_output=True, text=True)
+    if result.returncode == 0:
+        return
+    if "No such process" in result.stderr:
+        raise ProcessLookupError(3, f"process group {pgid} is gone")
+    raise PermissionError(1, f"cannot signal process group {pgid}: {result.stderr.strip()}")
+
+
+def stop(pgid, reap, signal_group=signal_group):
+    """Terminates one process group, escalating to SIGKILL after ten seconds.
+
+    reap collects the exited group leader, which otherwise stays signalable as a zombie until the grace runs out.
+
+    A group whose remaining members cannot be signaled is left to the runner's own job cleanup."""
     for sig, grace in ((signal.SIGTERM, 10), (signal.SIGKILL, 10)):
         try:
-            os.killpg(process.pid, sig)
+            signal_group(pgid, sig)
         except ProcessLookupError:
+            return
+        except PermissionError as failure:
+            print(f"watch-quiet-build: {failure}", file=sys.stderr, flush=True)
             return
         deadline = time.monotonic() + grace
         while time.monotonic() < deadline:
             try:
-                os.killpg(process.pid, 0)
+                signal_group(pgid, 0)
             except ProcessLookupError:
                 return
-            process.poll()
+            except PermissionError as failure:
+                print(f"watch-quiet-build: {failure}", file=sys.stderr, flush=True)
+                return
+            reap()
             time.sleep(0.1)
 
 
@@ -195,7 +243,7 @@ def main():
             write_report(args.report, quiet, args.jcmd)
             print(f"watch-quiet-build: stopping quiet build after {quiet:.0f} seconds without output; "
                   f"process report: {args.report}", file=sys.stderr, flush=True)
-            stop(process)
+            stop(process.pid, process.poll)
             return 124
         if now >= next_report:
             write_report(args.report, quiet, args.jcmd)
