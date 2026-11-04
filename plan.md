@@ -14,7 +14,7 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 ### Checkout
 
 - Branch `main.new`, HEAD `40abf6632e` plus this plan update. No CP3 tag exists. The CI workflow "Release build checkpoint tests" passed on every push through `e217e0e850`.
-- Local test command, from `tooling/cli`: `mvn -B -ntp -q -s <settings.xml> test`. Expect 1458 tests, 0 failures and exactly 6 errors in `SourceInputCargoTest` when no local `rustc` is installed. Native Rust, Bazel and Go builds run only on remote runners.
+- Local test command, from `tooling/cli`: `mvn -B -ntp -q -s <settings.xml> test`. Expect 0 failures and 0 errors; `SourceInputCargoTest` needs the local `rustc` and `cargo` on PATH (installed at `/home/gili/.cargo/bin`) and fails with 6 errors without them. Release-scale native Rust, Bazel and Go builds run only on remote runners.
 - Tests live in the separate JPMS module `com.holdmyspot.codexunleashed.tooling.test`. Test access to package-private behavior goes only through `<Topic>Access`/`<Topic>Secrets` façades in package `com.holdmyspot.codexunleashed.secrets` (exported only to the test module, registered in the owner's `static {}`); no reflection and no fake executables for tools.
 
 ### Live operations at handoff
