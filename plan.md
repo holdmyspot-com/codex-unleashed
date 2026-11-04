@@ -21,9 +21,13 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 
 | Operation | Identity | State and next action |
 | --- | --- | --- |
-| Linux x64 release build | Run `41739349889` (`cache=true`, `scheduler=true`), commit `9e03146991` | Dispatched 2026-11-03T23:27Z. Read `baseline-evidence/quiet-build-report.log` in its artifact if it goes quiet. |
-| Linux ARM release build | Run `41739345208`, same commit and inputs | Same. |
-| Checkpoint tests | Run `41739313338`, commit `9e03146991` | Includes the new `test-watch-quiet-build.py` on Linux. |
+| Linux x64 release build | Run `41743639583` (`cache=true`, `scheduler=true`), commit `a7d420154f` | Dispatched 2026-11-04T00:01Z. If it goes quiet, read `baseline-evidence/quiet-build-report.log` in its artifact. |
+| Linux ARM release build | Run `41743643884`, same commit and inputs | Same. |
+
+### Rerun of `9e03146991` (2026-11-03)
+
+- Checkpoint tests `41739313338` passed, including `test-watch-quiet-build.py`.
+- x64 `41739345208` failed after 21 minutes, 450 attempts into `codex-responses-api-proxy`, with `Held image has no active owning controller`. This came just after attempt 448 was killed for retry (exit 137). Since `e217e0e850`, the shared Frida device reports children of the whole build. It still reported a child of that attempt after the attempt's owner had closed on an empty cgroup, and `AllocationHooks.Routing.route` treated that as fatal. A per-attempt manager used to drop such events on close. `a7d420154f` discards an unowned event for a process that is gone or a zombie, and still fails for a live unowned process (`LinuxCargoRootDescendantTest.discardsUnownedDeliveryForExitedProcess`). The ARM run `41739349889` of the same commit was cancelled.
 
 ### Release builds of `734c216162` (2026-11-03): both hung, reason not yet known
 
