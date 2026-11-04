@@ -37,11 +37,10 @@ The complete `.github/scripts/ghcr-cargo-target-cache.sh` review finds these add
 
 The maintained `.github/workflows/cache-cleanup.yml` passes the repository's pinned `.github/upstream-ref` as a protected reference. The GHCR script also preserves that reference and, during push, the release being built. It retains a package version if any release-qualified Cargo alias belongs to the protected set, because deleting a version deletes all its aliases; it also selects untagged versions for deletion. Verify these manifest-level decisions with shared aliases and the frozen baseline outside the newest two releases before enabling retention. This review does not authorize deleting any current cache or establish how concurrent writers behave.
 
-## Current private-registry retention inventory
+## Read-only retention inventory evidence
 
-The read-only [cache-retention-inventory.yml](../.github/workflows/cache-retention-inventory.yml) workflow collects paginated upstream
-release metadata and private package-version metadata with `packages: read`.
-It has no deletion permission or command. Run `40396840902` at
+These runs used a read-only inventory workflow, since replaced by the pruning workflow described in the next section,
+to collect paginated upstream release metadata and private package-version metadata with `packages: read`. Run `40396840902` at
 `b11b37a2e8326938b950178efd3935584366670c` first receives HTTP 504 while listing
 upstream releases, before package enumeration. Its unchanged read-only retry
 passes in 1m 22s. The local token separately lacks `read:packages`; that local
@@ -97,52 +96,30 @@ The goal executor retains the verified archive and analysis in session directory
 `retention-verified-nIxInb` through retention checkpoint verification and owns their
 cleanup after the last verification consumer. Hosted artifacts retain the one-day policy.
 
-## Read-only retention preview command
+## Retention planning and pruning
 
-The bundled tooling CLI now provides `preview-ghcr-retention`. It accepts one
-JSON object on standard input with `releases`, `package_versions` and
-`protected_upstream_refs` arrays. Release and package records use the fields
-collected by the inventory workflow above. Join those captured inputs with:
+The owner's policy keeps caches only for the newest three stable upstream releases, plus the upstream reference each
+cache-owning branch pins. [cache-retention.yml](../.github/workflows/cache-retention.yml) applies it to every package
+listed in [cache-retention-packages](../.github/cache-retention-packages), where each line names a GHCR package and
+the branch whose `.github/upstream-ref` and `.github/upstream-commit` it protects. The workflow also prunes the
+repository's Actions caches. The release build calls it after every cached run. Its daily schedule starts once
+`main.new` is the default branch, and a manual dispatch with `dry_run` only plans.
 
-```sh
-jq -n \
-  --slurpfile releases upstream-releases.jsonl \
-  --slurpfile versions package-versions.jsonl \
-  --rawfile pinned protected-upstream-ref \
-  '{releases: $releases, package_versions: $versions,
-    protected_upstream_refs: [$pinned | rtrimstr("\n")]}' \
-  | codex-tooling preview-ghcr-retention
-```
+Two bundled tooling commands make every decision from a collected inventory; the workflow only collects and deletes:
 
-The command reuses old main's numeric stable-version ordering and manifest-level
-Cargo alias policy, using the existing Jackson dependency for JSON. It excludes
-drafts and prereleases, selects the newest two distinct stable tags and adds
-explicit protected stable references or `main`. Other branch names are rejected.
-Any matching Cargo alias protects the whole package version. Untagged versions
-and other Cargo versions are reported
-as obsolete candidates; unrelated tagged versions are unmanaged. All fields and
-unique positive integer version IDs are validated before any preview is emitted.
-No stable release, missing tag arrays, duplicate IDs and malformed JSON fail
-without printing a candidate list. IDs retain inventory order.
+- `plan-ghcr-retention` reads `releases`, `protected_upstream_refs` and `package_versions` (with `created_at`). For
+  each retained reference and target, it keeps the newest complete version of each of the two newest seed lines, and
+  among the partial versions newer than the newest complete one, the newest of each of the two newest seed lines. A
+  seed key changes with the runner image, so two lines keep both images of a rollout warm. Untagged versions and
+  every other Cargo version are obsolete.
+- `plan-actions-cache-retention` reads `retained_upstream_refs` (the retained tags, their commits and the pinned
+  commits) and `caches`. It keeps an `upstream-<reference>-` cache only for a retained reference. For keys ending in
+  a run ID and attempt, it keeps only the newest cache per key prefix and branch, since GitHub restores only the
+  newest prefix match. It leaves every other cache to GitHub's eviction of caches unread for seven days.
 
-The maintained dispatcher regression first returns status 2 for the absent
-command, then passes shared-alias, partial-alias, pinned-baseline and numeric
-ordering cases after implementation. Its invalid-inventory cases verify refusal
-without partial output. All 37 tooling tests and bundled runtime assembly pass
-with JDK 27 and Rust 1.99.1 using the documented `-Pruntime verify` command in
-[source-cache-migration.md](source-cache-migration.md). The packaged launcher also
-runs with an empty `PATH` and no `JAVA_HOME` against the hash-verified private
-inventory above: it retains all 49 tagged versions and reports exactly the same
-75 untagged candidates, with zero unmanaged versions and no diagnostics.
-
-This command has no registry client or deletion operation. Its `dry_run: true`
-result is a point-in-time policy preview, not permission to delete candidates
-while writers can publish new aliases. Automatic pruning and the concurrent
-writer/deletion gate remain unimplemented on `main.new`. Old main's existing
-cleanup remains active, as documented below. The goal executor retains the preview
-inputs, recreation proof and receipt in session directory
-`retention-preview-Oe7oyA` through retention checkpoint acceptance and owns their
-cleanup then; the previously captured inventory remains available alongside it.
+Both commands validate the whole inventory before printing a plan, and print none when it is invalid. Deletion
+treats HTTP 404 as already deleted, so a concurrent pruner does not fail the run. A run that is publishing caches keeps
+its partial version, because that version is newer than the target's newest complete one.
 
 ## Interaction with old main's active cleanup
 

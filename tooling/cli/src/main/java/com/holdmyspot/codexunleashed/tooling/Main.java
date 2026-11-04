@@ -97,7 +97,9 @@ public final class Main
                 case "cargo-cache-parts" -> CargoCacheParts.run(scope, Arrays.copyOfRange(arguments, 1, arguments.length), System.getenv(), out, err);
                 case "schedule" -> Scheduler.run(scope, Arrays.copyOfRange(arguments, 1, arguments.length), in, out, err);
 				case V8_SCRIPT_COMMAND -> writeV8Script(scope, arguments, out, err);
-				case RetentionPreview.NAME -> RetentionPreview.run(scope, Arrays.copyOfRange(arguments, 1,
+				case GhcrRetentionPlan.NAME -> GhcrRetentionPlan.run(scope, Arrays.copyOfRange(arguments, 1,
+					arguments.length), in, out, err);
+				case ActionsCacheRetentionPlan.NAME -> ActionsCacheRetentionPlan.run(scope, Arrays.copyOfRange(arguments, 1,
 					arguments.length), in, out, err);
 				case SourceCacheCommand.NAME -> SourceCacheCommand.run(scope, Arrays.copyOfRange(arguments, 1,
 					arguments.length), out, err);
@@ -164,7 +166,8 @@ public final class Main
 	{
 		err.println("Usage: codex-tooling " + SourceCacheCommand.NAME +
 			" [--record-source-inputs] [--profile release|ci-test] <workspace> <target> [binary ...]");
-		err.println("       codex-tooling " + RetentionPreview.NAME + " < inventory.json");
+		err.println("       codex-tooling " + GhcrRetentionPlan.NAME + " < inventory.json");
+		err.println("       codex-tooling " + ActionsCacheRetentionPlan.NAME + " < inventory.json");
 		err.println("       codex-tooling schedule <scheduler-options> -- <tool-arguments>");
         err.println("       codex-tooling cargo-cache-keys <target> <upstream> <wrappers> <helper> <compiler>");
         err.println("       codex-tooling verify-cargo-lock <original> <current> <workspace-metadata>");

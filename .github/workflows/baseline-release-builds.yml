@@ -746,3 +746,13 @@ jobs:
             ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings
           retention-days: 1
           if-no-files-found: warn
+
+  prune-caches:
+    # Runs after every cached build, including a failed one, so caches it superseded do not wait for the schedule.
+    needs: build
+    if: always() && inputs.cache
+    permissions:
+      contents: read
+      packages: write
+      actions: write
+    uses: ./.github/workflows/cache-retention.yml

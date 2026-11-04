@@ -1,0 +1,185 @@
+name: Prune private caches
+
+# Keeps caches only for the newest three stable upstream releases and each owning branch's pinned upstream reference.
+# The release build calls this after its build jobs; the schedule takes effect once this branch is the default branch.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Plan and record the deletions without deleting anything
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      dry_run:
+        description: Plan and record the deletions without deleting anything
+        type: boolean
+        default: false
+  schedule:
+    - cron: '41 6 * * *'
+
+permissions:
+  contents: read
+  packages: write
+  actions: write
+
+jobs:
+  prune:
+    # One pruner at a time, whether scheduled, dispatched or called by a release build.
+    concurrency:
+      group: cache-retention
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PACKAGE_OWNER: ${{ github.repository_owner }}
+      DRY_RUN: ${{ inputs.dry_run == true }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Collect releases, pinned references and cache inventories
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/cache-retention"
+          mkdir -p "$evidence"
+          git rev-parse HEAD > "$evidence/restart-commit"
+          cp .github/cache-retention-packages "$evidence/packages"
+          # Larger release pages time out with HTTP 504.
+          gh api --paginate 'repos/openai/codex/releases?per_page=20' \
+            --jq '.[] | {tag_name, draft, prerelease}' > "$evidence/upstream-releases.jsonl"
+
+          # Prints a file from a branch, or nothing when the branch has no such file.
+          branch_file() {
+            local failure
+            failure="$(mktemp -p "$RUNNER_TEMP")"
+            if gh api "repos/$GITHUB_REPOSITORY/contents/$2?ref=$1" --jq .content 2> "$failure" | base64 -d | head -n 1 \
+              | tr -d '\r\n'; then
+              rm -f -- "$failure"
+              return 0
+            fi
+            if grep -q 'HTTP 404' "$failure"; then
+              rm -f -- "$failure"
+              return 0
+            fi
+            cat -- "$failure" >&2
+            return 1
+          }
+          : > "$evidence/protected-refs.txt"
+          : > "$evidence/pinned-commits.txt"
+          while read -r package branch; do
+            [ -n "$package" ] || continue
+            reference="$(branch_file "$branch" .github/upstream-ref)"
+            test -n "$reference"
+            printf '%s\n' "$reference" >> "$evidence/protected-refs.txt"
+            commit="$(branch_file "$branch" .github/upstream-commit)"
+            [ -z "$commit" ] || printf '%s\n' "$commit" >> "$evidence/pinned-commits.txt"
+            gh api --paginate "orgs/$PACKAGE_OWNER/packages/container/$package/versions?per_page=100" \
+              --jq '.[] | {id, created_at, metadata}' > "$evidence/versions-$package.jsonl"
+          done < .github/cache-retention-packages
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
+            --jq '.actions_caches[] | {id, key, ref, created_at, size_in_bytes}' > "$evidence/actions-caches.jsonl"
+          jq -s '{release_records: length}' "$evidence/upstream-releases.jsonl"
+          jq -s '{actions_caches: length}' "$evidence/actions-caches.jsonl"
+
+      - name: Set up the helper's native JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Set up the helper regression fixture's Rust toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+
+      - name: Build and verify the retention planner
+        env:
+          RUSTUP_TOOLCHAIN: 1.95.0
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/retention-helper-temp"
+          mvn -B -ntp -q -f tooling/cli/pom.xml -Pruntime \
+            "-Dtooling.build.directory=$RUNNER_TEMP/retention-helper" \
+            "-Dmaven.repo.local=$RUNNER_TEMP/retention-helper-maven" \
+            "-Djava.io.tmpdir=$RUNNER_TEMP/retention-helper-temp" verify \
+            2>&1 | tee "$RUNNER_TEMP/cache-retention/helper-verify.log"
+
+      - name: Plan the deletions
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/cache-retention"
+          helper="$RUNNER_TEMP/retention-helper/runtime/bin/codex-tooling"
+          export TMPDIR="$RUNNER_TEMP/retention-helper-temp"
+          : > "$evidence/retained-releases.txt"
+          while read -r package _; do
+            [ -n "$package" ] || continue
+            jq -n \
+              --slurpfile releases "$evidence/upstream-releases.jsonl" \
+              --slurpfile versions "$evidence/versions-$package.jsonl" \
+              --rawfile protected "$evidence/protected-refs.txt" \
+              '{releases: $releases, package_versions: $versions,
+                protected_upstream_refs: ($protected | split("\n") | map(select(length > 0)) | unique)}' \
+              | "$helper" plan-ghcr-retention > "$evidence/plan-$package.json"
+            jq -r '.retained_releases[]' "$evidence/plan-$package.json" >> "$evidence/retained-releases.txt"
+            jq --arg package "$package" '{package: $package, retained_releases,
+              retained: (.retained_version_ids | length), obsolete: (.obsolete_version_ids | length),
+              unmanaged: (.unmanaged_version_ids | length)}' "$evidence/plan-$package.json"
+          done < .github/cache-retention-packages
+
+          # Upstream download caches are keyed by commit, so each retained release also retains its commit.
+          sort -u "$evidence/retained-releases.txt" "$evidence/pinned-commits.txt" > "$evidence/retained-refs.txt"
+          while read -r reference; do
+            case "$reference" in
+              rust-v*) gh api "repos/openai/codex/commits/$reference" --jq .sha >> "$evidence/retained-refs.txt" ;;
+            esac
+          done < <(sort -u "$evidence/retained-releases.txt")
+          jq -n \
+            --slurpfile caches "$evidence/actions-caches.jsonl" \
+            --rawfile references "$evidence/retained-refs.txt" \
+            '{retained_upstream_refs: ($references | split("\n") | map(select(length > 0)) | unique),
+              caches: [$caches[] | {id, key, ref, created_at}]}' \
+            | "$helper" plan-actions-cache-retention > "$evidence/plan-actions-caches.json"
+          jq --slurpfile caches "$evidence/actions-caches.jsonl" \
+            '(.obsolete_cache_ids) as $obsolete | {retained: (.retained_cache_ids | length),
+              obsolete: ($obsolete | length), unmanaged: (.unmanaged_cache_ids | length),
+              obsolete_bytes: ([$caches[] | select(.id as $id | $obsolete | index($id)) | .size_in_bytes] | add // 0)}' \
+            "$evidence/plan-actions-caches.json"
+
+      - name: Delete the obsolete caches
+        if: env.DRY_RUN != 'true'
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/cache-retention"
+          # Deletes one resource; one already deleted by a concurrent pruner counts as deleted.
+          delete() {
+            local failure
+            failure="$(mktemp -p "$RUNNER_TEMP")"
+            if gh api --method DELETE "$1" > /dev/null 2> "$failure" || grep -q 'HTTP 404' "$failure"; then
+              rm -f -- "$failure"
+              printf '%s\n' "$1" >> "$evidence/deleted.txt"
+              return 0
+            fi
+            cat -- "$failure" >&2
+            return 1
+          }
+          : > "$evidence/deleted.txt"
+          while read -r package _; do
+            [ -n "$package" ] || continue
+            for version in $(jq -r '.obsolete_version_ids[]' "$evidence/plan-$package.json"); do
+              delete "orgs/$PACKAGE_OWNER/packages/container/$package/versions/$version"
+            done
+          done < .github/cache-retention-packages
+          for cache in $(jq -r '.obsolete_cache_ids[]' "$evidence/plan-actions-caches.json"); do
+            delete "repos/$GITHUB_REPOSITORY/actions/caches/$cache"
+          done
+          printf 'deleted=%s\n' "$(wc -l < "$evidence/deleted.txt" | tr -d ' ')"
+
+      - name: Retain the plan and deletion record for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: cache-retention
+          path: ${{ runner.temp }}/cache-retention
+          retention-days: 1
+          if-no-files-found: warn
