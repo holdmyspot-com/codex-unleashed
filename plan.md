@@ -13,8 +13,8 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 
 ### Checkout
 
-- Branch `main.new`, HEAD `9e03146991` plus this plan update. No CP3 tag exists. The CI workflow "Release build checkpoint tests" passed on every push through `e217e0e850`.
-- Local test command, from `tooling/cli`: `mvn -B -ntp -q -s <settings.xml> test`. Expect 1454 tests, 0 failures and exactly 6 errors in `SourceInputCargoTest` when no local `rustc` is installed. Native Rust, Bazel and Go builds run only on remote runners.
+- Branch `main.new`, HEAD `7c459154c0` plus this plan update. No CP3 tag exists. The CI workflow "Release build checkpoint tests" passed on every push through `e217e0e850`.
+- Local test command, from `tooling/cli`: `mvn -B -ntp -q -s <settings.xml> test`. Expect 1455 tests, 0 failures and exactly 6 errors in `SourceInputCargoTest` when no local `rustc` is installed. Native Rust, Bazel and Go builds run only on remote runners.
 - Tests live in the separate JPMS module `com.holdmyspot.codexunleashed.tooling.test`. Test access to package-private behavior goes only through `<Topic>Access`/`<Topic>Secrets` façades in package `com.holdmyspot.codexunleashed.secrets` (exported only to the test module, registered in the owner's `static {}`); no reflection and no fake executables for tools.
 
 ### Live operations at handoff
@@ -23,6 +23,19 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 | --- | --- | --- |
 | Linux x64 release build | Run `41743639583` (`cache=true`, `scheduler=true`), commit `a7d420154f` | Dispatched 2026-11-04T00:01Z. If it goes quiet, read `baseline-evidence/quiet-build-report.log` in its artifact. |
 | Linux ARM release build | Run `41743643884`, same commit and inputs | Same. |
+| Rung 1: `tikv-jemalloc-sys` only, x64 | Run `41750107254` (`packages=tikv-jemalloc-sys`, `cache=true`, `scheduler=true`), commit `7c459154c0` | Dispatched 2026-11-04T00:52Z; queued behind `41743639583` in the x64 concurrency group. It stops before the release checks by design; on success, dispatch rung 2. |
+
+### Incremental package ladder (user directive, 2026-11-04)
+
+- Instead of rerunning the whole release to test the scheduler, build a small package set first. Then widen it step by step, saving each rung to the cache, until the full build passes end to end.
+- `7c459154c0` adds the workflow input `packages`. It runs one scheduled `cargo build --release -p ...` of those packages, writes `cargo-build-packages.log`, then fails on purpose in "Stop a package-selection run before release checks". That way the partial-state cache is saved and nothing is published.
+- Rungs:
+  1. `tikv-jemalloc-sys` (the x64 hang).
+  2. About 20 small crates, including one that is killed for memory and retried.
+  3. `aws-lc-sys` and `openssl-sys`.
+  4. `--bin codex-code-mode-host`, which covers the ARM end-of-build hang.
+  5. The full build.
+- Each failure gets a red test before its fix. Rungs reuse the previous rung's cache.
 
 ### Rerun of `9e03146991` (2026-11-03)
 
@@ -41,8 +54,9 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 
 - If one compile or link step is slow, split it into concurrent steps that are joined at the end. Do this only when the output matches a one-shot build. The target is byte-identical binaries; any option that is not byte-identical needs the user's approval first.
 - First establish that the current release build reproduces itself byte for byte: build the same binary twice from a clean target and compare hashes. Every later comparison depends on that baseline.
-- Byte-identical options, which are allowed: run C/C++ build-script objects with more jobs (aws-lc-sys, jemalloc, openssl), admit more compiler attempts at once, and reuse cached outputs.
-- Options that are not byte-identical, and need approval: rustc's parallel front end (`-Z threads`, nightly-only, so it needs `RUSTC_BOOTSTRAP=1`; use it only if the hashes match), a different final linker (lld or mold), and more `codegen-units` than upstream's 4. Upstream's `codegen-units` and `lto` settings are a deliberate size and performance trade-off, so changing them counts as quality loss.
+- Byte-identical options, which are allowed: reduce per-process supervision cost (plan step 3, second half), reuse cached outputs, and use bigger runners with a higher `--max-jobs`. C/C++ build scripts already run with every jobserver slot: Cargo's FIFO jobserver gives Make the 4 slots of the 4-CPU runner, so more jobs would not help. Their cost is the Frida attach for each compiler process.
+- Rejected: rustc's parallel front end (`-Z threads`). It is nightly-only, so it needs `RUSTC_BOOTSTRAP=1`, and it is unstable, renamed between releases and known to hang occasionally.
+- Options that are not byte-identical, and need approval: a different final linker (lld or mold), and more `codegen-units` than upstream's 4. Upstream's `codegen-units` and `lto` settings are a deliberate size and performance trade-off, so changing them counts as quality loss.
 - Order: after the current release hang is fixed and plan step 3 (the preload library) lands, because per-process Frida cost distorts timings until then.
 
 ### Next deliverable: preloaded native hook library (plan step 3, second half)
