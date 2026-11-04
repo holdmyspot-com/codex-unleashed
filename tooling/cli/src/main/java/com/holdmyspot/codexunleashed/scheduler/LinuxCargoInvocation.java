@@ -806,19 +806,25 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
             {
                 if (images != null)
                 {
-                    FridaRuntime.Child nativeChild = images.pollNativeChild();
-                    if (nativeChild != null) routing.route(imageRoute, nativeChild);
+                    // Every held image waits for this pump, so one pump releases all of them rather than one per idle
+                    // interval.
+                    for (FridaRuntime.Child nativeChild = images.pollNativeChild(); nativeChild != null;
+                        nativeChild = images.pollNativeChild())
+                        routing.route(imageRoute, nativeChild);
                 }
                 device.copy();
-                if (!advancingImage && !imageChildren.isEmpty())
+                if (!advancingImage)
                 {
-                    FridaRuntime.Child child = imageChildren.removeFirst();
                     advancingImage = true;
                     try
                     {
-                        routing.prepare(imageRoute, child);
-                        images.advance(child);
-                        routing.completed(imageRoute, child);
+                        while (!imageChildren.isEmpty())
+                        {
+                            FridaRuntime.Child child = imageChildren.removeFirst();
+                            routing.prepare(imageRoute, child);
+                            images.advance(child);
+                            routing.completed(imageRoute, child);
+                        }
                     }
                     finally { advancingImage = false; }
                 }
