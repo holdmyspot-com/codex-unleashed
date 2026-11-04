@@ -38,6 +38,8 @@ public final class LinuxBuildHookInstallation implements AutoCloseable
 	 * {@code spawn-static <program>} does the same through {@code posix_spawn} and waits for the child. With
 	 * {@code token-read-exit <fifo>} it opens the FIFO and starts a thread that reads one byte from it, waits until that
 	 * thread is blocked in the read, prints {@code exiting} and exits 0, so the process ends with the read pending.
+	 * With {@code token-threads <fifo>} eight threads each write the byte {@code x} to the FIFO 200 times, so their
+	 * transfers are issued concurrently; it prints {@code done} and exits 0 once every write returned 1.
 	 */
 	private static final String PROGRAM_SOURCE = """
 		#include <fcntl.h>
@@ -55,6 +57,12 @@ public final class LinuxBuildHookInstallation implements AutoCloseable
 		#include <unistd.h>
 		static void *ballast;
 		static volatile pid_t reader_tid;
+		static void *write_tokens(void *fifo) {
+		  char byte = 'x';
+		  for (int count = 0; count < 200; ++count)
+		    if (write(*(int *) fifo, &byte, 1) != 1) return (void *) 1;
+		  return NULL;
+		}
 		static void *read_token(void *fifo) {
 		  reader_tid = (pid_t) syscall(SYS_gettid);
 		  char byte;
@@ -110,6 +118,20 @@ public final class LinuxBuildHookInstallation implements AutoCloseable
 		    if (fifo < 0) return 7;
 		    char pair[2];
 		    return read(fifo, pair, 2) < 0 ? 8 : 9;
+		  }
+		  if (strcmp(argv[1], "token-threads") == 0) {
+		    static int fifo;
+		    fifo = open(argv[2], O_RDWR);
+		    if (fifo < 0) return 7;
+		    pthread_t writers[8];
+		    for (int index = 0; index < 8; ++index)
+		      if (pthread_create(&writers[index], NULL, write_tokens, &fifo) != 0) return 8;
+		    for (int index = 0; index < 8; ++index) {
+		      void *outcome;
+		      if (pthread_join(writers[index], &outcome) != 0 || outcome != NULL) return 9;
+		    }
+		    puts("done");
+		    return 0;
 		  }
 		  if (strcmp(argv[1], "token-read-exit") == 0) {
 		    static int fifo;

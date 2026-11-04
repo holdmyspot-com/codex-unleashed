@@ -113,6 +113,12 @@ static struct {
     pthread_cond_t fatal;
     /** Serializes whole frames on the socket. */
     pthread_mutex_t sending;
+    /**
+     * Held from issuing a transfer sequence until its frame is sent, because the server requires transfer sequences
+     * to arrive consecutively and threads that issue them concurrently would otherwise send them out of order. It is
+     * taken before the mutex, which is taken before sending.
+     */
+    pthread_mutex_t issuing;
     /** Connected socket, or -1 before connecting and in a forked child. */
     int socket;
     /** Process that owns the connection; a fork child sees a different pid and reconnects. */
@@ -129,7 +135,7 @@ static struct {
     /** Signalled when adopted is set or a fault occurs. */
     pthread_cond_t adoption;
 } hook = { .mutex = PTHREAD_MUTEX_INITIALIZER, .fatal = PTHREAD_COND_INITIALIZER,
-    .sending = PTHREAD_MUTEX_INITIALIZER, .socket = -1, .adoption = PTHREAD_COND_INITIALIZER };
+    .sending = PTHREAD_MUTEX_INITIALIZER, .issuing = PTHREAD_MUTEX_INITIALIZER, .socket = -1, .adoption = PTHREAD_COND_INITIALIZER };
 
 /** Arguments that on_enter copies for on_leave. */
 struct call { size_t bytes; };
@@ -508,16 +514,19 @@ static void on_leave(GumInvocationContext *context, gpointer user_data)
     }
 }
 
-/** Reports a jobserver failure and parks the calling thread without native I/O. The mutex must not be held. */
+/**
+ * Reports a jobserver failure and parks the calling thread without native I/O. The caller holds issuing, which is
+ * released once the failure is sent, and not the mutex.
+ */
 static void park_transfer(uint64_t sequence, bool read, const char *cause)
 {
-    ensure_connected();
     pthread_mutex_lock(&hook.mutex);
     int socket = hook.socket;
     pthread_mutex_unlock(&hook.mutex);
     char sequence_text[21];
     const char *failure[] = { "failure", decimal(sequence, sequence_text), read ? "read" : "write", cause };
     send_frame(socket, failure, 4);
+    pthread_mutex_unlock(&hook.issuing);
     pthread_mutex_lock(&hook.mutex);
     fatal_locked(TRANSFER_REJECTED);
 }
@@ -565,13 +574,18 @@ static void on_transfer_enter(GumInvocationContext *context, gpointer user_data)
     if (kind == DESCRIPTOR_OTHER) return;
 
     ensure_connected();
+    pthread_mutex_lock(&hook.issuing);
     pthread_mutex_lock(&hook.mutex);
-    if (hook.fault != NO_FAULT) fatal_locked(hook.fault);
+    if (hook.fault != NO_FAULT) {
+        pthread_mutex_unlock(&hook.issuing);
+        fatal_locked(hook.fault);
+    }
     if (hook.sequence == UINT64_MAX / 2) {
         int socket = hook.socket;
         pthread_mutex_unlock(&hook.mutex);
         const char *exhausted[] = { "exhausted" };
         send_frame(socket, exhausted, 1);
+        pthread_mutex_unlock(&hook.issuing);
         pthread_mutex_lock(&hook.mutex);
         fatal_locked(TRANSFER_EXHAUSTED);
     }
@@ -587,7 +601,10 @@ static void on_transfer_enter(GumInvocationContext *context, gpointer user_data)
     struct transfer *transfer = NULL;
     for (int index = 0; index < TRANSFER_COUNT && transfer == NULL; ++index)
         if (hook.transfers[index].sequence == 0) transfer = &hook.transfers[index];
-    if (transfer == NULL) fatal_locked(TRANSFER_EXHAUSTED);
+    if (transfer == NULL) {
+        pthread_mutex_unlock(&hook.issuing);
+        fatal_locked(TRANSFER_EXHAUSTED);
+    }
     transfer->sequence = sequence;
     transfer->read = read;
     transfer->answered = false;
@@ -598,6 +615,7 @@ static void on_transfer_enter(GumInvocationContext *context, gpointer user_data)
     const char *request[] = { "transfer", decimal(sequence, sequence_text), read ? "read" : "write",
         read ? NULL : decimal(buffer[0], byte_text) };
     int sent = send_frame(socket, request, read ? 3 : 4);
+    pthread_mutex_unlock(&hook.issuing);
     pthread_mutex_lock(&hook.mutex);
     if (sent < 0) fatal_locked(CONNECTION_LOST);
     while (!transfer->answered && hook.fault == NO_FAULT) pthread_cond_wait(&transfer->condition, &hook.mutex);
@@ -1045,6 +1063,7 @@ static void reset_child(void)
 {
     pthread_mutex_unlock(&hook.sending);
     pthread_mutex_unlock(&hook.mutex);
+    pthread_mutex_unlock(&hook.issuing);
     pthread_cond_init(&hook.fatal, NULL);
     if (hook.socket >= 0) close(hook.socket);
     hook.socket = -1;
@@ -1069,6 +1088,7 @@ static void reset_child(void)
 /** Holds the registry across fork so that the child never copies it mid-update. */
 static void lock_for_fork(void)
 {
+    pthread_mutex_lock(&hook.issuing);
     pthread_mutex_lock(&hook.mutex);
     pthread_mutex_lock(&hook.sending);
 }
@@ -1077,6 +1097,7 @@ static void unlock_after_fork(void)
 {
     pthread_mutex_unlock(&hook.sending);
     pthread_mutex_unlock(&hook.mutex);
+    pthread_mutex_unlock(&hook.issuing);
 }
 
 __attribute__((constructor)) static void install(void)

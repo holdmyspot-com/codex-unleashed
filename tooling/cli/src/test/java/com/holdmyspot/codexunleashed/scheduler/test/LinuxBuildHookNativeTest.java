@@ -216,6 +216,46 @@ public final class LinuxBuildHookNativeTest
 	}
 
 	/**
+	 * Transfers that threads issue concurrently reach the server in the order of their sequences, which the server
+	 * requires to be consecutive.
+	 * @throws IOException          if the fixture cannot be built or run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = TEST_TIMEOUT_MILLIS)
+	public void sendsConcurrentTransfersInSequenceOrder() throws IOException, InterruptedException
+	{
+		try (LinuxBuildHookInstallation installation = LinuxBuildHookInstallation.create())
+		{
+			Path fifo = installation.directory().resolve("jobserver");
+			Process mkfifo = new ProcessBuilder("mkfifo", fifo.toString()).inheritIO().start();
+			requireThat(mkfifo.waitFor(), "mkfifo").isEqualTo(0);
+			Process stat = new ProcessBuilder("stat", "-c", "%Hd:%Ld:%i", fifo.toString()).start();
+			String identity = new String(stat.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
+			requireThat(stat.waitFor(), "stat").isEqualTo(0);
+
+			Process program = installation.startWithFifo(identity, "token-threads", fifo.toString());
+			try (SocketChannel connection = installation.accept())
+			{
+				receive(connection);
+				send(connection, "welcome", "1");
+				for (int sequence = 1; sequence <= 1600; ++sequence)
+				{
+					List<String> transfer = receive(connection);
+					requireThat(transfer, "transfer").isEqualTo(List.of("transfer", Integer.toString(sequence), "write",
+						Integer.toString('x')));
+					send(connection, "token", Integer.toString(sequence));
+				}
+				requireThat(readAll(program), "output").isEqualTo("done\n");
+				requireThat(program.waitFor(), "exitValue").isEqualTo(0);
+			}
+			finally
+			{
+				program.destroyForcibly();
+			}
+		}
+	}
+
+	/**
 	 * A jobserver transfer of more than one byte is reported with its operation and the cause that the Frida token
 	 * script reports, and the caller parks without native I/O.
 	 * @throws IOException          if the fixture cannot be built or run
