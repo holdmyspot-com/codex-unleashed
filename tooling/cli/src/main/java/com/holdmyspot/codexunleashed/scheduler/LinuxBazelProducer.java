@@ -331,6 +331,8 @@ public final class LinuxBazelProducer
                 fields.put("observedBytes", value.observedBytes()); fields.put("status", value.status().name());
                 return fields;
             }
+            if (payload instanceof Throwable value)
+                return Map.of("type", value.getClass().getName(), "message", String.valueOf(value.getMessage()));
             return payload;
         }
 

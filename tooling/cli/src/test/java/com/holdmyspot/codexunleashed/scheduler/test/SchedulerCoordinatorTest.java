@@ -176,6 +176,38 @@ public final class SchedulerCoordinatorTest
         requireThat(session.events.getLast(), "outerclose").isEqualTo("session-close");
     }
 
+    /** A run failure is recorded before any cleanup, so a cleanup that never returns cannot hide it. */
+    @Test
+    public void recordsFailureBeforeCleanup()
+    {
+        var session = new Model();
+        session.failSecondTree = true;
+        List<String> records = new ArrayList<>();
+        IOException failure = requireException(IOException.class, () -> new SchedulerCoordinator<>(session,
+            new Policy.Budget(0, 2), () -> {}, (event, payload) ->
+            {
+                if (event.equals("failure"))
+                    records.add(((Throwable) payload).getMessage() + " stopped=" + session.events.contains("stop-input"));
+            }).run());
+        requireThat(failure.getMessage(), "primary").isEqualTo("tree B unavailable");
+        requireThat(records, "failureRecordedBeforeCleanup").isEqualTo(List.of("tree B unavailable stopped=false"));
+        requireThat(session.events.getLast(), "outerclose").isEqualTo("session-close");
+    }
+
+    /** A failure to record the run failure is suppressed and does not prevent cleanup. */
+    @Test
+    public void failureRecordFaultKeepsPrimaryAndCleansUp()
+    {
+        var session = new Model();
+        session.failSecondTree = true;
+        IOException failure = requireException(IOException.class, () -> new SchedulerCoordinator<>(session,
+            new Policy.Budget(0, 2), () -> {}, (event, payload) ->
+            { if (event.equals("failure")) throw new IOException("failure record unavailable"); }).run());
+        requireThat(failure.getMessage(), "primary").isEqualTo("tree B unavailable");
+        requireThat(failure.getSuppressed()[0].getMessage(), "recordFault").isEqualTo("failure record unavailable");
+        requireThat(session.events.getLast(), "outerclose").isEqualTo("session-close");
+    }
+
     /** An uncertain response is sent once and does not cause the coordinator to repeat an action. */
     @Test
     public void uncertainDeliveryIsNotResent()

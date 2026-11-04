@@ -312,7 +312,8 @@ public final class MacCargoSchedule
                 @Override public void start() throws IOException { invocation.start(); }
                 @Override public int run(Policy.Budget budget) throws IOException
                 {
-                    return new SchedulerCoordinator<>(invocation.session(), budget, () -> Thread.sleep(10)).run();
+                    return new SchedulerCoordinator<>(invocation.session(), budget, () -> Thread.sleep(10),
+                        new FailureReport(System.err::println)).run();
                 }
                 @Override public boolean isClosed() { return invocation.isClosed(); }
                 @Override public void close() throws IOException { invocation.close(); }

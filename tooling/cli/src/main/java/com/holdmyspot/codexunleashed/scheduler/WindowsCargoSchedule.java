@@ -110,7 +110,7 @@ public final class WindowsCargoSchedule
             StallWatch stalls = new StallWatch(Clock.systemUTC(), StallWatch.DEFAULT_THRESHOLD, scope.json(),
                 System.err::println, invocation::stallFacts);
             return new SchedulerCoordinator<>(invocation.session(), settings.budget(), () -> Thread.sleep(10),
-                (event, payload) -> { }, stalls).run();
+                new FailureReport(System.err::println), stalls).run();
         }
         catch (IOException | RuntimeException | Error failure) { primary = failure; throw failure; }
         finally

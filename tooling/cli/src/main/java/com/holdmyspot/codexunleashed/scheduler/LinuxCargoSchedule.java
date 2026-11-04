@@ -86,7 +86,8 @@ public final class LinuxCargoSchedule
                 invocation = configuration.memory() == null ? new LinuxCargoInvocation(scope, inputs) :
                     new LinuxCargoInvocation(scope, inputs, configuration.memory());
                 invocation.start();
-                return new SchedulerCoordinator<>(invocation.session(), settings.budget(), () -> Thread.sleep(10)).run();
+                return new SchedulerCoordinator<>(invocation.session(), settings.budget(), () -> Thread.sleep(10),
+                    new FailureReport(System.err::println)).run();
             }
             catch (IOException | RuntimeException | Error failure)
             {

@@ -168,6 +168,9 @@ public final class SchedulerCoordinator<R>
         {
             if (failure != null)
             {
+                try { observer.record("failure", failure); }
+                catch (IOException | RuntimeException | Error cause) { failure = append(failure, cause); }
+                restoreInterrupt |= Thread.interrupted();
                 try { session.stopAccepting(); }
                 catch (IOException | RuntimeException | Error cause) { failure = append(failure, cause); }
             }
@@ -265,8 +268,10 @@ public final class SchedulerCoordinator<R>
     {
         /**
          * Records one event before its associated boundary is allowed to proceed.
-         * @param event submission, blocked, decision, completion-before, completion-after or terminal
-         * @param payload exact original immutable payload, or authentic terminal root status
+         * @param event submission, blocked, decision, completion-before, completion-after, failure or terminal
+         * @param payload exact original immutable payload, authentic terminal root status, or for failure the run's
+         *     primary failure, recorded once before any cleanup begins so that a cleanup that never returns cannot
+         *     hide it
          * @throws IOException if the event cannot be durably recorded
          */
         void record(String event, Object payload) throws IOException;
