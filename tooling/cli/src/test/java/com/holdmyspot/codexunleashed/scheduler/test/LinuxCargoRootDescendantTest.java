@@ -96,18 +96,35 @@ public final class LinuxCargoRootDescendantTest
         requireThat(queue.size(), "cargoRepeatIsNewTransition").isEqualTo(2);
     }
 
-    /** A canceled original owner never transfers continuation to another manager.
+    /** A canceled original owner never continues its queued event, and a repeated copy of that event stays with the
+     * owner, which releases what it queued, so the event is not released twice.
      * @throws IOException if controlled setup or expected successful readiness fails
      */
     @Test
     public void rejectsCancellationBeforeContinuation() throws IOException
     {
         var routing = new AllocationHooks.Routing();
-        var compiler = routing.register(pid -> true, ignored -> {});
+        List<FridaRuntime.Child> queue = new ArrayList<>();
+        var compiler = routing.register(pid -> true, queue::add);
         routing.route(compiler, event());
         compiler.cancel();
         requireException(IOException.class, () -> routing.prepare(compiler, event()));
-        requireException(IOException.class, () -> routing.route(compiler, event()));
+        requireThat(routing.route(compiler, event()), "repeatedCopyStaysWithOwner").isTrue();
+        requireThat(queue, "ownerQueue").isEqualTo(List.of(event()));
+    }
+
+    /** A held child that reaches its owner only after the owner was canceled, such as the linker of an attempt
+     * terminated for retry, is handed back to the caller for release instead of failing the build.
+     * @throws IOException if routing rejects the event
+     */
+    @Test
+    public void releasesHeldChildOfCanceledOwner() throws IOException
+    {
+        var routing = new AllocationHooks.Routing(pid -> true);
+        var device = routing.register(pid -> false, ignored -> { throw new IllegalStateException("Unexpected delivery"); });
+        var compiler = routing.register(pid -> true, ignored -> { throw new IllegalStateException("Unexpected delivery"); });
+        compiler.cancel();
+        requireThat(routing.route(device, event()), "delivered").isFalse();
     }
 
     /** A possibly effective native resume cannot be authorized again after its original call throws.
@@ -145,17 +162,18 @@ public final class LinuxCargoRootDescendantTest
         requireException(IOException.class, () -> routing.route(first, event()));
     }
 
-    /** A held event that outlived its process, such as a child of an attempt killed for retry, is discarded: the
-     * attempt's owner closed once its cgroup emptied, and the shared device still reported the dead child.
+    /** A held event that outlived its process, such as a child of an attempt killed for retry, is handed back to the
+     * caller for release: the attempt's owner closed once its cgroup emptied, and the shared device still holds the
+     * dead child.
      * @throws IOException if routing rejects the stale event or a later owned delivery
      */
     @Test
-    public void discardsUnownedDeliveryForExitedProcess() throws IOException
+    public void releasesUnownedDeliveryForExitedProcess() throws IOException
     {
         var routing = new AllocationHooks.Routing(pid -> false);
         List<FridaRuntime.Child> queue = new ArrayList<>();
         var device = routing.register(pid -> false, ignored -> { throw new IllegalStateException("Unexpected delivery"); });
-        routing.route(device, event());
+        requireThat(routing.route(device, event()), "delivered").isFalse();
         var compiler = routing.register(pid -> true, queue::add);
         routing.route(device, event());
         requireThat(queue, "ownedDeliveryAfterDiscard").isEqualTo(List.of(event()));

@@ -92,9 +92,13 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
          * Routes a copied device event without transferring continuation authority to its receiving manager.
          * @param source original manager's registered receiver
          * @param child copied held-image event
-         * @throws IOException if current ownership is absent, ambiguous, canceled or already continued
+         * @return true once the event is delivered to its owner or needs no action; false if no active owner will
+         *   continue it, because its owner was canceled or its process exited unowned, so the caller must release the
+         *   held process
+         * @throws IOException if a running process has no owner, ownership is ambiguous, or the event was already
+         *   continued
          */
-        public void route(Registration source, FridaRuntime.Child child) throws IOException
+        public boolean route(Registration source, FridaRuntime.Child child) throws IOException
         {
             requireThread();
             if (!owners.contains(source)) throw new IOException("Device event source is not retained");
@@ -107,14 +111,21 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
                 if (target != null) throw new IOException("Held image has ambiguous controller ownership");
                 target = candidate;
             }
-            if (target == null && !liveness.running(child.pid()))
+            if (target == null)
             {
                 // Each owner closes only after its cgroup emptied, so an exited process's event, such as one for a
-                // child of an attempt killed for retry, has no owner and nothing left to continue.
-                return;
+                // child of an attempt killed for retry, has no owner; the device still holds it.
+                if (liveness.running(child.pid())) throw new IOException("Held image has no active owning controller");
+                return false;
             }
-            if (target == null || target.canceled) throw new IOException("Held image has no active owning controller");
             Transition previous = transitions.get(child);
+            if (target.canceled)
+            {
+                // A canceled owner never continues, but it releases every event it already queued.
+                if (previous == null || previous.completed || previous.target != target) return false;
+                previous.sources.add(source);
+                return true;
+            }
             if (previous != null)
             {
                 if (previous.completed && previous.sources.contains(source))
@@ -123,20 +134,21 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
                 {
                     // Another manager's late copy of a transition that already continued needs no action.
                     previous.sources.add(source);
-                    return;
+                    return true;
                 }
                 else if (previous.target != target || previous.attempted)
                     throw new IOException("Held image delivery cannot authorize a second continuation");
                 else
                 {
                     previous.sources.add(source);
-                    return;
+                    return true;
                 }
             }
             var transition = new Transition(target);
             transition.sources.add(source);
             transitions.put(child, transition);
             target.delivery.enqueue(child);
+            return true;
         }
 
         /**
@@ -583,6 +595,18 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
 					else cleanup.addSuppressed(cause);
 				}
 			}
+            // Stopping ends delivery, so events queued since then were never continued; the device still holds them.
+            while (!children.isEmpty())
+            {
+                FridaRuntime.Child held = children.removeFirst();
+                if (nativeImages.owns(held.pid())) continue;
+                try { device.release(held.pid()); }
+                catch (IOException cause)
+                {
+                    if (cleanup == null) cleanup = cause;
+                    else cleanup.addSuppressed(cause);
+                }
+            }
             try { nativeImages.close(); }
             catch (IOException cause)
             {

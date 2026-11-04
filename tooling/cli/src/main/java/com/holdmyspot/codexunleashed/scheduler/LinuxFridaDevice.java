@@ -108,9 +108,10 @@ final class LinuxFridaDevice implements AutoCloseable
 	}
 
 	/**
-	 * Routes a bounded number of copied child-added events from this device to their owning controllers.
+	 * Routes a bounded number of copied child-added events from this device to their owning controllers, and releases
+	 * each held child that no active owner will continue.
 	 * @throws IllegalStateException if called from another thread
-	 * @throws IOException           if callback transport failed or routing rejects an event
+	 * @throws IOException           if callback transport failed, routing rejects an event, or a release fails
 	 */
 	void copy() throws IOException
 	{
@@ -120,7 +121,31 @@ final class LinuxFridaDevice implements AutoCloseable
 			FridaRuntime.Child event = manager.pollChild().orElse(null);
 			if (event == null)
 				return;
-			routing.route(source, event);
+			if (!routing.route(source, event))
+				release(event.pid());
+		}
+	}
+
+	/**
+	 * Lets go of a held child that no owner will continue. A running child resumes; its owner's termination stops it.
+	 * A child killed while held cannot be detached, so its traced exit is collected instead, which hands it back to its
+	 * parent.
+	 * @param pid the held child's process ID
+	 * @throws IllegalStateException if called from another thread
+	 * @throws IOException           if a running child cannot be resumed, or a traced exit cannot be collected
+	 */
+	void release(long pid) throws IOException
+	{
+		requireOwner();
+		try
+		{
+			manager.resume(pid);
+		}
+		catch (IOException resumeFailure)
+		{
+			if (LinuxTracedZombies.release(pid) || !LinuxTracedZombies.running(pid))
+				return;
+			throw resumeFailure;
 		}
 	}
 
