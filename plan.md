@@ -37,6 +37,14 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 - Neither run's evidence names the stuck process or what it waited on. `9e03146991` adds `.github/scripts/watch-quiet-build.py` around the release command. After 15 quiet minutes it writes each process's state, wait channel, kernel stacks and JVM thread dumps to `baseline-evidence/quiet-build-report.log`, repeats every 15 minutes, and stops the build after 75 minutes. A healthy build was at most about 10 minutes without output.
 - Next: read those reports, write the red test for the actual blocked owner, fix it, then rerun both Linux release builds with `cache=true`.
 
+### Directive: split slow build steps without changing the output (user, 2026-11-04)
+
+- If one compile or link step is slow, split it into concurrent steps that are joined at the end. Do this only when the output matches a one-shot build. The target is byte-identical binaries; any option that is not byte-identical needs the user's approval first.
+- First establish that the current release build reproduces itself byte for byte: build the same binary twice from a clean target and compare hashes. Every later comparison depends on that baseline.
+- Byte-identical options, which are allowed: run C/C++ build-script objects with more jobs (aws-lc-sys, jemalloc, openssl), admit more compiler attempts at once, and reuse cached outputs.
+- Options that are not byte-identical, and need approval: rustc's parallel front end (`-Z threads`, nightly-only, so it needs `RUSTC_BOOTSTRAP=1`; use it only if the hashes match), a different final linker (lld or mold), and more `codegen-units` than upstream's 4. Upstream's `codegen-units` and `lto` settings are a deliberate size and performance trade-off, so changing them counts as quality loss.
+- Order: after the current release hang is fixed and plan step 3 (the preload library) lands, because per-process Frida cost distorts timings until then.
+
 ### Next deliverable: preloaded native hook library (plan step 3, second half)
 
 Step 3's first half is pushed (`e217e0e850`, `LinuxFridaDevice`): one Frida device manager per Linux Cargo build, borrowed by the leader and every attempt. The second half replaces per-process Frida script injection with a preloaded library. Findings so far:
