@@ -2,7 +2,8 @@
 
 The release build writes every stage's output under one evidence directory. When no file there changes for
 --first-report seconds, this writes a report of every user process to --report: its state, kernel wait channel,
-current system call and kernel stacks, plus a thread dump of each Java process. It repeats every --interval seconds
+current system call and kernel stacks, plus a Java and a mixed Java and native thread dump of each Java process.
+Zombies are listed with their name, since they have no command line. It repeats every --interval seconds
 while the build stays quiet, and once the build has been quiet for --stop-after seconds it terminates the command's
 process group and exits 124. Otherwise it exits with the command's own status.
 
@@ -18,7 +19,8 @@ import sys
 import time
 
 TASK_STACK_LIMIT = 16
-"""Most threads whose kernel stacks are printed for one process; every thread in state D is printed regardless."""
+"""Most threads whose kernel stacks are printed for one process; every thread in state D, and every thread of a Java
+process, is printed regardless."""
 
 
 def read(path):
@@ -39,26 +41,37 @@ def status_fields(pid):
     return fields
 
 
-def java_dump(pid, uid, jcmd):
-    """Returns a JVM thread dump taken as the JVM's own user, or why none was taken."""
-    command = [jcmd, str(pid), "Thread.print", "-l"]
+def java_dump(uid, command, timeout):
+    """Returns the output of one JVM diagnostic command run as the JVM's own user, or why it produced none."""
     if os.geteuid() == 0 and uid != 0:
         command = ["sudo", "-n", f"-u#{uid}", *command]
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired) as failure:
-        return f"<thread dump failed: {failure}>"
+        return f"<{command[0]} failed: {failure}>\n"
     return result.stdout + result.stderr
+
+
+def process_name(pid, fields):
+    """Returns a process's command line, a zombie's bracketed name, or None for a kernel thread or a vanished process.
+
+    A zombie has an empty command line, so it is named from its comm field, as ps does."""
+    cmdline = read(f"/proc/{pid}/cmdline").replace("\0", " ").strip()
+    if cmdline and not cmdline.startswith("<"):
+        return cmdline
+    if fields.get("State", "").startswith("Z"):
+        return f"[{read(f'/proc/{pid}/comm').strip()}] <defunct>"
+    return None
 
 
 def dump(jcmd, out):
     """Writes one line per user process, then its threads' kernel stacks and any JVM thread dump."""
     pids = sorted(int(name) for name in os.listdir("/proc") if name.isdigit())
     for pid in pids:
-        cmdline = read(f"/proc/{pid}/cmdline").replace("\0", " ").strip()
-        if not cmdline or cmdline.startswith("<"):
-            continue  # kernel threads have no command line; a process that exited is gone
         fields = status_fields(pid)
+        cmdline = process_name(pid, fields)
+        if cmdline is None:
+            continue  # kernel threads have no command line; a process that was reaped is gone
         state = fields.get("State", "?").split(" ")[0]
         uid = fields.get("Uid", "-1").split()[0]
         wchan = read(f"/proc/{pid}/wchan").strip() or "0"
@@ -66,9 +79,11 @@ def dump(jcmd, out):
         out.write(f"pid={pid} ppid={fields.get('PPid', '?')} uid={uid} state={state} wchan={wchan} "
                   f"syscall={syscall} cmd={cmdline[:400]}\n")
     for pid in pids:
-        cmdline = read(f"/proc/{pid}/cmdline").replace("\0", " ").strip()
-        if not cmdline or cmdline.startswith("<"):
-            continue
+        fields = status_fields(pid)
+        cmdline = process_name(pid, fields)
+        if cmdline is None or fields.get("State", "").startswith("Z"):
+            continue  # a zombie has no threads left to inspect
+        java = os.path.basename(cmdline.split(" ")[0]) == "java"
         try:
             tasks = sorted(int(name) for name in os.listdir(f"/proc/{pid}/task"))
         except OSError:
@@ -76,13 +91,19 @@ def dump(jcmd, out):
         out.write(f"--- pid={pid} threads={len(tasks)} cmd={cmdline[:200]}\n")
         for index, task in enumerate(tasks):
             state = status_fields(f"{pid}/task/{task}").get("State", "?").split(" ")[0]
-            if index >= TASK_STACK_LIMIT and state != "D":
+            if index >= TASK_STACK_LIMIT and state != "D" and not java:
                 continue
             comm = read(f"/proc/{pid}/task/{task}/comm").strip()
             out.write(f"task={task} comm={comm} state={state} wchan={read(f'/proc/{pid}/task/{task}/wchan').strip()}\n")
             out.write(read(f"/proc/{pid}/task/{task}/stack"))
-        if jcmd and os.path.basename(cmdline.split(" ")[0]) == "java":
-            out.write(java_dump(pid, int(status_fields(pid).get("Uid", "-1").split()[0]), jcmd))
+        if jcmd and java:
+            uid = int(fields.get("Uid", "-1").split()[0])
+            out.write(java_dump(uid, [jcmd, str(pid), "Thread.print", "-l"], 30))
+            jhsdb = Path(jcmd).with_name("jhsdb")
+            if jhsdb.is_file():
+                # Thread.print shows only Java frames; a thread blocked inside a native call needs its native frames.
+                out.write(f"--- jhsdb jstack --mixed pid={pid}\n")
+                out.write(java_dump(uid, [str(jhsdb), "jstack", "--mixed", "--pid", str(pid)], 300))
     out.flush()
 
 

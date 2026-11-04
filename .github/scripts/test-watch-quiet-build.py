@@ -32,7 +32,9 @@ class QuietBuildWatchTest(unittest.TestCase):
         command = (
             "import subprocess, sys, time; "
             "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)']); "
+            "zombie = subprocess.Popen([sys.executable, '-c', 'pass']); "
             "print('quiet-child-pid=' + str(child.pid), flush=True); "
+            "print('quiet-zombie-pid=' + str(zombie.pid), flush=True); "
             "time.sleep(600)"
         )
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
@@ -46,6 +48,9 @@ class QuietBuildWatchTest(unittest.TestCase):
             self.assertRegex(text, rf"(?m)^pid={child} ")
             self.assertRegex(text, rf"(?m)^pid={child} .*state=S")
             self.assertRegex(text, rf"(?m)^pid={child} .*wchan=")
+            zombie = next(line.removeprefix("quiet-zombie-pid=") for line in result.stdout.splitlines()
+                if line.startswith("quiet-zombie-pid="))
+            self.assertRegex(text, rf"(?m)^pid={zombie} .*state=Z", "an exited, unreaped child was not reported")
             quiet = [int(value) for value in re.findall(r"quiet_seconds=(\d+)", text)]
             self.assertGreaterEqual(len(quiet), 2)
             self.assertEqual(quiet, sorted(set(quiet)), "writing a report restarted the quiet period")
