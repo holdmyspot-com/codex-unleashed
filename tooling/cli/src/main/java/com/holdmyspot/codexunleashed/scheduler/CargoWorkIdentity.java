@@ -1,231 +1,288 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
-import com.holdmyspot.codexunleashed.secrets.CargoWorkIdentitySecrets;
-import java.io.IOException;
 import java.io.DataOutputStream;
+import java.io.IOException;
 import java.io.OutputStream;
-import java.io.InputStream;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
-import java.nio.file.FileVisitResult;
+import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HexFormat;
-import java.util.Map;
-import java.util.TreeMap;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
- * Derives reusable compiler-work identities from authenticated launch inputs and caller-pinned content roots.
- * Source inputs must remain in the declared input root; output roots contain generated compiler outputs only.
- * Standard-input compilation is inapplicable because its source bytes are not captured by authenticated registration.
- * Toolchain contents and configuration distinguish reusable work; native action UUIDs and births do not.
+ * Describes compiler work for memory estimates: a key that stays the same across source edits, and the size of the
+ * inputs the work reads.
+ * <p>
+ * A crate's peak memory changes little between nearby commits, so the key names the crate and the options that change
+ * how much work the compiler does, and omits source contents, paths, hashes and the environment. Instances hold no
+ * state and are safe to share between threads.
  */
 public final class CargoWorkIdentity
 {
-	static
-	{
-		CargoWorkIdentitySecrets.setCargoWorkIdentityAccess(CargoWorkIdentity::new);
-	}
-
-    /** Complete caller-declared source and configuration input tree. */
-    private final Path inputRoot;
-    /** Compiler output trees excluded from the source-content identity. */
-    private final List<Path> outputRoots;
-    /** Caller-pinned compiler and sysroot content tree. */
-    private final Path toolchainRoot;
-    /** Resolves an argument value against the compiler's working directory. */
-    private final Resolver resolver;
+    /** Options whose value names the crate or changes how much work the compiler does. */
+    private static final Set<String> VALUE_OPTIONS = Set.of("--crate-name", "--crate-type", "--edition", "--target",
+        "--emit", "--cfg");
+    /** Codegen settings, given with {@code -C} or {@code --codegen}, that change how much work the compiler does. */
+    private static final Set<String> CODEGEN_SETTINGS = Set.of("opt-level", "debuginfo", "codegen-units", "lto",
+        "panic", "embed-bitcode", "strip");
+    /** Version of the key's encoding; a change makes earlier history inapplicable. */
+    private static final int FORMAT = 2;
 
     /**
-     * Retains explicit content boundaries without acquiring resources.
-     * @param inputRoot absolute normalized source/configuration root
-     * @param outputRoots absolute normalized generated output trees, strictly below the input root
-     * @param toolchainRoot absolute normalized immutable compiler/sysroot root
-     * @throws NullPointerException if a required value or collection member is null
-     * @throws IllegalArgumentException if a path is relative, not normalized or an output is outside the input root
+     * Creates a stateless identity source.
      */
-    public CargoWorkIdentity(Path inputRoot, List<Path> outputRoots, Path toolchainRoot)
-    {
-        this(inputRoot, outputRoots, toolchainRoot, Path::resolve);
-    }
+    public CargoWorkIdentity() {}
 
     /**
-     * Retains explicit content boundaries and the argument resolver.
-     * @param inputRoot absolute normalized source/configuration root
-     * @param outputRoots absolute normalized generated output trees, strictly below the input root
-     * @param toolchainRoot absolute normalized immutable compiler/sysroot root
-     * @param resolver resolves an argument value against the compiler's working directory
-     * @throws NullPointerException if a required value or collection member is null
-     * @throws IllegalArgumentException if a path is relative, not normalized or an output is outside the input root
+     * Returns the key under which this work's memory history is recorded. With a {@code --crate-name} option, the key
+     * covers the compiler's file name, the crate's name, type, edition, target, emitted outputs and configuration
+     * values, the codegen settings in {@link #CODEGEN_SETTINGS} and {@code --test}, in the order given. Without one,
+     * as for a compiler probe, it covers the compiler's file name and every later argument.
+     *
+     * @param request authenticated compiler inputs
+     * @return lowercase SHA-256 text
+     * @throws NullPointerException if {@code request} is null
      */
-    private CargoWorkIdentity(Path inputRoot, List<Path> outputRoots, Path toolchainRoot, Resolver resolver)
-    {
-        this.resolver = Objects.requireNonNull(resolver, "resolver");
-        this.inputRoot = absolute(inputRoot);
-        this.toolchainRoot = absolute(toolchainRoot);
-        this.outputRoots = List.copyOf(outputRoots);
-        for (Path outputRoot : outputRoots)
-        {
-            absolute(outputRoot);
-            if (outputRoot.equals(inputRoot) || !outputRoot.startsWith(inputRoot))
-                throw new IllegalArgumentException("Generated output roots must be strictly below the input root");
-        }
-    }
-
-    /**
-     * Identifies equivalent authenticated compiler work without granting execution authority.
-     * @param request already authenticated compiler inputs
-     * @return lowercase SHA-256 identity for the declared inputs
-     * @throws IOException if complete stable content cannot be read or work is outside the declared roots
-     */
-    public String identify(CargoCompilerRequest request) throws IOException
+    public String identify(CargoCompilerRequest request)
     {
         Objects.requireNonNull(request, "request");
-        if (request.arguments().contains("-"))
-            throw new IOException("Compiler standard-input source is not captured for reusable work identity");
-        Path compiler = Path.of(request.arguments().getFirst()).normalize();
-        if (!request.directory().normalize().startsWith(inputRoot) || !compiler.startsWith(toolchainRoot))
-            throw new IOException("Compiler work lies outside its declared source or toolchain root");
+        List<String> arguments = request.arguments();
+        List<String> key = new ArrayList<>();
+        key.add(fileName(arguments.getFirst()));
+        List<String> options = arguments.subList(1, arguments.size());
+        if (options.contains("--crate-name"))
+            key.addAll(selectOptions(options));
+        else
+            key.addAll(options);
+
         MessageDigest digest;
         try { digest = MessageDigest.getInstance("SHA-256"); }
         catch (NoSuchAlgorithmException failure) { throw new ExceptionInInitializerError(failure); }
         try (DataOutputStream output = new DataOutputStream(new DigestOutputStream(OutputStream.nullOutputStream(), digest)))
         {
-            output.writeInt(1);
-            output.writeUTF(request.directory().toString());
-            output.writeInt(request.arguments().size());
-            for (String argument : request.arguments()) output.writeUTF(argument);
-            Map<String, String> environment = new TreeMap<>(request.environment());
-            // Jobserver capabilities and wrapper controller authority change between equivalent invocations.
-            // Registration authenticates their complete values before this work-only identity is computed.
-            environment.keySet().removeAll(List.of("CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS",
-                "CODEX_LINUX_CARGO_WRAPPER_CONFIG", "CODEX_CARGO_SOCKET", "CODEX_CARGO_PIPE",
-                "CODEX_CARGO_CONTROLLER_PID", "CODEX_CARGO_CONTROLLER_BIRTH"));
-            output.writeInt(environment.size());
-            for (Map.Entry<String, String> entry : environment.entrySet())
-            {
-                output.writeUTF(entry.getKey());
-                output.writeUTF(entry.getValue());
-            }
-            writeTree(output, inputRoot, outputRoots);
-            writeTree(output, toolchainRoot, List.of());
-            for (String argument : request.arguments())
-            {
-                int separator = argument.indexOf('=');
-                String value = separator < 0 ? argument : argument.substring(separator + 1);
-                Path candidate;
-                try
-                {
-                    candidate = resolver.resolve(request.directory(), value).normalize();
-                }
-                catch (InvalidPathException ignored)
-                {
-                    // Exact option text was already hashed; only this optional file lookup is inapplicable.
-                    continue;
-                }
-                if (Files.isRegularFile(candidate, LinkOption.NOFOLLOW_LINKS)) writeFile(output, candidate);
-            }
-            String generatedInputs = request.environment().get("OUT_DIR");
-            if (generatedInputs != null) writeTree(output, Path.of(generatedInputs), List.of());
+            output.writeInt(FORMAT);
+            output.writeInt(key.size());
+            for (String part : key) output.writeUTF(part);
+        }
+        catch (IOException failure)
+        {
+            // A digest stream over a null stream does not fail.
+            throw new AssertionError(failure);
         }
         return HexFormat.of().formatHex(digest.digest());
     }
 
     /**
-     * Writes complete stable content and relative names, excluding only declared generated output trees.
-     * Symlinks are inapplicable because their targets can escape the declared content boundary.
-     * @param output framed identity sink
-     * @param root complete content root
-     * @param excluded generated directories omitted from source observations
-     * @throws IOException if a root, entry or stable complete file observation is unavailable
+     * Returns the size of the inputs the compiler reads, as a basis for estimating work without history. It sums the
+     * {@code .rs} files below the directory of the crate's root file (the first argument that ends in {@code .rs} and
+     * does not start with {@code -}), skipping subdirectories that hold a {@code Cargo.toml} because they are other
+     * packages; every regular file named by {@code --extern name=path}; and the {@code .rs} files below the
+     * {@code OUT_DIR} directory, which hold generated code. Missing or unreadable files count as empty, and symbolic
+     * links are not followed.
+     *
+     * @param request authenticated compiler inputs
+     * @return the input size in bytes, zero when none of these inputs exist
+     * @throws NullPointerException if {@code request} is null
      */
-    private static void writeTree(DataOutputStream output, Path root, List<Path> excluded) throws IOException
+    public long inputBytes(CargoCompilerRequest request)
     {
-        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS))
-            throw new IOException("Compiler content root is unavailable: " + root);
-        List<Path> entries = new ArrayList<>();
-        Files.walkFileTree(root, new SimpleFileVisitor<>()
+        Objects.requireNonNull(request, "request");
+        List<String> options = request.arguments().subList(1, request.arguments().size());
+        long total = 0;
+        for (String option : options)
         {
-            @Override public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
-            {
-                if (excluded.stream().anyMatch(directory::startsWith)) return FileVisitResult.SKIP_SUBTREE;
-                entries.add(directory);
-                return FileVisitResult.CONTINUE;
-            }
-            @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException
-            {
-                if (!attributes.isRegularFile()) throw new IOException("Compiler input is not a regular file: " + file);
-                entries.add(file);
-                return FileVisitResult.CONTINUE;
-            }
-        });
-        entries.sort(Comparator.comparing(path -> root.relativize(path).toString()));
-        output.writeUTF(root.toString());
-        output.writeInt(entries.size());
-        for (Path entry : entries)
+            if (option.startsWith("-") || !option.endsWith(".rs"))
+                continue;
+            Path root = resolve(request.directory(), option);
+            if (root != null && root.getParent() != null)
+                total += rustSources(root.getParent());
+            break;
+        }
+        for (int index = 0; index + 1 < options.size(); ++index)
         {
-            output.writeUTF(root.relativize(entry).toString());
-            boolean directory = Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS);
-            output.writeBoolean(directory);
-            if (!directory) writeFile(output, entry);
+            if (!options.get(index).equals("--extern"))
+                continue;
+            String value = options.get(index + 1);
+            int separator = value.indexOf('=');
+            if (separator < 0)
+                continue;
+            Path file = resolve(request.directory(), value.substring(separator + 1));
+            if (file != null)
+                total += size(file);
+        }
+        String generated = request.environment().get("OUT_DIR");
+        if (generated != null)
+        {
+            Path root = resolve(request.directory(), generated);
+            if (root != null)
+                total += rustSources(root);
+        }
+        return total;
+    }
+
+    /**
+     * Selects the options that name the crate or change how much work the compiler does.
+     *
+     * @param options compiler arguments after the executable
+     * @return each selected option as {@code name=value}, in the order given
+     */
+    private static List<String> selectOptions(List<String> options)
+    {
+        List<String> selected = new ArrayList<>();
+        for (int index = 0; index < options.size(); ++index)
+        {
+            String option = options.get(index);
+            if (option.equals("--test"))
+            {
+                selected.add(option);
+                continue;
+            }
+            String name = option;
+            String value = null;
+            int separator = option.indexOf('=');
+            if (option.startsWith("--") && separator > 0)
+            {
+                name = option.substring(0, separator);
+                value = option.substring(separator + 1);
+            }
+            else if (option.startsWith("-C") && option.length() > 2)
+            {
+                name = "-C";
+                value = option.substring(2);
+            }
+            if (name.equals("--codegen"))
+                name = "-C";
+            if (!name.equals("-C") && !VALUE_OPTIONS.contains(name))
+                continue;
+            if (value == null)
+            {
+                if (index + 1 >= options.size())
+                    continue;
+                ++index;
+                value = options.get(index);
+            }
+            if (name.equals("-C"))
+            {
+                int assignment = value.indexOf('=');
+                String setting = assignment < 0 ? value : value.substring(0, assignment);
+                if (!CODEGEN_SETTINGS.contains(setting))
+                    continue;
+            }
+            selected.add(name + "=" + value);
+        }
+        return selected;
+    }
+
+    /**
+     * Returns the last name element of a compiler path.
+     *
+     * @param compiler the compiler path text
+     * @return the file name, or the whole text if it is not path syntax
+     */
+    private static String fileName(String compiler)
+    {
+        try
+        {
+            Path name = Path.of(compiler).getFileName();
+            if (name == null)
+                return compiler;
+            return name.toString();
+        }
+        catch (InvalidPathException _)
+        {
+            return compiler;
         }
     }
 
     /**
-     * Writes one file's bytes and rejects replacement or modification during the read.
-     * @param output framed content sink
-     * @param file existing regular compiler input
-     * @throws IOException if the file cannot be read completely and consistently
+     * Resolves argument text against the compiler's working directory.
+     *
+     * @param directory the working directory
+     * @param value the argument text
+     * @return the normalized path, or null if the text is not path syntax
      */
-    private static void writeFile(DataOutputStream output, Path file) throws IOException
+    private static Path resolve(Path directory, String value)
     {
-        BasicFileAttributes before = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-        if (!before.isRegularFile()) throw new IOException("Compiler input is not a regular file: " + file);
-        output.writeUTF(file.toString());
-        output.writeLong(before.size());
-        long copied;
-        try (InputStream input = Files.newInputStream(file)) { copied = input.transferTo(output); }
-        BasicFileAttributes after = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-        if (copied != before.size() || before.size() != after.size() ||
-            !before.lastModifiedTime().equals(after.lastModifiedTime()) || !Objects.equals(before.fileKey(), after.fileKey()))
-            throw new IOException("Compiler input changed during content observation: " + file);
+        try
+        {
+            return directory.resolve(value).normalize();
+        }
+        catch (InvalidPathException _)
+        {
+            return null;
+        }
     }
 
     /**
-     * Validates a caller-owned root before retaining it.
-     * @param path root to validate
-     * @return unchanged path
-     * @throws NullPointerException if {@code path} is null
-     * @throws IllegalArgumentException if {@code path} is relative or not normalized
+     * Returns the size of a regular file.
+     *
+     * @param file the file
+     * @return its size, or zero if it is missing, unreadable or not a regular file
      */
-    private static Path absolute(Path path)
+    private static long size(Path file)
     {
-        Objects.requireNonNull(path, "path");
-        if (!path.isAbsolute() || !path.equals(path.normalize()))
-            throw new IllegalArgumentException("Compiler identity roots must be absolute and normalized");
-        return path;
+        try
+        {
+            if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+                return 0;
+            return Files.size(file);
+        }
+        catch (IOException _)
+        {
+            return 0;
+        }
     }
 
-    /** Resolves an argument value against a working directory. */
-    @FunctionalInterface
-    public interface Resolver
+    /**
+     * Sums the {@code .rs} files below a directory, skipping nested packages and unreadable entries.
+     *
+     * @param root the directory
+     * @return the total size, or zero if the directory is missing
+     */
+    private static long rustSources(Path root)
     {
-        /**
-         * Resolves a value.
-         * @param directory the compiler's working directory
-         * @param value argument text
-         * @return the resolved path
-         * @throws InvalidPathException if the value is not path syntax on this file system
-         */
-        Path resolve(Path directory, String value);
+        long[] total = {0};
+        try
+        {
+            Files.walkFileTree(root, new SimpleFileVisitor<>()
+            {
+                @Override
+                public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
+                {
+                    if (!directory.equals(root) && Files.exists(directory.resolve("Cargo.toml"), LinkOption.NOFOLLOW_LINKS))
+                        return FileVisitResult.SKIP_SUBTREE;
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
+                {
+                    if (attributes.isRegularFile() && file.getFileName().toString().endsWith(".rs"))
+                        total[0] += attributes.size();
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException failure)
+                {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        }
+        catch (IOException _)
+        {
+            // The visitor continues past entry failures; only an unreadable root reaches here, and it counts as empty.
+        }
+        return total[0];
     }
 }

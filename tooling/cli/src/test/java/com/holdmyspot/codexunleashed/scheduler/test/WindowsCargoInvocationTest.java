@@ -416,7 +416,7 @@ public final class WindowsCargoInvocationTest
                 CargoMemoryEstimates later = resources.settings.observe(resources.samples);
                 CargoCompilerRequest fresh = resources.request("fresh pipe");
                 CargoCompilerRequest warm = later.register(fresh);
-                requireThat(warm.peakBytes(), "laterInvocationPrediction").isEqualTo(200L);
+                requireThat(warm.peakBytes(), "laterInvocationPrediction").isEqualTo(250L);
                 requireThat(warm.environment(), "rawAuthenticatedEnvironmentPreserved").isEqualTo(fresh.environment());
                 requireThat(warm.wrapper(), "rawNativeIdentityPreserved").isEqualTo(fresh.wrapper());
                 requireThat(warm.identity(), "rawActionIdentityPreserved").isEqualTo(fresh.identity());
@@ -499,7 +499,7 @@ public final class WindowsCargoInvocationTest
                 requireThat(finalStatuses, "onlySuccessfulRetryAnswersWrapper").isEqualTo(List.of(0L));
                 requireThat(resources.estimates.observations().size(), "bothAcceptedOutcomesObserved").isEqualTo(2);
                 CargoMemoryEstimates later = resources.settings.observe(resources.samples);
-                requireThat(later.register(resources.request("fresh pipe")).peakBytes(), "retrySampleOnly").isEqualTo(200L);
+                requireThat(later.register(resources.request("fresh pipe")).peakBytes(), "retrySampleOnly").isEqualTo(250L);
             }
             finally { owner.close(); }
         }

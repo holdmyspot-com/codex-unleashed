@@ -2,11 +2,10 @@ package com.holdmyspot.codexunleashed.scheduler.test;
 
 import com.holdmyspot.codexunleashed.scheduler.CargoCompilerRequest;
 import com.holdmyspot.codexunleashed.scheduler.CargoWorkIdentity;
-import com.holdmyspot.codexunleashed.secrets.CargoWorkIdentitySecrets;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +15,7 @@ import org.testng.annotations.Test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Checks work reuse and invalidation from actual owned input files.
+ * Checks the stable per-crate work key and the measured input size.
  */
 public final class CargoWorkIdentityTest
 {
@@ -26,177 +25,110 @@ public final class CargoWorkIdentityTest
     public CargoWorkIdentityTest() {}
 
     /**
-     * Hashes option text that the file system rejects as path syntax, while still hashing real argument files. The
-     * resolver rejects quoted values, as Windows does for a quoted {@code --cfg} value.
+     * The key survives source edits, new paths, new hashes and new environments, and changes with the crate, its type,
+     * target, profile or features.
      * @throws IOException if fixture files cannot be used or cleaned
      */
     @Test
-    public void retainsOptionsRejectedAsPaths() throws IOException
+    public void keyFollowsCrateAndProfileOnly() throws IOException
     {
-        Path root = Files.createTempDirectory("cargo-option-identity-");
+        Path root = Files.createTempDirectory("cargo-work-key-");
         try
         {
-            Path source = Files.createDirectory(root.resolve("source"));
-            Path target = Files.createDirectory(source.resolve("target"));
-            Path toolchain = Files.createDirectory(root.resolve("toolchain"));
-            Path compiler = Files.writeString(toolchain.resolve("rustc"), "compiler");
-            Files.writeString(source.resolve("main.rs"), "fn main() {}\n");
-            Path external = Files.writeString(root.resolve("external.rmeta"), "external1");
-            CargoWorkIdentity identities = CargoWorkIdentitySecrets.getCargoWorkIdentityAccess().withResolver(source, List.of(target), toolchain,
-                (directory, value) ->
-                {
-                    if (value.indexOf('"') >= 0)
-                        throw new InvalidPathException(value, "Quoted option is not a Windows path");
-                    return directory.resolve(value);
-                });
-            CargoCompilerRequest original = request(source, compiler, "fifo:first",
-                List.of("--cfg", "codex_fixture=\"quoted value\"", external.toString()));
-            CargoCompilerRequest first = new CargoCompilerRequest(original.identity(), original.wrapper(),
-                original.arguments(), source, original.environment(), null);
+            Path source = Files.createDirectories(root.resolve("first/src"));
+            Path input = Files.writeString(source.resolve("lib.rs"), "pub fn f() {}\n");
+            CargoWorkIdentity identities = new CargoWorkIdentity();
+            List<String> options = List.of("--crate-name", "codex_core", "--edition=2021", "src/lib.rs",
+                "--crate-type", "lib", "-C", "opt-level=3", "-C", "metadata=aaaa", "-C", "extra-filename=-aaaa",
+                "--cfg", "feature=\"default\"", "--target", "x86_64-unknown-linux-musl",
+                "--extern", "serde=" + root.resolve("first/libserde-aaaa.rmeta"), "-L", "dependency=" + root);
+            String original = identities.identify(request(root.resolve("first"), "/one/bin/rustc", options,
+                Map.of("LANG", "C")));
 
-            String identity = identities.identify(first);
-            requireThat(identity, "sameOptionsReuseWork").isEqualTo(identities.identify(first));
-            CargoCompilerRequest changed = request(source, compiler, "fifo:first",
-                List.of("--cfg", "codex_fixture=\"different value\"", external.toString()));
-            CargoCompilerRequest changedOptions = new CargoCompilerRequest(changed.identity(), changed.wrapper(),
-                changed.arguments(), source, changed.environment(), null);
-            requireThat(identities.identify(changedOptions), "opaqueOptionChangesInvalidateWork")
-                .isNotEqualTo(identity);
-            Files.writeString(external, "external2");
-            requireThat(identities.identify(first), "regularArgumentFilesStillInvalidateWork")
-                .isNotEqualTo(identity);
-        }
-        finally
-        {
-            try (Stream<Path> paths = Files.walk(root))
+            Files.writeString(input, "pub fn f() { println!(\"changed\"); }\n");
+            List<String> moved = new ArrayList<>(options);
+            moved.replaceAll(option -> option.replace("aaaa", "bbbb"));
+            requireThat(identities.identify(request(root.resolve("second"), "/two/bin/rustc", moved,
+                Map.of("LANG", "C.UTF-8"))), "sameCrateAfterChanges").isEqualTo(original);
+
+            for (List<String> change : List.of(List.of("codex_core", "codex_cli"), List.of("lib", "rlib"),
+                List.of("opt-level=3", "opt-level=0"), List.of("feature=\"default\"", "feature=\"extra\""),
+                List.of("x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl")))
             {
-                for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
+                List<String> changed = new ArrayList<>(options);
+                changed.replaceAll(option -> option.equals(change.getFirst()) ? change.getLast() : option);
+                requireThat(identities.identify(request(root.resolve("first"), "/one/bin/rustc", changed,
+                    Map.of("LANG", "C"))), "changed:" + change.getLast()).isNotEqualTo(original);
             }
+            List<String> test = new ArrayList<>(options);
+            test.add("--test");
+            requireThat(identities.identify(request(root.resolve("first"), "/one/bin/rustc", test, Map.of("LANG", "C"))),
+                "testHarness").isNotEqualTo(original);
         }
+        finally { remove(root); }
     }
 
     /**
-     * Reuses compiler work across fresh wrapper authority locations while retaining compiler environment changes.
-     * The request models inputs already authenticated by native registration; this check exercises only work identity.
+     * Input size counts the crate's Rust sources below its root file's directory, excluding nested packages and other
+     * files, plus every external crate file and the generated Rust sources in {@code OUT_DIR}.
      * @throws IOException if fixture files cannot be used or cleaned
      */
     @Test
-    public void reusesWorkAcrossWrapperAuthorityLocations() throws IOException
+    public void measuresSourcesExternalCratesAndGeneratedSources() throws IOException
     {
-        Path root = Files.createTempDirectory("cargo-wrapper-identity-");
+        Path root = Files.createTempDirectory("cargo-work-size-");
         try
         {
-            Path source = Files.createDirectory(root.resolve("source"));
-            Path target = Files.createDirectory(source.resolve("target"));
-            Path toolchain = Files.createDirectory(root.resolve("toolchain"));
-            Path compiler = Files.writeString(toolchain.resolve("rustc"), "compiler");
-            Files.writeString(source.resolve("main.rs"), "fn main() {}\n");
-            CargoWorkIdentity identities = new CargoWorkIdentity(source, List.of(target), toolchain);
-            CargoCompilerRequest baseline = request(source, compiler, "fifo:first", List.of());
-            String original = identities.identify(baseline);
-            var authorityValues = Map.of(
-                "CODEX_LINUX_CARGO_WRAPPER_CONFIG", List.of(root.resolve("first/w.json").toString(),
-                    root.resolve("second/w.json").toString()),
-                "CODEX_CARGO_SOCKET", List.of(root.resolve("first/socket").toString(),
-                    root.resolve("second/socket").toString()),
-                "CODEX_CARGO_PIPE", List.of("\\\\.\\pipe\\first", "\\\\.\\pipe\\second"),
-                "CODEX_CARGO_CONTROLLER_PID", List.of("71", "72"),
-                "CODEX_CARGO_CONTROLLER_BIRTH", List.of("81", "82"));
-            for (var authority : authorityValues.entrySet())
-            {
-                Map<String, String> environment = new java.util.HashMap<>(baseline.environment());
-                environment.put(authority.getKey(), authority.getValue().getFirst());
-                CargoCompilerRequest first = new CargoCompilerRequest(baseline.identity(), baseline.wrapper(),
-                    baseline.arguments(), source, environment, null);
+            Path crate = Files.createDirectories(root.resolve("crate"));
+            Files.writeString(crate.resolve("lib.rs"), "a".repeat(10));
+            Files.writeString(Files.createDirectory(crate.resolve("module")).resolve("part.rs"), "b".repeat(20));
+            Files.writeString(crate.resolve("notes.md"), "c".repeat(40));
+            Path nested = Files.createDirectory(crate.resolve("nested"));
+            Files.writeString(nested.resolve("Cargo.toml"), "[package]\n");
+            Files.writeString(nested.resolve("other.rs"), "d".repeat(80));
+            Path external = Files.writeString(root.resolve("libdep.rmeta"), "e".repeat(160));
+            Path generated = Files.createDirectory(root.resolve("out"));
+            Files.writeString(generated.resolve("bindings.rs"), "f".repeat(320));
+            Files.writeString(generated.resolve("object.o"), "g".repeat(640));
+            List<String> options = List.of("--crate-name", "fixture", "crate/lib.rs", "--extern",
+                "dep=" + external, "--extern", "std", "--extern", "missing=" + root.resolve("absent.rmeta"));
 
-                requireThat(identities.identify(first), "authorityDoesNotChangeWork:" + authority.getKey())
-                    .isEqualTo(original);
-                environment.put(authority.getKey(), authority.getValue().getLast());
-                CargoCompilerRequest second = new CargoCompilerRequest(baseline.identity(), baseline.wrapper(),
-                    baseline.arguments(), source, environment, null);
-                requireThat(identities.identify(second), "freshAuthorityReusesWork:" + authority.getKey())
-                    .isEqualTo(original);
-                requireThat(first.environment().get(authority.getKey()), "authenticationKeepsOriginalAuthority")
-                    .isEqualTo(authority.getValue().getFirst());
-
-                environment.put("LANG", "C.UTF-8");
-                CargoCompilerRequest changedLocale = new CargoCompilerRequest(baseline.identity(), baseline.wrapper(),
-                    baseline.arguments(), source, environment, null);
-                requireThat(identities.identify(changedLocale), "compilerEnvironmentStillInvalidates")
-                    .isNotEqualTo(original);
-                environment.put("LANG", "C");
-                environment.put("CODEX_COMPILER_INPUT", "changed");
-                CargoCompilerRequest changedInput = new CargoCompilerRequest(baseline.identity(), baseline.wrapper(),
-                    baseline.arguments(), source, environment, null);
-                requireThat(identities.identify(changedInput), "unrecognizedCodexEnvironmentStillInvalidates")
-                    .isNotEqualTo(original);
-            }
+            CargoWorkIdentity identities = new CargoWorkIdentity();
+            requireThat(identities.inputBytes(request(root, "/bin/rustc", options, Map.of("OUT_DIR", generated.toString()))),
+                "inputBytes").isEqualTo(10L + 20 + 160 + 320);
+            requireThat(identities.inputBytes(request(root, "/bin/rustc", List.of("-", "--crate-name", "___"), Map.of())),
+                "standardInputHasNoFiles").isEqualTo(0L);
         }
-        finally
-        {
-            try (Stream<Path> paths = Files.walk(root))
-            {
-                for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
-            }
-        }
+        finally { remove(root); }
     }
 
     /**
-     * Different native wrapper identities and FIFO capability paths preserve equivalent compiler work.
-     * Source, toolchain and options changes invalidate that work; uncaptured standard input stays inapplicable.
-     * @throws IOException if fixture files cannot be used or cleaned
-     */
-    @Test
-    public void distinguishesChangedInputsFromNewWrapper() throws IOException
-    {
-        Path root = Files.createTempDirectory("cargo-work-");
-        try
-        {
-            Path source = Files.createDirectory(root.resolve("source"));
-            Path target = Files.createDirectory(source.resolve("target"));
-            Path toolchain = Files.createDirectory(root.resolve("toolchain"));
-            Path compiler = Files.writeString(toolchain.resolve("rustc"), "compiler1");
-            Path input = Files.writeString(source.resolve("main.rs"), "fn main() {}\n");
-            CargoWorkIdentity identities = new CargoWorkIdentity(source, List.of(target), toolchain);
-            CargoCompilerRequest first = request(source, compiler, "fifo:first", List.of());
-            String original = identities.identify(first);
-            requireThat(identities.identify(request(source, compiler, "fifo:second", List.of())), "newWrapperSameWork").isEqualTo(original);
-            Files.writeString(target.resolve("binary"), "generated");
-            requireThat(identities.identify(first), "generatedOutputDoesNotInvalidate").isEqualTo(original);
-            Files.writeString(input, "fn main() { println!(\"changed\"); }\n");
-            requireThat(identities.identify(first).equals(original), "changedSourceInvalidates").isFalse();
-            Files.writeString(input, "fn main() {}\n");
-            Files.writeString(compiler, "compiler2");
-            requireThat(identities.identify(first).equals(original), "changedToolchainInvalidates").isFalse();
-            Files.writeString(compiler, "compiler1");
-            requireThat(identities.identify(request(source, compiler, "fifo:first", List.of("-C", "opt-level=2"))).equals(original), "changedOptionsInvalidate").isFalse();
-            boolean standardInputRejected = false;
-            try { identities.identify(request(source, compiler, "fifo:first", List.of("-"))); }
-            catch (IOException expected) { standardInputRejected = true; }
-            requireThat(standardInputRejected, "uncapturedStandardInputIsInapplicable").isTrue();
-        }
-        finally
-        {
-            try (Stream<Path> paths = Files.walk(root))
-            {
-                for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
-            }
-        }
-    }
-
-    /**
-     * Creates an authenticated-data model with deliberately fresh action and native identities.
-     * @param source source working directory
-     * @param compiler compiler executable
-     * @param fifo invocation-specific jobserver capability
-     * @param options compiler options
+     * Creates an authenticated-data model with a fresh action identity.
+     * @param directory compiler working directory
+     * @param compiler compiler executable path
+     * @param options compiler arguments after the executable
+     * @param environment compiler environment
      * @return immutable compiler request model
      */
-    private static CargoCompilerRequest request(Path source, Path compiler, String fifo, List<String> options)
+    private static CargoCompilerRequest request(Path directory, String compiler, List<String> options,
+        Map<String, String> environment)
     {
-        java.util.ArrayList<String> command = new java.util.ArrayList<>(List.of(compiler.toString(), "main.rs"));
+        List<String> command = new ArrayList<>(List.of(compiler));
         command.addAll(options);
         return new CargoCompilerRequest(UUID.randomUUID(), new CargoCompilerRequest.Wrapper(71, 81, 61, 91),
-            command, source, Map.of("CARGO_MAKEFLAGS", fifo, "LANG", "C"), null);
+            command, directory, environment, null);
+    }
+
+    /**
+     * Removes only one test's owned fixture root.
+     * @param root owned fixture root
+     * @throws IOException if cleanup fails
+     */
+    private static void remove(Path root) throws IOException
+    {
+        try (Stream<Path> paths = Files.walk(root))
+        {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
+        }
     }
 }

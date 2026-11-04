@@ -26,7 +26,8 @@ public final class CargoMemoryHistoryTest
     public CargoMemoryHistoryTest() {}
 
     /**
-     * A later reader uses the greatest successful profile rather than its own invocation identity.
+     * A later reader uses the greatest successful profile rather than its own invocation identity, and a new profile
+     * removes that identity's smaller or equal ones so history stays bounded.
      * @throws IOException if owned fixture setup or cleanup fails
      */
     @Test
@@ -41,6 +42,15 @@ public final class CargoMemoryHistoryTest
             history.record(identity, 180);
             history.record(identity, 120);
             requireThat(new CargoMemoryHistory(directory).estimate(identity), "reusedSampledDemand").isEqualTo(180L);
+            String other = "c".repeat(64);
+            history.record(other, 30, 50);
+            history.record(other, 40, 60);
+            requireThat(new CargoMemoryHistory(directory).samples(), "samples").containsExactly(List.of(
+                new CargoMemoryHistory.Sample(identity, 0, 180), new CargoMemoryHistory.Sample(other, 40, 60)));
+            try (Stream<Path> files = Files.list(directory))
+            {
+                requireThat(files.count(), "smallerRecordsPruned").isEqualTo(2L);
+            }
         }
         finally { remove(directory); }
     }

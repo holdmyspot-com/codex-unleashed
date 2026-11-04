@@ -34,7 +34,8 @@ public final class CargoMemoryEstimatesTest
     public CargoMemoryEstimatesTest() {}
 
     /**
-     * Successful completion publishes only the greatest accepted complete-batch sample for later equivalent work.
+     * Successful completion publishes only the greatest accepted complete-batch sample, and later work on the same crate
+     * is estimated at that sample plus a quarter, even after its source changed.
      * @throws IOException if fixture setup, sampling or cleanup fails
      */
     @Test
@@ -48,7 +49,7 @@ public final class CargoMemoryEstimatesTest
             Path compiler = Files.writeString(toolchain.resolve("rustc"), "compiler");
             Files.writeString(source.resolve("main.rs"), "fn main() {}\n");
             Path history = Files.createDirectory(root.resolve("history"));
-            CargoWorkIdentity identities = new CargoWorkIdentity(source, List.of(), toolchain);
+            CargoWorkIdentity identities = new CargoWorkIdentity();
             SampleSource samples = new SampleSource();
             CargoMemoryEstimates estimates = new CargoMemoryEstimates(samples, new CargoMemoryHistory(history), identities);
             CargoCompilerRequest cold = request(source, compiler);
@@ -61,66 +62,55 @@ public final class CargoMemoryEstimatesTest
             estimates.readHost();
             estimates.readResidentBytes(running);
             estimates.completed(cold.name(), 2, true);
+            Files.writeString(source.resolve("main.rs"), "fn main() { println!(\"changed\"); }\n");
             CargoMemoryEstimates next = new CargoMemoryEstimates(new SampleSource(), new CargoMemoryHistory(history), identities);
-            requireThat(next.register(request(source, compiler)).peakBytes(), "completedAcceptedSamplePrediction").isEqualTo(200L);
+            requireThat(next.register(request(source, compiler)).peakBytes(), "completedAcceptedSamplePrediction").isEqualTo(250L);
         }
         finally { remove(root); }
     }
 
     /**
-     * Unknown work from a compiler that already completed measured work in this invocation receives a provisional
-     * estimate of twice that compiler's greatest accepted sample, so a cold build measures one unit per compiler
-     * exclusively instead of every unit. Work from an unmeasured compiler, and work after only failed attempts,
-     * stays unknown.
-     * @throws IOException if fixture setup, sampling or cleanup fails
+     * Work without history is estimated from its input size: the smallest recorded peak is the fixed cost, and each
+     * recorded sample's peak above it per input byte scales this work's input; the largest result wins. Without samples,
+     * or without measurable input, demand stays unknown.
+     * @throws IOException if fixture setup or cleanup fails
      */
     @Test
-    public void completedCompilerSeedsProvisionalEstimateForUnknownWork() throws IOException
+    public void estimatesUnseenWorkFromInputSize() throws IOException
     {
-        Path root = Files.createTempDirectory("cargo-provisional-");
+        Path root = Files.createTempDirectory("cargo-size-model-");
         try
         {
             Path source = Files.createDirectory(root.resolve("source"));
             Path toolchain = Files.createDirectory(root.resolve("toolchain"));
             Path compiler = Files.writeString(toolchain.resolve("rustc"), "compiler");
-            Path linker = Files.writeString(toolchain.resolve("cc"), "linker");
-            Files.writeString(source.resolve("main.rs"), "fn main() {}\n");
-            Files.writeString(source.resolve("lib.rs"), "pub fn f() {}\n");
-            Files.writeString(source.resolve("other.rs"), "pub fn g() {}\n");
             Path history = Files.createDirectory(root.resolve("history"));
-            CargoWorkIdentity identities = new CargoWorkIdentity(source, List.of(), toolchain);
-            SampleSource samples = new SampleSource();
-            CargoMemoryEstimates estimates = new CargoMemoryEstimates(samples, new CargoMemoryHistory(history), identities);
-            CargoCompilerRequest failed = request(source, compiler, "other.rs");
-            requireThat(estimates.register(failed).peakBytes() == null, "firstUnknown").isTrue();
-            Policy.Job failing = new Policy.Job(failed.name(), Policy.State.RUNNING, 0, null, 0, 1L, null, 0);
-            estimates.readHost();
-            estimates.readResidentBytes(failing);
-            estimates.acceptReadings();
-            estimates.completed(failed.name(), 1, false);
-            CargoCompilerRequest cold = request(source, compiler, "main.rs");
-            requireThat(estimates.register(cold).peakBytes() == null, "failedAttemptSeedsNothing").isTrue();
-            Policy.Job running = new Policy.Job(cold.name(), Policy.State.RUNNING, 0, null, 0, 2L, null, 0);
-            estimates.readHost();
-            estimates.readResidentBytes(running);
-            estimates.acceptReadings();
-            estimates.completed(cold.name(), 2, true);
-            requireThat(estimates.register(request(source, compiler, "lib.rs")).peakBytes(), "provisionalEstimate").
-                isEqualTo(400L);
-            requireThat(estimates.register(request(source, linker, "lib.rs")).peakBytes() == null, "otherCompilerUnknown").
-                isTrue();
+            for (Map.Entry<String, Integer> crate : Map.of("small", 100, "large", 300, "fresh", 600).entrySet())
+                Files.writeString(Files.createDirectory(source.resolve(crate.getKey())).resolve("lib.rs"),
+                    "a".repeat(crate.getValue()));
+            CargoWorkIdentity identities = new CargoWorkIdentity();
+            requireThat(new CargoMemoryEstimates(new SampleSource(), new CargoMemoryHistory(history), identities).
+                register(crate(source, compiler, "fresh")).peakBytes() == null, "noSamplesUnknown").isTrue();
+            CargoMemoryHistory samples = new CargoMemoryHistory(history);
+            samples.record(identities.identify(crate(source, compiler, "small")), 100, 1000);
+            samples.record(identities.identify(crate(source, compiler, "large")), 300, 2000);
+            CargoMemoryEstimates estimates = new CargoMemoryEstimates(new SampleSource(), samples, identities);
+            requireThat(estimates.register(crate(source, compiler, "fresh")).peakBytes(), "sizeEstimate").isEqualTo(3000L);
+            requireThat(estimates.register(new CargoCompilerRequest(UUID.randomUUID(),
+                new CargoCompilerRequest.Wrapper(71, 81, 61, 91), List.of(compiler.toString(), "-", "--crate-name", "___"),
+                source, Map.of(), null)).peakBytes() == null, "noInputUnknown").isTrue();
         }
         finally { remove(root); }
     }
 
     /**
-     * Failed, aborted, incomplete and changed-input work cannot publish completed training samples.
+     * Failed, aborted and incomplete work cannot publish completed training samples.
      * @throws IOException if fixture setup or cleanup fails
      */
     @Test
     public void rejectsIneligibleTrainingSamples() throws IOException
     {
-        for (String condition : List.of("aborted", "unaccepted", "read-failed", "accept-failed", "inputs-changed"))
+        for (String condition : List.of("aborted", "unaccepted", "read-failed", "accept-failed"))
         {
             Path root = Files.createTempDirectory("cargo-ineligible-");
             try
@@ -128,9 +118,9 @@ public final class CargoMemoryEstimatesTest
                 Path source = Files.createDirectory(root.resolve("source"));
                 Path toolchain = Files.createDirectory(root.resolve("toolchain"));
                 Path compiler = Files.writeString(toolchain.resolve("rustc"), "compiler");
-                Path input = Files.writeString(source.resolve("main.rs"), "fn main() {}\n");
+                Files.writeString(source.resolve("main.rs"), "fn main() {}\n");
                 Path history = Files.createDirectory(root.resolve("history"));
-                CargoWorkIdentity identities = new CargoWorkIdentity(source, List.of(), toolchain);
+                CargoWorkIdentity identities = new CargoWorkIdentity();
                 SampleSource samples = new SampleSource();
                 CargoMemoryEstimates estimates = new CargoMemoryEstimates(samples, new CargoMemoryHistory(history), identities);
                 CargoCompilerRequest request = request(source, compiler);
@@ -146,9 +136,7 @@ public final class CargoMemoryEstimatesTest
                 if (condition.equals("accept-failed")) samples.failAcceptance = true;
                 if (condition.equals("accept-failed")) requireException(IOException.class, estimates::acceptReadings);
                 else if (!condition.equals("unaccepted")) estimates.acceptReadings();
-                if (condition.equals("inputs-changed")) Files.writeString(input, "changed source");
                 estimates.completed(request.name(), 2, !condition.equals("aborted"));
-                Files.writeString(input, "fn main() {}\n");
                 CargoMemoryEstimates next = new CargoMemoryEstimates(new SampleSource(), new CargoMemoryHistory(history), identities);
                 requireThat(next.register(request(source, compiler)).peakBytes() == null, condition + "RetainsUnknown").isTrue();
             }
@@ -171,7 +159,7 @@ public final class CargoMemoryEstimatesTest
             Path compiler = Files.writeString(toolchain.resolve("rustc"), "compiler");
             Files.writeString(source.resolve("main.rs"), "fn main() {}\n");
             Path history = Files.createDirectory(root.resolve("history"));
-            CargoWorkIdentity identities = new CargoWorkIdentity(source, List.of(), toolchain);
+            CargoWorkIdentity identities = new CargoWorkIdentity();
             CargoMemoryEstimates estimates = new CargoMemoryEstimates(new SampleSource(), new CargoMemoryHistory(history), identities);
             LinuxBorrowedStreams.Peer wrapper = new LinuxBorrowedStreams.Peer(71, 81, 1000, 1000);
             LinuxBorrowedStreams.Peer cargo = new LinuxBorrowedStreams.Peer(61, 91, 1000, 1000);
@@ -207,9 +195,22 @@ public final class CargoMemoryEstimatesTest
             CargoMemoryEstimates next = new CargoMemoryEstimates(new SampleSource(), new CargoMemoryHistory(history), identities);
             CargoCompilerRequest warm = LinuxCargoRegistrationSecrets.getLinuxCargoRegistrationAccess().create(configuration, cargo, nativeObservations, next).
                 authenticate(wrapper, register);
-            requireThat(warm.peakBytes(), "authenticatedProductionEstimate").isEqualTo(200L);
+            requireThat(warm.peakBytes(), "authenticatedProductionEstimate").isEqualTo(250L);
         }
         finally { remove(root); }
+    }
+
+    /**
+     * Creates immutable authenticated-data inputs for one named crate whose root file is in its own directory.
+     * @param source source working directory
+     * @param compiler exact toolchain executable
+     * @param name crate name and directory
+     * @return authenticated-data request model
+     */
+    private static CargoCompilerRequest crate(Path source, Path compiler, String name)
+    {
+        return new CargoCompilerRequest(UUID.randomUUID(), new CargoCompilerRequest.Wrapper(71, 81, 61, 91),
+            List.of(compiler.toString(), "--crate-name", name, name + "/lib.rs"), source, Map.of("LANG", "C"), null);
     }
 
     /**

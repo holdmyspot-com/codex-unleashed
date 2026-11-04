@@ -1,6 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.List;
@@ -10,13 +11,21 @@ import java.util.HashMap;
 
 /**
  * Learns best-effort compiler estimates only from accepted measurement batches and successful whole-tree outcomes.
+ * <p>
+ * Work whose key (see {@link CargoWorkIdentity#identify}) has history is estimated at its greatest recorded peak plus
+ * {@code 1 / HISTORY_MARGIN_DIVISOR} of it, because sampling misses the true peak. Other work is estimated from its
+ * input size (see {@link CargoWorkIdentity#inputBytes}) through an upper envelope of every recorded sample: the
+ * smallest recorded peak is the compiler's fixed cost, and each sample's peak above that fixed cost, per input byte,
+ * scales the new work's input; the largest result is the estimate. Work without history, samples or input is unknown
+ * and is measured alone.
+ * <p>
  * Calls belong to one invocation's coordination thread. The borrowed measurement source and history directory remain
  * owned by the caller. Native memory recovery remains necessary because sampled past demand cannot bound future work.
  */
 public final class CargoMemoryEstimates implements Controller.Measurements
 {
-    /** Multiplier applied to a compiler's greatest measured sample for its unmeasured work. */
-    private static final long PROVISIONAL_FACTOR = 2;
+    /** Divides a recorded peak to give the margin added to it, so a history estimate is a quarter above the peak. */
+    private static final long HISTORY_MARGIN_DIVISOR = 4;
     /** Borrowed complete native measurement provider. */
     private final Controller.Measurements measurements;
     /** Caller-owned completed observation history. */
@@ -32,8 +41,10 @@ public final class CargoMemoryEstimates implements Controller.Measurements
     private final Map<Attempt, Long> pending = new HashMap<>();
     /** Completed prediction/observation pairs for caller inspection and calibration. */
     private final List<Observation> observations = new ArrayList<>();
-    /** Greatest accepted sample of each compiler's successful work in this invocation. */
-    private final Map<String, Long> compilerPeaks = new HashMap<>();
+    /** Greatest recorded peak by work key, from history and this invocation; null until history is first read. */
+    private Map<String, Long> peaks;
+    /** Recorded samples with a known input size, from history and this invocation; null until history is first read. */
+    private List<CargoMemoryHistory.Sample> sized;
     /** Best-effort history/content failures, never substituted with invented estimates. */
     private final List<IOException> problems = new ArrayList<>();
     /** Indicates whether a successful host reading began the current pending batch. */
@@ -54,25 +65,26 @@ public final class CargoMemoryEstimates implements Controller.Measurements
     }
 
     /**
-     * Supplies the completed-work prediction after native registration authenticates all compiler inputs.
+     * Supplies the best-effort prediction after native registration authenticates all compiler inputs.
      * @param request independently authenticated request
-     * @return request carrying reusable sampled demand, or unknown demand when no applicable history exists
+     * @return request carrying the estimated demand, or unknown demand when neither history nor the input-size model
+     * applies
      */
     public CargoCompilerRequest register(CargoCompilerRequest request)
     {
         Objects.requireNonNull(request, "request");
         if (work.containsKey(request.name()))
             throw new IllegalArgumentException("Compiler work was already registered: " + request.name());
-        String identity = null;
-        Long prediction = null;
-        try
-        {
-            identity = identities.identify(request);
-            prediction = history.estimate(identity);
-        }
-        catch (IOException failure) { problems.add(failure); }
-        if (prediction == null) prediction = provisional(request);
-        work.put(request.name(), new Work(request, identity, prediction));
+        loadHistory();
+        String identity = identities.identify(request);
+        long inputBytes = identities.inputBytes(request);
+        Long peak = peaks.get(identity);
+        Long prediction;
+        if (peak != null)
+            prediction = Math.addExact(peak, peak / HISTORY_MARGIN_DIVISOR);
+        else
+            prediction = fromInputSize(inputBytes);
+        work.put(request.name(), new Work(request, identity, inputBytes, prediction));
         return new CargoCompilerRequest(request.identity(), request.wrapper(), request.arguments(), request.directory(),
             request.environment(), prediction);
     }
@@ -89,19 +101,16 @@ public final class CargoMemoryEstimates implements Controller.Measurements
         Work registered = work.get(name);
         Long observed = accepted.remove(new Attempt(name, sequence));
         if (registered == null) return;
-        if (successful && observed != null && observed > 0)
-            compilerPeaks.merge(registered.request().arguments().getFirst(), observed, Math::max);
         Status status = successful ? Status.UNOBSERVED : Status.UNSUCCESSFUL;
-        if (successful && observed != null && observed > 0 && registered.identity() != null)
+        if (successful && observed != null && observed > 0)
         {
+            peaks.merge(registered.identity(), observed, Math::max);
+            if (registered.inputBytes() > 0)
+                sized.add(new CargoMemoryHistory.Sample(registered.identity(), registered.inputBytes(), observed));
             try
             {
-                if (registered.identity().equals(identities.identify(registered.request())))
-                {
-                    history.record(registered.identity(), observed);
-                    status = Status.RECORDED;
-                }
-                else status = Status.INPUTS_CHANGED;
+                history.record(registered.identity(), registered.inputBytes(), observed);
+                status = Status.RECORDED;
             }
             catch (IOException failure)
             {
@@ -113,17 +122,40 @@ public final class CargoMemoryEstimates implements Controller.Measurements
     }
 
     /**
-     * Estimates unknown work from its compiler's measured successful work in this invocation. The first unit of each
-     * compiler stays unknown and is measured exclusively; later units admit at twice the greatest accepted sample.
-     * Native pressure recovery remains responsible for work that exceeds this best-effort estimate.
-     * @param request authenticated request without applicable history
-     * @return provisional bytes, or null when no work from the same compiler has completed with a sample
+     * Reads the recorded samples once per invocation.
      */
-    private Long provisional(CargoCompilerRequest request)
+    private void loadHistory()
     {
-        Long peak = compilerPeaks.get(request.arguments().getFirst());
-        if (peak == null) return null;
-        return Math.multiplyExact(peak, PROVISIONAL_FACTOR);
+        if (peaks != null) return;
+        peaks = new HashMap<>();
+        sized = new ArrayList<>();
+        for (CargoMemoryHistory.Sample sample : history.samples())
+        {
+            peaks.merge(sample.identity(), sample.observedBytes(), Math::max);
+            if (sample.inputBytes() > 0) sized.add(sample);
+        }
+    }
+
+    /**
+     * Estimates work without history from its input size through the upper envelope of the recorded samples.
+     * @param inputBytes the work's input size
+     * @return the estimate in bytes, saturated at {@link Long#MAX_VALUE}, or null without input or samples
+     */
+    private Long fromInputSize(long inputBytes)
+    {
+        if (inputBytes <= 0 || sized.isEmpty()) return null;
+        long fixed = sized.stream().mapToLong(CargoMemoryHistory.Sample::observedBytes).min().orElseThrow();
+        BigInteger input = BigInteger.valueOf(inputBytes);
+        BigInteger greatest = BigInteger.ZERO;
+        for (CargoMemoryHistory.Sample sample : sized)
+        {
+            BigInteger[] scaled = BigInteger.valueOf(sample.observedBytes() - fixed).multiply(input).
+                divideAndRemainder(BigInteger.valueOf(sample.inputBytes()));
+            BigInteger estimate = scaled[0].add(BigInteger.valueOf(fixed));
+            if (scaled[1].signum() > 0) estimate = estimate.add(BigInteger.ONE);
+            greatest = greatest.max(estimate);
+        }
+        return greatest.min(BigInteger.valueOf(Long.MAX_VALUE)).longValueExact();
     }
 
     /**
@@ -181,13 +213,13 @@ public final class CargoMemoryEstimates implements Controller.Measurements
 
     /**
      * Supplies an explicitly owned history directory and complete compiler content boundaries across invocations.
-     * The directory must be outside source and toolchain trees so publishing a profile cannot change work identity.
+     * The directory must be outside source and toolchain trees so publishing a profile never changes them.
      */
     public static final class Settings
     {
         /** Caller-owned immutable completed samples retained across invocations. */
         private final CargoMemoryHistory history;
-        /** Complete source, generated-output and pinned toolchain boundaries. */
+        /** Stateless work key and input-size source. */
         private final CargoWorkIdentity identities;
 
         /**
@@ -197,14 +229,36 @@ public final class CargoMemoryEstimates implements Controller.Measurements
          * @param outputRoots generated compiler output directories strictly below the input root
          * @param toolchainRoot pinned immutable compiler and sysroot tree
          * @throws NullPointerException if a required value or collection member is null
-         * @throws IllegalArgumentException if paths are invalid or history overlaps source or toolchain
+         * @throws IllegalArgumentException if a path is relative or not normalized, an output root is not strictly below
+         * the input root, or history overlaps source or toolchain
          */
         public Settings(Path historyDirectory, Path inputRoot, List<Path> outputRoots, Path toolchainRoot)
         {
-            this.identities = new CargoWorkIdentity(inputRoot, outputRoots, toolchainRoot);
+            this.identities = new CargoWorkIdentity();
             this.history = new CargoMemoryHistory(historyDirectory);
+            requireAbsolute(inputRoot);
+            requireAbsolute(toolchainRoot);
+            for (Path outputRoot : List.copyOf(outputRoots))
+            {
+                requireAbsolute(outputRoot);
+                if (outputRoot.equals(inputRoot) || !outputRoot.startsWith(inputRoot))
+                    throw new IllegalArgumentException("Generated output roots must be strictly below the input root");
+            }
             if (historyDirectory.startsWith(inputRoot) || historyDirectory.startsWith(toolchainRoot))
                 throw new IllegalArgumentException("Compiler history must be outside source and toolchain trees");
+        }
+
+        /**
+         * Rejects a relative or non-normalized root.
+         * @param path the root
+         * @throws NullPointerException if {@code path} is null
+         * @throws IllegalArgumentException if {@code path} is relative or not normalized
+         */
+        private static void requireAbsolute(Path path)
+        {
+            Objects.requireNonNull(path, "path");
+            if (!path.isAbsolute() || !path.equals(path.normalize()))
+                throw new IllegalArgumentException("Compiler estimate roots must be absolute and normalized");
         }
 
         /**
@@ -228,11 +282,9 @@ public final class CargoMemoryEstimates implements Controller.Measurements
         RECORDED,
         /** Native whole-tree completion failed or was aborted. */
         UNSUCCESSFUL,
-        /** No accepted positive complete-batch sample or applicable identity was available. */
+        /** No accepted positive complete-batch sample was available. */
         UNOBSERVED,
-        /** Compiler inputs changed before successful whole-tree completion. */
-        INPUTS_CHANGED,
-        /** Complete input revalidation or atomic history publication failed. */
+        /** Atomic history publication failed. */
         HISTORY_UNAVAILABLE
     }
 
@@ -240,7 +292,7 @@ public final class CargoMemoryEstimates implements Controller.Measurements
      * Records a completed attempt's prediction and accepted maximum sampled tree residency.
      * @param name authenticated action name
      * @param sequence queue-wide native attempt ordinal
-     * @param identity reusable work key, or null when inputs were inapplicable
+     * @param identity reusable work key
      * @param predictedBytes submitted best-effort bytes, or null for unknown demand
      * @param observedBytes greatest accepted sampled residency, or null without an accepted live sample
      * @param status training eligibility/publication result
@@ -257,8 +309,9 @@ public final class CargoMemoryEstimates implements Controller.Measurements
     /**
      * Retains original authenticated inputs for completion-time invalidation and calibration.
      * @param request authenticated request before attaching a prediction
-     * @param identity reusable work key, or null for inapplicable work
+     * @param identity reusable work key
+     * @param inputBytes the work's input size, zero when none was measurable
      * @param prediction submitted best-effort bytes, or null for unknown demand
      */
-    private record Work(CargoCompilerRequest request, String identity, Long prediction) {}
+    private record Work(CargoCompilerRequest request, String identity, long inputBytes, Long prediction) {}
 }
