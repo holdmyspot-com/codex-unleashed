@@ -257,8 +257,13 @@ public final class LinuxCargoImages
         private void verify(Identity child, Operations operations) throws IOException
         {
             if (retired != null) operations.requireAdoption(retired, child);
-            else if (source != null && !source.equals(operations.inspect(source.pid())))
-                throw new IOException("Parent birth changed before child release");
+            else if (source != null)
+            {
+                Identity current = operations.inspect(source.pid());
+                if (!source.equals(current))
+                    throw new IOException("Parent birth changed before child release: child=" + child + ", retained parent=" +
+                        source + ", current parent=" + current);
+            }
         }
     }
 
