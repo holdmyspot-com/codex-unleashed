@@ -4,6 +4,9 @@
 # RELEASE_CARGO_COMMAND optionally selects an executable adapter for compilations;
 # it receives the original Cargo arguments and must return the collected Cargo status.
 # Cargo failures propagate; logs and toolchain identity go to baseline-evidence.
+# RELEASE_PACKAGES optionally names whitespace-separated Cargo package specifications. When set, one Cargo build of
+# exactly those packages replaces the release stages and no release stage is checkpointed, so a scheduler change can
+# be checked on a few crates before the whole build. Each entry must be a plain package specification.
 set -euo pipefail
 
 : "${TARGET:?Set the release target}"
@@ -48,6 +51,26 @@ compile() {
     cargo "$@"
   fi
 }
+
+if [[ -n "${RELEASE_PACKAGES+set}" ]]; then
+  read -r -a packages <<< "$RELEASE_PACKAGES"
+  if (( ${#packages[@]} == 0 )); then
+    printf 'RELEASE_PACKAGES names no package\n' >&2
+    exit 2
+  fi
+  selection=()
+  for package in "${packages[@]}"; do
+    if [[ ! "$package" =~ ^[A-Za-z0-9_][A-Za-z0-9_.@:+-]*$ ]]; then
+      printf 'Not a plain Cargo package specification: %s\n' "$package" >&2
+      exit 2
+    fi
+    selection+=(-p "$package")
+  done
+  started=$SECONDS
+  compile build --target "$TARGET" --release --timings "${selection[@]}" 2>&1 | tee "$evidence/cargo-build-packages.log"
+  printf 'packages=%s build_seconds=%s\n' "${packages[*]}" "$((SECONDS-started))" | tee -a "$evidence/build-stage-timings.log"
+  exit 0
+fi
 
 case "$TARGET" in
   *-linux-musl)

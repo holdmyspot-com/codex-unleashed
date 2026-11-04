@@ -40,6 +40,10 @@ on:
         description: Linux diagnostic only; stream runner signals, memory samples and journal during compilation
         type: boolean
         default: false
+      packages:
+        description: Optional whitespace-separated Cargo packages; build only these, cache the partial state and fail before release checks
+        type: string
+        default: ''
       target:
         description: Release target to run (all preserves the complete selected matrix)
         type: choice
@@ -510,7 +514,11 @@ jobs:
           CACHE_ENABLED: ${{ inputs.cache }}
           TRACE_SIGNALS: ${{ inputs.trace_signals }}
           VERIFY_CLI_UNITS: ${{ inputs.verify_cli_units }}
+          SELECTED_PACKAGES: ${{ inputs.packages }}
         run: |
+          if [[ -n "$SELECTED_PACKAGES" ]]; then
+            export RELEASE_PACKAGES="$SELECTED_PACKAGES"
+          fi
           if [[ "$CACHE_ENABLED" == true ]]; then
             export RELEASE_CHECKPOINT_COMMAND="$RUNNER_TEMP/checkpoint-upstream-release.sh"
           fi
@@ -550,6 +558,14 @@ jobs:
           else
             "${release_command[@]}"
           fi
+
+      - name: Stop a package-selection run before release checks
+        # Its output is a partial build: the failure saves it as retry state and never publishes it as a release.
+        if: inputs.packages != ''
+        run: |
+          printf 'Package-selection run: built only the selected packages; saving partial state and stopping.\n' \
+            | tee "$RUNNER_TEMP/baseline-evidence/package-selection.log"
+          exit 1
 
       - name: Controlled failure for partial-cache verification
         if: inputs.fail_after_build

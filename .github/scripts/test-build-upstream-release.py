@@ -13,13 +13,13 @@ import unittest
 
 class ReleaseStagesTest(unittest.TestCase):
     """Check platform-specific release command ordering, checkpoint failures and reuse of real Cargo outputs."""
-    def run_build(self, target, fail_binary="", fail_checkpoint="", use_scheduler=False):
+    def run_build(self, target, fail_binary="", fail_checkpoint="", use_scheduler=False, packages=None):
         """Run the release script with isolated Cargo and checkpoint fixture processes.
 
         target selects platform-specific binaries. fail_binary and fail_checkpoint
         select fixture operations that exit 37 and 43 respectively; empty strings
         disable injected failures. use_scheduler selects a fixture adapter that
-        records and forwards each compilation unchanged. Return the process result and ordered build/
+        records and forwards each compilation unchanged. packages, when not None, sets RELEASE_PACKAGES. Return the process result and ordered build/
         checkpoint events, and remove the owned fixture after reading its events."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -33,7 +33,7 @@ arguments = sys.argv[1:]
 if arguments == ['--version']:
     print('cargo fixture')
     sys.exit(0)
-binary = arguments[arguments.index('--bin') + 1]
+binary = arguments[arguments.index('--bin') + 1] if '--bin' in arguments else None
 with open(os.environ['EVENTS'], 'a') as log:
     log.write(json.dumps(['build', arguments]) + '\\n')
 if binary == os.environ['FAIL_BINARY']:
@@ -75,13 +75,17 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
                                FAIL_BINARY=fail_binary, FAIL_CHECKPOINT=fail_checkpoint,
                                RELEASE_CHECKPOINT_COMMAND=checkpoint.as_posix())
             environment.pop("RELEASE_CARGO_COMMAND", None)
+            environment.pop("RELEASE_PACKAGES", None)
+            if packages is not None:
+                environment["RELEASE_PACKAGES"] = packages
             if use_scheduler:
                 environment["RELEASE_CARGO_COMMAND"] = scheduler.as_posix()
                 environment["FIXTURE_CARGO"] = cargo.as_posix()
             script = Path(__file__).with_name("build-upstream-release.sh")
             result = subprocess.run([shutil.which("bash"), script.as_posix()], env=environment, capture_output=True, text=True)
-            self.assertTrue(events.exists(), result.stdout + result.stderr)
-            recorded = [json.loads(line) for line in events.read_text().splitlines()]
+            if packages is None:
+                self.assertTrue(events.exists(), result.stdout + result.stderr)
+            recorded = [json.loads(line) for line in events.read_text().splitlines()] if events.exists() else []
             return result, recorded
 
     def test_each_platform_checkpoints_each_executable_once(self):
@@ -140,6 +144,23 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
         self.assertEqual([event[1][-1] for event in events if event[0] == "schedule"],
                          ["codex-responses-api-proxy", "codex-code-mode-host", "codex"])
         self.assertEqual(len(events), 8)
+
+    def test_package_selection_builds_only_those_crates_once_without_checkpoints(self):
+        """A package run makes one scheduled Cargo build of exactly the listed crates and saves no release stage."""
+        result, events = self.run_build("x86_64-apple-darwin", use_scheduler=True,
+                                        packages="tikv-jemalloc-sys  aws-lc-sys@0.30.0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        arguments = ["build", "--target", "x86_64-apple-darwin", "--release", "--timings",
+                     "-p", "tikv-jemalloc-sys", "-p", "aws-lc-sys@0.30.0"]
+        self.assertEqual(events, [["schedule", arguments], ["build", arguments]])
+
+    def test_package_selection_rejects_option_or_shell_text(self):
+        """A package entry that is not a plain package specification fails with status 2 before any compilation."""
+        for packages in ("--release", "a;b", "$(id)", " "):
+            with self.subTest(packages=packages):
+                result, events = self.run_build("x86_64-apple-darwin", packages=packages)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertEqual(events, [])
 
     def test_real_cargo_reuses_bundle_outputs_and_runs_each_binary(self):
         """After bundled Cargo builds, the release script performs no further compilation and every fixture binary prints 7."""
