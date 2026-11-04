@@ -18,6 +18,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 /**
  * Instruments one contained attempt through {@code linux-build-hook.c}, which every dynamic image of the attempt
@@ -166,6 +167,19 @@ public final class LinuxBuildHookServer implements LinuxAttempts.Instrumentation
 		if (!preload.isAbsolute() || text.chars().anyMatch(c -> c == ':' || Character.isWhitespace(c)))
 			throw new IllegalArgumentException("A preloaded library must be absolute without separators: " + text);
 		return preload;
+	}
+
+	/**
+	 * Returns the libraries that a workload environment already preloads, which the server keeps after its own.
+	 * @param environment the workload environment
+	 * @return the entries of its {@code LD_PRELOAD}, split at spaces and colons as {@code ld.so} splits them, without
+	 *     empty entries; empty without {@code LD_PRELOAD}
+	 * @throws NullPointerException if {@code environment} is null
+	 */
+	public static List<Path> inheritedPreloads(Map<String, String> environment)
+	{
+		String value = environment.getOrDefault("LD_PRELOAD", "");
+		return Stream.of(value.split("[ :]+")).filter(entry -> !entry.isEmpty()).map(Path::of).toList();
 	}
 
 	/**

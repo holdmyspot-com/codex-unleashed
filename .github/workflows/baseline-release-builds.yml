@@ -371,7 +371,9 @@ jobs:
           frida_name=frida
           if [[ "$RUNNER_OS" == Windows ]]; then frida_name=frida.dll; fi
           dependencies=("$native/$frida_name")
-          if [[ "$RUNNER_OS" == Linux ]]; then dependencies+=("$native/libcgroup.so"); fi
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            dependencies+=("$native/libcgroup.so" "$native/libbuildhook.so" "$native/codex-build-hook-exec")
+          fi
           bash "$RUNNER_TEMP/provision-release-scheduler.sh" install \
             "$RUNNER_TEMP/source-cache-build/runtime" "$toolchain" "${dependencies[@]}"
           printf 'RELEASE_CARGO_COMMAND=%s/release-scheduler-cargo.sh\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"

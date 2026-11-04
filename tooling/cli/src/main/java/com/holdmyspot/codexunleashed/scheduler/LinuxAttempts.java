@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 
 /** Creates resource-free Linux Cargo compiler attempts and defers their allocation notifications until outside queue
  * controls.
@@ -300,7 +301,7 @@ public final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervi
 
 	/**
 	 * Production owners: a cgroup-v2 subtree registered with the memory authority, the invocation's jobserver lease
-	 * and Frida instrumentation.
+	 * and either the preloaded build hook or Frida instrumentation.
 	 */
 	public static final class NativeOwners implements Natives
 	{
@@ -318,6 +319,10 @@ public final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervi
 		private final LinuxCargoJobserver.CargoLease lease;
 		/** Bound on each native control. */
 		private final Duration timeout;
+		/** Build hook library that instruments attempts instead of Frida, or empty to instrument them with Frida. */
+		private final Optional<Path> buildHook;
+		/** Number of the next attempt's build hook socket, unique within the invocation's scratch directory. */
+		private final AtomicLong nextEndpoint = new AtomicLong();
 
 		/**
 		 * Borrows the invocation's native owners without acquiring anything.
@@ -328,11 +333,14 @@ public final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervi
 		 * @param cgroupRoot absolute cgroup-v2 mountpoint
 		 * @param lease      invocation jobserver lease
 		 * @param timeout    positive control bound
+		 * @param buildHook  absolute build hook library that instruments attempts instead of Frida, with its trampoline
+		 *                   beside it, or empty to instrument them with Frida
 		 * @throws NullPointerException     if an input is null
 		 * @throws IllegalArgumentException if the timeout is invalid
 		 */
 		NativeOwners(ToolingScope scope, LinuxFridaDevice device, LinuxAuthority authority,
-			AllocationHooks.Routing routing, Path cgroupRoot, LinuxCargoJobserver.CargoLease lease, Duration timeout)
+			AllocationHooks.Routing routing, Path cgroupRoot, LinuxCargoJobserver.CargoLease lease, Duration timeout,
+			Optional<Path> buildHook)
 		{
 			this.scope = Objects.requireNonNull(scope, "scope");
 			this.device = Objects.requireNonNull(device, "device");
@@ -341,6 +349,7 @@ public final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervi
 			this.cgroupRoot = Objects.requireNonNull(cgroupRoot, "cgroupRoot");
 			this.lease = Objects.requireNonNull(lease, "lease");
 			this.timeout = checkedTimeout(timeout);
+			this.buildHook = Objects.requireNonNull(buildHook, "buildHook");
 		}
 
 		/**
@@ -389,13 +398,24 @@ public final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervi
 			return lease.retainAttempt();
 		}
 
+		/**
+		 * With a build hook, the attempt's socket is a fresh path in the launch's scratch directory, owned by the
+		 * workload, and the workload's own preloads stay loaded after the library.
+		 */
 		@Override
 		public Instrumentation instrument(UUID identity, LinuxProcessTree.Launch launch, AllocationHooks.Root root,
 			LinuxCargoTokens.Attempt tokens, AllocationWaits waits, AllocationHook.Pump peers) throws IOException
 		{
 			var cargoTokens = new AllocationHooks.CargoTokens(lease.identity(), tokens);
-			return new AllocationHooks(scope, identity, device, launch, root, waits, timeout, peers,
-				Optional.of(cargoTokens), routing);
+			if (buildHook.isEmpty())
+			{
+				return new AllocationHooks(scope, identity, device, launch, root, waits, timeout, peers,
+					Optional.of(cargoTokens), routing);
+			}
+			Path endpoint = launch.scratchParent().resolve("h" + nextEndpoint.getAndIncrement());
+			return new LinuxBuildHookServer(scope, identity, root, cgroupRoot, launch.uid(), launch.gid(),
+				buildHook.get(), LinuxBuildHookServer.inheritedPreloads(launch.environment()), endpoint, waits, timeout,
+				peers, Optional.of(cargoTokens));
 		}
 	}
 

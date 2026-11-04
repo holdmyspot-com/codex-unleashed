@@ -28,6 +28,8 @@ public final class CargoLaunchConfigurationCommand
     private static final Set<String> UNIX = Set.of("--uid", "--gid");
     /** Linux authority inputs already provisioned by the administrator. */
     private static final Set<String> LINUX = Set.of("--unshare", "--libcgroup", "--delegation-parent");
+    /** Linux inputs that may be omitted: without a build hook library, attempts are instrumented with Frida. */
+    private static final Set<String> LINUX_OPTIONAL = Set.of("--build-hook");
     /** Authority entries constructed only by each native invocation, never copied from the caller. */
     private static final Set<String> OWNED_ENV = Set.of("RUSTC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER",
         "CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS", "CODEX_CARGO_SOCKET", "CODEX_LINUX_CARGO_WRAPPER_CONFIG");
@@ -40,7 +42,8 @@ public final class CargoLaunchConfigurationCommand
      * All options require exactly one value; an existing destination is never overwritten.
      * Installed runtime and toolchain must already be complete. The real scheduling preflight retains authority checks.
      * @param tooling borrowed caller services and bounded platform parsers
-     * @param arguments common construction options plus Unix credentials and Linux authority inputs where applicable
+     * @param arguments common construction options plus Unix credentials, Linux authority inputs and an optional Linux
+     *     build hook where applicable
      * @param out borrowed progress stream; configuration contents and environment values are never printed
      * @return zero after complete publication
      * @throws IOException if an installed input, generated document or exclusive publication is invalid
@@ -55,7 +58,8 @@ public final class CargoLaunchConfigurationCommand
      * Creates a new launch document like {@link #run(ToolingScope, String[], PrintStream)}, from an explicit caller
      * environment.
      * @param tooling borrowed caller services and bounded platform parsers
-     * @param arguments common construction options plus Unix credentials and Linux authority inputs where applicable
+     * @param arguments common construction options plus Unix credentials, Linux authority inputs and an optional Linux
+     *     build hook where applicable
      * @param callerEnvironment complete stage environment to copy into the document
      * @param out borrowed progress stream; configuration contents and environment values are never printed
      * @return zero after complete publication
@@ -97,7 +101,11 @@ public final class CargoLaunchConfigurationCommand
         var required = new java.util.HashSet<>(COMMON);
         if (!platform.equals("Windows")) required.addAll(UNIX);
         if (platform.equals("Linux")) required.addAll(LINUX);
-        if (!options.keySet().equals(required)) throw new IllegalArgumentException("Construction options must be exactly " + required);
+        var permitted = new java.util.HashSet<>(required);
+        if (platform.equals("Linux")) permitted.addAll(LINUX_OPTIONAL);
+        if (!options.keySet().containsAll(required) || !permitted.containsAll(options.keySet()))
+            throw new IllegalArgumentException("Construction options must be " + required + " plus any of " +
+                permitted.stream().filter(option -> !required.contains(option)).sorted().toList());
         return Map.copyOf(options);
     }
 
@@ -161,6 +169,14 @@ public final class CargoLaunchConfigurationCommand
                 document.put("cgroupRoot", "/sys/fs/cgroup"); document.put("procRoot", "/proc");
                 document.put("delegationParent", path(options, "--delegation-parent").toString());
                 identities.put("unshare", digest(unshare)); identities.put("libcgroup", digest(libcgroup));
+                if (options.containsKey("--build-hook"))
+                {
+                    Path buildHook = path(options, "--build-hook");
+                    document.put("buildHook", buildHook.toString());
+                    identities.put("buildHook", digest(buildHook));
+                    identities.put("buildHookExec", digest(buildHook.resolveSibling(
+                        LinuxCargoLaunchConfiguration.BUILD_HOOK_TRAMPOLINE)));
+                }
             }
             else
             {

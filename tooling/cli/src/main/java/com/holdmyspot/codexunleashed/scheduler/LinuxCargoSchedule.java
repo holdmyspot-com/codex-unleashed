@@ -81,8 +81,8 @@ public final class LinuxCargoSchedule
                 var authority = new LinuxAuthority.Settings(java, configuration.unshare(), configuration.libcgroup(),
                     directory, configuration.cgroupRoot(), configuration.procRoot(), actions, helpers, settings.controlTimeout());
                 var inputs = new LinuxCargoInvocation.Configuration(root, new LinuxCargoInvocation.BorrowedRoot(streams),
-                    registration, controller, settings.fridaLibrary(), authority, settings.budget().jobs(),
-                    settings.controlTimeout());
+                    registration, controller, settings.fridaLibrary(), configuration.buildHook(), authority,
+                    settings.budget().jobs(), settings.controlTimeout());
                 invocation = configuration.memory() == null ? new LinuxCargoInvocation(scope, inputs) :
                     new LinuxCargoInvocation(scope, inputs, configuration.memory());
                 invocation.start();

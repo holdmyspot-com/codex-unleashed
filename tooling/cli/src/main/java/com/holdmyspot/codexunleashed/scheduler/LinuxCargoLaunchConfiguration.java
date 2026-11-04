@@ -18,6 +18,7 @@ import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -39,22 +40,32 @@ import tools.jackson.databind.JsonNode;
  * @param cgroupRoot absolute cgroup-v2 mount
  * @param procRoot absolute proc mount
  * @param delegationParent absolute delegated parent for exclusive invocation containments
- * @param identities required lowercase SHA256 values for cargo, rustc, toolchain, unshare, libcgroup, frida and javaRuntime
+ * @param buildHook absolute pinned build hook library, with its trampoline {@code codex-build-hook-exec} beside it, or
+ *     empty to instrument attempts with Frida
+ * @param identities required lowercase SHA256 values for cargo, rustc, toolchain, unshare, libcgroup, frida and
+ *     javaRuntime, plus buildHook and buildHookExec exactly when a build hook is configured
  * @param memory explicit estimate settings, or null for unknown demand
  */
 public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, int uid, int gid, Path cargo, Path rustc,
     Path toolchainRoot, Map<String, String> environment, Path unshare, Path libcgroup, Path cgroupRoot,
-    Path procRoot, Path delegationParent, Map<String, String> identities, CargoMemoryEstimates.Settings memory)
+    Path procRoot, Path delegationParent, Optional<Path> buildHook, Map<String, String> identities,
+    CargoMemoryEstimates.Settings memory)
 {
     /** Environment locator supplied only by the invocation composition. */
     static final String WRAPPER_CONFIG_ENV = "CODEX_LINUX_CARGO_WRAPPER_CONFIG";
     /** Version-one administrator configuration members; memory is the sole optional member. */
     private static final Set<String> CONFIG_FIELDS = Set.of("version", "uid", "gid", "supplementaryGroups", "cargo",
         "rustc", "toolchainRoot", "environment", "unshare", "libcgroup", "cgroupRoot", "procRoot", "delegationParent",
-        "identities", "memory");
+        "buildHook", "identities", "memory");
+    /** Members that a document may omit. */
+    private static final Set<String> OPTIONAL_FIELDS = Set.of("buildHook", "memory");
     /** Pinned byte identities the administrator must supply before native acquisition. */
     private static final Set<String> IDENTITY_FIELDS = Set.of("cargo", "rustc", "toolchain", "unshare", "libcgroup",
         "frida", "javaRuntime");
+    /** Pinned identities of the build hook library and its trampoline, required exactly when a build hook is set. */
+    private static final Set<String> BUILD_HOOK_IDENTITIES = Set.of("buildHook", "buildHookExec");
+    /** Name of the trampoline that the build hook library runs from its own directory. */
+    public static final String BUILD_HOOK_TRAMPOLINE = "codex-build-hook-exec";
     /** Environment members owned by invocation/controller construction, forbidden in administrator input. */
     private static final Set<String> OWNED_ENV = Set.of("RUSTC", "RUSTC_WRAPPER", WRAPPER_CONFIG_ENV,
         "CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS", "RUSTC_WORKSPACE_WRAPPER");
@@ -82,6 +93,7 @@ public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, in
      * @param cgroupRoot absolute cgroup-v2 mount
      * @param procRoot absolute proc mount
      * @param delegationParent absolute delegated cgroup parent
+     * @param buildHook absolute build hook library, or empty for Frida
      * @param identities complete pinned byte identities
      * @param memory complete explicit history settings, or null for unknown demand
      * @throws NullPointerException if a required value or collection member is null
@@ -91,6 +103,7 @@ public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, in
     {
         for (Path path : List.of(source, cargo, rustc, toolchainRoot, unshare, libcgroup, cgroupRoot, procRoot,
             delegationParent)) requireAbsolute(path);
+        buildHook.ifPresent(LinuxCargoLaunchConfiguration::requireAbsolute);
         requireDigest(sourceDigest);
         if (uid <= 0 || gid <= 0) throw new IllegalArgumentException("Workload UID and GID must be positive");
         environment = Map.copyOf(environment);
@@ -101,8 +114,10 @@ public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, in
                 throw new IllegalArgumentException("Environment entry is invocation-owned: " + entry.getKey());
         }
         identities = Map.copyOf(identities);
-        if (!identities.keySet().equals(IDENTITY_FIELDS))
-            throw new IllegalArgumentException("Identities must contain exactly " + IDENTITY_FIELDS);
+        Set<String> required = new HashSet<>(IDENTITY_FIELDS);
+        if (buildHook.isPresent()) required.addAll(BUILD_HOOK_IDENTITIES);
+        if (!identities.keySet().equals(required))
+            throw new IllegalArgumentException("Identities must contain exactly " + required);
         identities.values().forEach(LinuxCargoLaunchConfiguration::requireDigest);
         if (!cargo.startsWith(toolchainRoot) || !rustc.startsWith(toolchainRoot))
             throw new IllegalArgumentException("Cargo and rustc must be within the configured toolchain root");
@@ -132,7 +147,7 @@ public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, in
      */
     public static LinuxCargoLaunchConfiguration decode(LinuxCargoScope scope, Path source, byte[] bytes) throws IOException
     {
-        JsonNode root = document(scope, bytes, CONFIG_FIELDS, Set.of("memory"));
+        JsonNode root = document(scope, bytes, CONFIG_FIELDS, OPTIONAL_FIELDS);
         version(root);
         JsonNode groups = root.path("supplementaryGroups");
         if (!groups.isArray() || !groups.isEmpty())
@@ -144,7 +159,9 @@ public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, in
             return new LinuxCargoLaunchConfiguration(source, digest(bytes), positiveInt(root, "uid"),
                 positiveInt(root, "gid"), path(root, "cargo"), path(root, "rustc"), path(root, "toolchainRoot"),
                 strings(root.path("environment")), path(root, "unshare"), path(root, "libcgroup"), path(root, "cgroupRoot"),
-                path(root, "procRoot"), path(root, "delegationParent"), strings(root.path("identities")),
+                path(root, "procRoot"), path(root, "delegationParent"),
+                root.has("buildHook") ? Optional.of(path(root, "buildHook")) : Optional.empty(),
+                strings(root.path("identities")),
                 root.has("memory") ? memory(root.path("memory")) : null);
         }
         catch (IllegalArgumentException invalid) { throw new IOException("Invalid Linux launch configuration: " + invalid.getMessage(), invalid); }
@@ -172,8 +189,18 @@ public record LinuxCargoLaunchConfiguration(Path source, String sourceDigest, in
             toolchainRoot, cgroupRoot, procRoot, delegationParent)) requireRootControlled(path);
         for (Path executable : List.of(cargo, rustc, unshare, bundledJava))
             if (!Files.isExecutable(executable)) throw new IOException("Configured executable is not executable: " + executable);
-        for (Map.Entry<String, Path> entry : Map.of("cargo", cargo, "rustc", rustc, "unshare", unshare,
-            "libcgroup", libcgroup, "frida", suppliedFrida, "javaRuntime", runtimeModules).entrySet())
+        Map<String, Path> pinned = new HashMap<>(Map.of("cargo", cargo, "rustc", rustc, "unshare", unshare,
+            "libcgroup", libcgroup, "frida", suppliedFrida, "javaRuntime", runtimeModules));
+        if (buildHook.isPresent())
+        {
+            Path trampoline = buildHook.get().resolveSibling(BUILD_HOOK_TRAMPOLINE);
+            for (Path path : List.of(buildHook.get(), trampoline)) requireRootControlled(path);
+            if (!Files.isExecutable(trampoline))
+                throw new IOException("Build hook trampoline is not executable: " + trampoline);
+            pinned.put("buildHook", buildHook.get());
+            pinned.put("buildHookExec", trampoline);
+        }
+        for (Map.Entry<String, Path> entry : pinned.entrySet())
         {
             if (!Files.isRegularFile(entry.getValue(), LinkOption.NOFOLLOW_LINKS))
                 throw new IOException("Pinned input is not a regular file: " + entry.getValue());

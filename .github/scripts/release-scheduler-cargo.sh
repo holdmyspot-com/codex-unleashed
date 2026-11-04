@@ -79,7 +79,8 @@ if [[ "$RUNNER_OS" != Windows ]]; then
   construction+=(--uid "${RELEASE_SCHEDULER_UID:?Missing original workload user}" --gid "${RELEASE_SCHEDULER_GID:?Missing original workload group}")
 fi
 if [[ "$RUNNER_OS" == Linux ]]; then
-  construction+=(--unshare /usr/bin/unshare --libcgroup "$root/native/libcgroup.so" --delegation-parent "$(cat "$root/cgroup-parent")")
+  construction+=(--unshare /usr/bin/unshare --libcgroup "$root/native/libcgroup.so" --delegation-parent "$(cat "$root/cgroup-parent")"
+    --build-hook "$root/native/libbuildhook.so")
 fi
 "$java" "${flags[@]}" "${construction[@]}" > "$stage/construction.log"
 configuration="$stage/launch.json"

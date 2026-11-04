@@ -84,6 +84,59 @@ public final class CargoLaunchConfigurationCommandTest
     }
 
     /**
+     * A Linux build hook is named in the document, and both the library and the trampoline installed beside it are
+     * pinned by their actual bytes.
+     * @throws IOException if fixture creation or decoding fails
+     */
+    @Test public void linuxBuildHookPinsLibraryAndTrampoline() throws IOException
+    {
+        try (Fixture fixture = new Fixture(); var tooling = new DefaultToolingScope(); var scope = new LinuxCargoScope(tooling))
+        {
+            Path library = fixture.file("native/libbuildhook.so", "hook library");
+            Path trampoline = fixture.file("native/codex-build-hook-exec", "hook trampoline");
+            requireThat(fixture.runInProcess("Linux", "--build-hook", library.toString()), "status").isEqualTo(0);
+            var configuration = LinuxCargoLaunchConfiguration.read(scope, fixture.output);
+            requireThat(configuration.buildHook().orElseThrow(), "buildHook").isEqualTo(library);
+            requireThat(configuration.identities().get("buildHook"), "buildHookIdentity").isEqualTo(sha256(library));
+            requireThat(configuration.identities().get("buildHookExec"), "buildHookExecIdentity").
+                isEqualTo(sha256(trampoline));
+        }
+    }
+
+    /**
+     * A build hook without its trampoline is rejected before any configuration is published.
+     * @throws IOException if fixture creation or inspection fails
+     */
+    @Test public void buildHookWithoutTrampolineRejectsPublication() throws IOException
+    {
+        try (Fixture fixture = new Fixture())
+        {
+            Path library = fixture.file("native/libbuildhook.so", "hook library");
+            requireThat(fixture.runInProcess("Linux", "--build-hook", library.toString()) != 0, "rejected").isTrue();
+            requireThat(Files.exists(fixture.output), "noPartialAuthorization").isFalse();
+        }
+    }
+
+    /**
+     * Hashes a file.
+     * @param path the file
+     * @return its lowercase SHA-256
+     * @throws IOException if it cannot be read
+     */
+    private static String sha256(Path path) throws IOException
+    {
+        try
+        {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").
+                digest(Files.readAllBytes(path)));
+        }
+        catch (java.security.NoSuchAlgorithmException unavailable)
+        {
+            throw new AssertionError(unavailable);
+        }
+    }
+
+    /**
      * Existing authorization is never overwritten, even after a failed publication attempt.
      * @throws IOException if fixture creation or inspection fails
      */
@@ -199,13 +252,16 @@ public final class CargoLaunchConfigurationCommandTest
          * document that do not depend on a fresh process environment. A rejected construction is reported as status one,
          * the status the public entry gives it.
          * @param platform represented platform schema
+         * @param extra    options added after the platform's required options
          * @return zero after publication, otherwise one
          */
-        private int runInProcess(String platform)
+        private int runInProcess(String platform, String... extra)
         {
             try (var tooling = new DefaultToolingScope())
             {
-                return CargoLaunchConfigurationCommand.run(tooling, arguments(platform).toArray(String[]::new),
+                List<String> arguments = arguments(platform);
+                arguments.addAll(List.of(extra));
+                return CargoLaunchConfigurationCommand.run(tooling, arguments.toArray(String[]::new),
                     environment(), new PrintStream(OutputStream.nullOutputStream()));
             }
             catch (IOException | IllegalArgumentException rejected) { return 1; }

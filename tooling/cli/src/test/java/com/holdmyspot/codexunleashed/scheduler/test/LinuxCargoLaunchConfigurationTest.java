@@ -125,6 +125,56 @@ public final class LinuxCargoLaunchConfigurationTest
     }
 
     /**
+     * A document without a build hook selects the Frida path, and one with it names the library and pins both the
+     * library and the trampoline installed beside it.
+     * @throws IOException if accepted configuration cannot be decoded
+     */
+    @Test
+    public void retainsOptionalBuildHook() throws IOException
+    {
+        try (var tooling = new DefaultToolingScope(); var scope = new LinuxCargoScope(tooling))
+        {
+            requireThat(decode(scope, configuration(scope)).buildHook().isEmpty(), "absentBuildHook").isTrue();
+            Map<String, String> identities = identities();
+            identities.put("buildHook", "1".repeat(64));
+            identities.put("buildHookExec", "2".repeat(64));
+            Map<String, Object> values = values(identities);
+            values.put("buildHook", path("/native/libbuildhook.so").toString());
+            LinuxCargoLaunchConfiguration configuration = decode(scope, scope.json().writeValueAsBytes(values));
+            requireThat(configuration.buildHook().orElseThrow(), "buildHook").isEqualTo(path("/native/libbuildhook.so"));
+            requireThat(configuration.identities().get("buildHookExec"), "buildHookExec").isEqualTo("2".repeat(64));
+        }
+    }
+
+    /**
+     * A build hook without both pinned identities, identities without a build hook, and a relative build hook are
+     * rejected.
+     * @throws IOException if baseline serialization fails
+     */
+    @Test
+    public void rejectsIncompleteBuildHook() throws IOException
+    {
+        try (var tooling = new DefaultToolingScope(); var scope = new LinuxCargoScope(tooling))
+        {
+            Map<String, String> partial = identities();
+            partial.put("buildHook", "1".repeat(64));
+            Map<String, Object> missingExec = values(partial);
+            missingExec.put("buildHook", path("/native/libbuildhook.so").toString());
+            Map<String, String> complete = identities();
+            complete.put("buildHook", "1".repeat(64));
+            complete.put("buildHookExec", "2".repeat(64));
+            Map<String, Object> unnamed = values(complete);
+            Map<String, Object> relative = values(complete);
+            relative.put("buildHook", "libbuildhook.so");
+            for (Map<String, Object> invalid : List.of(missingExec, unnamed, relative))
+            {
+                byte[] bytes = scope.json().writeValueAsBytes(invalid);
+                requireException(IOException.class, () -> decode(scope, bytes));
+            }
+        }
+    }
+
+    /**
      * The wrapper configuration is the exact three-line version 2 document the native wrapper parses.
      */
     @Test
@@ -229,6 +279,16 @@ public final class LinuxCargoLaunchConfigurationTest
      */
     private static byte[] configuration(LinuxCargoScope scope) throws IOException
     {
+        return scope.json().writeValueAsBytes(values(identities()));
+    }
+
+    /**
+     * Produces the members of an accepted administrator document, without a build hook.
+     * @param identities the document's pinned identities
+     * @return mutable members
+     */
+    private static Map<String, Object> values(Map<String, String> identities)
+    {
         Map<String, Object> values = new java.util.LinkedHashMap<>();
         values.put("version", 1); values.put("uid", 1001); values.put("gid", 1002);
         values.put("supplementaryGroups", List.of()); values.put("cargo", path("/tools/cargo").toString());
@@ -237,9 +297,19 @@ public final class LinuxCargoLaunchConfigurationTest
         values.put("unshare", path("/usr/bin/unshare").toString()); values.put("libcgroup", path("/lib/libcgroup.so").toString());
         values.put("cgroupRoot", path("/sys/fs/cgroup").toString()); values.put("procRoot", path("/proc").toString());
         values.put("delegationParent", path("/sys/fs/cgroup/delegated").toString());
-        values.put("identities", Map.of("cargo", "0".repeat(64), "rustc", "0".repeat(64), "toolchain", "0".repeat(64),
-            "unshare", "0".repeat(64), "libcgroup", "0".repeat(64), "frida", "0".repeat(64), "javaRuntime", "0".repeat(64)));
-        return scope.json().writeValueAsBytes(values);
+        values.put("identities", identities);
+        return values;
+    }
+
+    /**
+     * Produces the pinned identities that every accepted document needs.
+     * @return mutable identities
+     */
+    private static Map<String, String> identities()
+    {
+        return new java.util.LinkedHashMap<>(Map.of("cargo", "0".repeat(64), "rustc", "0".repeat(64),
+            "toolchain", "0".repeat(64), "unshare", "0".repeat(64), "libcgroup", "0".repeat(64), "frida", "0".repeat(64),
+            "javaRuntime", "0".repeat(64)));
     }
 
     /**

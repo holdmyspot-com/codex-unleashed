@@ -375,13 +375,15 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
      * @param registration trusted compiler context and complete native wrapper prefix
      * @param controllerEndpoint absent controller socket path in a caller-owned private directory
      * @param frida pinned native producer library
+     * @param buildHook pinned build hook library that instruments compiler attempts instead of Frida, or empty to
+     *     instrument them with Frida
      * @param authority retained authority configuration for compiler admission
      * @param jobs positive FIFO capacity including Cargo's implicit token
      * @param timeout positive bounded native control wait, not a Cargo runtime deadline
      */
     public record Configuration(LinuxProcessTree.Launch cargo, RootInput root,
         LinuxCargoRegistration.Configuration registration, Path controllerEndpoint, Path frida,
-        LinuxAuthority.Settings authority, int jobs, Duration timeout)
+        Optional<Path> buildHook, LinuxAuthority.Settings authority, int jobs, Duration timeout)
     {
         /**
          * Preserves file-root construction for existing resource-free callers.
@@ -398,7 +400,26 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
             LinuxCargoRegistration.Configuration registration, Path controllerEndpoint, Path frida,
             LinuxAuthority.Settings authority, int jobs, Duration timeout)
         {
-            this(cargo, new FileRoot(files), registration, controllerEndpoint, frida, authority, jobs, timeout);
+            this(cargo, new FileRoot(files), registration, controllerEndpoint, frida, Optional.empty(), authority, jobs,
+                timeout);
+        }
+
+        /**
+         * Instruments compiler attempts with Frida.
+         * @param cargo exact Cargo root launch
+         * @param root caller-selected file streams or borrowed inherited descriptors
+         * @param registration trusted compiler launch policy
+         * @param controllerEndpoint private controller socket path
+         * @param frida pinned instrumentation library
+         * @param authority compiler admission configuration
+         * @param jobs positive FIFO capacity
+         * @param timeout positive native control bound
+         */
+        public Configuration(LinuxProcessTree.Launch cargo, RootInput root,
+            LinuxCargoRegistration.Configuration registration, Path controllerEndpoint, Path frida,
+            LinuxAuthority.Settings authority, int jobs, Duration timeout)
+        {
+            this(cargo, root, registration, controllerEndpoint, frida, Optional.empty(), authority, jobs, timeout);
         }
 
         /**
@@ -408,6 +429,7 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
          * @param registration trusted compiler context and wrapper prefix
          * @param controllerEndpoint absolute normalized absent controller socket path
          * @param frida absolute normalized producer library
+         * @param buildHook absolute normalized build hook library, or empty for Frida
          * @param authority authority configuration matching compiler context
          * @param jobs positive FIFO capacity
          * @param timeout positive control bound representable as signed nanoseconds
@@ -420,7 +442,10 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
             Objects.requireNonNull(root, "root");
             Objects.requireNonNull(registration, "registration");
             Objects.requireNonNull(authority, "authority");
-            for (Path path : List.of(controllerEndpoint, frida))
+            Objects.requireNonNull(buildHook, "buildHook");
+            var paths = new ArrayList<>(List.of(controllerEndpoint, frida));
+            buildHook.ifPresent(paths::add);
+            for (Path path : paths)
                 if (!path.isAbsolute() || !path.equals(path.normalize())) throw new IllegalArgumentException("Cargo paths must be absolute and normalized");
             Objects.requireNonNull(timeout, "timeout");
             if (jobs <= 0 || timeout.isZero() || timeout.isNegative()) throw new IllegalArgumentException("Cargo capacity and timeout must be positive");
@@ -724,7 +749,8 @@ public final class LinuxCargoInvocation implements CargoSession.Invocation
             try { authority = LinuxAuthority.open(config.authority()); }
             catch (LinuxAuthority.AcquisitionFailure failure) { authority = failure.owner(); throw failure; }
             attempts = new LinuxAttempts(UUID.randomUUID(), new LinuxAttempts.NativeOwners(scope.tooling(), device,
-                authority, routing, config.authority().cgroupRoot(), lease, config.timeout()), config.timeout());
+                authority, routing, config.authority().cgroupRoot(), lease, config.timeout(), config.buildHook()),
+                config.timeout());
             measurements = LinuxMeasurements.open(authority);
             if (memory != null) estimates = memory.observe(measurements);
             LinuxProcessTree.Launch rootLaunch = withEnvironment(config.cargo(), lease.environment());

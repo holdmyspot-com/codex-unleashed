@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install or release one job-exclusive scheduler runtime, toolchain and native authority.
-# Usage: provision-release-scheduler.sh install RUNTIME TOOLCHAIN FRIDA [LIBCGROUP]
+# Usage: provision-release-scheduler.sh install RUNTIME TOOLCHAIN FRIDA [LIBCGROUP BUILD_HOOK BUILD_HOOK_EXEC]
 #        provision-release-scheduler.sh prepare-native RUNTIME OUTPUT SUPPORT
 #        provision-release-scheduler.sh cleanup ROOT
 #        provision-release-scheduler.sh prepare-debug-session ACTION_SOURCE CHECKOUT EVIDENCE
@@ -134,7 +134,7 @@ elif [[ "${1:-}" == prepare-native ]]; then
   run_tooling "$runtime_input" validate-release-native \
     "$native_output" "$support_input" "$RUNNER_OS" "$architecture"
 elif [[ "${1:-}" == install ]]; then
-  [[ $# == 4 || $# == 5 ]] || { printf 'install requires runtime, toolchain and native library inputs.\n' >&2; exit 2; }
+  [[ $# == 4 || $# == 7 ]] || { printf 'install requires runtime, toolchain and native library inputs.\n' >&2; exit 2; }
   : "${GITHUB_ENV:?Set the workflow environment output}"
   runtime_input="$2"; toolchain_input="$3"; frida_input="$4"
   for path in "$runtime_input" "$toolchain_input" "$frida_input"; do require_path_record "$path"; done
@@ -171,8 +171,12 @@ elif [[ "${1:-}" == install ]]; then
   if [[ "$RUNNER_OS" == Windows ]]; then frida_name=frida.dll; fi
   admin cp -L "$frida_input" "$root/native/$frida_name"
   if [[ "$RUNNER_OS" == Linux ]]; then
-    [[ $# == 5 && -f "$5" ]]
+    [[ $# == 7 && -f "$5" && -f "$6" && -f "$7" ]]
     admin cp -L "$5" "$root/native/libcgroup.so"
+    # The library runs its trampoline from its own directory, under this fixed name.
+    admin cp -L "$6" "$root/native/libbuildhook.so"
+    admin cp -L "$7" "$root/native/codex-build-hook-exec"
+    admin chmod 755 "$root/native/codex-build-hook-exec"
     group="/sys/fs/cgroup/$(basename "$root")"
     # The mount root is exempt from cgroup-v2's no-internal-process constraint.
     printf '+memory\n' | sudo -n tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null

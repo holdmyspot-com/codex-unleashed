@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.testng.annotations.Test;
 import static com.holdmyspot.codexunleashed.scheduler.test.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -47,6 +48,24 @@ public final class LinuxCargoRootConfigurationTest
             files.registration(), files.controllerEndpoint(), files.frida(), files.authority(), files.jobs(), files.timeout());
         requireThat(configuration.root(), "borrowedRoot").isEqualTo(borrowed);
         requireException(IllegalArgumentException.class, () -> new LinuxCargoInvocation.BorrowedRoot(Path.of("relative")));
+    }
+
+    /**
+     * The configuration keeps an absolute normalized build hook library, has none by default, and rejects a relative
+     * one.
+     */
+    @Test public void retainsOnlyAbsoluteBuildHook()
+    {
+        LinuxCargoInvocation.Configuration files = configuration(LinuxProcessTree.ExecutionMode.ATTACHED_LEADER_EXEC);
+        requireThat(files.buildHook().isEmpty(), "defaultBuildHook").isTrue();
+        Path library = Path.of("native", "libbuildhook.so").toAbsolutePath().normalize();
+        LinuxCargoInvocation.Configuration hooked = new LinuxCargoInvocation.Configuration(files.cargo(), files.root(),
+            files.registration(), files.controllerEndpoint(), files.frida(), Optional.of(library), files.authority(),
+            files.jobs(), files.timeout());
+        requireThat(hooked.buildHook().orElseThrow(), "buildHook").isEqualTo(library);
+        requireException(IllegalArgumentException.class, () -> new LinuxCargoInvocation.Configuration(files.cargo(),
+            files.root(), files.registration(), files.controllerEndpoint(), files.frida(),
+            Optional.of(Path.of("libbuildhook.so")), files.authority(), files.jobs(), files.timeout()));
     }
 
     /**
