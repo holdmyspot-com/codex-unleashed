@@ -248,6 +248,29 @@ public final class LinuxCargoTransport
         }
 
         /**
+         * Consumes one ready complete frame, unless the peer closed its end after its last complete frame.
+         * Unlike {@link #pollFrame()}, a closure between frames is not a failed read, so a client that ends whenever it
+         * exits or execs can be polled without racing its closure against a separate {@link #ended()} probe.
+         * @return complete payload, or empty when no data is ready or the peer closed its end between frames
+         * @throws IOException if native polling or a ready frame fails, including a closure mid-frame, or an earlier
+         *     frame failed
+         */
+        public Optional<byte[]> pollFrameUntilEnd() throws IOException
+        {
+            requireHealthy();
+            try
+            {
+                if (!socket.readable() || socket.ended()) return Optional.empty();
+                return Optional.of(read());
+            }
+            catch (IOException | RuntimeException | Error failure)
+            {
+                fault = failure;
+                throw failure;
+            }
+        }
+
+        /**
          * Waits interruptibly for a response, then applies the complete-frame transfer bound.
          * An idle compiler or queue may exceed the frame timeout. Once native readiness reports data, closure or an
          * error, the existing bounded read consumes the frame or permanently faults this connection. Each connection

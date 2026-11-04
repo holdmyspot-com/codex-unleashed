@@ -64,6 +64,23 @@ public final class LinuxCargoTransportEndTest
 	}
 
 	/**
+	 * Polling until the end yields a peer's last frame, then reports its closure as an end instead of a failed read.
+	 * @throws IOException if a socket step fails
+	 */
+	@Test
+	public void pollingUntilEndStopsAtClosure() throws IOException
+	{
+		try (Fixture fixture = Fixture.open())
+		{
+			fixture.client.write(ByteBuffer.wrap(new byte[]{0, 0, 0, 1, 7}));
+			fixture.client.close();
+			requireThat(fixture.accepted.pollFrameUntilEnd().orElseThrow(), "frame").isEqualTo(new byte[]{7});
+			requireThat(fixture.accepted.pollFrameUntilEnd().isEmpty(), "afterClosure").isTrue();
+			requireThat(fixture.accepted.ended(), "ended").isTrue();
+		}
+	}
+
+	/**
 	 * A peer that closes in the middle of a frame has not ended cleanly: the partial frame is still unread.
 	 * @throws IOException if a socket step fails
 	 */

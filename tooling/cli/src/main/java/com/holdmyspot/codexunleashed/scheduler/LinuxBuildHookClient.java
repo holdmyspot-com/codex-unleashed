@@ -124,14 +124,12 @@ public final class LinuxBuildHookClient implements AutoCloseable
 	{
 		while (!ended)
 		{
-			if (connection.ended())
+			Optional<byte[]> frame = connection.pollFrameUntilEnd();
+			if (frame.isEmpty())
 			{
-				ended = true;
+				ended = connection.ended();
 				return;
 			}
-			Optional<byte[]> frame = connection.pollFrame();
-			if (frame.isEmpty())
-				return;
 			List<String> fields = LinuxBuildHookFrames.decode(frame.get());
 			Optional<String> allocation = allocationMessages.allocation(fields);
 			if (allocation.isPresent())

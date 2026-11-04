@@ -449,7 +449,7 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
 	 * @return false if no such process exists, its pid now names another process, or it is a zombie
 	 * @throws IOException if the process record exists but cannot be read
 	 */
-	private static boolean isRunning(long pid, long started) throws IOException
+	public static boolean isRunning(long pid, long started) throws IOException
 	{
 		String stat;
 		try
