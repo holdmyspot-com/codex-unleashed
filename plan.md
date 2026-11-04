@@ -24,8 +24,8 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 | Linux x64 release build | Run `41743639583` (`cache=true`, `scheduler=true`), commit `a7d420154f` | Stopped by the watchdog at 02:31Z; see "x64 full run on `a7d420154f`" below. |
 | Linux ARM release build | Run `41743643884`, same commit and inputs | Stopped by the watchdog at 01:40Z; see "ARM full run on `a7d420154f`" below. |
 | Rung 1: `tikv-jemalloc-sys` only, x64 | Run `41781244170`, commit `92e10eab9a` | Passed: `Finished` after 50m 33s. The Frida fork-re-injection hang is gone on x64. The build is slow, so measure the ptrace cost (see the fix section). |
-| Rung 1, ARM | Run `41789816351` (`packages=tikv-jemalloc-sys`, `cache=true`, `scheduler=true`), commit `0b96ebaf27` | Dispatched 2026-11-04T07:05Z. It tests the reparenting fix (`e916f2a950`) and the seccomp filter on ARM. It supersedes `41787811748` (on `e916f2a950`, canceled). Earlier, `41781247235` and `41783213954` failed with "Parent birth changed before child release": during Cargo's git fetch, a git parent was reparented after its own parent exited. |
-| Rung 2: about 20 crates, x64 | Run `41787814504`, commit `e916f2a950`, `packages=` rung 1 plus the rung-2 list below | Dispatched 2026-11-04T06:47Z. On success, dispatch rung 3; dispatch ARM rung 2 once ARM rung 1 passes. |
+| Rung 1, ARM | Run `41789816351` (`packages=tikv-jemalloc-sys`, `cache=true`, `scheduler=true`), commit `0b96ebaf27` | Passed: `Finished` after 24m 47s. The reparenting fix (`e916f2a950`) and the seccomp filter work on ARM. Earlier, `41781247235` and `41783213954` failed with "Parent birth changed before child release": during Cargo's git fetch, a git parent was reparented after its own parent exited. |
+| Rung 2: about 20 crates, x64 | Run `41787814504`, commit `e916f2a950`, `packages=` rung 1 plus the rung-2 list below | Passed: `Finished` after 53m 03s, about 45 minutes of it jemalloc's configure under the tracer before the seccomp filter and the faster polling. Next: ARM rung 2 and x64 rung 3 (`aws-lc-sys openssl-sys`) on the polling commits. |
 
 ### ARM full run on `a7d420154f` (2026-11-04): the scheduler failed, then hung in Frida teardown
 
@@ -81,9 +81,13 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
   - At a static image's exec, the tracer injects `prctl(PR_SET_NO_NEW_PRIVS)` and `seccomp(SET_MODE_FILTER)` at the execve syscall exit. It patches the entry instruction to a syscall and restores it and every register afterward.
   - The filter traces only `mmap`, `execve` and `execveat`. Filtered tasks and their descendants resume with `PTRACE_CONT`, and with `PTRACE_SYSCALL` only while an `mmap` is in flight.
   - Dynamic images are unchanged: the filter would be inherited by a wrapper that a dynamic image execs, and detaching that wrapper would make every `mmap` it makes fail with ENOSYS. A static image never execs our wrapper; if a filtered tree is ever released untraced, the build fails with an error.
-  - Not covered: static images handed over as an initial root (`handoff`), such as `zig` as rustc's linker inside a compiler attempt.
+  - `5d43cfc854` also filters a static image handed over as an initial root (`handoff`), such as `zig` as rustc's linker inside a compiler attempt.
   - Tests: `LinuxAllocationTraceNativeTest` covers `filtersStaticImage`, `runsChildOfFilteredStaticImage` and `reportsDenialInFilteredStaticImage`.
-  - Still to do: measure ARM rung 1 on `0b96ebaf27`; it runs the ARM injection path for the first time. The preload library is still needed for compiler attempts. Its scope shrinks to the attempt side (allocation hook and token mediation).
+  - ARM rung 1 on `0b96ebaf27` passed in 24m 47s, so the ARM injection path works. The preload library is still needed for compiler attempts. Its scope shrinks to the attempt side (allocation hook and token mediation).
+- Dynamic producer images (`bash`, `sed` in `config.status`) still stop at every system call. Two delays applied at every stop or held image:
+  - The tracer parked 1 ms whenever `waitpid` found no stop. The polling commit parks 10 us for 100 ms after any stop, and 1 ms once idle.
+  - `LinuxCargoInvocation.pump` released one held image per call, and the coordinator sleeps 10 ms between calls while it waits. `pump` now releases every queued image. If the rungs still show held images queuing, the next step is an idle that wakes when the tracer queues an image.
+  - Measure on x64 rung 3 (`aws-lc-sys openssl-sys`); jemalloc is now cached on both targets.
 - Verification: rung 1 passed on x64 (`41781244170`, 50m 33s). On ARM, rung 1 then failed on a reparented git parent, fixed in `e916f2a950`. The live table records the runs.
 
 ### Incremental package ladder (user directive, 2026-11-04)
