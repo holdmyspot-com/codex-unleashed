@@ -50,6 +50,12 @@ public final class LinuxAllocationTrace
 	private static final int WAIT_OWNED = 0x60000000;
 	/** Linux WNOHANG permits caller cancellation to reach the sole tracing thread. */
 	private static final int NOHANG = 1;
+	/** How long after a stop the tracer keeps polling at the short interval, in nanoseconds. */
+	private static final long ACTIVE_NANOS = 100_000_000;
+	/** The tracer's poll interval while its tree is active, in nanoseconds. */
+	private static final long ACTIVE_PARK_NANOS = 10_000;
+	/** The tracer's poll interval while its tree has been idle for {@link #ACTIVE_NANOS}, in nanoseconds. */
+	private static final long IDLE_PARK_NANOS = 1_000_000;
 	/** Linux signals needed by stopped-shell startup, trap recognition, and terminal collection. */
 	private static final int KILL = 9, STOP = 19, CONTINUE = 18, TRAP = 5, SYSCALL_TRAP = 133;
 	/** Linux ESRCH: the task does not exist or, for ptrace, is no longer stopped for its tracer. */
@@ -900,6 +906,12 @@ public final class LinuxAllocationTrace
 		 * The task whose wait result is being serviced, or zero before a wait returns one.
 		 */
 		private int servicing;
+		/**
+		 * When a wait last returned a task, from {@link System#nanoTime()}. Within {@link #ACTIVE_NANOS} of it the
+		 * tracer polls every {@link #ACTIVE_PARK_NANOS}, so a tree that keeps stopping, such as a shell pipeline,
+		 * is not delayed a full idle park at each stop.
+		 */
+		private long lastWaited = System.nanoTime() - ACTIVE_NANOS;
 		/** Entry mmap lengths keyed by task ID until the corresponding syscall exit. */
 		private final Map<Integer, Long> mmapLengths = new HashMap<>();
 		/** Tasks that exec'd a static image and await the filter at that exec's syscall exit. */
@@ -1116,7 +1128,8 @@ public final class LinuxAllocationTrace
                 {
                     if (cancel.get()) throw new InterruptedIOException("Original tracing owner cancelled");
                     NativeResult result = call(waitpid, tid, value, WAIT_OWNED | NOHANG);
-                    if (result.value() == 0) { LockSupport.parkNanos(1_000_000); continue; }
+                    // The stop is expected soon: the task was just resumed toward it.
+                    if (result.value() == 0) { LockSupport.parkNanos(ACTIVE_PARK_NANOS); continue; }
                     if (result.value() == -1 && result.errno() == 4) continue;
                     if (result.value() != tid) throw new IOException("Original tracee wait failed: " + result.errno());
                     int status = value.get(ValueLayout.JAVA_INT, 0);
@@ -1381,9 +1394,11 @@ public final class LinuxAllocationTrace
 				NativeResult waited = call(waitpid, -1, statusValue, WAIT_OWNED | NOHANG);
 				if (waited.value() == 0)
 				{
-					LockSupport.parkNanos(1_000_000);
+					boolean active = System.nanoTime() - lastWaited < ACTIVE_NANOS;
+					LockSupport.parkNanos(active ? ACTIVE_PARK_NANOS : IDLE_PARK_NANOS);
 					return;
 				}
+				lastWaited = System.nanoTime();
 				if (waited.value() < 0)
 				{
 					if (waited.errno() == 4)
