@@ -513,7 +513,7 @@ public final class LinuxCargoImages
         long generation;
         try
         {
-            if (!operations.prepareNative(expected))
+            if (!operations.prepareNative(expected, !enroll))
                 connections.start(operations.connection(expected.pid()), "linux-cargo-image-ready:" + expected.pid());
             generation = Math.incrementExact(nextGeneration);
             nextGeneration = generation;
@@ -731,10 +731,11 @@ public final class LinuxCargoImages
         { return inspect(pid).group().startsWith(containment); }
         /** Establishes exact sole-native-tracer readiness when this is a static or already native-owned image.
          * @param image independently authenticated held process
+         * @param root whether the image is the prepared root, which its launcher holds rather than a Frida gate
          * @return true for native-held readiness; false when the caller must acquire a Frida connection
          * @throws IOException if native handoff is uncertain
          */
-        default boolean prepareNative(Identity image) throws IOException { return false; }
+        default boolean prepareNative(Identity image, boolean root) throws IOException { return false; }
         /** Copies one native held transition without authorizing it.
          * @return pending actual event, or null
          * @throws IOException if native ownership or producer allocation fails
@@ -945,18 +946,22 @@ public final class LinuxCargoImages
             catch (NumberFormatException cause) { throw new IOException("Malformed native credentials", cause); }
         }
         @Override public AllocationHook.Connection connection(long pid) { return AllocationHook.newNativeConnection(manager, pid); }
-        /** Hands every producer image to the ptrace owner, dynamic ones included.
+        /** Hands every producer image that Cargo starts to the ptrace owner, dynamic ones included.
          * Frida's agent re-injects itself into each fork child of an instrumented process, and when that fails it keeps
          * the child stopped under its own tracer with no event, so a fork-heavy build script such as autoconf
          * {@code configure} would hang (frida-core {@code RejuvenateTask}). A denied allocation in a traced image is
          * reported and ends the build rather than waiting, as it already does for a static image.
+         * <p>
+         * The root keeps its Frida connection unless it is static: its launcher, not a Frida gate, holds it, so the
+         * gate release that a handoff starts with does not apply to it.
          * @param image independently authenticated held process
-         * @return true, since this owner holds every image
+         * @param root whether the image is the prepared root
+         * @return true when this owner holds the image
          * @throws IOException if native handoff is uncertain
          */
-        @Override public boolean prepareNative(Identity image) throws IOException
+        @Override public boolean prepareNative(Identity image, boolean root) throws IOException
         {
-            return nativeImages.install(image.pid(), image.birth(), () -> manager.resume(image.pid()), true);
+            return nativeImages.install(image.pid(), image.birth(), () -> manager.resume(image.pid()), !root);
         }
         @Override public void releaseWrapper(long pid) throws IOException
         {

@@ -81,6 +81,20 @@ public final class LinuxCargoImagesTest
         }
     }
 
+    /** Native readiness learns which image is the prepared root, because only a child's Frida gate can be handed over.
+     * @throws IOException if image admission fails
+     */
+    @Test
+    public void identifiesPreparedRootToNativeReadiness() throws IOException
+    {
+        try (var fixture = new Fixture())
+        {
+            fixture.putChild(2, fixture.cargo, fixture.group, 1000, 1001, 10);
+            fixture.owner.advance(fixture.event(0));
+            requireThat(fixture.preparedRoots, "preparedRoots").isEqualTo(List.of(true, false));
+        }
+    }
+
     /** Enumerates identities that subgroup selection must never repair.
      * @return independently changed root identity fields
      */
@@ -672,12 +686,16 @@ public final class LinuxCargoImagesTest
         private boolean nativeImage;
         /** Whether that native owner established its held readiness boundary. */
         private boolean nativePrepared;
+        /** Whether each native readiness request named the prepared root, in request order. */
+        private final List<Boolean> preparedRoots = new ArrayList<>();
         /** Selects independently controlled native readiness without a Frida connection.
          * @param image independently authenticated held image
+         * @param root whether the image is the prepared root
          * @return whether this image is native-owned
          */
-        public boolean prepareNative(LinuxCargoImages.Identity image)
+        public boolean prepareNative(LinuxCargoImages.Identity image, boolean root)
         {
+            preparedRoots.add(root);
             nativePrepared = nativeImage;
             return nativeImage;
         }
