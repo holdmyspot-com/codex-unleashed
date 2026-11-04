@@ -426,6 +426,44 @@ class CacheHelperInputsTest(unittest.TestCase):
             self.commit(repository,lambda _:(package/'tooling/Main.java').write_text('class Main { int x; }'))
             self.assertNotEqual(self.digest(root),original)
 
+class MemoryHistoryCollectionTest(unittest.TestCase):
+    """Run the actual collection step against an owned history directory."""
+
+    def collect(self,root,names):
+        """Return the collected profile names and the step's declared count."""
+        import yaml
+        workflow=yaml.load((SCRIPTS.parent/'workflows/baseline-release-builds.yml').read_text(),Loader=yaml.BaseLoader)
+        steps=workflow['jobs']['build']['steps']
+        step=next(step for step in steps if step.get('name')=='Collect the memory history for saving')
+        save=next(step for step in steps if step.get('name')=='Save the memory history')
+        self.assertIn("steps.%s.outputs.profiles != '0'"%step['id'],save['if'])
+        history=root/'install/history';history.mkdir(parents=True)
+        for name in names:(history/name).write_text(name)
+        programs=root/'programs';programs.mkdir()
+        sudo=programs/'sudo';sudo.write_text('#!/usr/bin/env bash\nshift\nexec "$@"\n');sudo.chmod(0o755)
+        (root/'baseline-evidence').mkdir()
+        output=root/'output'
+        environment=dict(os.environ,PATH=str(programs)+os.pathsep+os.environ['PATH'],RUNNER_OS='Linux',
+            RUNNER_TEMP=str(root),RELEASE_SCHEDULER_ROOT=str(root/'install'),GITHUB_OUTPUT=str(output))
+        result=subprocess.run(['bash','-e','-o','pipefail','-c',step['run']],env=environment,capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        collected=sorted(path.name for path in (root/'scheduler-memory-history-save').iterdir())
+        return collected,output.read_text()
+
+    def test_collects_every_profile_and_counts_them(self):
+        """Profiles are copied and counted; other history files are not."""
+        with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as tmp:
+            collected,output=self.collect(Path(tmp),['a.profile','b.profile','a.profile.tmp'])
+            self.assertEqual(collected,['a.profile','b.profile'])
+            self.assertEqual(output,'profiles=2\n')
+
+    def test_empty_history_declares_nothing_to_save(self):
+        """An empty history reports zero so the save step does not replace useful history."""
+        with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as tmp:
+            collected,output=self.collect(Path(tmp),[])
+            self.assertEqual(collected,[])
+            self.assertEqual(output,'profiles=0\n')
+
 class WorkflowSelectionTest(unittest.TestCase):
     """Execute the actual selection step against complete declared target/readiness inputs."""
 

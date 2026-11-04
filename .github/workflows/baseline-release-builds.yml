@@ -699,23 +699,27 @@ jobs:
             done > "$evidence/final-untracked-source-digests.txt"
 
       - name: Collect the memory history for saving
+        id: memory_collect
         if: always() && inputs.scheduler && inputs.cache && env.RELEASE_SCHEDULER_ROOT != ''
         run: |
           set -euo pipefail
           collected="$RUNNER_TEMP/scheduler-memory-history-save"
           rm -rf -- "$collected"
           mkdir -p "$collected"
+          # With "+", find requires {} immediately before it, so each profile is copied by its own cp.
           if [[ "$RUNNER_OS" == Windows ]]; then
-            find "$RELEASE_SCHEDULER_ROOT/history" -maxdepth 1 -type f -name '*.profile' -exec cp -- {} "$collected/" +
+            find "$RELEASE_SCHEDULER_ROOT/history" -maxdepth 1 -type f -name '*.profile' -exec cp -- {} "$collected/" \;
           else
-            sudo -n find "$RELEASE_SCHEDULER_ROOT/history" -maxdepth 1 -type f -name '*.profile' -exec cp -- {} "$collected/" +
+            sudo -n find "$RELEASE_SCHEDULER_ROOT/history" -maxdepth 1 -type f -name '*.profile' -exec cp -- {} "$collected/" \;
             sudo -n chown -R "$(id -u):$(id -g)" "$collected"
           fi
-          printf 'collected_profiles=%s\n' "$(find "$collected" -maxdepth 1 -type f -name '*.profile' | wc -l)" |
-            tee "$RUNNER_TEMP/baseline-evidence/memory-history-save.log"
+          count="$(find "$collected" -maxdepth 1 -type f -name '*.profile' | wc -l | tr -d ' ')"
+          printf 'collected_profiles=%s\n' "$count" | tee "$RUNNER_TEMP/baseline-evidence/memory-history-save.log"
+          printf 'profiles=%s\n' "$count" >> "$GITHUB_OUTPUT"
 
       - name: Save the memory history
-        if: always() && inputs.scheduler && inputs.cache && env.RELEASE_SCHEDULER_ROOT != ''
+        # An empty save would become the newest entry and hide earlier history from the prefix restore.
+        if: always() && inputs.scheduler && inputs.cache && env.RELEASE_SCHEDULER_ROOT != '' && steps.memory_collect.outcome == 'success' && steps.memory_collect.outputs.profiles != '0'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/scheduler-memory-history-save
