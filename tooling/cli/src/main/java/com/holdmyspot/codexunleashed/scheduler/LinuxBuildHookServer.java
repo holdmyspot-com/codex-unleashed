@@ -305,13 +305,50 @@ public final class LinuxBuildHookServer implements LinuxAttempts.Instrumentation
 			continueTraced(traced);
 		for (long installation : List.copyOf(activeInstallations.values()))
 		{
-			AllocationHook hook = installations.get(installation);
-			if (hook != null)
-				hook.pump();
-			CargoTokenHook tokens = tokenInstallations.get(installation);
-			if (tokens != null)
-				tokens.pump();
+			try
+			{
+				AllocationHook hook = installations.get(installation);
+				if (hook != null)
+					hook.pump();
+				CargoTokenHook tokens = tokenInstallations.get(installation);
+				if (tokens != null)
+					tokens.pump();
+			}
+			catch (IOException cause)
+			{
+				retireIfEnded(installation, cause);
+			}
 		}
+	}
+
+	/**
+	 * Retires an installation whose hook failed to deliver because its process ended, and rethrows any other failure.
+	 * <p>
+	 * A process can end while a hook still owes it a message, such as a jobserver helper thread that is blocked
+	 * reading a token when the process exits. The hook's delivery then fails against a peer that is gone, which says
+	 * nothing about the other installations or the build. The hook has already withdrawn the installation's
+	 * authority, and a token or permission it could not deliver stays reserved until the attempt retires, so
+	 * retiring the installation loses nothing. The client's pending frames are read first so that a return the
+	 * process sent before it ended is still processed.
+	 * @param installation the installation whose hook failed
+	 * @param failure      the hook's failure
+	 * @throws IOException if the installation's client has not ended, or retiring it fails
+	 */
+	private void retireIfEnded(long installation, IOException failure) throws IOException
+	{
+		Client client = clients.get(installation);
+		try
+		{
+			if (client == null || !client.connection().ended())
+				throw failure;
+		}
+		catch (IOException cause)
+		{
+			if (cause != failure)
+				failure.addSuppressed(cause);
+			throw failure;
+		}
+		retire(client.pid());
 	}
 
 	/**

@@ -2,6 +2,8 @@ package com.holdmyspot.codexunleashed.scheduler.test;
 
 import com.holdmyspot.codexunleashed.scheduler.AllocationHooks;
 import com.holdmyspot.codexunleashed.scheduler.AllocationWaits;
+import com.holdmyspot.codexunleashed.scheduler.LinuxCargoTokens;
+import com.holdmyspot.codexunleashed.scheduler.LinuxFifoBindings;
 import com.holdmyspot.codexunleashed.scheduler.LinuxBuildHookServer;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
@@ -12,9 +14,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
@@ -163,6 +167,51 @@ public final class LinuxBuildHookServerNativeTest
 	}
 
 	/**
+	 * A process that exits while its jobserver read is still pending leaves a grant that cannot be delivered. The
+	 * server retires that installation instead of failing the build.
+	 * @throws IOException          if the fixture cannot be built or run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = TEST_TIMEOUT_MILLIS)
+	public void retiresExitedProcessWithPendingTokenRead() throws IOException, InterruptedException
+	{
+		try (LinuxBuildHookInstallation installation = LinuxBuildHookInstallation.create();
+			ToolingScope scope = new DefaultToolingScope())
+		{
+			Path fifo = installation.directory().resolve("jobserver");
+			Process mkfifo = new ProcessBuilder("mkfifo", fifo.toString()).inheritIO().start();
+			requireThat(mkfifo.waitFor(), "mkfifo").isEqualTo(0);
+			Process stat = new ProcessBuilder("stat", "-c", "%Hd:%Ld:%i", fifo.toString()).start();
+			String[] identity = new String(stat.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip().
+				split(":");
+			requireThat(stat.waitFor(), "stat").isEqualTo(0);
+			var fifoIdentity = new LinuxFifoBindings.Identity(Long.parseLong(identity[0]), Long.parseLong(identity[1]),
+				Long.parseLong(identity[2]));
+			var ledger = new QueuedTransfer();
+			Process root = startRoot(installation, "token-read-exit", fifo.toString());
+			try (LinuxCargoTokens tokens = new LinuxCargoTokens(ledger);
+				LinuxCargoTokens.Attempt attempt = tokens.retainAttempt())
+			{
+				LinuxBuildHookServer server = newServer(scope, installation, root, List.of(),
+					installation.directory().resolve("e"), new AllocationWaits(),
+					Optional.of(new AllocationHooks.CargoTokens(fifoIdentity, attempt)));
+				server.start(environment -> release(root, environment));
+				pumpUntilExit(server, root);
+				requireThat(readAll(root), "output").isEqualTo("exiting\n");
+				requireThat(root.waitFor(), "exitValue").isEqualTo(0);
+
+				ledger.offer(0x41);
+				server.pump();
+				server.close(() -> !root.isAlive());
+			}
+			finally
+			{
+				root.destroyForcibly();
+			}
+		}
+	}
+
+	/**
 	 * Starts the held root, which waits for its released environment on its standard input.
 	 * @param installation the compiled program
 	 * @param arguments    the program's arguments
@@ -191,6 +240,25 @@ public final class LinuxBuildHookServerNativeTest
 	private static LinuxBuildHookServer newServer(ToolingScope scope, LinuxBuildHookInstallation installation,
 		Process root, List<Path> preloads, Path endpoint, AllocationWaits waits) throws IOException
 	{
+		return newServer(scope, installation, root, preloads, endpoint, waits, Optional.empty());
+	}
+
+	/**
+	 * Creates a server for the held root in the test's own cgroup.
+	 * @param scope        supplies native functions and message mappers
+	 * @param installation the compiled library
+	 * @param root         the held root
+	 * @param preloads     libraries the workload already preloads
+	 * @param endpoint     the attempt's socket path
+	 * @param waits        the attempt's allocation waits
+	 * @param cargoTokens  the attempt's jobserver FIFO and ledger, or empty if tokens are not mediated
+	 * @return the unstarted server
+	 * @throws IOException if the root's identity or the test's cgroup cannot be read
+	 */
+	private static LinuxBuildHookServer newServer(ToolingScope scope, LinuxBuildHookInstallation installation,
+		Process root, List<Path> preloads, Path endpoint, AllocationWaits waits,
+		Optional<AllocationHooks.CargoTokens> cargoTokens) throws IOException
+	{
 		String membership = Files.readString(Path.of("/proc/self/cgroup"));
 		if (!membership.startsWith("0::/") || membership.equals("0::/\n") ||
 			membership.indexOf('\n') != membership.length() - 1)
@@ -206,7 +274,7 @@ public final class LinuxBuildHookServerNativeTest
 		return new LinuxBuildHookServer(scope, UUID.randomUUID(), held, CGROUP_ROOT, uid, gid,
 			installation.library(), preloads, endpoint, waits, TIMEOUT, () ->
 			{
-			}, Optional.empty());
+			}, cargoTokens);
 	}
 
 	/**
@@ -264,6 +332,41 @@ public final class LinuxBuildHookServerNativeTest
 		try (InputStream output = process.getInputStream())
 		{
 			return new String(output.readAllBytes(), StandardCharsets.UTF_8);
+		}
+	}
+
+	/**
+	 * A ledger transport whose bytes the test makes available one at a time.
+	 */
+	private static final class QueuedTransfer implements LinuxCargoTokens.Transfer
+	{
+		/** The bytes that a borrower can take. */
+		private final ArrayDeque<Integer> available = new ArrayDeque<>();
+
+		/** Creates an empty transport. */
+		private QueuedTransfer()
+		{
+		}
+
+		/**
+		 * Makes a byte available to the next borrower.
+		 * @param token the byte
+		 */
+		private void offer(int token)
+		{
+			available.addLast(token);
+		}
+
+		@Override
+		public OptionalInt tryRead()
+		{
+			return available.isEmpty() ? OptionalInt.empty() : OptionalInt.of(available.removeFirst());
+		}
+
+		@Override
+		public void write(byte token)
+		{
+			available.addLast(Byte.toUnsignedInt(token));
 		}
 	}
 }

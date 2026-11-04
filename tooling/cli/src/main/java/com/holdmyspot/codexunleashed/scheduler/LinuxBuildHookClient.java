@@ -117,6 +117,17 @@ public final class LinuxBuildHookClient implements AutoCloseable
 	}
 
 	/**
+	 * Reports whether the client closed its end and left no unread frame.
+	 * @return true once every frame the client sent has been read and it has closed its end
+	 * @throws IOException if reading fails or the client sent a frame that no handler understands
+	 */
+	public boolean ended() throws IOException
+	{
+		pump();
+		return ended;
+	}
+
+	/**
 	 * Reads every complete frame that has arrived and queues it for its handler.
 	 * @throws IOException if reading fails or the client sent a frame that no handler understands
 	 */

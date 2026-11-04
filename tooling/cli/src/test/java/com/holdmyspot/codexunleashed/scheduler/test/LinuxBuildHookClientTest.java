@@ -170,6 +170,45 @@ public final class LinuxBuildHookClientTest
 	}
 
 	/**
+	 * A client that is still connected has not ended.
+	 * @throws IOException if a socket step fails
+	 */
+	@Test
+	public void connectedClientHasNotEnded() throws IOException
+	{
+		try (Fixture fixture = Fixture.open())
+		{
+			requireThat(fixture.client.ended(), "ended").isFalse();
+		}
+	}
+
+	/**
+	 * A frame that the client sent before it closed its end is read, and then the client reports that it ended.
+	 * @throws IOException if a socket step fails
+	 */
+	@Test
+	public void endedReadsFramesSentBeforeClose() throws IOException
+	{
+		try (Fixture fixture = Fixture.open())
+		{
+			fixture.send("transfer", "1", "read");
+			fixture.peer.close();
+			Instant deadline = Instant.now().plus(TIMEOUT);
+			boolean ended;
+			do
+			{
+				ended = fixture.client.ended();
+				Thread.onSpinWait();
+			}
+			while (!ended && Instant.now().isBefore(deadline));
+			requireThat(ended, "ended").isTrue();
+			String message = await(fixture.client.tokens());
+			requireThat(new CargoTokenMessages(fixture.scope, ATTEMPT, INSTALLATION, PID).read(message), "event").
+				isEqualTo(new CargoTokenMessages.Read(new CargoTokenMessages.Request(ATTEMPT, INSTALLATION, PID, 1)));
+		}
+	}
+
+	/**
 	 * A frame that no handler understands fails the client rather than being dropped.
 	 * @throws IOException always
 	 */

@@ -35,20 +35,42 @@ public final class LinuxBuildHookInstallation implements AutoCloseable
 	 * With {@code env} it prints each entry of its environment on its own line. With {@code exec-clear} it execs itself
 	 * with {@code env} and the environment {@code A=1}; {@code spawn-clear} does the same through {@code posix_spawn}
 	 * and waits for the child. With {@code exec-static <program>} it execs that program as {@code static-child}, and
-	 * {@code spawn-static <program>} does the same through {@code posix_spawn} and waits for the child.
+	 * {@code spawn-static <program>} does the same through {@code posix_spawn} and waits for the child. With
+	 * {@code token-read-exit <fifo>} it opens the FIFO and starts a thread that reads one byte from it, waits until that
+	 * thread is blocked in the read, prints {@code exiting} and exits 0, so the process ends with the read pending.
 	 */
 	private static final String PROGRAM_SOURCE = """
 		#include <fcntl.h>
+		#include <pthread.h>
 		#include <signal.h>
+		#include <sched.h>
 		#include <spawn.h>
 		#include <stdio.h>
 		#include <stdlib.h>
 		#include <string.h>
 		#include <sys/mman.h>
 		#include <sys/resource.h>
+		#include <sys/syscall.h>
 		#include <sys/wait.h>
 		#include <unistd.h>
 		static void *ballast;
+		static volatile pid_t reader_tid;
+		static void *read_token(void *fifo) {
+		  reader_tid = (pid_t) syscall(SYS_gettid);
+		  char byte;
+		  (void) read(*(int *) fifo, &byte, 1);
+		  return NULL;
+		}
+		static int blocked(pid_t tid) {
+		  char path[64], line[256];
+		  snprintf(path, sizeof path, "/proc/self/task/%d/stat", (int) tid);
+		  FILE *stat = fopen(path, "r");
+		  if (stat == NULL) return 0;
+		  char *got = fgets(line, sizeof line, stat);
+		  fclose(stat);
+		  char *state = got == NULL ? NULL : strrchr(line, ')');
+		  return state != NULL && state[2] == 'S';
+		}
 		static const size_t ballast_size = 768UL << 20;
 		static void release(int signal_number) { (void) signal_number; munmap(ballast, ballast_size); }
 		int main(int argc, char **argv) {
@@ -88,6 +110,17 @@ public final class LinuxBuildHookInstallation implements AutoCloseable
 		    if (fifo < 0) return 7;
 		    char pair[2];
 		    return read(fifo, pair, 2) < 0 ? 8 : 9;
+		  }
+		  if (strcmp(argv[1], "token-read-exit") == 0) {
+		    static int fifo;
+		    fifo = open(argv[2], O_RDWR);
+		    if (fifo < 0) return 7;
+		    pthread_t reader;
+		    if (pthread_create(&reader, NULL, read_token, &fifo) != 0) return 8;
+		    while (reader_tid == 0 || !blocked(reader_tid)) sched_yield();
+		    puts("exiting");
+		    fflush(stdout);
+		    exit(0);
 		  }
 		  if (strcmp(argv[1], "token") == 0) {
 		    int fifo = open(argv[2], O_RDWR);
@@ -186,7 +219,7 @@ public final class LinuxBuildHookInstallation implements AutoCloseable
 			Files.writeString(programSource, PROGRAM_SOURCE);
 			Path program = directory.resolve("program");
 			compile(List.of("cc", "-Wall", "-Wextra", "-Werror", "-O0", "-o", program.toString(),
-				programSource.toString()));
+				programSource.toString(), "-pthread"));
 			Path socket = directory.resolve("s");
 			ServerSocketChannel listener = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
 			listener.bind(UnixDomainSocketAddress.of(socket));
