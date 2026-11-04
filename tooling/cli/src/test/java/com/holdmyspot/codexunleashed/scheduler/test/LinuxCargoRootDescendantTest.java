@@ -134,15 +134,31 @@ public final class LinuxCargoRootDescendantTest
         requireException(IOException.class, () -> routing.route(first, event()));
     }
 
-    /** An event without actual owned membership cannot create an image or compiler action. */
+    /** An event for a live process without actual owned membership cannot create an image or compiler action. */
     @Test
     public void rejectsUnownedDelivery()
     {
-        var routing = new AllocationHooks.Routing();
+        var routing = new AllocationHooks.Routing(pid -> true);
         var first = routing.register(pid -> false, ignored -> { throw new IllegalStateException("Unexpected delivery"); });
         requireException(IOException.class, () -> routing.route(first, event()));
         first.close();
         requireException(IOException.class, () -> routing.route(first, event()));
+    }
+
+    /** A held event that outlived its process, such as a child of an attempt killed for retry, is discarded: the
+     * attempt's owner closed once its cgroup emptied, and the shared device still reported the dead child.
+     * @throws IOException if routing rejects the stale event or a later owned delivery
+     */
+    @Test
+    public void discardsUnownedDeliveryForExitedProcess() throws IOException
+    {
+        var routing = new AllocationHooks.Routing(pid -> false);
+        List<FridaRuntime.Child> queue = new ArrayList<>();
+        var device = routing.register(pid -> false, ignored -> { throw new IllegalStateException("Unexpected delivery"); });
+        routing.route(device, event());
+        var compiler = routing.register(pid -> true, queue::add);
+        routing.route(device, event());
+        requireThat(queue, "ownedDeliveryAfterDiscard").isEqualTo(List.of(event()));
     }
 
     /** Returns an immutable self-parented EXEC notification with no independent authority.

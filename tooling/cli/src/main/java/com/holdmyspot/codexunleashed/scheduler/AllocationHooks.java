@@ -43,8 +43,35 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
         /** Retained pending and completed transition dispositions for this invocation. */
         private final Map<FridaRuntime.Child, Transition> transitions = new LinkedHashMap<>();
 
-        /** Creates an empty invocation-owned route with no native resources. */
-        public Routing() {}
+        /** Reports whether a held event's process still runs, so an event that outlived its process can be dropped. */
+        private final Liveness liveness;
+
+        /** Creates an empty invocation-owned route that reads process liveness from {@code /proc}. */
+        public Routing() { this(Routing::running); }
+
+        /**
+         * Creates an empty invocation-owned route with no native resources.
+         * @param liveness reports whether a process still runs; a zombie or reaped process does not
+         */
+        public Routing(Liveness liveness) { this.liveness = Objects.requireNonNull(liveness, "liveness"); }
+
+        /**
+         * Reads whether a process still runs: present in {@code /proc} and not a zombie.
+         * @param pid process identity
+         * @return false once the process exited, whether or not its parent has reaped it
+         * @throws IOException if its status exists but cannot be read
+         */
+        private static boolean running(long pid) throws IOException
+        {
+            String stat;
+            try { stat = Files.readString(Path.of("/proc", Long.toString(pid), "stat")); }
+            catch (java.nio.file.NoSuchFileException exited) { return false; }
+            // The state follows the parenthesized command name, which may itself contain parentheses.
+            int end = stat.lastIndexOf(')');
+            if (end < 0 || end + 2 >= stat.length()) throw new IOException("Unreadable process status: " + pid);
+            char state = stat.charAt(end + 2);
+            return state != 'Z' && state != 'X';
+        }
 
         /**
          * Registers one original controller before polling shared device events.
@@ -79,6 +106,12 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
                 if (!candidate.membership.owns(child.pid())) continue;
                 if (target != null) throw new IOException("Held image has ambiguous controller ownership");
                 target = candidate;
+            }
+            if (target == null && !liveness.running(child.pid()))
+            {
+                // Each owner closes only after its cgroup emptied, so an exited process's event, such as one for a
+                // child of an attempt killed for retry, has no owner and nothing left to continue.
+                return;
             }
             if (target == null || target.canceled) throw new IOException("Held image has no active owning controller");
             Transition previous = transitions.get(child);
@@ -195,6 +228,18 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
          * @throws IOException if membership cannot be established
          */
         boolean owns(long pid) throws IOException;
+    }
+
+    /** Current process liveness, which grants no ownership. */
+    @FunctionalInterface
+    public interface Liveness
+    {
+        /** Checks whether a process still runs.
+         * @param pid process identity
+         * @return false once the process exited, including a zombie its parent has not reaped
+         * @throws IOException if liveness cannot be established
+         */
+        boolean running(long pid) throws IOException;
     }
 
     /** Original controller's retained held-event queue. */
