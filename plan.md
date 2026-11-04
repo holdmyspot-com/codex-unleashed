@@ -21,7 +21,7 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 
 | Operation | Identity | State and next action |
 | --- | --- | --- |
-| Linux x64 release build | Run `41743639583` (`cache=true`, `scheduler=true`), commit `a7d420154f` | Dispatched 2026-11-04T00:01Z. If it goes quiet, read `baseline-evidence/quiet-build-report.log` in its artifact. |
+| Linux x64 release build | Run `41743639583` (`cache=true`, `scheduler=true`), commit `a7d420154f` | Stopped by the watchdog at 02:31Z; see "x64 full run on `a7d420154f`" below. |
 | Linux ARM release build | Run `41743643884`, same commit and inputs | Stopped by the watchdog at 01:40Z; see "ARM full run on `a7d420154f`" below. |
 | Rung 1: `tikv-jemalloc-sys` only, x64 | Run `41756658900` (`packages=tikv-jemalloc-sys`, `cache=true`, `scheduler=true`), commit `40abf6632e` | Dispatched 2026-11-04T01:49Z, replacing the queued `41750107254` on the older commit; queued behind `41743639583` in the x64 concurrency group. It stops before the release checks by design; on success, dispatch rung 2. |
 | Rung 1, ARM | Run `41752873160`, same inputs | Dispatched 2026-11-04T01:20Z; queued behind `41743643884`. |
@@ -33,6 +33,14 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 - `2b7ee4bb32` records the primary failure before any cleanup (`SchedulerCoordinatorTest.recordsFailureBeforeCleanup`). Each Cargo schedule prints it to standard error (`FailureReport`).
 - `40abf6632e` makes the watchdog list zombies, print every thread of a Java process, and add `jhsdb jstack --mixed`.
 - Next: read the failure and the native Frida stacks from the next run that fails. Fix the primary failure first. Then decide whether the Frida global teardown needs a bound. The ARM 734c216162 hang after `Finished` may be the same teardown block.
+
+### x64 full run on `a7d420154f` (2026-11-04): jemalloc's configure crawls under supervision
+
+- `41743639583`: the first three binaries built (28 s, 11 m 49 s and 12 m 01 s). `codex` went quiet after attempt 678. The watchdog reported from 01:31Z and stopped the build at 02:31Z.
+- Every report shows `tikv-jemalloc-sys`'s build script still running `configure`, so it is not deadlocked. At 01:31Z a `zig cc` conftest (pid 122266) had one thread in a ptrace syscall stop (`t`, `ptrace_notify` from `do_syscall_64`), and the scheduler's `linux-bazel-allocation-trace` thread, 16 s old, was servicing it (`LinuxAllocationTrace$Attempt.serviceOne`). At 02:31Z `configure` had reached `config.status`, also with a bash in a ptrace stop. PIDs advanced from 122266 to 131229 in 60 minutes, so about 0.4 s per new process.
+- Cause: every descendant of a build script is held at fork and exec until the controller authorizes it. `zig` is statically linked, so it also takes `LinuxAllocationTrace`'s path, which stops at every system call (`PTRACE_SYSCALL`) and round-trips each held image through `LinuxBazelTraceHelper.installHeld`/`resumeHeld`. Autoconf starts thousands of short processes, so the per-process cost turns minutes into hours. The 734c216162 x64 hang (pid 88669 under `tikv-jemalloc-sys`) is the same.
+- Not yet measured: how that 0.4 s splits between Frida child gating and injection, the held-image round trip, and syscall stops. The preload library (plan step 3, second half) removes the Frida share but not the ptrace share for static `zig`. Restricting the ptrace path's stops to `mmap` with a seccomp `SECCOMP_RET_TRACE` filter (`PTRACE_O_TRACESECCOMP` with `PTRACE_CONT`) would remove most syscall stops without changing any output.
+- Rung 1 (`tikv-jemalloc-sys` alone) reproduces it in isolation and is the measurement target.
 
 ### Incremental package ladder (user directive, 2026-11-04)
 
