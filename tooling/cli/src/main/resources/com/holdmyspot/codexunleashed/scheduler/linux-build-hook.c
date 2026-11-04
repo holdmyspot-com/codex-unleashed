@@ -23,6 +23,12 @@
  * any other count, or a descriptor whose type or inode cannot be read, reports "failure" and parks without native I/O.
  * Zero-byte calls and other descriptors keep their native behavior.
  *
+ * Exec: this library defines execve, execv, execvp, execvpe, execveat, fexecve, execl, execlp, execle, posix_spawn and
+ * posix_spawnp, and each passes the next definition an environment that keeps LD_PRELOAD, CODEX_BUILD_HOOK and
+ * CODEX_BUILD_HOOK_FIFO as this process loaded them: an entry the caller dropped is appended, and one the caller set is
+ * kept. Interposing symbols, rather than patching libc as the malloc hook does, keeps posix_spawn's internal child,
+ * which shares this thread's memory, out of the interceptor. The new image loads the library and connects as itself.
+ *
  * Fork: the child keeps the patched malloc but resets the registry and drops the inherited connection. It connects as
  * a new installation the first time it needs the server, so a child that only execs never connects.
  *
@@ -34,13 +40,17 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <dlfcn.h>
 #include <inttypes.h>
 #include <pthread.h>
+#include <spawn.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -597,6 +607,248 @@ static const char *configure_fifo(void)
     return NULL;
 }
 
+/** Variables that exec must carry into the next image, so that it loads the library and reaches the same server. */
+static const char *const RESTORED_NAMES[] = { "LD_PRELOAD", SOCKET_ENV, FIFO_ENV };
+#define RESTORED_LIMIT (sizeof RESTORED_NAMES / sizeof RESTORED_NAMES[0])
+/** The longest restored entry, NAME=value, including its NUL. */
+#define MAX_ENTRY_BYTES 4096
+
+/** This process's restored entries as NAME=value, captured at load; only names that were set are kept. */
+static char restored[RESTORED_LIMIT][MAX_ENTRY_BYTES];
+/** The length of each restored entry's name. */
+static size_t restored_name_length[RESTORED_LIMIT];
+static size_t restored_count;
+
+typedef int (*execve_function)(const char *, char *const [], char *const []);
+typedef int (*fexecve_function)(int, char *const [], char *const []);
+typedef int (*execveat_function)(int, const char *, char *const [], char *const [], int);
+typedef int (*spawn_function)(pid_t *, const char *, const posix_spawn_file_actions_t *, const posix_spawnattr_t *,
+    char *const [], char *const []);
+
+/**
+ * Captures the entries that exec restores. Returns NULL, or a description of the failure.
+ */
+static const char *capture_environment(void)
+{
+    for (size_t index = 0; index < RESTORED_LIMIT; ++index) {
+        const char *value = getenv(RESTORED_NAMES[index]);
+        if (value == NULL) continue;
+        int length = snprintf(restored[restored_count], MAX_ENTRY_BYTES, "%s=%s", RESTORED_NAMES[index], value);
+        if (length < 0 || length >= MAX_ENTRY_BYTES) return "a hook environment variable is too long";
+        restored_name_length[restored_count] = strlen(RESTORED_NAMES[index]);
+        ++restored_count;
+    }
+    return NULL;
+}
+
+/**
+ * The definitions this library interposes, resolved at load so that a forked child never calls dlsym. A call that
+ * arrives before the constructor resolves its definition on first use.
+ */
+static execve_function next_execve, next_execvpe;
+static fexecve_function next_fexecve;
+static spawn_function next_posix_spawn, next_posix_spawnp;
+
+/** Resolves the interposed definitions. Returns false if one is missing. */
+static bool resolve_exec_functions(void)
+{
+    next_execve = (execve_function) dlsym(RTLD_NEXT, "execve");
+    next_execvpe = (execve_function) dlsym(RTLD_NEXT, "execvpe");
+    next_fexecve = (fexecve_function) dlsym(RTLD_NEXT, "fexecve");
+    next_posix_spawn = (spawn_function) dlsym(RTLD_NEXT, "posix_spawn");
+    next_posix_spawnp = (spawn_function) dlsym(RTLD_NEXT, "posix_spawnp");
+    return next_execve != NULL && next_execvpe != NULL && next_fexecve != NULL && next_posix_spawn != NULL &&
+        next_posix_spawnp != NULL;
+}
+
+/**
+ * Returns environment, or a mapped copy that appends every captured entry whose name it lacks. *mapping and *size
+ * describe the copy for munmap, and *mapping is NULL when no copy was needed. Returns NULL if mapping fails. The
+ * function only maps memory, so a child between fork and exec may call it.
+ */
+static char *const *restore_environment(char *const environment[], void **mapping, size_t *size)
+{
+    *mapping = NULL;
+    size_t count = 0;
+    if (environment != NULL)
+        while (environment[count] != NULL) ++count;
+    bool missing[RESTORED_LIMIT];
+    size_t missing_count = 0;
+    for (size_t entry = 0; entry < restored_count; ++entry) {
+        missing[entry] = true;
+        for (size_t index = 0; index < count && missing[entry]; ++index)
+            if (strncmp(environment[index], restored[entry], restored_name_length[entry] + 1) == 0) missing[entry] = false;
+        if (missing[entry]) ++missing_count;
+    }
+    if (missing_count == 0) return environment;
+    *size = (count + missing_count + 1) * sizeof(char *);
+    char **copy = mmap(NULL, *size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (copy == MAP_FAILED) return NULL;
+    size_t next = 0;
+    for (; next < count; ++next) copy[next] = environment[next];
+    for (size_t entry = 0; entry < restored_count; ++entry)
+        if (missing[entry]) copy[next++] = restored[entry];
+    copy[next] = NULL;
+    *mapping = copy;
+    return copy;
+}
+
+/** Releases a copy from restore_environment, keeping errno. */
+static void release_environment(void *mapping, size_t size)
+{
+    if (mapping == NULL) return;
+    int error = errno;
+    munmap(mapping, size);
+    errno = error;
+}
+
+__attribute__((visibility("default"))) int execve(const char *path, char *const arguments[],
+    char *const environment[])
+{
+    if (next_execve == NULL) next_execve = (execve_function) dlsym(RTLD_NEXT, "execve");
+    void *mapping;
+    size_t size;
+    char *const *restored_environment = restore_environment(environment, &mapping, &size);
+    if (restored_environment == NULL) { errno = ENOMEM; return -1; }
+    int result = next_execve(path, arguments, restored_environment);
+    release_environment(mapping, size);
+    return result;
+}
+
+__attribute__((visibility("default"))) int execvpe(const char *file, char *const arguments[],
+    char *const environment[])
+{
+    if (next_execvpe == NULL) next_execvpe = (execve_function) dlsym(RTLD_NEXT, "execvpe");
+    void *mapping;
+    size_t size;
+    char *const *restored_environment = restore_environment(environment, &mapping, &size);
+    if (restored_environment == NULL) { errno = ENOMEM; return -1; }
+    int result = next_execvpe(file, arguments, restored_environment);
+    release_environment(mapping, size);
+    return result;
+}
+
+__attribute__((visibility("default"))) int fexecve(int descriptor, char *const arguments[],
+    char *const environment[])
+{
+    if (next_fexecve == NULL) next_fexecve = (fexecve_function) dlsym(RTLD_NEXT, "fexecve");
+    void *mapping;
+    size_t size;
+    char *const *restored_environment = restore_environment(environment, &mapping, &size);
+    if (restored_environment == NULL) { errno = ENOMEM; return -1; }
+    int result = next_fexecve(descriptor, arguments, restored_environment);
+    release_environment(mapping, size);
+    return result;
+}
+
+__attribute__((visibility("default"))) int execveat(int directory, const char *path, char *const arguments[],
+    char *const environment[], int flags)
+{
+    void *mapping;
+    size_t size;
+    char *const *restored_environment = restore_environment(environment, &mapping, &size);
+    if (restored_environment == NULL) { errno = ENOMEM; return -1; }
+    /* glibc before 2.34 has no execveat wrapper, so the system call is made directly. */
+    int result = (int) syscall(SYS_execveat, directory, path, arguments, restored_environment, flags);
+    release_environment(mapping, size);
+    return result;
+}
+
+__attribute__((visibility("default"))) int execv(const char *path, char *const arguments[])
+{
+    return execve(path, arguments, environ);
+}
+
+__attribute__((visibility("default"))) int execvp(const char *file, char *const arguments[])
+{
+    return execvpe(file, arguments, environ);
+}
+
+/** Counts the arguments of an execl-family call, including the first and excluding the terminating NULL. */
+#define COUNT_ARGUMENTS(list, count) \
+    do { \
+        va_list counting; \
+        va_copy(counting, list); \
+        count = 1; \
+        while (va_arg(counting, const char *) != NULL) ++count; \
+        va_end(counting); \
+    } while (0)
+
+/** Fills an argument vector of count + 1 entries from an execl-family call. */
+static void collect_arguments(const char *first, va_list list, size_t count, char **vector)
+{
+    vector[0] = (char *) first;
+    for (size_t index = 1; index < count; ++index) vector[index] = va_arg(list, char *);
+    vector[count] = NULL;
+}
+
+__attribute__((visibility("default"))) int execl(const char *path, const char *first, ...)
+{
+    va_list list;
+    va_start(list, first);
+    size_t count;
+    COUNT_ARGUMENTS(list, count);
+    char *vector[count + 1];
+    collect_arguments(first, list, count, vector);
+    va_end(list);
+    return execve(path, vector, environ);
+}
+
+__attribute__((visibility("default"))) int execlp(const char *file, const char *first, ...)
+{
+    va_list list;
+    va_start(list, first);
+    size_t count;
+    COUNT_ARGUMENTS(list, count);
+    char *vector[count + 1];
+    collect_arguments(first, list, count, vector);
+    va_end(list);
+    return execvpe(file, vector, environ);
+}
+
+__attribute__((visibility("default"))) int execle(const char *path, const char *first, ...)
+{
+    va_list list;
+    va_start(list, first);
+    size_t count;
+    COUNT_ARGUMENTS(list, count);
+    char *vector[count + 1];
+    collect_arguments(first, list, count, vector);
+    (void) va_arg(list, char *);
+    char *const *environment = va_arg(list, char *const *);
+    va_end(list);
+    return execve(path, vector, environment);
+}
+
+/** Starts a child through the next posix_spawn or posix_spawnp with the restored environment. */
+static int spawn(const char *name, spawn_function *next, pid_t *child, const char *path,
+    const posix_spawn_file_actions_t *actions, const posix_spawnattr_t *attributes, char *const arguments[],
+    char *const environment[])
+{
+    if (*next == NULL) *next = (spawn_function) dlsym(RTLD_NEXT, name);
+    void *mapping;
+    size_t size;
+    char *const *restored_environment = restore_environment(environment, &mapping, &size);
+    if (restored_environment == NULL) return ENOMEM;
+    int result = (*next)(child, path, actions, attributes, arguments, restored_environment);
+    release_environment(mapping, size);
+    return result;
+}
+
+__attribute__((visibility("default"))) int posix_spawn(pid_t *child, const char *path,
+    const posix_spawn_file_actions_t *actions, const posix_spawnattr_t *attributes, char *const arguments[],
+    char *const environment[])
+{
+    return spawn("posix_spawn", &next_posix_spawn, child, path, actions, attributes, arguments, environment);
+}
+
+__attribute__((visibility("default"))) int posix_spawnp(pid_t *child, const char *file,
+    const posix_spawn_file_actions_t *actions, const posix_spawnattr_t *attributes, char *const arguments[],
+    char *const environment[])
+{
+    return spawn("posix_spawnp", &next_posix_spawnp, child, file, actions, attributes, arguments, environment);
+}
+
 /** Attaches one listener to a global export. Returns false on failure. */
 static bool attach(GumInterceptor *interceptor, const char *name, GumInvocationListener *listener)
 {
@@ -647,6 +899,9 @@ __attribute__((constructor)) static void install(void)
     for (int index = 0; index < TRANSFER_COUNT; ++index) pthread_cond_init(&hook.transfers[index].condition, NULL);
     const char *problem = configure_fifo();
     if (problem != NULL) fail(problem);
+    problem = capture_environment();
+    if (problem != NULL) fail(problem);
+    if (!resolve_exec_functions()) fail("an exec function is not exported");
     problem = connect_server();
     if (problem != NULL) fail(problem);
     if (pthread_atfork(lock_for_fork, unlock_after_fork, reset_child) != 0) fail("cannot register the fork handlers");

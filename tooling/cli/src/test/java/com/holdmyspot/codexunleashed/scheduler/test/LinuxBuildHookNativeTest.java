@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
@@ -42,10 +43,14 @@ public final class LinuxBuildHookNativeTest
 	 * the ballast is gone; it prints {@code allocated} and exits 0. With {@code fork} it does the same, then forks a
 	 * child that allocates 900 MiB, which is denied, and waits for that child. With {@code token <fifo>} it opens the
 	 * FIFO, writes the byte {@code x} to it and prints the result, then reads one byte from it and prints that byte.
+	 * With {@code env} it prints each entry of its environment on its own line. With {@code exec-clear} it execs itself
+	 * with {@code env} and the environment {@code A=1}; {@code spawn-clear} does the same through {@code posix_spawn}
+	 * and waits for the child.
 	 */
 	private static final String PROGRAM_SOURCE = """
 		#include <fcntl.h>
 		#include <signal.h>
+		#include <spawn.h>
 		#include <stdio.h>
 		#include <stdlib.h>
 		#include <string.h>
@@ -58,6 +63,24 @@ public final class LinuxBuildHookNativeTest
 		static void release(int signal_number) { (void) signal_number; munmap(ballast, ballast_size); }
 		int main(int argc, char **argv) {
 		  if (argc < 2) { puts("main"); return 0; }
+		  if (strcmp(argv[1], "env") == 0) {
+		    extern char **environ;
+		    for (char **entry = environ; *entry != NULL; ++entry) puts(*entry);
+		    return 0;
+		  }
+		  char *env_arguments[] = { argv[0], "env", NULL };
+		  char *cleared[] = { "A=1", NULL };
+		  if (strcmp(argv[1], "exec-clear") == 0) {
+		    execve(argv[0], env_arguments, cleared);
+		    return 8;
+		  }
+		  if (strcmp(argv[1], "spawn-clear") == 0) {
+		    pid_t child;
+		    if (posix_spawn(&child, argv[0], NULL, NULL, env_arguments, cleared) != 0) return 9;
+		    int status;
+		    if (waitpid(child, &status, 0) != child || !WIFEXITED(status)) return 10;
+		    return WEXITSTATUS(status);
+		  }
 		  if (strcmp(argv[1], "token") == 0) {
 		    int fifo = open(argv[2], O_RDWR);
 		    if (fifo < 0) return 7;
@@ -261,6 +284,65 @@ public final class LinuxBuildHookNativeTest
 				// Had the write reached the FIFO, the read would have returned x without a transfer.
 				requireThat(readAll(program), "output").isEqualTo("wrote 1\nread 1 A\n");
 				requireThat(program.waitFor(), "exitValue").isEqualTo(0);
+			}
+			finally
+			{
+				program.destroyForcibly();
+			}
+		}
+	}
+
+	/**
+	 * An image that execs with an environment lacking the hook's variables gets them back, so the new image loads the
+	 * library and connects as itself.
+	 * @throws IOException          if the fixture cannot be built or run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = TEST_TIMEOUT_MILLIS)
+	public void restoresEnvironmentAcrossExec() throws IOException, InterruptedException
+	{
+		requireRestoredChild("exec-clear", true);
+	}
+
+	/**
+	 * A child started by {@code posix_spawn} with an environment lacking the hook's variables gets them back.
+	 * @throws IOException          if the fixture cannot be built or run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = TEST_TIMEOUT_MILLIS)
+	public void restoresEnvironmentAcrossSpawn() throws IOException, InterruptedException
+	{
+		requireRestoredChild("spawn-clear", false);
+	}
+
+	/**
+	 * Runs a mode that starts the {@code env} mode with the environment {@code A=1} and checks that the new image
+	 * connected and printed {@code A=1} plus the hook's own variables.
+	 * @param mode     the program mode
+	 * @param sameProcess whether the new image replaces the program, keeping its PID
+	 * @throws IOException          if the fixture cannot be built or run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	private static void requireRestoredChild(String mode, boolean sameProcess)
+		throws IOException, InterruptedException
+	{
+		try (Installation installation = Installation.create())
+		{
+			Process program = installation.start(mode);
+			try (SocketChannel parent = installation.accept())
+			{
+				receive(parent);
+				send(parent, "welcome", "1");
+				try (SocketChannel child = installation.accept())
+				{
+					List<String> hello = receive(child);
+					requireThat(hello.get(0), "hello").isEqualTo("hello");
+					requireThat(Long.parseLong(hello.get(2)) == program.pid(), "samePid").isEqualTo(sameProcess);
+					send(child, "welcome", "2");
+					requireThat(Set.of(readAll(program).split("\n")), "environment").isEqualTo(Set.of("A=1",
+						"LD_PRELOAD=" + installation.library(), "CODEX_BUILD_HOOK=" + installation.socket()));
+					requireThat(program.waitFor(), "exitValue").isEqualTo(0);
+				}
 			}
 			finally
 			{
