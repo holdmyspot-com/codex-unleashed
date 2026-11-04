@@ -145,12 +145,15 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
                          ["codex-responses-api-proxy", "codex-code-mode-host", "codex"])
         self.assertEqual(len(events), 8)
 
-    def test_package_selection_builds_only_those_crates_once_without_checkpoints(self):
-        """A package run makes one scheduled Cargo build of exactly the listed crates and saves no release stage."""
+    def test_package_selection_builds_only_those_crates_once_verbosely_without_checkpoints(self):
+        """
+        A package run makes one scheduled, verbose Cargo build of exactly the listed crates and saves no release stage;
+        verbose output records each failing compiler command line.
+        """
         result, events = self.run_build("x86_64-apple-darwin", use_scheduler=True,
                                         packages="tikv-jemalloc-sys  aws-lc-sys@0.30.0")
         self.assertEqual(result.returncode, 0, result.stderr)
-        arguments = ["build", "--target", "x86_64-apple-darwin", "--release", "--timings",
+        arguments = ["build", "--target", "x86_64-apple-darwin", "--release", "--timings", "--verbose",
                      "-p", "tikv-jemalloc-sys", "-p", "aws-lc-sys@0.30.0"]
         self.assertEqual(events, [["schedule", arguments], ["build", arguments]])
 

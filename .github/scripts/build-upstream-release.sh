@@ -6,7 +6,8 @@
 # Cargo failures propagate; logs and toolchain identity go to baseline-evidence.
 # RELEASE_PACKAGES optionally names whitespace-separated Cargo package specifications. When set, one Cargo build of
 # exactly those packages replaces the release stages and no release stage is checkpointed, so a scheduler change can
-# be checked on a few crates before the whole build. Each entry must be a plain package specification.
+# be checked on a few crates before the whole build. Each entry must be a plain package specification. The build is
+# verbose so that a failing compilation's log records its exact compiler command line.
 set -euo pipefail
 
 : "${TARGET:?Set the release target}"
@@ -67,7 +68,7 @@ if [[ -n "${RELEASE_PACKAGES+set}" ]]; then
     selection+=(-p "$package")
   done
   started=$SECONDS
-  compile build --target "$TARGET" --release --timings "${selection[@]}" 2>&1 | tee "$evidence/cargo-build-packages.log"
+  compile build --target "$TARGET" --release --timings --verbose "${selection[@]}" 2>&1 | tee "$evidence/cargo-build-packages.log"
   printf 'packages=%s build_seconds=%s\n' "${packages[*]}" "$((SECONDS-started))" | tee -a "$evidence/build-stage-timings.log"
   exit 0
 fi
