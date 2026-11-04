@@ -195,11 +195,13 @@ jobs:
           mkdir -p "$RUNNER_TEMP/source-cache-temp"
           printf 'TMPDIR=%s\n' "$RUNNER_TEMP/source-cache-temp" >> "$GITHUB_ENV"
           # The build scheduler only orders and supervises compiler processes; it never changes their outputs, and Cargo
-          # still checks every restored unit's fingerprint. Excluding it keeps scheduler repairs from discarding the cache.
+          # still checks every restored unit's fingerprint. Excluding it, and the secrets package that holds only its
+          # access façades, keeps scheduler repairs from discarding the cache.
           (
             cd restart-metadata
             git ls-files -z -- tooling/cli/pom.xml tooling/cli/src/main tooling/cli/src/build \
               ':(exclude)tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler' \
+              ':(exclude)tooling/cli/src/main/java/com/holdmyspot/codexunleashed/secrets' \
               ':(exclude)tooling/cli/src/main/resources/com/holdmyspot/codexunleashed/scheduler' \
               | sort -z | xargs -0 sha256sum
           ) > "$RUNNER_TEMP/baseline-evidence/cache-helper-inputs.sha256"

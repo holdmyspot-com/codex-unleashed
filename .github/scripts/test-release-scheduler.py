@@ -387,6 +387,45 @@ class ReleaseDebugPreparationTest(unittest.TestCase):
             self.assertEqual(probe.stdout,b'action available\n')
 
 
+class CacheHelperInputsTest(unittest.TestCase):
+    """Run the actual helper-hash step against an owned Git fixture."""
+
+    def digest(self,root):
+        """Hash the fixture's helper inputs with the workflow's own command."""
+        import yaml
+        workflow=yaml.load((SCRIPTS.parent/'workflows/baseline-release-builds.yml').read_text(),Loader=yaml.BaseLoader)
+        step=next(step for step in workflow['jobs']['build']['steps'] if step.get('name')=='Preserve the cache helper before upstream checkout')
+        temp=root/'runner-temp';shutil.rmtree(temp,ignore_errors=True);(temp/'baseline-evidence').mkdir(parents=True)
+        environment=dict(os.environ,RUNNER_TEMP=str(temp),GITHUB_ENV=str(temp/'env'))
+        result=subprocess.run(['bash','-e','-o','pipefail','-c',step['run']],cwd=root,env=environment,capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        return (temp/'baseline-evidence/cache-helper-inputs.sha256').read_bytes()
+
+    def commit(self,repository,change):
+        """Apply one change to the fixture and record it in the Git index."""
+        change(repository)
+        for command in (['git','add','-A'],['git','-c','user.name=t','-c','user.email=t@t','commit','-q','-m','change']):
+            subprocess.run(command,cwd=repository,check=True,capture_output=True)
+
+    def test_scheduler_code_leaves_helper_key_unchanged(self):
+        """Scheduler classes and their access façades are excluded; cache helper classes are not."""
+        with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as tmp:
+            root=Path(tmp);repository=root/'restart-metadata'
+            package=repository/'tooling/cli/src/main/java/com/holdmyspot/codexunleashed'
+            files={'tooling/cli/pom.xml':'<project/>',str(package/'tooling/Main.java'):'class Main {}',
+                str(package/'scheduler/Policy.java'):'class Policy {}',str(package/'secrets/SchedulerAccess.java'):'class SchedulerAccess {}'}
+            for name,text in files.items():
+                path=repository/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)
+            subprocess.run(['git','init','-q'],cwd=repository,check=True)
+            self.commit(repository,lambda _:None)
+            original=self.digest(root)
+            self.commit(repository,lambda _:(package/'secrets/SchedulerAccess.java').unlink())
+            self.commit(repository,lambda _:(package/'secrets/CargoWorkAccess.java').write_text('class CargoWorkAccess {}'))
+            self.commit(repository,lambda _:(package/'scheduler/Policy.java').write_text('class Policy { int x; }'))
+            self.assertEqual(self.digest(root),original)
+            self.commit(repository,lambda _:(package/'tooling/Main.java').write_text('class Main { int x; }'))
+            self.assertNotEqual(self.digest(root),original)
+
 class WorkflowSelectionTest(unittest.TestCase):
     """Execute the actual selection step against complete declared target/readiness inputs."""
 
