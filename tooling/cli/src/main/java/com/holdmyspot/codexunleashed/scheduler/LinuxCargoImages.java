@@ -260,7 +260,8 @@ public final class LinuxCargoImages
             else if (source != null)
             {
                 Identity current = operations.inspect(source.pid());
-                if (!source.equals(current))
+                // The child's ancestry is checked against the parent's PID; the parent's own parent may change by reparenting.
+                if (!source.sameImage(current))
                     throw new IOException("Parent birth changed before child release: child=" + child + ", retained parent=" +
                         source + ", current parent=" + current);
             }
@@ -639,6 +640,18 @@ public final class LinuxCargoImages
          * @return whether PID, birth and actual parent are unchanged
          */
         boolean sameBirth(Identity other) { return pid == other.pid && birth == other.birth && parent == other.parent; }
+
+        /**
+         * Checks that a live parent is still the same image, allowing the kernel to reparent it after its own parent
+         * exits.
+         * @param other independently observed current parent
+         * @return whether every field except the parent's own parent is unchanged
+         */
+        boolean sameImage(Identity other)
+        {
+            return pid == other.pid && birth == other.birth && uid == other.uid && gid == other.gid &&
+                executable.equals(other.executable) && group.equals(other.group);
+        }
     }
 
     /**

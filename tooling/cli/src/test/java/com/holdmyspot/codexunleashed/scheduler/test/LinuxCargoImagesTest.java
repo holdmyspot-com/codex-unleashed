@@ -441,6 +441,24 @@ public final class LinuxCargoImagesTest
         }
     }
 
+    /** A live parent that the kernel reparents during readiness, keeping its own birth, still releases its child.
+     * @throws IOException if admission rejects the unchanged parent birth
+     * @param origin supported new-image notification shape
+     */
+    @Test(dataProvider = "newImages")
+    public void acceptsParentReparentedDuringEnrollment(int origin) throws IOException
+    {
+        try (var fixture = new Fixture())
+        {
+            if (origin == 0) fixture.putChild(2, fixture.cargo, fixture.group, 1000, 1001, 10);
+            LinuxCargoImages.Identity parent = fixture.nativeImages.get(10L);
+            fixture.onEnrollment = () -> fixture.nativeImages.put(10L, new LinuxCargoImages.Identity(parent.pid(),
+                parent.birth(), 1, parent.uid(), parent.gid(), parent.executable(), parent.group()));
+            fixture.owner.advance(fixture.event(origin));
+            requireThat(fixture.resumed, "resumed").isEqualTo(List.of(11L));
+        }
+    }
+
     /** Child replacement during readiness cannot inherit the prior image's enrollment.
      * @throws IOException if controlled setup or expected successful readiness fails
      */
