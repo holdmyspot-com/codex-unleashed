@@ -14,6 +14,8 @@ public final class LinuxAarch64Trace
     static final long EXECVE = 221;
     /** Native execveat syscall number from the AArch64 Linux syscall ABI. */
     static final long EXECVEAT = 281;
+    /** Native munmap, prctl and seccomp syscall numbers from the AArch64 Linux syscall ABI. */
+    static final long MUNMAP = 215, PRCTL = 167, SECCOMP = 277;
     /** Width in bytes of an AArch64 instruction. */
     static final int INSTRUCTION_BYTES = 4;
     /** Linux user_pt_regs size, including x0..x30, SP, PC and PSTATE. */

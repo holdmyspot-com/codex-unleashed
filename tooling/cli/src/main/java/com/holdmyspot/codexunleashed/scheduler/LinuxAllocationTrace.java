@@ -9,6 +9,9 @@ import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -39,8 +42,10 @@ public final class LinuxAllocationTrace
 	/** Linux ptrace requests from linux/ptrace.h. */
 	private static final int PEEK = 1, POKE = 4, CONT = 7, GETREGS = 12, DETACH = 17, SYSCALL = 24,
 		GETEVENTMSG = 0x4201, SEIZE = 0x4206, INTERRUPT = 0x4207, GET_SYSCALL_INFO = 0x420e;
-	/** Trace syscall stops, descendants and exec; kernel kills tracees when their tracing thread exits. */
-	private static final long TRACE_OPTIONS = 0x10001f;
+	/** Trace syscall stops, descendants, exec and seccomp stops; kernel kills tracees when their tracing thread exits. */
+	private static final long TRACE_OPTIONS = 0x10009f;
+	/** PTRACE_EVENT_SECCOMP: a seccomp filter returned SECCOMP_RET_TRACE for the stopped call. */
+	private static final int SECCOMP_EVENT = 7;
 	/** Linux wait flags: all traced children, restricted to children of this native thread. */
 	private static final int WAIT_OWNED = 0x60000000;
 	/** Linux WNOHANG permits caller cancellation to reach the sole tracing thread. */
@@ -51,6 +56,8 @@ public final class LinuxAllocationTrace
 	private static final int ESRCH = 3;
 	/** Linux mmap syscall and ENOMEM number for the x86-64 syscall ABI. */
 	private static final long MMAP = 9, NO_MEMORY = -12;
+	/** Linux munmap, execve, execveat, prctl and seccomp syscall numbers for the x86-64 syscall ABI. */
+	private static final long MUNMAP = 11, EXECVE = 59, EXECVEAT = 322, PRCTL = 157, SECCOMP = 317;
 	/** Constant bootstrap receives cwd and command exclusively through distinct positional arguments. */
 	private static final String BOOTSTRAP = "kill -STOP $$; cd -- \"$1\" || exit 125; shift; exec \"$@\"";
 	/** Same-call errno offset from the JDK linker-owned capture layout. */
@@ -895,6 +902,10 @@ public final class LinuxAllocationTrace
 		private int servicing;
 		/** Entry mmap lengths keyed by task ID until the corresponding syscall exit. */
 		private final Map<Integer, Long> mmapLengths = new HashMap<>();
+		/** Tasks that exec'd a static image and await the filter at that exec's syscall exit. */
+		private final Set<Integer> pendingFilters = new HashSet<>();
+		/** Tasks under this tracer's seccomp filter, which stop only for mmap and exec calls. */
+		private final Set<Integer> filtered = new HashSet<>();
 		/** Every authentic terminal status, in collection order. */
 		private final List<Terminal> collected = new ArrayList<>();
 		/** libc ptrace, with promoted variadic pointer arguments on Linux LP64. */
@@ -1400,6 +1411,8 @@ public final class LinuxAllocationTrace
                     if (session != null && identity.equals(root)) session.rootTerminal.set(terminal);
 					owned.remove(tid);
 					mmapLengths.remove(tid);
+					pendingFilters.remove(tid);
+					filtered.remove(tid);
 					return;
 				}
 				int event = status >>> 16;
@@ -1412,6 +1425,8 @@ public final class LinuxAllocationTrace
 						trace(GETEVENTMSG, tid, 0, child);
 						int childTid = Math.toIntExact(child.get(ValueLayout.JAVA_LONG, 0));
                         owned.putIfAbsent(childTid, identify(childTid));
+                        // A new task inherits its creator's seccomp filter.
+                        if (filtered.contains(tid)) filtered.add(childTid);
                         if (running)
                         {
                             if (!initialStops.remove(childTid)) awaitStop(childTid);
@@ -1424,7 +1439,7 @@ public final class LinuxAllocationTrace
                                 forkParentHolds.put(childTid, tid);
                                 return;
                             }
-                            trace(SYSCALL, childTid, 0, MemorySegment.NULL);
+                            resume(childTid, 0);
                         }
                     }
                     case 4 ->
@@ -1438,11 +1453,15 @@ public final class LinuxAllocationTrace
                         {
                             owned.remove(formerTid);
                             mmapLengths.remove(formerTid);
+                            // The exec'ing thread keeps its own filter as it takes over the leader's ID.
+                            filtered.remove(tid);
+                            if (filtered.remove(formerTid)) filtered.add(tid);
                             Identity migrated = identify(tid);
                             owned.put(tid, migrated);
                             if (root.tid() == tid) root = migrated;
                         }
                         mmapLengths.remove(tid);
+                        if (!filtered.contains(tid) && isStaticImage(tid)) pendingFilters.add(tid);
                         if (session != null && running)
                         {
                             Identity current = owned.get(tid);
@@ -1460,10 +1479,15 @@ public final class LinuxAllocationTrace
 					trace(CONT, tid, 0, MemorySegment.ofAddress(KILL));
 					return;
 				}
-                if (stopSignal == SYSCALL_TRAP)
+                if (stopSignal == SYSCALL_TRAP || event == SECCOMP_EVENT)
                 {
                     if (gateNonleaderExec(tid, arena)) return;
                     handleSyscall(tid, arena);
+                    if (stopSignal == SYSCALL_TRAP && pendingFilters.remove(tid))
+                    {
+                        installFilter(tid, arena);
+                        filtered.add(tid);
+                    }
                 }
                 if (denied)
                 {
@@ -1481,7 +1505,7 @@ public final class LinuxAllocationTrace
 					case TRAP -> event == 0 ? TRAP : 0;
 					default -> stopSignal;
 				};
-				trace(SYSCALL, tid, 0, MemorySegment.ofAddress(deliver));
+				resume(tid, deliver);
 			}
 		}
 
@@ -1512,15 +1536,19 @@ public final class LinuxAllocationTrace
                 if (!identify(held.getKey()).equals(held.getValue())) throw new IOException("Held image birth changed before continuation");
                 if (detach)
                 {
+                    // Without its tracer, the filter would fail every mmap of the image and its children with ENOSYS.
+                    if (filtered.contains(held.getKey()))
+                        throw new IOException("An image started under a filtered static image cannot be released untraced");
                     // Detaching also stops following its forks, so its later children are never traced here.
                     trace(DETACH, held.getKey(), 0, MemorySegment.NULL);
                     owned.remove(held.getKey());
                     mmapLengths.remove(held.getKey());
+                    pendingFilters.remove(held.getKey());
                 }
-                else trace(SYSCALL, held.getKey(), 0, MemorySegment.NULL);
+                else resume(held.getKey(), 0);
                 heldImages.remove(held.getKey());
                 Integer parent = forkParentHolds.remove(held.getKey());
-                if (parent != null) trace(SYSCALL, parent, 0, MemorySegment.NULL);
+                if (parent != null) resume(parent, 0);
             }
             for (Map.Entry<Integer, Identity> held : List.copyOf(heldExec.entrySet()))
             {
@@ -1544,9 +1572,9 @@ public final class LinuxAllocationTrace
             if (session == null) return false;
             MemorySegment info = syscallInfo(tid, arena);
             long number = info.get(ValueLayout.JAVA_LONG, 24);
-            long execve = aarch64 ? LinuxAarch64Trace.EXECVE : 59;
-            long execveat = aarch64 ? LinuxAarch64Trace.EXECVEAT : 322;
-            if (info.get(ValueLayout.JAVA_BYTE, 0) != 1 || (number != execve && number != execveat)) return false;
+            long execve = aarch64 ? LinuxAarch64Trace.EXECVE : EXECVE;
+            long execveat = aarch64 ? LinuxAarch64Trace.EXECVEAT : EXECVEAT;
+            if (!isEntry(info) || (number != execve && number != execveat)) return false;
             int process = processId(tid);
             if (tid == process) return false;
             Identity identity = owned.get(tid);
@@ -1565,17 +1593,161 @@ public final class LinuxAllocationTrace
 		{
 			MemorySegment info = syscallInfo(tid, arena);
 			int operation = Byte.toUnsignedInt(info.get(ValueLayout.JAVA_BYTE, 0));
-			if (operation == 1)
+			if (isEntry(info))
 			{
 				mmapLengths.remove(tid);
 				if (info.get(ValueLayout.JAVA_LONG, 24) == mmapNumber())
 					mmapLengths.put(tid, info.get(ValueLayout.JAVA_LONG, 40));
+				return;
 			}
-			Long requestedBytes = mmapLengths.get(tid);
-			boolean deniedMmap = operation == 2 && requestedBytes != null &&
-				info.get(ValueLayout.JAVA_LONG, 24) == NO_MEMORY;
+			if (operation != 2) return;
+			// Removing the length at exit lets a filtered task continue without syscall stops.
+			Long requestedBytes = mmapLengths.remove(tid);
+			boolean deniedMmap = requestedBytes != null && info.get(ValueLayout.JAVA_LONG, 24) == NO_MEMORY;
 			if (deniedMmap)
 				holdDeniedReturn(tid, requestedBytes, info.get(ValueLayout.JAVA_LONG, 8), arena);
+		}
+
+		/**
+		 * Resumes a stopped task, stopping at every syscall unless the task is filtered and has no mmap in flight.
+		 * @param tid stopped owned task
+		 * @param signal signal to deliver, or zero
+		 * @throws IOException if ptrace fails
+		 */
+		private void resume(int tid, long signal) throws IOException
+		{
+			boolean everySyscall = !filtered.contains(tid) || mmapLengths.containsKey(tid) || pendingFilters.contains(tid);
+			trace(everySyscall ? SYSCALL : CONT, tid, 0, MemorySegment.ofAddress(signal));
+		}
+
+		/**
+		 * Reports whether a syscall observation is an entry, from either a syscall-entry stop or a seccomp stop.
+		 * @param info complete native syscall observation
+		 * @return true for an entry, whose number and arguments use the same offsets in both forms
+		 */
+		private static boolean isEntry(MemorySegment info)
+		{
+			int operation = Byte.toUnsignedInt(info.get(ValueLayout.JAVA_BYTE, 0));
+			return operation == 1 || operation == 3;
+		}
+
+		/**
+		 * Reports whether a task's current image is statically linked.
+		 * @param tid stopped owned task
+		 * @return true for a static image
+		 * @throws IOException if the image cannot be read
+		 */
+		private static boolean isStaticImage(int tid) throws IOException
+		{
+			try (FileChannel image = FileChannel.open(Path.of("/proc", Integer.toString(tid), "exe")))
+			{
+				return LinuxBazelHelperMain.isStaticTraceImage(image);
+			}
+		}
+
+		/**
+		 * Installs a seccomp filter that stops the task only at mmap, execve and execveat, which are the only calls
+		 * this tracer inspects. The filter is inherited by every task the image creates, so its tasks are resumed with
+		 * {@code PTRACE_CONT} and stop only for those calls. A static image does not load our wrapper, so its tree is
+		 * never released untraced, where the filter would fail every mmap with ENOSYS.
+		 * <p>
+		 * The task must be at the syscall exit of its exec. The filter is installed by injected calls at the image's
+		 * entry point, whose instruction is temporarily replaced by a syscall instruction; the instruction and every
+		 * register are restored afterward.
+		 * @param tid task stopped at its exec's syscall exit
+		 * @param arena native storage lifetime
+		 * @throws IOException if an injected call fails
+		 */
+		private void installFilter(int tid, Arena arena) throws IOException
+		{
+			MemorySegment original = registers(tid, arena);
+			MemorySegment working = arena.allocate(original.byteSize(), 8).copyFrom(original);
+			long pc = instructionPointer(original);
+			int width = aarch64 ? LinuxAarch64Trace.INSTRUCTION_BYTES : 2;
+			long opcode = aarch64 ? 0xd4000001L : 0x050fL;
+			// Patch inside one aligned word, so the poke never reaches past the instruction's own mapping.
+			long base = (pc & 7) + width <= 8 ? pc & -8L : pc - (8 - width);
+			int shift = Math.toIntExact((pc - base) * 8);
+			long mask = ((1L << (width * 8)) - 1) << shift;
+			long word = trace(PEEK, tid, base, MemorySegment.NULL);
+			trace(POKE, tid, base, MemorySegment.ofAddress((word & ~mask) | (opcode << shift)));
+			try
+			{
+				long page = injectChecked(tid, working, pc, mmapNumber(), 0, 4096, 3, 0x22, -1, 0);
+				byte[] program = filterProgram();
+				MemorySegment bytes = arena.allocate(16 + program.length, 8);
+				bytes.set(ValueLayout.JAVA_SHORT, 0, (short) (program.length / 8));
+				bytes.set(ValueLayout.JAVA_LONG, 8, page + 16);
+				MemorySegment.copy(program, 0, bytes, ValueLayout.JAVA_BYTE, 16, program.length);
+				for (long index = 0; index < bytes.byteSize(); index += 8)
+					trace(POKE, tid, page + index, MemorySegment.ofAddress(bytes.get(ValueLayout.JAVA_LONG, index)));
+				// PR_SET_NO_NEW_PRIVS lets an unprivileged task install a filter.
+				injectChecked(tid, registers(tid, arena), pc, aarch64 ? LinuxAarch64Trace.PRCTL : PRCTL, 38, 1, 0, 0, 0);
+				// SECCOMP_SET_MODE_FILTER with no flags.
+				injectChecked(tid, registers(tid, arena), pc, aarch64 ? LinuxAarch64Trace.SECCOMP : SECCOMP, 1, 0, page);
+				injectChecked(tid, registers(tid, arena), pc, aarch64 ? LinuxAarch64Trace.MUNMAP : MUNMAP, page, 4096);
+			}
+			finally
+			{
+				trace(POKE, tid, base, MemorySegment.ofAddress(word));
+				if (aarch64) LinuxAarch64Trace.writeRegisters(this::trace, tid, original);
+				else trace(13, tid, 0, original);
+			}
+		}
+
+		/**
+		 * Injects one syscall and requires a successful result.
+		 * @param tid stopped owned task
+		 * @param registers registers to start from; modified in place
+		 * @param pc address of a syscall instruction
+		 * @param number native syscall number
+		 * @param arguments syscall arguments
+		 * @return the syscall's nonnegative result
+		 * @throws IOException if the call does not complete or returns an error
+		 */
+		private long injectChecked(int tid, MemorySegment registers, long pc, long number, long... arguments)
+			throws IOException
+		{
+			int status = inject(tid, registers, pc, number, arguments);
+			if (((status >>> 8) & 255) != SYSCALL_TRAP)
+				throw new IOException("Injected filter syscall " + number + " did not return to its tracer");
+			try (Arena arena = Arena.ofConfined())
+			{
+				long result = syscallResult(registers(tid, arena));
+				if (result < 0 && result >= -4095)
+					throw new IOException("Injected filter syscall " + number + " failed with errno " + -result);
+				return result;
+			}
+		}
+
+		/**
+		 * Builds the classic BPF seccomp program for the active ABI: trace mmap, execve and execveat; allow the rest.
+		 * A call from another syscall ABI is allowed unobserved, as before the filter.
+		 * @return little-endian {@code sock_filter} instructions
+		 */
+		private byte[] filterProgram()
+		{
+			long architecture = aarch64 ? 0xc00000b7L : 0xc000003eL;
+			long mmap = mmapNumber();
+			long execve = aarch64 ? LinuxAarch64Trace.EXECVE : EXECVE;
+			long execveat = aarch64 ? LinuxAarch64Trace.EXECVEAT : EXECVEAT;
+			// BPF_LD|BPF_W|BPF_ABS = 0x20, BPF_JMP|BPF_JEQ|BPF_K = 0x15, BPF_RET|BPF_K = 0x06.
+			long allow = 0x7fff0000L, traced = 0x7ff00000L;
+			long[][] instructions = {
+				{0x20, 0, 0, 4},
+				{0x15, 1, 0, architecture},
+				{0x06, 0, 0, allow},
+				{0x20, 0, 0, 0},
+				{0x15, 3, 0, mmap},
+				{0x15, 2, 0, execve},
+				{0x15, 1, 0, execveat},
+				{0x06, 0, 0, allow},
+				{0x06, 0, 0, traced}};
+			ByteBuffer buffer = ByteBuffer.allocate(instructions.length * 8).order(ByteOrder.LITTLE_ENDIAN);
+			for (long[] instruction : instructions)
+				buffer.putShort((short) instruction[0]).put((byte) instruction[1]).put((byte) instruction[2])
+					.putInt((int) instruction[3]);
+			return buffer.array();
 		}
 
 		/**
