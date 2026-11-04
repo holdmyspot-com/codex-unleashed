@@ -24,6 +24,10 @@ on:
         description: Requires cache=true; fail before compilation if all compiled-cache lookups miss
         type: boolean
         default: false
+      prune:
+        description: After a cached build, delete obsolete caches; false only plans the deletions
+        type: boolean
+        default: true
       fail_after_build:
         description: Deliberately fail after compilation to verify partial-cache recovery; retry with false
         type: boolean
@@ -756,3 +760,5 @@ jobs:
       packages: write
       actions: write
     uses: ./.github/workflows/cache-retention.yml
+    with:
+      dry_run: ${{ !inputs.prune }}
