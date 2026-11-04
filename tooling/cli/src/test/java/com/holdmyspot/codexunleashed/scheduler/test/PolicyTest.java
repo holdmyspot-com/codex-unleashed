@@ -41,6 +41,23 @@ public final class PolicyTest
 	}
 
 	/**
+	 * Starts the oldest first attempt when nothing is live and memory remains beyond headroom, even if its estimate
+	 * exceeds that memory, because no completion can free memory and its actual use is then measured.
+	 */
+	@Test
+	public void startsWhenIdleDespiteEstimate()
+	{
+		List<Job> known = List.of(new Job("large", State.READY, 0, 1000L, 0, null, null, 0),
+			new Job("later", State.READY, 1, 10L, 0, null, null, 0));
+		assertDecision(Policy.chooseAction(new Budget(100, 2), known, new Observation(500, false, false, 0)),
+			Control.START, "large");
+		assertDecision(Policy.chooseAction(new Budget(100, 2), known, new Observation(100, false, false, 0)),
+			Control.WAIT, null);
+		assertDecision(Policy.chooseAction(new Budget(100, 2), known, new Observation(500, true, false, 0)),
+			Control.WAIT, null);
+	}
+
+	/**
 	 * Reclaims a blocked peer when the oldest denial cannot fit, and resumes that denial once its estimate fits.
 	 */
 	@Test

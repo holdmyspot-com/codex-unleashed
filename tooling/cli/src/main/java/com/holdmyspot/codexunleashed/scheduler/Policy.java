@@ -334,7 +334,8 @@ public final class Policy
 	 * @param candidate the selected action to start or resume
 	 * @param control the start or resume request
 	 * @param observation the available physical memory
-	 * @return the requested admission if it fits, or a waiting request
+	 * @return the requested admission if it fits, or if it is a first attempt that would start with nothing live while
+	 * memory remains beyond headroom; otherwise a waiting request
 	 */
 	private static Decision chooseAdmission(Budget budget, List<Job> running, List<Job> live, Job candidate,
 		Control control, Observation observation)
@@ -346,6 +347,11 @@ public final class Policy
 			BigInteger.valueOf(budget.headroomBytes()));
 		for (Job job : otherRunning)
 			remaining = remaining.subtract(BigInteger.valueOf(Math.max(job.peakBytes() - job.residentBytes(), 0)));
+		// With nothing live, no completion can free memory, so waiting on a first attempt's estimate would never end.
+		// That estimate is only best-effort: the attempt's actual use is measured, and a real overrun reaches the
+		// allocation wait. A retry's demand was observed, so it still waits for capacity.
+		if (candidate.state() == State.READY && live.isEmpty() && remaining.signum() > 0)
+			return new Decision(control, candidate.name(), "Nothing is live; start and measure the actual use");
 		if (candidate.peakBytes() == null)
 		{
 			if (live.stream().anyMatch(job -> job.equals(candidate) == false))
