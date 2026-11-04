@@ -13,8 +13,8 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 
 ### Checkout
 
-- Branch `main.new`, HEAD `7c459154c0` plus this plan update. No CP3 tag exists. The CI workflow "Release build checkpoint tests" passed on every push through `e217e0e850`.
-- Local test command, from `tooling/cli`: `mvn -B -ntp -q -s <settings.xml> test`. Expect 1455 tests, 0 failures and exactly 6 errors in `SourceInputCargoTest` when no local `rustc` is installed. Native Rust, Bazel and Go builds run only on remote runners.
+- Branch `main.new`, HEAD `40abf6632e` plus this plan update. No CP3 tag exists. The CI workflow "Release build checkpoint tests" passed on every push through `e217e0e850`.
+- Local test command, from `tooling/cli`: `mvn -B -ntp -q -s <settings.xml> test`. Expect 1458 tests, 0 failures and exactly 6 errors in `SourceInputCargoTest` when no local `rustc` is installed. Native Rust, Bazel and Go builds run only on remote runners.
 - Tests live in the separate JPMS module `com.holdmyspot.codexunleashed.tooling.test`. Test access to package-private behavior goes only through `<Topic>Access`/`<Topic>Secrets` façades in package `com.holdmyspot.codexunleashed.secrets` (exported only to the test module, registered in the owner's `static {}`); no reflection and no fake executables for tools.
 
 ### Live operations at handoff
@@ -22,9 +22,17 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 | Operation | Identity | State and next action |
 | --- | --- | --- |
 | Linux x64 release build | Run `41743639583` (`cache=true`, `scheduler=true`), commit `a7d420154f` | Dispatched 2026-11-04T00:01Z. If it goes quiet, read `baseline-evidence/quiet-build-report.log` in its artifact. |
-| Linux ARM release build | Run `41743643884`, same commit and inputs | Same. |
-| Rung 1: `tikv-jemalloc-sys` only, x64 | Run `41750107254` (`packages=tikv-jemalloc-sys`, `cache=true`, `scheduler=true`), commit `7c459154c0` | Dispatched 2026-11-04T00:52Z; queued behind `41743639583` in the x64 concurrency group. It stops before the release checks by design; on success, dispatch rung 2. |
+| Linux ARM release build | Run `41743643884`, same commit and inputs | Stopped by the watchdog at 01:40Z; see "ARM full run on `a7d420154f`" below. |
+| Rung 1: `tikv-jemalloc-sys` only, x64 | Run `41756658900` (`packages=tikv-jemalloc-sys`, `cache=true`, `scheduler=true`), commit `40abf6632e` | Dispatched 2026-11-04T01:49Z, replacing the queued `41750107254` on the older commit; queued behind `41743639583` in the x64 concurrency group. It stops before the release checks by design; on success, dispatch rung 2. |
 | Rung 1, ARM | Run `41752873160`, same inputs | Dispatched 2026-11-04T01:20Z; queued behind `41743643884`. |
+
+### ARM full run on `a7d420154f` (2026-11-04): the scheduler failed, then hung in Frida teardown
+
+- `41743643884`: `bwrap`, the proxy and `codex-code-mode-host` were cache hits (6 s each). `codex` stopped making progress after attempt 565 at 00:25:14Z, while Cargo was still compiling `codex-core`, with no `Finished` and no Cargo error. The watchdog reported at 00:40Z and stopped the build at 01:40Z, after 4,500 s with no output.
+- The report showed no Cargo, rustc or build-script process; the dump skipped zombies, so Cargo may have been one. The scheduler JVM's main thread was in `FridaRuntime.close` (from `LinuxCargoInvocation.NativeResources.closeDependencies`, `CargoSession.close` and `SchedulerCoordinator.run`'s cleanup). So the scheduler failed, stopped Cargo, and then blocked in `frida_shutdown` or `frida_deinit`. Its primary failure was never printed. The report cut the JVM at 16 threads and showed only Java frames, so it cannot say which Frida call blocked, or on what.
+- `2b7ee4bb32` records the primary failure before any cleanup (`SchedulerCoordinatorTest.recordsFailureBeforeCleanup`). Each Cargo schedule prints it to standard error (`FailureReport`).
+- `40abf6632e` makes the watchdog list zombies, print every thread of a Java process, and add `jhsdb jstack --mixed`.
+- Next: read the failure and the native Frida stacks from the next run that fails. Fix the primary failure first. Then decide whether the Frida global teardown needs a bound. The ARM 734c216162 hang after `Finished` may be the same teardown block.
 
 ### Incremental package ladder (user directive, 2026-11-04)
 
