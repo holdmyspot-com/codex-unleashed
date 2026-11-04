@@ -17,6 +17,10 @@ on:
         default: false
   schedule:
     - cron: '41 6 * * *'
+  # A change to the pruner plans without deleting, which also registers the workflow for manual dispatch.
+  push:
+    branches: [main.new]
+    paths: [.github/workflows/cache-retention.yml, .github/cache-retention-packages]
 
 permissions:
   contents: read
@@ -34,7 +38,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       PACKAGE_OWNER: ${{ github.repository_owner }}
-      DRY_RUN: ${{ inputs.dry_run == true }}
+      DRY_RUN: ${{ inputs.dry_run == true || github.event_name == 'push' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
