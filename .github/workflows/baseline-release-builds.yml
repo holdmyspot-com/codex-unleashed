@@ -351,6 +351,15 @@ jobs:
             "-Djava.io.tmpdir=$TMPDIR" verify 2>&1 | tee "$evidence/cache-helper-build.log"
           printf 'CODEX_SOURCE_CACHE_TOOL=%s\n' "$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling" >> "$GITHUB_ENV"
 
+      - name: Restore the scheduler's memory history
+        # Recorded compiler peaks feed the next run's memory estimates; each run saves its own entry under a new key.
+        if: inputs.scheduler && inputs.cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/scheduler-memory-history
+          key: scheduler-memory-history-v1-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: scheduler-memory-history-v1-${{ matrix.target }}-
+
       - name: Provision the job-exclusive scheduler installation
         if: inputs.scheduler
         env:
@@ -379,6 +388,22 @@ jobs:
           printf 'RELEASE_CARGO_COMMAND=%s/release-scheduler-cargo.sh\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
           printf 'RELEASE_SCHEDULER_HEADROOM_BYTES=%s\nRELEASE_SCHEDULER_MAX_JOBS=%s\nRELEASE_SCHEDULER_CONTROL_TIMEOUT_MS=%s\n' \
             "$RELEASE_SCHEDULER_HEADROOM_BYTES" "$RELEASE_SCHEDULER_MAX_JOBS" "$RELEASE_SCHEDULER_CONTROL_TIMEOUT_MS" >> "$GITHUB_ENV"
+
+      - name: Install the restored memory history
+        if: inputs.scheduler && inputs.cache
+        run: |
+          set -euo pipefail
+          restored="$RUNNER_TEMP/scheduler-memory-history"
+          profiles=()
+          if [[ -d "$restored" ]]; then
+            while IFS= read -r -d '' profile; do profiles+=("$profile"); done \
+              < <(find "$restored" -maxdepth 1 -type f -name '*.profile' -print0)
+          fi
+          if (( ${#profiles[@]} > 0 )); then
+            if [[ "$RUNNER_OS" == Windows ]]; then cp -- "${profiles[@]}" "$RELEASE_SCHEDULER_ROOT/history/"
+            else sudo -n cp -- "${profiles[@]}" "$RELEASE_SCHEDULER_ROOT/history/"; fi
+          fi
+          printf 'restored_profiles=%s\n' "${#profiles[@]}" | tee "$RUNNER_TEMP/baseline-evidence/memory-history-restore.log"
 
       - name: Select the declared Node version for cache transport checks
         if: inputs.cache
@@ -670,6 +695,29 @@ jobs:
                 sha256sum -- "$source_path"
               fi
             done > "$evidence/final-untracked-source-digests.txt"
+
+      - name: Collect the memory history for saving
+        if: always() && inputs.scheduler && inputs.cache && env.RELEASE_SCHEDULER_ROOT != ''
+        run: |
+          set -euo pipefail
+          collected="$RUNNER_TEMP/scheduler-memory-history-save"
+          rm -rf -- "$collected"
+          mkdir -p "$collected"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            find "$RELEASE_SCHEDULER_ROOT/history" -maxdepth 1 -type f -name '*.profile' -exec cp -- {} "$collected/" +
+          else
+            sudo -n find "$RELEASE_SCHEDULER_ROOT/history" -maxdepth 1 -type f -name '*.profile' -exec cp -- {} "$collected/" +
+            sudo -n chown -R "$(id -u):$(id -g)" "$collected"
+          fi
+          printf 'collected_profiles=%s\n' "$(find "$collected" -maxdepth 1 -type f -name '*.profile' | wc -l)" |
+            tee "$RUNNER_TEMP/baseline-evidence/memory-history-save.log"
+
+      - name: Save the memory history
+        if: always() && inputs.scheduler && inputs.cache && env.RELEASE_SCHEDULER_ROOT != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/scheduler-memory-history-save
+          key: scheduler-memory-history-v1-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Release only closed scheduler authority
         # A failed authenticated worker retains its installation for correction.
