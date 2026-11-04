@@ -7,8 +7,8 @@
  *
  * Wire: 4-byte big-endian payload length, then NUL-terminated fields; protocol version 1.
  * - Client: "hello" version pid start; "blocked" wait thread bytes errno; "granted" wait unknown|accepted|duplicate;
- *   "transfer" sequence read|write [byte]; "failure" sequence cause.
- * - Server: "welcome" installation; "grant" wait; "token" sequence [byte].
+ *   "transfer" sequence read|write [byte]; "failure" sequence cause; "exec-static" path.
+ * - Server: "welcome" installation; "grant" wait; "token" sequence [byte]; "adopt".
  * The start is field 22 of /proc/<pid>/stat. Numbers are canonical unsigned decimals.
  *
  * Allocation waits keep linux-allocation-hook.js's semantics: only a positive-size malloc that returns NULL with
@@ -29,6 +29,14 @@
  * kept. Interposing symbols, rather than patching libc as the malloc hook does, keeps posix_spawn's internal child,
  * which shares this thread's memory, out of the interceptor. The new image loads the library and connects as itself.
  *
+ * Static targets: a statically linked image ignores LD_PRELOAD, so its allocations would go unhooked. When the target
+ * of execve, execv, execvp, execvpe, execl, execlp, execle, posix_spawn or posix_spawnp is a 64-bit ELF with no
+ * PT_INTERP, the call runs the trampoline codex-build-hook-exec, installed beside this library, with arguments
+ * path argv... instead. The trampoline loads this library, connects as itself, sends "exec-static" path, waits for
+ * "adopt", stops itself with SIGSTOP and, once the server's tracer continues it, execs the static target, so the
+ * tracer sees that exec. A target named without a slash is found along PATH as the p-variants search; a target that
+ * cannot be read keeps the original call. fexecve and execveat are not redirected.
+ *
  * Fork: the child keeps the patched malloc but resets the registry and drops the inherited connection. It connects as
  * a new installation the first time it needs the server, so a child that only execs never connects.
  *
@@ -41,8 +49,11 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <dlfcn.h>
+#include <elf.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <pthread.h>
+#include <signal.h>
 #include <spawn.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -113,8 +124,12 @@ static struct {
     enum fault fault;
     struct slot slots[SLOT_COUNT];
     struct transfer transfers[TRANSFER_COUNT];
+    /** Whether the server sent "adopt" for this process's static exec. */
+    bool adopted;
+    /** Signalled when adopted is set or a fault occurs. */
+    pthread_cond_t adoption;
 } hook = { .mutex = PTHREAD_MUTEX_INITIALIZER, .fatal = PTHREAD_COND_INITIALIZER,
-    .sending = PTHREAD_MUTEX_INITIALIZER, .socket = -1 };
+    .sending = PTHREAD_MUTEX_INITIALIZER, .socket = -1, .adoption = PTHREAD_COND_INITIALIZER };
 
 /** Arguments that on_enter copies for on_leave. */
 struct call { size_t bytes; };
@@ -158,6 +173,7 @@ static void fault_locked(enum fault fault)
     if (hook.fault == NO_FAULT) hook.fault = fault;
     for (int index = 0; index < SLOT_COUNT; ++index) pthread_cond_signal(&hook.slots[index].condition);
     for (int index = 0; index < TRANSFER_COUNT; ++index) pthread_cond_signal(&hook.transfers[index].condition);
+    pthread_cond_broadcast(&hook.adoption);
 }
 
 /** Formats an unsigned decimal into the given buffer, which must hold 21 bytes. */
@@ -337,6 +353,12 @@ static void *read_server(void *argument)
         }
         else if ((count == 2 || count == 3) && strcmp(fields[0], "token") == 0) {
             if (!apply_token(fields[1], count == 3 ? fields[2] : NULL)) { fault = TRANSFER_REJECTED; break; }
+        }
+        else if (count == 1 && strcmp(fields[0], "adopt") == 0) {
+            pthread_mutex_lock(&hook.mutex);
+            hook.adopted = true;
+            pthread_cond_broadcast(&hook.adoption);
+            pthread_mutex_unlock(&hook.mutex);
         }
         else { fault = MALFORMED_FRAME; break; }
     }
@@ -702,6 +724,98 @@ static void release_environment(void *mapping, size_t size)
     errno = error;
 }
 
+/** The trampoline beside this library, or an empty string if its path could not be formed. */
+static char trampoline[PATH_MAX];
+
+/** Locates the trampoline beside this library. Returns NULL, or a description of the failure. */
+static const char *locate_trampoline(void)
+{
+    Dl_info library;
+    if (dladdr((void *) locate_trampoline, &library) == 0 || library.dli_fname == NULL)
+        return "cannot locate the hook library";
+    const char *slash = strrchr(library.dli_fname, '/');
+    size_t directory = slash == NULL ? 0 : (size_t) (slash - library.dli_fname + 1);
+    int length = snprintf(trampoline, sizeof trampoline, "%.*scodex-build-hook-exec", (int) directory,
+        library.dli_fname);
+    if (length < 0 || (size_t) length >= sizeof trampoline) return "the hook library path is too long";
+    return NULL;
+}
+
+/**
+ * Reports whether path names a 64-bit ELF image with no program interpreter. Uses only system calls, so a child
+ * between fork and exec may call it, and keeps errno.
+ */
+static bool is_static_image(const char *path)
+{
+    int error = errno;
+    bool result = false;
+    int descriptor = open(path, O_RDONLY | O_CLOEXEC);
+    if (descriptor >= 0) {
+        Elf64_Ehdr header;
+        if (pread(descriptor, &header, sizeof header, 0) == (ssize_t) sizeof header &&
+            memcmp(header.e_ident, ELFMAG, SELFMAG) == 0 && header.e_ident[EI_CLASS] == ELFCLASS64 &&
+            header.e_phentsize == sizeof(Elf64_Phdr) && (header.e_type == ET_EXEC || header.e_type == ET_DYN)) {
+            result = true;
+            for (Elf64_Half index = 0; index < header.e_phnum && result; ++index) {
+                Elf64_Phdr segment;
+                if (pread(descriptor, &segment, sizeof segment,
+                    (off_t) (header.e_phoff + (Elf64_Off) index * sizeof segment)) != (ssize_t) sizeof segment)
+                    result = false;
+                else if (segment.p_type == PT_INTERP)
+                    result = false;
+            }
+        }
+        close(descriptor);
+    }
+    errno = error;
+    return result;
+}
+
+/**
+ * Finds file along PATH as execvp does, writing the first executable candidate to buffer. Returns false if file has a
+ * slash, nothing is found, or a candidate does not fit.
+ */
+static bool search_path(const char *file, char buffer[PATH_MAX])
+{
+    if (strchr(file, '/') != NULL || file[0] == '\0') return false;
+    int error = errno;
+    const char *search = getenv("PATH");
+    if (search == NULL) search = "/bin:/usr/bin";
+    bool found = false;
+    while (!found) {
+        const char *end = strchrnul(search, ':');
+        size_t length = (size_t) (end - search);
+        int written = length == 0 ? snprintf(buffer, PATH_MAX, "%s", file) :
+            snprintf(buffer, PATH_MAX, "%.*s/%s", (int) length, search, file);
+        if (written > 0 && written < PATH_MAX && access(buffer, X_OK) == 0) found = true;
+        if (*end == '\0') break;
+        search = end + 1;
+    }
+    errno = error;
+    return found;
+}
+
+/** Counts the entries of a NULL-terminated vector. */
+static size_t vector_length(char *const vector[])
+{
+    size_t count = 0;
+    if (vector != NULL)
+        while (vector[count] != NULL) ++count;
+    return count;
+}
+
+/**
+ * Fills redirected, of vector_length(arguments) + 3 entries, with the trampoline's arguments: trampoline, path, then
+ * every original argument.
+ */
+static void trampoline_arguments(const char *path, char *const arguments[], size_t count, char **redirected)
+{
+    redirected[0] = trampoline;
+    redirected[1] = (char *) path;
+    for (size_t index = 0; index < count; ++index) redirected[index + 2] = arguments[index];
+    redirected[count + 2] = NULL;
+}
+
 __attribute__((visibility("default"))) int execve(const char *path, char *const arguments[],
     char *const environment[])
 {
@@ -710,7 +824,15 @@ __attribute__((visibility("default"))) int execve(const char *path, char *const 
     size_t size;
     char *const *restored_environment = restore_environment(environment, &mapping, &size);
     if (restored_environment == NULL) { errno = ENOMEM; return -1; }
-    int result = next_execve(path, arguments, restored_environment);
+    int result;
+    if (trampoline[0] != '\0' && is_static_image(path)) {
+        size_t count = vector_length(arguments);
+        char *redirected[count + 3];
+        trampoline_arguments(path, arguments, count, redirected);
+        result = next_execve(trampoline, redirected, restored_environment);
+    }
+    else
+        result = next_execve(path, arguments, restored_environment);
     release_environment(mapping, size);
     return result;
 }
@@ -718,6 +840,10 @@ __attribute__((visibility("default"))) int execve(const char *path, char *const 
 __attribute__((visibility("default"))) int execvpe(const char *file, char *const arguments[],
     char *const environment[])
 {
+    char found[PATH_MAX];
+    const char *path = file;
+    if (strchr(file, '/') == NULL) path = search_path(file, found) ? found : NULL;
+    if (path != NULL && trampoline[0] != '\0' && is_static_image(path)) return execve(path, arguments, environment);
     if (next_execvpe == NULL) next_execvpe = (execve_function) dlsym(RTLD_NEXT, "execvpe");
     void *mapping;
     size_t size;
@@ -825,6 +951,16 @@ static int spawn(const char *name, spawn_function *next, pid_t *child, const cha
     const posix_spawn_file_actions_t *actions, const posix_spawnattr_t *attributes, char *const arguments[],
     char *const environment[])
 {
+    char found[PATH_MAX];
+    const char *image = path;
+    if (strcmp(name, "posix_spawnp") == 0 && strchr(path, '/') == NULL) image = search_path(path, found) ? found : NULL;
+    if (image != NULL && trampoline[0] != '\0' && is_static_image(image)) {
+        size_t count = vector_length(arguments);
+        char *redirected[count + 3];
+        trampoline_arguments(image, arguments, count, redirected);
+        return spawn("posix_spawn", &next_posix_spawn, child, trampoline, actions, attributes, redirected,
+            environment);
+    }
     if (*next == NULL) *next = (spawn_function) dlsym(RTLD_NEXT, name);
     void *mapping;
     size_t size;
@@ -849,6 +985,35 @@ __attribute__((visibility("default"))) int posix_spawnp(pid_t *child, const char
     return spawn("posix_spawnp", &next_posix_spawnp, child, file, actions, attributes, arguments, environment);
 }
 
+/**
+ * The trampoline's entry: announces the static image at path, waits for the server to adopt it, stops so that the
+ * server's tracer can take over, then execs it. Returns only on failure, with FAILURE_STATUS.
+ */
+__attribute__((visibility("default"))) int codex_build_hook_exec_static(const char *path, char *const arguments[])
+{
+    ensure_connected();
+    pthread_mutex_lock(&hook.mutex);
+    int socket = hook.socket;
+    pthread_mutex_unlock(&hook.mutex);
+    const char *announcement[] = { "exec-static", path };
+    if (send_frame(socket, announcement, 2) < 0) {
+        report("cannot announce the static image");
+        return FAILURE_STATUS;
+    }
+    pthread_mutex_lock(&hook.mutex);
+    while (!hook.adopted && hook.fault == NO_FAULT) pthread_cond_wait(&hook.adoption, &hook.mutex);
+    bool adopted = hook.adopted;
+    pthread_mutex_unlock(&hook.mutex);
+    if (!adopted) {
+        report("the hook server did not adopt the static image");
+        return FAILURE_STATUS;
+    }
+    raise(SIGSTOP);
+    next_execve(path, arguments, environ);
+    report("cannot exec the static image");
+    return FAILURE_STATUS;
+}
+
 /** Attaches one listener to a global export. Returns false on failure. */
 static bool attach(GumInterceptor *interceptor, const char *name, GumInvocationListener *listener)
 {
@@ -869,6 +1034,8 @@ static void reset_child(void)
     hook.issued = 0;
     hook.sequence = 0;
     hook.fault = NO_FAULT;
+    hook.adopted = false;
+    pthread_cond_init(&hook.adoption, NULL);
     for (int index = 0; index < TRANSFER_COUNT; ++index) {
         pthread_cond_init(&hook.transfers[index].condition, NULL);
         hook.transfers[index].sequence = 0;
@@ -902,6 +1069,8 @@ __attribute__((constructor)) static void install(void)
     problem = capture_environment();
     if (problem != NULL) fail(problem);
     if (!resolve_exec_functions()) fail("an exec function is not exported");
+    problem = locate_trampoline();
+    if (problem != NULL) fail(problem);
     problem = connect_server();
     if (problem != NULL) fail(problem);
     if (pthread_atfork(lock_for_fork, unlock_after_fork, reset_child) != 0) fail("cannot register the fork handlers");

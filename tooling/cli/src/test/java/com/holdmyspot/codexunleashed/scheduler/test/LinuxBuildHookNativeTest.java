@@ -45,7 +45,8 @@ public final class LinuxBuildHookNativeTest
 	 * FIFO, writes the byte {@code x} to it and prints the result, then reads one byte from it and prints that byte.
 	 * With {@code env} it prints each entry of its environment on its own line. With {@code exec-clear} it execs itself
 	 * with {@code env} and the environment {@code A=1}; {@code spawn-clear} does the same through {@code posix_spawn}
-	 * and waits for the child.
+	 * and waits for the child. With {@code exec-static <program>} it execs that program as {@code static-child}, and
+	 * {@code spawn-static <program>} does the same through {@code posix_spawn} and waits for the child.
 	 */
 	private static final String PROGRAM_SOURCE = """
 		#include <fcntl.h>
@@ -63,8 +64,8 @@ public final class LinuxBuildHookNativeTest
 		static void release(int signal_number) { (void) signal_number; munmap(ballast, ballast_size); }
 		int main(int argc, char **argv) {
 		  if (argc < 2) { puts("main"); return 0; }
+		  extern char **environ;
 		  if (strcmp(argv[1], "env") == 0) {
-		    extern char **environ;
 		    for (char **entry = environ; *entry != NULL; ++entry) puts(*entry);
 		    return 0;
 		  }
@@ -79,6 +80,18 @@ public final class LinuxBuildHookNativeTest
 		    if (posix_spawn(&child, argv[0], NULL, NULL, env_arguments, cleared) != 0) return 9;
 		    int status;
 		    if (waitpid(child, &status, 0) != child || !WIFEXITED(status)) return 10;
+		    return WEXITSTATUS(status);
+		  }
+		  char *static_arguments[] = { "static-child", NULL };
+		  if (strcmp(argv[1], "exec-static") == 0) {
+		    execve(argv[2], static_arguments, environ);
+		    return 11;
+		  }
+		  if (strcmp(argv[1], "spawn-static") == 0) {
+		    pid_t child;
+		    if (posix_spawn(&child, argv[2], NULL, NULL, static_arguments, environ) != 0) return 12;
+		    int status;
+		    if (waitpid(child, &status, 0) != child || !WIFEXITED(status)) return 13;
 		    return WEXITSTATUS(status);
 		  }
 		  if (strcmp(argv[1], "token") == 0) {
@@ -105,6 +118,12 @@ public final class LinuxBuildHookNativeTest
 		  if (waitpid(child, &status, 0) != child) return 6;
 		  return 0;
 		}
+		""";
+
+	/** A statically linked program, which ignores {@code LD_PRELOAD}; it prints its first argument. */
+	private static final String STATIC_SOURCE = """
+		#include <stdio.h>
+		int main(int argc, char **argv) { (void) argc; puts(argv[0]); return 0; }
 		""";
 
 	/** Creates a resource-free test instance; each method owns its compiled files, listener and processes. */
@@ -352,6 +371,82 @@ public final class LinuxBuildHookNativeTest
 	}
 
 	/**
+	 * A static target of execve, which would ignore the library, is announced, stops for the tracer to adopt it, and
+	 * runs with its own arguments once continued.
+	 * @throws IOException          if the fixture cannot be built or run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = TEST_TIMEOUT_MILLIS)
+	public void handsStaticExecTargetToTracer() throws IOException, InterruptedException
+	{
+		requireStaticHandoff("exec-static", true);
+	}
+
+	/**
+	 * A static target of posix_spawn is announced from the child and stops for the tracer to adopt it.
+	 * @throws IOException          if the fixture cannot be built or run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = TEST_TIMEOUT_MILLIS)
+	public void handsStaticSpawnTargetToTracer() throws IOException, InterruptedException
+	{
+		requireStaticHandoff("spawn-static", false);
+	}
+
+	/**
+	 * Runs a mode that starts a static program, adopts it with SIGCONT in place of the tracer, and checks its output.
+	 * @param mode        the program mode
+	 * @param sameProcess whether the static program replaces the program, keeping its PID
+	 * @throws IOException          if the fixture cannot be built or run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	private static void requireStaticHandoff(String mode, boolean sameProcess) throws IOException, InterruptedException
+	{
+		try (Installation installation = Installation.create())
+		{
+			Path target = installation.compileStatic();
+			Process program = installation.start(mode, target.toString());
+			try (SocketChannel parent = installation.accept())
+			{
+				receive(parent);
+				send(parent, "welcome", "1");
+				try (SocketChannel trampoline = installation.accept())
+				{
+					List<String> hello = receive(trampoline);
+					long pid = Long.parseLong(hello.get(2));
+					requireThat(pid == program.pid(), "samePid").isEqualTo(sameProcess);
+					send(trampoline, "welcome", "2");
+					requireThat(receive(trampoline), "announcement").isEqualTo(List.of("exec-static", target.toString()));
+					requireThat(program.getInputStream().available(), "available").isEqualTo(0);
+					send(trampoline, "adopt");
+					while (!state(pid).equals("T"))
+						Thread.onSpinWait();
+					Process resume = new ProcessBuilder("kill", "-CONT", Long.toString(pid)).inheritIO().start();
+					requireThat(resume.waitFor(), "kill").isEqualTo(0);
+					requireThat(readAll(program), "output").isEqualTo("static-child\n");
+					requireThat(program.waitFor(), "exitValue").isEqualTo(0);
+				}
+			}
+			finally
+			{
+				program.destroyForcibly();
+			}
+		}
+	}
+
+	/**
+	 * Reads field 3 of a process's {@code /proc/<pid>/stat}.
+	 * @param pid the process
+	 * @return its state letter
+	 * @throws IOException if the file cannot be read
+	 */
+	private static String state(long pid) throws IOException
+	{
+		String stat = Files.readString(Path.of("/proc", Long.toString(pid), "stat"));
+		return stat.substring(stat.lastIndexOf(')') + 2).split(" ")[0];
+	}
+
+	/**
 	 * Unmaps the program's ballast so that its next allocation succeeds.
 	 * @param program the program
 	 * @throws IOException          if the signal cannot be sent
@@ -486,6 +581,11 @@ public final class LinuxBuildHookNativeTest
 					"-I" + devkitPath, "-ffunction-sections", "-fdata-sections", source.toString(), "-o", library.toString(),
 					devkitPath.resolve("libfrida-gum.a").toString(), "-Wl,--gc-sections", "-lm", "-lresolv", "-latomic",
 					"-ldl", "-lrt", "-pthread"));
+				Path trampolineSource = directory.resolve("linux-build-hook-exec.c");
+				Files.copy(Path.of(System.getProperty("basedir", ".")).resolve(
+					"src/main/resources/com/holdmyspot/codexunleashed/scheduler/linux-build-hook-exec.c"), trampolineSource);
+				compile(List.of("cc", "-Wall", "-Wextra", "-Werror", "-O2", "-o",
+					directory.resolve("codex-build-hook-exec").toString(), trampolineSource.toString(), "-ldl"));
 				Path programSource = directory.resolve("program.c");
 				Files.writeString(programSource, PROGRAM_SOURCE);
 				Path program = directory.resolve("program");
@@ -558,6 +658,20 @@ public final class LinuxBuildHookNativeTest
 			if (fifo != null)
 				builder.environment().put("CODEX_BUILD_HOOK_FIFO", fifo);
 			return builder.start();
+		}
+
+		/**
+		 * Compiles the static program.
+		 * @return its path
+		 * @throws IOException if compiling fails
+		 */
+		Path compileStatic() throws IOException
+		{
+			Path source = directory.resolve("static.c");
+			Files.writeString(source, STATIC_SOURCE);
+			Path binary = directory.resolve("static");
+			compile(List.of("cc", "-static", "-O2", "-o", binary.toString(), source.toString()));
+			return binary;
 		}
 
 		/**
