@@ -48,7 +48,8 @@ public final class PrepareReleaseSchedulerNativeTest
     @Test
     public void rejectsInapplicableNativeProducts() throws Exception
     {
-        for (String mutation : List.of("old", "producer", "host", "architecture", "product", "pin", "incomplete"))
+        for (String mutation : List.of("old", "producer", "host", "architecture", "product", "pin", "incomplete", "hook",
+            "trampoline"))
         {
             try (Tree tree = new Tree())
             {
@@ -66,6 +67,8 @@ public final class PrepareReleaseSchedulerNativeTest
                     case "pin" -> receipt.setProperty("frida.archive.sha256", "0".repeat(64));
                     case "incomplete" -> receipt.remove("production");
                     case "product" -> Files.writeString(output.resolve("frida"), "altered");
+                    case "hook" -> Files.writeString(output.resolve("libbuildhook.so"), "altered");
+                    case "trampoline" -> Files.delete(output.resolve("codex-build-hook-exec"));
                     default -> throw new IllegalStateException(mutation);
                 }
                 try (var target = Files.newOutputStream(receiptPath)) { receipt.storeToXML(target, "test mutation"); }
@@ -129,6 +132,38 @@ public final class PrepareReleaseSchedulerNativeTest
     }
 
     /**
+     * A Linux receipt pins the official gum devkit and the build hook's sources, so changing either rejects reuse.
+     * @throws Exception if the receipt cannot be built or a resource cannot be read
+     */
+    @Test
+    public void pinsBuildHookInputs() throws Exception
+    {
+        try (Tree tree = new Tree())
+        {
+            Path support = Files.createDirectory(tree.root.resolve("support"));
+            Properties x64 = PrepareReleaseSchedulerNative.inputReceipt("Linux", "x86_64", support);
+            requireThat(x64.getProperty("gum.archive.url"), "x64Url").isEqualTo(
+                "https://github.com/frida/frida/releases/download/17.24.3/frida-gum-devkit-17.24.3-linux-x86_64.tar.xz");
+            requireThat(x64.getProperty("gum.archive.sha256"), "x64Digest").
+                isEqualTo("d5ffd59ebc5f50535e5f5e9c04cd968e2876eb91aff40872fe5afaf56d02a886");
+            Properties arm = PrepareReleaseSchedulerNative.inputReceipt("Linux", "arm64", support);
+            requireThat(arm.getProperty("gum.archive.url"), "armUrl").isEqualTo(
+                "https://github.com/frida/frida/releases/download/17.24.3/frida-gum-devkit-17.24.3-linux-arm64.tar.xz");
+            requireThat(arm.getProperty("gum.archive.sha256"), "armDigest").
+                isEqualTo("e73029dc3552cbcd370fbf251125bec7e4f6c56c3663c28251fa14bec59efb19");
+            for (String name : List.of("linux-build-hook.c", "linux-build-hook-exec.c"))
+            {
+                // The main module does not open its resource package, so the test reads the source from the tree.
+                byte[] source = Files.readAllBytes(Path.of(System.getProperty("basedir", ".")).resolve(
+                    "src/main/resources/com/holdmyspot/codexunleashed/scheduler/" + name));
+                String digest = java.util.HexFormat.of().formatHex(
+                    java.security.MessageDigest.getInstance("SHA-256").digest(source));
+                requireThat(x64.getProperty("hook." + name + ".sha256"), name + "Digest").isEqualTo(digest);
+            }
+        }
+    }
+
+    /**
      * Constructs interpretation-only product bytes through the actual producer receipt boundaries.
      * @param root exclusively owned fixture root
      * @param support determining support inputs
@@ -142,7 +177,12 @@ public final class PrepareReleaseSchedulerNativeTest
         Path output = Files.createDirectory(root.resolve("output"));
         if (platform.equals("Windows")) Files.writeString(output.resolve("frida.dll"), "fixture frida");
         else Files.writeString(output.resolve("frida"), "fixture frida");
-        if (platform.equals("Linux")) Files.writeString(output.resolve("libcgroup.so"), "fixture libcgroup");
+        if (platform.equals("Linux"))
+        {
+            Files.writeString(output.resolve("libcgroup.so"), "fixture libcgroup");
+            Files.writeString(output.resolve("libbuildhook.so"), "fixture build hook");
+            Files.writeString(output.resolve("codex-build-hook-exec"), "fixture trampoline");
+        }
         Properties receipt = PrepareReleaseSchedulerNative.inputReceipt(platform, architecture, support);
         PrepareReleaseSchedulerNative.completeReceipt(output, receipt);
         return output;

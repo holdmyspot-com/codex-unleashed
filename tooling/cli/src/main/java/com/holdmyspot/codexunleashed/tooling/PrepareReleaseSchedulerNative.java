@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 /**
- * Produces authenticated Frida 17.24.3 and Linux libcgroup inputs on a matching native runner.
+ * Produces authenticated Frida 17.24.3 and Linux libcgroup and build hook inputs on a matching native runner.
  * The caller owns the fresh output directory, including failed inputs and command logs, until job cleanup.
  * Successful production establishes setup only; native scheduler acceptance remains unrun.
  */
@@ -41,6 +41,15 @@ public final class PrepareReleaseSchedulerNative
     private static final String FRIDA_VERSION = "17.24.3";
     /** Receipt filename read by the job owner; paths in it are relative to the output directory. */
     private static final String RECEIPT = "native-receipt.properties.xml";
+    /** Linux architectures mapped to the official gum devkit identities that the build hook links. */
+    private static final Map<String, String> GUM_HASHES = Map.of(
+        "x86_64", "d5ffd59ebc5f50535e5f5e9c04cd968e2876eb91aff40872fe5afaf56d02a886",
+        "arm64", "e73029dc3552cbcd370fbf251125bec7e4f6c56c3663c28251fa14bec59efb19");
+    /** The build hook's C sources, as resources of the scheduler package. */
+    private static final List<String> HOOK_SOURCES = List.of("linux-build-hook.c", "linux-build-hook-exec.c");
+    /** The functions the build hook library exports; it hides every other symbol, including gum's. */
+    private static final List<String> HOOK_EXPORTS = List.of("execve", "execv", "execvp", "execvpe", "execveat",
+        "fexecve", "execl", "execlp", "execle", "posix_spawn", "posix_spawnp", "codex_build_hook_exec_static");
     /** Supported host and architecture pairs mapped to accepted official archive identities. */
     private static final Map<String, String> FRIDA_HASHES = Map.of(
         "Linux/x86_64", "9a11abf474899a33af6dd9af8a064448b23947a29a3af747eb3c7851591ffec2",
@@ -184,6 +193,16 @@ public final class PrepareReleaseSchedulerNative
             receipt.setProperty("libcgroup.package.sha256", x64 ?
                 "bd0938fc5ed7aaff58aae3d2dad717378b942be9906a9606e08f88078279697d" :
                 "f1bba53be5471643b488cec603b10fac8d351f411154c538d5e8f458318ba0d1");
+            receipt.setProperty("gum.archive.url", "https://github.com/frida/frida/releases/download/" + FRIDA_VERSION +
+                "/frida-gum-devkit-" + FRIDA_VERSION + "-linux-" + architecture + ".tar.xz");
+            receipt.setProperty("gum.archive.sha256", GUM_HASHES.get(architecture));
+            for (String name : HOOK_SOURCES)
+            {
+                try (InputStream input = hookSource(name))
+                {
+                    receipt.setProperty("hook." + name + ".sha256", sha256(input));
+                }
+            }
         }
         if (platform.equals("Windows"))
         {
@@ -225,7 +244,7 @@ public final class PrepareReleaseSchedulerNative
     {
         return switch (platform)
         {
-            case "Linux" -> List.of("frida", "libcgroup.so");
+            case "Linux" -> List.of("frida", "libcgroup.so", "libbuildhook.so", "codex-build-hook-exec");
             case "Windows" -> List.of("frida.dll");
             case "macOS" -> List.of("frida");
             default -> throw new UnsupportedOperationException("Unsupported platform: " + platform);
@@ -558,6 +577,59 @@ public final class PrepareReleaseSchedulerNative
         if (matches.size() != 1)
             throw new IOException("Expected exactly one authenticated regular libcgroup3 product; found " + matches.size());
         Files.copy(matches.getFirst(), output.resolve("libcgroup.so"));
+        produceBuildHook(output, receipt, commands);
+    }
+
+    /**
+     * Opens one of the build hook's C sources.
+     * @param name the source's file name
+     * @return its bytes
+     * @throws IOException if the resource is absent
+     */
+    private static InputStream hookSource(String name) throws IOException
+    {
+        String resource = "/com/holdmyspot/codexunleashed/scheduler/" + name;
+        InputStream input = PrepareReleaseSchedulerNative.class.getResourceAsStream(resource);
+        if (input == null)
+            throw new IOException("The build hook source is unavailable: " + resource);
+        return input;
+    }
+
+    /**
+     * Compiles the build hook library against the authenticated gum devkit, and its static-executable trampoline.
+     * The library exports only the exec and spawn entry points it replaces.
+     * @param output owned output root
+     * @param receipt production receipt naming the gum devkit
+     * @param commands bounded native command owner
+     * @throws IOException if acquisition, extraction or compilation fails
+     * @throws InterruptedException if a command wait is interrupted
+     */
+    private static void produceBuildHook(Path output, Properties receipt, Commands commands)
+        throws IOException, InterruptedException
+    {
+        Path archive = output.resolve("gum.tar.xz");
+        download(URI.create(receipt.getProperty("gum.archive.url")), receipt.getProperty("gum.archive.sha256"), archive);
+        Path devkit = output.resolve("gum");
+        extract(archive, devkit, commands);
+        Path sources = Files.createDirectory(output.resolve("hook-sources"));
+        for (String name : HOOK_SOURCES)
+        {
+            try (InputStream input = hookSource(name))
+            {
+                Files.copy(input, sources.resolve(name));
+            }
+        }
+        Path exports = sources.resolve("exports.map");
+        Files.writeString(exports, "{\n  global:\n" + HOOK_EXPORTS.stream().map(name -> "    " + name + ";\n").
+            collect(java.util.stream.Collectors.joining()) + "  local: *;\n};\n");
+        commands.run(List.of("cc", "-Wall", "-Wextra", "-Werror", "-O2", "-fPIC", "-shared", "-I" + devkit,
+            "-ffunction-sections", "-fdata-sections", sources.resolve("linux-build-hook.c").toString(), "-o",
+            output.resolve("libbuildhook.so").toString(), devkit.resolve("libfrida-gum.a").toString(),
+            "-Wl,--gc-sections", "-Wl,--version-script=" + exports, "-Wl,-z,noexecstack", "-lm", "-lresolv",
+            "-latomic", "-ldl", "-lrt", "-pthread"));
+        commands.run(List.of("cc", "-Wall", "-Wextra", "-Werror", "-O2", "-o",
+            output.resolve("codex-build-hook-exec").toString(), sources.resolve("linux-build-hook-exec.c").toString(),
+            "-ldl"));
     }
 
     /**
