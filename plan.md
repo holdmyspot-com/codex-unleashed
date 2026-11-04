@@ -50,6 +50,12 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 - Kernel stacks narrow it. The fork parent 34501 runs a recovered Frida agent (`gmain`, `pool-spawner`) and is stopped in `ptrace_signal` after an instruction abort (`el0_ia`). That is how Frida's Linux injector catches a remote call returning to its sentinel address. The child 34513 already exec'd the `zigcc` script and is stopped in `ptrace_signal` after `execve`. The leader's `LinuxCargoImages.advance` is synchronous, and the coordinator was idle, so no advance was running. Either Frida never emitted the child-added events, or its in-process injector stalled mid-injection. The routing code has no silent drop for a live process.
 - `618f12ef9a` adds each process's and thread's `TracerPid` to the report. `41765110534` (rung 1, ARM) runs with it, in parallel with `41764563038`.
 
+### x64 rung 1 `41756658900` (2026-11-04): slow but progressing, the same stop shape
+
+- After attempt 13 (02:38:08Z), the build script ran `configure` with no log output until the watchdog stopped it at 03:53Z. Over the 60 minutes, PIDs advanced from about 43208 to 57736, through `config.status`. That is about four processes a second, so the run was slow, not deadlocked.
+- In the last report, the `config.status` subshell 58666 is ptrace-stopped after a page fault. Its child 58691 is ptrace-stopped just after `execve` of `sed`. That is the same shape as ARM's held pair. In the scheduler JVM, `jhsdb --mixed` shows every Frida thread idle in `ppoll` (`gdbus`, `glib_worker`, `run_main_loop`), and the coordinator asleep in its 10 ms idle. Every poll on the hold path is 10 ms or less, so the about 0.25 s per process is work done per held image (Frida session attach and script load), not a timer.
+- Excluded: the tracer's `waitpid(-1)` cannot steal Frida's ptrace stops, because `WAIT_OWNED` includes `__WNOTHREAD` and so collects only the calling thread's own tracees.
+
 ### Incremental package ladder (user directive, 2026-11-04)
 
 - Instead of rerunning the whole release to test the scheduler, build a small package set first. Then widen it step by step, saving each rung to the cache, until the full build passes end to end.
