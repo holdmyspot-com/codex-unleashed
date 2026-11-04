@@ -7,7 +7,7 @@
  *
  * Wire: 4-byte big-endian payload length, then NUL-terminated fields; protocol version 1.
  * - Client: "hello" version pid start; "blocked" wait thread bytes errno; "granted" wait unknown|accepted|duplicate;
- *   "transfer" sequence read|write [byte]; "failure" sequence cause; "exec-static" path.
+ *   "transfer" sequence read|write [byte]; "failure" sequence read|write cause; "exhausted"; "exec-static" path.
  * - Server: "welcome" installation; "grant" wait; "token" sequence [byte]; "adopt".
  * The start is field 22 of /proc/<pid>/stat. Numbers are canonical unsigned decimals.
  *
@@ -509,29 +509,39 @@ static void on_leave(GumInvocationContext *context, gpointer user_data)
 }
 
 /** Reports a jobserver failure and parks the calling thread without native I/O. The mutex must not be held. */
-static void park_transfer(uint64_t sequence, const char *cause)
+static void park_transfer(uint64_t sequence, bool read, const char *cause)
 {
     ensure_connected();
     pthread_mutex_lock(&hook.mutex);
     int socket = hook.socket;
     pthread_mutex_unlock(&hook.mutex);
     char sequence_text[21];
-    const char *failure[] = { "failure", decimal(sequence, sequence_text), cause };
-    send_frame(socket, failure, 3);
+    const char *failure[] = { "failure", decimal(sequence, sequence_text), read ? "read" : "write", cause };
+    send_frame(socket, failure, 4);
     pthread_mutex_lock(&hook.mutex);
     fatal_locked(TRANSFER_REJECTED);
 }
 
-/**
- * Classifies a descriptor: 1 for the jobserver FIFO, 0 for another file, or -1 when its type or inode is unreadable.
- */
+/** A descriptor that is the jobserver FIFO. */
+#define DESCRIPTOR_FIFO 1
+/** A descriptor that names another file, or none. */
+#define DESCRIPTOR_OTHER 0
+/** A descriptor whose statx failed. */
+#define DESCRIPTOR_STATX_FAILED (-1)
+/** A descriptor whose type statx did not report. */
+#define DESCRIPTOR_TYPE_UNAVAILABLE (-2)
+/** A FIFO whose inode statx did not report. */
+#define DESCRIPTOR_INODE_UNAVAILABLE (-3)
+
+/** Classifies a descriptor as one of the DESCRIPTOR_ values. */
 static int classify_descriptor(int descriptor)
 {
     struct statx metadata;
-    if (statx(descriptor, "", AT_EMPTY_PATH, STATX_TYPE | STATX_INO, &metadata) != 0) return errno == EBADF ? 0 : -1;
-    if ((metadata.stx_mask & STATX_TYPE) == 0) return -1;
-    if (!S_ISFIFO(metadata.stx_mode)) return 0;
-    if ((metadata.stx_mask & STATX_INO) == 0) return -1;
+    if (statx(descriptor, "", AT_EMPTY_PATH, STATX_TYPE | STATX_INO, &metadata) != 0)
+        return errno == EBADF ? DESCRIPTOR_OTHER : DESCRIPTOR_STATX_FAILED;
+    if ((metadata.stx_mask & STATX_TYPE) == 0) return DESCRIPTOR_TYPE_UNAVAILABLE;
+    if (!S_ISFIFO(metadata.stx_mode)) return DESCRIPTOR_OTHER;
+    if ((metadata.stx_mask & STATX_INO) == 0) return DESCRIPTOR_INODE_UNAVAILABLE;
     return metadata.stx_dev_major == fifo_major && metadata.stx_dev_minor == fifo_minor &&
         metadata.stx_ino == fifo_inode ? 1 : 0;
 }
@@ -552,18 +562,27 @@ static void on_transfer_enter(GumInvocationContext *context, gpointer user_data)
     if (count == 0) return;
     int kind = classify_descriptor(descriptor);
     context->system_error = error;
-    if (kind == 0) return;
+    if (kind == DESCRIPTOR_OTHER) return;
 
     ensure_connected();
     pthread_mutex_lock(&hook.mutex);
     if (hook.fault != NO_FAULT) fatal_locked(hook.fault);
-    if (hook.sequence == UINT64_MAX / 2) fatal_locked(TRANSFER_EXHAUSTED);
+    if (hook.sequence == UINT64_MAX / 2) {
+        int socket = hook.socket;
+        pthread_mutex_unlock(&hook.mutex);
+        const char *exhausted[] = { "exhausted" };
+        send_frame(socket, exhausted, 1);
+        pthread_mutex_lock(&hook.mutex);
+        fatal_locked(TRANSFER_EXHAUSTED);
+    }
     uint64_t sequence = ++hook.sequence;
     pthread_mutex_unlock(&hook.mutex);
-    if (kind < 0) park_transfer(sequence, "Descriptor type or inode is unavailable");
-    if (count != 1) park_transfer(sequence, "Jobserver transfer count differs from one");
-
     bool read = user_data != NULL;
+    if (kind == DESCRIPTOR_STATX_FAILED) park_transfer(sequence, read, "Descriptor statx failed");
+    if (kind == DESCRIPTOR_TYPE_UNAVAILABLE) park_transfer(sequence, read, "Descriptor type is unavailable");
+    if (kind == DESCRIPTOR_INODE_UNAVAILABLE) park_transfer(sequence, read, "FIFO inode is unavailable");
+    if (count != 1) park_transfer(sequence, read, "Jobserver transfer count differs from one");
+
     pthread_mutex_lock(&hook.mutex);
     struct transfer *transfer = NULL;
     for (int index = 0; index < TRANSFER_COUNT && transfer == NULL; ++index)

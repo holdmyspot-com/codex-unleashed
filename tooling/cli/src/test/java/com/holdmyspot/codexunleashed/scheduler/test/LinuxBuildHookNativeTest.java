@@ -94,6 +94,12 @@ public final class LinuxBuildHookNativeTest
 		    if (waitpid(child, &status, 0) != child || !WIFEXITED(status)) return 13;
 		    return WEXITSTATUS(status);
 		  }
+		  if (strcmp(argv[1], "token-pair") == 0) {
+		    int fifo = open(argv[2], O_RDWR);
+		    if (fifo < 0) return 7;
+		    char pair[2];
+		    return read(fifo, pair, 2) < 0 ? 8 : 9;
+		  }
 		  if (strcmp(argv[1], "token") == 0) {
 		    int fifo = open(argv[2], O_RDWR);
 		    if (fifo < 0) return 7;
@@ -303,6 +309,40 @@ public final class LinuxBuildHookNativeTest
 				// Had the write reached the FIFO, the read would have returned x without a transfer.
 				requireThat(readAll(program), "output").isEqualTo("wrote 1\nread 1 A\n");
 				requireThat(program.waitFor(), "exitValue").isEqualTo(0);
+			}
+			finally
+			{
+				program.destroyForcibly();
+			}
+		}
+	}
+
+	/**
+	 * A jobserver transfer of more than one byte is reported with its operation and the cause that the Frida token
+	 * script reports, and the caller parks without native I/O.
+	 * @throws IOException          if the fixture cannot be built or run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = TEST_TIMEOUT_MILLIS)
+	public void reportsMultibyteTransfer() throws IOException, InterruptedException
+	{
+		try (Installation installation = Installation.create())
+		{
+			Path fifo = installation.directory().resolve("jobserver");
+			Process mkfifo = new ProcessBuilder("mkfifo", fifo.toString()).inheritIO().start();
+			requireThat(mkfifo.waitFor(), "mkfifo").isEqualTo(0);
+			Process stat = new ProcessBuilder("stat", "-c", "%Hd:%Ld:%i", fifo.toString()).start();
+			String identity = new String(stat.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
+			requireThat(stat.waitFor(), "stat").isEqualTo(0);
+
+			Process program = installation.startWithFifo(identity, "token-pair", fifo.toString());
+			try (SocketChannel connection = installation.accept())
+			{
+				receive(connection);
+				send(connection, "welcome", "1");
+				requireThat(receive(connection), "failure").isEqualTo(List.of("failure", "1", "read",
+					"Jobserver transfer count differs from one"));
+				requireThat(program.isAlive(), "parked").isTrue();
 			}
 			finally
 			{
