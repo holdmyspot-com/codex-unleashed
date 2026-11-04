@@ -24,7 +24,7 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 | Linux x64 release build | Run `41743639583` (`cache=true`, `scheduler=true`), commit `a7d420154f` | Stopped by the watchdog at 02:31Z; see "x64 full run on `a7d420154f`" below. |
 | Linux ARM release build | Run `41743643884`, same commit and inputs | Stopped by the watchdog at 01:40Z; see "ARM full run on `a7d420154f`" below. |
 | Rung 1: `tikv-jemalloc-sys` only, x64 | Run `41756658900` (`packages=tikv-jemalloc-sys`, `cache=true`, `scheduler=true`), commit `40abf6632e` | Dispatched 2026-11-04T01:49Z, replacing the queued `41750107254` on the older commit; queued behind `41743639583` in the x64 concurrency group. It stops before the release checks by design; on success, dispatch rung 2. |
-| Rung 1, ARM | Run `41752873160`, same inputs | Dispatched 2026-11-04T01:20Z; queued behind `41743643884`. |
+| Rung 1, ARM | Run `41764563038`, same inputs, commit `b047a3cc4e` | Dispatched 2026-11-04T03:05Z to collect native stacks. The earlier `41752873160` deadlocked; see below. |
 
 ### ARM full run on `a7d420154f` (2026-11-04): the scheduler failed, then hung in Frida teardown
 
@@ -41,6 +41,12 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 - Cause: every descendant of a build script is held at fork and exec until the controller authorizes it. `zig` is statically linked, so it also takes `LinuxAllocationTrace`'s path, which stops at every system call (`PTRACE_SYSCALL`) and round-trips each held image through `LinuxBazelTraceHelper.installHeld`/`resumeHeld`. Autoconf starts thousands of short processes, so the per-process cost turns minutes into hours. The 734c216162 x64 hang (pid 88669 under `tikv-jemalloc-sys`) is the same.
 - Not yet measured: how that 0.4 s splits between Frida child gating and injection, the held-image round trip, and syscall stops. The preload library (plan step 3, second half) removes the Frida share but not the ptrace share for static `zig`. Restricting the ptrace path's stops to `mmap` with a seccomp `SECCOMP_RET_TRACE` filter (`PTRACE_O_TRACESECCOMP` with `PTRACE_CONT`) would remove most syscall stops without changing any output.
 - Rung 1 (`tikv-jemalloc-sys` alone) reproduces it in isolation and is the measurement target.
+
+### ARM rung 1 `41752873160` (2026-11-04): a fork parent and child held forever
+
+- Building only `tikv-jemalloc-sys`, attempt 13 finished at 01:45:58Z. Then nothing for 75 minutes, until the watchdog stopped the run at 03:00Z.
+- Reports 1 (02:00Z) and 5 (03:00Z) are identical. The configure subshell bash 34501 and its child 34513 (`env bash .../zigcc -c ...`, the zig C compiler wrapper) are both in a ptrace stop (`t`). The scheduler's coordinator is idle in its wait loop, and no `LinuxAllocationTrace` thread exists. So the processes are held by Frida's child gating in the scheduler JVM, and no controller ever resumes them. This is a deadlock, unlike x64's slow progress.
+- The JVM's Frida threads are again beyond the old 16-thread limit. `41764563038` reruns it with the watchdog from `40abf6632e` (all threads, `jhsdb jstack --mixed`), so the next report should show where the child-added delivery stopped: `LinuxFridaDevice.copy` → `AllocationHooks.Routing.route` → the owner's delivery queue → resume.
 
 ### Incremental package ladder (user directive, 2026-11-04)
 
