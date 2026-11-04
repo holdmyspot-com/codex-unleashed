@@ -7,7 +7,9 @@
 # RELEASE_PACKAGES optionally names whitespace-separated Cargo package specifications. When set, one Cargo build of
 # exactly those packages replaces the release stages and no release stage is checkpointed, so a scheduler change can
 # be checked on a few crates before the whole build. Each entry must be a plain package specification. The build is
-# verbose so that a failing compilation's log records its exact compiler command line.
+# verbose so that a failing compilation's log records its exact compiler command line. When it fails,
+# package-libraries.txt in baseline-evidence lists every library in a deps directory as "size modified path", sorted by
+# path with UTC modification times, so a library that a dependent could not load can be checked afterwards.
 set -euo pipefail
 
 : "${TARGET:?Set the release target}"
@@ -68,7 +70,22 @@ if [[ -n "${RELEASE_PACKAGES+set}" ]]; then
     selection+=(-p "$package")
   done
   started=$SECONDS
-  compile build --target "$TARGET" --release --timings --verbose "${selection[@]}" 2>&1 | tee "$evidence/cargo-build-packages.log"
+  status=0
+  compile build --target "$TARGET" --release --timings --verbose "${selection[@]}" 2>&1 |
+    tee "$evidence/cargo-build-packages.log" || status=$?
+  if (( status != 0 )); then
+    python3 -I - "$CARGO_TARGET_DIR" > "$evidence/package-libraries.txt" <<'LIST'
+import datetime, pathlib, sys
+for path in sorted(pathlib.Path(sys.argv[1]).rglob("lib*")):
+    if path.parent.name != "deps" or not path.is_file():
+        continue
+    metadata = path.stat()
+    seconds, nanoseconds = divmod(metadata.st_mtime_ns, 1_000_000_000)
+    moment = datetime.datetime.fromtimestamp(seconds, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    print(f"{metadata.st_size} {moment}.{nanoseconds:09d}Z {path}")
+LIST
+    exit "$status"
+  fi
   printf 'packages=%s build_seconds=%s\n' "${packages[*]}" "$((SECONDS-started))" | tee -a "$evidence/build-stage-timings.log"
   exit 0
 fi

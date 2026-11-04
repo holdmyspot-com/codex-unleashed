@@ -13,14 +13,17 @@ import unittest
 
 class ReleaseStagesTest(unittest.TestCase):
     """Check platform-specific release command ordering, checkpoint failures and reuse of real Cargo outputs."""
-    def run_build(self, target, fail_binary="", fail_checkpoint="", use_scheduler=False, packages=None):
+    def run_build(self, target, fail_binary="", fail_checkpoint="", use_scheduler=False, packages=None,
+                  fail_packages=False):
         """Run the release script with isolated Cargo and checkpoint fixture processes.
 
         target selects platform-specific binaries. fail_binary and fail_checkpoint
         select fixture operations that exit 37 and 43 respectively; empty strings
         disable injected failures. use_scheduler selects a fixture adapter that
-        records and forwards each compilation unchanged. packages, when not None, sets RELEASE_PACKAGES. Return the process result and ordered build/
-        checkpoint events, and remove the owned fixture after reading its events."""
+        records and forwards each compilation unchanged. packages, when not None, sets RELEASE_PACKAGES. fail_packages
+        makes a package build leave an empty and a nonempty library in deps and exit 37. Return the process result and
+        ordered build/checkpoint events, keep the package library listing, if any, in self.package_libraries, and remove
+        the owned fixture after reading them."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             programs = root / "bin"
@@ -37,6 +40,13 @@ binary = arguments[arguments.index('--bin') + 1] if '--bin' in arguments else No
 with open(os.environ['EVENTS'], 'a') as log:
     log.write(json.dumps(['build', arguments]) + '\\n')
 if binary == os.environ['FAIL_BINARY']:
+    sys.exit(37)
+if os.environ['FAIL_PACKAGES'] and '-p' in arguments:
+    deps = pathlib.Path(os.environ['CARGO_TARGET_DIR']) / os.environ['TARGET'] / 'release' / 'deps'
+    deps.mkdir(parents=True, exist_ok=True)
+    (deps / 'libcodex_features-1.rmeta').write_bytes(b'')
+    (deps / 'libcodex_features-1.rlib').write_bytes(b'12345')
+    (deps / 'codex_features-1.d').write_bytes(b'ignored')
     sys.exit(37)
 if binary == 'bwrap':
     destination = pathlib.Path(os.environ['CARGO_TARGET_DIR']) / os.environ['TARGET'] / 'release' / binary
@@ -73,6 +83,7 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
                                TARGET=target, CARGO_TARGET_DIR=str(root / "target"),
                                RUNNER_TEMP=str(root), EVENTS=str(events),
                                FAIL_BINARY=fail_binary, FAIL_CHECKPOINT=fail_checkpoint,
+                               FAIL_PACKAGES="1" if fail_packages else "",
                                RELEASE_CHECKPOINT_COMMAND=checkpoint.as_posix())
             environment.pop("RELEASE_CARGO_COMMAND", None)
             environment.pop("RELEASE_PACKAGES", None)
@@ -86,6 +97,8 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
             if packages is None:
                 self.assertTrue(events.exists(), result.stdout + result.stderr)
             recorded = [json.loads(line) for line in events.read_text().splitlines()] if events.exists() else []
+            listing = root / "baseline-evidence" / "package-libraries.txt"
+            self.package_libraries = listing.read_text() if listing.exists() else None
             return result, recorded
 
     def test_each_platform_checkpoints_each_executable_once(self):
@@ -156,6 +169,27 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
         arguments = ["build", "--target", "x86_64-apple-darwin", "--release", "--timings", "--verbose",
                      "-p", "tikv-jemalloc-sys", "-p", "aws-lc-sys@0.30.0"]
         self.assertEqual(events, [["schedule", arguments], ["build", arguments]])
+
+    def test_failed_package_build_records_library_sizes(self):
+        """
+        A failed package build keeps Cargo's status and records each library in deps with its size, so an empty
+        library that a dependent could not load shows in the evidence.
+        """
+        result, events = self.run_build("x86_64-apple-darwin", use_scheduler=True, packages="codex-config",
+                                        fail_packages=True)
+        self.assertEqual(result.returncode, 37, result.stderr)
+        self.assertIsNotNone(self.package_libraries, result.stderr)
+        rows = [line.split(" ", 2) for line in self.package_libraries.splitlines()]
+        self.assertEqual([(size, Path(path).name) for size, _, path in rows],
+                         [("5", "libcodex_features-1.rlib"), ("0", "libcodex_features-1.rmeta")])
+        for _, modified, _ in rows:
+            self.assertRegex(modified, r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{9}Z$")
+
+    def test_successful_package_build_records_no_library_listing(self):
+        """A package build that succeeds writes no library listing."""
+        result, events = self.run_build("x86_64-apple-darwin", use_scheduler=True, packages="codex-config")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNone(self.package_libraries)
 
     def test_package_selection_rejects_option_or_shell_text(self):
         """A package entry that is not a plain package specification fails with status 2 before any compilation."""
