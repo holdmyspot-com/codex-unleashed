@@ -40,9 +40,11 @@ public final class LinuxBuildHookNativeTest
 	 * The program under the hook. With no argument it prints {@code main} and exits 0. With {@code deny} it limits its
 	 * address space to 1 GiB, maps 768 MiB of ballast that SIGUSR1 unmaps, and allocates 512 MiB, which is denied until
 	 * the ballast is gone; it prints {@code allocated} and exits 0. With {@code fork} it does the same, then forks a
-	 * child that allocates 900 MiB, which is denied, and waits for that child.
+	 * child that allocates 900 MiB, which is denied, and waits for that child. With {@code token <fifo>} it opens the
+	 * FIFO, writes the byte {@code x} to it and prints the result, then reads one byte from it and prints that byte.
 	 */
 	private static final String PROGRAM_SOURCE = """
+		#include <fcntl.h>
 		#include <signal.h>
 		#include <stdio.h>
 		#include <stdlib.h>
@@ -56,6 +58,15 @@ public final class LinuxBuildHookNativeTest
 		static void release(int signal_number) { (void) signal_number; munmap(ballast, ballast_size); }
 		int main(int argc, char **argv) {
 		  if (argc < 2) { puts("main"); return 0; }
+		  if (strcmp(argv[1], "token") == 0) {
+		    int fifo = open(argv[2], O_RDWR);
+		    if (fifo < 0) return 7;
+		    char byte = 'x';
+		    printf("wrote %zd\\n", write(fifo, &byte, 1));
+		    ssize_t got = read(fifo, &byte, 1);
+		    printf("read %zd %c\\n", got, byte);
+		    return 0;
+		  }
 		  struct rlimit limit = { 1UL << 30, 1UL << 30 };
 		  if (setrlimit(RLIMIT_AS, &limit) != 0) return 2;
 		  signal(SIGUSR1, release);
@@ -214,6 +225,45 @@ public final class LinuxBuildHookNativeTest
 			finally
 			{
 				program.descendants().forEach(ProcessHandle::destroyForcibly);
+				program.destroyForcibly();
+			}
+		}
+	}
+
+	/**
+	 * A one-byte write and read of the jobserver FIFO wait for the server's token and move no byte through the FIFO;
+	 * the read returns the token's byte. Standard output, also a pipe, is not mediated.
+	 * @throws IOException          if the fixture cannot be built or run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = TEST_TIMEOUT_MILLIS)
+	public void mediatesJobserverTokens() throws IOException, InterruptedException
+	{
+		try (Installation installation = Installation.create())
+		{
+			Path fifo = installation.directory().resolve("jobserver");
+			Process mkfifo = new ProcessBuilder("mkfifo", fifo.toString()).inheritIO().start();
+			requireThat(mkfifo.waitFor(), "mkfifo").isEqualTo(0);
+			Process stat = new ProcessBuilder("stat", "-c", "%Hd:%Ld:%i", fifo.toString()).start();
+			String identity = new String(stat.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
+			requireThat(stat.waitFor(), "stat").isEqualTo(0);
+
+			Process program = installation.startWithFifo(identity, "token", fifo.toString());
+			try (SocketChannel connection = installation.accept())
+			{
+				receive(connection);
+				send(connection, "welcome", "1");
+				requireThat(receive(connection), "write").isEqualTo(List.of("transfer", "1", "write",
+					Integer.toString('x')));
+				send(connection, "token", "1");
+				requireThat(receive(connection), "read").isEqualTo(List.of("transfer", "2", "read"));
+				send(connection, "token", "2", Integer.toString('A'));
+				// Had the write reached the FIFO, the read would have returned x without a transfer.
+				requireThat(readAll(program), "output").isEqualTo("wrote 1\nread 1 A\n");
+				requireThat(program.waitFor(), "exitValue").isEqualTo(0);
+			}
+			finally
+			{
 				program.destroyForcibly();
 			}
 		}
@@ -406,11 +456,25 @@ public final class LinuxBuildHookNativeTest
 		 */
 		Process start(String... arguments) throws IOException
 		{
+			return startWithFifo(null, arguments);
+		}
+
+		/**
+		 * Starts the program with the library preloaded.
+		 * @param fifo      the jobserver FIFO as {@code major:minor:inode}, or {@code null} for none
+		 * @param arguments the program's arguments
+		 * @return the process
+		 * @throws IOException if it cannot start
+		 */
+		Process startWithFifo(String fifo, String... arguments) throws IOException
+		{
 			List<String> command = new ArrayList<>(List.of(program.toString()));
 			command.addAll(List.of(arguments));
 			ProcessBuilder builder = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.INHERIT);
 			builder.environment().put("LD_PRELOAD", library.toString());
 			builder.environment().put("CODEX_BUILD_HOOK", socket.toString());
+			if (fifo != null)
+				builder.environment().put("CODEX_BUILD_HOOK_FIFO", fifo);
 			return builder.start();
 		}
 

@@ -6,8 +6,9 @@
  * unhooked. Allocations made by ld.so, and by constructors that run before this one, are not covered.
  *
  * Wire: 4-byte big-endian payload length, then NUL-terminated fields; protocol version 1.
- * - Client: "hello" version pid start; "blocked" wait thread bytes errno; "granted" wait unknown|accepted|duplicate.
- * - Server: "welcome" installation; "grant" wait.
+ * - Client: "hello" version pid start; "blocked" wait thread bytes errno; "granted" wait unknown|accepted|duplicate;
+ *   "transfer" sequence read|write [byte]; "failure" sequence cause.
+ * - Server: "welcome" installation; "grant" wait; "token" sequence [byte].
  * The start is field 22 of /proc/<pid>/stat. Numbers are canonical unsigned decimals.
  *
  * Allocation waits keep linux-allocation-hook.js's semantics: only a positive-size malloc that returns NULL with
@@ -15,6 +16,12 @@
  * original malloc once, and a retry that is denied again waits under a new number. A fault (lost connection,
  * malformed frame, exhausted slots or numbers) is sticky and parks every waiting and later denied call; the server
  * ends the attempt.
+ *
+ * Token mediation keeps linux-cargo-tokens.js's semantics. When CODEX_BUILD_HOOK_FIFO names the jobserver FIFO as
+ * major:minor:inode, a one-byte read or write on a descriptor of that FIFO is sent as "transfer" and blocks until its
+ * "token"; a read returns the token's byte. The native call then runs with a count of zero and returns 1. A transfer of
+ * any other count, or a descriptor whose type or inode cannot be read, reports "failure" and parks without native I/O.
+ * Zero-byte calls and other descriptors keep their native behavior.
  *
  * Fork: the child keeps the patched malloc but resets the registry and drops the inherited connection. It connects as
  * a new installation the first time it needs the server, so a child that only execs never connects.
@@ -35,6 +42,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -51,9 +59,24 @@
 #define MAX_FIELDS 8
 /** Simultaneous denied calls the registry can hold. */
 #define SLOT_COUNT 8
+/** Environment variable naming the jobserver FIFO as major:minor:inode. */
+#define FIFO_ENV "CODEX_BUILD_HOOK_FIFO"
+/** Simultaneous mediated jobserver transfers. */
+#define TRANSFER_COUNT 8
 
 enum phase { FREE, WAITING, PERMITTED, RETRYING };
-enum fault { NO_FAULT, SLOT_EXHAUSTED, WAIT_EXHAUSTED, CONNECTION_LOST, MALFORMED_FRAME, NO_INVOCATION_DATA };
+enum fault { NO_FAULT, SLOT_EXHAUSTED, WAIT_EXHAUSTED, CONNECTION_LOST, MALFORMED_FRAME, NO_INVOCATION_DATA,
+    TRANSFER_EXHAUSTED, TRANSFER_REJECTED };
+
+/** One jobserver transfer waiting for its token. */
+struct transfer {
+    pthread_cond_t condition;
+    /** Zero while free. */
+    uint64_t sequence;
+    bool read;
+    bool answered;
+    unsigned char byte;
+};
 
 /** One denied call waiting for its grant. */
 struct slot {
@@ -75,13 +98,22 @@ static struct {
     pid_t owner;
     uint64_t installation;
     uint64_t issued;
+    /** Last transfer sequence issued by this installation. */
+    uint64_t sequence;
     enum fault fault;
     struct slot slots[SLOT_COUNT];
+    struct transfer transfers[TRANSFER_COUNT];
 } hook = { .mutex = PTHREAD_MUTEX_INITIALIZER, .fatal = PTHREAD_COND_INITIALIZER,
     .sending = PTHREAD_MUTEX_INITIALIZER, .socket = -1 };
 
 /** Arguments that on_enter copies for on_leave. */
 struct call { size_t bytes; };
+/** Whether on_transfer_enter mediated the call, and the errno to restore. */
+struct mediated { bool done; int error; };
+/** The jobserver FIFO's identity, when CODEX_BUILD_HOOK_FIFO is set. */
+static bool fifo_configured;
+static uint32_t fifo_major, fifo_minor;
+static uint64_t fifo_inode;
 
 static void *(*original_malloc)(size_t);
 
@@ -115,6 +147,7 @@ static void fault_locked(enum fault fault)
 {
     if (hook.fault == NO_FAULT) hook.fault = fault;
     for (int index = 0; index < SLOT_COUNT; ++index) pthread_cond_signal(&hook.slots[index].condition);
+    for (int index = 0; index < TRANSFER_COUNT; ++index) pthread_cond_signal(&hook.transfers[index].condition);
 }
 
 /** Formats an unsigned decimal into the given buffer, which must hold 21 bytes. */
@@ -253,6 +286,31 @@ static bool apply_grant(int socket, const char *text)
     return send_frame(socket, fields, 3) == 0;
 }
 
+/**
+ * Delivers one token to its waiting transfer. A read needs a byte and a write must not carry one.
+ * Returns false for an unknown sequence or a token of the wrong shape.
+ */
+static bool apply_token(const char *sequence_text, const char *byte_text)
+{
+    uint64_t sequence, byte = 0;
+    if (!parse_decimal(sequence_text, &sequence) || sequence == 0) return false;
+    if (byte_text != NULL && (!parse_decimal(byte_text, &byte) || byte > 255)) return false;
+    bool applied = false;
+    pthread_mutex_lock(&hook.mutex);
+    for (int index = 0; index < TRANSFER_COUNT; ++index) {
+        struct transfer *transfer = &hook.transfers[index];
+        if (transfer->sequence != sequence || transfer->answered) continue;
+        if (transfer->read != (byte_text != NULL)) break;
+        transfer->byte = (unsigned char) byte;
+        transfer->answered = true;
+        pthread_cond_signal(&transfer->condition);
+        applied = true;
+        break;
+    }
+    pthread_mutex_unlock(&hook.mutex);
+    return applied;
+}
+
 /** Serves one connection until it fails, then faults the registry so that every waiter parks. */
 static void *read_server(void *argument)
 {
@@ -263,8 +321,14 @@ static void *read_server(void *argument)
     for (;;) {
         int count = receive_frame(socket, payload, fields);
         if (count == -1) { fault = CONNECTION_LOST; break; }
-        if (count < 0 || count != 2 || strcmp(fields[0], "grant") != 0) { fault = MALFORMED_FRAME; break; }
-        if (!apply_grant(socket, fields[1])) { fault = MALFORMED_FRAME; break; }
+        if (count < 0) { fault = MALFORMED_FRAME; break; }
+        if (count == 2 && strcmp(fields[0], "grant") == 0) {
+            if (!apply_grant(socket, fields[1])) { fault = MALFORMED_FRAME; break; }
+        }
+        else if ((count == 2 || count == 3) && strcmp(fields[0], "token") == 0) {
+            if (!apply_token(fields[1], count == 3 ? fields[2] : NULL)) { fault = TRANSFER_REJECTED; break; }
+        }
+        else { fault = MALFORMED_FRAME; break; }
     }
     pthread_mutex_lock(&hook.mutex);
     fault_locked(fault);
@@ -326,6 +390,20 @@ static const char *connect_server(void)
     return NULL;
 }
 
+/** Connects a forked child as its own installation the first time it needs the server; parks on failure. */
+static void ensure_connected(void)
+{
+    pthread_mutex_lock(&hook.mutex);
+    bool connected = hook.owner == getpid();
+    pthread_mutex_unlock(&hook.mutex);
+    if (connected) return;
+    const char *problem = connect_server();
+    if (problem == NULL) return;
+    report(problem);
+    pthread_mutex_lock(&hook.mutex);
+    fatal_locked(CONNECTION_LOST);
+}
+
 /** Copies the requested size before malloc runs. */
 static void on_enter(GumInvocationContext *context, gpointer user_data)
 {
@@ -354,18 +432,7 @@ static void on_leave(GumInvocationContext *context, gpointer user_data)
     }
     if (result != NULL || call->bytes == 0 || error != ENOMEM) return;
 
-    /* A forked child connects as its own installation on its first denial. */
-    pthread_mutex_lock(&hook.mutex);
-    bool connected = hook.owner == getpid();
-    pthread_mutex_unlock(&hook.mutex);
-    if (!connected) {
-        const char *problem = connect_server();
-        if (problem != NULL) {
-            report(problem);
-            pthread_mutex_lock(&hook.mutex);
-            fatal_locked(CONNECTION_LOST);
-        }
-    }
+    ensure_connected();
 
     pthread_mutex_lock(&hook.mutex);
     if (hook.fault != NO_FAULT) fatal_locked(hook.fault);
@@ -409,6 +476,134 @@ static void on_leave(GumInvocationContext *context, gpointer user_data)
     }
 }
 
+/** Reports a jobserver failure and parks the calling thread without native I/O. The mutex must not be held. */
+static void park_transfer(uint64_t sequence, const char *cause)
+{
+    ensure_connected();
+    pthread_mutex_lock(&hook.mutex);
+    int socket = hook.socket;
+    pthread_mutex_unlock(&hook.mutex);
+    char sequence_text[21];
+    const char *failure[] = { "failure", decimal(sequence, sequence_text), cause };
+    send_frame(socket, failure, 3);
+    pthread_mutex_lock(&hook.mutex);
+    fatal_locked(TRANSFER_REJECTED);
+}
+
+/**
+ * Classifies a descriptor: 1 for the jobserver FIFO, 0 for another file, or -1 when its type or inode is unreadable.
+ */
+static int classify_descriptor(int descriptor)
+{
+    struct statx metadata;
+    if (statx(descriptor, "", AT_EMPTY_PATH, STATX_TYPE | STATX_INO, &metadata) != 0) return errno == EBADF ? 0 : -1;
+    if ((metadata.stx_mask & STATX_TYPE) == 0) return -1;
+    if (!S_ISFIFO(metadata.stx_mode)) return 0;
+    if ((metadata.stx_mask & STATX_INO) == 0) return -1;
+    return metadata.stx_dev_major == fifo_major && metadata.stx_dev_minor == fifo_minor &&
+        metadata.stx_ino == fifo_inode ? 1 : 0;
+}
+
+/** Mediates a one-byte read or write of the jobserver FIFO; the listener's user data is non-NULL for read. */
+static void on_transfer_enter(GumInvocationContext *context, gpointer user_data)
+{
+    struct mediated *mediated = GUM_IC_GET_INVOCATION_DATA(context, struct mediated);
+    if (mediated == NULL) {
+        pthread_mutex_lock(&hook.mutex);
+        fatal_locked(NO_INVOCATION_DATA);
+    }
+    mediated->done = false;
+    int error = context->system_error;
+    int descriptor = (int) (intptr_t) gum_invocation_context_get_nth_argument(context, 0);
+    unsigned char *buffer = gum_invocation_context_get_nth_argument(context, 1);
+    size_t count = (size_t) gum_invocation_context_get_nth_argument(context, 2);
+    if (count == 0) return;
+    int kind = classify_descriptor(descriptor);
+    context->system_error = error;
+    if (kind == 0) return;
+
+    ensure_connected();
+    pthread_mutex_lock(&hook.mutex);
+    if (hook.fault != NO_FAULT) fatal_locked(hook.fault);
+    if (hook.sequence == UINT64_MAX / 2) fatal_locked(TRANSFER_EXHAUSTED);
+    uint64_t sequence = ++hook.sequence;
+    pthread_mutex_unlock(&hook.mutex);
+    if (kind < 0) park_transfer(sequence, "Descriptor type or inode is unavailable");
+    if (count != 1) park_transfer(sequence, "Jobserver transfer count differs from one");
+
+    bool read = user_data != NULL;
+    pthread_mutex_lock(&hook.mutex);
+    struct transfer *transfer = NULL;
+    for (int index = 0; index < TRANSFER_COUNT && transfer == NULL; ++index)
+        if (hook.transfers[index].sequence == 0) transfer = &hook.transfers[index];
+    if (transfer == NULL) fatal_locked(TRANSFER_EXHAUSTED);
+    transfer->sequence = sequence;
+    transfer->read = read;
+    transfer->answered = false;
+    int socket = hook.socket;
+    pthread_mutex_unlock(&hook.mutex);
+
+    char sequence_text[21], byte_text[21];
+    const char *request[] = { "transfer", decimal(sequence, sequence_text), read ? "read" : "write",
+        read ? NULL : decimal(buffer[0], byte_text) };
+    int sent = send_frame(socket, request, read ? 3 : 4);
+    pthread_mutex_lock(&hook.mutex);
+    if (sent < 0) fatal_locked(CONNECTION_LOST);
+    while (!transfer->answered && hook.fault == NO_FAULT) pthread_cond_wait(&transfer->condition, &hook.mutex);
+    if (hook.fault != NO_FAULT) fatal_locked(hook.fault);
+    if (read) buffer[0] = transfer->byte;
+    transfer->sequence = 0;
+    pthread_mutex_unlock(&hook.mutex);
+
+    /* The native call still runs, transferring nothing. */
+    gum_invocation_context_replace_nth_argument(context, 2, GSIZE_TO_POINTER(0));
+    mediated->done = true;
+    mediated->error = error;
+    context->system_error = error;
+}
+
+/** Reports the mediated byte as transferred. */
+static void on_transfer_leave(GumInvocationContext *context, gpointer user_data)
+{
+    (void) user_data;
+    struct mediated *mediated = GUM_IC_GET_INVOCATION_DATA(context, struct mediated);
+    if (mediated == NULL || !mediated->done) return;
+    gum_invocation_context_replace_return_value(context, GSIZE_TO_POINTER(1));
+    context->system_error = mediated->error;
+}
+
+/**
+ * Parses CODEX_BUILD_HOOK_FIFO. Returns NULL, or a description of the failure.
+ */
+static const char *configure_fifo(void)
+{
+    const char *value = getenv(FIFO_ENV);
+    if (value == NULL) return NULL;
+    char copy[64];
+    if (strlen(value) >= sizeof copy) return FIFO_ENV " is too long";
+    strcpy(copy, value);
+    char *minor = strchr(copy, ':');
+    char *inode = minor == NULL ? NULL : strchr(minor + 1, ':');
+    if (inode == NULL) return FIFO_ENV " is not major:minor:inode";
+    *minor++ = '\0';
+    *inode++ = '\0';
+    uint64_t major_value, minor_value;
+    if (!parse_decimal(copy, &major_value) || !parse_decimal(minor, &minor_value) ||
+        !parse_decimal(inode, &fifo_inode) || major_value > UINT32_MAX || minor_value > UINT32_MAX)
+        return FIFO_ENV " is not major:minor:inode";
+    fifo_major = (uint32_t) major_value;
+    fifo_minor = (uint32_t) minor_value;
+    fifo_configured = true;
+    return NULL;
+}
+
+/** Attaches one listener to a global export. Returns false on failure. */
+static bool attach(GumInterceptor *interceptor, const char *name, GumInvocationListener *listener)
+{
+    gpointer target = GSIZE_TO_POINTER(gum_module_find_global_export_by_name(name));
+    return target != NULL && gum_interceptor_attach(interceptor, target, listener, NULL) == GUM_ATTACH_OK;
+}
+
 /** Gives a forked child a fresh registry; it reconnects on its first denial. */
 static void reset_child(void)
 {
@@ -420,7 +615,12 @@ static void reset_child(void)
     hook.owner = 0;
     hook.installation = 0;
     hook.issued = 0;
+    hook.sequence = 0;
     hook.fault = NO_FAULT;
+    for (int index = 0; index < TRANSFER_COUNT; ++index) {
+        pthread_cond_init(&hook.transfers[index].condition, NULL);
+        hook.transfers[index].sequence = 0;
+    }
     for (int index = 0; index < SLOT_COUNT; ++index) {
         pthread_cond_init(&hook.slots[index].condition, NULL);
         hook.slots[index].wait = 0;
@@ -444,7 +644,10 @@ static void unlock_after_fork(void)
 __attribute__((constructor)) static void install(void)
 {
     for (int index = 0; index < SLOT_COUNT; ++index) pthread_cond_init(&hook.slots[index].condition, NULL);
-    const char *problem = connect_server();
+    for (int index = 0; index < TRANSFER_COUNT; ++index) pthread_cond_init(&hook.transfers[index].condition, NULL);
+    const char *problem = configure_fifo();
+    if (problem != NULL) fail(problem);
+    problem = connect_server();
     if (problem != NULL) fail(problem);
     if (pthread_atfork(lock_for_fork, unlock_after_fork, reset_child) != 0) fail("cannot register the fork handlers");
 
@@ -455,7 +658,14 @@ __attribute__((constructor)) static void install(void)
     GumInterceptor *interceptor = gum_interceptor_obtain();
     GumInvocationListener *listener = gum_make_call_listener(on_enter, on_leave, NULL, NULL);
     gum_interceptor_begin_transaction(interceptor);
-    GumAttachReturn attached = gum_interceptor_attach(interceptor, GSIZE_TO_POINTER(original_malloc), listener, NULL);
+    bool attached = gum_interceptor_attach(interceptor, GSIZE_TO_POINTER(original_malloc), listener, NULL) ==
+        GUM_ATTACH_OK;
+    if (attached && fifo_configured) {
+        static int read_marker;
+        GumInvocationListener *reads = gum_make_call_listener(on_transfer_enter, on_transfer_leave, &read_marker, NULL);
+        GumInvocationListener *writes = gum_make_call_listener(on_transfer_enter, on_transfer_leave, NULL, NULL);
+        attached = attach(interceptor, "read", reads) && attach(interceptor, "write", writes);
+    }
     gum_interceptor_end_transaction(interceptor);
-    if (attached != GUM_ATTACH_OK) fail("cannot attach to malloc");
+    if (!attached) fail("cannot attach the hooks");
 }
