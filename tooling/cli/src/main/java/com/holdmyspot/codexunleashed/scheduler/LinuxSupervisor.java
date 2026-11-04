@@ -728,7 +728,7 @@ public final class LinuxSupervisor implements AutoCloseable
 			if (supervisor.waitFor(0, TimeUnit.NANOSECONDS) == false)
 			{
 				if (collectionStarted != null && (System.nanoTime() - collectionStarted) >= timeoutNanos)
-					throw new IOException("Supervisor collection exceeded its control timeout: " + scratch);
+					throw collectionTimeout();
 				return false;
 			}
 		}
@@ -1004,6 +1004,33 @@ public final class LinuxSupervisor implements AutoCloseable
 			String log = new String(input.readNBytes(8192), StandardCharsets.UTF_8);
 			if (log.isEmpty() == false)
 				failure.addSuppressed(new IOException("Supervisor diagnostic: " + log));
+		}
+		catch (IOException diagnostic) { failure.addSuppressed(diagnostic); }
+		return failure;
+	}
+
+	/**
+	 * Creates a failure for a supervisor that outlived its collection timeout. It names the supervisor's children,
+	 * whose states and tracers show what collection is waiting for, and carries the end of the supervisor's log.
+	 *
+	 * @return the collection failure
+	 */
+	private IOException collectionTimeout()
+	{
+		IOException failure = new IOException("Supervisor collection exceeded its control timeout: " + scratch);
+		failure.addSuppressed(new IOException("Supervisor " + supervisor.pid() + " children:\n" +
+			LinuxProcessDiagnostics.children(supervisor.pid())));
+		Path log = scratch.resolve("supervisor.log");
+		try
+		{
+			long size = Files.size(log);
+			try (InputStream input = Files.newInputStream(log))
+			{
+				input.skipNBytes(Math.max(0, size - 8192));
+				String tail = new String(input.readNBytes(8192), StandardCharsets.UTF_8);
+				if (tail.isEmpty() == false)
+					failure.addSuppressed(new IOException("Supervisor diagnostic: " + tail));
+			}
 		}
 		catch (IOException diagnostic) { failure.addSuppressed(diagnostic); }
 		return failure;
