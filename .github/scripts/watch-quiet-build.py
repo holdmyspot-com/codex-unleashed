@@ -2,7 +2,7 @@
 
 The release build writes every stage's output under one evidence directory. When no file there changes for
 --first-report seconds, this writes a report of every user process to --report: its state, kernel wait channel,
-current system call and kernel stacks, plus a Java and a mixed Java and native thread dump of each Java process.
+current system call, tracer and kernel stacks, plus a Java and a mixed Java and native thread dump of each Java process.
 Zombies are listed with their name, since they have no command line. It repeats every --interval seconds
 while the build stays quiet, and once the build has been quiet for --stop-after seconds it terminates the command's
 process group and exits 124. Otherwise it exits with the command's own status.
@@ -32,11 +32,11 @@ def read(path):
 
 
 def status_fields(pid):
-    """Returns the State, PPid and Uid fields of one process."""
+    """Returns the State, PPid, TracerPid and Uid fields of one process."""
     fields = {}
     for line in read(f"/proc/{pid}/status").splitlines():
         key, _, value = line.partition(":")
-        if key in ("State", "PPid", "Uid"):
+        if key in ("State", "PPid", "TracerPid", "Uid"):
             fields[key] = value.strip()
     return fields
 
@@ -76,7 +76,9 @@ def dump(jcmd, out):
         uid = fields.get("Uid", "-1").split()[0]
         wchan = read(f"/proc/{pid}/wchan").strip() or "0"
         syscall = read(f"/proc/{pid}/syscall").split(" ")[0].strip()
-        out.write(f"pid={pid} ppid={fields.get('PPid', '?')} uid={uid} state={state} wchan={wchan} "
+        # The tracer names the process that must resume a tracee held in a ptrace stop.
+        out.write(f"pid={pid} ppid={fields.get('PPid', '?')} tracer={fields.get('TracerPid', '?')} uid={uid} "
+                  f"state={state} wchan={wchan} "
                   f"syscall={syscall} cmd={cmdline[:400]}\n")
     for pid in pids:
         fields = status_fields(pid)
@@ -90,11 +92,13 @@ def dump(jcmd, out):
             continue
         out.write(f"--- pid={pid} threads={len(tasks)} cmd={cmdline[:200]}\n")
         for index, task in enumerate(tasks):
-            state = status_fields(f"{pid}/task/{task}").get("State", "?").split(" ")[0]
+            task_fields = status_fields(f"{pid}/task/{task}")
+            state = task_fields.get("State", "?").split(" ")[0]
             if index >= TASK_STACK_LIMIT and state != "D" and not java:
                 continue
             comm = read(f"/proc/{pid}/task/{task}/comm").strip()
-            out.write(f"task={task} comm={comm} state={state} wchan={read(f'/proc/{pid}/task/{task}/wchan').strip()}\n")
+            out.write(f"task={task} comm={comm} state={state} tracer={task_fields.get('TracerPid', '?')} "
+                      f"wchan={read(f'/proc/{pid}/task/{task}/wchan').strip()}\n")
             out.write(read(f"/proc/{pid}/task/{task}/stack"))
         if jcmd and java:
             uid = int(fields.get("Uid", "-1").split()[0])

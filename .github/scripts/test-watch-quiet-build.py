@@ -48,6 +48,7 @@ class QuietBuildWatchTest(unittest.TestCase):
             self.assertRegex(text, rf"(?m)^pid={child} ")
             self.assertRegex(text, rf"(?m)^pid={child} .*state=S")
             self.assertRegex(text, rf"(?m)^pid={child} .*wchan=")
+            self.assertRegex(text, rf"(?m)^pid={child} .*tracer=0 ", "the child's tracer was not reported")
             zombie = next(line.removeprefix("quiet-zombie-pid=") for line in result.stdout.splitlines()
                 if line.startswith("quiet-zombie-pid="))
             self.assertRegex(text, rf"(?m)^pid={zombie} .*state=Z", "an exited, unreaped child was not reported")
