@@ -37,7 +37,7 @@ import java.util.concurrent.locks.LockSupport;
 public final class LinuxAllocationTrace
 {
 	/** Linux ptrace requests from linux/ptrace.h. */
-	private static final int PEEK = 1, POKE = 4, CONT = 7, GETREGS = 12, SYSCALL = 24,
+	private static final int PEEK = 1, POKE = 4, CONT = 7, GETREGS = 12, DETACH = 17, SYSCALL = 24,
 		GETEVENTMSG = 0x4201, SEIZE = 0x4206, INTERRUPT = 0x4207, GET_SYSCALL_INFO = 0x420e;
 	/** Trace syscall stops, descendants and exec; kernel kills tracees when their tracing thread exits. */
 	private static final long TRACE_OPTIONS = 0x10001f;
@@ -433,7 +433,8 @@ public final class LinuxAllocationTrace
 
     /** Owns native image handoffs and copied descendant events for one existing Cargo controller.
      * The caller authenticates every image before install and every continuation before resume, and supplies
-     * whole-workload zero before close. Dynamic images outside an acquired native tree remain Frida-owned.
+     * whole-workload zero before close. Unless the caller hands over every image, dynamic images outside an acquired
+     * native tree remain Frida-owned.
      */
     static final class Images
     {
@@ -463,14 +464,16 @@ public final class LinuxAllocationTrace
             if (timeout.isNegative() || timeout.isZero()) throw new IllegalArgumentException("Positive native image timeout required");
         }
 
-        /** Selects an existing native tree or transfers an authentic static exec gate.
+        /** Selects an existing native tree or transfers an authentic exec gate.
          * @param pid independently authenticated held process
          * @param birth independently authenticated current birth
          * @param release original Frida owner's single detach operation, preserving queued SIGSTOP
-         * @return true when the image is held by this sole native owner; false for an ordinary dynamic image
+         * @param everyImage whether a dynamic image is transferred too, instead of only a static one
+         * @return true when the image is held by this sole native owner; false for a dynamic image that stays with
+         *     Frida because {@code everyImage} is false
          * @throws IOException if executable selection or exact native handoff fails
          */
-        boolean install(long pid, long birth, GateRelease release) throws IOException
+        boolean install(long pid, long birth, GateRelease release, boolean everyImage) throws IOException
         {
             if (owners.containsKey(pid))
             {
@@ -481,7 +484,7 @@ public final class LinuxAllocationTrace
             try (java.nio.channels.FileChannel image = java.nio.channels.FileChannel.open(
                 Path.of("/proc", Long.toString(pid), "exe")))
             {
-                if (!LinuxBazelHelperMain.isStaticTraceImage(image)) return false;
+                if (!everyImage && !LinuxBazelHelperMain.isStaticTraceImage(image)) return false;
             }
             Session session;
             try { session = handoff(linker, new Identity(Math.toIntExact(pid), birth), release, timeout); }
@@ -521,6 +524,27 @@ public final class LinuxAllocationTrace
                 if (event == null || !event.task().equals(identity)) throw new IOException("Native image lacks its exact held transition");
                 session.releaseHeld(identity);
             }
+        }
+
+        /** Releases one independently authenticated held exec image untraced, once.
+         * Neither the image nor any process it later starts is traced by this owner afterward.
+         * @param pid authenticated process
+         * @param birth current independently checked birth
+         * @throws IOException if the image is not this owner's exact pending exec stop
+         */
+        void detach(long pid, long birth) throws IOException
+        {
+            Session session = owners.get(pid);
+            if (session == null) throw new IOException("Native image has no original owner");
+            Identity identity = new Identity(Math.toIntExact(pid), birth);
+            if (!Attempt.identify(identity.tid()).equals(identity)) throw new IOException("Native image birth changed before release");
+            Held event = pending.get(pid);
+            if (event == null || event.origin() != 1 || !event.task().equals(identity))
+                throw new IOException("Native image lacks its exact held exec");
+            pending.remove(pid);
+            owners.remove(pid);
+            identities.remove(pid);
+            session.detachHeld(identity);
         }
 
         /** Copies one native image stop after authenticating any original nonleader exec entry.
@@ -623,6 +647,8 @@ public final class LinuxAllocationTrace
         private final ConcurrentLinkedQueue<PreExec> preExec = new ConcurrentLinkedQueue<>();
         /** Exact image continuation capabilities posted by the host. */
         private final java.util.Set<Identity> imageReleases = ConcurrentHashMap.newKeySet();
+        /** Exact held images the host releases untraced. */
+        private final java.util.Set<Identity> imageDetaches = ConcurrentHashMap.newKeySet();
         /** Exact nonleader exec capabilities posted after independent host thread authentication. */
         private final java.util.Set<Identity> execReleases = ConcurrentHashMap.newKeySet();
         /** Authentic complete collection result, available only after native ownership ends. */
@@ -721,6 +747,14 @@ public final class LinuxAllocationTrace
          * @throws NullPointerException if identity is null
          */
         public void releaseHeld(Identity identity) throws IOException { check(); imageReleases.add(Objects.requireNonNull(identity)); }
+
+        /**
+         * Releases one held image untraced, only after the host independently rechecks its identity and policy.
+         * @param identity exact native held process ID and birth
+         * @throws IOException if the native owner failed
+         * @throws NullPointerException if identity is null
+         */
+        public void detachHeld(Identity identity) throws IOException { check(); imageDetaches.add(Objects.requireNonNull(identity)); }
 
         /**
          * Authorizes a nonleader exec only after the host observes its original thread-group membership and birth.
@@ -1473,9 +1507,17 @@ public final class LinuxAllocationTrace
             if (session == null) return;
             for (Map.Entry<Integer, Identity> held : List.copyOf(heldImages.entrySet()))
             {
-                if (!session.imageReleases.remove(held.getValue())) continue;
+                boolean detach = session.imageDetaches.remove(held.getValue());
+                if (!detach && !session.imageReleases.remove(held.getValue())) continue;
                 if (!identify(held.getKey()).equals(held.getValue())) throw new IOException("Held image birth changed before continuation");
-                trace(SYSCALL, held.getKey(), 0, MemorySegment.NULL);
+                if (detach)
+                {
+                    // Detaching also stops following its forks, so its later children are never traced here.
+                    trace(DETACH, held.getKey(), 0, MemorySegment.NULL);
+                    owned.remove(held.getKey());
+                    mmapLengths.remove(held.getKey());
+                }
+                else trace(SYSCALL, held.getKey(), 0, MemorySegment.NULL);
                 heldImages.remove(held.getKey());
                 Integer parent = forkParentHolds.remove(held.getKey());
                 if (parent != null) trace(SYSCALL, parent, 0, MemorySegment.NULL);

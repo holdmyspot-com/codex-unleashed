@@ -71,6 +71,14 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 - The same per-fork rejuvenation, at up to 250 ms per remote-call poll, is the x64 per-process cost.
 - Consequence: per-process Frida injection cannot finish a `configure`-heavy build script reliably. The preload library (next deliverable below) removes Frida from dynamic images and with it both the hang and the cost. Until then, rungs that run build scripts with `configure` (jemalloc, aws-lc, openssl) cannot pass. Not done: reporting the leak upstream to frida-core, which is an outward-facing action that needs the user's approval.
 
+### Fix under test: the Cargo producer's images go to the ptrace owner (2026-11-04)
+
+- `LinuxCargoImages` now hands every producer image to `LinuxAllocationTrace.Images`, dynamic ones included: Cargo, build scripts and all their descendants. So no Frida agent is in any of them, and none is re-injected at fork. Before, only static images went there.
+- A Cargo wrapper started under a traced image is detached at its exec stop (`Images.detach`, `PTRACE_DETACH`). The compiler attempts it forks then stay untraced and get their own Frida attachment as before. `advance` treats the owner as active once its root is armed by either owner (`admitsChildrenOfNativeRoot`).
+- Trade-off, allowed by contract item 3: a denied allocation in a producer image is reported and ends the build, instead of waiting in-process as the Frida malloc hook did. Static images already worked this way. Compiler attempts are unchanged and keep Frida, with in-process waits and token mediation.
+- Not yet measured: the cost of `PTRACE_SYSCALL` stops across a `configure` run. If it is too slow, the seccomp mmap filter above is the next step. The preload library is still needed for compiler attempts. Its scope shrinks to the attempt side (allocation hook and token mediation).
+- Verification: rung 1 on x64 and ARM; the rows below record the runs.
+
 ### Incremental package ladder (user directive, 2026-11-04)
 
 - Instead of rerunning the whole release to test the scheduler, build a small package set first. Then widen it step by step, saving each rung to the cache, until the full build passes end to end.

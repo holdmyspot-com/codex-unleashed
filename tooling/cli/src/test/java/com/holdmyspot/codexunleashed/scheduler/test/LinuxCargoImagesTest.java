@@ -65,6 +65,22 @@ public final class LinuxCargoImagesTest
         }
     }
 
+    /** A producer whose root the native tracer holds admits its children without any Frida connection.
+     * @throws IOException if native image admission fails
+     */
+    @Test
+    public void admitsChildrenOfNativeRoot() throws IOException
+    {
+        try (var fixture = new Fixture(false, true))
+        {
+            fixture.putChild(2, fixture.cargo, fixture.group, 1000, 1001, 10);
+            fixture.owner.advance(fixture.event(0));
+            requireThat(fixture.attachments, "attachments").isEqualTo(0);
+            requireThat(fixture.enrolled, "enrolled").isEqualTo(List.of(11L));
+            requireThat(fixture.resumed, "resumed").isEqualTo(List.of(11L));
+        }
+    }
+
     /** Enumerates identities that subgroup selection must never repair.
      * @return independently changed root identity fields
      */
@@ -461,8 +477,9 @@ public final class LinuxCargoImagesTest
     @DataProvider(parallel = true)
     public Object[][] wrapperStarts() { return new Object[][] {{1}, {2}}; }
 
-    /** The pinned native wrapper resumes without a Frida attachment or enrollment, because each compiler attempt it
-     * forks is attached and admitted separately, and this owner then rejects a held fork whose parent is the wrapper.
+    /** The pinned native wrapper is released untraced, without a Frida attachment or enrollment, because each compiler
+     * attempt it forks is attached and admitted separately, and this owner then rejects a held fork whose parent is the
+     * wrapper.
      * @param origin first exec or spawn native value
      * @throws IOException if controlled readiness unexpectedly fails
      */
@@ -473,12 +490,13 @@ public final class LinuxCargoImagesTest
         {
             fixture.putChild(2, fixture.wrapper, fixture.group, 1000, 1001, 10);
             fixture.owner.advance(new FridaRuntime.Child(11, origin == 1 ? 11 : 10, origin, fixture.wrapper.toString()));
-            requireThat(fixture.resumed, "resumed").isEqualTo(List.of(11L));
+            requireThat(fixture.releasedWrappers, "releasedWrappers").isEqualTo(List.of(11L));
+            requireThat(fixture.resumed, "resumed").isEmpty();
             requireThat(fixture.enrolled, "enrolled").isEmpty();
             requireThat(fixture.attachments, "attachments").isEqualTo(0);
             fixture.nativeImages.put(12L, fixture.identity(12, 3, 11, fixture.wrapper));
             requireException(IOException.class, () -> fixture.owner.advance(new FridaRuntime.Child(12, 11, 0, null)));
-            requireThat(fixture.resumed, "resumedAfterWrapperFork").isEqualTo(List.of(11L));
+            requireThat(fixture.resumed, "resumedAfterWrapperFork").isEmpty();
         }
     }
 
@@ -633,6 +651,8 @@ public final class LinuxCargoImagesTest
         private final List<String> steps = new ArrayList<>();
         /** Actual calls to the controlled sole continuation owner. */
         private final List<Long> resumed = new ArrayList<>();
+        /** Wrapper images released untraced, in release order. */
+        private final List<Long> releasedWrappers = new ArrayList<>();
         /** Image-readiness acknowledgements, never compiler action identities. */
         private final List<Long> enrolled = new ArrayList<>();
         /** Mutation at the external readiness callback. */
@@ -687,8 +707,16 @@ public final class LinuxCargoImagesTest
          * @param nested whether the actual workload subgroup differs from the owner envelope
          * @throws IOException if root readiness fails
          */
-        private Fixture(boolean nested) throws IOException
+        private Fixture(boolean nested) throws IOException { this(nested, false); }
+
+        /** Creates a root in the owner's immediate or nested containment, held by Frida or by the native tracer.
+         * @param nested whether the actual workload subgroup differs from the owner envelope
+         * @param nativeRoot whether the native tracer, rather than a Frida connection, holds the root
+         * @throws IOException if root readiness fails
+         */
+        private Fixture(boolean nested, boolean nativeRoot) throws IOException
         {
+            nativeImage = nativeRoot;
             var root = identity(10, 1, 9, cargo);
             Path actualGroup = nested ? group.resolve("workload") : group;
             nativeImages.put(10L, new LinuxCargoImages.Identity(10, 1, 9, 1000, 1001, cargo, actualGroup));
@@ -772,6 +800,11 @@ public final class LinuxCargoImagesTest
             resumed.add(pid);
             steps.add("resume:" + pid);
             if (failResume) throw new IOException("Uncertain controlled continuation");
+        }
+        @Override public void releaseWrapper(long pid)
+        {
+            releasedWrappers.add(pid);
+            steps.add("release-wrapper:" + pid);
         }
         @Override public void close() throws IOException
         {

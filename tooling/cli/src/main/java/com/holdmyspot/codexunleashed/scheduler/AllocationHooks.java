@@ -685,7 +685,7 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
 	{
 		long installation = nextInstallation;
 		nextInstallation = Math.incrementExact(nextInstallation);
-        if (nativeImages.install(image.pid(), image.started(), () -> manager.resume(image.pid())))
+        if (nativeImages.install(image.pid(), image.started(), () -> manager.resume(image.pid()), false))
         {
             nativeInstallations.add(installation);
             activeInstallations.put(image.pid(), installation);

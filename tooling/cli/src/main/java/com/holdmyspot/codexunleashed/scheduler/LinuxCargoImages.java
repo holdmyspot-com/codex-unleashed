@@ -60,6 +60,10 @@ public final class LinuxCargoImages
      */
     private boolean attempted;
     /**
+     * Whether the root became ready, through a Frida connection or the native tracer.
+     */
+    private boolean armed;
+    /**
      * Whether controls have been withdrawn.
      */
     private boolean stopped;
@@ -130,6 +134,7 @@ public final class LinuxCargoImages
                 throw new IOException("Prepared root identity differs from its owned workload subgroup");
             root = observed;
             install(root, false);
+            armed = true;
         }
         catch (IOException | RuntimeException | Error cause) { fail(cause); throw cause; }
         finally { advancing = false; }
@@ -143,7 +148,7 @@ public final class LinuxCargoImages
     public void advance(FridaRuntime.Child child) throws IOException
     {
         requireThread();
-        if (!attempted || connections.size() == 0 || stopped || advancing) throw new IllegalStateException("Image owner is not active");
+        if (!armed || stopped || advancing) throw new IllegalStateException("Image owner is not active");
         Objects.requireNonNull(child, "child");
         advancing = true;
         try
@@ -180,7 +185,8 @@ public final class LinuxCargoImages
      * <p>
      * The wrapper allocates almost nothing itself and runs each compiler attempt in a forked child that the attempt's
      * own owner attaches to after moving it into the attempt's cgroup. Attaching here as well would give that child
-     * two Frida agents and two exec gates. The wrapper is removed from the retained images, which a forked Cargo image
+     * two Frida agents and two exec gates. For the same reason the wrapper is released untraced: a compiler attempt
+     * forked by a traced wrapper would already have a tracer when its owner attaches to it. The wrapper is removed from the retained images, which a forked Cargo image
      * that executes it was part of, so a later event that names it as a parent is rejected.
      * @param child copied held start event
      * @param observed independently inspected wrapper image with workload credentials inside root containment
@@ -194,7 +200,7 @@ public final class LinuxCargoImages
             throw new IOException("Native wrapper image changed before held resume");
         if (Thread.currentThread().isInterrupted()) throw new IOException("Held resume interrupted");
         current.remove(child.pid());
-        operations.resume(child.pid());
+        operations.releaseWrapper(child.pid());
     }
 
     /** Authenticates live ancestry or the kernel's adoption of a held descendant by its original supervisor.
@@ -750,6 +756,13 @@ public final class LinuxCargoImages
          * @throws IOException if release has uncertain effects
          */
         void resume(long pid) throws IOException;
+        /**
+         * Releases a held start of the native Cargo wrapper once, leaving neither it nor its descendants traced by this
+         * owner, so that each compiler attempt it forks can be attached by its own attempt owner.
+         * @param pid held wrapper image
+         * @throws IOException if release has uncertain effects
+         */
+        default void releaseWrapper(long pid) throws IOException { resume(pid); }
     }
 
     /**
@@ -932,9 +945,23 @@ public final class LinuxCargoImages
             catch (NumberFormatException cause) { throw new IOException("Malformed native credentials", cause); }
         }
         @Override public AllocationHook.Connection connection(long pid) { return AllocationHook.newNativeConnection(manager, pid); }
+        /** Hands every producer image to the ptrace owner, dynamic ones included.
+         * Frida's agent re-injects itself into each fork child of an instrumented process, and when that fails it keeps
+         * the child stopped under its own tracer with no event, so a fork-heavy build script such as autoconf
+         * {@code configure} would hang (frida-core {@code RejuvenateTask}). A denied allocation in a traced image is
+         * reported and ends the build rather than waiting, as it already does for a static image.
+         * @param image independently authenticated held process
+         * @return true, since this owner holds every image
+         * @throws IOException if native handoff is uncertain
+         */
         @Override public boolean prepareNative(Identity image) throws IOException
         {
-            return nativeImages.install(image.pid(), image.birth(), () -> manager.resume(image.pid()));
+            return nativeImages.install(image.pid(), image.birth(), () -> manager.resume(image.pid()), true);
+        }
+        @Override public void releaseWrapper(long pid) throws IOException
+        {
+            if (nativeImages.owns(pid)) nativeImages.detach(pid, inspect(pid).birth());
+            else manager.resume(pid);
         }
         @Override public FridaRuntime.Child pollNativeChild() throws IOException
         {
