@@ -351,6 +351,56 @@ public final class LinuxResidencyTest
 	}
 
 	/**
+	 * A thread that is reaped while its status is being read fails that read through its retained directory, as the
+	 * kernel's ESRCH does, rather than with a missing file. The thread is gone, so a later thread supplies the
+	 * process's counter.
+	 * @throws Exception if fixture setup, sampling or cleanup fails
+	 */
+	@Test(timeOut = 10_000)
+	public void skipsThreadReapedWhileRead() throws Exception
+	{
+		Path fixture = Files.createTempDirectory("linux-residency-reaped-thread-");
+		var reaper = Executors.newSingleThreadExecutor();
+		try
+		{
+			requireSecureDirectory(fixture);
+			Path root = fixture.resolve("cgroups");
+			Path proc = fixture.resolve("proc");
+			Path owned = root.resolve("owned");
+			writeGroup(owned, "41\n");
+			writeProcess(proc, 41, "0::/owned\n", "State:\tZ (zombie)\nTgid:\t41\n");
+			Files.writeString(owned.resolve("cgroup.threads"), "80\n77\n");
+			Path tasks = proc.resolve("41/task");
+			writeProcess(tasks, 77, "0::/owned\n", "State:\tS (sleeping)\nTgid:\t41\nVmRSS: 12 kB\n");
+			Path reaped = tasks.resolve("80");
+			Files.createDirectories(reaped);
+			Files.writeString(reaped.resolve("cgroup"), "0::/owned\n");
+			Path status = reaped.resolve("status");
+			Process mkfifo = new ProcessBuilder("mkfifo", status.toString()).inheritIO().start();
+			requireThat(mkfifo.waitFor(), "mkfifo").isEqualTo(0);
+			// Opening the FIFO for writing waits for the sampler to open it; the thread's directory is then removed
+			// before the sampler reads end of file, so the failed read belongs to a thread that no longer exists.
+			var reaping = reaper.submit(() ->
+			{
+				try (var writer = Files.newOutputStream(status))
+				{
+					Files.delete(status);
+					Files.delete(reaped.resolve("cgroup"));
+					Files.delete(reaped);
+				}
+				return null;
+			});
+			requireThat(LinuxResidency.read(root, proc, owned), "sample").isEqualTo(new LinuxResidency.Sample(12288, 1));
+			reaping.get(5, TimeUnit.SECONDS);
+		}
+		finally
+		{
+			reaper.shutdownNow();
+			FileUtils.deleteDirectory(fixture.toFile());
+		}
+	}
+
+	/**
 	 * Supplies exiting process records that have released their address space but are not yet zombies.
 	 * @return exit-path state, and whether the sample is a retryable membership rejection
 	 */

@@ -280,9 +280,38 @@ public final class LinuxResidency
 					// A cgroup may also list tasks from other processes, or a selected task may have exited.
 					// Neither case supplies RSS; another bound task must provide the actual process counter.
 				}
+				catch (MembershipChanged changed)
+				{
+					throw changed;
+				}
+				catch (IOException failure)
+				{
+					// A task reaped after it was opened fails reads through its retained directory with ESRCH rather
+					// than a missing file. A task whose directory is gone supplies no RSS, like one that never opened.
+					if (taskExists(tasks, tid)) throw failure;
+				}
 			}
 		}
 		throw new IOException("Exited process leader has no verified live memory task: " + process, original);
+	}
+
+	/**
+	 * Checks whether a task's directory still exists below the retained task directory.
+	 * @param tasks borrowed retained task directory of one process
+	 * @param tid the task identity to reopen
+	 * @return false if the task's directory no longer exists
+	 * @throws IOException if reopening fails for another reason
+	 */
+	private static boolean taskExists(SecureDirectoryStream<Path> tasks, long tid) throws IOException
+	{
+		try (var task = tasks.newDirectoryStream(Path.of(Long.toString(tid)), LinkOption.NOFOLLOW_LINKS))
+		{
+			return true;
+		}
+		catch (NoSuchFileException gone)
+		{
+			return false;
+		}
 	}
 
 	/**
