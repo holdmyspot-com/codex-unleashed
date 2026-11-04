@@ -24,6 +24,7 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 | Linux x64 release build | Run `41743639583` (`cache=true`, `scheduler=true`), commit `a7d420154f` | Dispatched 2026-11-04T00:01Z. If it goes quiet, read `baseline-evidence/quiet-build-report.log` in its artifact. |
 | Linux ARM release build | Run `41743643884`, same commit and inputs | Same. |
 | Rung 1: `tikv-jemalloc-sys` only, x64 | Run `41750107254` (`packages=tikv-jemalloc-sys`, `cache=true`, `scheduler=true`), commit `7c459154c0` | Dispatched 2026-11-04T00:52Z; queued behind `41743639583` in the x64 concurrency group. It stops before the release checks by design; on success, dispatch rung 2. |
+| Rung 1, ARM | Run `41752873160`, same inputs | Dispatched 2026-11-04T01:20Z; queued behind `41743643884`. |
 
 ### Incremental package ladder (user directive, 2026-11-04)
 
@@ -55,7 +56,7 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 - If one compile or link step is slow, split it into concurrent steps that are joined at the end. Do this only when the output matches a one-shot build. The target is byte-identical binaries; any option that is not byte-identical needs the user's approval first.
 - First establish that the current release build reproduces itself byte for byte: build the same binary twice from a clean target and compare hashes. Every later comparison depends on that baseline.
 - Byte-identical options, which are allowed: reduce per-process supervision cost (plan step 3, second half), reuse cached outputs, and use bigger runners with a higher `--max-jobs`. C/C++ build scripts already run with every jobserver slot: Cargo's FIFO jobserver gives Make the 4 slots of the 4-CPU runner, so more jobs would not help. Their cost is the Frida attach for each compiler process.
-- Rejected: rustc's parallel front end (`-Z threads`). It is nightly-only, so it needs `RUSTC_BOOTSTRAP=1`, and it is unstable, renamed between releases and known to hang occasionally.
+- Rejected by the user (2026-11-04): rustc's parallel front end (`-Z threads`). It is nightly-only, so it needs `RUSTC_BOOTSTRAP=1`, and it is unstable, renamed between releases and known to hang occasionally.
 - Options that are not byte-identical, and need approval: a different final linker (lld or mold), and more `codegen-units` than upstream's 4. Upstream's `codegen-units` and `lto` settings are a deliberate size and performance trade-off, so changing them counts as quality loss.
 - Order: after the current release hang is fixed and plan step 3 (the preload library) lands, because per-process Frida cost distorts timings until then.
 
