@@ -34,7 +34,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * Each test compiles {@code linux-cargo-wrapper.c} into its own temporary directory. Cargo is represented by this test
  * starting the wrapper with a compiler path and arguments; rustc is represented by a shell script that the wrapper's
  * child executes; the root controller is represented by a Unix-domain listener in this test that speaks protocol
- * version 2. The test build defines {@code CODEX_TEST_ALLOW_NONROOT_CONTROLLER}, which lets the test's own user stand in
+ * version 3. The test build defines {@code CODEX_TEST_ALLOW_NONROOT_CONTROLLER}, which lets the test's own user stand in
  * for root as the owner of the configuration and as the controller's peer.
  */
 public final class LinuxCargoWrapperNativeTest
@@ -82,7 +82,7 @@ public final class LinuxCargoWrapperNativeTest
 			try (ControllerConnection controller = installation.accept())
 			{
 				List<String> registration = controller.receive();
-				requireThat(registration.subList(0, 7), "registration").isEqualTo(List.of("register", "2",
+				requireThat(registration.subList(0, 7), "registration").isEqualTo(List.of("register", "3",
 					installation.work().toRealPath().toString(), "3", compiler.toString(), "first argument", "second"));
 				int environmentCount = Integer.parseInt(registration.get(7));
 				List<String> environment = registration.subList(8, registration.size());
@@ -106,6 +106,78 @@ public final class LinuxCargoWrapperNativeTest
 				directory:%s
 				value:two words
 				""".formatted(installation.work().toRealPath()));
+		}
+	}
+
+	/**
+	 * Environment entries sent with the release reach the compiler: they replace a registered value of the same name
+	 * and add new names, and a value may itself contain {@code =}.
+	 * @throws IOException          if the fixture cannot be built or the wrapper cannot be run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = TEST_TIMEOUT_MILLIS)
+	public void releaseSetsEnvironmentEntries() throws IOException, InterruptedException
+	{
+		try (WrapperInstallation installation = WrapperInstallation.create(PATIENT_TIMEOUT_MILLIS, true))
+		{
+			Path compiler = installation.script("compiler", """
+				#!/bin/sh
+				printf 'value:%s\\n' "$FIXTURE_VALUE"
+				printf 'added:%s\\n' "$FIXTURE_ADDED"
+				printf 'kept:%s\\n' "$FIXTURE_KEPT"
+				""");
+			Process wrapper = installation.start(List.of(compiler.toString()),
+				Map.of("FIXTURE_VALUE", "registered", "FIXTURE_KEPT", "unchanged"));
+			try (ControllerConnection controller = installation.accept())
+			{
+				controller.receive();
+				controller.receive();
+				controller.send("release", "1", "FIXTURE_VALUE=replaced", "FIXTURE_ADDED=a=b");
+				requireThat(controller.receive(), "exited").isEqualTo(List.of("exited", "1", "0"));
+				controller.send("final", "0");
+				requireThat(wrapper.waitFor(), "wrapperStatus").isEqualTo(0);
+			}
+			finally
+			{
+				installation.stop(wrapper);
+			}
+			requireThat(installation.stdout(), "stdout").isEqualTo("""
+				value:replaced
+				added:a=b
+				kept:unchanged
+				""");
+		}
+	}
+
+	/**
+	 * A release entry without a name before its {@code =} is a protocol error: the wrapper kills and reaps the held
+	 * child, which never executes the compiler, and exits 125.
+	 * @throws IOException          if the fixture cannot be built or the wrapper cannot be run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = TEST_TIMEOUT_MILLIS)
+	public void releaseRejectsUnnamedEntry() throws IOException, InterruptedException
+	{
+		try (WrapperInstallation installation = WrapperInstallation.create(PATIENT_TIMEOUT_MILLIS, true))
+		{
+			Path marker = installation.work().resolve("executed");
+			Path compiler = installation.script("compiler", """
+				#!/bin/sh
+				: > "$1"
+				""");
+			Process wrapper = installation.start(List.of(compiler.toString(), marker.toString()), Map.of());
+			try (ControllerConnection controller = installation.accept())
+			{
+				controller.receive();
+				controller.receive();
+				controller.send("release", "1", "=value");
+				requireThat(wrapper.waitFor(), "wrapperStatus").isEqualTo(125);
+			}
+			finally
+			{
+				installation.stop(wrapper);
+			}
+			requireThat(Files.exists(marker), "markerExists").isFalse();
 		}
 	}
 

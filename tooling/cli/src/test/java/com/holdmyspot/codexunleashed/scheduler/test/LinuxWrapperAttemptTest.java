@@ -366,7 +366,7 @@ public final class LinuxWrapperAttemptTest
 		public void start(AllocationHooks.Release release) throws IOException
 		{
 			events.add("attach");
-			release.release();
+			release.release(List.of());
 			events.add("released");
 		}
 

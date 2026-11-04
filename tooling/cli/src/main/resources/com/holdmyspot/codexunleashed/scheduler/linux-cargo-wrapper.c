@@ -22,7 +22,7 @@
  *
  * Linux 5.9 or later is required (pidfd_open and close_range).
  *
- * # Linux Cargo wrapper protocol, version 2
+ * # Linux Cargo wrapper protocol, version 3
  *
  * ## Configuration file
  * The wrapper finds its configuration through `CODEX_LINUX_CARGO_WRAPPER_CONFIG` (absolute path).
@@ -44,7 +44,7 @@
  * error: the wrapper kills and reaps any child and exits 125; the controller closes the connection.
  *
  * ## Wrapper -> controller
- * - `register` version=`2`, cwd, argc, argv[0..argc) (argv[0] is the rustc path Cargo passed as the
+ * - `register` version=`3`, cwd, argc, argv[0..argc) (argv[0] is the rustc path Cargo passed as the
  *   wrapper's first argument), envc, env[0..envc) as `NAME=value`. Sent once, right after connecting
  *   and checking SO_PEERCRED uid 0.
  * - `child` attempt, pid, starttime. `attempt` counts from 1 for this registration; `starttime` is
@@ -53,7 +53,9 @@
  *   child's standard error has reached EOF and been relayed.
  *
  * ## Controller -> wrapper
- * - `release` attempt: the child may exec rustc.
+ * - `release` attempt, entry...: the child may exec rustc, after setting each environment entry
+ *   `NAME=value` (NAME nonempty; value may contain `=`), replacing a registered entry of the same name.
+ *   The entries, each with its NUL, take at most 4095 bytes.
  * - `abort` attempt: only before `release`; the wrapper sends SIGKILL to the child, reaps it, and
  *   sends `exited` as usual.
  * - `retry`: only after `exited`; the wrapper discards the incomplete trailing standard-error line of
@@ -64,8 +66,9 @@
  * The child keeps descriptors 0 and 1, gets the write end of a fresh standard-error pipe as 2, keeps
  * the jobserver descriptors named by `--jobserver-auth=R,W` / `--jobserver-fds=R,W` in MAKEFLAGS or
  * CARGO_MAKEFLAGS (no descriptors for `fifo:PATH`), and closes every other descriptor before execve.
- * It blocks reading one byte from the release pipe; EOF without a byte means exit 125 without exec.
- * It execs argv with env and cwd exactly as registered.
+ * It blocks reading the release pipe to EOF: the permission byte, then the release's entries. EOF without
+ * a byte means exit 125 without exec.
+ * It execs argv with cwd as registered and with env as registered plus the release's entries.
  *
  * ## Standard error relay
  * Complete lines are forwarded as they arrive; a line that
@@ -156,6 +159,11 @@
 #define MAX_CONFIG_BYTES 4096
 /** Largest timeout_millis, so that adding it to a monotonic reading cannot overflow. */
 #define MAX_TIMEOUT_MILLIS ((uint64_t) INT64_MAX / 4)
+/**
+ * Largest release written down the release pipe: the permission byte and the
+ * entries. One page, the least capacity a pipe has, so the write never blocks.
+ */
+#define MAX_RELEASE_BYTES 4096
 /** Most jobserver descriptor numbers that the make flags may name. */
 #define MAX_KEPT_DESCRIPTORS 32
 /** Bytes read from the attempt's standard-error pipe at a time. */
@@ -235,6 +243,9 @@ enum command_kind {
 struct command {
     enum command_kind kind;
     uint64_t value;
+    /** For a release: the permission byte followed by each entry and its NUL. */
+    unsigned char release[MAX_RELEASE_BYTES];
+    size_t release_length;
 };
 
 /** Records a termination request; the control loop performs cleanup. */
@@ -875,12 +886,14 @@ static int receive_command(struct wrapper *wrapper, struct command *command)
 
     const char *fields[2];
     size_t count = 0;
+    /* Offset of the first release entry, which follows the type and the number. */
+    uint32_t entries = length;
     int outcome = 0;
     if (payload[length - 1] != '\0')
         outcome = reject("the controller sent a field without its NUL terminator");
     for (uint32_t start = 0; outcome == 0 && start < length; ++count) {
         if (count == 2) {
-            outcome = reject("the controller sent a message with too many fields");
+            entries = start;
             break;
         }
         fields[count] = (const char *) payload + start;
@@ -888,12 +901,13 @@ static int receive_command(struct wrapper *wrapper, struct command *command)
     }
     if (outcome == 0) {
         bool numbered = count == 2;
+        bool extra = entries < length;
         uint64_t maximum = UINT64_MAX;
         if (strcmp(fields[0], "release") == 0 && numbered)
             command->kind = COMMAND_RELEASE;
-        else if (strcmp(fields[0], "abort") == 0 && numbered)
+        else if (strcmp(fields[0], "abort") == 0 && numbered && !extra)
             command->kind = COMMAND_ABORT;
-        else if (strcmp(fields[0], "final") == 0 && numbered) {
+        else if (strcmp(fields[0], "final") == 0 && numbered && !extra) {
             command->kind = COMMAND_FINAL;
             maximum = 255;
         } else if (strcmp(fields[0], "retry") == 0 && count == 1)
@@ -904,6 +918,23 @@ static int receive_command(struct wrapper *wrapper, struct command *command)
         if (outcome == 0 && numbered &&
             parse_decimal(fields[1], strlen(fields[1]), maximum, &command->value) < 0)
             outcome = reject("the controller sent a malformed or out-of-range number");
+    }
+    if (outcome == 0 && command->kind == COMMAND_RELEASE) {
+        uint32_t size = length - entries;
+        if (size > MAX_RELEASE_BYTES - 1)
+            outcome = reject("the controller sent release entries over 4095 bytes");
+        for (uint32_t start = entries; outcome == 0 && start < length;) {
+            const char *entry = (const char *) payload + start;
+            const char *separator = strchr(entry, '=');
+            if (separator == NULL || separator == entry)
+                outcome = reject("the controller sent a release entry without NAME=");
+            start += (uint32_t) strlen(entry) + 1;
+        }
+        if (outcome == 0) {
+            command->release[0] = 1;
+            memcpy(command->release + 1, payload + entries, size);
+            command->release_length = (size_t) size + 1;
+        }
     }
     free(payload);
     return outcome;
@@ -938,7 +969,7 @@ static int send_registration(struct wrapper *wrapper)
     char environment_size[21];
     size_t next = 0;
     fields[next++] = "register";
-    fields[next++] = "2";
+    fields[next++] = "3";
     fields[next++] = directory;
     fields[next++] = decimal((uint64_t) wrapper->compiler_count, argument_count);
     for (int index = 0; index < wrapper->compiler_count; ++index)
@@ -1028,8 +1059,8 @@ static int close_unkept_descriptors(const int *kept, size_t count)
 
 /**
  * Runs in the forked child: restores Cargo's signal state, installs the
- * standard-error pipe, closes every other descriptor, waits for the release
- * byte and executes the compiler. Never returns.
+ * standard-error pipe, closes every other descriptor, waits for the release,
+ * sets its environment entries and executes the compiler. Never returns.
  */
 static void run_child(struct wrapper *wrapper, int release, int errors)
 {
@@ -1048,14 +1079,37 @@ static void run_child(struct wrapper *wrapper, int release, int errors)
         _exit(FAILURE_STATUS);
     }
 
-    unsigned char permission;
-    ssize_t result;
-    do {
-        result = read(release, &permission, 1);
-    } while (result < 0 && errno == EINTR);
-    if (result != 1)
+    /* The wrapper writes the whole release at once and then closes its end. */
+    char received[MAX_RELEASE_BYTES + 1];
+    size_t length = 0;
+    for (;;) {
+        ssize_t result = read(release, received + length, sizeof(received) - length);
+        if (result < 0 && errno == EINTR)
+            continue;
+        if (result < 0)
+            _exit(FAILURE_STATUS);
+        if (result == 0)
+            break;
+        length += (size_t) result;
+        if (length > MAX_RELEASE_BYTES)
+            _exit(FAILURE_STATUS);
+    }
+    if (length == 0 || (length > 1 && received[length - 1] != '\0'))
         _exit(FAILURE_STATUS);
     close(release);
+    for (size_t start = 1; start < length;) {
+        char *entry = received + start;
+        start += strlen(entry) + 1;
+        char *separator = strchr(entry, '=');
+        if (separator == NULL || separator == entry)
+            _exit(FAILURE_STATUS);
+        *separator = '\0';
+        if (setenv(entry, separator + 1, 1) < 0) {
+            fail("set a release environment entry");
+            flush_diagnostics();
+            _exit(FAILURE_STATUS);
+        }
+    }
     execve(wrapper->compiler[0], wrapper->compiler, environ);
     int failure_number = errno;
     report("execute %s: %s\n", wrapper->compiler[0], strerror(failure_number));
@@ -1303,10 +1357,9 @@ static int run_attempt(struct wrapper *wrapper, int *final_status)
         return -1;
     bool current = command.value == wrapper->attempt;
     if (command.kind == COMMAND_RELEASE && current) {
-        unsigned char permission = 1;
         ssize_t result;
         do {
-            result = write(wrapper->release, &permission, 1);
+            result = write(wrapper->release, command.release, command.release_length);
         } while (result < 0 && errno == EINTR);
         /* EPIPE means the child already died; finish_attempt reports how. */
         if (result < 0 && errno != EPIPE)

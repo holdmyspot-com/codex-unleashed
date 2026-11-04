@@ -25,7 +25,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * Drives the controller end of one wrapper connection against a fake wrapper written in Java.
  * The fake wrapper is this test's own process: it connects to a real listener, forks a real child that blocks on its
- * standard input until released, and speaks protocol version 2. No privilege is required.
+ * standard input until released, and speaks protocol version 3. No privilege is required.
  */
 public final class LinuxCargoWrapperConnectionTest
 {
@@ -57,7 +57,7 @@ public final class LinuxCargoWrapperConnectionTest
             requireThat(fixture.connection.state(), "held").isEqualTo(LinuxCargoWrapperConnection.State.HELD);
             requireThat(fixture.connection.child().pid(), "pid").isEqualTo(child.pid());
             requireThat(fixture.wrapper.pending(), "nothingBeforeRelease").isFalse();
-            fixture.connection.release();
+            fixture.connection.release(List.of());
             requireThat(fixture.wrapper.receive(), "release").isEqualTo(List.of("release", "1"));
             fixture.wrapper.finish(child, 1);
             fixture.connection.pump();
@@ -83,7 +83,7 @@ public final class LinuxCargoWrapperConnectionTest
             fixture.connection.register();
             Process first = fixture.wrapper.fork(1);
             fixture.connection.pump();
-            fixture.connection.release();
+            fixture.connection.release(List.of());
             fixture.wrapper.receive();
             fixture.wrapper.finish(first, 1);
             fixture.connection.pump();
@@ -145,7 +145,7 @@ public final class LinuxCargoWrapperConnectionTest
         try (var fixture = Fixture.open())
         {
             fixture.connection.register();
-            requireException(IllegalStateException.class, fixture.connection::release);
+            requireException(IllegalStateException.class, () -> fixture.connection.release(List.of()));
             requireException(IllegalStateException.class, () -> fixture.connection.finish(0));
             requireException(IllegalStateException.class, fixture.connection::retry);
             Process child = fixture.wrapper.start();
@@ -213,7 +213,7 @@ public final class LinuxCargoWrapperConnectionTest
          */
         static Fixture open() throws IOException
         {
-            return open("register", "2", "/", "2", "/usr/bin/rustc", "--version", "1", "PATH=/usr/bin");
+            return open("register", "3", "/", "2", "/usr/bin/rustc", "--version", "1", "PATH=/usr/bin");
         }
 
         /**
@@ -256,7 +256,7 @@ public final class LinuxCargoWrapperConnectionTest
     }
 
     /**
-     * Speaks the wrapper side of protocol version 2 and owns the children it forks.
+     * Speaks the wrapper side of protocol version 3 and owns the children it forks.
      */
     private static final class FakeWrapper implements AutoCloseable
     {

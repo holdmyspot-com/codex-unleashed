@@ -415,7 +415,7 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
 			gate.enableChildGating();
 			if (!held.equals(inspect(pid, true, null)))
 				throw new IOException("Held attempt root changed during attachment");
-			release.release();
+			release.release(List.of());
 			long began = System.nanoTime();
 			while (children.isEmpty())
 			{
@@ -789,9 +789,11 @@ public final class AllocationHooks implements LinuxAttempts.Instrumentation
 	{
 		/**
 		 * Releases the held root process.
+		 * @param environment {@code NAME=value} entries that the root sets before its exec, replacing an inherited
+		 *   entry of the same name
 		 * @throws IOException if the release cannot be delivered
 		 */
-		void release() throws IOException;
+		void release(List<String> environment) throws IOException;
 	}
 
 	/** Reads a stable actual process identity and checks retained cgroup membership.

@@ -31,7 +31,7 @@ public final class LinuxCargoProtocolTest
     public void decodesRegistration() throws IOException
     {
         TestRequirements.requirePosixFileSystem();
-        var register = (LinuxCargoProtocol.Register) LinuxCargoProtocol.decode(payload("register", "2", "/work", "3",
+        var register = (LinuxCargoProtocol.Register) LinuxCargoProtocol.decode(payload("register", "3", "/work", "3",
             "/usr/bin/rustc", "", "é b", "2", "B=x=y", "A="));
         requireThat(register.directory(), "directory").isEqualTo(Path.of("/work"));
         requireThat(register.arguments(), "arguments").isEqualTo(List.of("/usr/bin/rustc", "", "é b"));
@@ -76,18 +76,18 @@ public final class LinuxCargoProtocolTest
             payload("exited", "0", "0"),
             payload("child", "1", "0", "3"),
             payload("register", "1", "/work", "1", "rustc", "0"),
-            payload("register", "2", "work", "1", "rustc", "0"),
-            payload("register", "2", "/work", "0", "0"),
-            payload("register", "2", "/work", "2", "rustc", "0"),
-            payload("register", "2", "/work", "1", "rustc", "1"),
-            payload("register", "2", "/work", "1", "rustc", "0", "extra"),
-            payload("register", "2", "/work", "1", "rustc", "1", "NAME"),
-            payload("register", "2", "/work", "1", "rustc", "1", "=value"),
-            payload("register", "2", "/work", "1", "rustc", "2", "A=1", "A=2"),
+            payload("register", "3", "work", "1", "rustc", "0"),
+            payload("register", "3", "/work", "0", "0"),
+            payload("register", "3", "/work", "2", "rustc", "0"),
+            payload("register", "3", "/work", "1", "rustc", "1"),
+            payload("register", "3", "/work", "1", "rustc", "0", "extra"),
+            payload("register", "3", "/work", "1", "rustc", "1", "NAME"),
+            payload("register", "3", "/work", "1", "rustc", "1", "=value"),
+            payload("register", "3", "/work", "1", "rustc", "2", "A=1", "A=2"),
             payload("release", "1"),
             new byte[0],
             Arrays.copyOf(payload("child", "1", "2", "3"), payload("child", "1", "2", "3").length - 1)));
-        byte[] invalid = payload("register", "2", "/work", "1", "rustc", "0");
+        byte[] invalid = payload("register", "3", "/work", "1", "rustc", "0");
         invalid[invalid.length - 4] = (byte) 0xff;
         malformed.add(invalid);
         for (byte[] bytes : malformed)
@@ -100,14 +100,24 @@ public final class LinuxCargoProtocolTest
     @Test
     public void encodesCommands()
     {
-        requireThat(LinuxCargoProtocol.release(1), "release").isEqualTo(payload("release", "1"));
+        requireThat(LinuxCargoProtocol.release(1, List.of()), "release").isEqualTo(payload("release", "1"));
+        requireThat(LinuxCargoProtocol.release(2, List.of("A=b", "C=d=e")), "releaseEntries").
+            isEqualTo(payload("release", "2", "A=b", "C=d=e"));
+        for (String entry : List.of("=b", "A", "A=\0"))
+        {
+            requireException(IllegalArgumentException.class, () -> LinuxCargoProtocol.release(1, List.of(entry)));
+        }
+        requireException(IllegalArgumentException.class,
+            () -> LinuxCargoProtocol.release(1, List.of("A=" + "x".repeat(4093))));
+        requireThat(LinuxCargoProtocol.release(1, List.of("A=" + "x".repeat(4092))).length, "largestRelease").
+            isEqualTo("release\0".length() + "1\0".length() + 4095);
         requireThat(LinuxCargoProtocol.abort(12), "abort").isEqualTo(payload("abort", "12"));
         requireThat(LinuxCargoProtocol.retry(), "retry").isEqualTo(payload("retry"));
         requireThat(LinuxCargoProtocol.finalStatus(0), "final0").isEqualTo(payload("final", "0"));
         requireThat(LinuxCargoProtocol.finalStatus(255), "final255").isEqualTo(payload("final", "255"));
         requireException(IllegalArgumentException.class, () -> LinuxCargoProtocol.finalStatus(-1));
         requireException(IllegalArgumentException.class, () -> LinuxCargoProtocol.finalStatus(256));
-        requireException(IllegalArgumentException.class, () -> LinuxCargoProtocol.release(0));
+        requireException(IllegalArgumentException.class, () -> LinuxCargoProtocol.release(0, List.of()));
         requireException(IllegalArgumentException.class, () -> LinuxCargoProtocol.abort(0));
     }
 

@@ -73,7 +73,7 @@ public final class FakeCargoWrapper implements AutoCloseable
 	 */
 	public static FakeCargoWrapper connect() throws IOException
 	{
-		return connect("register", "2", "/", "2", "/usr/bin/rustc", "--version", "1", "PATH=/usr/bin");
+		return connect("register", "3", "/", "2", "/usr/bin/rustc", "--version", "1", "PATH=/usr/bin");
 	}
 
 	/**

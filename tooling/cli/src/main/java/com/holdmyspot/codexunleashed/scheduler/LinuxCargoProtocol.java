@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Encodes and strictly decodes version 2 of the native Linux Cargo wrapper protocol.
+ * Encodes and strictly decodes version 3 of the native Linux Cargo wrapper protocol.
  * <p>
  * A payload is a sequence of UTF-8 fields, each terminated by one NUL byte, whose first field names the message.
  * Decimal fields carry no sign or leading zero. Any other shape is a protocol error, so a peer that drifts from the
@@ -25,8 +25,13 @@ import java.util.Objects;
  */
 public final class LinuxCargoProtocol
 {
+    /**
+     * The wrapper's limit on a release's entries, with their NUL terminators, in bytes: with the permission byte they fill
+     * one pipe page.
+     */
+    private static final int MAX_RELEASE_ENTRY_BYTES = 4095;
     /** Protocol version the wrapper and this controller both speak. */
-    private static final String VERSION = "2";
+    private static final String VERSION = "3";
     /** Largest raw wait status, because the wrapper reports the C {@code int} status as unsigned. */
     private static final long MAX_WAIT_STATUS = 0xffff_ffffL;
 
@@ -86,7 +91,7 @@ public final class LinuxCargoProtocol
      * @param bytes payload without its length prefix
      * @return decoded message
      * @throws NullPointerException if {@code bytes} is null
-     * @throws IOException          if the payload violates the version 2 contract
+     * @throws IOException          if the payload violates the version 3 contract
      */
     public static Message decode(byte[] bytes) throws IOException
     {
@@ -110,14 +115,31 @@ public final class LinuxCargoProtocol
     }
 
     /**
-     * Encodes permission for a blocked attempt to execute the compiler.
+     * Encodes permission for a blocked attempt to execute the compiler, with environment entries that the child sets
+     * first, replacing a registered entry of the same name.
      * @param attempt attempt number, at least 1
+     * @param entries {@code NAME=value} entries, each with a nonempty name
      * @return payload without its length prefix
-     * @throws IllegalArgumentException if {@code attempt} is not positive
+     * @throws IllegalArgumentException if {@code attempt} is not positive, an entry lacks a name or contains NUL, or the
+     *   entries with their terminators exceed {@value #MAX_RELEASE_ENTRY_BYTES} bytes
      */
-    public static byte[] release(long attempt)
+    public static byte[] release(long attempt, List<String> entries)
     {
-        return encode("release", positive(attempt));
+        List<String> fields = new ArrayList<>(List.of("release", positive(attempt)));
+        int size = 0;
+        for (String entry : entries)
+        {
+            if (entry.indexOf('=') <= 0 || entry.indexOf('\0') >= 0)
+                throw new IllegalArgumentException("A release entry must be NAME=value without NUL: " + entry);
+            size += entry.getBytes(StandardCharsets.UTF_8).length + 1;
+            fields.add(entry);
+        }
+        if (size > MAX_RELEASE_ENTRY_BYTES)
+        {
+            throw new IllegalArgumentException("Release entries take " + size + " bytes; the wrapper accepts " +
+                MAX_RELEASE_ENTRY_BYTES);
+        }
+        return encode(fields.toArray(String[]::new));
     }
 
     /**

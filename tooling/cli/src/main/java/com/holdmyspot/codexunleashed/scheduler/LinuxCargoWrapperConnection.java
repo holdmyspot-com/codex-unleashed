@@ -3,10 +3,11 @@ package com.holdmyspot.codexunleashed.scheduler;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 
 /**
- * Drives the controller end of one native Cargo wrapper connection through protocol version 2.
+ * Drives the controller end of one native Cargo wrapper connection through protocol version 3.
  * <p>
  * The wrapper registers once, then reports each forked compiler child while the child is blocked. This owner checks
  * that every reported child is a live direct child of the connection's kernel peer with the reported start time, and
@@ -181,12 +182,15 @@ public final class LinuxCargoWrapperConnection implements AutoCloseable
 
     /**
      * Lets the held child execute the compiler.
-     * @throws IllegalStateException if no child is held
-     * @throws IOException           if sending fails
+     * @param environment {@code NAME=value} entries that the child sets first, replacing a registered entry of the same
+     *   name
+     * @throws IllegalStateException    if no child is held
+     * @throws IllegalArgumentException if an entry is malformed or the entries exceed the wrapper's limit
+     * @throws IOException              if sending fails
      */
-    public void release() throws IOException
+    public void release(List<String> environment) throws IOException
     {
-        command(State.HELD, LinuxCargoProtocol.release(attempt), State.RELEASED);
+        command(State.HELD, LinuxCargoProtocol.release(attempt, environment), State.RELEASED);
     }
 
     /**
