@@ -23,8 +23,8 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 | --- | --- | --- |
 | Linux x64 release build | Run `41743639583` (`cache=true`, `scheduler=true`), commit `a7d420154f` | Stopped by the watchdog at 02:31Z; see "x64 full run on `a7d420154f`" below. |
 | Linux ARM release build | Run `41743643884`, same commit and inputs | Stopped by the watchdog at 01:40Z; see "ARM full run on `a7d420154f`" below. |
-| Rung 1: `tikv-jemalloc-sys` only, x64 | Run `41756658900` (`packages=tikv-jemalloc-sys`, `cache=true`, `scheduler=true`), commit `40abf6632e` | Dispatched 2026-11-04T01:49Z, replacing the queued `41750107254` on the older commit; queued behind `41743639583` in the x64 concurrency group. It stops before the release checks by design; on success, dispatch rung 2. |
-| Rung 1, ARM | Run `41764563038`, same inputs, commit `b047a3cc4e` | Dispatched 2026-11-04T03:05Z to collect native stacks. The earlier `41752873160` deadlocked; see below. |
+| Rung 1: `tikv-jemalloc-sys` only, x64 | Run `41779910409` (`packages=tikv-jemalloc-sys`, `cache=true`, `scheduler=true`), commit `231d35ea25` | Dispatched 2026-11-04T05:32Z to test the producer ptrace routing. The earlier `41756658900` and `41770178077` hung in Frida's fork re-injection. On success, dispatch rung 2. |
+| Rung 1, ARM | Run `41779913403`, same inputs and commit | Dispatched 2026-11-04T05:32Z. The earlier `41752873160` and `41764563038` deadlocked; `41765110534` was canceled once x64 named the tracer. |
 
 ### ARM full run on `a7d420154f` (2026-11-04): the scheduler failed, then hung in Frida teardown
 
