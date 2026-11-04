@@ -23,8 +23,9 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 | --- | --- | --- |
 | Linux x64 release build | Run `41743639583` (`cache=true`, `scheduler=true`), commit `a7d420154f` | Stopped by the watchdog at 02:31Z; see "x64 full run on `a7d420154f`" below. |
 | Linux ARM release build | Run `41743643884`, same commit and inputs | Stopped by the watchdog at 01:40Z; see "ARM full run on `a7d420154f`" below. |
-| Rung 1: `tikv-jemalloc-sys` only, x64 | Run `41779910409` (`packages=tikv-jemalloc-sys`, `cache=true`, `scheduler=true`), commit `231d35ea25` | Dispatched 2026-11-04T05:32Z to test the producer ptrace routing. The earlier `41756658900` and `41770178077` hung in Frida's fork re-injection. On success, dispatch rung 2. |
-| Rung 1, ARM | Run `41779913403`, same inputs and commit | Dispatched 2026-11-04T05:32Z. The earlier `41752873160` and `41764563038` deadlocked; `41765110534` was canceled once x64 named the tracer. |
+| Rung 1: `tikv-jemalloc-sys` only, x64 | Run `41781244170`, commit `92e10eab9a` | Passed: `Finished` after 50m 33s. The Frida fork-re-injection hang is gone on x64. The build is slow, so measure the ptrace cost (see the fix section). |
+| Rung 1, ARM | Run `41787811748` (`packages=tikv-jemalloc-sys`, `cache=true`, `scheduler=true`), commit `e916f2a950` | Dispatched 2026-11-04T06:47Z. Earlier, `41781247235` and `41783213954` failed with "Parent birth changed before child release": during Cargo's git fetch, a git parent was reparented after its own parent exited. `e916f2a950` stops comparing the live parent's own parent. |
+| Rung 2: about 20 crates, x64 | Run `41787814504`, commit `e916f2a950`, `packages=` rung 1 plus the rung-2 list below | Dispatched 2026-11-04T06:47Z. On success, dispatch rung 3; dispatch ARM rung 2 once ARM rung 1 passes. |
 
 ### ARM full run on `a7d420154f` (2026-11-04): the scheduler failed, then hung in Frida teardown
 
@@ -77,7 +78,7 @@ Handoff written 2026-11-03T17:15Z at the user's request. The goal `implement pla
 - A Cargo wrapper started under a traced image is detached at its exec stop (`Images.detach`, `PTRACE_DETACH`). The compiler attempts it forks then stay untraced and get their own Frida attachment as before. `advance` treats the owner as active once its root is armed by either owner (`admitsChildrenOfNativeRoot`).
 - Trade-off, allowed by contract item 3: a denied allocation in a producer image is reported and ends the build, instead of waiting in-process as the Frida malloc hook did. Static images already worked this way. Compiler attempts are unchanged and keep Frida, with in-process waits and token mediation.
 - Not yet measured: the cost of `PTRACE_SYSCALL` stops across a `configure` run. If it is too slow, the seccomp mmap filter above is the next step. The preload library is still needed for compiler attempts. Its scope shrinks to the attempt side (allocation hook and token mediation).
-- Verification: rung 1 on x64 and ARM; the rows below record the runs.
+- Verification: rung 1 passed on x64 (`41781244170`, 50m 33s). On ARM, rung 1 then failed on a reparented git parent, fixed in `e916f2a950`. The live table records the runs.
 
 ### Incremental package ladder (user directive, 2026-11-04)
 
