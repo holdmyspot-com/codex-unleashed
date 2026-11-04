@@ -1072,6 +1072,8 @@ public final class LinuxAllocationTrace
                 if (executable == null)
                 {
                     try (Arena arena = Arena.ofConfined()) { registers(child.tid(), arena); }
+                    // A handed-over image has already exec'd, so its filter waits for its first syscall exit.
+                    if (isStaticImage(child.tid())) pendingFilters.add(child.tid());
                 }
                 else replaceParkedChild(child.tid(), executable, argv, environment);
                 prepared.set(true);
@@ -1483,8 +1485,10 @@ public final class LinuxAllocationTrace
                 {
                     if (gateNonleaderExec(tid, arena)) return;
                     handleSyscall(tid, arena);
-                    if (stopSignal == SYSCALL_TRAP && pendingFilters.remove(tid))
+                    // A clean user state exists only at a syscall exit, the first one after the image starts.
+                    if (stopSignal == SYSCALL_TRAP && pendingFilters.contains(tid) && !isEntry(syscallInfo(tid, arena)))
                     {
+                        pendingFilters.remove(tid);
                         installFilter(tid, arena);
                         filtered.add(tid);
                     }
@@ -1648,13 +1652,13 @@ public final class LinuxAllocationTrace
 		/**
 		 * Installs a seccomp filter that stops the task only at mmap, execve and execveat, which are the only calls
 		 * this tracer inspects. The filter is inherited by every task the image creates, so its tasks are resumed with
-		 * {@code PTRACE_CONT} and stop only for those calls. A static image does not load our wrapper, so its tree is
+		 * {@code PTRACE_CONT} and stop only for those calls. A static image does not exec our wrapper, so its tree is
 		 * never released untraced, where the filter would fail every mmap with ENOSYS.
 		 * <p>
-		 * The task must be at the syscall exit of its exec. The filter is installed by injected calls at the image's
-		 * entry point, whose instruction is temporarily replaced by a syscall instruction; the instruction and every
+		 * The task must be at a syscall exit, normally its exec's. The filter is installed by injected calls at the
+		 * task's current instruction, which is temporarily replaced by a syscall instruction; the instruction and every
 		 * register are restored afterward.
-		 * @param tid task stopped at its exec's syscall exit
+		 * @param tid task stopped at a syscall exit
 		 * @param arena native storage lifetime
 		 * @throws IOException if an injected call fails
 		 */
