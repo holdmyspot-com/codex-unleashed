@@ -787,6 +787,7 @@ public final class LinuxBorrowedStreams {
             calls.put("getsockopt",bind("getsockopt",I,I,I,I,P,P));
             calls.put("read",bind("read",L,I,P,L));
             calls.put("send",bind("send",L,I,P,L,I));
+            calls.put("recv",bind("recv",L,I,P,L,I));
             calls.put("socket",bind("socket",I,I,I,I));
             calls.put("bind",bind("bind",I,I,P,I));
             calls.put("listen",bind("listen",I,I,I));
@@ -1053,6 +1054,17 @@ public final class LinuxBorrowedStreams {
             }
 
             /**
+             * Reports, without consuming data, whether the peer has closed and no byte remains.
+             * @return true at end of stream; false if the peer is idle or data remains
+             * @throws IOException if native polling or the probe fails
+             * @throws IllegalStateException if descriptor cleanup has begun
+             */
+            boolean ended() throws IOException {
+                requireOpen();
+                return poll(descriptor, (short) 1, 0) && peekEnded(descriptor);
+            }
+
+            /**
              * Reads the complete caller-sized buffer using the existing bounded native transfer.
              * @param bytes destination whose complete size must be received
              * @param deadline monotonic deadline shared by the caller's complete operation
@@ -1305,6 +1317,21 @@ public final class LinuxBorrowedStreams {
          * @param end monotonic deadline in nanoseconds
          * @throws java.io.IOException if validation, native access or owned cleanup fails
          */
+        /**
+         * Peeks one byte without waiting to tell end of stream from pending data.
+         * @param fd a readable socket
+         * @return true if the peer has closed and no byte remains
+         * @throws IOException if the probe fails
+         */
+        boolean peekEnded(int fd) throws IOException {
+            try (var a = Arena.ofConfined()) {
+                // MSG_PEEK | MSG_DONTWAIT
+                var answer = call("recv", fd, a.allocate(1), 1L, 0x42);
+                if (answer.value() == 0) return true;
+                if (answer.value() > 0 || answer.errno() == 4 || answer.errno() == 11) return false;
+                throw new IOException("recv errno=" + answer.errno());
+            }
+        }
         void transfer(int fd,byte[] bytes,boolean sending,long end)throws IOException {
             try(var a=Arena.ofConfined()) {
                 var buffer=a.allocate(bytes.length);

@@ -271,6 +271,25 @@ public final class LinuxCargoTransport
         }
 
         /**
+         * Reports whether the peer closed its end after its last complete frame, without consuming data.
+         * @return true if no byte remains and the peer has closed; false if the peer is idle or data remains
+         * @throws IOException if the probe fails or an earlier frame failed
+         */
+        public boolean ended() throws IOException
+        {
+            requireHealthy();
+            try
+            {
+                return socket.ended();
+            }
+            catch (IOException | RuntimeException | Error failure)
+            {
+                fault = failure;
+                throw failure;
+            }
+        }
+
+        /**
          * Rejects replay after a failed complete-frame operation.
          * @throws IOException if this connection has an earlier frame failure
          */
