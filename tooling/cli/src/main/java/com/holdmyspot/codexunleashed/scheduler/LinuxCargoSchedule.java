@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -86,8 +87,11 @@ public final class LinuxCargoSchedule
                 invocation = configuration.memory() == null ? new LinuxCargoInvocation(scope, inputs) :
                     new LinuxCargoInvocation(scope, inputs, configuration.memory());
                 invocation.start();
+                // Scheduler.dispatch requires inherited standard error, so a stall report reaches the build log there.
+                StallWatch stalls = new StallWatch(Clock.systemUTC(), StallWatch.DEFAULT_THRESHOLD, scope.json(),
+                    System.err::println, () -> StallWatch.Facts.NONE);
                 return new SchedulerCoordinator<>(invocation.session(), settings.budget(), () -> Thread.sleep(10),
-                    new FailureReport(System.err::println)).run();
+                    new FailureReport(System.err::println), stalls).run();
             }
             catch (IOException | RuntimeException | Error failure)
             {
