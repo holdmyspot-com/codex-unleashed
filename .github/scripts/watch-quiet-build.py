@@ -4,14 +4,16 @@ The release build writes every stage's output under one evidence directory. When
 --first-report seconds, this writes a report of every user process to --report: its state, kernel wait channel,
 current system call, tracer and kernel stacks, plus a Java and a mixed Java and native thread dump of each Java process.
 A host without /proc, such as macOS, gets each process's ps line instead, and each JVM's thread dump and native sample.
+Windows gets each process with its count of suspended threads, and each JVM's thread dump.
 Zombies are listed with their name, since they have no command line. It repeats every --interval seconds
 while the build stays quiet, and once the build has been quiet for --stop-after seconds it terminates the command's
-process group and exits 124. Otherwise it exits with the command's own status.
+process group, or on Windows its process tree, and exits 124. Otherwise it exits with the command's own status.
 
 Reading other users' kernel stacks and attaching to their JVMs needs root, so the report is produced by rerunning this
 script with --dump under non-interactive sudo when that is available, and as the current user otherwise.
 """
 import argparse
+import json
 import os
 from pathlib import Path
 import signal
@@ -44,7 +46,7 @@ def status_fields(pid):
 
 def java_dump(uid, command, timeout):
     """Returns the output of one JVM diagnostic command run as the JVM's own user, or why it produced none."""
-    if os.geteuid() == 0 and uid != 0:
+    if os.name != "nt" and os.geteuid() == 0 and uid != 0:
         command = ["sudo", "-n", f"-u#{uid}", *command]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
@@ -117,10 +119,63 @@ def dump_without_procfs(jcmd, out):
             out.write(java_dump(0, [str(sample), pid, "3"], 120))
 
 
+WINDOWS_PROCESS_QUERY = r"""
+$threads = Get-CimInstance Win32_Thread | Group-Object ProcessHandle -AsHashTable -AsString
+Get-CimInstance Win32_Process | ForEach-Object {
+  $own = if ($threads) { @($threads[[string]$_.ProcessId]) } else { @() }
+  $own = @($own | Where-Object { $_ })
+  [pscustomobject]@{ pid = $_.ProcessId; ppid = $_.ParentProcessId; name = $_.Name; command = $_.CommandLine;
+    threads = $own.Count; suspended = @($own | Where-Object { $_.ThreadWaitReason -eq 5 }).Count }
+} | ConvertTo-Json -Compress
+"""
+"""Lists every process as JSON with its parent, command line, thread count and count of threads whose wait reason is
+Suspended (5), which is how a process created suspended, or held by an injector, appears."""
+
+
+def windows_processes(text):
+    """Returns the process records that WINDOWS_PROCESS_QUERY printed; ConvertTo-Json prints a lone record unwrapped."""
+    records = json.loads(text)
+    return records if isinstance(records, list) else [records]
+
+
+def dump_windows(processes, out, thread_dump):
+    """Writes one line per process, marking one whose every thread is suspended as held, then each JVM's thread dump.
+
+    thread_dump returns the text of one JVM's thread dump, given its process ID."""
+    for record in processes:
+        threads, suspended = record["threads"], record["suspended"]
+        held = "yes" if threads > 0 and suspended == threads else "no"
+        command = (record["command"] or record["name"] or "?").replace("\r", " ").replace("\n", " ")
+        out.write(f"pid={record['pid']} ppid={record['ppid']} threads={threads} suspended={suspended} held={held} "
+                  f"cmd={command[:400]}\n")
+    for record in processes:
+        if (record["name"] or "").lower() == "java.exe":
+            out.write(f"--- pid={record['pid']} {record['name']}\n")
+            out.write(thread_dump(record["pid"]))
+
+
+def dump_windows_host(jcmd, out):
+    """Writes the Windows process report, or why PowerShell produced none."""
+    try:
+        result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", WINDOWS_PROCESS_QUERY],
+                                capture_output=True, text=True, timeout=300)
+        processes = windows_processes(result.stdout)
+    except (OSError, subprocess.TimeoutExpired, ValueError) as failure:
+        out.write(f"<process query failed: {failure}>\n")
+        return
+    dump_windows(processes, out,
+                 lambda pid: java_dump(0, [jcmd, str(pid), "Thread.print", "-l"], 30) if jcmd else "<no jcmd>\n")
+
+
 def dump(jcmd, out, procfs=Path("/proc")):
     """Writes one line per user process, then its threads' kernel stacks and any JVM thread dump.
 
-    Without a process file system at procfs, it writes the portable report of dump_without_procfs instead."""
+    Without a process file system at procfs, it writes the portable report of dump_without_procfs instead, and on
+    Windows that of dump_windows_host."""
+    if os.name == "nt":
+        dump_windows_host(jcmd, out)
+        out.flush()
+        return
     if not procfs.is_dir():
         dump_without_procfs(jcmd, out)
         out.flush()
@@ -195,7 +250,7 @@ def write_report(report, quiet, jcmd):
         command = [sys.executable, "-I", os.path.abspath(__file__), "--dump"]
         if jcmd:
             command += ["--jcmd", jcmd]
-        if os.geteuid() != 0 and subprocess.run(["sudo", "-n", "true"], capture_output=True).returncode == 0:
+        if os.name != "nt" and os.geteuid() != 0 and subprocess.run(["sudo", "-n", "true"], capture_output=True).returncode == 0:
             command = ["sudo", "-n", *command]
         try:
             subprocess.run(command, stdout=out, stderr=out, timeout=600)
@@ -250,6 +305,13 @@ def stop(pgid, reap, signal_group=signal_group):
             time.sleep(0.1)
 
 
+def stop_tree(pid, run=lambda command: subprocess.run(command, capture_output=True, timeout=120)):
+    """Ends one Windows process and every descendant, since Windows has no process groups to signal.
+
+    run executes the taskkill command."""
+    run(["taskkill", "/T", "/F", "/PID", str(pid)])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dump", action="store_true", help=argparse.SUPPRESS)
@@ -267,7 +329,7 @@ def main():
     if args.watch is None or args.report is None or not args.command:
         parser.error("--watch, --report and a command are required")
     if args.jcmd is None and os.environ.get("JAVA_HOME"):
-        candidate = Path(os.environ["JAVA_HOME"]) / "bin" / "jcmd"
+        candidate = Path(os.environ["JAVA_HOME"]) / "bin" / ("jcmd.exe" if os.name == "nt" else "jcmd")
         args.jcmd = str(candidate) if candidate.is_file() else None
 
     process = subprocess.Popen(args.command, start_new_session=True)
@@ -286,7 +348,11 @@ def main():
             write_report(args.report, quiet, args.jcmd)
             print(f"watch-quiet-build: stopping quiet build after {quiet:.0f} seconds without output; "
                   f"process report: {args.report}", file=sys.stderr, flush=True)
-            stop(process.pid, process.poll)
+            if os.name == "nt":
+                stop_tree(process.pid)
+                process.wait()
+            else:
+                stop(process.pid, process.poll)
             return 124
         if now >= next_report:
             write_report(args.report, quiet, args.jcmd)

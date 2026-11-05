@@ -99,6 +99,46 @@ class ProcessListTest(unittest.TestCase):
             child.wait()
 
 
+class WindowsReportTest(unittest.TestCase):
+    """Each test owns its loaded watcher module, process records and report buffer.
+
+    The records stand in for the rows that PowerShell's ConvertTo-Json prints for the watcher's process query: one
+    object when one process matches, otherwise an array."""
+
+    def load(self):
+        spec = importlib.util.spec_from_file_location("watch_quiet_build", WATCHER)
+        watcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(watcher)
+        return watcher
+
+    def test_reads_one_process_or_many(self):
+        """A single process and a list of processes are both read as a list of records."""
+        watcher = self.load()
+        row = '{"pid":10,"ppid":4,"name":"cargo.exe","command":"cargo build","threads":2,"suspended":0}'
+        self.assertEqual([record["pid"] for record in watcher.windows_processes(row)], [10])
+        self.assertEqual([record["pid"] for record in watcher.windows_processes(f"[{row},{row}]")], [10, 10])
+
+    def test_names_suspended_processes_and_dumps_each_jvm(self):
+        """Each process is listed with its suspended thread count, a fully suspended one is marked as held, and only
+        JVMs get a thread dump."""
+        watcher = self.load()
+        processes = [
+            {"pid": 10, "ppid": 4, "name": "cargo.exe", "command": "cargo build", "threads": 4, "suspended": 0},
+            {"pid": 11, "ppid": 10, "name": "rustc.exe", "command": "rustc --crate-name x", "threads": 3,
+             "suspended": 3},
+            {"pid": 12, "ppid": 4, "name": "java.exe", "command": None, "threads": 30, "suspended": 0},
+        ]
+        dumped = []
+        report = io.StringIO()
+        watcher.dump_windows(processes, report, lambda pid: dumped.append(pid) or f"dump of {pid}\n")
+        text = report.getvalue()
+        self.assertRegex(text, r"(?m)^pid=11 ppid=10 threads=3 suspended=3 held=yes cmd=rustc --crate-name x$")
+        self.assertRegex(text, r"(?m)^pid=10 ppid=4 threads=4 suspended=0 held=no cmd=cargo build$")
+        self.assertRegex(text, r"(?m)^pid=12 ppid=4 threads=30 suspended=0 held=no cmd=java\.exe$")
+        self.assertEqual(dumped, [12])
+        self.assertIn("dump of 12", text)
+
+
 class SampleSelectionTest(unittest.TestCase):
     """Each test owns its loaded watcher module."""
 
@@ -130,6 +170,15 @@ class StopTest(unittest.TestCase):
 
         watcher.stop(4242, lambda: None, signal_group)
         self.assertEqual(sent, [signal.SIGTERM, 0])
+
+    def test_ends_a_windows_command_with_its_whole_tree(self):
+        """Windows has no process groups, so the command's process tree is ended by its root process."""
+        spec = importlib.util.spec_from_file_location("watch_quiet_build", WATCHER)
+        watcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(watcher)
+        commands = []
+        watcher.stop_tree(4242, lambda command: commands.append(command))
+        self.assertEqual(commands, [["taskkill", "/T", "/F", "/PID", "4242"]])
 
 
 if __name__ == "__main__":
