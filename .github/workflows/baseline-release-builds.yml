@@ -44,6 +44,10 @@ on:
         description: Linux diagnostic only; stream runner signals, memory samples and journal during compilation
         type: boolean
         default: false
+      quiet_stop_minutes:
+        description: POSIX targets only; stop a build whose evidence logs stay quiet this many minutes, after process reports
+        type: number
+        default: 75
       packages:
         description: Optional whitespace-separated Cargo packages; build only these, cache the partial state and fail before release checks
         type: string
@@ -81,7 +85,12 @@ jobs:
           VERIFY_INVALIDATION: ${{ inputs.verify_invalidation }}
           TRACE_SIGNALS: ${{ inputs.trace_signals }}
           SCHEDULER_ENABLED: ${{ inputs.scheduler }}
+          QUIET_STOP_MINUTES: ${{ inputs.quiet_stop_minutes }}
         run: |
+          if ! [[ "$QUIET_STOP_MINUTES" =~ ^[1-9][0-9]*$ ]] || (( QUIET_STOP_MINUTES > 300 )); then
+            printf 'quiet_stop_minutes must be a whole number from 1 to 300.\n' >&2
+            exit 1
+          fi
           if [[ "$CACHE_HIT_REQUIRED" == true && "$CACHE_ENABLED" == false ]]; then
             printf 'require_cache_hit=true requires cache=true.\n' >&2
             exit 1
@@ -549,6 +558,7 @@ jobs:
           TRACE_SIGNALS: ${{ inputs.trace_signals }}
           VERIFY_CLI_UNITS: ${{ inputs.verify_cli_units }}
           SELECTED_PACKAGES: ${{ inputs.packages }}
+          QUIET_STOP_MINUTES: ${{ inputs.quiet_stop_minutes }}
         run: |
           if [[ -n "$SELECTED_PACKAGES" ]]; then
             export RELEASE_PACKAGES="$SELECTED_PACKAGES"
@@ -579,11 +589,14 @@ jobs:
           fi
           # A build whose evidence logs stay quiet gets process reports naming what each process waits on, then is
           # stopped well before the step timeout. A healthy build went at most about ten minutes without output.
+          # A diagnostic run can stop sooner; it reports every 15 minutes, or at half the stop period when that is shorter.
           # The watcher signals POSIX process groups, so Windows relies on the scheduler's own stall report.
           if [[ "$RUNNER_OS" != Windows ]]; then
+            quiet_stop=$(( QUIET_STOP_MINUTES * 60 ))
+            quiet_report=$(( quiet_stop / 2 < 900 ? quiet_stop / 2 : 900 ))
             release_command=(python3 -I "$RUNNER_TEMP/watch-quiet-build.py" --watch "$RUNNER_TEMP/baseline-evidence"
               --report "$RUNNER_TEMP/baseline-evidence/quiet-build-report.log"
-              --first-report 900 --interval 900 --stop-after 4500 -- "${release_command[@]}")
+              --first-report "$quiet_report" --interval "$quiet_report" --stop-after "$quiet_stop" -- "${release_command[@]}")
           fi
 
           if [[ "$TRACE_SIGNALS" == true ]]; then

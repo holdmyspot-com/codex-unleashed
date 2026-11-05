@@ -480,7 +480,7 @@ class MemoryHistoryCollectionTest(unittest.TestCase):
 class WorkflowSelectionTest(unittest.TestCase):
     """Execute the actual selection step against complete declared target/readiness inputs."""
 
-    def select(self,scheduler,target):
+    def select(self,scheduler,target,quiet_stop_minutes='75'):
         """Run workflow selection without any Actions checkout, native acquisition or matrix dispatch."""
         import yaml
         workflow=yaml.load((SCRIPTS.parent/'workflows/baseline-release-builds.yml').read_text(),Loader=yaml.BaseLoader)
@@ -488,7 +488,8 @@ class WorkflowSelectionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as tmp:
             output=Path(tmp)/'output'
             environment=dict(os.environ,CACHE_ENABLED='false',CACHE_HIT_REQUIRED='false',SELECTED_TARGET=target,
-                VERIFY_INVALIDATION='false',TRACE_SIGNALS='false',SCHEDULER_ENABLED=str(scheduler).lower(),GITHUB_OUTPUT=str(output))
+                VERIFY_INVALIDATION='false',TRACE_SIGNALS='false',SCHEDULER_ENABLED=str(scheduler).lower(),
+                QUIET_STOP_MINUTES=quiet_stop_minutes,GITHUB_OUTPUT=str(output))
             result=subprocess.run(['bash','-e','-o','pipefail','-c',step['run']],cwd=SCRIPTS.parents[1],env=environment,capture_output=True)
             matrix=json.loads(output.read_text().removeprefix('value=')) if output.exists() else None
             return result,matrix
@@ -507,6 +508,14 @@ class WorkflowSelectionTest(unittest.TestCase):
         """A supported selected Linux target reaches the candidate's later provisioning gate."""
         result,matrix=self.select(True,'x86_64-unknown-linux-musl');self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual([x['target'] for x in matrix['include']],['x86_64-unknown-linux-musl'])
+
+    def test_rejects_quiet_stop_outside_whole_minutes_up_to_the_step_limit(self):
+        """A quiet-build stop period that is not a whole number of minutes from 1 to 300 stops before dispatch."""
+        for value in ['0','301','1.5','']:
+            result,matrix=self.select(False,'x86_64-unknown-linux-musl',value)
+            self.assertNotEqual(result.returncode,0,value);self.assertIsNone(matrix,value)
+            self.assertIn(b'quiet_stop_minutes must be a whole number from 1 to 300',result.stderr,value)
+        result,matrix=self.select(False,'x86_64-unknown-linux-musl','20');self.assertEqual(result.returncode,0,result.stderr)
 
 
 if __name__=='__main__':unittest.main()
