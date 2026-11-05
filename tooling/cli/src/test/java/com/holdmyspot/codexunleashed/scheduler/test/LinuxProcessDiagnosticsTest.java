@@ -33,6 +33,7 @@ public final class LinuxProcessDiagnosticsTest
 	@Test
 	public void describesChildStateAndTracer() throws IOException, InterruptedException
 	{
+		TestRequirements.requireLinux();
 		Process sleeping = new ProcessBuilder("sleep", "30").start();
 		try
 		{

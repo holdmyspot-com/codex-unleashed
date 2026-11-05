@@ -90,6 +90,7 @@ public final class CargoLaunchConfigurationCommandTest
      */
     @Test public void linuxBuildHookPinsLibraryAndTrampoline() throws IOException
     {
+        TestRequirements.requirePosixFileSystem();
         try (Fixture fixture = new Fixture(); var tooling = new DefaultToolingScope(); var scope = new LinuxCargoScope(tooling))
         {
             Path library = fixture.file("native/libbuildhook.so", "hook library");

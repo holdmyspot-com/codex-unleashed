@@ -55,6 +55,7 @@ public final class LinuxTracedZombiesTest
 	public void releasesKilledTracee() throws IOException, InterruptedException, ExecutionException,
 		TimeoutException
 	{
+		TestRequirements.requireLinux();
 		Process shell = new ProcessBuilder("sh", "-c", "sleep 60 & echo $!; wait $!; echo reaped").
 			redirectErrorStream(true).start();
 		CountDownLatch finished = new CountDownLatch(1);

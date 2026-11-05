@@ -143,6 +143,7 @@ public final class LinuxAllocationTraceNativeTest
 	@Test
 	public void filtersStaticImage() throws IOException, InterruptedException
 	{
+		TestRequirements.requireLinux();
 		int inherited = Files.readAllLines(Path.of("/proc/self/status")).stream()
 			.filter(line -> line.startsWith("Seccomp_filters:"))
 			.mapToInt(line -> Integer.parseInt(line.substring(16).strip()))

@@ -50,6 +50,17 @@ public final class TestRequirements
 			throw new SkipException("Requires a POSIX file system");
 	}
 
+	/**
+	 * Skips the running test unless the host runs Linux, whose process file system and tracing calls the test uses.
+	 *
+	 * @throws SkipException if the host's operating system is not Linux
+	 */
+	public static void requireLinux()
+	{
+		if (!System.getProperty("os.name").equals("Linux"))
+			throw new SkipException("Requires Linux");
+	}
+
 	/** Executes a test operation that may return normally or throw any exception or error. */
 	@FunctionalInterface
 	public interface Operation

@@ -42,13 +42,13 @@ public final class CargoWorkIdentityTest
                 "--crate-type", "lib", "-C", "opt-level=3", "-C", "metadata=aaaa", "-C", "extra-filename=-aaaa",
                 "--cfg", "feature=\"default\"", "--target", "x86_64-unknown-linux-musl",
                 "--extern", "serde=" + root.resolve("first/libserde-aaaa.rmeta"), "-L", "dependency=" + root);
-            String original = identities.identify(request(root.resolve("first"), "/one/bin/rustc", options,
+            String original = identities.identify(request(root.resolve("first"), root.resolve("one/bin/rustc").toString(), options,
                 Map.of("LANG", "C")));
 
             Files.writeString(input, "pub fn f() { println!(\"changed\"); }\n");
             List<String> moved = new ArrayList<>(options);
             moved.replaceAll(option -> option.replace("aaaa", "bbbb"));
-            requireThat(identities.identify(request(root.resolve("second"), "/two/bin/rustc", moved,
+            requireThat(identities.identify(request(root.resolve("second"), root.resolve("two/bin/rustc").toString(), moved,
                 Map.of("LANG", "C.UTF-8"))), "sameCrateAfterChanges").isEqualTo(original);
 
             for (List<String> change : List.of(List.of("codex_core", "codex_cli"), List.of("lib", "rlib"),
@@ -57,12 +57,12 @@ public final class CargoWorkIdentityTest
             {
                 List<String> changed = new ArrayList<>(options);
                 changed.replaceAll(option -> option.equals(change.getFirst()) ? change.getLast() : option);
-                requireThat(identities.identify(request(root.resolve("first"), "/one/bin/rustc", changed,
+                requireThat(identities.identify(request(root.resolve("first"), root.resolve("one/bin/rustc").toString(), changed,
                     Map.of("LANG", "C"))), "changed:" + change.getLast()).isNotEqualTo(original);
             }
             List<String> test = new ArrayList<>(options);
             test.add("--test");
-            requireThat(identities.identify(request(root.resolve("first"), "/one/bin/rustc", test, Map.of("LANG", "C"))),
+            requireThat(identities.identify(request(root.resolve("first"), root.resolve("one/bin/rustc").toString(), test, Map.of("LANG", "C"))),
                 "testHarness").isNotEqualTo(original);
         }
         finally { remove(root); }
@@ -94,9 +94,9 @@ public final class CargoWorkIdentityTest
                 "dep=" + external, "--extern", "std", "--extern", "missing=" + root.resolve("absent.rmeta"));
 
             CargoWorkIdentity identities = new CargoWorkIdentity();
-            requireThat(identities.inputBytes(request(root, "/bin/rustc", options, Map.of("OUT_DIR", generated.toString()))),
+            requireThat(identities.inputBytes(request(root, root.resolve("bin/rustc").toString(), options, Map.of("OUT_DIR", generated.toString()))),
                 "inputBytes").isEqualTo(10L + 20 + 160 + 320);
-            requireThat(identities.inputBytes(request(root, "/bin/rustc", List.of("-", "--crate-name", "___"), Map.of())),
+            requireThat(identities.inputBytes(request(root, root.resolve("bin/rustc").toString(), List.of("-", "--crate-name", "___"), Map.of())),
                 "standardInputHasNoFiles").isEqualTo(0L);
         }
         finally { remove(root); }
