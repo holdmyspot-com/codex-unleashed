@@ -9,6 +9,7 @@ import com.holdmyspot.codexunleashed.scheduler.MacAttempts;
 import com.holdmyspot.codexunleashed.scheduler.MacCargoInvocation;
 import com.holdmyspot.codexunleashed.scheduler.MacCargoRegistration;
 import com.holdmyspot.codexunleashed.scheduler.MacCargoScope;
+import com.holdmyspot.codexunleashed.scheduler.MacNativeModules;
 import com.holdmyspot.codexunleashed.scheduler.MacWorkloadNative;
 import com.holdmyspot.codexunleashed.scheduler.Policy;
 import com.holdmyspot.codexunleashed.scheduler.SchedulerCoordinator;
@@ -56,6 +57,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * The configuration supplies existing absolute {@code fixtureRoot}, {@code cargo}, {@code wrapper}, {@code rustc},
  * {@code toolchainRoot}, {@code workloadLibrary}, {@code helper}, {@code cargoLibrary}, {@code frida}; positive
  * {@code workloadUid}, {@code workloadGid}, {@code jobs}, {@code timeoutSeconds}, {@code executionTimeoutSeconds};
+ * The hook script dylibs that {@link MacNativeModules#in(Path)} names must sit beside {@code workloadLibrary}.
  * nonnegative {@code headroomBytes}; a complete
  * {@code environment} object without inherited make variables; and {@code toolSha256} hashes keyed by each tool name.
  * D1 additionally requires the pinned toolchain's exact {@code errorStderrBase64}. D2 requires {@code d2Project}, a
@@ -369,7 +371,8 @@ public final class MacCargoNativeTest
             List<String> command = new ArrayList<>(List.of(path("cargo").toString(), operation, "--quiet", "--offline",
                 "--color", "never", "--manifest-path", project.resolve("Cargo.toml").toString(),
                 "--target-dir", target.toString()));
-            var launch = new MacWorkloadNative.Launch(path("workloadLibrary"), path("helper"), state, project,
+            var launch = new MacWorkloadNative.Launch(path("workloadLibrary"), path("helper"),
+                MacNativeModules.in(path("workloadLibrary").getParent()), state, project,
                 new MacWorkloadNative.Streams(stdin, stdout, stderr), command,
                 environment.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue()).toList(),
                 positive("workloadUid"), positive("workloadGid"));

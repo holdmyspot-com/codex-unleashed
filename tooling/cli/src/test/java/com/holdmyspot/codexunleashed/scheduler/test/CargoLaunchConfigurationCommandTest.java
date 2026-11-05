@@ -79,7 +79,8 @@ public final class CargoLaunchConfigurationCommandTest
             requireThat(fixture.runInProcess("macOS"), "macConstructionStatus").isEqualTo(0);
             var configuration = MacCargoLaunchConfiguration.read(scope, fixture.output);
             requireThat(configuration.identities().keySet(), "completeMacProducts")
-                .isEqualTo(java.util.Set.of("cargo", "rustc", "toolchain", "cargoBridge", "workload", "wrapper", "anchor", "frida", "javaRuntime"));
+                .isEqualTo(java.util.Set.of("cargo", "rustc", "toolchain", "cargoBridge", "workload", "wrapper", "anchor", "frida", "javaRuntime",
+                    "descriptorProtectionModule", "spawnSearchModule", "cargoTokensModule", "allocationHookModule"));
         }
     }
 
@@ -199,6 +200,8 @@ public final class CargoLaunchConfigurationCommandTest
             frida = file("frida", "native producer");
             for (String name : List.of("toolchain/bin/cargo", "toolchain/bin/rustc", "toolchain/bin/cargo.exe", "toolchain/bin/rustc.exe",
                 "runtime/lib/modules", "runtime/lib/codex/libmac-cargo.dylib", "runtime/lib/codex/libmac-workload.dylib",
+                "runtime/lib/codex/libmac-descriptor-protection.dylib", "runtime/lib/codex/libmac-spawn-search.dylib",
+                "runtime/lib/codex/libmac-cargo-tokens.dylib", "runtime/lib/codex/libmac-allocation-hook.dylib",
                 "runtime/bin/codex-cargo-wrapper", "runtime/bin/codex-workload-anchor", "unshare", "libcgroup")) file(name, name);
             wrapper = file("runtime/wrapper-image/codex-cargo-wrapper/codex-cargo-wrapper.exe", "wrapper image");
         }

@@ -31,6 +31,8 @@ public final class MacAttempts implements JobQueue.AttemptFactory<Integer>
     private final Path library;
     /** Trusted absolute non-forking anchor. */
     private final Path helper;
+    /** Trusted installed hook script dylibs. */
+    private final MacNativeModules modules;
     /** Invocation-owned parent for fresh attempt directories. */
     private final Path directory;
     /** Positive acknowledgement and cleanup bound. */
@@ -97,6 +99,7 @@ public final class MacAttempts implements JobQueue.AttemptFactory<Integer>
      * @param measurements exact native owner registry
      * @param library trusted absolute workload bridge
      * @param helper trusted absolute workload anchor
+     * @param modules trusted installed hook script dylibs
      * @param directory caller-owned absolute scratch root
      * @param uid positive authenticated workload user identifier
      * @param gid positive authenticated workload group identifier
@@ -104,13 +107,15 @@ public final class MacAttempts implements JobQueue.AttemptFactory<Integer>
      * @param routing invocation image routing retained through cleanup
      */
     MacAttempts(ToolingScope scope, FridaRuntime runtime, MacMeasurements.NativeSource measurements,
-        Path library, Path helper, Path directory, int uid, int gid, Duration timeout, AllocationHooks.Routing routing)
+        Path library, Path helper, MacNativeModules modules, Path directory, int uid, int gid, Duration timeout,
+        AllocationHooks.Routing routing)
     {
         this.scope = Objects.requireNonNull(scope, "scope");
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.measurements = Objects.requireNonNull(measurements, "measurements");
         this.library = absolute(library);
         this.helper = absolute(helper);
+        this.modules = Objects.requireNonNull(modules, "modules");
         this.directory = absolute(directory);
         if (uid <= 0 || gid <= 0) throw new IllegalArgumentException("Positive workload credentials required");
         this.uid = uid;
@@ -146,7 +151,7 @@ public final class MacAttempts implements JobQueue.AttemptFactory<Integer>
         Command command = commands.get(name);
         if (command == null || attemptSequence < 0 || attemptSequence <= lastSequence)
             throw new IllegalArgumentException("Unknown compiler action or reused attempt ordinal");
-        MacAttempt attempt = new MacAttempt(scope, this, runtime, measurements, library, helper,
+        MacAttempt attempt = new MacAttempt(scope, this, runtime, measurements, library, helper, modules,
             directory, timeout, name, attemptSequence, command);
         live.put(attemptSequence, attempt);
         lastSequence = attemptSequence;

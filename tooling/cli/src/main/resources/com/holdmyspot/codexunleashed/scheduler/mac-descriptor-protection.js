@@ -1,10 +1,9 @@
 /* This module executes only in an independently authenticated, held image.
- * MacDescriptorProtection supplies the exact configuration and C source as JSON
- * string literals. Its worker asset is packaged with this entrypoint. */
+ * MacDescriptorProtection supplies the exact configuration and the installed native
+ * module's path as JSON literals. Its worker asset is packaged with this entrypoint. */
 'use strict';
 
 const configuration = @CONFIGURATION@;
-const nativeSource = @NATIVE_SOURCE@;
 const mappingBytes = 1024 * 1024;
 const capacity = 65536;
 const mmap = new NativeFunction(Module.getGlobalExportByName('mmap'), 'pointer',
@@ -16,7 +15,7 @@ if (mapping.isNull() || mapping.equals(ptr(-1))) throw new Error('Native descrip
 
 const syscallNumber = Memory.alloc(4);
 syscallNumber.writeS32(configuration.kqueueSyscall);
-const native = new CModule(nativeSource, {
+const native = new CModule(File.readAllBytes(@NATIVE_MODULE@), {
   registry: mapping,
   process_id: Module.getGlobalExportByName('getpid'),
   kernel_call: Module.getGlobalExportByName('syscall'),

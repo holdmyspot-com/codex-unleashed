@@ -2,6 +2,7 @@ package com.holdmyspot.codexunleashed.scheduler;
 
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.UUID;
@@ -70,12 +71,13 @@ public final class MacCargoTokenHook
 
     /**
      * Reads the packaged Darwin source, preceded by the entry-patch functions it calls, before any native acquisition.
+     * @param module installed dylib holding the FIFO read and write replacements
      * @return complete Darwin source
      * @throws IOException if a packaged resource is absent or unreadable
      */
-    static String program() throws IOException
+    static String program(Path module) throws IOException
     {
-        return MacEntryPatch.withPrelude(RESOURCE);
+        return MacEntryPatch.withPrelude(RESOURCE, module);
     }
 
     /**

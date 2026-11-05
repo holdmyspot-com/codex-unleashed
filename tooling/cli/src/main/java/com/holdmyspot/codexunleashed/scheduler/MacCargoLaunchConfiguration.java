@@ -17,6 +17,7 @@ import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -41,9 +42,13 @@ public record MacCargoLaunchConfiguration(Path source, String sourceDigest, int 
     /** Exact version-one fields; memory alone may be absent. */
     private static final Set<String> FIELDS = Set.of("version", "uid", "gid", "supplementaryGroups", "cargo",
         "rustc", "toolchainRoot", "environment", "identities", "memory");
-    /** Required actual byte identities; toolchain covers every contained file and internal symlink. */
+    /**
+     * Required actual byte identities; toolchain covers every contained file and internal symlink, and each
+     * {@code *Module} entry covers one installed hook script dylib.
+     */
     private static final Set<String> IDENTITIES = Set.of("cargo", "rustc", "toolchain", "cargoBridge", "workload",
-        "wrapper", "anchor", "frida", "javaRuntime");
+        "wrapper", "anchor", "frida", "javaRuntime", "descriptorProtectionModule", "spawnSearchModule",
+        "cargoTokensModule", "allocationHookModule");
     /** Native authorities and jobserver entries minted only by the invocation. */
     private static final Set<String> OWNED_ENV = Set.of("RUSTC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER",
         "CODEX_CARGO_SOCKET", "MAKEFLAGS", "CARGO_MAKEFLAGS", "MFLAGS", "LD_PRELOAD", "LD_LIBRARY_PATH");
@@ -176,8 +181,10 @@ public record MacCargoLaunchConfiguration(Path source, String sourceDigest, int 
     {
         requireAbsolute(runtime); requireAbsolute(frida);
         Path home = runtime.toRealPath();
-        return new Installed(home.resolve("lib/codex/libmac-cargo.dylib"), home.resolve("lib/codex/libmac-workload.dylib"),
-            home.resolve("bin/codex-cargo-wrapper"), home.resolve("bin/codex-workload-anchor"), frida, home.resolve("lib/modules"));
+        Path libraries = home.resolve("lib/codex");
+        return new Installed(libraries.resolve("libmac-cargo.dylib"), libraries.resolve("libmac-workload.dylib"),
+            home.resolve("bin/codex-cargo-wrapper"), home.resolve("bin/codex-workload-anchor"), frida, home.resolve("lib/modules"),
+            MacNativeModules.in(libraries));
     }
 
     /**
@@ -188,8 +195,10 @@ public record MacCargoLaunchConfiguration(Path source, String sourceDigest, int 
      * @param anchor installed non-forking workload anchor
      * @param frida explicit instrumentation producer
      * @param javaRuntime actual installed jlink modules file
+     * @param modules installed dylibs that the hook scripts load into each held image
      */
-    public record Installed(Path cargoBridge, Path workload, Path wrapper, Path anchor, Path frida, Path javaRuntime)
+    public record Installed(Path cargoBridge, Path workload, Path wrapper, Path anchor, Path frida, Path javaRuntime,
+        MacNativeModules modules)
     {
         /**
          * Rejects relative installed product paths.
@@ -199,10 +208,12 @@ public record MacCargoLaunchConfiguration(Path source, String sourceDigest, int 
          * @param anchor workload anchor
          * @param frida instrumentation producer
          * @param javaRuntime installed runtime modules
+         * @param modules installed hook script dylibs
          */
         public Installed
         {
             for (Path path : List.of(cargoBridge, workload, wrapper, anchor, frida, javaRuntime)) requireAbsolute(path);
+            Objects.requireNonNull(modules, "modules");
         }
         /**
          * Supplies the complete installed-byte identity map.
@@ -210,8 +221,10 @@ public record MacCargoLaunchConfiguration(Path source, String sourceDigest, int 
          */
         Map<String, Path> files()
         {
-            return Map.of("cargoBridge", cargoBridge, "workload", workload, "wrapper", wrapper,
-                "anchor", anchor, "frida", frida, "javaRuntime", javaRuntime);
+            Map<String, Path> files = new HashMap<>(modules.files());
+            files.putAll(Map.of("cargoBridge", cargoBridge, "workload", workload, "wrapper", wrapper,
+                "anchor", anchor, "frida", frida, "javaRuntime", javaRuntime));
+            return Map.copyOf(files);
         }
     }
 

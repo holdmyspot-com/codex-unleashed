@@ -508,11 +508,12 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Builds the macOS Cargo descriptor bridge, compiler wrapper and workload owners into one runtime.
+	 * Builds the macOS Cargo descriptor bridge, compiler wrapper, workload owners and hook script dylibs into one runtime.
 	 * The selected Xcode toolchain supplies the macOS SDK through xcrun; this operation runs only on macOS.
 	 * JavaScript instrumentation remains in the tooling module's ordinary resources.
 	 *
-	 * @param sources directory containing the pinned mac-cargo.c and mac-workload.c sources
+	 * @param sources directory containing the pinned mac-cargo.c, mac-workload.c and hook script CModule sources, and
+	 *                the Frida CModule runtime headers in frida-cmodule
 	 * @param runtime linked runtime receiving native libraries and executable helpers
 	 * @throws IOException if source files are missing or native compilation fails
 	 */
@@ -529,6 +530,44 @@ public final class DistributionMain
 			List.of("-dynamiclib", "-framework", "CoreFoundation"));
 		compileMac(workload, runtime.resolve("bin/codex-workload-anchor"),
 			List.of("-DMW_ANCHOR", "-framework", "CoreFoundation"));
+		for (String module : List.of("mac-descriptor-protection", "mac-spawn-search", "mac-cargo-tokens",
+			"mac-allocation-hook"))
+			compileMacModule(sources, module, libraries.resolve("lib" + module + ".dylib"));
+	}
+
+	/**
+	 * Compiles one hook script's CModule source into the dylib that the script loads with
+	 * {@code new CModule(bytes, symbols)}.
+	 * <p>
+	 * The source is compiled against Frida's CModule runtime headers with the definitions and undefined-symbol linkage
+	 * that Frida's own external CModule toolchain uses, so Frida binds the dylib's imports to the same runtime functions
+	 * that it gives a source compiled in the image.
+	 *
+	 * @param sources directory containing {@code module}.c and the frida-cmodule headers
+	 * @param module  hook script CModule source name without its .c extension
+	 * @param output  new dylib path
+	 * @throws IOException if the source or headers are missing or compilation fails
+	 */
+	private static void compileMacModule(Path sources, String module, Path output) throws IOException
+	{
+		Path source = sources.resolve(module + ".c");
+		Path headers = sources.resolve("frida-cmodule");
+		if (!Files.isRegularFile(source) || !Files.isRegularFile(headers.resolve("glib.h")))
+			throw new IOException("macOS CModule sources must contain " + module + ".c and frida-cmodule/glib.h: " + sources);
+		String architecture = switch (System.getProperty("os.arch"))
+		{
+			case "aarch64" -> "-DHAVE_ARM64";
+			case "x86_64", "amd64" -> "-DHAVE_I386";
+			default -> throw new IOException("Unsupported macOS CModule architecture: " + System.getProperty("os.arch"));
+		};
+		// Frida 17.24.3 compiles CModule source with its built-in TinyCC compiler inside the held image. When one image
+		// compiles several sources, that compiler corrupts the Frida agent's heap: a later allocation faults while it holds
+		// the heap lock, Frida's fault handler then waits for that lock, and the image's script load never completes.
+		// Loading these prebuilt dylibs never runs that compiler.
+		runMacCompiler(source, List.of("/usr/bin/xcrun", "--sdk", "macosx", "clang", "-dynamiclib", "-Wall", "-O2",
+			"-isystem", headers.toString(), architecture, "-DG_GINT16_MODIFIER=\"h\"", "-DG_GINT32_MODIFIER=\"\"",
+			"-DG_GINT64_MODIFIER=\"ll\"", "-DG_GSIZE_MODIFIER=\"l\"", "-DG_GSSIZE_MODIFIER=\"l\"",
+			"-DGLIB_SIZEOF_VOID_P=8", source.toString(), "-o", output.toString(), "-Wl,-undefined,dynamic_lookup"));
 	}
 
 	/**
@@ -546,6 +585,19 @@ public final class DistributionMain
 			"-std=c11", "-Wall", "-Wextra"));
 		command.addAll(options);
 		command.addAll(List.of(source.toString(), "-o", output.toString()));
+		runMacCompiler(source, command);
+	}
+
+	/**
+	 * Runs one complete macOS compiler command.
+	 * Diagnostic capture is deleted after its result has been consumed, including failed compilation.
+	 *
+	 * @param source  pinned native source file, for diagnostics
+	 * @param command complete compiler command
+	 * @throws IOException if compiler launch, compilation or diagnostic cleanup fails
+	 */
+	private static void runMacCompiler(Path source, List<String> command) throws IOException
+	{
 		try (JlinkDiagnostics diagnostics = new JlinkDiagnostics(Files.createTempFile("mac-native-", ".log")))
 		{
 			ProcessBuilder builder = new ProcessBuilder(command);

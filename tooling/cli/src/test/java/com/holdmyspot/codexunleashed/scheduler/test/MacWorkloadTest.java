@@ -5,6 +5,7 @@ import com.holdmyspot.codexunleashed.scheduler.FridaRuntime;
 import com.holdmyspot.codexunleashed.scheduler.MacDescriptorProtection;
 import com.holdmyspot.codexunleashed.scheduler.MacImages;
 import com.holdmyspot.codexunleashed.scheduler.MacWorkload;
+import com.holdmyspot.codexunleashed.scheduler.MacNativeModules;
 import com.holdmyspot.codexunleashed.scheduler.MacWorkloadNative;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
 import java.io.IOException;
@@ -54,7 +55,7 @@ public final class MacWorkloadTest
     {
         Path absolute = Path.of(".").toAbsolutePath();
         requireException(IllegalArgumentException.class, () -> new MacWorkloadNative.Launch(
-            absolute, absolute, absolute, absolute, new MacWorkloadNative.Streams(0, 1, 2), List.of(absolute.toString()), List.of("NAME=first", "NAME=second"), 501, 20));
+            absolute, absolute, MacNativeModules.in(absolute), absolute, absolute, new MacWorkloadNative.Streams(0, 1, 2), List.of(absolute.toString()), List.of("NAME=first", "NAME=second"), 501, 20));
     }
 
     /**
@@ -67,7 +68,7 @@ public final class MacWorkloadTest
         {
             List<String> command = new ArrayList<>(List.of(executable, "", "argument with spaces", "--literal=$PATH"));
             List<String> expected = List.copyOf(command);
-            MacWorkloadNative.Launch launch = new MacWorkloadNative.Launch(absolute, absolute, absolute, absolute,
+            MacWorkloadNative.Launch launch = new MacWorkloadNative.Launch(absolute, absolute, MacNativeModules.in(absolute), absolute, absolute,
                 new MacWorkloadNative.Streams(0, 1, 2), command, List.of("PATH=/unrelated"), 501, 20);
             command.set(0, "replacement");
             requireThat(launch.command(), "originalCommandVectorFrozenWithoutResolution").isEqualTo(expected, "expected");
@@ -82,7 +83,7 @@ public final class MacWorkloadTest
         Path absolute = Path.of(".").toAbsolutePath().getRoot();
         for (List<String> command : List.of(List.<String>of(), List.of(""), List.of("work\0load")))
             requireException(IllegalArgumentException.class, () -> new MacWorkloadNative.Launch(
-                absolute, absolute, absolute, absolute, new MacWorkloadNative.Streams(0, 1, 2), command, List.of(), 501, 20));
+                absolute, absolute, MacNativeModules.in(absolute), absolute, absolute, new MacWorkloadNative.Streams(0, 1, 2), command, List.of(), 501, 20));
     }
 
     /**
@@ -93,14 +94,14 @@ public final class MacWorkloadTest
         Path root = Path.of(".").toAbsolutePath().getRoot();
         int prefixBytes = root.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
         Path boundary = root.resolve("a".repeat(90 - prefixBytes));
-        new MacWorkloadNative.Launch(root, root, boundary, root, new MacWorkloadNative.Streams(0, 1, 2),
+        new MacWorkloadNative.Launch(root, root, MacNativeModules.in(root), boundary, root, new MacWorkloadNative.Streams(0, 1, 2),
             List.of(root.toString()), List.of(), 501, 20);
         Path overlong = root.resolve("a".repeat(91 - prefixBytes));
         requireException(IllegalArgumentException.class, () -> new MacWorkloadNative.Launch(
-            root, root, overlong, root, new MacWorkloadNative.Streams(0, 1, 2), List.of(root.toString()), List.of(), 501, 20));
+            root, root, MacNativeModules.in(root), overlong, root, new MacWorkloadNative.Streams(0, 1, 2), List.of(root.toString()), List.of(), 501, 20));
         Path multibyte = root.resolve("é".repeat(46));
         requireException(IllegalArgumentException.class, () -> new MacWorkloadNative.Launch(
-            root, root, multibyte, root, new MacWorkloadNative.Streams(0, 1, 2), List.of(root.toString()), List.of(), 501, 20));
+            root, root, MacNativeModules.in(root), multibyte, root, new MacWorkloadNative.Streams(0, 1, 2), List.of(root.toString()), List.of(), 501, 20));
     }
 
     /**
@@ -334,6 +335,10 @@ public final class MacWorkloadTest
             polls++;
             if (observationFailure != null) throw observationFailure;
             return Optional.ofNullable(children.poll());
+        }
+        @Override public MacNativeModules modules()
+        {
+            return MacNativeModules.in(Path.of("/installed/lib/codex"));
         }
         @Override public AllocationHook.Connection connection(long pid)
         {

@@ -101,6 +101,8 @@ public final class MacCargoLaunchConfigurationTest
         requireThat(installed.wrapper(), "bundledWrapper").isEqualTo(home.resolve("bin/codex-cargo-wrapper"), "expected");
         requireThat(installed.workload(), "bundledAuthorityBridge").isEqualTo(home.resolve("lib/codex/libmac-workload.dylib"), "expected");
         requireThat(installed.javaRuntime(), "actualRuntimeIdentity").isEqualTo(home.resolve("lib/modules"), "expected");
+        requireThat(installed.modules().cargoTokens(), "bundledCargoTokenModule")
+            .isEqualTo(home.resolve("lib/codex/libmac-cargo-tokens.dylib"), "expected");
     }
 
     /**
@@ -136,7 +138,8 @@ public final class MacCargoLaunchConfigurationTest
     private static Map<String, Object> values()
     {
         Map<String, String> identities = new HashMap<>();
-        for (String name : List.of("cargo", "rustc", "toolchain", "cargoBridge", "workload", "wrapper", "anchor", "frida", "javaRuntime"))
+        for (String name : List.of("cargo", "rustc", "toolchain", "cargoBridge", "workload", "wrapper", "anchor", "frida", "javaRuntime",
+            "descriptorProtectionModule", "spawnSearchModule", "cargoTokensModule", "allocationHookModule"))
             identities.put(name, "0".repeat(64));
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("version", 1); result.put("uid", 501); result.put("gid", 20); result.put("supplementaryGroups", List.of());

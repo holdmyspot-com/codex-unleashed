@@ -3,9 +3,11 @@ package com.holdmyspot.codexunleashed.scheduler.test;
 import com.holdmyspot.codexunleashed.scheduler.AllocationHook;
 import com.holdmyspot.codexunleashed.scheduler.FridaRuntime;
 import com.holdmyspot.codexunleashed.scheduler.MacDescriptorProtection;
+import com.holdmyspot.codexunleashed.scheduler.MacNativeModules;
 import com.holdmyspot.codexunleashed.scheduler.MacImages;
 import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
@@ -1175,6 +1177,10 @@ public final class MacImagesTest
         @Override public MacDescriptorProtection.Inventory descriptors(MacImages.Identity identity)
         {
             return new MacDescriptorProtection.Inventory(362, 5, List.of());
+        }
+        @Override public MacNativeModules modules()
+        {
+            return MacNativeModules.in(Path.of("/installed/lib/codex"));
         }
         @Override public AllocationHook.Connection connection(long pid)
         {

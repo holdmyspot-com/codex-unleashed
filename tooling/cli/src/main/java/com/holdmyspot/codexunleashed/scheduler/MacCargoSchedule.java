@@ -72,7 +72,7 @@ public final class MacCargoSchedule
             environment.put("RUSTC_WRAPPER", installed.wrapper().toString());
             environment.put("CODEX_CARGO_SOCKET", socket.toString());
             List<String> command = new ArrayList<>(); command.add(authorization.cargo().toString()); command.addAll(settings.arguments());
-            var launch = new MacWorkloadNative.Launch(installed.workload(), installed.anchor(), state,
+            var launch = new MacWorkloadNative.Launch(installed.workload(), installed.anchor(), installed.modules(), state,
                 settings.workspace(), streams, command, environment.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue()).toList(),
                 authorization.uid(), authorization.gid());
             var registration = new MacCargoRegistration.Configuration(authorization.cargo(), installed.wrapper(), authorization.rustc(),

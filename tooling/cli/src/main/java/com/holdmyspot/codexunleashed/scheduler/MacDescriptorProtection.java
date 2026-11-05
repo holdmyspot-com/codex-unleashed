@@ -83,10 +83,10 @@ public final class MacDescriptorProtection
         // Every gated image loads this script before its release, so it also carries the guard that keeps the image's
         // PATH-searched children resumable under Frida's child gating. The guard follows the protection script so that
         // script's strict-mode directive stays first.
-        String script = resource("mac-descriptor-protection.js")
-            .replace("@CONFIGURATION@", json.writeValueAsString(configuration))
-            .replace("@NATIVE_SOURCE@", json.writeValueAsString(resource("mac-descriptor-protection.c"))) +
-            "\n" + MacEntryPatch.withPrelude("mac-spawn-search.js");
+        MacNativeModules modules = operations.modules();
+        String script = MacNativeModules.bind("mac-descriptor-protection.js", resource("mac-descriptor-protection.js"),
+            modules.descriptorProtection()).replace("@CONFIGURATION@", json.writeValueAsString(configuration)) +
+            "\n" + MacEntryPatch.withPrelude("mac-spawn-search.js", modules.spawnSearch());
         connection.start(script);
         JsonNode installed = envelope(awaitFrame(connection), "mac-descriptor-installed",
             Set.of("kind", "marker", "pid", "registry", "inheritedDescriptors"));

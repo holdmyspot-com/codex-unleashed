@@ -3,6 +3,7 @@ package com.holdmyspot.codexunleashed.scheduler;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 
 /**
  * Composes a packaged Darwin hook script with the entry-patch functions it calls to redirect a function entry to its
@@ -21,14 +22,16 @@ public final class MacEntryPatch
     }
 
     /**
-     * Reads a packaged Darwin hook script preceded by the entry-patch functions.
+     * Reads a packaged Darwin hook script preceded by the entry-patch functions, naming the dylib that it loads.
      * @param resource name of the hook script in this package
+     * @param module   installed dylib holding the script's native replacements
      * @return entry-patch functions followed by the hook script
-     * @throws IOException if either packaged resource is absent or unreadable
+     * @throws IOException           if either packaged resource is absent or unreadable
+     * @throws IllegalStateException if the hook script does not name its native module exactly once
      */
-    public static String withPrelude(String resource) throws IOException
+    public static String withPrelude(String resource, Path module) throws IOException
     {
-        return read(PRELUDE) + "\n" + read(resource);
+        return read(PRELUDE) + "\n" + MacNativeModules.bind(resource, read(resource), module);
     }
 
     /**

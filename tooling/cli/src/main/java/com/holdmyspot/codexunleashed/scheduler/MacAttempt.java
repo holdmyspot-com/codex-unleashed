@@ -50,6 +50,7 @@ public final class MacAttempt implements JobQueue.Attempt<Integer>
      * @param measurements native owner registry
      * @param library trusted bridge
      * @param helper trusted anchor
+     * @param modules trusted installed hook script dylibs
      * @param directory absolute scratch root
      * @param timeout positive control bound
      * @param name action identity
@@ -57,10 +58,10 @@ public final class MacAttempt implements JobQueue.Attempt<Integer>
      * @param command authenticated command and borrowed capabilities
      */
     public MacAttempt(ToolingScope scope, MacAttempts attempts, FridaRuntime runtime,
-        MacMeasurements.NativeSource measurements, Path library, Path helper, Path directory,
+        MacMeasurements.NativeSource measurements, Path library, Path helper, MacNativeModules modules, Path directory,
         Duration timeout, String name, long sequence, MacAttempts.Command command)
     {
-        this(new NativeExecution(scope, attempts, runtime, measurements, library, helper, directory,
+        this(new NativeExecution(scope, attempts, runtime, measurements, library, helper, modules, directory,
             timeout, name, sequence, command), attempts, name, sequence, attempts.retirementLedger());
     }
 
@@ -394,6 +395,8 @@ public final class MacAttempt implements JobQueue.Attempt<Integer>
         private final Path library;
         /** Trusted absolute non-forking anchor. */
         private final Path helper;
+        /** Trusted installed hook script dylibs. */
+        private final MacNativeModules modules;
         /** Invocation-owned parent for fresh attempt storage. */
         private final Path directory;
         /** Positive bound for cleanup and native acknowledgement. */
@@ -453,6 +456,7 @@ public final class MacAttempt implements JobQueue.Attempt<Integer>
          * @param measurements native owner registry
          * @param library trusted absolute bridge
          * @param helper trusted absolute anchor
+         * @param modules trusted installed hook script dylibs
          * @param directory absolute invocation scratch root
          * @param timeout positive cleanup and acknowledgement bound
          * @param name authenticated action name
@@ -460,8 +464,8 @@ public final class MacAttempt implements JobQueue.Attempt<Integer>
          * @param command authenticated immutable execution and borrowed capabilities
          */
         NativeExecution(ToolingScope scope, MacAttempts attempts, FridaRuntime runtime,
-            MacMeasurements.NativeSource measurements, Path library, Path helper, Path directory,
-            Duration timeout, String name, long sequence, MacAttempts.Command command)
+            MacMeasurements.NativeSource measurements, Path library, Path helper, MacNativeModules modules,
+            Path directory, Duration timeout, String name, long sequence, MacAttempts.Command command)
         {
             this.scope = Objects.requireNonNull(scope, "scope");
             this.attempts = Objects.requireNonNull(attempts, "attempts");
@@ -469,6 +473,7 @@ public final class MacAttempt implements JobQueue.Attempt<Integer>
             this.measurements = Objects.requireNonNull(measurements, "measurements");
             this.library = Objects.requireNonNull(library, "library");
             this.helper = Objects.requireNonNull(helper, "helper");
+            this.modules = Objects.requireNonNull(modules, "modules");
             this.directory = Objects.requireNonNull(directory, "directory");
             this.timeout = LinuxAttempts.checkedTimeout(timeout);
             new MacAttempts.Blocked(name, sequence, 0);
@@ -508,7 +513,7 @@ public final class MacAttempt implements JobQueue.Attempt<Integer>
                 CargoCompilerRequest request = command.request();
                 List<String> environment = new ArrayList<>();
                 request.environment().forEach((key, value) -> environment.add(key + "=" + value));
-                MacWorkloadNative.Launch launch = new MacWorkloadNative.Launch(library, helper, scratch,
+                MacWorkloadNative.Launch launch = new MacWorkloadNative.Launch(library, helper, modules, scratch,
                     request.directory(), command.peer().streams(), request.arguments(), environment,
                     command.peer().identity().uid(), command.peer().identity().gid());
                 nativeOwner = new MacWorkloadNative.Owner(scope, launch, manager);

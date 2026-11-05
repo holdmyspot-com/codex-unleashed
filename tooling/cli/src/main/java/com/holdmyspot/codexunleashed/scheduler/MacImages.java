@@ -631,6 +631,11 @@ public final class MacImages
          */
         AllocationHook.Connection connection(long pid);
         /**
+         * Locates the installed dylibs that the hook scripts load into each held image.
+         * @return trusted installed hook script dylibs
+         */
+        MacNativeModules modules();
+        /**
          * Reads the kernel code-signing status of one held image, independently of any callback path.
          * The kernel marks an image as an Apple platform binary when it is signed as part of the operating system.
          * Such an image cannot be instrumented: the kernel refuses another process access to its threads.
@@ -679,6 +684,15 @@ public final class MacImages
             throw new IOException("Descriptor admission requires the authenticated native workload authority");
         }
         @Override public AllocationHook.Connection connection(long pid) { return AllocationHook.newNativeConnection(manager, pid); }
+        /**
+         * Supplies no dylibs, because these observations admit no image's descriptors and so no hook script loads.
+         * @return never
+         * @throws UnsupportedOperationException always
+         */
+        @Override public MacNativeModules modules()
+        {
+            throw new UnsupportedOperationException("Hook scripts require the authenticated native workload authority");
+        }
         /**
          * Exempts no image, because these observations lack the kernel code-signing bridge; every image is attached.
          * @param identity held image

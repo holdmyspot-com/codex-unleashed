@@ -2,6 +2,7 @@ package com.holdmyspot.codexunleashed.scheduler;
 
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -140,12 +141,13 @@ final class MacCargoInstrumentation implements MacImages.InstrumentationFactory
 
     /**
      * Reads the packaged Darwin allocation hook, preceded by the entry-patch functions it calls.
+     * @param module installed dylib holding the malloc replacement
      * @return complete Darwin source
      * @throws IOException if a packaged resource is absent or unreadable
      */
-    static String program() throws IOException
+    static String program(Path module) throws IOException
     {
-        return MacEntryPatch.withPrelude("mac-allocation-hook.js");
+        return MacEntryPatch.withPrelude("mac-allocation-hook.js", module);
     }
 
     /** Retains partial image hook acquisitions before each fallible start operation. */
@@ -181,13 +183,13 @@ final class MacCargoInstrumentation implements MacImages.InstrumentationFactory
             attempted = true;
             nativeOwner.authority(image);
             tokenHook = new MacCargoTokenHook(scope, identity, installation, image.pid(), lease.identity(),
-                manager, tokens, MacCargoTokenHook.program(), timeout);
+                manager, tokens, MacCargoTokenHook.program(nativeOwner.modules().cargoTokens()), timeout);
             tokenHook.start();
             tokenHook.awaitReady(peers);
             if (mode == Mode.COMPILER)
             {
                 allocation = new AllocationHook(scope, identity, installation, image.pid(), manager,
-                    waits, program(), timeout);
+                    waits, program(nativeOwner.modules().allocationHook()), timeout);
                 allocation.start();
                 allocation.awaitReady(peers);
             }

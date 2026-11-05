@@ -177,6 +177,7 @@ public interface MacWorkloadNative extends MacImages.Operations, MacImages.Workl
      * The caller creates a fresh root-owned mode-0700 directory and supplies trusted installed binaries.
      * @param library absolute trusted bridge library path
      * @param helper absolute trusted root-owned launchd anchor executable
+     * @param modules trusted installed dylibs that the hook scripts load into each held image
      * @param directory fresh exclusive launch state directory with at most 90 UTF-8 bytes
      * @param workingDirectory absolute original invocation working directory
      * @param streams original borrowed standard stream descriptors
@@ -186,13 +187,14 @@ public interface MacWorkloadNative extends MacImages.Operations, MacImages.Workl
      * @param uid original workload real, effective and saved user identifier
      * @param gid original workload real, effective and saved group identifier
      */
-    record Launch(Path library, Path helper, Path directory, Path workingDirectory, Streams streams,
+    record Launch(Path library, Path helper, MacNativeModules modules, Path directory, Path workingDirectory, Streams streams,
         List<String> command, List<String> environment, int uid, int gid)
     {
         /**
          * Validates and freezes launch inputs before any native effect.
          * @param library trusted bridge path
          * @param helper trusted anchor path
+         * @param modules trusted installed hook script dylibs
          * @param directory exclusive state directory with at most 90 UTF-8 bytes
          * @param workingDirectory absolute original invocation working directory
          * @param streams borrowed standard stream descriptors kept open through acquisition
@@ -208,6 +210,7 @@ public interface MacWorkloadNative extends MacImages.Operations, MacImages.Workl
         {
             Objects.requireNonNull(library, "library");
             Objects.requireNonNull(helper, "helper");
+            Objects.requireNonNull(modules, "modules");
             Objects.requireNonNull(directory, "directory");
             Objects.requireNonNull(workingDirectory, "workingDirectory");
             Objects.requireNonNull(streams, "streams");
@@ -513,6 +516,8 @@ public interface MacWorkloadNative extends MacImages.Operations, MacImages.Workl
             requireThread();
             return AllocationHook.newNativeConnection(manager, pid);
         }
+
+        @Override public MacNativeModules modules() { return launch.modules(); }
 
         /**
          * Reads the kernel code-signing status of one retained held image.

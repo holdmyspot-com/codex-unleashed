@@ -642,7 +642,7 @@ public final class MacCargoInvocation implements CargoSession.Invocation
                 measurements = estimates;
             }
             attempts = new MacAttempts(scope.tooling(), runtime, source, config.cargo().library(), config.cargo().helper(),
-                config.scratchParent(), config.cargo().uid(), config.cargo().gid(), config.timeout(), new AllocationHooks.Routing());
+                config.cargo().modules(), config.scratchParent(), config.cargo().uid(), config.cargo().gid(), config.timeout(), new AllocationHooks.Routing());
             manager = runtime.newManager();
             manager.start();
             MacWorkloadNative.Launch launch = withEnvironment(config.cargo(), lease.environment());
@@ -843,7 +843,7 @@ public final class MacCargoInvocation implements CargoSession.Invocation
      */
     private static MacWorkloadNative.Launch withEnvironment(MacWorkloadNative.Launch launch, Map<String, String> environment)
     {
-        return new MacWorkloadNative.Launch(launch.library(), launch.helper(), launch.directory(), launch.workingDirectory(),
+        return new MacWorkloadNative.Launch(launch.library(), launch.helper(), launch.modules(), launch.directory(), launch.workingDirectory(),
             launch.streams(), launch.command(), environment.entrySet().stream().map(entry -> entry.getKey() + "=" + entry.getValue()).toList(),
             launch.uid(), launch.gid());
     }
