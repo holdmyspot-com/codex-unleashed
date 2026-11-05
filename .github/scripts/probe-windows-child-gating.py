@@ -7,6 +7,8 @@ runs the same command from a new empty directory outside any repository in three
 - `off`: no instrumentation; the command must exit within the bound (expected: nonzero, "not a git repository").
 - `gating`: Frida spawns the command, enables child gating in every image, and resumes each gated child.
 - `script`: as `gating`, and also loads an empty script into every image, as the scheduler loads its hooks.
+- `root`: Frida spawns the command and enables child gating in it alone; each gated child is resumed without being
+  attached, so the Git for Windows shells it starts run uninstrumented.
 
 Each mode prints one JSON line per event and exits 1 when the command does not exit within the bound.
 """
@@ -59,10 +61,10 @@ def run_uninstrumented(command, directory, bound):
     return True
 
 
-def run_instrumented(command, directory, bound, load_script):
+def run_instrumented(command, directory, bound, mode):
     import frida
 
-    mode = "script" if load_script else "gating"
+    load_script = mode == "script"
     device = frida.get_local_device()
     children = queue.Queue()
     device.on("child-added", lambda child: children.put(child))
@@ -96,7 +98,8 @@ def run_instrumented(command, directory, bound, load_script):
         emit("child_added", mode=mode, pid=child.pid, parent_pid=child.parent_pid, origin=child.origin,
              path=child.path)
         try:
-            instrument(child.pid)
+            if mode != "root":
+                instrument(child.pid)
             device.resume(child.pid)
             emit("child_resumed", mode=mode, pid=child.pid)
         except frida.ProcessNotFoundError as error:
@@ -107,17 +110,15 @@ def run_instrumented(command, directory, bound, load_script):
     while not children.empty():
         pending.append(children.get_nowait().pid)
     emit("hung_state", mode=mode, pending_children=pending)
+    # A gated child that is left running keeps the job's output pipe open, so end the whole tree.
     for pid in [root] + pending:
-        try:
-            device.kill(pid)
-        except frida.ProcessNotFoundError:
-            pass
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True)
     return False
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--mode", choices=("off", "gating", "script"), required=True)
+    parser.add_argument("--mode", choices=("off", "gating", "script", "root"), required=True)
     parser.add_argument("--bound", type=float, default=120.0, help="Seconds the command may run before it counts as hung")
     arguments = parser.parse_args()
 
@@ -129,7 +130,7 @@ def main():
         if arguments.mode == "off":
             exited = run_uninstrumented(command, directory, arguments.bound)
         else:
-            exited = run_instrumented(command, directory, arguments.bound, arguments.mode == "script")
+            exited = run_instrumented(command, directory, arguments.bound, arguments.mode)
     sys.exit(0 if exited else 1)
 
 

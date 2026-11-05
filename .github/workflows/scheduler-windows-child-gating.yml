@@ -87,7 +87,7 @@ jobs:
         run: |
           set -euo pipefail
           result=0
-          for mode in off gating script; do
+          for mode in off root gating; do
             python .github/scripts/probe-windows-child-gating.py --mode "$mode" --bound 120 2>&1 | tee -a "$CHILD_GATING/child-gating.log" || result=1
           done
           exit "$result"
