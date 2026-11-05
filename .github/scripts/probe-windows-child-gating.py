@@ -2,7 +2,7 @@
 
 A Cargo build script (curl-sys) runs `git submodule update --init curl` from its registry source directory. Under the
 release scheduler on Windows ARM64, the `sh` that runs git-submodule stayed idle for hours with no children. This probe
-runs the same command from a new empty directory outside any repository in three modes:
+runs the same command from a new empty directory outside any repository in these modes:
 
 - `off`: no instrumentation; the command must exit within the bound (expected: nonzero, "not a git repository").
 - `gating`: Frida spawns the command, enables child gating in every image, and resumes each gated child.
@@ -11,6 +11,10 @@ runs the same command from a new empty directory outside any repository in three
   attached, so the Git for Windows shells it starts run uninstrumented.
 - `attach`: as `root`, but each gated child is attached (Frida's agent is injected) before it resumes, without enabling
   child gating in it; the shells' own fork children start uninstrumented.
+- `parked`: as `script`, but each gated child first runs its loader initialization on its own main thread and waits at
+  its image entry point; it is attached, gated and scripted there, then released. A child created suspended runs no
+  thread, so an agent attached at that point runs the loader's process initialization on the injected thread, and the
+  Cygwin runtime records that thread as the process's main thread.
 
 On a hang, every attached process's threads are listed with symbolized backtraces, and the command's process tree is
 printed, before the tree is ended.
@@ -67,10 +71,98 @@ def run_uninstrumented(command, directory, bound):
     return True
 
 
+class EntryPark:
+    """Diverts a suspended process's image entry point to a spin loop that reports arrival and waits for release."""
+
+    PROCESS_ALL_ACCESS = 0x1FFFFF
+    MEM_COMMIT_RESERVE = 0x3000
+    PAGE_EXECUTE_READWRITE = 0x40
+
+    def __init__(self, pid):
+        self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        self.ntdll = ctypes.WinDLL("ntdll")
+        k = self.kernel
+        k.OpenProcess.restype = ctypes.c_void_p
+        k.VirtualAllocEx.restype = ctypes.c_void_p
+        k.VirtualAllocEx.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_ulong, ctypes.c_ulong]
+        k.ReadProcessMemory.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t,
+                                        ctypes.POINTER(ctypes.c_size_t)]
+        k.WriteProcessMemory.argtypes = k.ReadProcessMemory.argtypes
+        k.VirtualProtectEx.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_ulong,
+                                       ctypes.POINTER(ctypes.c_ulong)]
+        k.FlushInstructionCache.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t]
+        self.handle = k.OpenProcess(self.PROCESS_ALL_ACCESS, False, pid)
+        if not self.handle:
+            raise OSError(ctypes.get_last_error(), "OpenProcess failed")
+        info = (ctypes.c_void_p * 6)()
+        status = self.ntdll.NtQueryInformationProcess(ctypes.c_void_p(self.handle), 0, info, ctypes.sizeof(info), None)
+        if status != 0:
+            raise OSError(status, "NtQueryInformationProcess failed")
+        base = int.from_bytes(self.read(info[1] + 0x10, 8), "little")
+        header = base + int.from_bytes(self.read(base + 0x3C, 4), "little")
+        self.machine = int.from_bytes(self.read(header + 4, 2), "little")
+        self.entry = base + int.from_bytes(self.read(header + 24 + 16, 4), "little")
+        page = k.VirtualAllocEx(ctypes.c_void_p(self.handle), None, 4096, self.MEM_COMMIT_RESERVE,
+                                self.PAGE_EXECUTE_READWRITE)
+        if not page:
+            raise OSError(ctypes.get_last_error(), "VirtualAllocEx failed")
+        self.flag = page
+        stub = page + 64
+        q = lambda value: value.to_bytes(8, "little")
+        d = lambda *words: b"".join(word.to_bytes(4, "little") for word in words)
+        if self.machine == 0x8664:
+            code = (b"\x48\xB8" + q(self.flag) + b"\xC6\x00\x01" + b"\xF3\x90\x80\x38\x01\x74\xF9" +
+                    b"\x48\xB8" + q(self.entry) + b"\xFF\xE0")
+            jump = b"\xFF\x25\x00\x00\x00\x00" + q(stub)
+        elif self.machine == 0xAA64:
+            code = d(0x58000110, 0x52800031, 0x39000211, 0x39400211, 0x7100063F, 0x54FFFFC0, 0x58000090,
+                     0xD61F0200) + q(self.flag) + q(self.entry)
+            jump = d(0x58000050, 0xD61F0200) + q(stub)
+        else:
+            raise OSError(0, "Unsupported image machine 0x%x" % self.machine)
+        self.write(stub, code)
+        self.original = self.read(self.entry, len(jump))
+        self.patch(jump)
+
+    def read(self, address, size):
+        buffer = ctypes.create_string_buffer(size)
+        if not self.kernel.ReadProcessMemory(ctypes.c_void_p(self.handle), ctypes.c_void_p(address), buffer, size,
+                                             None):
+            raise OSError(ctypes.get_last_error(), "ReadProcessMemory failed")
+        return buffer.raw
+
+    def write(self, address, data):
+        if not self.kernel.WriteProcessMemory(ctypes.c_void_p(self.handle), ctypes.c_void_p(address), data, len(data),
+                                              None):
+            raise OSError(ctypes.get_last_error(), "WriteProcessMemory failed")
+
+    def patch(self, data):
+        old = ctypes.c_ulong()
+        if not self.kernel.VirtualProtectEx(ctypes.c_void_p(self.handle), ctypes.c_void_p(self.entry), len(data),
+                                            self.PAGE_EXECUTE_READWRITE, ctypes.byref(old)):
+            raise OSError(ctypes.get_last_error(), "VirtualProtectEx failed")
+        self.write(self.entry, data)
+        self.kernel.VirtualProtectEx(ctypes.c_void_p(self.handle), ctypes.c_void_p(self.entry), len(data), old.value,
+                                     ctypes.byref(old))
+        self.kernel.FlushInstructionCache(ctypes.c_void_p(self.handle), ctypes.c_void_p(self.entry), len(data))
+
+    def await_arrival(self, seconds):
+        deadline = time.monotonic() + seconds
+        while self.read(self.flag, 1) != b"\x01":
+            if time.monotonic() > deadline:
+                raise TimeoutError("Child did not reach its entry point")
+            time.sleep(0.005)
+        self.patch(self.original)
+
+    def release(self):
+        self.write(self.flag, b"\x02")
+        self.kernel.CloseHandle(ctypes.c_void_p(self.handle))
+
+
 def run_instrumented(command, directory, bound, mode):
     import frida
 
-    load_script = mode == "script"
+    load_script = mode in ("script", "parked")
     device = frida.get_local_device()
     children = queue.Queue()
     device.on("child-added", lambda child: children.put(child))
@@ -105,9 +197,19 @@ def run_instrumented(command, directory, bound, mode):
         emit("child_added", mode=mode, pid=child.pid, parent_pid=child.parent_pid, origin=child.origin,
              path=child.path)
         try:
-            if mode != "root":
-                instrument(child.pid, gate=mode != "attach")
-            device.resume(child.pid)
+            if mode == "parked":
+                started = time.monotonic()
+                park = EntryPark(child.pid)
+                device.resume(child.pid)
+                park.await_arrival(30)
+                emit("child_parked", mode=mode, pid=child.pid, machine=hex(park.machine),
+                     seconds=round(time.monotonic() - started, 3))
+                instrument(child.pid)
+                park.release()
+            else:
+                if mode != "root":
+                    instrument(child.pid, gate=mode != "attach")
+                device.resume(child.pid)
             emit("child_resumed", mode=mode, pid=child.pid)
         except frida.ProcessNotFoundError as error:
             emit("child_gone", mode=mode, pid=child.pid, error=str(error))
@@ -222,7 +324,7 @@ def emit_native_threads(pid):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--mode", choices=("off", "gating", "script", "root", "attach"), required=True)
+    parser.add_argument("--mode", choices=("off", "gating", "script", "root", "attach", "parked"), required=True)
     parser.add_argument("--bound", type=float, default=120.0, help="Seconds the command may run before it counts as hung")
     arguments = parser.parse_args()
 
