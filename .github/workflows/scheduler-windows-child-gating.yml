@@ -1,6 +1,11 @@
 name: Scheduler Windows child gating probe
 
 on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/scheduler-windows-child-gating.yml
+      - .github/scripts/probe-windows-child-gating.py
   workflow_dispatch:
     inputs:
       target:
@@ -25,7 +30,7 @@ jobs:
 
       - id: matrix
         env:
-          PROBE_TARGET: ${{ inputs.target }}
+          PROBE_TARGET: ${{ inputs.target || 'all' }}
         run: |
           printf 'value=%s\n' "$(jq --arg target "$PROBE_TARGET" -c '{include: [.[] | select(.target | contains("-windows-")) | select(($target == "all") or (.target == $target))]}' .github/release-matrix.json)" >> "$GITHUB_OUTPUT"
 
