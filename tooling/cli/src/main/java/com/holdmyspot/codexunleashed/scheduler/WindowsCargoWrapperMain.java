@@ -60,7 +60,7 @@ public final class WindowsCargoWrapperMain
 
     /**
      * Releases invocation services before the irreversible native process exit.
-     * The exit binding itself stays alive through ExitProcess; failed exit returns to the enclosing cleanup owner.
+     * The exit binding itself stays alive through TerminateProcess; failed exit returns to the enclosing cleanup owner.
      * @param scope owned invocation services whose stream borrowers have already closed
      * @param identity live native exit binding, independent of tooling after construction
      * @param status exact unsigned DWORD compiler result
@@ -190,8 +190,8 @@ public final class WindowsCargoWrapperMain
                 bind(scope, kernel, "GetProcessTimes", ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
                 bind(scope, kernel, "WaitForSingleObject", ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT);
-                functions.put("ExitProcess", scope.tooling().getNativeLinker().downcallHandle(kernel.find("ExitProcess").orElseThrow(),
-                    FunctionDescriptor.ofVoid(ValueLayout.JAVA_INT)));
+                bind(scope, kernel, "GetCurrentProcess", ValueLayout.ADDRESS);
+                bind(scope, kernel, "TerminateProcess", ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT);
             }
             catch (RuntimeException | Error failure) { arena.close(); throw failure; }
         }
@@ -224,7 +224,6 @@ public final class WindowsCargoWrapperMain
             if (name.equals("GetLastError")) return lastError;
             try (Arena temporary = Arena.ofConfined())
             {
-                if (name.equals("ExitProcess")) return functions.get(name).invokeWithArguments(arguments);
                 MemorySegment state = temporary.allocate(callState);
                 List<Object> invocation = new java.util.ArrayList<>(arguments.length + 1);
                 invocation.add(state);
@@ -282,8 +281,14 @@ public final class WindowsCargoWrapperMain
         void exit(long status)
         {
             new WindowsCargoMessages.Final(status);
-            call("ExitProcess", (int) status);
-            throw new IllegalStateException("ExitProcess returned unexpectedly");
+            // ExitProcess ends the other threads first and then runs every DLL's detach code, which deadlocks when one
+            // of those threads held a lock the detach code takes; a wrapper was left with one thread in that state.
+            // TerminateProcess runs no detach code, and nothing here needs it: every wrapper stream is already closed.
+            // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-exitprocess
+            MemorySegment self = (MemorySegment) call("GetCurrentProcess");
+            if ((int) call("TerminateProcess", self, (int) status) == 0)
+                throw new IllegalStateException("TerminateProcess(self) failed: " + call("GetLastError"));
+            throw new IllegalStateException("TerminateProcess(self) returned unexpectedly");
         }
 
         @Override public void close() { arena.close(); }
