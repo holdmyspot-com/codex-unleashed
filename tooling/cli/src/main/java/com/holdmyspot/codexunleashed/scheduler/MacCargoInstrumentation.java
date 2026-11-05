@@ -2,8 +2,6 @@ package com.holdmyspot.codexunleashed.scheduler;
 
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -141,17 +139,13 @@ final class MacCargoInstrumentation implements MacImages.InstrumentationFactory
     }
 
     /**
-     * Reads the packaged Darwin allocation listener.
-     * @return exact packaged source
-     * @throws IOException if the resource is absent or unreadable
+     * Reads the packaged Darwin allocation hook, preceded by the entry-patch functions it calls.
+     * @return complete Darwin source
+     * @throws IOException if a packaged resource is absent or unreadable
      */
     static String program() throws IOException
     {
-        try (InputStream input = MacCargoInstrumentation.class.getResourceAsStream("mac-allocation-hook.js"))
-        {
-            if (input == null) throw new IOException("Packaged macOS allocation hook is missing");
-            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
-        }
+        return MacEntryPatch.withPrelude("mac-allocation-hook.js");
     }
 
     /** Retains partial image hook acquisitions before each fallible start operation. */

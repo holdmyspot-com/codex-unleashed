@@ -22,8 +22,6 @@ const cargoTokenLibc = Process.getModuleByName('libSystem.B.dylib');
  */
 const cargoTokenStatAddress = Process.arch === 'x64' ?
     cargoTokenLibc.getExportByName('fstat$INODE64') : cargoTokenLibc.getExportByName('fstat');
-if (Process.platform !== 'darwin' || (Process.arch !== 'x64' && Process.arch !== 'arm64'))
-    throw new Error('Cargo token mediation requires Darwin ARM64 or Intel64');
 /** Exact monotonically increasing request number within this installation. */
 let cargoTokenSequence = uint64(0);
 
@@ -157,18 +155,8 @@ const cargoTokenOriginals = Memory.alloc(2 * Process.pointerSize);
 const cargoTokenMediate = new NativeCallback(mediateCargoTokenTransfer, 'long', ['int', 'pointer', 'ulong']);
 const cargoTokenFail = new NativeCallback(failCargoTokenInspection, 'void', ['int']);
 /*
- * WORKAROUND: https://github.com/frida/frida-gum/issues/474
- * Interceptor.attach and Interceptor.replace keep a function's trampoline in use while any thread is inside the
- * function, and Script unload and Session detach wait until no trampoline is in use. A process whose other thread is
- * blocked in read or write when it forks, such as git fetch's sideband reader or rustc's jobserver helper when rustc
- * forks its linker, gives its child an in-use count that only the vanished thread could release. Every later unload
- * in that child then waits forever, which held the scheduler in the child's bootstrap Session detach. replaceFast
- * keeps no such count, but Gum accepts it on these veneers only with forced relocation, which overwrites 16 bytes: a
- * thread already blocked in the svc then returns into the redirect's address literal and dies with SIGILL. This
- * script therefore patches only each veneer's first 8 bytes itself, as Gum's default hook does, so a blocked thread
- * resumes at unchanged code and no Gum bookkeeping survives a fork. Its replacement also runs for Frida's own
- * threads, which attach listeners skip, so unrelated descriptors stay in this native code and only the jobserver FIFO
- * enters JavaScript.
+ * The entry-patch prelude runs these replacements for Frida's own threads too, so unrelated descriptors stay in this
+ * native code and only the jobserver FIFO enters JavaScript.
  */
 const cargoTokenNative = new CModule(`
 typedef long (*Transfer) (int fd, void * buffer, unsigned long count);
@@ -227,164 +215,34 @@ long replacement_write (int fd, void * buffer, unsigned long count)
 });
 /** Darwin syscall numbers of the replaced operations, in cargoTokenOperations order. */
 const cargoTokenSyscalls = [3, 4];
-/** Bytes of each veneer replaced by the branch to its stub: adrp and br on ARM64, a rel32 jmp on Intel. */
-const cargoTokenPatchLength = Process.arch === 'arm64' ? 8 : 5;
-/** Most distance between a veneer and its stub that the patched branch reaches. */
-const cargoTokenStubReach = Process.arch === 'arm64' ? 0xfff00000 : 0x7ff00000;
-/** Stub offset of the code that runs the replaced bytes and resumes the veneer after them. */
-const cargoTokenResumeOffset = 0x40;
-/** Stub offset of the record naming the patched veneer and its replaced bytes. */
-const cargoTokenRecordOffset = 0x100;
-/** Identifies a stub written by this script, so a fork child recognizes a patch inherited from its parent. */
-const cargoTokenStubMagic = 'codex-cargo-tokens-stub-v1';
-/** Stubs of this installation, retained for the image's lifetime. */
-const cargoTokenStubs = [];
 
 /**
- * Returns the stub that a patched veneer branches to.
- * @param target veneer entry point
- * @return the branch destination, or null when the entry is not the branch this script writes
- */
-function cargoTokenPatchDestination(target) {
-    if (Process.arch === 'arm64') {
-        const first = Instruction.parse(target);
-        const second = Instruction.parse(first.next);
-        if (!first.toString().startsWith('adrp x17, ') || second.toString() !== 'br x17')
-            return null;
-        const word = target.readU32();
-        let pages = (((word >>> 5) & 0x7ffff) << 2) | ((word >>> 29) & 3);
-        if (pages >= 0x100000)
-            pages -= 0x200000;
-        return target.and(ptr('0xfffffffffffff000')).add(int64(pages).shl(12));
-    }
-    if (target.readU8() !== 0xe9)
-        return null;
-    return target.add(5).add(target.add(1).readS32());
-}
-
-/**
- * Rejects replaced bytes that are not the start of the plain Darwin syscall veneer.
+ * Rejects an entry that is not the plain Darwin syscall veneer.
  * @param operation intercepted operation name
- * @param replaced the veneer's first cargoTokenPatchLength bytes, in place or as recorded by a parent's stub
- * @param rest the veneer's first instruction after the replaced bytes
+ * @param target veneer entry point holding its original instructions
  * @param number the operation's Darwin syscall number
  */
-function requireCargoTokenVeneer(operation, replaced, rest, number) {
-    const first = Instruction.parse(replaced);
+function requireCargoTokenVeneer(operation, target, number) {
+    const first = Instruction.parse(target);
+    const second = Instruction.parse(first.next);
     if (Process.arch === 'arm64') {
-        const second = Instruction.parse(first.next);
         if ((first.toString() === 'mov x16, #' + number || first.toString() === 'mov x16, #0x' + number.toString(16)) &&
             second.toString() === 'svc #0x80')
             return;
         throw new Error('Unsupported Darwin ' + operation + ' syscall veneer: ' + first + '; ' + second);
     }
-    const second = Instruction.parse(rest);
     const systemCall = second.toString() === 'mov r10, rcx' ? Instruction.parse(second.next) : second;
-    if (first.size === cargoTokenPatchLength &&
+    if (first.size === entryPatchLength &&
         first.toString() === 'mov eax, 0x' + (0x2000000 + number).toString(16) && systemCall.toString() === 'syscall')
         return;
     throw new Error('Unsupported Darwin ' + operation + ' syscall veneer: ' + first + '; ' + second);
 }
 
-/**
- * Returns the veneer's original replaced bytes. A fork child inherits its parent's patch, and Frida unloads the
- * inherited parent script there either before or after this script installs, so a patched entry must branch to a
- * still-mapped stub of this script that records the same veneer.
- * @param operation intercepted operation name
- * @param target veneer entry point
- * @param number the operation's Darwin syscall number
- * @return the original bytes that the patch replaces
- */
-function cargoTokenReplacedBytes(operation, target, number) {
-    const inherited = cargoTokenPatchDestination(target);
-    let replaced = target;
-    if (inherited !== null) {
-        const record = inherited.add(cargoTokenRecordOffset);
-        const range = Process.findRangeByAddress(record);
-        if (range === null || !range.protection.startsWith('r') ||
-            record.readUtf8String() !== cargoTokenStubMagic || !record.add(0x20).readPointer().equals(target))
-            throw new Error('Darwin ' + operation + ' is patched by another owner: ' + Instruction.parse(target));
-        replaced = record.add(0x28);
-    }
-    requireCargoTokenVeneer(operation, replaced, target.add(cargoTokenPatchLength), number);
-    return replaced.readByteArray(cargoTokenPatchLength);
-}
-
-/**
- * Writes a stub that enters the replacement, and code that runs the replaced bytes and resumes the veneer after them,
- * then publishes that code before branching the veneer's entry to the stub.
- * @param index operation index in cargoTokenOperations
- * @param target veneer entry point
- * @param replaced the veneer's original replaced bytes
- */
-function installCargoTokenStub(index, target, replaced) {
-    const stub = Memory.alloc(Process.pageSize, {near: target, maxDistance: cargoTokenStubReach});
-    cargoTokenStubs.push(stub);
-    const replacement = cargoTokenNative['replacement_' + cargoTokenOperations[index]];
-    const resume = stub.add(cargoTokenResumeOffset);
-    Memory.protect(stub, Process.pageSize, 'r-x');
-    Memory.patchCode(stub, Process.pageSize, code => {
-        if (Process.arch === 'arm64') {
-            const entry = new Arm64Writer(code, {pc: stub});
-            entry.putLdrRegAddress('x17', replacement);
-            entry.putBrReg('x17');
-            entry.flush();
-            const after = new Arm64Writer(code.add(cargoTokenResumeOffset), {pc: resume});
-            after.putBytes(replaced);
-            after.putLdrRegAddress('x17', target.add(cargoTokenPatchLength));
-            after.putBrReg('x17');
-            after.flush();
-        } else {
-            const entry = new X86Writer(code, {pc: stub});
-            entry.putJmpAddress(replacement);
-            entry.flush();
-            const after = new X86Writer(code.add(cargoTokenResumeOffset), {pc: resume});
-            after.putBytes(replaced);
-            after.putJmpAddress(target.add(cargoTokenPatchLength));
-            after.flush();
-        }
-        const record = code.add(cargoTokenRecordOffset);
-        record.writeUtf8String(cargoTokenStubMagic);
-        record.add(0x20).writePointer(target);
-        record.add(0x28).writeByteArray(replaced);
-    });
-    cargoTokenOriginals.add(index * Process.pointerSize).writePointer(resume);
-    Memory.patchCode(target, cargoTokenPatchLength, code => {
-        if (Process.arch === 'arm64') {
-            const branch = new Arm64Writer(code, {pc: target});
-            branch.putAdrpRegAddress('x17', stub);
-            branch.putBrReg('x17');
-            branch.flush();
-            if (branch.offset !== cargoTokenPatchLength)
-                throw new Error('Unexpected Darwin veneer branch length');
-        } else {
-            code.writeU8(0xe9);
-            code.add(1).writeS32(stub.sub(target.add(5)).toInt32());
-        }
-    });
-    if (!cargoTokenPatchDestination(target).equals(stub))
-        throw new Error('Darwin veneer branch does not reach its stub');
-    return stub;
-}
-
-/** Never collected, so its weak callback runs only when this script unloads. */
-const cargoTokenPatchOwner = {};
-/** Patched veneers with their stubs and original bytes, restored when this script unloads. */
-const cargoTokenPatches = [];
-/*
- * A veneer that no longer branches to this script's stub was repatched by a fork child's own installation after the
- * child inherited this script, so restoring it would remove the child's hook.
- */
-Script.bindWeak(cargoTokenPatchOwner, () => {
-    for (const patch of cargoTokenPatches) {
-        const destination = cargoTokenPatchDestination(patch.target);
-        if (destination !== null && destination.equals(patch.stub))
-            Memory.patchCode(patch.target, cargoTokenPatchLength, code => code.writeByteArray(patch.replaced));
-    }
-});
 cargoTokenOperations.forEach((operation, index) => {
     const target = cargoTokenLibc.getExportByName(operation);
-    const replaced = cargoTokenReplacedBytes(operation, target, cargoTokenSyscalls[index]);
-    cargoTokenPatches.push({target: target, replaced: replaced, stub: installCargoTokenStub(index, target, replaced)});
+    restoreInheritedEntry(operation, target);
+    requireCargoTokenVeneer(operation, target, cargoTokenSyscalls[index]);
+    installEntryPatch(operation, target, cargoTokenNative['replacement_' + operation],
+        resume => cargoTokenOriginals.add(index * Process.pointerSize).writePointer(resume));
 });
 sendCargoTokenEvent({event: 'ready'});

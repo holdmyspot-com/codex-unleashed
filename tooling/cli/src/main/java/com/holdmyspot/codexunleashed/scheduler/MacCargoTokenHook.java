@@ -2,8 +2,6 @@ package com.holdmyspot.codexunleashed.scheduler;
 
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.UUID;
@@ -71,17 +69,13 @@ public final class MacCargoTokenHook
     }
 
     /**
-     * Reads the packaged Darwin source before any native acquisition.
+     * Reads the packaged Darwin source, preceded by the entry-patch functions it calls, before any native acquisition.
      * @return complete Darwin source
-     * @throws IOException if the packaged resource is absent or unreadable
+     * @throws IOException if a packaged resource is absent or unreadable
      */
     static String program() throws IOException
     {
-        try (InputStream input = MacCargoTokenHook.class.getResourceAsStream(RESOURCE))
-        {
-            if (input == null) throw new IOException("Packaged Mac Cargo token hook is missing: " + RESOURCE);
-            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
-        }
+        return MacEntryPatch.withPrelude(RESOURCE);
     }
 
     /**

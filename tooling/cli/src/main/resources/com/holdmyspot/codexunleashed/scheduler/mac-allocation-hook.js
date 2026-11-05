@@ -2,12 +2,13 @@
 
 /*
  * One verified macOS/libSystem process-image installation, initialized by AllocationHook's serialized allocationIdentity.
- * Only positive-size malloc NULL/ENOMEM waits. This resource does not cover every allocator, fork inheritance or signal
- * handler allocation. Native callbacks use the pinned Gum listener guard; JS control calls explicitly use traps:none.
+ * Only positive-size malloc NULL/ENOMEM waits. This resource does not cover every allocator or signal handler
+ * allocation. The entry-patch prelude routes every thread's malloc through the replacement, so a denial on one of
+ * Frida's own threads also waits, and it can be granted only while the script's JavaScript thread still runs.
  * Eight slots bound simultaneous denied invocations, not Java transport or lifetime identity collections.
- * Keep this listener, CModule and backing alive until the attempt establishes whole-workload execution is impossible.
+ * Keep this patch, CModule and backing alive until the attempt establishes whole-workload execution is impossible.
  */
-if (Process.platform !== 'darwin' || Process.pointerSize !== 8)
+if (Process.pointerSize !== 8)
   throw new Error('Allocation hook requires 64-bit macOS/libSystem');
 
 const maximumWait = uint64('9223372036854775807');
@@ -40,13 +41,14 @@ if (libc === null)
   throw new Error('Allocation hook requires loaded libsystem_c.dylib');
 /** Follow the target's global allocator binding, including executable interposition used by rustc. */
 const mallocAddress = Module.getGlobalExportByName('malloc');
-/* Preallocated bound validated against actual native sizeof before initialization or listener attachment. */
+/* Preallocated bound validated against actual native sizeof before initialization or entry patching. */
 const registryBytes = 16384;
 const backing = Memory.alloc(registryBytes);
 backing.writeByteArray(new Uint8Array(registryBytes));
+/** Resume address that calls the original malloc, published before its entry is patched. */
+const originalMalloc = Memory.alloc(Process.pointerSize);
 const nativeModule = new CModule(`
 #include <glib.h>
-#include <gum/guminterceptor.h>
 #include <stddef.h>
 
 #define SLOT_COUNT 8
@@ -54,8 +56,8 @@ const nativeModule = new CModule(`
 #define ENOMEM_VALUE 12
 
 enum Phase { FREE, WAITING_UNPUBLISHED, WAITING_PUBLISHED, PERMITTED, RETRYING };
-enum Fault { NO_FAULT, SLOT_EXHAUSTED, WAIT_EXHAUSTED, INVALID_PHASE, NO_INVOCATION_DATA };
-typedef struct { gsize bytes; } Call;
+enum Fault { NO_FAULT, SLOT_EXHAUSTED, WAIT_EXHAUSTED, INVALID_PHASE };
+typedef void *(*Malloc)(size_t bytes);
 typedef struct {
   GCond condition;
   guint64 id, thread, bytes;
@@ -70,7 +72,7 @@ typedef struct {
 } Registry;
 typedef struct { guint64 id, thread, bytes; guint32 error; } Publication;
 extern Registry registry;
-extern void *original_malloc(size_t bytes);
+extern Malloc original_malloc;
 extern int *errno_location(void);
 extern void *native_thread_id(void);
 
@@ -99,16 +101,6 @@ gint fault_code(void) {
   return value;
 }
 
-/* Capture original arguments before malloc. Gum suppresses nested listener entry throughout callback extent. */
-void enter(GumInvocationContext *context) {
-  Call *call = GUM_IC_GET_INVOCATION_DATA(context, Call);
-  if (call == NULL) {
-    g_mutex_lock(&registry.mutex);
-    fatal_locked(NO_INVOCATION_DATA);
-  }
-  call->bytes = (gsize)gum_invocation_context_get_nth_argument(context, 0);
-}
-
 /* Reserve one fresh denial identity while preserving its invocation's slot and native mutex ownership. */
 void denied_locked(Slot *slot, gint error) {
   if (registry.fault != NO_FAULT) fatal_locked(registry.fault);
@@ -119,20 +111,14 @@ void denied_locked(Slot *slot, gint error) {
 }
 
 /* Only actual positive-size NULL/ENOMEM enters the registry. Successful/ineligible calls preserve result and errno. */
-void leave(GumInvocationContext *context) {
-  Call *call = GUM_IC_GET_INVOCATION_DATA(context, Call);
-  gpointer result = gum_invocation_context_get_return_value(context);
-  gint error = context->system_error;
+void *replacement_malloc(size_t bytes) {
+  void *result = original_malloc(bytes);
+  gint error;
   Slot *slot = NULL;
   guint i;
-  if (call == NULL) {
-    g_mutex_lock(&registry.mutex);
-    fatal_locked(NO_INVOCATION_DATA);
-  }
-  if (result != NULL || call->bytes == 0 || error != ENOMEM_VALUE) {
-    context->system_error = error;
-    return;
-  }
+  if (result != NULL || bytes == 0) return result;
+  error = *errno_location();
+  if (error != ENOMEM_VALUE) return result;
   g_mutex_lock(&registry.mutex);
   if (registry.fault != NO_FAULT) fatal_locked(registry.fault);
   for (i = 0; i < SLOT_COUNT; i++) {
@@ -140,7 +126,7 @@ void leave(GumInvocationContext *context) {
   }
   if (slot == NULL) fatal_locked(SLOT_EXHAUSTED);
   slot->thread = (guint64)(gsize)native_thread_id();
-  slot->bytes = call->bytes;
+  slot->bytes = bytes;
   denied_locked(slot, error);
   for (;;) {
     while (slot->phase == WAITING_UNPUBLISHED || slot->phase == WAITING_PUBLISHED)
@@ -151,7 +137,7 @@ void leave(GumInvocationContext *context) {
     g_mutex_unlock(&registry.mutex);
 
     *errno_location() = error;
-    result = original_malloc(call->bytes);
+    result = original_malloc(bytes);
     error = *errno_location();
 
     g_mutex_lock(&registry.mutex);
@@ -160,9 +146,8 @@ void leave(GumInvocationContext *context) {
       slot->phase = FREE;
       slot->id = 0;
       g_mutex_unlock(&registry.mutex);
-      gum_invocation_context_replace_return_value(context, result);
-      context->system_error = error;
-      return;
+      *errno_location() = error;
+      return result;
     }
     denied_locked(slot, error);
   }
@@ -222,12 +207,12 @@ gint grant(guint64 id) {
 }
 `, {
   registry: backing,
-  original_malloc: mallocAddress,
+  original_malloc: originalMalloc,
   errno_location: Module.getGlobalExportByName('__error'),
   native_thread_id: Module.getGlobalExportByName('pthread_self')
 });
 
-/** Bind only control/query operations, excluding their runtime allocations from the application listener. */
+/** Bind only control/query operations, called from the script thread without Interceptor traps. */
 function control(name, result, arguments_) {
   return new NativeFunction(nativeModule[name], result, arguments_, { traps: 'none' });
 }
@@ -276,8 +261,8 @@ function receivePermission() {
 }
 
 /* Reachability retains all executable state. There is intentionally no dispose/unload while target tasks can execute. */
-const listener = Interceptor.attach(mallocAddress, { onEnter: nativeModule.enter, onLeave: nativeModule.leave });
-Interceptor.flush();
+installEntryPatch('malloc', mallocAddress, nativeModule.replacement_malloc,
+  resume => originalMalloc.writePointer(resume));
 receivePermission();
 const publicationTimer = setInterval(() => {
   if (faultCode() !== 0) {
