@@ -210,6 +210,19 @@ class StopFactsTest(unittest.TestCase):
         self.assertEqual("stop: bsd_status=9 task_suspend_count=? threads=?",
                          watcher.describe_stop(9, None, None))
 
+    def test_names_the_stop_signal_and_tracing(self):
+        """A stopped process's signal line tells whether it is traced, which Darwin signal stopped it and which signals
+        are pending, so a debugger or tracer stop reads differently from a job-control or group stop signal."""
+        spec = importlib.util.spec_from_file_location("watch_quiet_build", WATCHER)
+        watcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(watcher)
+        self.assertEqual("signals: traced=yes stop_signal=SIGSTOP pending=SIGCHLD,SIGTERM",
+                         watcher.describe_signals(True, 17, (1 << 19) | (1 << 14)))
+        self.assertEqual("signals: traced=no stop_signal=SIGTSTP pending=none",
+                         watcher.describe_signals(False, 18, 0))
+        self.assertEqual("signals: traced=? stop_signal=? pending=?",
+                         watcher.describe_signals(None, None, None))
+
 
 class StopTest(unittest.TestCase):
     """Each test owns its recorded signal list."""

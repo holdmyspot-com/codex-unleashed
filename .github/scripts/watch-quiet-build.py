@@ -120,6 +120,48 @@ def describe_stop(status, task_suspend_count, threads):
     return f"stop: bsd_status={BSD_STATUSES.get(status, status)} task_suspend_count={suspended} threads={names}"
 
 
+DARWIN_SIGNALS = {1: "SIGHUP", 2: "SIGINT", 3: "SIGQUIT", 4: "SIGILL", 5: "SIGTRAP", 6: "SIGABRT", 7: "SIGEMT",
+                  8: "SIGFPE", 9: "SIGKILL", 10: "SIGBUS", 11: "SIGSEGV", 12: "SIGSYS", 13: "SIGPIPE", 14: "SIGALRM",
+                  15: "SIGTERM", 16: "SIGURG", 17: "SIGSTOP", 18: "SIGTSTP", 19: "SIGCONT", 20: "SIGCHLD",
+                  21: "SIGTTIN", 22: "SIGTTOU", 23: "SIGIO", 24: "SIGXCPU", 25: "SIGXFSZ", 26: "SIGVTALRM",
+                  27: "SIGPROF", 28: "SIGWINCH", 29: "SIGINFO", 30: "SIGUSR1", 31: "SIGUSR2"}
+"""Names of the signal numbers in Darwin's <sys/signal.h>, which differ from Linux's."""
+
+
+def describe_signals(traced, stop_signal, pending):
+    """Returns one line telling whether a stopped process is traced, which signal stopped it and which are pending.
+
+    traced is whether the process has P_TRACED, stop_signal its p_xstat and pending its p_siglist bit mask, where bit
+    n - 1 stands for signal n; each is None when the kernel's process record could not be read."""
+    trace = "?" if traced is None else ("yes" if traced else "no")
+    stop = "?" if stop_signal is None else DARWIN_SIGNALS.get(stop_signal, stop_signal)
+    if pending is None:
+        waiting = "?"
+    else:
+        names = sorted(DARWIN_SIGNALS.get(number, str(number)) for number in range(1, 33)
+                       if pending & (1 << (number - 1)))
+        waiting = ",".join(names) or "none"
+    return f"signals: traced={trace} stop_signal={stop} pending={waiting}"
+
+
+def darwin_signal_facts(pid):
+    """Returns the arguments of describe_signals for one macOS process, read from its kinfo_proc record."""
+    import ctypes
+    system = ctypes.CDLL(None)
+    # CTL_KERN, KERN_PROC, KERN_PROC_PID; struct kinfo_proc is 648 bytes on 64-bit Darwin and starts with struct
+    # extern_proc, whose p_flag, p_stat, p_pid, p_siglist and p_xstat lie at offsets 32, 36, 40, 208 and 280.
+    name = (ctypes.c_int * 4)(1, 14, 1, pid)
+    record = ctypes.create_string_buffer(648)
+    size = ctypes.c_size_t(len(record))
+    if system.sysctl(name, 4, record, ctypes.byref(size), None, ctypes.c_size_t(0)) != 0 or size.value < 282:
+        return None, None, None
+    field = lambda offset, width: int.from_bytes(record.raw[offset:offset + width], sys.byteorder)
+    if field(40, 4) != pid:
+        return None, None, None
+    # P_TRACED is 0x800 in <sys/proc.h>.
+    return bool(field(32, 4) & 0x800), field(280, 2), field(208, 4)
+
+
 def darwin_stop_facts(pid):
     """Returns the arguments of describe_stop for one macOS process; the Mach facts need root's access to its task."""
     import ctypes
@@ -180,6 +222,7 @@ def dump_without_procfs(jcmd, out):
         if sys.platform == "darwin" and fields[3].startswith("T"):
             try:
                 out.write(describe_stop(*darwin_stop_facts(int(pid))) + "\n")
+                out.write(describe_signals(*darwin_signal_facts(int(pid))) + "\n")
             except (OSError, AttributeError, ValueError) as failure:
                 out.write(f"<stop facts failed: {failure}>\n")
         if jcmd and os.path.basename(fields[8].split(" ")[0]) == "java":
