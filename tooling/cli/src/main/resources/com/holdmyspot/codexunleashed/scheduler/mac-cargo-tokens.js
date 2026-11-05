@@ -4,8 +4,11 @@
  * fifo strings. The FIFO value is device:0:inode from its retained descriptor.
  * The process must remain held until ready is observed on this script connection.
  * Requests and controls use version 1 and exact installation identities. Invalid
- * controls report rejection and leave the operation parked. Descriptor metadata
- * failures and selected transfers larger than one byte park without native I/O;
+ * controls report rejection and leave the operation parked. A read reports whether
+ * its descriptor is O_NONBLOCK; the controller answers a nonblocking read at once,
+ * and a control without a byte makes it fail with EAGAIN as the native read of an
+ * empty FIFO would. Descriptor metadata or flag failures and selected transfers
+ * larger than one byte park without native I/O;
  * the owner must terminate the workload after either failure. Zero-byte calls and
  * known unrelated descriptors retain their original libc behavior.
  */
@@ -65,15 +68,17 @@ function parkCargoTokenFailure() {
  * @param message copied Frida control object
  * @param sequence current native request's canonical sequence
  * @param operation read or write requested by the held call
+ * @param blocking false only for a read whose descriptor is O_NONBLOCK, which a control without a byte declines
  * @return true only for the exact identities, operation and valid byte shape
  */
-function acceptsCargoTokenControl(message, sequence, operation) {
+function acceptsCargoTokenControl(message, sequence, operation, blocking) {
     if (message === null || typeof message !== 'object' || Array.isArray(message))
         return false;
     const expected = ['type', 'protocol', 'version', 'attempt', 'installation', 'pid', 'sequence', 'operation'];
-    if (operation === 'read')
-        expected.push('byte');
     const actual = Object.keys(message).sort();
+    const declined = operation === 'read' && blocking === false && actual.indexOf('byte') === -1;
+    if (operation === 'read' && declined === false)
+        expected.push('byte');
     const hasExactFields = JSON.stringify(actual) === JSON.stringify(expected.sort());
     if (!hasExactFields)
         return false;
@@ -85,7 +90,7 @@ function acceptsCargoTokenControl(message, sequence, operation) {
         message.operation === operation;
     if (!matchesIdentity)
         return false;
-    if (operation === 'write')
+    if (operation === 'write' || declined)
         return true;
     return Number.isInteger(message.byte) && message.byte >= 0 && message.byte <= 255;
 }
@@ -94,13 +99,14 @@ function acceptsCargoTokenControl(message, sequence, operation) {
  * Waits for an exact control, preserving the parked operation after rejection.
  * @param sequence pending request identity
  * @param operation intercepted operation
- * @return exact accepted control, including the delivered byte for a read
+ * @param blocking false only for a read whose descriptor is O_NONBLOCK
+ * @return exact accepted control, including the delivered byte for a granted read
  */
-function awaitCargoTokenControl(sequence, operation) {
+function awaitCargoTokenControl(sequence, operation, blocking) {
     let accepted;
     while (accepted === undefined) {
         recv('cargo-token-control-' + sequence, function receiveCargoTokenControl(message) {
-            if (acceptsCargoTokenControl(message, sequence, operation))
+            if (acceptsCargoTokenControl(message, sequence, operation, blocking))
                 accepted = message;
             else
                 sendCargoTokenEvent({event: 'control-rejected', sequence: sequence, operation: operation});
@@ -117,9 +123,10 @@ const cargoTokenOperations = ['read', 'write'];
  * @param operationCode index of the intercepted operation in cargoTokenOperations
  * @param buffer caller's transfer buffer
  * @param count caller's requested byte count
- * @return the one byte transferred
+ * @param blocking zero only for a read whose descriptor is O_NONBLOCK
+ * @return 1 once the byte is transferred, or -1 for a declined nonblocking read
  */
-function mediateCargoTokenTransfer(operationCode, buffer, count) {
+function mediateCargoTokenTransfer(operationCode, buffer, count, blocking) {
     const operation = cargoTokenOperations[operationCode];
     const sequence = nextCargoTokenSequence();
     if (count.toString() !== '1') {
@@ -127,22 +134,32 @@ function mediateCargoTokenTransfer(operationCode, buffer, count) {
             operation: operation, sequence: sequence});
         parkCargoTokenFailure();
     }
+    const waits = blocking !== 0;
     const request = {event: 'transfer', sequence: sequence, operation: operation};
     if (operation === 'write')
         request.byte = buffer.readU8();
+    else
+        request.blocking = waits;
     sendCargoTokenEvent(request);
-    const reply = awaitCargoTokenControl(sequence, operation);
-    if (operation === 'read')
-        buffer.writeU8(reply.byte);
+    const reply = awaitCargoTokenControl(sequence, operation, waits);
+    if (operation === 'write')
+        return 1;
+    if (reply.byte === undefined)
+        return -1;
+    buffer.writeU8(reply.byte);
     return 1;
 }
 
+/** Inspection failure causes, indexed by the code that the native replacement passes. */
+const cargoTokenInspectionFailures = ['Descriptor statx failed', 'Descriptor flags are unavailable'];
+
 /**
- * Reports unreadable descriptor metadata for the native replacement and parks its call.
+ * Reports unreadable descriptor metadata or flags for the native replacement and parks its call.
  * @param operationCode index of the intercepted operation in cargoTokenOperations
+ * @param causeCode index of the failure in cargoTokenInspectionFailures
  */
-function failCargoTokenInspection(operationCode) {
-    sendCargoTokenEvent({event: 'failure', cause: 'Descriptor statx failed',
+function failCargoTokenInspection(operationCode, causeCode) {
+    sendCargoTokenEvent({event: 'failure', cause: cargoTokenInspectionFailures[causeCode],
         operation: cargoTokenOperations[operationCode], sequence: nextCargoTokenSequence()});
     parkCargoTokenFailure();
 }
@@ -152,14 +169,15 @@ const cargoTokenFifoDevice = Memory.alloc(4).writeU32(Number(cargoTokenFifoField
 const cargoTokenFifoInode = Memory.alloc(8).writeU64(uint64(cargoTokenFifoFields[2]));
 /** Entry points that resume each original veneer, published before its entry is patched. */
 const cargoTokenOriginals = Memory.alloc(2 * Process.pointerSize);
-const cargoTokenMediate = new NativeCallback(mediateCargoTokenTransfer, 'long', ['int', 'pointer', 'ulong']);
-const cargoTokenFail = new NativeCallback(failCargoTokenInspection, 'void', ['int']);
+const cargoTokenMediate = new NativeCallback(mediateCargoTokenTransfer, 'long', ['int', 'pointer', 'ulong', 'int']);
+const cargoTokenFail = new NativeCallback(failCargoTokenInspection, 'void', ['int', 'int']);
 /*
  * The entry-patch prelude runs these replacements for Frida's own threads too, so unrelated descriptors stay in this
  * native code and only the jobserver FIFO enters JavaScript.
  */
 const cargoTokenNative = new CModule(File.readAllBytes(@NATIVE_MODULE@), {
     descriptor_stat: cargoTokenStatAddress,
+    descriptor_flags: cargoTokenLibc.getExportByName('fcntl'),
     error_location: cargoTokenLibc.getExportByName('__error'),
     mediate: cargoTokenMediate,
     fail: cargoTokenFail,

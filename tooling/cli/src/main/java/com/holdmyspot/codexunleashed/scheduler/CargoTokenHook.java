@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.UUID;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.LongSupplier;
@@ -19,7 +20,8 @@ import tools.jackson.databind.json.JsonMapper;
  * The caller authenticates the held process and independently observes the invocation FIFO's retained descriptor
  * identity before construction. Native start does not establish readiness. Each read reserves an exact byte in the
  * borrowed whole-attempt ledger before its single grant; each write returns the exact byte before its single
- * acknowledgment. Pending reads never block servicing writes or peer images. Any uncertain control or delivery failure
+ * acknowledgment. A nonblocking read is granted or declined while its frame is serviced, and is declined while any
+ * blocking read waits. Pending reads never block servicing writes or peer images. Any uncertain control or delivery failure
  * permanently withdraws this installation's authority. A lost grant remains reserved until whole-attempt retirement.
  * <p>
  * The attempt retains this owner across image replacement and root exit. Native destruction requires the trusted
@@ -271,10 +273,20 @@ public final class CargoTokenHook
 			throw new IOException("Native Cargo token event preceded readiness");
 		switch (event)
 		{
-			case CargoTokenMessages.Read read ->
+			case CargoTokenMessages.Read read when read.blocking() ->
 			{
 				acceptSequence(read.request().sequence());
 				reads.addLast(read);
+			}
+			case CargoTokenMessages.Read read ->
+			{
+				acceptSequence(read.request().sequence());
+				// Waiting reads keep their place: a nonblocking read takes a token only when none is waiting.
+				var token = reads.isEmpty() ? tokens.tryBorrow() : OptionalInt.empty();
+				if (token.isPresent())
+					connection.post(messages.grant(read, token.getAsInt()));
+				else
+					connection.post(messages.decline(read));
 			}
 			case CargoTokenMessages.Write write ->
 			{

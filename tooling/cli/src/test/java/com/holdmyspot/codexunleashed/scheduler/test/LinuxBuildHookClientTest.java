@@ -98,10 +98,10 @@ public final class LinuxBuildHookClientTest
 	{
 		try (Fixture fixture = Fixture.open())
 		{
-			fixture.send("transfer", "1", "read");
+			fixture.send("transfer", "1", "read", "blocking");
 			String message = await(fixture.client.tokens());
 			requireThat(new CargoTokenMessages(fixture.scope, ATTEMPT, INSTALLATION, PID).read(message), "event").
-				isEqualTo(new CargoTokenMessages.Read(new CargoTokenMessages.Request(ATTEMPT, INSTALLATION, PID, 1)));
+				isEqualTo(new CargoTokenMessages.Read(new CargoTokenMessages.Request(ATTEMPT, INSTALLATION, PID, 1), true));
 			requireThat(fixture.client.allocations().pollMessage(), "allocations").isEqualTo(Optional.empty());
 		}
 	}
@@ -191,7 +191,7 @@ public final class LinuxBuildHookClientTest
 	{
 		try (Fixture fixture = Fixture.open())
 		{
-			fixture.send("transfer", "1", "read");
+			fixture.send("transfer", "1", "read", "blocking");
 			fixture.peer.close();
 			Instant deadline = Instant.now().plus(TIMEOUT);
 			boolean ended;
@@ -204,7 +204,7 @@ public final class LinuxBuildHookClientTest
 			requireThat(ended, "ended").isTrue();
 			String message = await(fixture.client.tokens());
 			requireThat(new CargoTokenMessages(fixture.scope, ATTEMPT, INSTALLATION, PID).read(message), "event").
-				isEqualTo(new CargoTokenMessages.Read(new CargoTokenMessages.Request(ATTEMPT, INSTALLATION, PID, 1)));
+				isEqualTo(new CargoTokenMessages.Read(new CargoTokenMessages.Request(ATTEMPT, INSTALLATION, PID, 1), true));
 		}
 	}
 

@@ -38,8 +38,10 @@ public final class CargoTokenMessages
 	private static final Set<String> ENVELOPE_FIELDS = Set.of("type", "payload");
 	/** Exact readiness members required by version 1. */
 	private static final Set<String> READY_FIELDS = Set.of("protocol", "version", "attempt", "installation", "pid", "event");
-	/** Exact members for a read request or rejected control. */
+	/** Exact members for a rejected control or a transfer failure's identity. */
 	private static final Set<String> REQUEST_FIELDS = Set.of("protocol", "version", "attempt", "installation", "pid", "event", "sequence", "operation");
+	/** Exact read-request members, including whether the reading descriptor waits for a token. */
+	private static final Set<String> READ_FIELDS = Set.of("protocol", "version", "attempt", "installation", "pid", "event", "sequence", "operation", "blocking");
 	/** Exact write-request members, including the byte being returned. */
 	private static final Set<String> WRITE_FIELDS = Set.of("protocol", "version", "attempt", "installation", "pid", "event", "sequence", "operation", "byte");
 	/** Exact members for a failure associated with one native transfer. */
@@ -125,8 +127,8 @@ public final class CargoTokenMessages
 			{
 				case READ ->
 				{
-					requireFields(body, REQUEST_FIELDS);
-					yield new Read(request(body));
+					requireFields(body, READ_FIELDS);
+					yield new Read(request(body), blocking(body));
 				}
 				case WRITE ->
 				{
@@ -157,6 +159,21 @@ public final class CargoTokenMessages
 		Objects.requireNonNull(request, "request may not be null");
 		validateByte(value);
 		return control(request.request(), Operation.READ).put("byte", value);
+	}
+
+	/**
+	 * Creates the answer to a nonblocking read that finds no token, which the native call reports as {@code EAGAIN}.
+	 * @param request decoded nonblocking read belonging to this codec's attempt, installation and process
+	 * @return fresh mutable control with this request's sequence-specific receive type and no byte member
+	 * @throws NullPointerException if {@code request} is null
+	 * @throws IllegalArgumentException if {@code request} belongs elsewhere or waits for a token
+	 */
+	public ObjectNode decline(Read request)
+	{
+		Objects.requireNonNull(request, "request may not be null");
+		if (request.blocking())
+			throw new IllegalArgumentException("A blocking Cargo token read waits for a grant");
+		return control(request.request(), Operation.READ);
 	}
 
 	/**
@@ -225,6 +242,7 @@ public final class CargoTokenMessages
 					case "Descriptor statx failed" -> FailureCause.DESCRIPTOR_STATX_FAILED;
 					case "Descriptor type is unavailable" -> FailureCause.DESCRIPTOR_TYPE_UNAVAILABLE;
 					case "FIFO inode is unavailable" -> FailureCause.FIFO_INODE_UNAVAILABLE;
+					case "Descriptor flags are unavailable" -> FailureCause.DESCRIPTOR_FLAGS_UNAVAILABLE;
 					case "Jobserver transfer count differs from one" -> FailureCause.UNSUPPORTED_COUNT;
 					default -> throw new IOException("Cargo token failure has an unsupported cause");
 				};
@@ -302,6 +320,20 @@ public final class CargoTokenMessages
 		if (value.signum() <= 0 || value.compareTo(BigInteger.valueOf(maximum)) > 0 || !value.toString().equals(raw))
 			throw new IOException("Cargo token member requires a canonical decimal string from 1 through " + maximum + ": " + field);
 		return value.longValueExact();
+	}
+
+	/**
+	 * Reads whether a read's descriptor waits for a token.
+	 * @param body decoded read request
+	 * @return true if the native call waits for a grant, false if it fails with {@code EAGAIN} when none is free
+	 * @throws IOException if the member is not a JSON boolean
+	 */
+	private static boolean blocking(JsonNode body) throws IOException
+	{
+		JsonNode value = body.path("blocking");
+		if (!value.isBoolean())
+			throw new IOException("Cargo token blocking member must be a JSON boolean");
+		return value.booleanValue();
 	}
 
 	/**
@@ -391,13 +423,15 @@ public final class CargoTokenMessages
 
 	/**
 	 * Requests one byte from the owner's ledger-backed transport.
-	 * @param request native transfer identity
+	 * @param request  native transfer identity
+	 * @param blocking true if the native call waits for a grant, false if it expects an immediate grant or decline
 	 */
-	public record Read(Request request) implements Event
+	public record Read(Request request, boolean blocking) implements Event
 	{
 		/**
 		 * Retains an identity without borrowing a byte.
-		 * @param request native transfer identity
+		 * @param request  native transfer identity
+		 * @param blocking true if the native call waits for a grant, false if it expects an immediate grant or decline
 		 * @throws NullPointerException if {@code request} is null
 		 */
 		public Read
@@ -499,6 +533,8 @@ public final class CargoTokenMessages
 		DESCRIPTOR_TYPE_UNAVAILABLE,
 		/** FIFO metadata omitted its inode. */
 		FIFO_INODE_UNAVAILABLE,
+		/** The status flags of a read's descriptor could not be read. */
+		DESCRIPTOR_FLAGS_UNAVAILABLE,
 		/** A selected transfer requested more than one byte. */
 		UNSUPPORTED_COUNT
 	}

@@ -80,11 +80,12 @@ public final class LinuxBuildHookTokens
 		{
 			case "transfer" ->
 			{
-				boolean write = fields.size() >= 3 && fields.get(2).equals("write");
-				requireCount(fields, write ? 4 : 3);
+				requireCount(fields, 4);
 				ObjectNode payload = payload("transfer").put("sequence", fields.get(1)).put("operation", fields.get(2));
-				if (write)
+				if (fields.get(2).equals("write"))
 					payload.put("byte", unsignedByte(fields.get(3)));
+				else
+					payload.put("blocking", blocking(fields.get(3)));
 				return Optional.of(envelope(payload));
 			}
 			case "failure" ->
@@ -103,6 +104,22 @@ public final class LinuxBuildHookTokens
 				return Optional.empty();
 			}
 		}
+	}
+
+	/**
+	 * Parses whether a read transfer's descriptor waits for a token.
+	 * @param value the field
+	 * @return true for {@code blocking}, false for {@code nonblocking}
+	 * @throws IOException if the field is neither
+	 */
+	private static boolean blocking(String value) throws IOException
+	{
+		return switch (value)
+		{
+			case "blocking" -> true;
+			case "nonblocking" -> false;
+			default -> throw new IOException("A read transfer is blocking or nonblocking: " + value);
+		};
 	}
 
 	/**
@@ -154,10 +171,10 @@ public final class LinuxBuildHookTokens
 	}
 
 	/**
-	 * Translates a control that {@link CargoTokenMessages#grant} or {@link CargoTokenMessages#acknowledge} produced
-	 * into a frame for the client.
+	 * Translates a control that {@link CargoTokenMessages#grant}, {@link CargoTokenMessages#decline} or
+	 * {@link CargoTokenMessages#acknowledge} produced into a frame for the client.
 	 * @param control the control
-	 * @return the {@code token} payload
+	 * @return the {@code token} payload, or the {@code empty} payload of a declined read
 	 * @throws IOException if the value is not a token control for this client
 	 */
 	public byte[] token(JsonNode control) throws IOException
@@ -178,6 +195,8 @@ public final class LinuxBuildHookTokens
 		{
 			case "read" ->
 			{
+				if (!control.has("byte"))
+					yield LinuxBuildHookFrames.encode("empty", sequence);
 				int value = control.path("byte").asInt(-1);
 				if (!control.path("byte").isIntegralNumber() || value < 0 || value > 255)
 					throw new IOException("A read token carries a byte from 0 through 255: " + control);

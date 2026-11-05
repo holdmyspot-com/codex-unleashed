@@ -4,8 +4,11 @@
  * fifo strings. The FIFO value is major:minor:inode from its retained descriptor.
  * The process must remain held until ready is observed on this script connection.
  * Requests and controls use version 1 and exact installation identities. Invalid
- * controls report rejection and leave the operation parked. Descriptor metadata
- * failures and selected transfers larger than one byte park without native I/O;
+ * controls report rejection and leave the operation parked. A read reports whether
+ * its descriptor is O_NONBLOCK; the controller answers a nonblocking read at once,
+ * and a control without a byte makes it fail with EAGAIN as the native read of an
+ * empty FIFO would. Descriptor metadata or flag failures and selected transfers
+ * larger than one byte park without native I/O;
  * the owner must terminate the workload after either failure. Zero-byte calls and
  * known unrelated descriptors retain their original libc behavior.
  */
@@ -19,6 +22,14 @@ const cargoTokenLibc = Process.getModuleByName('libc.so.6');
 /** Linux statx preserves descriptor identity across path changes. */
 const cargoTokenStatx = new SystemFunction(cargoTokenLibc.getExportByName('statx'), 'int',
     ['int', 'pointer', 'int', 'uint', 'pointer']);
+/** fcntl(F_GETFL) reports whether a read's descriptor is O_NONBLOCK. */
+const cargoTokenFcntl = new SystemFunction(cargoTokenLibc.getExportByName('fcntl'), 'int', ['int', 'int']);
+/** Linux F_GETFL command. */
+const cargoTokenGetFlags = 3;
+/** Linux O_NONBLOCK status flag on both supported architectures. */
+const cargoTokenNonblocking = 0x800;
+/** Linux EAGAIN, reported by a declined nonblocking read. */
+const cargoTokenAgain = 11;
 /** Empty path with AT_EMPTY_PATH selects the descriptor itself. */
 const cargoTokenEmptyPath = Memory.allocUtf8String('');
 /** Exact monotonically increasing request number within this installation. */
@@ -90,15 +101,17 @@ function inspectCargoTokenDescriptor(fd) {
  * @param message copied Frida control object
  * @param sequence current native request's canonical sequence
  * @param operation read or write requested by the held call
+ * @param blocking false only for a read whose descriptor is O_NONBLOCK, which a control without a byte declines
  * @return true only for the exact identities, operation and valid byte shape
  */
-function acceptsCargoTokenControl(message, sequence, operation) {
+function acceptsCargoTokenControl(message, sequence, operation, blocking) {
     if (message === null || typeof message !== 'object' || Array.isArray(message))
         return false;
     const expected = ['type', 'protocol', 'version', 'attempt', 'installation', 'pid', 'sequence', 'operation'];
-    if (operation === 'read')
-        expected.push('byte');
     const actual = Object.keys(message).sort();
+    const declined = operation === 'read' && blocking === false && actual.indexOf('byte') === -1;
+    if (operation === 'read' && declined === false)
+        expected.push('byte');
     const hasExactFields = JSON.stringify(actual) === JSON.stringify(expected.sort());
     if (hasExactFields === false)
         return false;
@@ -110,7 +123,7 @@ function acceptsCargoTokenControl(message, sequence, operation) {
         message.operation === operation;
     if (matchesIdentity === false)
         return false;
-    if (operation === 'write')
+    if (operation === 'write' || declined)
         return true;
     return Number.isInteger(message.byte) && message.byte >= 0 && message.byte <= 255;
 }
@@ -119,13 +132,14 @@ function acceptsCargoTokenControl(message, sequence, operation) {
  * Waits for an exact control, preserving the parked operation after rejection.
  * @param sequence pending request identity
  * @param operation intercepted operation
- * @return exact accepted control, including the delivered byte for a read
+ * @param blocking false only for a read whose descriptor is O_NONBLOCK
+ * @return exact accepted control, including the delivered byte for a granted read
  */
-function awaitCargoTokenControl(sequence, operation) {
+function awaitCargoTokenControl(sequence, operation, blocking) {
     let accepted;
     while (accepted === undefined) {
         recv('cargo-token-control-' + sequence, function receiveCargoTokenControl(message) {
-            if (acceptsCargoTokenControl(message, sequence, operation))
+            if (acceptsCargoTokenControl(message, sequence, operation, blocking))
                 accepted = message;
             else
                 sendCargoTokenEvent({event: 'control-rejected', sequence: sequence, operation: operation});
@@ -159,23 +173,37 @@ for (const operation of ['read', 'write']) {
                         operation: operation, sequence: sequence});
                     parkCargoTokenFailure();
                 }
+                let blocking = true;
+                if (operation === 'read') {
+                    const flags = cargoTokenFcntl(fd, cargoTokenGetFlags);
+                    if (flags.value < 0) {
+                        sendCargoTokenEvent({event: 'failure', cause: 'Descriptor flags are unavailable',
+                            operation: operation, sequence: sequence});
+                        parkCargoTokenFailure();
+                    }
+                    blocking = (flags.value & cargoTokenNonblocking) === 0;
+                }
                 const request = {event: 'transfer', sequence: sequence, operation: operation};
                 if (operation === 'write')
                     request.byte = buffer.readU8();
+                else
+                    request.blocking = blocking;
                 sendCargoTokenEvent(request);
-                const reply = awaitCargoTokenControl(sequence, operation);
-                if (operation === 'read')
+                const reply = awaitCargoTokenControl(sequence, operation, blocking);
+                const declined = operation === 'read' && reply.byte === undefined;
+                if (operation === 'read' && declined === false)
                     buffer.writeU8(reply.byte);
                 args[2] = ptr(0);
                 this.cargoTokenMediated = true;
-                this.cargoTokenErrno = savedErrno;
+                this.cargoTokenResult = declined ? -1 : 1;
+                this.cargoTokenErrno = declined ? cargoTokenAgain : savedErrno;
                 this.errno = savedErrno;
             }
         },
-        /** Report the completed controller transfer after harmless zero-count native I/O. */
+        /** Report the completed or declined controller transfer after harmless zero-count native I/O. */
         onLeave(result) {
             if (this.cargoTokenMediated) {
-                result.replace(1);
+                result.replace(this.cargoTokenResult);
                 this.errno = this.cargoTokenErrno;
             }
         }

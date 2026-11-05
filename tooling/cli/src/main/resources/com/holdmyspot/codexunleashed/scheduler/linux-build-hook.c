@@ -7,8 +7,9 @@
  *
  * Wire: 4-byte big-endian payload length, then NUL-terminated fields; protocol version 1.
  * - Client: "hello" version pid start; "blocked" wait thread bytes errno; "granted" wait unknown|accepted|duplicate;
- *   "transfer" sequence read|write [byte]; "failure" sequence read|write cause; "exhausted"; "exec-static" path.
- * - Server: "welcome" installation; "grant" wait; "token" sequence [byte]; "adopt".
+ *   "transfer" sequence read blocking|nonblocking; "transfer" sequence write byte; "failure" sequence read|write
+ *   cause; "exhausted"; "exec-static" path.
+ * - Server: "welcome" installation; "grant" wait; "token" sequence [byte]; "empty" sequence; "adopt".
  * The start is field 22 of /proc/<pid>/stat. Numbers are canonical unsigned decimals.
  *
  * Allocation waits keep linux-allocation-hook.js's semantics: only a positive-size malloc that returns NULL with
@@ -19,8 +20,10 @@
  *
  * Token mediation keeps linux-cargo-tokens.js's semantics. When CODEX_BUILD_HOOK_FIFO names the jobserver FIFO as
  * major:minor:inode, a one-byte read or write on a descriptor of that FIFO is sent as "transfer" and blocks until its
- * "token"; a read returns the token's byte. The native call then runs with a count of zero and returns 1. A transfer of
- * any other count, or a descriptor whose type or inode cannot be read, reports "failure" and parks without native I/O.
+ * "token"; a read returns the token's byte. The native call then runs with a count of zero and returns 1. A read names
+ * whether its descriptor is O_NONBLOCK; the server answers a nonblocking read at once, with "token" or with "empty",
+ * and "empty" makes the call fail with EAGAIN as the native read of an empty FIFO would. A transfer of any other
+ * count, or a descriptor whose type, inode or flags cannot be read, reports "failure" and parks without native I/O.
  * Zero-byte calls and other descriptors keep their native behavior.
  *
  * Exec: this library defines execve, execv, execvp, execvpe, execveat, fexecve, execl, execlp, execle, posix_spawn and
@@ -95,7 +98,11 @@ struct transfer {
     /** Zero while free. */
     uint64_t sequence;
     bool read;
+    /** Whether the read's descriptor is O_NONBLOCK, so that the server may answer "empty". */
+    bool nonblocking;
     bool answered;
+    /** Whether the server answered a nonblocking read with "empty" rather than a token. */
+    bool empty;
     unsigned char byte;
 };
 
@@ -139,8 +146,8 @@ static struct {
 
 /** Arguments that on_enter copies for on_leave. */
 struct call { size_t bytes; };
-/** Whether on_transfer_enter mediated the call, and the errno to restore. */
-struct mediated { bool done; int error; };
+/** Whether on_transfer_enter mediated the call, the value it returns and the errno it leaves. */
+struct mediated { bool done; gssize result; int error; };
 /** The jobserver FIFO's identity, when CODEX_BUILD_HOOK_FIFO is set. */
 static bool fifo_configured;
 static uint32_t fifo_major, fifo_minor;
@@ -334,6 +341,31 @@ static bool apply_token(const char *sequence_text, const char *byte_text)
         if (transfer->sequence != sequence || transfer->answered) continue;
         if (transfer->read != (byte_text != NULL)) break;
         transfer->byte = (unsigned char) byte;
+        transfer->empty = false;
+        transfer->answered = true;
+        pthread_cond_signal(&transfer->condition);
+        applied = true;
+        break;
+    }
+    pthread_mutex_unlock(&hook.mutex);
+    return applied;
+}
+
+/**
+ * Declines one waiting nonblocking read. Returns false for an unknown sequence or a transfer that is not a
+ * nonblocking read.
+ */
+static bool apply_empty(const char *sequence_text)
+{
+    uint64_t sequence;
+    if (!parse_decimal(sequence_text, &sequence) || sequence == 0) return false;
+    bool applied = false;
+    pthread_mutex_lock(&hook.mutex);
+    for (int index = 0; index < TRANSFER_COUNT; ++index) {
+        struct transfer *transfer = &hook.transfers[index];
+        if (transfer->sequence != sequence || transfer->answered) continue;
+        if (!transfer->read || !transfer->nonblocking) break;
+        transfer->empty = true;
         transfer->answered = true;
         pthread_cond_signal(&transfer->condition);
         applied = true;
@@ -359,6 +391,9 @@ static void *read_server(void *argument)
         }
         else if ((count == 2 || count == 3) && strcmp(fields[0], "token") == 0) {
             if (!apply_token(fields[1], count == 3 ? fields[2] : NULL)) { fault = TRANSFER_REJECTED; break; }
+        }
+        else if (count == 2 && strcmp(fields[0], "empty") == 0) {
+            if (!apply_empty(fields[1])) { fault = TRANSFER_REJECTED; break; }
         }
         else if (count == 1 && strcmp(fields[0], "adopt") == 0) {
             pthread_mutex_lock(&hook.mutex);
@@ -596,6 +631,9 @@ static void on_transfer_enter(GumInvocationContext *context, gpointer user_data)
     if (kind == DESCRIPTOR_TYPE_UNAVAILABLE) park_transfer(sequence, read, "Descriptor type is unavailable");
     if (kind == DESCRIPTOR_INODE_UNAVAILABLE) park_transfer(sequence, read, "FIFO inode is unavailable");
     if (count != 1) park_transfer(sequence, read, "Jobserver transfer count differs from one");
+    int flags = read ? fcntl(descriptor, F_GETFL) : 0;
+    if (flags < 0) park_transfer(sequence, read, "Descriptor flags are unavailable");
+    bool nonblocking = (flags & O_NONBLOCK) != 0;
 
     pthread_mutex_lock(&hook.mutex);
     struct transfer *transfer = NULL;
@@ -607,37 +645,40 @@ static void on_transfer_enter(GumInvocationContext *context, gpointer user_data)
     }
     transfer->sequence = sequence;
     transfer->read = read;
+    transfer->nonblocking = nonblocking;
     transfer->answered = false;
     int socket = hook.socket;
     pthread_mutex_unlock(&hook.mutex);
 
     char sequence_text[21], byte_text[21];
     const char *request[] = { "transfer", decimal(sequence, sequence_text), read ? "read" : "write",
-        read ? NULL : decimal(buffer[0], byte_text) };
-    int sent = send_frame(socket, request, read ? 3 : 4);
+        read ? (nonblocking ? "nonblocking" : "blocking") : decimal(buffer[0], byte_text) };
+    int sent = send_frame(socket, request, 4);
     pthread_mutex_unlock(&hook.issuing);
     pthread_mutex_lock(&hook.mutex);
     if (sent < 0) fatal_locked(CONNECTION_LOST);
     while (!transfer->answered && hook.fault == NO_FAULT) pthread_cond_wait(&transfer->condition, &hook.mutex);
     if (hook.fault != NO_FAULT) fatal_locked(hook.fault);
-    if (read) buffer[0] = transfer->byte;
+    bool empty = transfer->empty;
+    if (read && !empty) buffer[0] = transfer->byte;
     transfer->sequence = 0;
     pthread_mutex_unlock(&hook.mutex);
 
     /* The native call still runs, transferring nothing. */
     gum_invocation_context_replace_nth_argument(context, 2, GSIZE_TO_POINTER(0));
     mediated->done = true;
-    mediated->error = error;
+    mediated->result = empty ? -1 : 1;
+    mediated->error = empty ? EAGAIN : error;
     context->system_error = error;
 }
 
-/** Reports the mediated byte as transferred. */
+/** Reports the mediated byte as transferred, or a declined nonblocking read as failing with EAGAIN. */
 static void on_transfer_leave(GumInvocationContext *context, gpointer user_data)
 {
     (void) user_data;
     struct mediated *mediated = GUM_IC_GET_INVOCATION_DATA(context, struct mediated);
     if (mediated == NULL || !mediated->done) return;
-    gum_invocation_context_replace_return_value(context, GSIZE_TO_POINTER(1));
+    gum_invocation_context_replace_return_value(context, GSIZE_TO_POINTER(mediated->result));
     context->system_error = mediated->error;
 }
 

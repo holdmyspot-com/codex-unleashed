@@ -70,9 +70,29 @@ public final class LinuxBuildHookTokensTest
 		try (DefaultToolingScope scope = new DefaultToolingScope())
 		{
 			String message = new LinuxBuildHookTokens(scope, ATTEMPT, 9, 42).
-				transfer(List.of("transfer", "4", "read")).orElseThrow();
+				transfer(List.of("transfer", "4", "read", "blocking")).orElseThrow();
 			requireThat(new CargoTokenMessages(scope, ATTEMPT, 9, 42).read(message), "event").isEqualTo(
-				new CargoTokenMessages.Read(new CargoTokenMessages.Request(ATTEMPT, 9, 42, 4)));
+				new CargoTokenMessages.Read(new CargoTokenMessages.Request(ATTEMPT, 9, 42, 4), true));
+		}
+	}
+
+	/**
+	 * A nonblocking read transfer becomes a nonblocking read request, and its decline becomes an {@code empty} frame.
+	 * @throws IOException if the message does not decode
+	 */
+	@Test
+	public void translatesNonblockingReadAndDecline() throws IOException
+	{
+		try (DefaultToolingScope scope = new DefaultToolingScope())
+		{
+			LinuxBuildHookTokens tokens = new LinuxBuildHookTokens(scope, ATTEMPT, 9, 42);
+			CargoTokenMessages messages = new CargoTokenMessages(scope, ATTEMPT, 9, 42);
+			String message = tokens.transfer(List.of("transfer", "4", "read", "nonblocking")).orElseThrow();
+			CargoTokenMessages.Read read = (CargoTokenMessages.Read) messages.read(message);
+			requireThat(read, "event").isEqualTo(
+				new CargoTokenMessages.Read(new CargoTokenMessages.Request(ATTEMPT, 9, 42, 4), false));
+			requireThat(LinuxBuildHookFrames.decode(tokens.token(messages.decline(read))), "frame").
+				isEqualTo(List.of("empty", "4"));
 		}
 	}
 
@@ -133,7 +153,7 @@ public final class LinuxBuildHookTokensTest
 		try (DefaultToolingScope scope = new DefaultToolingScope())
 		{
 			byte[] frame = new LinuxBuildHookTokens(scope, ATTEMPT, 9, 42).token(new CargoTokenMessages(scope, ATTEMPT,
-				9, 42).grant(new CargoTokenMessages.Read(new CargoTokenMessages.Request(ATTEMPT, 9, 42, 4)), 65));
+				9, 42).grant(new CargoTokenMessages.Read(new CargoTokenMessages.Request(ATTEMPT, 9, 42, 4), true), 65));
 			requireThat(LinuxBuildHookFrames.decode(frame), "frame").isEqualTo(List.of("token", "4", "65"));
 		}
 	}

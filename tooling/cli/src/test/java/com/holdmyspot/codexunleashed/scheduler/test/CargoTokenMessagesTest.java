@@ -50,11 +50,45 @@ public final class CargoTokenMessagesTest
 		try (var scope = new DefaultToolingScope())
 		{
 			var messages = new CargoTokenMessages(scope, ATTEMPT, 9, 42);
-			requireThat(messages.read(frame("transfer", ",\"sequence\":\"1\",\"operation\":\"read\"")), "read")
-				.isEqualTo(new CargoTokenMessages.Read(request(1)), "expected");
+			requireThat(messages.read(frame("transfer", ",\"sequence\":\"1\",\"operation\":\"read\",\"blocking\":true")), "read")
+				.isEqualTo(new CargoTokenMessages.Read(request(1), true), "expected");
 			for (int value : new int[]{0, 255})
 				requireThat(messages.read(frame("transfer", ",\"sequence\":\"9223372036854775807\",\"operation\":\"write\",\"byte\":" + value)), "write")
 					.isEqualTo(new CargoTokenMessages.Write(request(Long.MAX_VALUE), value), "expected");
+		}
+	}
+
+	/**
+	 * Decodes a nonblocking read and declines it with a control that carries no byte, refusing to decline a blocking
+	 * read.
+	 * @throws IOException if a matching request or expected JSON value is rejected
+	 */
+	@Test
+	public void declinesOnlyNonblockingReads() throws IOException
+	{
+		try (var scope = new DefaultToolingScope())
+		{
+			var messages = new CargoTokenMessages(scope, ATTEMPT, 9, 42);
+			var read = (CargoTokenMessages.Read) messages.read(frame("transfer", ",\"sequence\":\"1\",\"operation\":\"read\",\"blocking\":false"));
+			requireThat(read, "read").isEqualTo(new CargoTokenMessages.Read(request(1), false), "expected");
+			var expected = scope.getAllocationMessageMapper().readTree("{\"protocol\":\"codex-build-cargo-tokens\",\"version\":1," +
+				"\"attempt\":\"" + ATTEMPT + "\",\"installation\":\"9\",\"pid\":\"42\"," +
+				"\"type\":\"cargo-token-control-1\",\"sequence\":\"1\",\"operation\":\"read\"}");
+			requireThat(messages.decline(read), "decline").isEqualTo(expected, "expected");
+		}
+	}
+
+	/**
+	 * Refuses to decline a read that waits for a grant.
+	 * @throws IOException if the blocking read is rejected
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*waits for a grant.*")
+	public void blockingReadCannotBeDeclined() throws IOException
+	{
+		try (var scope = new DefaultToolingScope())
+		{
+			var messages = new CargoTokenMessages(scope, ATTEMPT, 9, 42);
+			messages.decline(new CargoTokenMessages.Read(request(1), true));
 		}
 	}
 
@@ -84,7 +118,7 @@ public final class CargoTokenMessagesTest
 		try (var scope = new DefaultToolingScope())
 		{
 			var messages = new CargoTokenMessages(scope, ATTEMPT, 9, 42);
-			var read = (CargoTokenMessages.Read) messages.read(frame("transfer", ",\"sequence\":\"1\",\"operation\":\"read\""));
+			var read = (CargoTokenMessages.Read) messages.read(frame("transfer", ",\"sequence\":\"1\",\"operation\":\"read\",\"blocking\":true"));
 			var write = (CargoTokenMessages.Write) messages.read(frame("transfer", ",\"sequence\":\"2\",\"operation\":\"write\",\"byte\":165"));
 			String common = "\"protocol\":\"codex-build-cargo-tokens\",\"version\":1,\"attempt\":\"" + ATTEMPT +
 				"\",\"installation\":\"9\",\"pid\":\"42\",";
@@ -112,7 +146,7 @@ public final class CargoTokenMessagesTest
 			var messages = new CargoTokenMessages(scope, ATTEMPT, 9, 42);
 			requireThat(messages.read(frame("control-rejected", ",\"sequence\":\"1\",\"operation\":\"read\"")), "rejected")
 				.isEqualTo(new CargoTokenMessages.Rejected(request(1), CargoTokenMessages.Operation.READ), "expected");
-			String[] causes = {"Descriptor statx failed", "Descriptor type is unavailable", "FIFO inode is unavailable", "Jobserver transfer count differs from one"};
+			String[] causes = {"Descriptor statx failed", "Descriptor type is unavailable", "FIFO inode is unavailable", "Descriptor flags are unavailable", "Jobserver transfer count differs from one"};
 			for (int index = 0; index < causes.length; ++index)
 			{
 				var expected = new CargoTokenMessages.Failure(request(2), CargoTokenMessages.Operation.WRITE,
@@ -153,7 +187,7 @@ public final class CargoTokenMessagesTest
 		try (var scope = new DefaultToolingScope())
 		{
 			var messages = new CargoTokenMessages(scope, ATTEMPT, 9, 42);
-			String read = frame("transfer", ",\"sequence\":\"1\",\"operation\":\"read\"");
+			String read = frame("transfer", ",\"sequence\":\"1\",\"operation\":\"read\",\"blocking\":true");
 			for (String value : new String[]{"0", "-1", "+1", "01", " 1", "1.0", "١", "9223372036854775808"})
 				requireException(IOException.class, () -> messages.read(read.replace("\"sequence\":\"1\"", "\"sequence\":\"" + value + "\"")));
 			for (String invalid : new String[]{read.replace("\"installation\":\"9\"", "\"installation\":\"09\""),
@@ -192,7 +226,7 @@ public final class CargoTokenMessagesTest
 				ready.replace("\"version\":1", "\"version\":1.0"), ready.replace("\"version\":1", "\"version\":true"),
 				ready.replace("\"version\":1", "\"version\":4294967297"), ready.replace("\"version\":1", "\"version\":\"1\""),
 				ready.replace("\"version\":1,", ""), frame("ready", ",\"extra\":null"), frame("future-event", ""),
-				frame("transfer", ",\"sequence\":\"1\",\"operation\":\"read\",\"byte\":0"),
+				frame("transfer", ",\"sequence\":\"1\",\"operation\":\"read\",\"blocking\":true,\"byte\":0"), frame("transfer", ",\"sequence\":\"1\",\"operation\":\"read\""), frame("transfer", ",\"sequence\":\"1\",\"operation\":\"read\",\"blocking\":\"true\""),
 				frame("transfer", ",\"sequence\":\"1\",\"operation\":\"write\""),
 				frame("transfer", ",\"sequence\":\"1\",\"operation\":\"future-operation\""),
 				frame("failure", ",\"sequence\":\"1\",\"operation\":\"write\",\"cause\":\"future-cause\""),
@@ -236,13 +270,13 @@ public final class CargoTokenMessagesTest
 			for (var foreign : new CargoTokenMessages.Request[]{new CargoTokenMessages.Request(UUID.randomUUID(), 9, 42, 1),
 				new CargoTokenMessages.Request(ATTEMPT, 10, 42, 1), new CargoTokenMessages.Request(ATTEMPT, 9, 43, 1)})
 			{
-				requireException(IllegalArgumentException.class, () -> messages.grant(new CargoTokenMessages.Read(foreign), 0));
+				requireException(IllegalArgumentException.class, () -> messages.grant(new CargoTokenMessages.Read(foreign, true), 0));
 				requireException(IllegalArgumentException.class, () -> messages.acknowledge(new CargoTokenMessages.Write(foreign, 255)));
 			}
 			requireException(NullPointerException.class, () -> messages.grant(null, 0));
 			requireException(NullPointerException.class, () -> messages.acknowledge(null));
 			for (int value : new int[]{-1, 256})
-				requireException(IllegalArgumentException.class, () -> messages.grant(new CargoTokenMessages.Read(request(1)), value));
+				requireException(IllegalArgumentException.class, () -> messages.grant(new CargoTokenMessages.Read(request(1), true), value));
 		}
 	}
 
@@ -255,7 +289,7 @@ public final class CargoTokenMessagesTest
 		requireException(NullPointerException.class, () -> new CargoTokenMessages.Request(null, 9, 42, 1));
 		for (long[] invalid : new long[][]{{0, 42, 1}, {9, 0, 1}, {9, 4294967296L, 1}, {9, 42, 0}})
 			requireException(IllegalArgumentException.class, () -> new CargoTokenMessages.Request(ATTEMPT, invalid[0], invalid[1], invalid[2]));
-		requireException(NullPointerException.class, () -> new CargoTokenMessages.Read(null));
+		requireException(NullPointerException.class, () -> new CargoTokenMessages.Read(null, true));
 		requireException(NullPointerException.class, () -> new CargoTokenMessages.Write(null, 0));
 		for (int value : new int[]{-1, 256})
 			requireException(IllegalArgumentException.class, () -> new CargoTokenMessages.Write(request(1), value));

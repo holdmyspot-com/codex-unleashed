@@ -138,6 +138,28 @@ public final class CargoTokenHookTest
 	}
 
 	/**
+	 * Declines a nonblocking read at once when no token is free, and grants one when a token is free.
+	 * @throws IOException if valid transfers fail
+	 */
+	@Test
+	public void nonblockingReadIsAnsweredImmediately() throws IOException
+	{
+		try (Fixture f = ready())
+		{
+			f.connection.frames.add(read(1, false));
+			f.hook.pump();
+			requireThat(f.connection.posts.size(), "declinedAtOnce").isEqualTo(1, "expected");
+			requireThat(f.connection.posts.getFirst().path("sequence").asString(), "declinedSequence").isEqualTo("1", "expected");
+			requireThat(f.connection.posts.getFirst().path("operation").asString(), "declinedOperation").isEqualTo("read", "expected");
+			requireThat(f.connection.posts.getFirst().has("byte"), "declineHasNoByte").isFalse();
+			f.transfer.bytes.add(43);
+			f.connection.frames.add(read(2, false));
+			f.hook.pump();
+			requireThat(f.connection.posts.get(1).path("byte").asInt(), "grantedByte").isEqualTo(43, "expected");
+		}
+	}
+
+	/**
 	 * Rejects duplicate and skipped sequences before any second or unauthorized read effect.
 	 * @throws IOException if valid readiness fails
 	 */
@@ -385,7 +407,18 @@ public final class CargoTokenHookTest
 	 */
 	private static String read(long sequence)
 	{
-		return frame("transfer", ",\"sequence\":\"" + sequence + "\",\"operation\":\"read\"");
+		return read(sequence, true);
+	}
+
+	/**
+	 * Supplies a native read request in its observed wire shape.
+	 * @param sequence native request number
+	 * @param blocking whether the reading descriptor waits for a token rather than failing with {@code EAGAIN}
+	 * @return independent read frame
+	 */
+	private static String read(long sequence, boolean blocking)
+	{
+		return frame("transfer", ",\"sequence\":\"" + sequence + "\",\"operation\":\"read\",\"blocking\":" + blocking);
 	}
 
 	/**

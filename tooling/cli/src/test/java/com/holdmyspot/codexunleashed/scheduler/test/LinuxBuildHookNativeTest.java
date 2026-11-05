@@ -202,10 +202,47 @@ public final class LinuxBuildHookNativeTest
 				requireThat(receive(connection), "write").isEqualTo(List.of("transfer", "1", "write",
 					Integer.toString('x')));
 				send(connection, "token", "1");
-				requireThat(receive(connection), "read").isEqualTo(List.of("transfer", "2", "read"));
+				requireThat(receive(connection), "read").isEqualTo(List.of("transfer", "2", "read", "blocking"));
 				send(connection, "token", "2", Integer.toString('A'));
 				// Had the write reached the FIFO, the read would have returned x without a transfer.
 				requireThat(readAll(program), "output").isEqualTo("wrote 1\nread 1 A\n");
+				requireThat(program.waitFor(), "exitValue").isEqualTo(0);
+			}
+			finally
+			{
+				program.destroyForcibly();
+			}
+		}
+	}
+
+	/**
+	 * A one-byte read of the jobserver FIFO through a nonblocking descriptor reports that it does not wait, fails with
+	 * {@code EAGAIN} when the server declines it, and returns the token's byte when the server grants one.
+	 * @throws IOException          if the fixture cannot be built or run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = TEST_TIMEOUT_MILLIS)
+	public void declinedNonblockingReadFailsWithEagain() throws IOException, InterruptedException
+	{
+		try (LinuxBuildHookInstallation installation = LinuxBuildHookInstallation.create())
+		{
+			Path fifo = installation.directory().resolve("jobserver");
+			Process mkfifo = new ProcessBuilder("mkfifo", fifo.toString()).inheritIO().start();
+			requireThat(mkfifo.waitFor(), "mkfifo").isEqualTo(0);
+			Process stat = new ProcessBuilder("stat", "-c", "%Hd:%Ld:%i", fifo.toString()).start();
+			String identity = new String(stat.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
+			requireThat(stat.waitFor(), "stat").isEqualTo(0);
+
+			Process program = installation.startWithFifo(identity, "token-nonblocking", fifo.toString());
+			try (SocketChannel connection = installation.accept())
+			{
+				receive(connection);
+				send(connection, "welcome", "1");
+				requireThat(receive(connection), "declined").isEqualTo(List.of("transfer", "1", "read", "nonblocking"));
+				send(connection, "empty", "1");
+				requireThat(receive(connection), "granted").isEqualTo(List.of("transfer", "2", "read", "nonblocking"));
+				send(connection, "token", "2", Integer.toString('A'));
+				requireThat(readAll(program), "output").isEqualTo("read -1 EAGAIN\nread 1 A\n");
 				requireThat(program.waitFor(), "exitValue").isEqualTo(0);
 			}
 			finally

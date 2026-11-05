@@ -394,7 +394,7 @@ public final class MacCargoTokenHookTest
 	 */
 	private static String read(long sequence)
 	{
-		return frame("transfer", ",\"sequence\":\"" + sequence + "\",\"operation\":\"read\"");
+		return frame("transfer", ",\"sequence\":\"" + sequence + "\",\"operation\":\"read\",\"blocking\":true");
 	}
 
 	/**

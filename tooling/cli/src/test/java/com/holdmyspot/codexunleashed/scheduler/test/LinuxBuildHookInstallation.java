@@ -39,9 +39,12 @@ public final class LinuxBuildHookInstallation implements AutoCloseable
 	 * {@code token-read-exit <fifo>} it opens the FIFO and starts a thread that reads one byte from it, waits until that
 	 * thread is blocked in the read, prints {@code exiting} and exits 0, so the process ends with the read pending.
 	 * With {@code token-threads <fifo>} eight threads each write the byte {@code x} to the FIFO 200 times, so their
-	 * transfers are issued concurrently; it prints {@code done} and exits 0 once every write returned 1.
+	 * transfers are issued concurrently; it prints {@code done} and exits 0 once every write returned 1. With
+	 * {@code token-nonblocking <fifo>} it opens the FIFO nonblocking and reads one byte twice, printing each result
+	 * and whether the call failed with {@code EAGAIN}, then the byte of a successful second read.
 	 */
 	private static final String PROGRAM_SOURCE = """
+		#include <errno.h>
 		#include <fcntl.h>
 		#include <pthread.h>
 		#include <signal.h>
@@ -143,6 +146,16 @@ public final class LinuxBuildHookInstallation implements AutoCloseable
 		    puts("exiting");
 		    fflush(stdout);
 		    exit(0);
+		  }
+		  if (strcmp(argv[1], "token-nonblocking") == 0) {
+		    int fifo = open(argv[2], O_RDWR | O_NONBLOCK);
+		    if (fifo < 0) return 7;
+		    char byte = 'x';
+		    ssize_t first = read(fifo, &byte, 1);
+		    printf("read %zd %s\\n", first, first < 0 && errno == EAGAIN ? "EAGAIN" : "-");
+		    ssize_t second = read(fifo, &byte, 1);
+		    printf("read %zd %c\\n", second, byte);
+		    return 0;
 		  }
 		  if (strcmp(argv[1], "token") == 0) {
 		    int fifo = open(argv[2], O_RDWR);
