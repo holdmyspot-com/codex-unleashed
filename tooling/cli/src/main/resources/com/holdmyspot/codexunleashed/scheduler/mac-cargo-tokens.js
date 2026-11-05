@@ -223,8 +223,33 @@ long replacement_write (int fd, void * buffer, unsigned long count)
     fifo_inode: cargoTokenFifoInode,
     originals: cargoTokenOriginals
 });
+/** Darwin syscall numbers of the replaced operations, in cargoTokenOperations order. */
+const cargoTokenSyscalls = [3, 4];
+
+/**
+ * Rejects an entry point that is not the plain Darwin syscall veneer. replaceFast's default relocation refuses these
+ * veneers because the 16 bytes it redirects include the veneer's branch to its return; forced relocation is therefore
+ * restricted to the shape whose relocated copy was verified to preserve results, errno and large transfers.
+ */
+function requireCargoTokenVeneer(operation, target, number) {
+    const first = Instruction.parse(target);
+    const second = Instruction.parse(first.next);
+    if (Process.arch === 'arm64') {
+        if ((first.toString() === 'mov x16, #' + number || first.toString() === 'mov x16, #0x' + number.toString(16)) &&
+            second.toString() === 'svc #0x80')
+            return;
+    } else if (Process.arch === 'x64') {
+        const systemCall = second.toString() === 'mov r10, rcx' ? Instruction.parse(second.next) : second;
+        if (first.toString() === 'mov eax, 0x' + (0x2000000 + number).toString(16) && systemCall.toString() === 'syscall')
+            return;
+    }
+    throw new Error('Unsupported Darwin ' + operation + ' syscall veneer: ' + first + '; ' + second);
+}
+
 cargoTokenOperations.forEach((operation, index) => {
-    const original = Interceptor.replaceFast(cargoTokenLibc.getExportByName(operation),
+    const target = cargoTokenLibc.getExportByName(operation);
+    requireCargoTokenVeneer(operation, target, cargoTokenSyscalls[index]);
+    const original = Interceptor.replaceFast({target: target, relocation: 'forced'},
         cargoTokenNative['replacement_' + operation]);
     cargoTokenOriginals.add(index * Process.pointerSize).writePointer(original);
 });
