@@ -104,11 +104,12 @@ static int mc_vector(unsigned char *payload,size_t *used,char **values,int count
  * This uses the same private XNU ABI proved by the workload owner, never a newly selected PID. */
 struct mc_unique { uint8_t uuid[16];uint64_t unique,parent;int32_t version,original_parent_version;uint64_t reserved[2]; };
 typedef int (*mc_query)(int32_t,int32_t,uint32_t,uint32_t,uint64_t,uint64_t,void *,int32_t);
-static int mc_identity(struct mc_peer *peer,struct mc_unique *identity) {
+static int mc_identity_of(pid_t pid,uint32_t version,struct mc_unique *identity) {
  mc_query query=(mc_query)dlsym(RTLD_DEFAULT,"__proc_info_extended_id");if(!query)return ENOTSUP;
- errno=0;int bytes=query(2,peer->pid,17,1,peer->token.val[7],0,identity,sizeof *identity);
+ errno=0;int bytes=query(2,pid,17,1,version,0,identity,sizeof *identity);
  return bytes==(int)sizeof *identity?0:(errno?errno:EIO);
 }
+static int mc_identity(struct mc_peer *peer,struct mc_unique *identity) { return mc_identity_of(peer->pid,peer->token.val[7],identity); }
 
 /* Expose the kernel endpoint incarnation for the consuming workload authority's independent comparison. */
 int mc_peer_identity(void *handle,uint64_t output[5]) {
@@ -117,40 +118,67 @@ int mc_peer_identity(void *handle,uint64_t output[5]) {
  output[0]=(uint64_t)peer->pid;output[1]=identity.unique;output[2]=(uint32_t)identity.version;output[3]=peer->uid;output[4]=peer->gid;return 0;
 }
 
-/* Independently read exact initial kernel argv/environment and current cwd of the same socket endpoint.
- * The trusted fixed wrapper does not mutate its initial vectors or cwd while awaiting the controller.
- * Restricted or omitted environments cannot match its required nonempty registration environment.
- * Consumers separately authenticate workload membership, direct Cargo parenting and executable vnode. */
-int mc_capture(void *handle,void *output,int capacity,int *bytes) {
- struct mc_peer *peer=handle;if(!peer || !output || capacity<=0 || !bytes || !peer->received)return EINVAL;*bytes=0;
- struct mc_unique before,after;int error=mc_identity(peer,&before);if(error)return error;
+/* Read one process's exact initial kernel argv and environment, requiring at least minimum arguments.
+ * On success the caller frees *raw, *arguments and *environment; the vectors point into *raw. */
+static int mc_initial_vectors(pid_t pid,int minimum,unsigned char **raw_out,char ***arguments_out,int *argument_count_out,
+ char ***environment_out,int *environment_count_out) {
+ *raw_out=NULL;*arguments_out=NULL;*environment_out=NULL;*argument_count_out=0;*environment_count_out=0;
  int maximum=0;size_t maximum_bytes=sizeof maximum;if(sysctlbyname("kern.argmax",&maximum,&maximum_bytes,NULL,0)<0)return errno;
  if(maximum_bytes!=sizeof maximum || maximum<=0 || maximum>(int)MC_LIMIT)return EOVERFLOW;
- size_t raw_size=(size_t)maximum+sizeof(int);unsigned char *raw=calloc(raw_size,1),*payload=calloc(MC_LIMIT,1);char **arguments=NULL,**environment=NULL;
- if(!raw || !payload){error=ENOMEM;goto done;}
- int mib[]={CTL_KERN,KERN_PROCARGS2,peer->pid};if(sysctl(mib,3,raw,&raw_size,NULL,0)<0){error=errno;goto done;}
- if(raw_size<sizeof(int)){error=EPROTO;goto done;}int argument_count;memcpy(&argument_count,raw,sizeof argument_count);
- if(argument_count<2 || argument_count>65536){error=EPROTO;goto done;}
+ size_t raw_size=(size_t)maximum+sizeof(int);unsigned char *raw=calloc(raw_size,1);if(!raw)return ENOMEM;*raw_out=raw;
+ int mib[]={CTL_KERN,KERN_PROCARGS2,pid};if(sysctl(mib,3,raw,&raw_size,NULL,0)<0)return errno;
+ if(raw_size<sizeof(int))return EPROTO;int argument_count;memcpy(&argument_count,raw,sizeof argument_count);
+ if(argument_count<minimum || argument_count>65536)return EPROTO;
  unsigned char *cursor=raw+sizeof(int),*end=raw+raw_size,*terminator=memchr(cursor,0,(size_t)(end-cursor));
- if(!terminator){error=EPROTO;goto done;}cursor=terminator+1;while(cursor<end && *cursor==0)cursor++;
- arguments=calloc((size_t)argument_count+1,sizeof *arguments);environment=calloc(65537,sizeof *environment);
- if(!arguments || !environment){error=ENOMEM;goto done;}
+ if(!terminator)return EPROTO;cursor=terminator+1;while(cursor<end && *cursor==0)cursor++;
+ char **arguments=calloc((size_t)argument_count+1,sizeof *arguments);*arguments_out=arguments;
+ char **environment=calloc(65537,sizeof *environment);*environment_out=environment;
+ if(!arguments || !environment)return ENOMEM;
  for(int i=0;i<argument_count;i++){
-  terminator=memchr(cursor,0,(size_t)(end-cursor));if(!terminator){error=EPROTO;goto done;}
+  terminator=memchr(cursor,0,(size_t)(end-cursor));if(!terminator)return EPROTO;
   arguments[i]=(char *)cursor;cursor=terminator+1;
  }
  int environment_count=0;
  while(cursor<end && *cursor!=0){
-  if(environment_count==65536){error=EOVERFLOW;goto done;}
-  terminator=memchr(cursor,0,(size_t)(end-cursor));if(!terminator){error=EPROTO;goto done;}
+  if(environment_count==65536)return EOVERFLOW;
+  terminator=memchr(cursor,0,(size_t)(end-cursor));if(!terminator)return EPROTO;
   environment[environment_count++]=(char *)cursor;cursor=terminator+1;
  }
+ *argument_count_out=argument_count;*environment_count_out=environment_count;return 0;
+}
+
+/* Independently read exact initial kernel argv/environment and current cwd of the same socket endpoint.
+ * The trusted fixed wrapper does not mutate its initial vectors or cwd while awaiting the controller.
+ * Restricted or omitted environments cannot match its required nonempty registration environment.
+ * Consumers separately authenticate workload membership, direct parenting and executable vnode. */
+int mc_capture(void *handle,void *output,int capacity,int *bytes) {
+ struct mc_peer *peer=handle;if(!peer || !output || capacity<=0 || !bytes || !peer->received)return EINVAL;*bytes=0;
+ struct mc_unique before,after;int error=mc_identity(peer,&before);if(error)return error;
+ unsigned char *raw=NULL,*payload=calloc(MC_LIMIT,1);char **arguments=NULL,**environment=NULL;int argument_count=0,environment_count=0;
+ if(!payload){error=ENOMEM;goto done;}
+ error=mc_initial_vectors(peer->pid,2,&raw,&arguments,&argument_count,&environment,&environment_count);if(error)goto done;
  struct proc_vnodepathinfo cwd;memset(&cwd,0,sizeof cwd);errno=0;
  if(proc_pidinfo(peer->pid,PROC_PIDVNODEPATHINFO,0,&cwd,sizeof cwd)!=(int)sizeof cwd){error=errno?errno:EIO;goto done;}
  if(cwd.pvi_cdir.vip_path[0]!='/' || !memchr(cwd.pvi_cdir.vip_path,0,sizeof cwd.pvi_cdir.vip_path)){error=EPROTO;goto done;}
  char *working_directory[]={cwd.pvi_cdir.vip_path,NULL};size_t used=0;
  error=mc_vector(payload,&used,arguments+1,argument_count-1);if(!error)error=mc_vector(payload,&used,environment,environment_count);if(!error)error=mc_vector(payload,&used,working_directory,1);if(error)goto done;
  error=mc_identity(peer,&after);if(error)goto done;
+ if(before.unique!=after.unique || before.version!=after.version || memcmp(before.uuid,after.uuid,sizeof before.uuid)!=0){error=ESTALE;goto done;}
+ if(used>(size_t)capacity){error=EOVERFLOW;goto done;}memcpy(output,payload,used);*bytes=(int)used;
+ done:free(arguments);free(environment);free(raw);free(payload);return error;
+}
+
+/* Read the exact initial kernel environment of the endpoint's direct parent image, such as a Cargo build script.
+ * version is the parent's image version; a parent that exits or execs another image fails with the identity query
+ * or ESTALE. The frame holds one environment vector; consumers separately authenticate the parent's lineage. */
+int mc_parent_environment(void *handle,int pid,int version,void *output,int capacity,int *bytes) {
+ struct mc_peer *peer=handle;if(!peer || !output || capacity<=0 || !bytes || !peer->received || pid<=0 || pid==peer->pid)return EINVAL;
+ *bytes=0;struct mc_unique before,after;int error=mc_identity_of(pid,(uint32_t)version,&before);if(error)return error;
+ unsigned char *raw=NULL,*payload=calloc(MC_LIMIT,1);char **arguments=NULL,**environment=NULL;int argument_count=0,environment_count=0;
+ if(!payload){error=ENOMEM;goto done;}
+ error=mc_initial_vectors(pid,1,&raw,&arguments,&argument_count,&environment,&environment_count);if(error)goto done;
+ size_t used=0;error=mc_vector(payload,&used,environment,environment_count);if(error)goto done;
+ error=mc_identity_of(pid,(uint32_t)version,&after);if(error)goto done;
  if(before.unique!=after.unique || before.version!=after.version || memcmp(before.uuid,after.uuid,sizeof before.uuid)!=0){error=ESTALE;goto done;}
  if(used>(size_t)capacity){error=EOVERFLOW;goto done;}memcpy(output,payload,used);*bytes=(int)used;
  done:free(arguments);free(environment);free(raw);free(payload);return error;

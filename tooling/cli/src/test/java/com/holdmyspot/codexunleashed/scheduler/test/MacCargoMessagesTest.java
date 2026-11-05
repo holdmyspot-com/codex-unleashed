@@ -52,6 +52,25 @@ public final class MacCargoMessagesTest
     }
 
     /**
+     * Decodes a build-script parent's environment frame, including explicit empty values.
+     * @throws IOException if a complete valid frame is rejected
+     */
+    @Test public void decodesParentEnvironment() throws IOException
+    {
+        var environment = MacCargoMessages.environment(vectors(List.of(List.of("OUT_DIR=/target/out", "EMPTY="))));
+        requireThat(environment, "environment").isEqualTo(java.util.Map.of("OUT_DIR", "/target/out", "EMPTY", ""));
+    }
+
+    /** Rejects a parent environment frame with a repeated name, a trailing vector or a truncated entry. */
+    @Test public void rejectsInvalidParentEnvironment()
+    {
+        requireException(IOException.class, () -> MacCargoMessages.environment(vectors(List.of(List.of("A=1", "A=2")))));
+        requireException(IOException.class, () -> MacCargoMessages.environment(vectors(List.of(List.of("A=1"), List.of()))));
+        byte[] valid = vectors(List.of(List.of("A=1")));
+        requireException(IOException.class, () -> MacCargoMessages.environment(java.util.Arrays.copyOf(valid, valid.length - 1)));
+    }
+
+    /**
      * Encodes explicit test inputs using the documented native count and byte-length framing.
      * @param command compiler command vector
      * @param environment complete environment vector
@@ -60,8 +79,18 @@ public final class MacCargoMessagesTest
      */
     private static byte[] frame(List<String> command, List<String> environment, List<String> directory)
     {
+        return vectors(List.of(command, environment, directory));
+    }
+
+    /**
+     * Encodes string vectors in order using the documented native count and byte-length framing.
+     * @param values vectors to encode
+     * @return independent complete frame
+     */
+    private static byte[] vectors(List<List<String>> values)
+    {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
-        for (List<String> vector : List.of(command, environment, directory))
+        for (List<String> vector : values)
         {
             output.writeBytes(ByteBuffer.allocate(4).putInt(vector.size()).array());
             for (String entry : vector)

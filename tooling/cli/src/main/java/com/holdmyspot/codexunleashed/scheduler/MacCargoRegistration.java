@@ -20,6 +20,87 @@ import java.util.UUID;
  */
 public final class MacCargoRegistration
 {
+    /**
+     * Invocation-owned environment entries that a wrapper must keep at their trusted values even below a build-script
+     * parent: they select the compiler and wrapper, carry the jobserver, or name the controller socket that registration
+     * trusts.
+     */
+    private static final Set<String> FIXED_ENVIRONMENT = Set.of("CARGO_MAKEFLAGS", "MAKEFLAGS", "MFLAGS", "RUSTC",
+        "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "CODEX_CARGO_SOCKET");
+
+    /**
+     * Requires a registering wrapper image to be a direct child of an image in the original Cargo image's workload.
+     * <p>
+     * The parent is the original Cargo image when Cargo compiles a crate, and another workload image, such as a build
+     * script, when that image runs the compiler through the wrapper. Every image in Cargo's coalition descends from
+     * Cargo and runs under the workload credentials.
+     * <p>
+     * Each authority holds the eighteen native image fields in the workload bridge's order: PID, unique incarnation,
+     * image version, coalition, parent PID, start seconds and microseconds, effective, real and saved user, effective,
+     * real and saved group, executable device and inode, the parent's image version when the image was created, and
+     * two reserved fields.
+     * @param cargo   original Cargo image authority
+     * @param parent  authority of the wrapper's direct parent image
+     * @param wrapper wrapper image authority
+     * @param uid     workload user identifier
+     * @param gid     workload group identifier
+     * @throws IllegalArgumentException if an authority does not hold eighteen fields
+     * @throws IOException              if the parent or wrapper is outside Cargo's coalition, the wrapper was not
+     *                                  created by that exact parent image, or any image runs with other credentials
+     */
+    public static void requireLineage(List<Long> cargo, List<Long> parent, List<Long> wrapper, int uid, int gid)
+        throws IOException
+    {
+        for (List<Long> image : List.of(cargo, parent, wrapper))
+            if (image.size() != 18)
+                throw new IllegalArgumentException("Native image authority requires eighteen fields: " + image.size());
+
+        if (parent.get(3).longValue() != cargo.get(3).longValue() || wrapper.get(3).longValue() != cargo.get(3).longValue())
+            throw new IOException("Native wrapper or its parent image is outside the Cargo workload");
+        if (wrapper.get(4).longValue() != parent.get(0).longValue() || wrapper.get(15).longValue() != parent.get(2).longValue())
+            throw new IOException("Native wrapper was not created by its retained parent image");
+        for (List<Long> image : List.of(cargo, parent, wrapper))
+        {
+            for (int i = 7; i <= 9; ++i)
+                if (image.get(i) != uid)
+                    throw new IOException("Native Cargo or wrapper user credentials differ");
+            for (int i = 10; i <= 12; ++i)
+                if (image.get(i) != gid)
+                    throw new IOException("Native Cargo or wrapper group credentials differ");
+        }
+    }
+
+    /**
+     * Requires a wrapper's initial environment to keep every invocation-owned entry.
+     * <p>
+     * Cargo gives a build script its own environment, for example without {@code RUSTFLAGS}, and the build script
+     * passes it to a compiler it runs through the wrapper. Below such a parent, an entry may therefore differ from its
+     * trusted value when the wrapper has exactly the parent's initial value, or both lack the entry. The compiler,
+     * wrapper, jobserver and controller socket entries must always keep their trusted values.
+     * @param required          invocation-owned entry names and their trusted values
+     * @param environment       wrapper's complete initial environment
+     * @param parentEnvironment initial environment of the wrapper's direct parent, or null when the original Cargo image
+     *                          started the wrapper
+     * @throws IOException if an invocation-owned entry is absent or has another value
+     */
+    public static void requireInvocationEnvironment(Map<String, String> required, Map<String, String> environment,
+        Map<String, String> parentEnvironment) throws IOException
+    {
+        for (var entry : required.entrySet())
+        {
+            String name = entry.getKey();
+            if (entry.getValue().equals(environment.get(name)))
+                continue;
+            if (parentEnvironment != null && !FIXED_ENVIRONMENT.contains(name) &&
+                parentEnvironment.containsKey(name) == environment.containsKey(name) &&
+                Objects.equals(parentEnvironment.get(name), environment.get(name)))
+            {
+                continue;
+            }
+            throw new IOException("Wrapper changed required invocation environment entry: " + name);
+        }
+    }
+
     /** Explicit immutable installed binary and workload policy. */
     private final Configuration configuration;
     /** Original native Cargo owner retained through all wrapper and attempt cleanup. */
@@ -79,45 +160,45 @@ public final class MacCargoRegistration
         if (!consumed.add(peer)) throw new IllegalStateException("Cargo peer registration already consumed");
         MacCargoNative.KernelIdentity endpoint = peer.identity();
         MacImages.Identity wrapper = owner.inspect(endpoint.pid());
-        requireAuthority(endpoint, wrapper);
+        MacImages.Identity parent = wrapper.parent() == cargo.pid() ? cargo : owner.inspect(wrapper.parent());
+        requireAuthority(endpoint, parent, wrapper);
         byte[] claimed = peer.receive();
         byte[] captured = peer.capture();
         if (!Arrays.equals(claimed, captured)) throw new IOException("Wrapper registration differs from independent kernel invocation capture");
         MacCargoMessages.Invocation invocation = MacCargoMessages.decode(captured);
         if (!invocation.arguments().getFirst().equals(configuration.rustcExecutable().toString()))
             throw new IOException("Wrapper requested a compiler outside the installed invocation policy");
-        for (var entry : configuration.requiredEnvironment().entrySet())
-            if (!entry.getValue().equals(invocation.environment().get(entry.getKey())))
-                throw new IOException("Wrapper changed required invocation environment entry: " + entry.getKey());
-        List<Long> cargoAuthority = owner.authority(cargo);
-        requireAuthority(endpoint, wrapper);
+        Map<String, String> parentEnvironment = null;
+        if (!parent.equals(cargo))
+            parentEnvironment = MacCargoMessages.environment(peer.parentEnvironment(parent.pid(), owner.authority(parent).get(2)));
+        requireInvocationEnvironment(configuration.requiredEnvironment(), invocation.environment(), parentEnvironment);
+        List<Long> parentAuthority = owner.authority(parent);
+        requireAuthority(endpoint, parent, wrapper);
         if (!endpoint.equals(peer.identity())) throw new IOException("Native socket endpoint image changed during authentication");
         CargoCompilerRequest request = new CargoCompilerRequest(UUID.randomUUID(),
-            new CargoCompilerRequest.Wrapper(endpoint.pid(), endpoint.unique(), cargo.pid(), cargoAuthority.get(1)),
+            new CargoCompilerRequest.Wrapper(endpoint.pid(), endpoint.unique(), parent.pid(), parentAuthority.get(1)),
             invocation.arguments(), invocation.directory(), invocation.environment(), null);
         return estimates == null ? request : estimates.register(request);
     }
 
     /**
-     * Checks full original Cargo and wrapper authority, direct parenting and immutable installed executable vnodes.
+     * Checks full original Cargo, parent and wrapper authority, direct parenting and immutable installed executable vnodes.
      * @param endpoint actual socket audit-token identity
+     * @param parent independently observed lineage of the wrapper's direct parent: the original Cargo image or another
+     * Cargo workload image
      * @param wrapper independently observed wrapper lineage in the Cargo coalition
      * @throws IOException if credentials, workload, incarnation, image or direct parent authority differs
      */
-    private void requireAuthority(MacCargoNative.KernelIdentity endpoint, MacImages.Identity wrapper) throws IOException
+    private void requireAuthority(MacCargoNative.KernelIdentity endpoint, MacImages.Identity parent,
+        MacImages.Identity wrapper) throws IOException
     {
         List<Long> root = owner.authority(cargo);
+        List<Long> parentImage = parent.equals(cargo) ? root : owner.authority(parent);
         List<Long> image = owner.authority(wrapper);
         if (endpoint.uid() != configuration.uid() || endpoint.gid() != configuration.gid() ||
-            endpoint.pid() != image.get(0) || endpoint.unique() != image.get(1) || endpoint.version() != image.get(2) ||
-            image.get(3).longValue() != root.get(3).longValue() || image.get(4) != cargo.pid() || image.get(15).longValue() != root.get(2).longValue())
-            throw new IOException("Native wrapper identity or direct original Cargo parent image differs");
-        for (int i = 7; i <= 9; ++i)
-            if (image.get(i) != configuration.uid() || root.get(i) != configuration.uid())
-                throw new IOException("Native Cargo or wrapper user credentials differ");
-        for (int i = 10; i <= 12; ++i)
-            if (image.get(i) != configuration.gid() || root.get(i) != configuration.gid())
-                throw new IOException("Native Cargo or wrapper group credentials differ");
+            endpoint.pid() != image.get(0) || endpoint.unique() != image.get(1) || endpoint.version() != image.get(2))
+            throw new IOException("Native wrapper endpoint differs from its workload image");
+        requireLineage(root, parentImage, image, configuration.uid(), configuration.gid());
         executable(configuration.cargoExecutable(), root);
         executable(configuration.wrapperExecutable(), image);
     }

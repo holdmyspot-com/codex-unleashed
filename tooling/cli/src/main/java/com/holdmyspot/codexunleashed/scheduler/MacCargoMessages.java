@@ -36,25 +36,55 @@ public final class MacCargoMessages
         List<String> directory = vector(input);
         if (input.hasRemaining() || directory.size() != 1 || command.isEmpty())
             throw new IOException("Native registration requires three complete invocation vectors");
+        Map<String, String> environment = entries(representedEnvironment);
+        try
+        {
+            if (command.getFirst().isBlank() || !Path.of(command.getFirst()).isAbsolute() ||
+                !Path.of(directory.getFirst()).isAbsolute())
+                throw new IOException("Compiler executable and directory must be absolute");
+            return new Invocation(command, environment, Path.of(directory.getFirst()));
+        }
+        catch (InvalidPathException failure)
+        {
+            throw new IOException("Native invocation path is invalid", failure);
+        }
+    }
+
+    /**
+     * Decodes the single environment vector of one complete native parent-environment frame.
+     * @param payload complete frame
+     * @return environment names and values
+     * @throws NullPointerException if {@code payload} is null
+     * @throws IOException          if bounds, UTF-8 or an environment entry is invalid, or a name repeats
+     */
+    public static Map<String, String> environment(byte[] payload) throws IOException
+    {
+        Objects.requireNonNull(payload, "payload");
+        if (payload.length == 0 || payload.length > 1024 * 1024)
+            throw new IOException("Native parent environment exceeds its complete frame bound");
+        ByteBuffer input = ByteBuffer.wrap(payload);
+        List<String> represented = vector(input);
+        if (input.hasRemaining()) throw new IOException("Native parent environment requires one complete vector");
+        return entries(represented);
+    }
+
+    /**
+     * Splits NAME=value environment strings.
+     * @param represented environment strings in native order
+     * @return names and values
+     * @throws IOException if an entry lacks a nonempty name and equals sign, or a name repeats
+     */
+    private static Map<String, String> entries(List<String> represented) throws IOException
+    {
         Map<String, String> environment = new LinkedHashMap<>();
-        for (String entry : representedEnvironment)
+        for (String entry : represented)
         {
             int separator = entry.indexOf('=');
             if (separator <= 0) throw new IOException("Environment entry requires a nonempty name and equals sign");
             if (environment.putIfAbsent(entry.substring(0, separator), entry.substring(separator + 1)) != null)
                 throw new IOException("Environment contains duplicate names");
         }
-        try
-        {
-            if (command.getFirst().isBlank() || !Path.of(command.getFirst()).isAbsolute() ||
-                !Path.of(directory.getFirst()).isAbsolute())
-                throw new IOException("Compiler executable and directory must be absolute");
-            return new Invocation(command, Map.copyOf(environment), Path.of(directory.getFirst()));
-        }
-        catch (InvalidPathException failure)
-        {
-            throw new IOException("Native invocation path is invalid", failure);
-        }
+        return Map.copyOf(environment);
     }
 
     /**

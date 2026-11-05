@@ -10,6 +10,7 @@ import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -336,6 +337,8 @@ public final class MacCargoNative implements AutoCloseable
         bind(symbols, "mc_accept", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
         bind(symbols, "mc_receive", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS);
         bind(symbols, "mc_capture", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS);
+        bind(symbols, "mc_parent_environment", ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+            ValueLayout.JAVA_INT, ValueLayout.ADDRESS);
         bind(symbols, "mc_peer_identity", ValueLayout.ADDRESS, ValueLayout.ADDRESS);
         bind(symbols, "mc_streams", ValueLayout.ADDRESS, ValueLayout.ADDRESS);
         bind(symbols, "mc_respond", ValueLayout.ADDRESS, ValueLayout.JAVA_INT);
@@ -476,18 +479,43 @@ public final class MacCargoNative implements AutoCloseable
         byte[] capture() throws IOException { available(); return frame("mc_capture"); }
 
         /**
+         * Captures the initial kernel environment of this endpoint's direct parent image, such as a Cargo build script.
+         * @param pid     parent process identifier
+         * @param version parent image version from its native authority
+         * @return complete kernel-captured frame holding one environment vector
+         * @throws IllegalArgumentException if {@code pid} or {@code version} is outside the native range
+         * @throws IOException              if the parent exited, runs another image, or native capture or frame
+         *                                  bounds fail
+         * @throws IllegalStateException    if called from another thread, after closure or before receive
+         */
+        byte[] parentEnvironment(long pid, long version) throws IOException
+        {
+            if (pid <= 0 || pid > Integer.MAX_VALUE || version < 0 || version > 0xFFFF_FFFFL)
+                throw new IllegalArgumentException("Parent image identity is outside the native range");
+            available();
+            return frame("mc_parent_environment", (int) pid, (int) version);
+        }
+
+        /**
          * Copies one complete bounded native frame without trusting its returned length.
          * @param operation exact native frame-producing operation
+         * @param leading   arguments that precede the output buffer, after the peer handle
          * @return copied complete frame
          * @throws IOException if native status or complete length is invalid
          */
-        private byte[] frame(String operation) throws IOException
+        private byte[] frame(String operation, Object... leading) throws IOException
         {
             try (Arena call = Arena.ofConfined())
             {
                 MemorySegment output = call.allocate(1024L * 1024);
                 MemorySegment size = call.allocate(ValueLayout.JAVA_INT);
-                check(operation, invoke(operation, handle, output, (int) output.byteSize(), size));
+                List<Object> arguments = new ArrayList<>();
+                arguments.add(handle);
+                arguments.addAll(List.of(leading));
+                arguments.add(output);
+                arguments.add((int) output.byteSize());
+                arguments.add(size);
+                check(operation, invoke(operation, arguments.toArray()));
                 int bytes = size.get(ValueLayout.JAVA_INT, 0);
                 if (bytes <= 0 || bytes > output.byteSize()) throw new IOException("Native registration frame length exceeds capacity");
                 return output.asSlice(0, bytes).toArray(ValueLayout.JAVA_BYTE);
