@@ -269,6 +269,72 @@ int mc_fifo_close(void *handle) {
 }
 
 #ifdef MC_WRAPPER
+#include <poll.h>
+#include <signal.h>
+
+/* Start of the rustc artifact notification line, which Cargo accepts only once per compiler invocation. */
+#define MC_ARTIFACT "{\"$message_type\":\"artifact\""
+/* Every compiler attempt writes to the same relayed stderr, and Cargo panics when one compiler invocation reports the
+ * same artifact twice, as a retried attempt does. The filter forwards a line that starts with MC_ARTIFACT only the
+ * first time its exact bytes are seen and passes every other byte through in order. The stream has no attempt
+ * boundary, so an incomplete last line of a stopped attempt joins the next attempt's first line.
+ * held is the current line while it may be, or is, an artifact notification; out is -1 once Cargo's stderr fails,
+ * after which bytes are still read so that attempts never block, but are discarded. */
+struct mc_filter { unsigned char *held;size_t used,size;unsigned char **seen;size_t *lengths;size_t count;int passing,out; };
+
+/* Write bytes to Cargo's stderr, discarding them after the first failed write. */
+static void mc_forward(struct mc_filter *filter,const void *bytes,size_t size) {
+ if(filter->out>=0 && size && mc_io(filter->out,(void *)bytes,size,1))filter->out=-1;
+}
+
+/* Hold one byte of the current line; returns ENOMEM when the line cannot grow. */
+static int mc_hold(struct mc_filter *filter,unsigned char value) {
+ if(filter->used==filter->size){size_t size=filter->size?filter->size*2:256;unsigned char *grown=realloc(filter->held,size);if(!grown)return ENOMEM;filter->held=grown;filter->size=size;}
+ filter->held[filter->used++]=value;return 0;
+}
+
+/* Forward a complete held artifact notification unless its exact bytes were already forwarded. */
+static int mc_admit(struct mc_filter *filter) {
+ for(size_t i=0;i<filter->count;i++)if(filter->lengths[i]==filter->used && !memcmp(filter->seen[i],filter->held,filter->used)){filter->used=0;return 0;}
+ unsigned char **seen=realloc(filter->seen,(filter->count+1)*sizeof *seen);if(!seen)return ENOMEM;filter->seen=seen;
+ size_t *lengths=realloc(filter->lengths,(filter->count+1)*sizeof *lengths);if(!lengths)return ENOMEM;filter->lengths=lengths;
+ unsigned char *copy=malloc(filter->used);if(!copy)return ENOMEM;memcpy(copy,filter->held,filter->used);
+ seen[filter->count]=copy;lengths[filter->count]=filter->used;filter->count++;
+ mc_forward(filter,filter->held,filter->used);filter->used=0;return 0;
+}
+
+/* Filter the next bytes read from compiler stderr; returns 0 or ENOMEM. */
+static int mc_filter_bytes(struct mc_filter *filter,const unsigned char *bytes,size_t size) {
+ const size_t prefix=sizeof MC_ARTIFACT-1;size_t start=0;
+ for(size_t i=0;i<size;i++){
+  unsigned char value=bytes[i];
+  if(filter->passing){if(value=='\n'){mc_forward(filter,bytes+start,i+1-start);start=i+1;filter->passing=0;}continue;}
+  start=i+1;if(mc_hold(filter,value))return ENOMEM;
+  if(filter->used<=prefix){
+   if(value==(unsigned char)MC_ARTIFACT[filter->used-1])continue;
+   mc_forward(filter,filter->held,filter->used);filter->used=0;filter->passing=value!='\n';continue;
+  }
+  if(value=='\n' && mc_admit(filter))return ENOMEM;
+ }
+ if(filter->passing)mc_forward(filter,bytes+start,size-start);
+ return 0;
+}
+
+/* Relay compiler stderr until the controller answers and every copy of the pipe's write end has closed, then forward
+ * an incomplete final line. Returns 0 after storing the controller's result, or the wrapper's failure status. */
+static int mc_relay(int control,int errors,uint32_t *result) {
+ struct mc_filter filter;memset(&filter,0,sizeof filter);filter.out=STDERR_FILENO;
+ unsigned char buffer[65536];int answered=0,open=1;
+ while(!answered || open){
+  struct pollfd descriptors[2]={{.fd=open?errors:-1,.events=POLLIN},{.fd=answered?-1:control,.events=POLLIN}};
+  if(poll(descriptors,2,-1)<0){if(errno==EINTR)continue;return 94;}
+  if(descriptors[0].revents){ssize_t n=read(errors,buffer,sizeof buffer);if(n<0 && errno!=EINTR)return 95;if(n==0)open=0;if(n>0 && mc_filter_bytes(&filter,buffer,(size_t)n))return 96;}
+  if(descriptors[1].revents){if(mc_io(control,result,sizeof *result,0))return 91;answered=1;*result=ntohl(*result);}
+ }
+ mc_forward(&filter,filter.held,filter.used);
+ return 0;
+}
+
 extern char **environ;
 /* Remain Cargo's direct child while the controller owns separately isolated compiler attempts. */
 int main(int argc,char **argv) {
@@ -280,9 +346,12 @@ int main(int argc,char **argv) {
  unsigned char *payload=calloc(MC_LIMIT,1);if(!payload)return 86;size_t used=0;int environment_count=0;while(environ[environment_count]){if(++environment_count>65536)return 87;}
  char *working_directory[]={cwd,NULL};int error=mc_vector(payload,&used,argv+1,argc-1);if(!error)error=mc_vector(payload,&used,environ,environment_count);if(!error)error=mc_vector(payload,&used,working_directory,1);if(error)return 88;
  char value='C',ancillary[CMSG_SPACE(3*sizeof(int))];struct iovec vector={&value,1};struct msghdr message;memset(&message,0,sizeof message);memset(ancillary,0,sizeof ancillary);
- message.msg_iov=&vector;message.msg_iovlen=1;message.msg_control=ancillary;message.msg_controllen=sizeof ancillary;struct cmsghdr *header=CMSG_FIRSTHDR(&message);header->cmsg_level=SOL_SOCKET;header->cmsg_type=SCM_RIGHTS;header->cmsg_len=CMSG_LEN(3*sizeof(int));int streams[]={0,1,2};memcpy(CMSG_DATA(header),streams,sizeof streams);
- ssize_t sent;do{sent=sendmsg(fd,&message,0);}while(sent<0 && errno==EINTR);if(sent!=1)return 89;
+ message.msg_iov=&vector;message.msg_iovlen=1;message.msg_control=ancillary;message.msg_controllen=sizeof ancillary;struct cmsghdr *header=CMSG_FIRSTHDR(&message);header->cmsg_level=SOL_SOCKET;header->cmsg_type=SCM_RIGHTS;header->cmsg_len=CMSG_LEN(3*sizeof(int));int errors[2];if(pipe(errors)<0 || fcntl(errors[0],F_SETFD,FD_CLOEXEC)<0 || fcntl(errors[1],F_SETFD,FD_CLOEXEC)<0)return 93;
+ /* A failed write to Cargo's closed stderr must end only forwarding, not the wrapper that reports the result. */
+ signal(SIGPIPE,SIG_IGN);
+ int streams[]={0,1,errors[1]};memcpy(CMSG_DATA(header),streams,sizeof streams);
+ ssize_t sent;do{sent=sendmsg(fd,&message,0);}while(sent<0 && errno==EINTR);if(sent!=1)return 89;close(errors[1]);
  uint32_t size=htonl((uint32_t)used);error=mc_io(fd,&size,sizeof size,1);if(!error)error=mc_io(fd,payload,used,1);free(payload);if(error)return 90;
- uint32_t result;if(mc_io(fd,&result,sizeof result,0))return 91;close(fd);result=ntohl(result);return result<=255?(int)result:92;
+ uint32_t result;error=mc_relay(fd,errors[0],&result);if(error)return error;close(fd);close(errors[0]);return result<=255?(int)result:92;
 }
 #endif
