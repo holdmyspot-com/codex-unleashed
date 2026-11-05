@@ -99,8 +99,10 @@ final class MacCargoInstrumentation implements MacImages.InstrumentationFactory
     {
         for (Image image : images.values())
         {
-            if (image.allocation != null && !stopped && !image.retired) image.allocation.pump();
-            if (image.tokenHook != null && !stopped && !image.retired) image.tokenHook.pump();
+            // A completed workload closes its images before the queue closes the attempt, while peers still pump it.
+            if (stopped || image.retired || image.closing) continue;
+            if (image.allocation != null) image.allocation.pump();
+            if (image.tokenHook != null) image.tokenHook.pump();
         }
     }
 
@@ -165,6 +167,8 @@ final class MacCargoInstrumentation implements MacImages.InstrumentationFactory
         private boolean attempted;
         /** Indicates successful retirement of every detached exact-image hook. */
         private boolean retired;
+        /** Indicates that whole-workload cleanup began closing this image's hooks, so they accept no frames. */
+        private boolean closing;
 
         /**
          * Binds one authenticated held image generation.
@@ -213,6 +217,7 @@ final class MacCargoInstrumentation implements MacImages.InstrumentationFactory
 
         @Override public void close() throws IOException
         {
+            closing = true;
             AllocationHook.ExecutionBarrier barrier = () -> nativeOwner.terminalResult().isPresent();
             if (allocation != null) allocation.close(barrier);
             if (tokenHook != null) tokenHook.close(barrier);
