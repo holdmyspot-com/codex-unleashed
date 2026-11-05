@@ -194,6 +194,23 @@ class SampleSelectionTest(unittest.TestCase):
         self.assertEqual(["6322", "6327"], [fields[0] for fields in watcher.sampled_processes(listing)])
 
 
+class StopFactsTest(unittest.TestCase):
+    """Each test owns its loaded watcher module."""
+
+    def test_separates_signal_stops_from_mach_suspension(self):
+        """A stopped process's line names its BSD status, its task suspend count and each thread's run state and
+        suspend count, so a job-control stop reads differently from a task or thread suspended over its Mach port."""
+        spec = importlib.util.spec_from_file_location("watch_quiet_build", WATCHER)
+        watcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(watcher)
+        self.assertEqual("stop: bsd_status=SSTOP task_suspend_count=0 threads=waiting/0,stopped/1",
+                         watcher.describe_stop(4, 0, [(3, 0), (2, 1)]))
+        self.assertEqual("stop: bsd_status=SRUN task_suspend_count=1 threads=running/0",
+                         watcher.describe_stop(2, 1, [(1, 0)]))
+        self.assertEqual("stop: bsd_status=9 task_suspend_count=? threads=?",
+                         watcher.describe_stop(9, None, None))
+
+
 class StopTest(unittest.TestCase):
     """Each test owns its recorded signal list."""
 

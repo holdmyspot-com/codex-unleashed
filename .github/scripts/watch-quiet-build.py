@@ -102,6 +102,63 @@ def sampled_processes(lines):
     return [fields for fields in processes if sampled(fields[3], fields[8]) or fields[1] in stopped]
 
 
+BSD_STATUSES = {1: "SIDL", 2: "SRUN", 3: "SSLEEP", 4: "SSTOP", 5: "SZOMB"}
+"""Names of the process states in Darwin's <sys/proc.h>; SSTOP is a stop by signal, such as job control."""
+
+MACH_RUN_STATES = {1: "running", 2: "stopped", 3: "waiting", 4: "uninterruptible", 5: "halted"}
+"""Names of the TH_STATE_* thread run states in Darwin's <mach/thread_info.h>."""
+
+
+def describe_stop(status, task_suspend_count, threads):
+    """Returns one line telling a signal stop from a Mach suspension, since Darwin's ps prints T for both.
+
+    status is the BSD process status, task_suspend_count the task's suspend count and threads one (run state, suspend
+    count) pair per thread; either of the last two is None when the task port could not be read."""
+    names = "?" if threads is None else ",".join(f"{MACH_RUN_STATES.get(state, state)}/{count}"
+                                                 for state, count in threads)
+    suspended = "?" if task_suspend_count is None else task_suspend_count
+    return f"stop: bsd_status={BSD_STATUSES.get(status, status)} task_suspend_count={suspended} threads={names}"
+
+
+def darwin_stop_facts(pid):
+    """Returns the arguments of describe_stop for one macOS process; the Mach facts need root's access to its task."""
+    import ctypes
+    system = ctypes.CDLL(None)
+    system.proc_pidinfo.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_int]
+    system.vm_deallocate.argtypes = [ctypes.c_uint, ctypes.c_size_t, ctypes.c_size_t]
+    # PROC_PIDTBSDINFO fills struct proc_bsdinfo, whose second 32-bit field is pbi_status.
+    bsd_info = ctypes.create_string_buffer(136)
+    status = None
+    if system.proc_pidinfo(pid, 3, 0, bsd_info, len(bsd_info)) >= 8:
+        status = int.from_bytes(bsd_info.raw[4:8], sys.byteorder)
+    own_task = ctypes.c_uint.in_dll(system, "mach_task_self_")
+    task = ctypes.c_uint(0)
+    if system.task_for_pid(own_task, pid, ctypes.byref(task)) != 0:
+        return status, None, None
+    try:
+        # MACH_TASK_BASIC_INFO (20) fills struct mach_task_basic_info: twelve 32-bit words ending in suspend_count.
+        task_info = (ctypes.c_int * 12)()
+        count = ctypes.c_uint(12)
+        task_suspend_count = task_info[11] if system.task_info(task, 20, task_info, ctypes.byref(count)) == 0 else None
+        thread_list = ctypes.POINTER(ctypes.c_uint)()
+        thread_count = ctypes.c_uint(0)
+        if system.task_threads(task, ctypes.byref(thread_list), ctypes.byref(thread_count)) != 0:
+            return status, task_suspend_count, None
+        threads = []
+        for index in range(thread_count.value):
+            # THREAD_BASIC_INFO (3) fills struct thread_basic_info: run_state is word 6 and suspend_count word 8.
+            thread_info = (ctypes.c_int * 10)()
+            count = ctypes.c_uint(10)
+            if system.thread_info(thread_list[index], 3, thread_info, ctypes.byref(count)) == 0:
+                threads.append((thread_info[6], thread_info[8]))
+            system.mach_port_deallocate(own_task, thread_list[index])
+        system.vm_deallocate(own_task, ctypes.cast(thread_list, ctypes.c_void_p).value,
+                             thread_count.value * ctypes.sizeof(ctypes.c_uint))
+        return status, task_suspend_count, threads
+    finally:
+        system.mach_port_deallocate(own_task, task)
+
+
 def dump_without_procfs(jcmd, out):
     """Writes ps's line for every process, then a thread dump of each Java process and a native sample of each process
     that sampled_processes selects.
@@ -120,6 +177,11 @@ def dump_without_procfs(jcmd, out):
     for fields in sampled_processes(listing.stdout.splitlines()):
         pid, uid = fields[0], int(fields[2])
         out.write(f"--- pid={pid} state={fields[3]} cmd={fields[8][:200]}\n")
+        if sys.platform == "darwin" and fields[3].startswith("T"):
+            try:
+                out.write(describe_stop(*darwin_stop_facts(int(pid))) + "\n")
+            except (OSError, AttributeError, ValueError) as failure:
+                out.write(f"<stop facts failed: {failure}>\n")
         if jcmd and os.path.basename(fields[8].split(" ")[0]) == "java":
             out.write(java_dump(uid, [jcmd, pid, "Thread.print", "-l"], 30))
         if sample.is_file():
