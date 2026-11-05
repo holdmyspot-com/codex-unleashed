@@ -374,6 +374,29 @@ public final class WindowsAllocationHooksTest
     }
 
     /**
+     * A held child that loads a Cygwin-family runtime resumes without an observer or allocation hook.
+     * @throws Exception if coordinator setup or cleanup fails
+     */
+    @Test
+    public void cygwinRuntimeChildResumesUninstrumented() throws Exception
+    {
+        Backend backend = new Backend();
+        backend.cygwinImages.add("C:\\Git\\usr\\bin\\sh.exe");
+        WindowsAllocationHooks hooks = new WindowsAllocationHooks(backend, () -> {});
+        try
+        {
+            hooks.start();
+            backend.receipt(100, 200);
+            backend.children.add(new FridaRuntime.Child(200, 100, 2, "C:\\Git\\usr\\bin\\sh.exe"));
+            hooks.pump(true);
+            requireThat(backend.resumed, "resumedChild").isEqualTo(List.of(200L));
+            requireThat(backend.events, "events").doesNotContain("observer-start:200").doesNotContain("hook:2:200");
+            requireThat(backend.events.indexOf("source-release:200") < backend.events.indexOf("resume:200"), "releaseBeforeResume").isTrue();
+        }
+        finally { hooks.close(() -> true); }
+    }
+
+    /**
      * Reordered source receipts join their exact child events, with one continuation per bounded round.
      * @throws Exception if setup or cleanup fails
      */
@@ -535,6 +558,8 @@ public final class WindowsAllocationHooksTest
         long readyFailure = -1;
         /** Installation whose destruction is uncertain, or minus one. */
         long closeFailure = -1;
+        /** Image paths modeled as loading a Cygwin-family runtime. */
+        final List<String> cygwinImages = new ArrayList<>();
         /** Number of root continuation requests. */
         int releases;
         /** Peer callback invoked while a modeled permission acknowledgement is pending. */
@@ -579,6 +604,7 @@ public final class WindowsAllocationHooksTest
                 throw new IOException("Wrong native creation birth");
             return member(receipt.childPid());
         }
+        @Override public boolean usesCygwinRuntime(String image) { return cygwinImages.contains(image); }
         @Override public long rootPid() { return 100; }
         @Override public WindowsAllocationHooks.Member member(long pid) throws IOException
         {

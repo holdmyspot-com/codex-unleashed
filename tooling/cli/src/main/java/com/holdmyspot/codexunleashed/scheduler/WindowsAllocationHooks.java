@@ -4,6 +4,8 @@ import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -308,6 +310,8 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
 
     /**
      * Installs a child's observer and allocation hook before its single authorized resume.
+     * A child whose image loads a Cygwin-family runtime resumes without either, so its own descendants run
+     * uninstrumented.
      * @param event copied held SPAWN notification
      * @param created validated transferred creation authority
      * @throws IOException if identity, readiness or resume cannot be established
@@ -318,10 +322,16 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
             throw new IOException("Held child differs from retained creation authority: " + event);
         Member member = created.member();
         member.requireLive();
-        observe(member);
-        Hook hook = install(member);
-        hook.awaitReady(peers);
-        member.requireLive();
+        // WORKAROUND: https://github.com/git-for-windows/git/issues/5833
+        // The MSYS2 and Cygwin fork copies the parent's heap while other threads may allocate in it. Frida's agent
+        // threads do, and the forked shell hangs; skip instrumentation until the runtime's fork stops racing.
+        if (!backend.usesCygwinRuntime(event.path()))
+        {
+            observe(member);
+            Hook hook = install(member);
+            hook.awaitReady(peers);
+            member.requireLive();
+        }
         if (!resumeAttempts.add(event.pid())) throw new IOException("Held child continuation was already attempted: " + event.pid());
         manager.resume(event.pid());
     }
@@ -578,6 +588,12 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
          * @throws IOException if the packaged program cannot be read
          */
         Hook hook(long generation, Member member, Manager manager) throws IOException;
+        /**
+         * Returns whether an image loads a Cygwin-family runtime, such as the MSYS2 runtime of Git for Windows.
+         * @param image held child's executable path
+         * @return {@code true} if the image's directory holds {@code msys-2.0.dll} or {@code cygwin1.dll}
+         */
+        boolean usesCygwinRuntime(String image);
         /** Releases the prepared primary thread once.
          * @throws IOException if release has an uncertain result
          */
@@ -1183,6 +1199,8 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
     /** Loads only the accepted Windows program and delegates to existing authoritative native owners. */
     private static final class NativeBackend implements Backend
     {
+        /** Runtime libraries that a Cygwin-family executable loads from its own directory. */
+        private static final List<String> CYGWIN_RUNTIMES = List.of("msys-2.0.dll", "cygwin1.dll");
         /** Unique correlation UUID for this queue attempt. */
         private final UUID identity;
         /** Borrowed started Frida runtime; this adapter never closes it. */
@@ -1227,6 +1245,11 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
             this.timeout = timeout;
         }
         @Override public long rootPid() { return process.pid(); }
+        @Override public boolean usesCygwinRuntime(String image)
+        {
+            Path executable = Path.of(image);
+            return CYGWIN_RUNTIMES.stream().anyMatch(runtime -> Files.isRegularFile(executable.resolveSibling(runtime)));
+        }
         @Override public Member member(long pid) throws IOException
         {
             NativeMember bridge = new NativeMember();
