@@ -319,6 +319,7 @@ public interface MacWorkloadNative extends MacImages.Operations, MacImages.Workl
             bind(library, "mw_descriptors", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                 ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
             bind(library, "mw_platform", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+            bind(library, "mw_continue", ValueLayout.ADDRESS, ValueLayout.ADDRESS);
             bind(library, "mw_release", ValueLayout.ADDRESS);
             bind(library, "mw_cancel", ValueLayout.ADDRESS);
             bind(library, "mw_terminal", ValueLayout.ADDRESS, ValueLayout.ADDRESS);
@@ -547,10 +548,21 @@ public interface MacWorkloadNative extends MacImages.Operations, MacImages.Workl
             }
         }
 
+        /**
+         * Resumes one held child and returns it to the BSD run state, which resuming its task alone leaves stopped.
+         * @param pid held child
+         * @throws IOException if the child's authority changed or either native release fails
+         */
         @Override public void resume(long pid) throws IOException
         {
-            authenticate(inspect(pid));
+            MacImages.Identity identity = inspect(pid);
+            authenticate(identity);
+            long[] expected = identities.get(pid).clone();
             manager.resume(pid);
+            try (Arena call = Arena.ofConfined())
+            {
+                check("mw_continue", invoke("mw_continue", handle, call.allocateFrom(ValueLayout.JAVA_LONG, expected)));
+            }
         }
 
         @Override public void releaseRoot() throws IOException

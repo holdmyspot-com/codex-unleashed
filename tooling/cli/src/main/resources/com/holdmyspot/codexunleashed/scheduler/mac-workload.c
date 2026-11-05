@@ -302,6 +302,23 @@ int mw_open(const char *directory,const char *helper,const void *payload,int pay
 int mw_root(void *handle,uint64_t out[18]) { struct mw_owner *owner=handle;return owner && owner->root>0?mw_snapshot(owner,owner->root,out):EINVAL; }
 
 /* Release the original byte gate once; consuming the opportunity precedes I/O. */
+/* Return one resumed held image to the BSD run state. posix_spawn marks an image that Frida's child gating
+ * starts with POSIX_SPAWN_START_SUSPENDED as SSTOP, and resuming its task leaves that state, under which the
+ * kernel queues a caught signal without waking the thread that should handle it
+ * (https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_exec.c and kern_sig.c). Only
+ * SIGCONT sets SRUN. expected supplies all eighteen mw_snapshot fields; the signal is sent only while the pid
+ * still names that incarnation (its unique id survives exec). Return 0 also when the image already exited. */
+int mw_continue(void *handle,const uint64_t expected[18]) {
+ struct mw_owner *owner=handle;
+ if(!owner || owner->closed || !expected || expected[0]==0 || expected[0]>INT_MAX)return EINVAL;
+ struct mw_unique current;
+ int error=mw_read(owner,(pid_t)expected[0],expected[1],17,&current,sizeof current);
+ if(error==ESRCH)return 0;
+ if(error)return error;
+ if(kill((pid_t)expected[0],SIGCONT)==0 || errno==ESRCH)return 0;
+ return errno?errno:EIO;
+}
+
 int mw_release(void *handle) {
  struct mw_owner *owner=handle;if(!owner || owner->released || owner->closed)return EINVAL;owner->released=1;
  uint64_t out[18];int error=mw_snapshot(owner,owner->root,out);if(error)return error;
