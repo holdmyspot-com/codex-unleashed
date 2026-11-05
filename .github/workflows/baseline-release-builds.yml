@@ -763,6 +763,19 @@ jobs:
           bash "$RUNNER_TEMP/provision-release-scheduler.sh" cleanup "$RELEASE_SCHEDULER_ROOT" \
             2>&1 | tee "$RUNNER_TEMP/baseline-evidence/scheduler-cleanup.log"
 
+      - name: Keep the faulting thread of each Java crash report
+        # A JVM fatal error writes hs_err_pid*.log into its working directory. Only its leading comment and the
+        # faulting thread's frames are kept: the rest holds the command line, environment variables and memory near
+        # registers, which stay out of the artifact.
+        if: failure()
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for report in "$GITHUB_WORKSPACE"/codex-rs/hs_err_pid*.log "$GITHUB_WORKSPACE"/hs_err_pid*.log; do
+            awk '/^#/ && !seen { print; next } { seen = 1 } /T H R E A D/ { frames = 1 } /^Registers:/ { frames = 0 }
+              frames' "$report" > "$RUNNER_TEMP/baseline-evidence/$(basename "$report" .log)-thread.log"
+          done
+
       - name: Retain baseline evidence for one day
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
