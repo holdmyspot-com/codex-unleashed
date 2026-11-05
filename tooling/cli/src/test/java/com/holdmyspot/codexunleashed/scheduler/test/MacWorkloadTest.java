@@ -338,7 +338,8 @@ public final class MacWorkloadTest
         }
         @Override public MacNativeModules modules()
         {
-            return MacNativeModules.in(Path.of("/installed/lib/codex"));
+            // Resolve from the current file system root so the fixture is absolute on Windows build hosts too.
+            return MacNativeModules.in(Path.of("").toAbsolutePath().getRoot().resolve("installed/lib/codex"));
         }
         @Override public AllocationHook.Connection connection(long pid)
         {
