@@ -6,21 +6,117 @@ import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
+import tools.jackson.databind.node.ObjectNode;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /** Verifies real grouped tar transfers against an in-process registry that answers ORAS commands. */
 public final class CargoCachePartsTest
 {
+    /** Digest that no fixture file has, written into the index to observe whether a checkpoint reused it. */
+    private static final String FORGED = "00".repeat(32);
+
     /** Creates independent method fixtures. */ public CargoCachePartsTest() {}
+
+    /**
+     * Reuses an indexed digest only for an unchanged file whose change time predates its hashing by the margin.
+     * @throws IOException if fixture filesystem operations fail
+     * @throws SkipException if the file system has no POSIX change times
+     */
+    @Test public void reusesSettledDigestsAndRehashesChangedFiles() throws IOException
+    {
+        if (!FileSystems.getDefault().supportedFileAttributeViews().contains("unix"))
+            throw new SkipException("Indexed digests require POSIX change times");
+        try (Fixture f = new Fixture())
+        {
+            Path library = f.target.resolve("library"); Files.writeString(library, "compiled");
+            Path resized = f.target.resolve("resized"); Files.writeString(resized, "short");
+            Path touched = f.target.resolve("touched"); Files.writeString(touched, "touched");
+            CargoCacheParts.collect(f.scope, f.target, "codex");
+            forge(f, false);
+            requireThat(content(CargoCacheParts.collect(f.scope, f.target, "codex"), "library"), "recentChangeRehashed")
+                .isEqualTo(digest(library));
+            forge(f, true);
+            Map<String, List<List<Object>>> settled = CargoCacheParts.collect(f.scope, f.target, "codex");
+            requireThat(content(settled, "library"), "settledDigestReused").isEqualTo(FORGED);
+            requireThat(settled.values().stream().flatMap(List::stream).map(List::getFirst).toList(), "indexNotCollected")
+                .doesNotContain(CargoCacheParts.DIGESTS);
+            Files.writeString(resized, "a longer value");
+            Files.setLastModifiedTime(touched, FileTime.fromMillis(Files.getLastModifiedTime(touched).toMillis() - 5000));
+            forge(f, true);
+            Map<String, List<List<Object>>> changed = CargoCacheParts.collect(f.scope, f.target, "codex");
+            requireThat(content(changed, "resized"), "resizedFileRehashed").isEqualTo(digest(resized));
+            requireThat(content(changed, "touched"), "retimedFileRehashed").isEqualTo(digest(touched));
+            requireThat(content(changed, "library"), "unchangedDigestReused").isEqualTo(FORGED);
+        }
+    }
+
+    /**
+     * Rejects a digest index outside the recorded format without publishing a manifest.
+     * @throws IOException if independent fixture allocation or writes fail
+     * @throws SkipException if the file system has no POSIX change times
+     */
+    @Test public void malformedDigestIndexReturnsFailureWithoutPublication() throws IOException
+    {
+        if (!FileSystems.getDefault().supportedFileAttributeViews().contains("unix"))
+            throw new SkipException("Indexed digests require POSIX change times");
+        try (Fixture f = new Fixture())
+        {
+            Files.writeString(f.target.resolve("artifact"), "contents");
+            Files.writeString(f.target.resolve(CargoCacheParts.DIGESTS), "{\"format_version\":1,\"unexpected\":true}");
+            requireThat(f.run("push", "repo:never", "repo:missing", "codex"), "malformedIndex").isEqualTo(1);
+            requireThat(Files.exists(f.registry.root.resolve("never")), "noMalformedPublication").isFalse();
+        }
+    }
+
+    /**
+     * Replaces every indexed digest with {@link #FORGED}, optionally dating the index after every recorded change.
+     * @param f fixture whose target holds a digest index
+     * @param settled whether to move the index's hashing time beyond every change time
+     * @throws IOException if the index cannot be read or rewritten
+     */
+    private static void forge(Fixture f, boolean settled) throws IOException
+    {
+        Path index = f.target.resolve(CargoCacheParts.DIGESTS);
+        ObjectNode document = (ObjectNode) f.scope.getJsonMapper().readTree(Files.readString(index));
+        for (var file : document.path("files").properties()) ((ObjectNode) file.getValue()).put("digest", FORGED);
+        if (settled) document.put("hashed_at_nanos", Long.MAX_VALUE);
+        Files.writeString(index, document.toString());
+    }
+
+    /**
+     * Finds one collected entry's content identity.
+     * @param groups collected output groups
+     * @param relative entry path relative to the target
+     * @return the entry's digest, link target or directory marker
+     */
+    private static Object content(Map<String, List<List<Object>>> groups, String relative)
+    {
+        return groups.values().stream().flatMap(List::stream).filter(entry -> entry.getFirst().equals(relative))
+            .findFirst().orElseThrow().getLast();
+    }
+
+    /**
+     * Hashes a file's current bytes with the cache digest.
+     * @param path regular file
+     * @return lowercase hexadecimal digest
+     * @throws IOException if the file cannot be read
+     */
+    private static String digest(Path path) throws IOException
+    {
+        return HexFormat.of().formatHex(CargoCacheKeys.digest().digest(Files.readAllBytes(path)));
+    }
 
     /**
      * Archives exact groups, reuses unchanged layers, restores real files and retains unrelated target contents.

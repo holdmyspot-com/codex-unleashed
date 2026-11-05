@@ -37,6 +37,8 @@ public final class CargoCacheParts
     private static final String LAYER = "application/vnd.codex-unleashed.cargo-target.tar+zstd";
     /** Durable target-relative ownership record. */
     public static final String OWNERS = ".codex-cache-groups.json";
+    /** Target-relative index of earlier checkpoints' file digests, which is never collected. */
+    public static final String DIGESTS = CargoOutputDigests.INDEX;
     /** Ownership map field. */
     private static final String PATHS = "target_relative_owners";
     /** Layer annotation identifying the saving step. */
@@ -203,15 +205,17 @@ public final class CargoCacheParts
                 previous.put(entry.getKey(), entry.getValue().asString());
             }
         }
+        CargoOutputDigests digests = new CargoOutputDigests(scope, target);
+        Path index = target.resolve(DIGESTS);
         List<Path> traversal = new ArrayList<>(); walk(target, traversal);
         List<Callable<Observation>> observations = new ArrayList<>(traversal.size());
         for (Path path : traversal)
         {
-            if (path.equals(ownership)) continue;
+            if (path.equals(ownership) || path.equals(index)) continue;
             observations.add(() ->
             {
                 BasicFileAttributes status = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-                return new Observation(path, status, describe(scope, target, path, status));
+                return new Observation(path, status, describe(scope, target, path, status, digests));
             });
         }
         // Hashing every output dominates a checkpoint, so read files on every processor; results keep traversal order.
@@ -219,6 +223,7 @@ public final class CargoCacheParts
         Map<String, List<Object>> entries = new TreeMap<>(CargoCacheParts::compareNames);
         Map<String, String> owners = new TreeMap<>(CargoCacheParts::compareNames);
         Map<Object, List<String>> hardlinks = new LinkedHashMap<>();
+        digests.write(scope);
         for (Observation observation : observed)
         {
             Path path = observation.path(); BasicFileAttributes status = observation.status();
@@ -244,7 +249,7 @@ public final class CargoCacheParts
                 Files.move(pending, ownership, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             }
         }
-        entries.put(OWNERS, describe(scope, target, ownership, Files.readAttributes(ownership, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS)));
+        entries.put(OWNERS, describe(scope, target, ownership, Files.readAttributes(ownership, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS), null));
         owners.put(OWNERS, "metadata");
         Map<String, List<List<Object>>> groups = new TreeMap<>();
         for (var entry : entries.entrySet()) groups.computeIfAbsent(owners.get(entry.getKey()), ignored -> new ArrayList<>()).add(entry.getValue());
@@ -271,23 +276,18 @@ public final class CargoCacheParts
      * @param target owning root
      * @param path owned child
      * @param attributes no-follow filesystem observation
+     * @param digests checkpoint digest index that may reuse an unchanged file's digest, or null to hash every file
      * @return relative path, original mode, exact epoch nanoseconds, size and digest/link/directory content
      * @throws IOException if a special file or unavailable exact metadata is encountered
      */
-    private static List<Object> describe(ToolingScope scope, Path target, Path path, BasicFileAttributes attributes) throws IOException
+    private static List<Object> describe(ToolingScope scope, Path target, Path path, BasicFileAttributes attributes,
+        CargoOutputDigests digests) throws IOException
     {
         String relative = target.relativize(path).toString().replace(path.getFileSystem().getSeparator(), "/");
+        Instant modified = SourceInputTimes.lastModified(scope, path, LinkOption.NOFOLLOW_LINKS);
         Object content;
         if (attributes.isRegularFile())
-        {
-            var digest = CargoCacheKeys.digest();
-            try (var input = Files.newInputStream(path))
-            {
-                byte[] buffer = new byte[65536]; int count;
-                while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count);
-            }
-            content = HexFormat.of().formatHex(digest.digest());
-        }
+            content = digests == null ? CargoOutputDigests.hash(path) : digests.digest(path, relative, attributes, modified);
         else if (attributes.isSymbolicLink())
         {
             // Record link targets with "/" so an entry has one identity on every platform.
@@ -306,7 +306,6 @@ public final class CargoCacheParts
             if (attributes.isDirectory() || name.matches(".*\\.(exe|bat|cmd|com)$")) permissions |= 0111;
             mode = (attributes.isSymbolicLink() ? 0120000 : attributes.isDirectory() ? 0040000 : 0100000) | permissions;
         }
-        Instant modified = SourceInputTimes.lastModified(scope, path, LinkOption.NOFOLLOW_LINKS);
         return List.of(relative, mode, SourceInputTimes.nanos(modified), attributes.isRegularFile() ? attributes.size() : 0L, content);
     }
 
