@@ -152,6 +152,17 @@ class SampleSelectionTest(unittest.TestCase):
         self.assertTrue(watcher.sampled("S<s", "/private/var/root/frida-0123/frida-helper socket-fd:29"))
         self.assertFalse(watcher.sampled("S", "/usr/sbin/syslogd"))
 
+    def test_samples_running_children_of_stopped_processes(self):
+        """A running child of a stopped process is sampled, because a held child that never answers its instrumentation
+        keeps its stopped parent waiting; an unrelated running process is not."""
+        spec = importlib.util.spec_from_file_location("watch_quiet_build", WATCHER)
+        watcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(watcher)
+        listing = ["6322     1   501 T     6100      0   ??  -      git fetch origin",
+                   "6327  6322   501 S     6100      0   ??  -      git fetch origin",
+                   "  90     1     0 S       90      0   ??  -      /usr/sbin/syslogd"]
+        self.assertEqual(["6322", "6327"], [fields[0] for fields in watcher.sampled_processes(listing)])
+
 
 class StopTest(unittest.TestCase):
     """Each test owns its recorded signal list."""

@@ -92,9 +92,18 @@ def sampled(state, command):
     return name in ("java", "frida-helper") or state.startswith("T")
 
 
+def sampled_processes(lines):
+    """Returns the split ps lines of the processes whose native threads belong in the report: those sampled selects,
+    and every child of a stopped process, because a held child that never answers its instrumentation keeps its stopped
+    parent waiting and may itself be running."""
+    processes = [fields for fields in (line.split(None, 8) for line in lines) if len(fields) == 9]
+    stopped = {fields[0] for fields in processes if fields[3].startswith("T")}
+    return [fields for fields in processes if sampled(fields[3], fields[8]) or fields[1] in stopped]
+
+
 def dump_without_procfs(jcmd, out):
     """Writes ps's line for every process, then a thread dump of each Java process and a native sample of each process
-    that sampled selects.
+    that sampled_processes selects.
 
     This serves hosts without a process file system, such as macOS, where kernel stacks are not readable; sample, when
     present, shows where each thread is blocked in native code. The process group, session and terminal columns show
@@ -107,10 +116,7 @@ def dump_without_procfs(jcmd, out):
         return
     out.write(listing.stdout + listing.stderr)
     sample = Path("/usr/bin/sample")
-    for line in listing.stdout.splitlines():
-        fields = line.split(None, 8)
-        if len(fields) < 9 or not sampled(fields[3], fields[8]):
-            continue
+    for fields in sampled_processes(listing.stdout.splitlines()):
         pid, uid = fields[0], int(fields[2])
         out.write(f"--- pid={pid} state={fields[3]} cmd={fields[8][:200]}\n")
         if jcmd and os.path.basename(fields[8].split(" ")[0]) == "java":
