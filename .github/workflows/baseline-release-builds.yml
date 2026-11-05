@@ -579,9 +579,12 @@ jobs:
           fi
           # A build whose evidence logs stay quiet gets process reports naming what each process waits on, then is
           # stopped well before the step timeout. A healthy build went at most about ten minutes without output.
-          release_command=(python3 -I "$RUNNER_TEMP/watch-quiet-build.py" --watch "$RUNNER_TEMP/baseline-evidence"
-            --report "$RUNNER_TEMP/baseline-evidence/quiet-build-report.log"
-            --first-report 900 --interval 900 --stop-after 4500 -- "${release_command[@]}")
+          # The watcher signals POSIX process groups, so Windows relies on the scheduler's own stall report.
+          if [[ "$RUNNER_OS" != Windows ]]; then
+            release_command=(python3 -I "$RUNNER_TEMP/watch-quiet-build.py" --watch "$RUNNER_TEMP/baseline-evidence"
+              --report "$RUNNER_TEMP/baseline-evidence/quiet-build-report.log"
+              --first-report 900 --interval 900 --stop-after 4500 -- "${release_command[@]}")
+          fi
 
           if [[ "$TRACE_SIGNALS" == true ]]; then
             sudo apt-get update -y
