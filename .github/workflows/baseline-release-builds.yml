@@ -578,6 +578,11 @@ jobs:
           fi
           printf 'cargo_build_jobs=%s\n' "${CARGO_BUILD_JOBS:-default}" \
             | tee "$RUNNER_TEMP/baseline-evidence/cargo-concurrency.log"
+          # Cargo downloads every dependency, for every platform, before the scheduled build, because fetching compiles
+          # nothing. The scheduler then never instruments Cargo's git children: on macOS, a forked child of a threaded
+          # `git fetch` never answered its instrumentation and held the build. The builds then find every source
+          # present and fetch nothing. This lives here, not in the release script, so the compiled-cache seed is kept.
+          cargo fetch 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/cargo-fetch.log"
           release_command=(bash "$RUNNER_TEMP/build-upstream-release.sh")
           if [[ "$VERIFY_CLI_UNITS" == true ]]; then
             cat > "$RUNNER_TEMP/build-and-check-upstream-release.sh" <<'SCRIPT'
