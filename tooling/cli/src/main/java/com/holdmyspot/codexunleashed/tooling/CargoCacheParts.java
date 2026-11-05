@@ -204,14 +204,25 @@ public final class CargoCacheParts
             }
         }
         List<Path> traversal = new ArrayList<>(); walk(target, traversal);
-        Map<String, List<Object>> entries = new TreeMap<>(CargoCacheParts::compareNames);
-        Map<String, String> owners = new TreeMap<>(CargoCacheParts::compareNames);
-        Map<Object, List<String>> hardlinks = new LinkedHashMap<>();
+        List<Callable<Observation>> observations = new ArrayList<>(traversal.size());
         for (Path path : traversal)
         {
             if (path.equals(ownership)) continue;
-            BasicFileAttributes status = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-            List<Object> entry = describe(scope, target, path, status); String relative = (String) entry.getFirst();
+            observations.add(() ->
+            {
+                BasicFileAttributes status = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                return new Observation(path, status, describe(scope, target, path, status));
+            });
+        }
+        // Hashing every output dominates a checkpoint, so read files on every processor; results keep traversal order.
+        List<Observation> observed = completeAll(observations, Runtime.getRuntime().availableProcessors(), "cache output inspection");
+        Map<String, List<Object>> entries = new TreeMap<>(CargoCacheParts::compareNames);
+        Map<String, String> owners = new TreeMap<>(CargoCacheParts::compareNames);
+        Map<Object, List<String>> hardlinks = new LinkedHashMap<>();
+        for (Observation observation : observed)
+        {
+            Path path = observation.path(); BasicFileAttributes status = observation.status();
+            List<Object> entry = observation.entry(); String relative = (String) entry.getFirst();
             boolean metadata = status.isDirectory() || path.getFileName().toString().endsWith(".d");
             for (Path component : target.relativize(path))
                 metadata |= Set.of(".codex-source-inputs", "cargo-timings", ".rustc_info.json").contains(component.toString());
@@ -356,19 +367,7 @@ public final class CargoCacheParts
                 return new Uploaded(layer, layer.path("size").longValue());
             }
         });
-        List<Uploaded> uploaded = new ArrayList<>();
-        try (var workers = Executors.newFixedThreadPool(5))
-        {
-            var futures = workers.invokeAll(tasks);
-            for (var future : futures) uploaded.add(future.get());
-        }
-        catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new IOException("Interrupted cache upload", failure); }
-        catch (ExecutionException failure)
-        {
-            if (failure.getCause() instanceof IOException original) throw original;
-            if (failure.getCause() instanceof RuntimeException original) throw original;
-            throw new IOException("Cache upload failed", failure.getCause());
-        }
+        List<Uploaded> uploaded = completeAll(tasks, 5, "cache upload");
         try (OwnedDirectory scratch = new OwnedDirectory(temporary, "cargo-manifest-"))
         {
             Path config = scratch.path.resolve("config.json"); Files.writeString(config, "{}");
@@ -382,6 +381,33 @@ public final class CargoCacheParts
         }
         out.println("cache_parts=" + uploaded.size() + " uploaded_archive_bytes=" + uploaded.stream().mapToLong(Uploaded::bytes).sum() +
             " reused_parts=" + uploaded.stream().filter(value -> value.bytes == 0).count());
+    }
+
+    /**
+     * Runs independent tasks on a bounded pool and waits for all of them.
+     * @param <T> task result type
+     * @param tasks tasks in result order
+     * @param threads maximum concurrently running tasks
+     * @param operation operation name for interruption and checked-failure diagnostics
+     * @return each task's result, in the order of {@code tasks}
+     * @throws IOException if the wait is interrupted or a task fails; a task's own {@link IOException} or
+     *     {@link RuntimeException} propagates unchanged
+     */
+    private static <T> List<T> completeAll(List<Callable<T>> tasks, int threads, String operation) throws IOException
+    {
+        List<T> results = new ArrayList<>(tasks.size());
+        try (var workers = Executors.newFixedThreadPool(threads))
+        {
+            for (var future : workers.invokeAll(tasks)) results.add(future.get());
+        }
+        catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new IOException("Interrupted " + operation, failure); }
+        catch (ExecutionException failure)
+        {
+            if (failure.getCause() instanceof IOException original) throw original;
+            if (failure.getCause() instanceof RuntimeException original) throw original;
+            throw new IOException("Failed " + operation, failure.getCause());
+        }
+        return results;
     }
 
     /**
@@ -546,6 +572,14 @@ public final class CargoCacheParts
      * @param digest original resolved digest
      */
     private record Manifest(JsonNode content, String digest) {}
+
+    /**
+     * One output path's no-follow attributes and recorded entry.
+     * @param path observed output path
+     * @param status attributes read without following symbolic links
+     * @param entry relative path, mode, modification nanoseconds, size and content identity
+     */
+    private record Observation(Path path, BasicFileAttributes status, List<Object> entry) {}
     /**
      * Retains one uploaded or reused layer.
      * @param layer actual ORAS descriptor
