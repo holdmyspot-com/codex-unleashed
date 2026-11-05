@@ -15,6 +15,7 @@ import ctypes
 import json
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -120,7 +121,8 @@ def main():
     parser.add_argument("--bound", type=float, default=120.0, help="Seconds the command may run before it counts as hung")
     arguments = parser.parse_args()
 
-    command = ["git", "submodule", "update", "--init", "curl"]
+    # Frida's spawn does not search PATH, so every mode starts the same resolved executable.
+    command = [shutil.which("git"), "submodule", "update", "--init", "curl"]
     with tempfile.TemporaryDirectory(prefix="child-gating-") as directory:
         probe = subprocess.run(["git", "-C", directory, "rev-parse", "--git-dir"], capture_output=True, text=True)
         emit("directory_outside_repository", path=directory, rev_parse_exit=probe.returncode)
