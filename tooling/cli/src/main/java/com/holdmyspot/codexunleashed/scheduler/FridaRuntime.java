@@ -41,7 +41,7 @@ public final class FridaRuntime implements AutoCloseable
 {
 	/** Version whose devkit exports and runtime lifecycle the scheduler has evaluated. */
 	private static final String VERSION = "17.24.3";
-	/** Process-wide native one-time initialization cannot be reversed by deinit. Guarded by the class monitor. */
+	/** Process-wide native initialization is permitted once per JVM. Guarded by the class monitor. */
 	private static boolean initializationClaimed = false;
 	static
 	{
@@ -127,8 +127,6 @@ public final class FridaRuntime implements AutoCloseable
 	private MethodHandle init = null;
 	/** Native dispatcher shutdown, resolved before any global effect. */
 	private MethodHandle shutdown = null;
-	/** Native runtime teardown, resolved before any global effect. */
-	private MethodHandle deinit = null;
 	/** Manager acquisition, resolved before any global effect. */
 	private MethodHandle newManager = null;
 	/** Synchronous per-manager close, resolved before any global effect. */
@@ -215,7 +213,6 @@ public final class FridaRuntime implements AutoCloseable
 			throw new IOException("Frida producer version must be " + VERSION + "; found " + actualVersion);
 		init = function("frida_init", FunctionDescriptor.ofVoid());
 		shutdown = function("frida_shutdown", FunctionDescriptor.ofVoid());
-		deinit = function("frida_deinit", FunctionDescriptor.ofVoid());
 		newManager = function("frida_device_manager_new", FunctionDescriptor.of(ADDRESS));
 		closeManager = function("frida_device_manager_close_sync", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
 		enumerateDevices = function("frida_device_manager_enumerate_devices_sync", FunctionDescriptor.of(ADDRESS, ADDRESS, ADDRESS, ADDRESS));
@@ -275,9 +272,10 @@ public final class FridaRuntime implements AutoCloseable
 	}
 
 	/**
-	 * Closes native resources after all manager owners have closed. Unstarted or failed pre-initialization owners
-	 * release nothing native. A loaded producer stays loaded until the JVM exits, because its signal handlers outlive
-	 * teardown. Repeated successful close is a no-op; a global teardown failure is retained.
+	 * Stops the native dispatcher after all manager owners have closed. Unstarted or failed pre-initialization owners
+	 * release nothing native. A loaded producer and its global state stay until the JVM exits, because its signal
+	 * handlers outlive teardown and initialization cannot be repeated. Repeated successful close is a no-op; a global
+	 * teardown failure is retained.
 	 * @throws IllegalStateException if called by another thread
 	 * @throws IOException if managers remain, initialization has no proven return, or global teardown failed
 	 */
@@ -296,11 +294,11 @@ public final class FridaRuntime implements AutoCloseable
 		closing = true;
 		try
 		{
+			// frida_deinit is not called: it only frees global state for a reinitialization or unload, neither of which
+			// this JVM permits, and it waits without a bound for every D-Bus connection to finalize. A connection that
+			// outlives the stopped dispatcher never finalizes, which kept the scheduler from exiting after its failure.
 			if (initialized)
-			{
 				invoke(shutdown);
-				invoke(deinit);
-			}
 			closed = true;
 		}
 		catch (RuntimeException | Error failure)
