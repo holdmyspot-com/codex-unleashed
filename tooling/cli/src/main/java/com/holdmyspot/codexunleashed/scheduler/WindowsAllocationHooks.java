@@ -978,7 +978,7 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
                     fields(body, "kind", "generation", "parentPid", "parentBirth", "module", "address", "boundary", "pointerSize", "state");
                     if (ready || sequence != 0) throw new IOException("Creation observer readiness is repeated or late");
                     if (integer(body, "parentPid", 0xffff_ffffL) != parent.pid() ||
-                        integer(body, "pointerSize", 8) != 8 ||
+                        !Set.of(4L, 8L).contains(integer(body, "pointerSize", 8)) ||
                         !text(body, "boundary").equals("private-pinned-CreateProcessInternalW"))
                         throw new IOException("Creation observer readiness has a different native boundary");
                     parentBirth = unsigned(body, "parentBirth");
