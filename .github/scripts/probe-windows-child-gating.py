@@ -117,7 +117,8 @@ def run_instrumented(command, directory, bound, mode):
     while not children.empty():
         pending.append(children.get_nowait().pid)
     emit("hung_state", mode=mode, pending_children=pending)
-    emit_process_tree(root)
+    for process in emit_process_tree(root):
+        emit_native_threads(process["ProcessId"])
     for pid, session in sessions:
         emit_threads(pid, session)
     # A gated child that is left running keeps the job's output pipe open, so end the whole tree.
@@ -185,6 +186,38 @@ def emit_process_tree(root):
             tree.append(process)
             pending.append(process["ProcessId"])
     emit("process_tree", root=root, processes=tree)
+    return tree
+
+
+def find_debugger():
+    """Returns the Windows SDK console debugger for this machine, or None when the SDK has no debugger."""
+    machine = "arm64" if os.environ.get("PROCESSOR_ARCHITECTURE") == "ARM64" else "x64"
+    for root in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles")):
+        if root:
+            candidate = os.path.join(root, "Windows Kits", "10", "Debuggers", machine, "cdb.exe")
+            if os.path.isfile(candidate):
+                return candidate
+    return None
+
+
+def emit_native_threads(pid):
+    """Prints one process's scheduler thread states and, when the SDK debugger exists, its symbolized stacks."""
+    states = subprocess.run(["powershell", "-NoProfile", "-Command",
+                             f"(Get-Process -Id {pid}).Threads | Select-Object Id,ThreadState,WaitReason,"
+                             "StartAddress | ConvertTo-Json -Compress"],
+                            capture_output=True, text=True, timeout=60)
+    emit("native_thread_states", pid=pid, states=states.stdout.strip(), error=states.stderr.strip()[-500:])
+    debugger = find_debugger()
+    if debugger is None:
+        emit("native_stacks_unavailable", pid=pid, reason="no Windows SDK cdb.exe")
+        return
+    try:
+        # A noninvasive attach reads the stacks without becoming the debugger that Frida's injection may rely on.
+        stacks = subprocess.run([debugger, "-pv", "-p", str(pid), "-c", ".symfix;.reload;~*kn 40;q"],
+                                capture_output=True, text=True, timeout=300)
+        emit("native_stacks", pid=pid, debugger=debugger, output=stacks.stdout[-60000:])
+    except subprocess.TimeoutExpired:
+        emit("native_stacks_unavailable", pid=pid, reason="cdb did not finish within 300 seconds")
 
 
 def main():
