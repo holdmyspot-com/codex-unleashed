@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -9,18 +10,30 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static java.nio.charset.StandardCharsets.US_ASCII;
+
 /**
- * Retains wrapper standard endpoints across retries and relays console handles through private anonymous pipes.
- * Redirected files and pipes remain borrowed. Console originals remain local and borrowed; offered pipe ends are
- * non-inherited owned handles. The controller must close imported output copies before delivering the final response.
+ * Retains wrapper standard endpoints across retries and relays console handles and stderr through private anonymous
+ * pipes. Redirected stdin and stdout remain borrowed. Console originals remain local and borrowed; offered pipe ends
+ * are non-inherited owned handles. The controller must close imported output copies before delivering the final
+ * response.
+ * <p>
+ * Every compiler attempt writes to the same offered stderr, and Cargo panics when one compiler invocation reports the
+ * same artifact twice, as a retried attempt does. So the stderr relay forwards a line that starts with
+ * {@code {"$message_type":"artifact"} only the first time its exact bytes are seen, and passes every other byte
+ * through in order; an incomplete final line is forwarded when stderr ends. The stream carries no attempt boundary, so
+ * an incomplete last line of a stopped attempt joins the next attempt's first line.
  */
 public final class WindowsCargoStreams implements AutoCloseable
 {
@@ -141,7 +154,7 @@ public final class WindowsCargoStreams implements AutoCloseable
     }
 
     /**
-     * Captures original standard handles and constructs private relays only for console endpoints.
+     * Captures original standard handles and constructs private relays for console endpoints and stderr.
      * @param scope borrowed invocation services retained through stream close
      * @return acquired persistent stream owner
      * @throws IOException if capture, pipe creation or cleanup fails
@@ -179,7 +192,7 @@ public final class WindowsCargoStreams implements AutoCloseable
     private WindowsCargoStreams(Calls calls) { this.calls = calls; }
 
     /**
-     * Captures a source endpoint and starts an owned relay when it is a console handle.
+     * Captures a source endpoint and starts an owned relay when it is a console handle or stderr.
      * @param index stdin zero, stdout one, or stderr two
      * @throws IOException if native acquisition fails
      */
@@ -187,8 +200,10 @@ public final class WindowsCargoStreams implements AutoCloseable
     {
         MemorySegment original = calls.address("GetStdHandle", -10 - index);
         if (original.address() == 0 || original.address() == -1) throw new IOException("Wrapper standard handle is invalid: " + index);
-        if (!calls.console(original)) { offered[index] = original.address(); return; }
-        if (index == 2 && original.address() == calls.address("GetStdHandle", -11).address())
+        boolean console = calls.console(original);
+        boolean error = index == 2;
+        if (!console && !error) { offered[index] = original.address(); return; }
+        if (console && error && original.address() == calls.address("GetStdHandle", -11).address())
         {
             offered[index] = offered[1];
             return;
@@ -204,7 +219,7 @@ public final class WindowsCargoStreams implements AutoCloseable
         MemorySegment source = input ? original : read;
         MemorySegment destination = input ? write : original;
         offered[index] = input ? read.address() : write.address();
-        Relay relay = new Relay(source, destination, input);
+        Relay relay = new Relay(source, destination, input, error);
         relays.add(relay);
         relay.start();
     }
@@ -310,16 +325,22 @@ public final class WindowsCargoStreams implements AutoCloseable
     }
 
     /**
-     * Copies bytes between one borrowed console endpoint and its owned private pipe endpoint.
+     * Copies bytes between one borrowed endpoint and its owned private pipe endpoint.
      */
     private final class Relay implements Runnable
     {
+        /** Size of the native read and write buffers. */
+        private static final int BUFFER_SIZE = 65536;
         /** Borrowed or owned read endpoint kept open until the worker joins. */
         private final MemorySegment source;
         /** Borrowed or owned write endpoint kept open until the worker joins. */
         private final MemorySegment destination;
         /** Indicates whether this worker reads borrowed console stdin. */
         private final boolean input;
+        /** Indicates whether this worker relays stderr through {@link #notifications}. */
+        private final boolean filtered;
+        /** Repeated artifact notifications removed from relayed stderr. */
+        private final NotificationFilter notifications = new NotificationFilter();
         /** Worker-thread native handle published before its first blocking read. */
         private final CompletableFuture<MemorySegment> nativeThread = new CompletableFuture<>();
         /** Indicates whether cancellation was explicitly requested. */
@@ -331,13 +352,15 @@ public final class WindowsCargoStreams implements AutoCloseable
          * Creates a resource-free relay worker.
          * @param source native read endpoint
          * @param destination native write endpoint
-         * @param input indicates whether this is the console-input worker
+         * @param input       indicates whether this is the console-input worker
+         * @param filtered    indicates whether this worker relays stderr, which drops repeated artifact notifications
          */
-        Relay(MemorySegment source, MemorySegment destination, boolean input)
+        Relay(MemorySegment source, MemorySegment destination, boolean input, boolean filtered)
         {
             this.source = source;
             this.destination = destination;
             this.input = input;
+            this.filtered = filtered;
             this.thread = Thread.ofPlatform().name("cargo-console-relay").unstarted(this);
         }
 
@@ -353,32 +376,34 @@ public final class WindowsCargoStreams implements AutoCloseable
                 MemorySegment handle = calls.address("OpenThread", 1, 0, calls.integer("GetCurrentThreadId"));
                 if (handle.address() == 0) throw new IOException("OpenThread(console relay) failed: " + calls.error());
                 nativeThread.complete(handle);
-                MemorySegment buffer = temporary.allocate(65536);
+                MemorySegment buffer = temporary.allocate(BUFFER_SIZE);
+                MemorySegment staging = temporary.allocate(BUFFER_SIZE);
                 MemorySegment count = temporary.allocate(ValueLayout.JAVA_INT);
                 while (!stopping.get())
                 {
-                    if (calls.integer("ReadFile", source, buffer, 65536, count, MemorySegment.NULL) == 0)
+                    if (calls.integer("ReadFile", source, buffer, BUFFER_SIZE, count, MemorySegment.NULL) == 0)
                     {
                         int error = calls.error();
-                        if (error == 109 || (error == 995 && stopping.get())) return;
+                        if (error == 109)
+                        {
+                            forward(notifications.finish(), staging, count);
+                            return;
+                        }
+                        if (error == 995 && stopping.get()) return;
                         throw new IOException("Console relay read failed: " + error);
                     }
                     int length = count.get(ValueLayout.JAVA_INT, 0);
-                    if (length == 0) return;
-                    int offset = 0;
-                    while (offset < length)
+                    if (length == 0)
                     {
-                        if (calls.integer("WriteFile", destination, buffer.asSlice(offset), length - offset,
-                            count, MemorySegment.NULL) == 0)
-                        {
-                            int error = calls.error();
-                            if (error == 995 && stopping.get()) return;
-                            throw new IOException("Console relay write failed: " + error);
-                        }
-                        int written = count.get(ValueLayout.JAVA_INT, 0);
-                        if (written == 0) throw new IOException("Console relay write made no progress");
-                        offset += written;
+                        forward(notifications.finish(), staging, count);
+                        return;
                     }
+                    if (filtered)
+                    {
+                        byte[] read = buffer.asSlice(0, length).toArray(ValueLayout.JAVA_BYTE);
+                        if (!forward(notifications.accept(read), staging, count)) return;
+                    }
+                    else if (!write(buffer, length, count)) return;
                 }
             }
             catch (IOException | RuntimeException problem)
@@ -395,6 +420,52 @@ public final class WindowsCargoStreams implements AutoCloseable
                     catch (IOException problem) { failure.compareAndSet(null, problem); }
                 }
             }
+        }
+
+        /**
+         * Writes bytes to the destination through a native staging buffer.
+         * @param bytes   bytes to write, in order
+         * @param staging native buffer of {@link #BUFFER_SIZE} bytes
+         * @param count   native storage for the written byte count
+         * @return false if cancellation stopped the write
+         * @throws IOException if writing fails
+         */
+        private boolean forward(byte[] bytes, MemorySegment staging, MemorySegment count) throws IOException
+        {
+            for (int offset = 0; offset < bytes.length; offset += BUFFER_SIZE)
+            {
+                int length = Math.min(BUFFER_SIZE, bytes.length - offset);
+                MemorySegment.copy(bytes, offset, staging, ValueLayout.JAVA_BYTE, 0, length);
+                if (!write(staging, length, count)) return false;
+            }
+            return true;
+        }
+
+        /**
+         * Writes the start of a native buffer to the destination, repeating short writes.
+         * @param data   native bytes to write
+         * @param length number of bytes to write from the start of {@code data}
+         * @param count  native storage for the written byte count
+         * @return false if cancellation stopped the write
+         * @throws IOException if writing fails or makes no progress
+         */
+        private boolean write(MemorySegment data, int length, MemorySegment count) throws IOException
+        {
+            int offset = 0;
+            while (offset < length)
+            {
+                if (calls.integer("WriteFile", destination, data.asSlice(offset), length - offset, count,
+                    MemorySegment.NULL) == 0)
+                {
+                    int error = calls.error();
+                    if (error == 995 && stopping.get()) return false;
+                    throw new IOException("Console relay write failed: " + error);
+                }
+                int written = count.get(ValueLayout.JAVA_INT, 0);
+                if (written == 0) throw new IOException("Console relay write made no progress");
+                offset += written;
+            }
+            return true;
         }
 
         /**
@@ -433,6 +504,70 @@ public final class WindowsCargoStreams implements AutoCloseable
         void closeThread() throws IOException
         {
             if (nativeThread.isDone() && !nativeThread.isCompletedExceptionally()) calls.closeHandle(nativeThread.join());
+        }
+    }
+
+    /**
+     * Removes the rustc artifact notification lines of relayed stderr whose exact bytes it already forwarded, and passes
+     * every other byte through in order. A line is held only while it may be, or is, an artifact notification.
+     */
+    private static final class NotificationFilter
+    {
+        /** Start of a rustc artifact notification line. */
+        private static final byte[] PREFIX = "{\"$message_type\":\"artifact\"".getBytes(US_ASCII);
+        /** Artifact notification lines already forwarded, each with its line feed. */
+        private final Set<ByteBuffer> forwarded = new HashSet<>();
+        /** The current line's bytes, held while the line may be, or is, an artifact notification. */
+        private final ByteArrayOutputStream held = new ByteArrayOutputStream();
+        /** Whether the current line is not an artifact notification, so its remaining bytes pass through. */
+        private boolean passing;
+
+        /**
+         * Filters the next bytes read from stderr.
+         * @param bytes bytes in stream order
+         * @return bytes to forward now, in stream order
+         */
+        byte[] accept(byte[] bytes)
+        {
+            ByteArrayOutputStream forward = new ByteArrayOutputStream(bytes.length);
+            for (byte value : bytes)
+            {
+                if (passing)
+                {
+                    forward.write(value);
+                    passing = value != '\n';
+                    continue;
+                }
+                held.write(value);
+                int size = held.size();
+                if (size <= PREFIX.length)
+                {
+                    if (value == PREFIX[size - 1])
+                        continue;
+                    forward.writeBytes(held.toByteArray());
+                    held.reset();
+                    passing = value != '\n';
+                    continue;
+                }
+                if (value != '\n')
+                    continue;
+                byte[] line = held.toByteArray();
+                held.reset();
+                if (forwarded.add(ByteBuffer.wrap(line)))
+                    forward.writeBytes(line);
+            }
+            return forward.toByteArray();
+        }
+
+        /**
+         * Ends the stream.
+         * @return the held bytes of an incomplete final line, which are forwarded unfiltered
+         */
+        byte[] finish()
+        {
+            byte[] rest = held.toByteArray();
+            held.reset();
+            return rest;
         }
     }
 

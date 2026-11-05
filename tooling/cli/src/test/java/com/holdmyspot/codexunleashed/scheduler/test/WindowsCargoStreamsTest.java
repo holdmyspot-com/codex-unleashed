@@ -3,13 +3,16 @@ package com.holdmyspot.codexunleashed.scheduler.test;
 import com.holdmyspot.codexunleashed.scheduler.WindowsCargoStreams;
 import static com.holdmyspot.codexunleashed.scheduler.test.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -73,7 +76,8 @@ public final class WindowsCargoStreamsTest
     public WindowsCargoStreamsTest() {}
 
     /**
-     * Redirected endpoints remain borrowed across acceptance and terminal cleanup.
+     * Redirected stdin and stdout remain borrowed, and redirected stderr is offered through one owned relay pipe, across
+     * acceptance and terminal cleanup.
      * @throws Exception if acquisition or cleanup fails
      */
     @Test
@@ -82,16 +86,44 @@ public final class WindowsCargoStreamsTest
         Calls calls = new Calls();
         try (WindowsCargoStreams streams = WindowsCargoStreams.open(calls))
         {
-            requireThat(List.of(streams.input(), streams.output(), streams.error()), "originalHandles")
-                .isEqualTo(List.of(10L, 11L, 12L));
+            requireThat(List.of(streams.input(), streams.output(), streams.error()), "offeredHandles")
+                .isEqualTo(List.of(10L, 11L, 102L));
             requireException(IOException.class, streams::finish);
             streams.accepted();
             requireException(IllegalStateException.class, streams::accepted);
             streams.finish();
             requireException(IllegalStateException.class, streams::accepted);
         }
-        requireThat(calls.closedHandles.isEmpty(), "borrowedHandlesNeverClosed").isTrue();
+        requireThat(calls.closedHandles.stream().sorted().toList(), "ownedRelayHandlesOnly")
+            .isEqualTo(List.of(101L, 102L, 301L));
         requireThat(calls.closes, "bindingCloseOnce").isEqualTo(1);
+    }
+
+    /**
+     * Compiler attempts that write to a redirected stderr reach the wrapper's stderr with each rustc artifact
+     * notification forwarded only the first time, so a retried attempt cannot repeat one to Cargo. Other repeated
+     * lines, lines split across reads, and an incomplete final line pass through unchanged.
+     * @throws Exception if relay progress, acquisition or cleanup fails
+     */
+    @Test
+    public void redirectedErrorForwardsEachArtifactNotificationOnce() throws Exception
+    {
+        String artifact = "{\"$message_type\":\"artifact\",\"artifact\":\"liba.rmeta\",\"emit\":\"metadata\"}\n";
+        String other = "{\"$message_type\":\"artifact\",\"artifact\":\"liba.rlib\",\"emit\":\"link\"}\n";
+        String warning = "{\"$message_type\":\"diagnostic\",\"message\":\"unused\"}\n";
+        String trailing = "{\"$message_type\":\"artif";
+        Calls calls = new Calls();
+        calls.reads.add(artifact.substring(0, 5).getBytes(UTF_8));
+        calls.reads.add((artifact.substring(5) + warning + artifact.substring(0, 30)).getBytes(UTF_8));
+        calls.reads.add((artifact.substring(30) + warning + other + artifact + trailing).getBytes(UTF_8));
+        try (WindowsCargoStreams streams = WindowsCargoStreams.open(calls))
+        {
+            streams.accepted();
+            requireThat(calls.copied.await(5, TimeUnit.SECONDS), "relayReachedEOF").isTrue();
+            streams.finish();
+        }
+        requireThat(calls.output.toString(UTF_8), "forwardedError").
+            isEqualTo(artifact + warning + warning + other + trailing);
     }
 
     /**
@@ -169,7 +201,7 @@ public final class WindowsCargoStreamsTest
         private boolean invalidOutput;
         /** Exact owned handle whose close attempt fails, zero when absent. */
         private long failClose;
-        /** Number of private pipe acquisitions. */
+        /** Number of private pipe acquisitions; each pipe's ends follow the previous pipe's, from 101 and 102. */
         private int pipeCount;
         /** Number of native binding disposal calls. */
         private int closes;
@@ -177,6 +209,8 @@ public final class WindowsCargoStreamsTest
         private RuntimeException bindingFailure;
         /** Whether the relay's first read already returned its binary payload. */
         private boolean read;
+        /** Successive stderr pipe reads, replacing the binary payload when present. */
+        private final Deque<byte[]> reads = new ArrayDeque<>();
 
         /** Creates an independent operation owner without native platform acquisition. */
         private Calls() {}
@@ -194,17 +228,24 @@ public final class WindowsCargoStreamsTest
             {
                 case "CreatePipe" ->
                 {
-                    ++pipeCount;
-                    ((MemorySegment) arguments[0]).set(ValueLayout.ADDRESS, 0, MemorySegment.ofAddress(101));
-                    ((MemorySegment) arguments[1]).set(ValueLayout.ADDRESS, 0, MemorySegment.ofAddress(102));
+                    long readEnd = 101 + 2L * pipeCount++;
+                    ((MemorySegment) arguments[0]).set(ValueLayout.ADDRESS, 0, MemorySegment.ofAddress(readEnd));
+                    ((MemorySegment) arguments[1]).set(ValueLayout.ADDRESS, 0, MemorySegment.ofAddress(readEnd + 1));
                     return 1;
                 }
                 case "GetCurrentThreadId", "CancelSynchronousIo" -> { return 1; }
                 case "ReadFile" ->
                 {
-                    if (read) { copied.countDown(); return 0; }
-                    read = true;
                     MemorySegment buffer = (MemorySegment) arguments[1];
+                    if (!reads.isEmpty())
+                    {
+                        byte[] chunk = reads.remove();
+                        MemorySegment.copy(chunk, 0, buffer, ValueLayout.JAVA_BYTE, 0, chunk.length);
+                        ((MemorySegment) arguments[3]).set(ValueLayout.JAVA_INT, 0, chunk.length);
+                        return 1;
+                    }
+                    if (read || !consoleOutput) { copied.countDown(); return 0; }
+                    read = true;
                     for (int index = 0; index < 256; ++index) buffer.set(ValueLayout.JAVA_BYTE, index, (byte) index);
                     ((MemorySegment) arguments[3]).set(ValueLayout.JAVA_INT, 0, 256);
                     return 1;
