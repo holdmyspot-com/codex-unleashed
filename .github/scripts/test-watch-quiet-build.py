@@ -1,6 +1,8 @@
 """Check that the quiet-build watchdog reports and stops a silent command but leaves an active one alone."""
 from pathlib import Path
 import importlib.util
+import io
+import os
 import re
 import signal
 import subprocess
@@ -76,6 +78,25 @@ class QuietBuildWatchTest(unittest.TestCase):
                 "--stop-after", "2")
             self.assertEqual(result.returncode, 7, result.stdout + result.stderr)
             self.assertFalse(report.exists(), "an active command was reported as quiet")
+
+
+class ProcessListTest(unittest.TestCase):
+    """Each test owns its child process and report buffer."""
+
+    def test_lists_processes_without_procfs(self):
+        """Without a process file system, as on macOS, the report still names each process with its state."""
+        spec = importlib.util.spec_from_file_location("watch_quiet_build", WATCHER)
+        watcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(watcher)
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])
+        try:
+            with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+                report = io.StringIO()
+                watcher.dump(None, report, procfs=Path(directory) / "absent")
+            self.assertRegex(report.getvalue(), rf"(?m)^ *{child.pid} +{os.getpid()} +\d+ +\S+ .*time\.sleep\(600\)")
+        finally:
+            child.kill()
+            child.wait()
 
 
 class StopTest(unittest.TestCase):

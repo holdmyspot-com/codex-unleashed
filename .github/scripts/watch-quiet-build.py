@@ -3,6 +3,7 @@
 The release build writes every stage's output under one evidence directory. When no file there changes for
 --first-report seconds, this writes a report of every user process to --report: its state, kernel wait channel,
 current system call, tracer and kernel stacks, plus a Java and a mixed Java and native thread dump of each Java process.
+A host without /proc, such as macOS, gets each process's ps line instead, and each JVM's thread dump and native sample.
 Zombies are listed with their name, since they have no command line. It repeats every --interval seconds
 while the build stays quiet, and once the build has been quiet for --stop-after seconds it terminates the command's
 process group and exits 124. Otherwise it exits with the command's own status.
@@ -80,8 +81,39 @@ def descriptor_limit(pid):
     return "?"
 
 
-def dump(jcmd, out):
-    """Writes one line per user process, then its threads' kernel stacks and any JVM thread dump."""
+def dump_without_procfs(jcmd, out):
+    """Writes ps's line for every process, then a thread dump and a native sample of each Java process.
+
+    This serves hosts without a process file system, such as macOS, where kernel stacks are not readable; sample, when
+    present, shows where each thread of a JVM is blocked in native code."""
+    try:
+        listing = subprocess.run(["ps", "-axww", "-o", "pid=,ppid=,uid=,state=,wchan=,command="],
+                                 capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as failure:
+        out.write(f"<ps failed: {failure}>\n")
+        return
+    out.write(listing.stdout + listing.stderr)
+    sample = Path("/usr/bin/sample")
+    for line in listing.stdout.splitlines():
+        fields = line.split(None, 5)
+        if len(fields) < 6 or os.path.basename(fields[5].split(" ")[0]) != "java":
+            continue
+        pid, uid = fields[0], int(fields[2])
+        out.write(f"--- pid={pid} cmd={fields[5][:200]}\n")
+        if jcmd:
+            out.write(java_dump(uid, [jcmd, pid, "Thread.print", "-l"], 30))
+        if sample.is_file():
+            out.write(java_dump(0, [str(sample), pid, "3"], 120))
+
+
+def dump(jcmd, out, procfs=Path("/proc")):
+    """Writes one line per user process, then its threads' kernel stacks and any JVM thread dump.
+
+    Without a process file system at procfs, it writes the portable report of dump_without_procfs instead."""
+    if not procfs.is_dir():
+        dump_without_procfs(jcmd, out)
+        out.flush()
+        return
     pids = sorted(int(name) for name in os.listdir("/proc") if name.isdigit())
     for pid in pids:
         fields = status_fields(pid)
