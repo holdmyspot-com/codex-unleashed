@@ -911,6 +911,11 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
             JsonNode envelope;
             try { envelope = json.readTree(message.get()); }
             catch (tools.jackson.core.JacksonException cause) { throw new IOException("Creation observer JSON is invalid", cause); }
+            if (envelope != null && envelope.path("type").isString() && envelope.path("type").asString().equals("error"))
+            {
+                throw new IOException("Creation observer script error: " + envelope.path("description").asString() +
+                    "; stack=" + envelope.path("stack").asString());
+            }
             fields(envelope, "type", "payload");
             if (!text(envelope, "type").equals("send")) throw new IOException("Creation observer requires a send envelope");
             JsonNode body = envelope.get("payload");
