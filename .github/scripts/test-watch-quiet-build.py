@@ -79,6 +79,36 @@ class QuietBuildWatchTest(unittest.TestCase):
             self.assertEqual(result.returncode, 7, result.stdout + result.stderr)
             self.assertFalse(report.exists(), "an active command was reported as quiet")
 
+    def test_stops_a_command_that_writes_only_scheduler_stall_reports(self):
+        """A scheduler that reports its own stall keeps appending to the log, but those reports are not build output."""
+        command = (
+            "import pathlib, time; "
+            "log = pathlib.Path('logs/build.log'); "
+            "log.write_text('   Compiling curl-sys\\n'); "
+            "[(log.open('a').write('{\"format_version\":1,\"event\":\"scheduler_stall\",\"stalled_seconds\":' + "
+            "str(i) + '}\\n'), time.sleep(0.2)) for i in range(150)]"
+        )
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+            result, report = run_watcher(directory, command, "--first-report", "1", "--interval", "1",
+                "--stop-after", "2.5")
+            self.assertEqual(result.returncode, 124, result.stdout + result.stderr)
+            self.assertIn("stopping quiet build", result.stderr)
+
+    def test_keeps_a_command_whose_output_follows_a_stall_report(self):
+        """Build output appended after a stall report is activity, so the command runs to its own exit."""
+        command = (
+            "import pathlib, sys, time; "
+            "log = pathlib.Path('logs/build.log'); "
+            "log.write_text('{\"event\":\"scheduler_stall\"}\\n'); "
+            "[(log.open('a').write('   Compiling crate' + str(i) + '\\n'), time.sleep(0.2)) for i in range(15)]; "
+            "sys.exit(5)"
+        )
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+            result, report = run_watcher(directory, command, "--first-report", "1", "--interval", "1",
+                "--stop-after", "2")
+            self.assertEqual(result.returncode, 5, result.stdout + result.stderr)
+            self.assertFalse(report.exists(), "an active command was reported as quiet")
+
 
 class ProcessListTest(unittest.TestCase):
     """Each test owns its child process and report buffer."""
