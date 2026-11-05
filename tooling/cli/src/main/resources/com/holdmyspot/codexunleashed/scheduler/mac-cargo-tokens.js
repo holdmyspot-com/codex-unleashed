@@ -16,11 +16,12 @@ const cargoTokenProtocol = 'codex-build-cargo-tokens';
 const cargoTokenVersion = 1;
 /** Darwin libSystem supplies descriptor-based IO; stat uses its 64-bit-inode ABI. */
 const cargoTokenLibc = Process.getModuleByName('libSystem.B.dylib');
-/** Explicit inode64 alias on Intel, sole 64-bit ABI on ARM64. */
+/**
+ * Explicit inode64 alias on Intel, sole 64-bit ABI on ARM64. Descriptor metadata is read from the retained handle,
+ * never a claimed pathname.
+ */
 const cargoTokenStatAddress = Process.arch === 'x64' ?
     cargoTokenLibc.getExportByName('fstat$INODE64') : cargoTokenLibc.getExportByName('fstat');
-/** Descriptor metadata is read from the retained handle, never a claimed pathname. */
-const cargoTokenFstat = new SystemFunction(cargoTokenStatAddress, 'int', ['int', 'pointer']);
 if (Process.platform !== 'darwin' || (Process.arch !== 'x64' && Process.arch !== 'arm64'))
     throw new Error('Cargo token mediation requires Darwin ARM64 or Intel64');
 /** Exact monotonically increasing request number within this installation. */
@@ -59,28 +60,6 @@ function nextCargoTokenSequence() {
 function parkCargoTokenFailure() {
     while (true)
         recv('cargo-token-failure', function ignoreFailureControl() {}).wait();
-}
-
-/**
- * Reads a descriptor's FIFO identity, or reports a known unrelated descriptor.
- * Unknown metadata remains a failure rather than permission for untracked I/O.
- * @param fd descriptor used by the intercepted call
- * @return identity or failure; null identity denotes known unrelated native I/O
- */
-function inspectCargoTokenDescriptor(fd) {
-    // Darwin __DARWIN_STRUCT_STAT64 begins dev32, mode16, links16, inode64 on both supported ABIs.
-    const data = Memory.alloc(144);
-    const result = cargoTokenFstat(fd, data);
-    if (result.value !== 0) {
-        if (result.errno === 9)
-            return {identity: null};
-        // The shared protocol category denotes descriptor-metadata failure on either platform.
-        return {failure: 'Descriptor statx failed', nativeErrno: result.errno};
-    }
-    const isFifo = (data.add(4).readU16() & 0xf000) === 0x1000;
-    if (!isFifo)
-        return {identity: null};
-    return {identity: data.readU32() + ':0:' + data.add(8).readU64().toString()};
 }
 
 /**
@@ -132,52 +111,122 @@ function awaitCargoTokenControl(sequence, operation) {
     return accepted;
 }
 
-for (const operation of ['read', 'write']) {
-    const address = cargoTokenLibc.getExportByName(operation);
-    Interceptor.attach(address, {
-        /** Park selected transfers until the controller has completed their exact I/O. */
-        onEnter(args) {
-            this.cargoTokenMediated = false;
-            const savedErrno = this.errno;
-            const fd = args[0].toInt32();
-            const buffer = args[1];
-            const count = args[2].toString();
-            const transfersBytes = count !== '0x0';
-            const inspection = transfersBytes ? inspectCargoTokenDescriptor(fd) : {identity: null};
-            this.errno = savedErrno;
-            if (inspection.failure !== undefined) {
-                sendCargoTokenEvent({event: 'failure', cause: inspection.failure,
-                    operation: operation, sequence: nextCargoTokenSequence()});
-                parkCargoTokenFailure();
-            }
-            if (inspection.identity === cargoTokenIdentity.fifo) {
-                const sequence = nextCargoTokenSequence();
-                if (count !== '0x1') {
-                    sendCargoTokenEvent({event: 'failure', cause: 'Jobserver transfer count differs from one',
-                        operation: operation, sequence: sequence});
-                    parkCargoTokenFailure();
-                }
-                const request = {event: 'transfer', sequence: sequence, operation: operation};
-                if (operation === 'write')
-                    request.byte = buffer.readU8();
-                sendCargoTokenEvent(request);
-                const reply = awaitCargoTokenControl(sequence, operation);
-                if (operation === 'read')
-                    buffer.writeU8(reply.byte);
-                args[2] = ptr(0);
-                this.cargoTokenMediated = true;
-                this.cargoTokenErrno = savedErrno;
-                this.errno = savedErrno;
-            }
-        },
-        /** Report the completed controller transfer after harmless zero-count native I/O. */
-        onLeave(result) {
-            if (this.cargoTokenMediated) {
-                result.replace(1);
-                this.errno = this.cargoTokenErrno;
-            }
-        }
-    });
+/** Operation codes shared with the native transfer replacements. */
+const cargoTokenOperations = ['read', 'write'];
+
+/**
+ * Mediates one selected one-byte FIFO transfer on behalf of the native replacement.
+ * @param operationCode index of the intercepted operation in cargoTokenOperations
+ * @param buffer caller's transfer buffer
+ * @param count caller's requested byte count
+ * @return the one byte transferred
+ */
+function mediateCargoTokenTransfer(operationCode, buffer, count) {
+    const operation = cargoTokenOperations[operationCode];
+    const sequence = nextCargoTokenSequence();
+    if (count.toString() !== '1') {
+        sendCargoTokenEvent({event: 'failure', cause: 'Jobserver transfer count differs from one',
+            operation: operation, sequence: sequence});
+        parkCargoTokenFailure();
+    }
+    const request = {event: 'transfer', sequence: sequence, operation: operation};
+    if (operation === 'write')
+        request.byte = buffer.readU8();
+    sendCargoTokenEvent(request);
+    const reply = awaitCargoTokenControl(sequence, operation);
+    if (operation === 'read')
+        buffer.writeU8(reply.byte);
+    return 1;
 }
+
+/**
+ * Reports unreadable descriptor metadata for the native replacement and parks its call.
+ * @param operationCode index of the intercepted operation in cargoTokenOperations
+ */
+function failCargoTokenInspection(operationCode) {
+    sendCargoTokenEvent({event: 'failure', cause: 'Descriptor statx failed',
+        operation: cargoTokenOperations[operationCode], sequence: nextCargoTokenSequence()});
+    parkCargoTokenFailure();
+}
+
+const cargoTokenFifoFields = cargoTokenIdentity.fifo.split(':');
+const cargoTokenFifoDevice = Memory.alloc(4).writeU32(Number(cargoTokenFifoFields[0]));
+const cargoTokenFifoInode = Memory.alloc(8).writeU64(uint64(cargoTokenFifoFields[2]));
+/** Original libc entry points, published after each replacement; replacements wait until theirs is set. */
+const cargoTokenOriginals = Memory.alloc(2 * Process.pointerSize);
+const cargoTokenMediate = new NativeCallback(mediateCargoTokenTransfer, 'long', ['int', 'pointer', 'ulong']);
+const cargoTokenFail = new NativeCallback(failCargoTokenInspection, 'void', ['int']);
+/*
+ * WORKAROUND: https://github.com/frida/frida-gum/issues/474
+ * Interceptor.attach and Interceptor.replace keep a function's trampoline in use while any thread is inside the
+ * function, and Script unload and Session detach wait until no trampoline is in use. A process whose other thread is
+ * blocked in read or write when it forks, such as git fetch's sideband reader or rustc's jobserver helper when rustc
+ * forks its linker, gives its child an in-use count that only the vanished thread could release. Every later unload
+ * in that child then waits forever, which held the scheduler in the child's bootstrap Session detach. replaceFast
+ * keeps no such count. Its replacement also runs for Frida's own threads, which attach listeners skip, so unrelated
+ * descriptors stay in this native code and only the jobserver FIFO enters JavaScript.
+ */
+const cargoTokenNative = new CModule(`
+typedef long (*Transfer) (int fd, void * buffer, unsigned long count);
+
+extern int descriptor_stat (int fd, void * data);
+extern int * error_location (void);
+extern long mediate (int operation, void * buffer, unsigned long count);
+extern void fail (int operation);
+extern unsigned int fifo_device;
+extern unsigned long long fifo_inode;
+extern Transfer originals[2];
+
+static long transfer (int operation, int fd, void * buffer, unsigned long count)
+{
+  Transfer original;
+  while ((original = ((Transfer volatile *) originals)[operation]) == 0)
+    ;
+  if (count == 0)
+    return original (fd, buffer, count);
+  int saved = *error_location ();
+  /* Darwin __DARWIN_STRUCT_STAT64 begins dev32, mode16, links16, inode64 on both supported ABIs. */
+  unsigned long long data[18];
+  int status = descriptor_stat (fd, data);
+  int failure = *error_location ();
+  *error_location () = saved;
+  if (status != 0)
+  {
+    if (failure == 9)
+      return original (fd, buffer, count);
+    fail (operation);
+  }
+  unsigned char * bytes = (unsigned char *) data;
+  int fifo = ((*(unsigned short *) (bytes + 4)) & 0xf000) == 0x1000;
+  if (!fifo || *(unsigned int *) bytes != fifo_device || *(unsigned long long *) (bytes + 8) != fifo_inode)
+    return original (fd, buffer, count);
+  long result = mediate (operation, buffer, count);
+  *error_location () = saved;
+  return result;
+}
+
+long replacement_read (int fd, void * buffer, unsigned long count)
+{
+  return transfer (0, fd, buffer, count);
+}
+
+long replacement_write (int fd, void * buffer, unsigned long count)
+{
+  return transfer (1, fd, buffer, count);
+}
+`, {
+    descriptor_stat: cargoTokenStatAddress,
+    error_location: cargoTokenLibc.getExportByName('__error'),
+    mediate: cargoTokenMediate,
+    fail: cargoTokenFail,
+    fifo_device: cargoTokenFifoDevice,
+    fifo_inode: cargoTokenFifoInode,
+    originals: cargoTokenOriginals
+});
+cargoTokenOperations.forEach((operation, index) => {
+    const original = Interceptor.replaceFast(cargoTokenLibc.getExportByName(operation),
+        cargoTokenNative['replacement_' + operation]);
+    cargoTokenOriginals.add(index * Process.pointerSize).writePointer(original);
+});
 Interceptor.flush();
 sendCargoTokenEvent({event: 'ready'});
