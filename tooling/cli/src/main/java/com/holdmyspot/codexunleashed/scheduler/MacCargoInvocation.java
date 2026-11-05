@@ -655,7 +655,7 @@ public final class MacCargoInvocation implements CargoSession.Invocation
             rootTokens = lease.retainAttempt();
             cargoInstrumentation = new MacCargoInstrumentation(scope.tooling(), UUID.randomUUID(), manager, cargoOwner,
                 lease, rootTokens, new AllocationWaits(), config.timeout(), attempts::pumpAll, MacCargoInstrumentation.Mode.ROOT_CARGO);
-            cargo = new MacWorkload(scope.tooling(), cargoOwner, cargoInstrumentation, config.timeout());
+            cargo = new MacWorkload(scope.tooling(), cargoOwner, cargoInstrumentation, config.timeout(), System.err::println);
         }
 
         @Override public JobQueue.AttemptFactory<Integer> factory() { return attempts; }

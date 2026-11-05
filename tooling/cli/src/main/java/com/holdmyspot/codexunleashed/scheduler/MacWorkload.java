@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * Owns one macOS workload's instrumentation, original root release, cancellation and terminal cleanup.
@@ -20,6 +21,8 @@ public final class MacWorkload
     private final MacWorkloadNative nativeOwner;
     /** Owns all held image instrumentation generations until the terminal composition. */
     private final MacImages images;
+    /** Receives one diagnostic line for each held child event and its admission. */
+    private final Consumer<String> report;
     /** Indicates whether the original start opportunity was consumed. */
     private boolean attempted;
     /** Indicates whether a public transition is executing native or instrumentation code. */
@@ -51,6 +54,25 @@ public final class MacWorkload
     public MacWorkload(ToolingScope scope, MacWorkloadNative nativeOwner,
         MacImages.InstrumentationFactory instrumentation, Duration timeout) throws IOException
     {
+        this(scope, nativeOwner, instrumentation, timeout, _ -> {});
+    }
+
+    /**
+     * Retains native ownership before any instrumentation or original-root release, and reports each held child.
+     * @param scope caller-owned scoped shared services retained through cleanup
+     * @param nativeOwner caller-retained native service owner; exclusive lifecycle transfers on successful construction
+     * @param instrumentation required instrumentation for each authenticated held image
+     * @param timeout positive representable image readiness bound
+     * @param report receives one line naming each held child event when it arrives, and another naming its admission
+     * @throws NullPointerException if any input is null
+     * @throws IllegalArgumentException if timeout is zero or negative
+     * @throws ArithmeticException if timeout exceeds signed nanoseconds
+     * @throws IOException if the original held root cannot be authenticated
+     */
+    public MacWorkload(ToolingScope scope, MacWorkloadNative nativeOwner,
+        MacImages.InstrumentationFactory instrumentation, Duration timeout, Consumer<String> report) throws IOException
+    {
+        this.report = Objects.requireNonNull(report, "report");
         this.nativeOwner = Objects.requireNonNull(nativeOwner, "nativeOwner");
         this.images = new MacImages(scope, nativeOwner, nativeOwner, instrumentation,
             nativeOwner.root(), timeout, System::nanoTime);
@@ -107,7 +129,8 @@ public final class MacWorkload
                 if (!canceled)
                 {
                     Optional<FridaRuntime.Child> child;
-                    while ((child = nativeOwner.pollChild()).isPresent()) images.advance(child.orElseThrow());
+                    while ((child = nativeOwner.pollChild()).isPresent())
+                        admit(child.orElseThrow());
                 }
                 OptionalInt observed = nativeOwner.terminalResult();
                 if (observed.isEmpty()) return OptionalInt.empty();
@@ -127,6 +150,20 @@ public final class MacWorkload
             return result;
         }
         finally { transitioning = false; }
+    }
+
+    /**
+     * Reports one held child event before admitting it, then reports how it was admitted.
+     * The first line remains when admission fails or never returns, so a stalled build names the child it holds.
+     * @param child copied native held-child event
+     * @throws IOException if the image owner refuses or cannot admit the child
+     */
+    private void admit(FridaRuntime.Child child) throws IOException
+    {
+        report.accept("Held child: pid=" + child.pid() + ", parent=" + child.parentPid() + ", origin=" + child.origin() +
+            ", path=" + child.path());
+        MacImages.Admission admission = images.advance(child);
+        report.accept("Admitted held child: pid=" + child.pid() + ", admission=" + admission);
     }
 
     /**

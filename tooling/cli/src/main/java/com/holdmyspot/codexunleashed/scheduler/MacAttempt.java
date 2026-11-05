@@ -520,7 +520,7 @@ public final class MacAttempt implements JobQueue.Attempt<Integer>
                 tokens = command.lease().retainAttempt();
                 instrumentation = new MacCargoInstrumentation(scope, UUID.randomUUID(), manager, nativeOwner,
                     command.lease(), tokens, waits, timeout, attempts::pumpAll, MacCargoInstrumentation.Mode.COMPILER);
-                workload = new MacWorkload(scope, nativeOwner, instrumentation, timeout);
+                workload = new MacWorkload(scope, nativeOwner, instrumentation, timeout, System.err::println);
                 workload.start();
             }
             catch (IOException | RuntimeException cause) { throw failed(cause); }

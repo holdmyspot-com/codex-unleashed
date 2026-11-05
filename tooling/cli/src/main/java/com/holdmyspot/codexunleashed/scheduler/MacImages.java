@@ -177,9 +177,10 @@ public final class MacImages
      * @param child copied native event, never itself an ownership credential
      * @throws NullPointerException if {@code child} is null
      * @throws IllegalStateException if another thread calls, admission is inactive or a callback reenters admission
+     * @return how the child was admitted; an exited child is never resumed
      * @throws IOException if lineage, required instrumentation readiness or resumption is uncertain
      */
-    public void advance(FridaRuntime.Child child) throws IOException
+    public Admission advance(FridaRuntime.Child child) throws IOException
     {
         requireThread();
         if (!attempted || images.isEmpty() || stopped || advancing) throw new IllegalStateException("Image owner is not active");
@@ -220,11 +221,19 @@ public final class MacImages
             if (child.origin() == 0 && (nativeParent == null ||
                 (nativeParent.protection == null && !nativeParent.uninstrumented)))
                 throw new IOException("Native fork lacks its retained descriptor registry owner");
+            Admission admission;
             if (operations.platformImage(observed))
+            {
                 admitUninstrumented(observed);
-            else if (!install(observed, nativeParent == null || nativeParent.uninstrumented ? null :
+                admission = Admission.PLATFORM;
+            }
+            else if (install(observed, nativeParent == null || nativeParent.uninstrumented ? null :
                 nativeParent.protection.registry()))
-                return;
+            {
+                admission = Admission.INSTRUMENTED;
+            }
+            else
+                return Admission.EXITED;
             if (authority instanceof WorkloadAuthority workloadAuthority)
                 workloadAuthority.authenticateChild(child, inspect(child.pid()));
             else if (child.origin() != 1)
@@ -234,6 +243,7 @@ public final class MacImages
             }
             if (Thread.currentThread().isInterrupted()) throw new IOException("Held resume interrupted");
             operations.resume(child.pid());
+            return admission;
         }
         catch (IOException | RuntimeException | Error cause)
         {
@@ -479,6 +489,19 @@ public final class MacImages
     private void requireThread()
     {
         if (Thread.currentThread() != thread) throw new IllegalStateException("MacImages belongs to its constructing thread");
+    }
+
+    /**
+     * How a held child was admitted.
+     */
+    public enum Admission
+    {
+        /** Attached, instrumented and resumed. */
+        INSTRUMENTED,
+        /** An Apple platform image, resumed without attaching. */
+        PLATFORM,
+        /** Exited while Frida attached to it, so it was left unresumed. */
+        EXITED
     }
 
     /**

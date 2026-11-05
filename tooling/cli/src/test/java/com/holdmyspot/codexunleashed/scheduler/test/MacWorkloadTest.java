@@ -14,10 +14,12 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -126,6 +128,31 @@ public final class MacWorkloadTest
             requireThat(owner.advance().orElseThrow(), "completedResultRemainsAvailable").isEqualTo(17, "expected");
             requireThat(calls.events.stream().filter("release-root"::equals).count(), "oneOriginalRelease").isEqualTo(1L, "expected");
             requireThat(calls.events.stream().filter("close-native"::equals).count(), "oneNativeClose").isEqualTo(1L, "expected");
+        }
+    }
+
+    /**
+     * Reports each held child when it arrives and again with its admission, so that a stalled build's log names every
+     * child the workload held and whether it was resumed.
+     * @throws IOException if the connected workload operation fails
+     */
+    @Test public void reportsEachHeldChildAndItsAdmission() throws IOException
+    {
+        try (DefaultToolingScope scope = new DefaultToolingScope())
+        {
+            Calls calls = new Calls(scope.getLeaderJsonMapper());
+            List<String> report = new ArrayList<>();
+            MacWorkload owner = new MacWorkload(scope, calls, calls::instrumentation, Duration.ofSeconds(1), report::add);
+            owner.start();
+            calls.platform.add(11L);
+            calls.children.add(new FridaRuntime.Child(11, 10, 2, "/usr/bin/xcrun"));
+            requireThat(owner.advance().isEmpty(), "workloadStillActive").isTrue();
+            requireThat(report, "report").isEqualTo(List.of(
+                "Held child: pid=11, parent=10, origin=2, path=/usr/bin/xcrun",
+                "Admitted held child: pid=11, admission=PLATFORM"), "expected");
+            requireThat(calls.events.contains("resume:11"), "platformChildResumed").isTrue();
+            calls.result = OptionalInt.of(0);
+            requireThat(owner.advance().orElseThrow(), "rootResult").isEqualTo(0, "expected");
         }
     }
 
@@ -268,6 +295,10 @@ public final class MacWorkloadTest
         private Runnable duringInstrumentation;
         /** Optional native cleanup failure after its effect becomes uncertain. */
         private IOException closeFailure;
+        /** Process identifiers that the kernel reports as Apple platform images. */
+        private final Set<Long> platform = new HashSet<>();
+        /** Held child events awaiting production consumption. */
+        private final ArrayDeque<FridaRuntime.Child> children = new ArrayDeque<>();
 
         /**
          * Creates per-method native observations without acquiring external resources.
@@ -276,7 +307,12 @@ public final class MacWorkloadTest
         private Calls(JsonMapper json) { this.json = json; }
 
         @Override public MacImages.Identity root() { return new MacImages.Identity(10, Instant.ofEpochSecond(1), 9); }
-        @Override public MacImages.Identity inspect(long pid) { return root(); }
+        @Override public MacImages.Identity inspect(long pid)
+        {
+            if (pid == root().pid())
+                return root();
+            return new MacImages.Identity(pid, Instant.ofEpochSecond(2), root().pid());
+        }
         @Override public void authenticate(MacImages.Identity identity) { events.add("authenticate:" + identity.pid()); }
         @Override public MacDescriptorProtection.Inventory descriptors(MacImages.Identity identity) throws IOException
         {
@@ -284,7 +320,7 @@ public final class MacWorkloadTest
             return new MacDescriptorProtection.Inventory(362, 5, List.of());
         }
         @Override public void releaseRoot() { events.add("release-root"); }
-        @Override public boolean platformImage(MacImages.Identity identity) { return false; }
+        @Override public boolean platformImage(MacImages.Identity identity) { return platform.contains(identity.pid()); }
         @Override public void resume(long pid) { events.add("resume:" + pid); }
         @Override public void cancel() { events.add("cancel-owned"); }
         @Override public OptionalInt terminalResult() { return result; }
@@ -297,7 +333,7 @@ public final class MacWorkloadTest
         {
             polls++;
             if (observationFailure != null) throw observationFailure;
-            return Optional.empty();
+            return Optional.ofNullable(children.poll());
         }
         @Override public AllocationHook.Connection connection(long pid)
         {
