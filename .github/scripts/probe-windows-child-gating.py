@@ -64,7 +64,7 @@ def run_instrumented(command, directory, bound, load_script):
     mode = "script" if load_script else "gating"
     device = frida.get_local_device()
     children = queue.Queue()
-    device.on("child-added", children.put)
+    device.on("child-added", lambda child: children.put(child))
     sessions = []
     scripts = []
 
