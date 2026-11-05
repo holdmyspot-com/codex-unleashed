@@ -1,0 +1,103 @@
+name: Scheduler Windows child gating probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Native Windows target to diagnose
+        type: choice
+        default: all
+        options: [aarch64-pc-windows-msvc, x86_64-pc-windows-msvc, all]
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - id: matrix
+        env:
+          PROBE_TARGET: ${{ inputs.target }}
+        run: |
+          printf 'value=%s\n' "$(jq --arg target "$PROBE_TARGET" -c '{include: [.[] | select(.target | contains("-windows-")) | select(($target == "all") or (.target == $target))]}' .github/release-matrix.json)" >> "$GITHUB_OUTPUT"
+
+  probe:
+    needs: select
+    name: Child gating - ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/scripts/probe-windows-child-gating.py
+            .github/scripts/windows-interception-requirements.txt
+          sparse-checkout-cone-mode: false
+
+      - name: Set up native Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+          architecture: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
+
+      - name: Create owned diagnostic storage
+        run: |
+          set -euo pipefail
+          diagnostic="$(mktemp -d "$RUNNER_TEMP/child-gating-XXXXXX")"
+          printf 'CHILD_GATING=%s\n' "$diagnostic" >> "$GITHUB_ENV"
+          {
+            printf 'workflow_commit=%s\nrunner_arch=%s\nimage_version=%s\n' "$GITHUB_SHA" "$RUNNER_ARCH" "${ImageVersion:-unknown}"
+            git --version
+            command -v git sh
+          } | tee "$diagnostic/identity.txt"
+
+      - name: Acquire pinned native instrumentation
+        env:
+          TMPDIR: ${{ env.CHILD_GATING }}
+        run: |
+          python -m pip install --disable-pip-version-check --no-cache-dir \
+            --only-binary=:all: --no-deps --require-hashes \
+            --target "$CHILD_GATING/package" \
+            -r .github/scripts/windows-interception-requirements.txt
+
+      - name: Run git submodule outside a repository with and without child gating
+        env:
+          PYTHONPATH: ${{ env.CHILD_GATING }}/package
+          TMPDIR: ${{ env.CHILD_GATING }}
+        run: |
+          set -euo pipefail
+          result=0
+          for mode in off gating script; do
+            python .github/scripts/probe-windows-child-gating.py --mode "$mode" --bound 120 2>&1 | tee -a "$CHILD_GATING/child-gating.log" || result=1
+          done
+          exit "$result"
+
+      - name: Retain evidence for one day
+        if: always() && env.CHILD_GATING != ''
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: scheduler-windows-child-gating-${{ matrix.target }}
+          path: |
+            ${{ env.CHILD_GATING }}/identity.txt
+            ${{ env.CHILD_GATING }}/child-gating.log
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Remove owned diagnostic storage
+        if: always() && env.CHILD_GATING != ''
+        run: rm -rf -- "$CHILD_GATING"
