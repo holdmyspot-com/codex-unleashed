@@ -81,13 +81,24 @@ def descriptor_limit(pid):
     return "?"
 
 
+def sampled(state, command):
+    """Indicates whether a process's native threads belong in the report.
+
+    JVMs are sampled for where each thread blocks; a stopped process and a Frida helper are sampled too, because a
+    build can stall while one holds the other."""
+    name = os.path.basename(command.split(" ")[0])
+    return name in ("java", "frida-helper") or state.startswith("T")
+
+
 def dump_without_procfs(jcmd, out):
-    """Writes ps's line for every process, then a thread dump and a native sample of each Java process.
+    """Writes ps's line for every process, then a thread dump of each Java process and a native sample of each process
+    that sampled selects.
 
     This serves hosts without a process file system, such as macOS, where kernel stacks are not readable; sample, when
-    present, shows where each thread of a JVM is blocked in native code."""
+    present, shows where each thread is blocked in native code. The process group, session and terminal columns show
+    whether a stopped process was stopped by terminal job control."""
     try:
-        listing = subprocess.run(["ps", "-axww", "-o", "pid=,ppid=,uid=,state=,wchan=,command="],
+        listing = subprocess.run(["ps", "-axww", "-o", "pid=,ppid=,uid=,state=,pgid=,sess=,tt=,wchan=,command="],
                                  capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.TimeoutExpired) as failure:
         out.write(f"<ps failed: {failure}>\n")
@@ -95,12 +106,12 @@ def dump_without_procfs(jcmd, out):
     out.write(listing.stdout + listing.stderr)
     sample = Path("/usr/bin/sample")
     for line in listing.stdout.splitlines():
-        fields = line.split(None, 5)
-        if len(fields) < 6 or os.path.basename(fields[5].split(" ")[0]) != "java":
+        fields = line.split(None, 8)
+        if len(fields) < 9 or not sampled(fields[3], fields[8]):
             continue
         pid, uid = fields[0], int(fields[2])
-        out.write(f"--- pid={pid} cmd={fields[5][:200]}\n")
-        if jcmd:
+        out.write(f"--- pid={pid} state={fields[3]} cmd={fields[8][:200]}\n")
+        if jcmd and os.path.basename(fields[8].split(" ")[0]) == "java":
             out.write(java_dump(uid, [jcmd, pid, "Thread.print", "-l"], 30))
         if sample.is_file():
             out.write(java_dump(0, [str(sample), pid, "3"], 120))

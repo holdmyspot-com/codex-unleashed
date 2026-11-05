@@ -99,6 +99,20 @@ class ProcessListTest(unittest.TestCase):
             child.wait()
 
 
+class SampleSelectionTest(unittest.TestCase):
+    """Each test owns its loaded watcher module."""
+
+    def test_samples_stopped_processes_and_frida_helpers(self):
+        """A stopped process or a Frida helper is sampled like a JVM, because a stalled build can be held by either."""
+        spec = importlib.util.spec_from_file_location("watch_quiet_build", WATCHER)
+        watcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(watcher)
+        self.assertTrue(watcher.sampled("S<", "/opt/runtime/bin/java -m tool"))
+        self.assertTrue(watcher.sampled("T", "/toolchain/bin/cargo build"))
+        self.assertTrue(watcher.sampled("S<s", "/private/var/root/frida-0123/frida-helper socket-fd:29"))
+        self.assertFalse(watcher.sampled("S", "/usr/sbin/syslogd"))
+
+
 class StopTest(unittest.TestCase):
     """Each test owns its recorded signal list."""
 
