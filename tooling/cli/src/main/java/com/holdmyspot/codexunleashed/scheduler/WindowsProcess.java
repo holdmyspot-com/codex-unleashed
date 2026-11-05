@@ -980,6 +980,33 @@ public final class WindowsProcess implements AutoCloseable
         }
 
         /**
+         * Diverts this held member's image entry point through a separate handle with memory access, so that once
+         * resumed its primary thread finishes loader initialization and then waits there.
+         * @return the diverted entry point, which owns that separate handle
+         * @throws IllegalStateException if this identity or its owner is closed, or called by another thread
+         * @throws IOException if the member is not live, the handle is not the same process, or diversion fails
+         */
+        public WindowsEntryPark parkAtEntry() throws IOException
+        {
+            requireLive();
+            MemorySegment control = kernel.pointer("OpenProcess", WindowsEntryPark.ACCESS, 0, (int) pid);
+            kernel.requireHandle("OpenProcess(entry park)", control);
+            try
+            {
+                if (creationBirth(control) != creationBirth(handle))
+                    throw new IOException("Entry park handle names a different process: " + pid);
+                requireLive();
+                return WindowsEntryPark.divert(kernel, control);
+            }
+            catch (IOException | RuntimeException | Error failure)
+            {
+                try { kernel.closeHandle(control); }
+                catch (IOException | RuntimeException | Error cleanup) { failure.addSuppressed(cleanup); }
+                throw failure;
+            }
+        }
+
+        /**
          * Seals actual native child state from this member's authenticated observer before resume.
          * @param expectedBirth native birth reported by the observer
          * @param state actual command line, directory and environment copied inside the held image
@@ -1999,6 +2026,13 @@ public final class WindowsProcess implements AutoCloseable
                 bind(linker,lookup,"OpenProcess",ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT);
                 bind(linker,lookup,"IsProcessInJob",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
                 bind(linker,lookup,"K32GetProcessMemoryInfo",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.JAVA_INT);
+                bind(linker,lookup,"VirtualAllocEx",ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.JAVA_LONG,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT);
+                bind(linker,lookup,"ReadProcessMemory",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.JAVA_LONG,ValueLayout.ADDRESS);
+                bind(linker,lookup,"WriteProcessMemory",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.JAVA_LONG,ValueLayout.ADDRESS);
+                bind(linker,lookup,"VirtualProtectEx",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.JAVA_LONG,ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
+                bind(linker,lookup,"FlushInstructionCache",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.JAVA_LONG);
+                var ntdll = SymbolLookup.libraryLookup("ntdll.dll", arena);
+                bind(linker,ntdll,"NtQueryInformationProcess",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
             }
             catch (RuntimeException | Error failure)
             {

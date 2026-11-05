@@ -4,8 +4,6 @@ import com.holdmyspot.codexunleashed.tooling.ToolingScope;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -17,6 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.LongSupplier;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -60,6 +59,8 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
     private static final int MAX_PENDING = 1024;
     /** Maximum callback or observer frames copied in one round. */
     private static final int FRAME_BUDGET = 32;
+    /** Longest pause between observations of a resumed child's parked entry point: 1 millisecond. */
+    private static final long ARRIVAL_POLL_NANOS = 1_000_000;
     /** Distinct owned manager retained before native startup. */
     private Manager manager;
     /** Next positive generation, reserved with checked arithmetic before acquisition. */
@@ -309,12 +310,13 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
     }
 
     /**
-     * Installs a child's observer and allocation hook before its single authorized resume.
-     * A child whose image loads a Cygwin-family runtime resumes without either, so its own descendants run
-     * uninstrumented.
+     * Installs a child's observer and allocation hook at its parked entry point, after its single authorized resume.
+     * The child's own primary thread runs loader initialization: a held child has run no thread, so attaching first
+     * would make the injected thread run every DLL's process attach. The MSYS2 and Cygwin runtimes record that thread
+     * as the main thread, and their signal thread deadlocks once it exits.
      * @param event copied held SPAWN notification
      * @param created validated transferred creation authority
-     * @throws IOException if identity, readiness or resume cannot be established
+     * @throws IOException if identity, arrival, readiness, resume or release cannot be established
      */
     private void advanceChild(FridaRuntime.Child event, CreatedChild created) throws IOException
     {
@@ -322,18 +324,41 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
             throw new IOException("Held child differs from retained creation authority: " + event);
         Member member = created.member();
         member.requireLive();
-        // WORKAROUND: https://github.com/git-for-windows/git/issues/5833
-        // The MSYS2 and Cygwin fork copies the parent's heap while other threads may allocate in it. Frida's agent
-        // threads do, and the forked shell hangs; skip instrumentation until the runtime's fork stops racing.
-        if (!backend.usesCygwinRuntime(event.path()))
+        try (EntryPark park = backend.park(member))
         {
+            if (!resumeAttempts.add(event.pid())) throw new IOException("Held child continuation was already attempted: " + event.pid());
+            manager.resume(event.pid());
+            awaitArrival(park, member);
+
             observe(member);
             Hook hook = install(member);
             hook.awaitReady(peers);
             member.requireLive();
+            park.release();
         }
-        if (!resumeAttempts.add(event.pid())) throw new IOException("Held child continuation was already attempted: " + event.pid());
-        manager.resume(event.pid());
+    }
+
+    /**
+     * Services this attempt's hooks and its peers until a resumed child waits at its parked entry point.
+     * @param park the child's diverted entry point
+     * @param member exact retained resumed child
+     * @throws IOException if the child exits, the join interval elapses or service fails
+     */
+    private void awaitArrival(EntryPark park, Member member) throws IOException
+    {
+        long began = ticker.getAsLong();
+        while (!park.arrived())
+        {
+            member.requireLive();
+            for (Hook hook : List.copyOf(installations.values())) hook.pump();
+            peers.pump();
+            if (Thread.currentThread().isInterrupted())
+                throw new IOException("Interrupted while awaiting a child's entry point: " + member.pid());
+            long elapsed = ticker.getAsLong() - began;
+            if (elapsed >= joinTimeoutNanos)
+                throw new IOException("Child did not reach its entry point: " + member.pid());
+            LockSupport.parkNanos(Math.min(ARRIVAL_POLL_NANOS, joinTimeoutNanos - elapsed));
+        }
     }
 
     /**
@@ -589,11 +614,13 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
          */
         Hook hook(long generation, Member member, Manager manager) throws IOException;
         /**
-         * Returns whether an image loads a Cygwin-family runtime, such as the MSYS2 runtime of Git for Windows.
-         * @param image held child's executable path
-         * @return {@code true} if the image's directory holds {@code msys-2.0.dll} or {@code cygwin1.dll}
+         * Diverts a held child's image entry point so that, once resumed, its primary thread finishes loader
+         * initialization and then waits there.
+         * @param member exact retained held child
+         * @return the diverted entry point, retained until released
+         * @throws IOException if the child's image or memory cannot be read or written
          */
-        boolean usesCygwinRuntime(String image);
+        EntryPark park(Member member) throws IOException;
         /** Releases the prepared primary thread once.
          * @throws IOException if release has an uncertain result
          */
@@ -725,6 +752,29 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
             }
             if (failure != null) throw failure;
         }
+    }
+
+    /** A held child's diverted image entry point, where its primary thread waits after loader initialization. */
+    public interface EntryPark extends AutoCloseable
+    {
+        /**
+         * Returns whether the primary thread has reached the entry point, restoring the entry point's original code
+         * on the first such observation.
+         * @return {@code true} once the primary thread waits at the entry point
+         * @throws IOException if the child's memory cannot be read or restored
+         */
+        boolean arrived() throws IOException;
+        /**
+         * Lets the waiting primary thread continue into the restored entry point.
+         * @throws IOException if the release cannot be written
+         */
+        void release() throws IOException;
+        /**
+         * Releases the native resources used to observe and release the entry point, without releasing a waiting
+         * primary thread.
+         * @throws IOException if native release fails
+         */
+        @Override void close() throws IOException;
     }
 
     /** Owns one generation of an allocation script and its attachment session. */
@@ -1204,8 +1254,6 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
     /** Loads only the accepted Windows program and delegates to existing authoritative native owners. */
     private static final class NativeBackend implements Backend
     {
-        /** Runtime libraries that a Cygwin-family executable loads from its own directory. */
-        private static final List<String> CYGWIN_RUNTIMES = List.of("msys-2.0.dll", "cygwin1.dll");
         /** Unique correlation UUID for this queue attempt. */
         private final UUID identity;
         /** Borrowed started Frida runtime; this adapter never closes it. */
@@ -1250,11 +1298,6 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
             this.timeout = timeout;
         }
         @Override public long rootPid() { return process.pid(); }
-        @Override public boolean usesCygwinRuntime(String image)
-        {
-            Path executable = Path.of(image);
-            return CYGWIN_RUNTIMES.stream().anyMatch(runtime -> Files.isRegularFile(executable.resolveSibling(runtime)));
-        }
         @Override public Member member(long pid) throws IOException
         {
             NativeMember bridge = new NativeMember();
@@ -1326,6 +1369,18 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
             return bridge;
         }
         @Override public void releaseRoot() throws IOException { process.releaseRoot(); }
+        @Override public EntryPark park(Member member) throws IOException
+        {
+            if (!(member instanceof NativeMember child) || child.process != process)
+                throw new IOException("Entry park requires this backend's retained child");
+            WindowsEntryPark park = child.member.parkAtEntry();
+            return new EntryPark()
+            {
+                @Override public boolean arrived() throws IOException { return park.arrived(); }
+                @Override public void release() throws IOException { park.release(); }
+                @Override public void close() throws IOException { park.close(); }
+            };
+        }
     }
     /** Adapts the authoritative opaque identity without exposing its native handle. */
     private static final class NativeMember implements Member

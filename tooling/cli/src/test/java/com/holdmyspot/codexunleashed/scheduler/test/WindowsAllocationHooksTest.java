@@ -112,9 +112,8 @@ public final class WindowsAllocationHooksTest
         hooks.pump(true);
         requireThat(backend.resumed, "heldChildResumed").isEqualTo(List.of(200L));
         requireThat(backend.events.contains("live:100"), "terminalParentIsNotReObserved").isFalse();
-        requireThat(backend.events.indexOf("ready:2") < backend.events.indexOf("resume:200"), "childReadyBeforeResume").isTrue();
         requireThat(backend.events.subList(backend.events.indexOf("ready:2") + 1, backend.events.size()),
-            "postReadinessMembershipRechecks").isEqualTo(List.of("live:200", "resume:200"));
+            "postReadinessMembershipRechecks").isEqualTo(List.of("live:200", "park-release:200", "park-close:200"));
         hooks.close(() -> true);
     }
 
@@ -374,14 +373,15 @@ public final class WindowsAllocationHooksTest
     }
 
     /**
-     * A held child that loads a Cygwin-family runtime resumes without an observer or allocation hook.
+     * A held child, including one whose image loads a Cygwin-family runtime such as Git for Windows' MSYS2 shell,
+     * resumes into a parked entry point so that its own primary thread runs loader initialization, and gets its
+     * observer and allocation hook there before its entry point runs.
      * @throws Exception if coordinator setup or cleanup fails
      */
     @Test
-    public void cygwinRuntimeChildResumesUninstrumented() throws Exception
+    public void cygwinRuntimeChildIsInstrumentedAtItsEntryPoint() throws Exception
     {
         Backend backend = new Backend();
-        backend.cygwinImages.add("C:\\Git\\usr\\bin\\sh.exe");
         WindowsAllocationHooks hooks = new WindowsAllocationHooks(backend, () -> {});
         try
         {
@@ -390,15 +390,18 @@ public final class WindowsAllocationHooksTest
             backend.children.add(new FridaRuntime.Child(200, 100, 2, "C:\\Git\\usr\\bin\\sh.exe"));
             hooks.pump(true);
             requireThat(backend.resumed, "resumedChild").isEqualTo(List.of(200L));
-            requireThat(backend.events, "events").doesNotContain("observer-start:200").doesNotContain("hook:2:200");
-            requireThat(backend.events.indexOf("source-release:200") < backend.events.indexOf("resume:200"), "releaseBeforeResume").isTrue();
+            List<String> order = List.of("source-release:200", "park:200", "resume:200", "arrived:200",
+                "observer-ready:200", "hook:2:200", "ready:2", "park-release:200");
+            List<Integer> positions = order.stream().map(backend.events::indexOf).toList();
+            requireThat(positions, "positions").doesNotContain(-1);
+            requireThat(positions.stream().sorted().toList(), "sortedPositions").isEqualTo(positions);
         }
         finally { hooks.close(() -> true); }
     }
 
     /**
      * A held 32-bit child, such as protoc-bin-vendored's Windows protoc, gets its observer and allocation hook before
-     * it resumes.
+     * its entry point runs.
      * @throws Exception if coordinator setup or cleanup fails
      */
     @Test
@@ -414,7 +417,7 @@ public final class WindowsAllocationHooksTest
             hooks.pump(true);
             requireThat(backend.resumed, "resumedChild").isEqualTo(List.of(200L));
             requireThat(backend.events.indexOf("observer-ready:200") < backend.events.indexOf("hook:2:200"), "observerBeforeHook").isTrue();
-            requireThat(backend.events.indexOf("hook:2:200") < backend.events.indexOf("resume:200"), "hookBeforeResume").isTrue();
+            requireThat(backend.events.indexOf("hook:2:200") < backend.events.indexOf("park-release:200"), "hookBeforeRelease").isTrue();
         }
         finally { hooks.close(() -> true); }
     }
@@ -581,8 +584,8 @@ public final class WindowsAllocationHooksTest
         long readyFailure = -1;
         /** Installation whose destruction is uncertain, or minus one. */
         long closeFailure = -1;
-        /** Image paths modeled as loading a Cygwin-family runtime. */
-        final List<String> cygwinImages = new ArrayList<>();
+        /** Remaining unsuccessful arrival observations for each parked child. */
+        final Map<Long, Integer> parkPolls = new LinkedHashMap<>();
         /** Number of root continuation requests. */
         int releases;
         /** Peer callback invoked while a modeled permission acknowledgement is pending. */
@@ -627,7 +630,23 @@ public final class WindowsAllocationHooksTest
                 throw new IOException("Wrong native creation birth");
             return member(receipt.childPid());
         }
-        @Override public boolean usesCygwinRuntime(String image) { return cygwinImages.contains(image); }
+        @Override public WindowsAllocationHooks.EntryPark park(WindowsAllocationHooks.Member member)
+        {
+            long pid = member.pid();
+            events.add("park:" + pid);
+            parkPolls.put(pid, 1);
+            return new WindowsAllocationHooks.EntryPark()
+            {
+                @Override public boolean arrived()
+                {
+                    if (!resumed.contains(pid) || parkPolls.merge(pid, -1, Integer::sum) >= 0) return false;
+                    events.add("arrived:" + pid);
+                    return true;
+                }
+                @Override public void release() { events.add("park-release:" + pid); }
+                @Override public void close() { events.add("park-close:" + pid); }
+            };
+        }
         @Override public long rootPid() { return 100; }
         @Override public WindowsAllocationHooks.Member member(long pid) throws IOException
         {
