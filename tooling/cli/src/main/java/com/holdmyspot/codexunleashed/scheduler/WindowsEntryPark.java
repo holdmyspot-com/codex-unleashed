@@ -44,6 +44,8 @@ final class WindowsEntryPark implements AutoCloseable
     private static final byte ARRIVED = 1;
     /** Flag value that lets the loop continue. */
     private static final byte RELEASED = 2;
+    /** The longest wait, in milliseconds, for an unreadable process to become signaled as exited. */
+    private static final int EXIT_SETTLE_MILLIS = 1000;
 
     /** Borrowed native bindings of the owning process controller. */
     private final WindowsProcess.Kernel kernel;
@@ -166,7 +168,7 @@ final class WindowsEntryPark implements AutoCloseable
         {
             if (read(kernel, handle, flag, 1)[0] != ARRIVED)
             {
-                if (exited())
+                if (exited(0))
                     return WindowsAllocationHooks.EntryPark.Arrival.EXITED;
                 return WindowsAllocationHooks.EntryPark.Arrival.WAITING;
             }
@@ -174,11 +176,12 @@ final class WindowsEntryPark implements AutoCloseable
         }
         catch (IOException failure)
         {
-            // An exited process's address space is gone, so reading or restoring it fails with ERROR_PARTIAL_COPY
+            // An exiting process's address space is gone, so reading or restoring it fails with ERROR_PARTIAL_COPY;
+            // the kernel frees it before the process object is signaled, so wait for that briefly
             boolean gone;
             try
             {
-                gone = exited();
+                gone = exited(EXIT_SETTLE_MILLIS);
             }
             catch (IOException wait)
             {
@@ -195,12 +198,13 @@ final class WindowsEntryPark implements AutoCloseable
 
     /**
      * Returns whether the process has exited.
+     * @param timeoutMillis the longest time to wait for the process to exit, in milliseconds
      * @return {@code true} if the process handle is signaled
      * @throws IOException if the wait fails
      */
-    private boolean exited() throws IOException
+    private boolean exited(int timeoutMillis) throws IOException
     {
-        int status = kernel.integer("WaitForSingleObject", handle, 0);
+        int status = kernel.integer("WaitForSingleObject", handle, timeoutMillis);
         // WAIT_OBJECT_0, WAIT_TIMEOUT
         if (status == 0)
             return true;

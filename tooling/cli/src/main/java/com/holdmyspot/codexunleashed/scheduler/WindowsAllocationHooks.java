@@ -328,8 +328,18 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
         {
             if (!resumeAttempts.add(event.pid())) throw new IOException("Held child continuation was already attempted: " + event.pid());
             manager.resume(event.pid());
+            boolean arrived;
+            try
+            {
+                arrived = awaitArrival(park, member);
+            }
+            catch (IOException failure)
+            {
+                throw new IOException("Held child " + event.pid() + " (" + event.path() + ", parent " + event.parentPid() +
+                    ") did not reach its entry point", failure);
+            }
             // A child that exits during loader initialization ran no program code, so it has nothing to hook
-            if (!awaitArrival(park, member))
+            if (!arrived)
                 return;
 
             observe(member);
