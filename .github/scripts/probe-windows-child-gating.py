@@ -9,11 +9,17 @@ runs the same command from a new empty directory outside any repository in three
 - `script`: as `gating`, and also loads an empty script into every image, as the scheduler loads its hooks.
 - `root`: Frida spawns the command and enables child gating in it alone; each gated child is resumed without being
   attached, so the Git for Windows shells it starts run uninstrumented.
+- `attach`: as `root`, but each gated child is attached (Frida's agent is injected) before it resumes, without enabling
+  child gating in it; the shells' own fork children start uninstrumented.
+
+On a hang, every attached process's threads are listed with symbolized backtraces, and the command's process tree is
+printed, before the tree is ended.
 
 Each mode prints one JSON line per event and exits 1 when the command does not exit within the bound.
 """
 import argparse
 import ctypes
+import threading
 import json
 import os
 import queue
@@ -71,10 +77,11 @@ def run_instrumented(command, directory, bound, mode):
     sessions = []
     scripts = []
 
-    def instrument(pid):
+    def instrument(pid, gate=True):
         session = device.attach(pid)
-        session.enable_child_gating()
-        sessions.append(session)
+        if gate:
+            session.enable_child_gating()
+        sessions.append((pid, session))
         if load_script:
             script = session.create_script("void 0;")
             script.load()
@@ -99,7 +106,7 @@ def run_instrumented(command, directory, bound, mode):
              path=child.path)
         try:
             if mode != "root":
-                instrument(child.pid)
+                instrument(child.pid, gate=mode != "attach")
             device.resume(child.pid)
             emit("child_resumed", mode=mode, pid=child.pid)
         except frida.ProcessNotFoundError as error:
@@ -110,15 +117,79 @@ def run_instrumented(command, directory, bound, mode):
     while not children.empty():
         pending.append(children.get_nowait().pid)
     emit("hung_state", mode=mode, pending_children=pending)
+    emit_process_tree(root)
+    for pid, session in sessions:
+        emit_threads(pid, session)
     # A gated child that is left running keeps the job's output pipe open, so end the whole tree.
     for pid in [root] + pending:
         subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True)
     return False
 
 
+THREAD_DUMP = """
+const threads = [];
+for (const thread of Process.enumerateThreads()) {
+  let frames;
+  try {
+    frames = Thread.backtrace(thread.context, Backtracer.ACCURATE);
+    if (frames.length === 0) frames = Thread.backtrace(thread.context, Backtracer.FUZZY);
+    frames = frames.slice(0, 32).map(address => DebugSymbol.fromAddress(address).toString());
+  } catch (error) {
+    frames = ['backtrace failed: ' + error];
+  }
+  threads.push({ id: thread.id, state: thread.state, pc: DebugSymbol.fromAddress(thread.context.pc).toString(), frames });
+}
+send({ arch: Process.arch, modules: Process.enumerateModules().map(module => module.name), threads });
+"""
+
+
+def emit_threads(pid, session):
+    """Prints one hung process's threads; a wedged agent is reported instead of blocking the probe."""
+    result = queue.Queue()
+
+    def dump():
+        try:
+            script = session.create_script(THREAD_DUMP)
+            script.on("message", lambda message, data: result.put(message))
+            script.load()
+        except Exception as error:
+            result.put({"type": "error", "description": repr(error)})
+
+    worker = threading.Thread(target=dump, daemon=True)
+    worker.start()
+    try:
+        message = result.get(timeout=30)
+    except queue.Empty:
+        emit("threads_unavailable", pid=pid, reason="no thread dump within 30 seconds")
+        return
+    if message.get("type") == "send":
+        emit("threads", pid=pid, **message["payload"])
+    else:
+        emit("threads_unavailable", pid=pid, reason=message.get("description"), stack=message.get("stack"))
+
+
+def emit_process_tree(root):
+    """Prints the live descendants of the hung command with their images and command lines."""
+    listing = subprocess.run(["powershell", "-NoProfile", "-Command",
+                              "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,"
+                              "ExecutablePath,CommandLine | ConvertTo-Json -Compress"],
+                             capture_output=True, text=True, timeout=60)
+    processes = json.loads(listing.stdout)
+    children = {}
+    for process in processes:
+        children.setdefault(process["ParentProcessId"], []).append(process)
+    pending = [root]
+    tree = [process for process in processes if process["ProcessId"] == root]
+    while pending:
+        for process in children.get(pending.pop(), []):
+            tree.append(process)
+            pending.append(process["ProcessId"])
+    emit("process_tree", root=root, processes=tree)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--mode", choices=("off", "gating", "script", "root"), required=True)
+    parser.add_argument("--mode", choices=("off", "gating", "script", "root", "attach"), required=True)
     parser.add_argument("--bound", type=float, default=120.0, help="Seconds the command may run before it counts as hung")
     arguments = parser.parse_args()
 

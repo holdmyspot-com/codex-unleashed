@@ -38,7 +38,7 @@ jobs:
     needs: select
     name: Child gating - ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
@@ -87,8 +87,8 @@ jobs:
         run: |
           set -euo pipefail
           result=0
-          for mode in off root gating; do
-            python .github/scripts/probe-windows-child-gating.py --mode "$mode" --bound 120 2>&1 | tee -a "$CHILD_GATING/child-gating.log" || result=1
+          for mode in off root attach gating; do
+            python .github/scripts/probe-windows-child-gating.py --mode "$mode" --bound 60 2>&1 | tee -a "$CHILD_GATING/child-gating.log" || result=1
           done
           exit "$result"
 
