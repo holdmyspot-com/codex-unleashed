@@ -5,11 +5,13 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -29,12 +31,21 @@ import tools.jackson.databind.JsonNode;
  * kernel's coarse timestamp clock, so a write just after hashing cannot keep the recorded change time. A restored or
  * copied file gets a new inode and change time, so its first checkpoint hashes it again.
  * <p>
+ * Restoring a cache rebuilds the index from the archived entry list of each part, which records every file's digest:
+ * a restored file whose size and modification time match its archived entry is recorded under its new identity with
+ * the archived digest, so the first checkpoint after a restore hashes only what the build changed since.
+ * <p>
  * File systems without POSIX change times, such as Windows, keep no index and hash every file.
  */
 final class CargoOutputDigests
 {
 	/** Target-relative index file, excluded from every collected group. */
 	static final String INDEX = ".codex-cache-digests.json";
+	/**
+	 * Target-relative directory that holds each archived part's entry list while it is packed or restored; it is never
+	 * collected and is removed once the transfer ends.
+	 */
+	static final String PART_ENTRIES = ".codex-cache-part-entries";
 	/** Current index format. */
 	private static final int FORMAT_VERSION = 1;
 	/** Minimum age, in nanoseconds, of a recorded change time relative to its hashing before the digest is trusted. */
@@ -163,6 +174,87 @@ final class CargoOutputDigests
 		{
 			Files.deleteIfExists(pending);
 		}
+	}
+
+	/**
+	 * Indexes the regular files that a restore just extracted, using the entry list archived with each part, then
+	 * removes the entry lists. Entries that the earlier index already trusted are kept for files the restore did not
+	 * replace. Call this only after every part is extracted and before anything else writes the output directory, so
+	 * this checkpoint's hashing time follows every extracted change.
+	 *
+	 * @param scope      borrowed JSON and timestamp services
+	 * @param target     output directory holding the extracted parts
+	 * @param signatures each restored part's signature, the digest of its exact entry list, by saving step
+	 * @throws IOException if an entry list matches its signature but is malformed, or the index cannot be written
+	 */
+	void restore(ToolingScope scope, Path target, Map<String, String> signatures) throws IOException
+	{
+		Path lists = target.resolve(PART_ENTRIES);
+		try
+		{
+			if (!indexed) return;
+			for (var prior : recorded.entrySet())
+				if (prior.getValue().changedNanos().compareTo(recordedAt.subtract(SETTLED_NANOS)) < 0)
+					observed.put(prior.getKey(), prior.getValue());
+			for (var part : signatures.entrySet())
+			{
+				Path list = lists.resolve(part.getKey() + ".json");
+				if (!Files.isRegularFile(list, LinkOption.NOFOLLOW_LINKS)) continue;
+				// The signature covers the whole list, so it is verified and then parsed in one piece.
+				byte[] bytes = Files.readAllBytes(list);
+				if (!HexFormat.of().formatHex(CargoCacheKeys.digest().digest(bytes)).equals(part.getValue())) continue;
+				JsonNode entries = scope.getJsonMapper().readTree(bytes);
+				if (!entries.isArray()) throw new IOException("Invalid archived entry list: " + part.getKey());
+				for (JsonNode entry : entries)
+					adopt(scope, target, entry);
+			}
+			write(scope);
+		}
+		finally
+		{
+			if (Files.isDirectory(lists, LinkOption.NOFOLLOW_LINKS))
+				try (var paths = Files.walk(lists))
+				{
+					for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
+						Files.delete(path);
+				}
+		}
+	}
+
+	/**
+	 * Records one archived entry's digest when it describes a regular file that the restore extracted unchanged.
+	 *
+	 * @param scope  borrowed timestamp services
+	 * @param target output directory
+	 * @param entry  archived {@code [path, mode, modified_nanos, size, content]} entry
+	 * @throws IOException if the entry is malformed or the extracted file's attributes cannot be read
+	 */
+	private void adopt(ToolingScope scope, Path target, JsonNode entry) throws IOException
+	{
+		if (!entry.isArray() || entry.size() != 5 || !entry.get(0).isString() || !entry.get(1).isIntegralNumber() ||
+			!entry.get(2).isIntegralNumber() || !entry.get(3).isIntegralNumber() || !entry.get(4).isString())
+			throw new IOException("Invalid archived entry: " + entry);
+		String relative = entry.get(0).asString();
+		boolean regular = (entry.get(1).asInt() & 0170000) == 0100000;
+		String digest = entry.get(4).asString();
+		Path path = target.resolve(relative).normalize();
+		if (!regular || !digest.matches("[0-9a-f]{64}") || !path.startsWith(target) || path.equals(target)) return;
+		BasicFileAttributes attributes;
+		try
+		{
+			attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+		}
+		catch (NoSuchFileException absent)
+		{
+			return;
+		}
+		BigInteger modified = SourceInputTimes.nanos(SourceInputTimes.lastModified(scope, path, LinkOption.NOFOLLOW_LINKS));
+		if (!attributes.isRegularFile() || attributes.size() != entry.get(3).longValue() ||
+			!modified.equals(entry.get(2).bigIntegerValue()))
+			return;
+		FileTime changed = (FileTime) Files.getAttribute(path, "unix:ctime", LinkOption.NOFOLLOW_LINKS);
+		observed.put(relative, new Entry(String.valueOf(attributes.fileKey()), attributes.size(), modified,
+			SourceInputTimes.nanos(changed.toInstant()), digest));
 	}
 
 	/**

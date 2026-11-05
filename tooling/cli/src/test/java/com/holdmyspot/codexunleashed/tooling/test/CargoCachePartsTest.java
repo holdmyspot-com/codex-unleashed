@@ -63,6 +63,41 @@ public final class CargoCachePartsTest
     }
 
     /**
+     * Restoring a cache indexes each restored file under its new identity with its archived digest, so the next
+     * checkpoint need not hash it again, and leaves no archived entry list behind.
+     * @throws IOException if fixture filesystem operations fail
+     * @throws SkipException if the file system has no POSIX change times
+     */
+    @Test public void restoreIndexesRestoredFilesWithArchivedDigests() throws IOException
+    {
+        if (!FileSystems.getDefault().supportedFileAttributeViews().contains("unix"))
+            throw new SkipException("Indexed digests require POSIX change times");
+        try (Fixture f = new Fixture())
+        {
+            Files.createDirectories(f.target.resolve("release/deps"));
+            Path library = f.target.resolve("release/deps/library"); Files.writeString(library, "compiled");
+            requireThat(f.run("push", "repo:verified", "repo:previous", "codex"), "push").isEqualTo(0);
+            try (var paths = Files.walk(f.target))
+            {
+                for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
+                    if (!path.equals(f.target)) Files.delete(path);
+            }
+            requireThat(f.run("pull", "repo:verified", "repo:verified", "bootstrap"), "pull").isEqualTo(0);
+            var index = f.scope.getJsonMapper().readTree(Files.readString(f.target.resolve(CargoCacheParts.DIGESTS)));
+            requireThat(index.path("files").path("release/deps/library").path("digest").asString(), "archivedDigest")
+                .isEqualTo(digest(library));
+            try (var children = Files.list(f.target))
+            {
+                requireThat(children.map(path -> path.getFileName().toString()).toList(), "noEntryListsRetained")
+                    .doesNotContain(CargoCacheParts.PART_ENTRIES);
+            }
+            forge(f, true);
+            Map<String, List<List<Object>>> collected = CargoCacheParts.collect(f.scope, f.target, "codex");
+            requireThat(content(collected, "release/deps/library"), "restoredIdentityAccepted").isEqualTo(FORGED);
+        }
+    }
+
+    /**
      * Rejects a digest index outside the recorded format without publishing a manifest.
      * @throws IOException if independent fixture allocation or writes fail
      * @throws SkipException if the file system has no POSIX change times

@@ -39,6 +39,8 @@ public final class CargoCacheParts
     public static final String OWNERS = ".codex-cache-groups.json";
     /** Target-relative index of earlier checkpoints' file digests, which is never collected. */
     public static final String DIGESTS = CargoOutputDigests.INDEX;
+    /** Target-relative directory of archived part entry lists, which is never collected. */
+    public static final String PART_ENTRIES = CargoOutputDigests.PART_ENTRIES;
     /** Ownership map field. */
     private static final String PATHS = "target_relative_owners";
     /** Layer annotation identifying the saving step. */
@@ -207,11 +209,12 @@ public final class CargoCacheParts
         }
         CargoOutputDigests digests = new CargoOutputDigests(scope, target);
         Path index = target.resolve(DIGESTS);
+        Path lists = target.resolve(PART_ENTRIES);
         List<Path> traversal = new ArrayList<>(); walk(target, traversal);
         List<Callable<Observation>> observations = new ArrayList<>(traversal.size());
         for (Path path : traversal)
         {
-            if (path.equals(ownership) || path.equals(index)) continue;
+            if (path.equals(ownership) || path.equals(index) || path.startsWith(lists)) continue;
             observations.add(() ->
             {
                 BasicFileAttributes status = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
@@ -346,16 +349,22 @@ public final class CargoCacheParts
                     reusable.put(layer.path("annotations").path(GROUP).asString() + ":" + layer.path("annotations").path(INPUTS).asString(), layer);
         }
         Map<String, List<List<Object>>> groups = collect(scope, target, step);
+        Path lists = target.resolve(PART_ENTRIES);
         List<Callable<Uploaded>> tasks = new ArrayList<>();
         for (var group : groups.entrySet()) tasks.add(() ->
         {
-            String signature = HexFormat.of().formatHex(CargoCacheKeys.digest().digest(json(scope, group.getValue(), false, false).getBytes(StandardCharsets.UTF_8)));
+            byte[] entries = json(scope, group.getValue(), false, false).getBytes(StandardCharsets.UTF_8);
+            String signature = HexFormat.of().formatHex(CargoCacheKeys.digest().digest(entries));
             JsonNode retained = reusable.get(group.getKey() + ":" + signature);
             if (retained != null) return new Uploaded(retained, 0);
             try (OwnedDirectory scratch = new OwnedDirectory(temporary, "cargo-part-"))
             {
+                // Archive the part's entry list, digests included, so a restore can index the files without hashing.
+                String list = PART_ENTRIES + "/" + group.getKey() + ".json";
+                Files.write(target.resolve(list), entries);
                 Path paths = scratch.path.resolve("paths"); StringBuilder names = new StringBuilder();
                 for (List<Object> entry : group.getValue()) names.append(entry.getFirst()).append('\0');
+                names.append(list).append('\0');
                 Files.writeString(paths, names, StandardCharsets.UTF_8);
                 Path archive = scratch.path.resolve("part.tar.zst");
                 checked(List.of(tar, "--format=pax", "--zstd", "--no-recursion", "--null", "-T", paths.toString(), "-cf", "-"),
@@ -366,7 +375,19 @@ public final class CargoCacheParts
                 return new Uploaded(layer, layer.path("size").longValue());
             }
         });
-        List<Uploaded> uploaded = completeAll(tasks, 5, "cache upload");
+        List<Uploaded> uploaded;
+        Files.createDirectories(lists);
+        try
+        {
+            uploaded = completeAll(tasks, 5, "cache upload");
+        }
+        finally
+        {
+            try (var paths = Files.walk(lists))
+            {
+                for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
+            }
+        }
         try (OwnedDirectory scratch = new OwnedDirectory(temporary, "cargo-manifest-"))
         {
             Path config = scratch.path.resolve("config.json"); Files.writeString(config, "{}");
@@ -431,8 +452,11 @@ public final class CargoCacheParts
         if (manifest == null) return 3;
         if (!Set.of(ARTIFACT, "application/vnd.codex-unleashed.cargo-target.v1").contains(manifest.content.path("artifactType").asString())) return 4;
         Files.createDirectories(target);
+        Map<String, String> signatures = new HashMap<>();
         for (JsonNode layer : manifest.content.path("layers"))
         {
+            String group = layer.path("annotations").path(GROUP).asString();
+            if (STEPS.contains(group)) signatures.put(group, layer.path("annotations").path(INPUTS).asString());
             try (OwnedDirectory scratch = new OwnedDirectory(temporary, "cargo-part-"))
             {
                 Path archive = scratch.path.resolve("part.tar.zst");
@@ -440,6 +464,7 @@ public final class CargoCacheParts
                 checked(List.of(tar, "--zstd", "-xf", "-"), target, environment, archive, null, err);
             }
         }
+        new CargoOutputDigests(scope, target).restore(scope, target, signatures);
         if (!Files.exists(target.resolve(OWNERS))) collect(scope, target, "bootstrap");
         out.println("cache_result=hit digest=" + manifest.digest + " cache_parts=" + manifest.content.path("layers").size());
         return 0;
