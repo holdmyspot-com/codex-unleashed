@@ -247,8 +247,8 @@ public final class WindowsCargoRegistration
                 MemorySegment array = values.reinterpret(Math.multiplyExact((long) length, ValueLayout.ADDRESS.byteSize()));
                 var result = new ArrayList<String>(length);
                 for (int index = 0; index < length; index++)
-                    result.add(array.getAtIndex(ValueLayout.ADDRESS, index).reinterpret(WindowsCargoTransport.MAX_FRAME_BYTES).
-                        getString(0, StandardCharsets.UTF_16LE));
+                    result.add(NativeStrings.utf16(array.getAtIndex(ValueLayout.ADDRESS, index),
+                        WindowsCargoTransport.MAX_FRAME_BYTES));
                 return List.copyOf(result);
             }
             finally

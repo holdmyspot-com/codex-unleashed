@@ -162,7 +162,7 @@ final class Libcgroup implements AutoCloseable {
         try {
             String text = null;
             if (status == 0 && !pointer.equals(MemorySegment.NULL))
-                text = pointer.reinterpret(Long.MAX_VALUE).getString(0);
+                text = NativeStrings.utf8(pointer, Long.MAX_VALUE);
             return new Value(status, text);
         } finally {
             call(free, pointer);

@@ -1360,7 +1360,7 @@ public final class FridaRuntime implements AutoCloseable
 	{
 		if (text.equals(MemorySegment.NULL))
 			return "";
-		return text.reinterpret(Long.MAX_VALUE).getString(0);
+		return NativeStrings.utf8(text, Long.MAX_VALUE);
 	}
 
 	/**
