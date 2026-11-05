@@ -397,14 +397,14 @@ public final class WindowsAllocationHooksTest
     }
 
     /**
-     * A held 32-bit child resumes without an observer or allocation hook, because both support only 64-bit layouts.
+     * A held 32-bit child, such as protoc-bin-vendored's Windows protoc, gets its observer and allocation hook before
+     * it resumes.
      * @throws Exception if coordinator setup or cleanup fails
      */
     @Test
-    public void child32BitResumesUninstrumented() throws Exception
+    public void child32BitIsInstrumentedBeforeResume() throws Exception
     {
         Backend backend = new Backend();
-        backend.images32Bit.add("C:\\registry\\protoc-bin-vendored-win32\\bin\\protoc.exe");
         WindowsAllocationHooks hooks = new WindowsAllocationHooks(backend, () -> {});
         try
         {
@@ -413,7 +413,8 @@ public final class WindowsAllocationHooksTest
             backend.children.add(new FridaRuntime.Child(200, 100, 2, "C:\\registry\\protoc-bin-vendored-win32\\bin\\protoc.exe"));
             hooks.pump(true);
             requireThat(backend.resumed, "resumedChild").isEqualTo(List.of(200L));
-            requireThat(backend.events, "events").doesNotContain("observer-start:200").doesNotContain("hook:2:200");
+            requireThat(backend.events.indexOf("observer-ready:200") < backend.events.indexOf("hook:2:200"), "observerBeforeHook").isTrue();
+            requireThat(backend.events.indexOf("hook:2:200") < backend.events.indexOf("resume:200"), "hookBeforeResume").isTrue();
         }
         finally { hooks.close(() -> true); }
     }
@@ -582,8 +583,6 @@ public final class WindowsAllocationHooksTest
         long closeFailure = -1;
         /** Image paths modeled as loading a Cygwin-family runtime. */
         final List<String> cygwinImages = new ArrayList<>();
-        /** Image paths modeled as 32-bit executables. */
-        final List<String> images32Bit = new ArrayList<>();
         /** Number of root continuation requests. */
         int releases;
         /** Peer callback invoked while a modeled permission acknowledgement is pending. */
@@ -629,7 +628,6 @@ public final class WindowsAllocationHooksTest
             return member(receipt.childPid());
         }
         @Override public boolean usesCygwinRuntime(String image) { return cygwinImages.contains(image); }
-        @Override public boolean is32Bit(String image) { return images32Bit.contains(image); }
         @Override public long rootPid() { return 100; }
         @Override public WindowsAllocationHooks.Member member(long pid) throws IOException
         {

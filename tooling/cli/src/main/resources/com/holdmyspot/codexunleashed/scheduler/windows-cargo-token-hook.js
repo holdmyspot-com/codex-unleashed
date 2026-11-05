@@ -10,8 +10,10 @@
 
 /** Kernel32 exports forward to the implementation selected by the installed Windows runtime. */
 const windowsTokenKernel = Process.getModuleByName('kernel32.dll');
+/** Windows APIs use stdcall in 32-bit images, which Frida's default ABI does not select there. */
+const windowsTokenAbi = Process.arch === 'ia32' ? 'stdcall' : 'default';
 /** Native API options release the JS lock while the genuine kernel call executes. */
-const windowsTokenOptions = {scheduling: 'cooperative', traps: 'none'};
+const windowsTokenOptions = {abi: windowsTokenAbi, scheduling: 'cooperative', traps: 'none'};
 /** The invocation pool is opened only for identity comparison, not local count changes. */
 const windowsTokenOpen = new SystemFunction(windowsTokenKernel.getExportByName('OpenSemaphoreW'), 'pointer',
     ['uint', 'int', 'pointer'], windowsTokenOptions);
@@ -199,7 +201,7 @@ windowsTokenCallbacks.push(new NativeCallback(function waitSingle(handle, timeou
         windowsTokenZeroWaitGrants.set(thread, windowsTokenGrants[windowsTokenGrants.length - 1]);
     this.lastError = savedError;
     return result;
-}, 'uint', ['pointer', 'uint']));
+}, 'uint', ['pointer', 'uint'], windowsTokenAbi));
 Interceptor.replace(windowsTokenWaitAddress, windowsTokenCallbacks[0]);
 
 windowsTokenCallbacks.push(new NativeCallback(function waitMultiple(count, handles, all, timeout) {
@@ -224,7 +226,7 @@ windowsTokenCallbacks.push(new NativeCallback(function waitMultiple(count, handl
     const result = windowsTokenAcquire(timeout, handles.readPointer());
     this.lastError = savedError;
     return result;
-}, 'uint', ['uint', 'pointer', 'int', 'uint']));
+}, 'uint', ['uint', 'pointer', 'int', 'uint'], windowsTokenAbi));
 Interceptor.replace(windowsTokenMultipleAddress, windowsTokenCallbacks[1]);
 
 windowsTokenCallbacks.push(new NativeCallback(function releaseSemaphore(handle, count, previous) {
@@ -260,7 +262,7 @@ windowsTokenCallbacks.push(new NativeCallback(function releaseSemaphore(handle, 
             windowsTokenZeroWaitGrants.delete(owner);
     this.lastError = savedError;
     return 1;
-}, 'int', ['pointer', 'int', 'pointer']));
+}, 'int', ['pointer', 'int', 'pointer'], windowsTokenAbi));
 Interceptor.replace(windowsTokenReleaseAddress, windowsTokenCallbacks[2]);
 
 // Extended waits are outside the pinned initial contract: stop selected-pool forms before any native decrement.

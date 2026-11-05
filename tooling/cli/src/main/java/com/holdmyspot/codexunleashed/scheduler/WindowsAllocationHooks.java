@@ -310,8 +310,8 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
 
     /**
      * Installs a child's observer and allocation hook before its single authorized resume.
-     * A child whose image loads a Cygwin-family runtime, or is a 32-bit executable, resumes without either, so its
-     * own descendants run uninstrumented.
+     * A child whose image loads a Cygwin-family runtime resumes without either, so its own descendants run
+     * uninstrumented.
      * @param event copied held SPAWN notification
      * @param created validated transferred creation authority
      * @throws IOException if identity, readiness or resume cannot be established
@@ -325,8 +325,7 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
         // WORKAROUND: https://github.com/git-for-windows/git/issues/5833
         // The MSYS2 and Cygwin fork copies the parent's heap while other threads may allocate in it. Frida's agent
         // threads do, and the forked shell hangs; skip instrumentation until the runtime's fork stops racing.
-        // The observer and hooks support only 64-bit layouts; protoc-bin-vendored ships only a 32-bit Windows protoc.
-        if (!backend.usesCygwinRuntime(event.path()) && !backend.is32Bit(event.path()))
+        if (!backend.usesCygwinRuntime(event.path()))
         {
             observe(member);
             Hook hook = install(member);
@@ -595,14 +594,6 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
          * @return {@code true} if the image's directory holds {@code msys-2.0.dll} or {@code cygwin1.dll}
          */
         boolean usesCygwinRuntime(String image);
-        /**
-         * Returns whether an image is a 32-bit executable, whose layout the 64-bit creation observer and allocation
-         * hooks do not support.
-         * @param image held child's executable path
-         * @return {@code true} if the image is a 32-bit (PE32) executable
-         * @throws IOException if the image cannot be read as a PE executable
-         */
-        boolean is32Bit(String image) throws IOException;
         /** Releases the prepared primary thread once.
          * @throws IOException if release has an uncertain result
          */
@@ -1264,7 +1255,6 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
             Path executable = Path.of(image);
             return CYGWIN_RUNTIMES.stream().anyMatch(runtime -> Files.isRegularFile(executable.resolveSibling(runtime)));
         }
-        @Override public boolean is32Bit(String image) throws IOException { return WindowsExecutables.is32Bit(Path.of(image)); }
         @Override public Member member(long pid) throws IOException
         {
             NativeMember bridge = new NativeMember();

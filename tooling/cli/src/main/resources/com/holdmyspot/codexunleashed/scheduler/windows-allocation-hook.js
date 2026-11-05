@@ -1,14 +1,14 @@
 'use strict';
 
 /*
- * One 64-bit Windows process-image installation, initialized by AllocationHook's allocationIdentity.
+ * One Windows process-image installation (x86, x64 or ARM64), initialized by AllocationHook's allocationIdentity.
  * Positive-size RtlAllocateHeap/RtlReAllocateHeap NULL returns with exact flags 0 or 3 may wait. Exceptions,
  * zero-size requests, in-place-only and other flags pass through. This is not coverage of every Windows allocator.
  * Native callbacks use Gum's listener guard; JS control calls use traps:none. No thread-ID snapshot is excluded.
  * Retain listeners, CModule and backing until the owner proves whole-workload execution is impossible.
  */
-if (Process.platform !== 'windows' || Process.pointerSize !== 8)
-  throw new Error('Allocation hook requires 64-bit Windows');
+if (Process.platform !== 'windows')
+  throw new Error('Allocation hook requires Windows');
 
 const maximumWait = uint64('9223372036854775807');
 const zero = uint64('0');
@@ -71,13 +71,16 @@ typedef struct {
   gint fault;
   Slot slots[SLOT_COUNT];
 } Registry;
-typedef struct { guint64 id, thread, bytes; guint32 error; } Publication;
+/* The explicit padding gives the same 32-byte layout whether the compiler aligns 64-bit fields to 4 or 8 bytes. */
+typedef struct { guint64 id, thread, bytes; guint32 error, padding; } Publication;
+/* Windows APIs use stdcall in 32-bit images; other architectures have one calling convention, which ignores it. */
+#define WINAPI __attribute__((stdcall))
 extern Registry registry;
-extern gpointer original_allocate(gpointer heap, guint32 flags, gsize bytes);
-extern gpointer original_reallocate(gpointer heap, guint32 flags, gpointer original, gsize bytes);
-extern guint32 native_last_error(void);
-extern void native_set_last_error(guint32 error);
-extern guint32 native_thread_id(void);
+extern gpointer WINAPI original_allocate(gpointer heap, guint32 flags, gsize bytes);
+extern gpointer WINAPI original_reallocate(gpointer heap, guint32 flags, gpointer original, gsize bytes);
+extern guint32 WINAPI native_last_error(void);
+extern void WINAPI native_set_last_error(guint32 error);
+extern guint32 WINAPI native_thread_id(void);
 
 /* Size checks run before initialize touches the supplied external backing. */
 guint registry_size(void) { return sizeof(Registry); }
@@ -256,7 +259,7 @@ if (nativeSize > registryBytes)
   throw new Error('Native allocation registry exceeds preallocated backing');
 const publicationSize = control('publication_size', 'uint', [])();
 if (publicationSize !== 32)
-  throw new Error('Native allocation publication layout differs from 64-bit Windows contract');
+  throw new Error('Native allocation publication layout differs from the Windows contract');
 const publication = Memory.alloc(publicationSize);
 control('initialize', 'void', [])();
 const faultCode = control('fault_code', 'int', []);

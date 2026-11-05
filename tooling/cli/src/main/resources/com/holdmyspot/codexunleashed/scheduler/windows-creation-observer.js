@@ -4,11 +4,19 @@
  * The controller substitutes one unpredictable observer generation before loading this exact frozen source.
  */
 const generation = '__OBSERVER_GENERATION__';
-if (Process.platform !== 'windows' || Process.pointerSize !== 8 ||
-    !['x64', 'arm64'].includes(Process.arch))
-  throw new Error('Creation observer supports only pinned native Windows x64 and ARM64 layouts');
+if (Process.platform !== 'windows' || !['ia32', 'x64', 'arm64'].includes(Process.arch))
+  throw new Error('Creation observer supports only pinned Windows x86, x64 and ARM64 layouts');
 const kernel = Process.getModuleByName('kernel32.dll');
-const options = { scheduling: 'cooperative', traps: 'none' };
+/** Windows APIs use stdcall in 32-bit images, which Frida's default ABI does not select there. */
+const options = { abi: Process.arch === 'ia32' ? 'stdcall' : 'default', scheduling: 'cooperative', traps: 'none' };
+/*
+ * STARTUPINFOW offsets for this image's pointer size: cb, three pointers, seven DWORDs, dwFlags, two WORDs,
+ * lpReserved2, then the three standard handles (104 bytes in 64-bit images, 68 in 32-bit ones).
+ */
+const pointer = Process.pointerSize;
+const startupFlags = 4 * pointer + 28;
+const startupInput = (pointer === 8 ? 72 : 52) + pointer;
+const startupSize = startupInput + 3 * pointer;
 /** Resolves a public helper without allowing its calls to reenter interceptors. */
 function native(name, result, args) {
   return new NativeFunction(kernel.getExportByName(name), result, args, options);
@@ -91,21 +99,21 @@ const listener = Interceptor.attach(target, {
       this.information = args[10];
       this.originalFlags = args[6].toUInt32();
       const startup = args[9];
-      if (startup.isNull() || startup.readU32() < 104)
-        throw new Error('Pinned 64-bit STARTUPINFO layout is absent');
+      if (startup.isNull() || startup.readU32() < startupSize)
+        throw new Error('Pinned STARTUPINFO layout is absent');
       const inheritsEnvironment = args[7].isNull();
       if (!inheritsEnvironment && (this.originalFlags & 0x400) === 0)
         throw new Error('Explicit non-Unicode environment is outside the pinned Cargo boundary');
-      const standardHandles = (startup.add(60).readU32() & 0x100) !== 0;
+      const standardHandles = (startup.add(startupFlags).readU32() & 0x100) !== 0;
       this.launch = {
         application: nullableText(args[1]), commandLine: nullableText(args[2]),
         inheritedEnvironment: inheritsEnvironment, inheritedDirectory: args[8].isNull(),
         directory: args[8].isNull() ? inheritedDirectory() : args[8].readUtf16String(),
         environment: inheritsEnvironment ? inheritedEnvironment() : environmentEntries(args[7]),
         standardHandles,
-        input: standardHandles ? startup.add(80).readPointer().toString() : '0x0',
-        output: standardHandles ? startup.add(88).readPointer().toString() : '0x0',
-        error: standardHandles ? startup.add(96).readPointer().toString() : '0x0'
+        input: standardHandles ? startup.add(startupInput).readPointer().toString() : '0x0',
+        output: standardHandles ? startup.add(startupInput + pointer).readPointer().toString() : '0x0',
+        error: standardHandles ? startup.add(startupInput + 2 * pointer).readPointer().toString() : '0x0'
       };
     } catch (error) {
       fail(String(error));
