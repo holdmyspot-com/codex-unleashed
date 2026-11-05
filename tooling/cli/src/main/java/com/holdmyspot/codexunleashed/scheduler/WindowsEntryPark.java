@@ -21,8 +21,11 @@ import java.util.Objects;
  */
 final class WindowsEntryPark implements AutoCloseable
 {
-    /** Process access rights the park needs: query information, virtual memory operation, read and write. */
-    static final int ACCESS = 0x0400 | 0x0008 | 0x0010 | 0x0020;
+    /**
+     * Process access rights the park needs: query information, virtual memory operation, read, write and
+     * synchronize.
+     */
+    static final int ACCESS = 0x0400 | 0x0008 | 0x0010 | 0x0020 | 0x0010_0000;
     /** {@code IMAGE_FILE_MACHINE_I386}. */
     private static final int MACHINE_X86 = 0x014C;
     /** {@code IMAGE_FILE_MACHINE_AMD64}. */
@@ -148,22 +151,62 @@ final class WindowsEntryPark implements AutoCloseable
     }
 
     /**
-     * Returns whether the primary thread waits at the entry point, restoring its original code on the first such
-     * observation.
-     * @return {@code true} once the primary thread has arrived
+     * Returns how far the primary thread has progressed, restoring the entry point's original code on the first
+     * observation of its arrival.
+     * @return {@link WindowsAllocationHooks.EntryPark.Arrival#ARRIVED} once the primary thread has arrived
      * @throws IllegalStateException if closed
      * @throws IOException if the flag cannot be read or the entry point cannot be restored
      */
-    boolean arrived() throws IOException
+    WindowsAllocationHooks.EntryPark.Arrival arrival() throws IOException
     {
         requireOpen();
         if (restored)
-            return true;
-        if (read(kernel, handle, flag, 1)[0] != ARRIVED)
-            return false;
-        replaceCode(kernel, handle, entry, original);
+            return WindowsAllocationHooks.EntryPark.Arrival.ARRIVED;
+        try
+        {
+            if (read(kernel, handle, flag, 1)[0] != ARRIVED)
+            {
+                if (exited())
+                    return WindowsAllocationHooks.EntryPark.Arrival.EXITED;
+                return WindowsAllocationHooks.EntryPark.Arrival.WAITING;
+            }
+            replaceCode(kernel, handle, entry, original);
+        }
+        catch (IOException failure)
+        {
+            // An exited process's address space is gone, so reading or restoring it fails with ERROR_PARTIAL_COPY
+            boolean gone;
+            try
+            {
+                gone = exited();
+            }
+            catch (IOException wait)
+            {
+                failure.addSuppressed(wait);
+                throw failure;
+            }
+            if (gone)
+                return WindowsAllocationHooks.EntryPark.Arrival.EXITED;
+            throw failure;
+        }
         restored = true;
-        return true;
+        return WindowsAllocationHooks.EntryPark.Arrival.ARRIVED;
+    }
+
+    /**
+     * Returns whether the process has exited.
+     * @return {@code true} if the process handle is signaled
+     * @throws IOException if the wait fails
+     */
+    private boolean exited() throws IOException
+    {
+        int status = kernel.integer("WaitForSingleObject", handle, 0);
+        // WAIT_OBJECT_0, WAIT_TIMEOUT
+        if (status == 0)
+            return true;
+        if (status == 258)
+            return false;
+        throw new IOException("WaitForSingleObject on the parked process returned " + Integer.toUnsignedLong(status));
     }
 
     /**

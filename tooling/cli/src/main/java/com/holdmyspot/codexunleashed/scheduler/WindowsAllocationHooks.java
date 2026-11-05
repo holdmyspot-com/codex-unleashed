@@ -328,7 +328,9 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
         {
             if (!resumeAttempts.add(event.pid())) throw new IOException("Held child continuation was already attempted: " + event.pid());
             manager.resume(event.pid());
-            awaitArrival(park, member);
+            // A child that exits during loader initialization ran no program code, so it has nothing to hook
+            if (!awaitArrival(park, member))
+                return;
 
             observe(member);
             Hook hook = install(member);
@@ -339,17 +341,23 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
     }
 
     /**
-     * Services this attempt's hooks and its peers until a resumed child waits at its parked entry point.
+     * Services this attempt's hooks and its peers until a resumed child waits at its parked entry point or exits.
      * @param park the child's diverted entry point
      * @param member exact retained resumed child
-     * @throws IOException if the child exits, the join interval elapses or service fails
+     * @return {@code true} if the child waits at its entry point, {@code false} if it exited before reaching it
+     * @throws IOException if the join interval elapses or service fails
      */
-    private void awaitArrival(EntryPark park, Member member) throws IOException
+    private boolean awaitArrival(EntryPark park, Member member) throws IOException
     {
         long began = ticker.getAsLong();
-        while (!park.arrived())
+        while (true)
         {
-            member.requireLive();
+            switch (park.arrival())
+            {
+                case ARRIVED -> { return true; }
+                case EXITED -> { return false; }
+                case WAITING -> {}
+            }
             for (Hook hook : List.copyOf(installations.values())) hook.pump();
             peers.pump();
             if (Thread.currentThread().isInterrupted())
@@ -757,13 +765,24 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
     /** A held child's diverted image entry point, where its primary thread waits after loader initialization. */
     public interface EntryPark extends AutoCloseable
     {
+        /** How far a resumed child has progressed toward its diverted entry point. */
+        enum Arrival
+        {
+            /** The primary thread has not reached the entry point yet. */
+            WAITING,
+            /** The primary thread waits at the entry point. */
+            ARRIVED,
+            /** The child exited before its primary thread reached the entry point, so it ran no program code. */
+            EXITED
+        }
+
         /**
-         * Returns whether the primary thread has reached the entry point, restoring the entry point's original code
-         * on the first such observation.
-         * @return {@code true} once the primary thread waits at the entry point
+         * Returns how far the primary thread has progressed, restoring the entry point's original code on the first
+         * observation of its arrival.
+         * @return {@link Arrival#ARRIVED} once the primary thread waits at the entry point
          * @throws IOException if the child's memory cannot be read or restored
          */
-        boolean arrived() throws IOException;
+        Arrival arrival() throws IOException;
         /**
          * Lets the waiting primary thread continue into the restored entry point.
          * @throws IOException if the release cannot be written
@@ -1376,7 +1395,7 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
             WindowsEntryPark park = child.member.parkAtEntry();
             return new EntryPark()
             {
-                @Override public boolean arrived() throws IOException { return park.arrived(); }
+                @Override public Arrival arrival() throws IOException { return park.arrival(); }
                 @Override public void release() throws IOException { park.release(); }
                 @Override public void close() throws IOException { park.close(); }
             };

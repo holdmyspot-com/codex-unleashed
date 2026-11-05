@@ -13,10 +13,12 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.time.Duration;
 import org.testng.annotations.DataProvider;
@@ -400,6 +402,34 @@ public final class WindowsAllocationHooksTest
     }
 
     /**
+     * A held child that exits during loader initialization, such as one whose imported DLL is missing, ran no
+     * program code, so it needs no instrumentation and later children are still instrumented.
+     * @throws IOException if coordinator setup or cleanup fails
+     */
+    @Test
+    public void childExitingBeforeItsEntryPointNeedsNoInstrumentation() throws IOException
+    {
+        Backend backend = new Backend();
+        WindowsAllocationHooks hooks = new WindowsAllocationHooks(backend, () -> {});
+        try
+        {
+            hooks.start();
+            backend.exitBeforeEntry.add(200L);
+            backend.receipt(100, 200);
+            backend.children.add(new FridaRuntime.Child(200, 100, 2, "C:\\tools\\missing-dll.exe"));
+            hooks.pump(true);
+            requireThat(backend.events, "exitedChildEvents").contains("exited:200").contains("park-close:200").
+                doesNotContain("observer-start:200").doesNotContain("park-release:200");
+
+            backend.receipt(100, 201);
+            backend.children.add(new FridaRuntime.Child(201, 100, 2, "C:\\tools\\next.exe"));
+            hooks.pump(true);
+            requireThat(backend.events, "nextChildEvents").contains("observer-ready:201").contains("park-release:201");
+        }
+        finally { hooks.close(() -> true); }
+    }
+
+    /**
      * A held 32-bit child, such as protoc-bin-vendored's Windows protoc, gets its observer and allocation hook before
      * its entry point runs.
      * @throws Exception if coordinator setup or cleanup fails
@@ -586,6 +616,8 @@ public final class WindowsAllocationHooksTest
         long closeFailure = -1;
         /** Remaining unsuccessful arrival observations for each parked child. */
         final Map<Long, Integer> parkPolls = new LinkedHashMap<>();
+        /** Parked children that exit before their primary thread reaches the entry point. */
+        final Set<Long> exitBeforeEntry = new HashSet<>();
         /** Number of root continuation requests. */
         int releases;
         /** Peer callback invoked while a modeled permission acknowledgement is pending. */
@@ -637,11 +669,18 @@ public final class WindowsAllocationHooksTest
             parkPolls.put(pid, 1);
             return new WindowsAllocationHooks.EntryPark()
             {
-                @Override public boolean arrived()
+                @Override public WindowsAllocationHooks.EntryPark.Arrival arrival()
                 {
-                    if (!resumed.contains(pid) || parkPolls.merge(pid, -1, Integer::sum) >= 0) return false;
+                    if (!resumed.contains(pid) || parkPolls.merge(pid, -1, Integer::sum) >= 0)
+                        return WindowsAllocationHooks.EntryPark.Arrival.WAITING;
+                    if (exitBeforeEntry.contains(pid))
+                    {
+                        live.put(pid, false);
+                        events.add("exited:" + pid);
+                        return WindowsAllocationHooks.EntryPark.Arrival.EXITED;
+                    }
                     events.add("arrived:" + pid);
-                    return true;
+                    return WindowsAllocationHooks.EntryPark.Arrival.ARRIVED;
                 }
                 @Override public void release() { events.add("park-release:" + pid); }
                 @Override public void close() { events.add("park-close:" + pid); }
