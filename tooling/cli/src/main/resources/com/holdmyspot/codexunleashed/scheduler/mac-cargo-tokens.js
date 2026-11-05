@@ -233,6 +233,10 @@ const cargoTokenPatchLength = Process.arch === 'arm64' ? 8 : 5;
 const cargoTokenStubReach = Process.arch === 'arm64' ? 0xfff00000 : 0x7ff00000;
 /** Stub offset of the code that runs the replaced bytes and resumes the veneer after them. */
 const cargoTokenResumeOffset = 0x40;
+/** Stub offset of the record naming the patched veneer and its replaced bytes. */
+const cargoTokenRecordOffset = 0x100;
+/** Identifies a stub written by this script, so a fork child recognizes a patch inherited from its parent. */
+const cargoTokenStubMagic = 'codex-cargo-tokens-stub-v1';
 /** Stubs of this installation, retained for the image's lifetime. */
 const cargoTokenStubs = [];
 
@@ -259,27 +263,51 @@ function cargoTokenPatchDestination(target) {
 }
 
 /**
- * Rejects an entry point that is not the plain Darwin syscall veneer. A fork child sees the original veneer, because
- * Frida unloads the inherited parent script in the child, and unloading restores the original bytes.
+ * Rejects replaced bytes that are not the start of the plain Darwin syscall veneer.
+ * @param operation intercepted operation name
+ * @param replaced the veneer's first cargoTokenPatchLength bytes, in place or as recorded by a parent's stub
+ * @param rest the veneer's first instruction after the replaced bytes
+ * @param number the operation's Darwin syscall number
+ */
+function requireCargoTokenVeneer(operation, replaced, rest, number) {
+    const first = Instruction.parse(replaced);
+    if (Process.arch === 'arm64') {
+        const second = Instruction.parse(first.next);
+        if ((first.toString() === 'mov x16, #' + number || first.toString() === 'mov x16, #0x' + number.toString(16)) &&
+            second.toString() === 'svc #0x80')
+            return;
+        throw new Error('Unsupported Darwin ' + operation + ' syscall veneer: ' + first + '; ' + second);
+    }
+    const second = Instruction.parse(rest);
+    const systemCall = second.toString() === 'mov r10, rcx' ? Instruction.parse(second.next) : second;
+    if (first.size === cargoTokenPatchLength &&
+        first.toString() === 'mov eax, 0x' + (0x2000000 + number).toString(16) && systemCall.toString() === 'syscall')
+        return;
+    throw new Error('Unsupported Darwin ' + operation + ' syscall veneer: ' + first + '; ' + second);
+}
+
+/**
+ * Returns the veneer's original replaced bytes. A fork child inherits its parent's patch, and Frida unloads the
+ * inherited parent script there either before or after this script installs, so a patched entry must branch to a
+ * still-mapped stub of this script that records the same veneer.
  * @param operation intercepted operation name
  * @param target veneer entry point
  * @param number the operation's Darwin syscall number
  * @return the original bytes that the patch replaces
  */
 function cargoTokenReplacedBytes(operation, target, number) {
-    const first = Instruction.parse(target);
-    const second = Instruction.parse(first.next);
-    if (Process.arch === 'arm64') {
-        if ((first.toString() === 'mov x16, #' + number || first.toString() === 'mov x16, #0x' + number.toString(16)) &&
-            second.toString() === 'svc #0x80')
-            return target.readByteArray(cargoTokenPatchLength);
-    } else {
-        const systemCall = second.toString() === 'mov r10, rcx' ? Instruction.parse(second.next) : second;
-        if (first.size === cargoTokenPatchLength &&
-            first.toString() === 'mov eax, 0x' + (0x2000000 + number).toString(16) && systemCall.toString() === 'syscall')
-            return target.readByteArray(cargoTokenPatchLength);
+    const inherited = cargoTokenPatchDestination(target);
+    let replaced = target;
+    if (inherited !== null) {
+        const record = inherited.add(cargoTokenRecordOffset);
+        const range = Process.findRangeByAddress(record);
+        if (range === null || !range.protection.startsWith('r') ||
+            record.readUtf8String() !== cargoTokenStubMagic || !record.add(0x20).readPointer().equals(target))
+            throw new Error('Darwin ' + operation + ' is patched by another owner: ' + Instruction.parse(target));
+        replaced = record.add(0x28);
     }
-    throw new Error('Unsupported Darwin ' + operation + ' syscall veneer: ' + first + '; ' + second);
+    requireCargoTokenVeneer(operation, replaced, target.add(cargoTokenPatchLength), number);
+    return replaced.readByteArray(cargoTokenPatchLength);
 }
 
 /**
@@ -315,6 +343,10 @@ function installCargoTokenStub(index, target, replaced) {
             after.putJmpAddress(target.add(cargoTokenPatchLength));
             after.flush();
         }
+        const record = code.add(cargoTokenRecordOffset);
+        record.writeUtf8String(cargoTokenStubMagic);
+        record.add(0x20).writePointer(target);
+        record.add(0x28).writeByteArray(replaced);
     });
     cargoTokenOriginals.add(index * Process.pointerSize).writePointer(resume);
     Memory.patchCode(target, cargoTokenPatchLength, code => {
@@ -332,20 +364,27 @@ function installCargoTokenStub(index, target, replaced) {
     });
     if (!cargoTokenPatchDestination(target).equals(stub))
         throw new Error('Darwin veneer branch does not reach its stub');
+    return stub;
 }
 
 /** Never collected, so its weak callback runs only when this script unloads. */
 const cargoTokenPatchOwner = {};
-/** Patched veneers with their original bytes, restored when this script unloads. */
+/** Patched veneers with their stubs and original bytes, restored when this script unloads. */
 const cargoTokenPatches = [];
+/*
+ * A veneer that no longer branches to this script's stub was repatched by a fork child's own installation after the
+ * child inherited this script, so restoring it would remove the child's hook.
+ */
 Script.bindWeak(cargoTokenPatchOwner, () => {
-    for (const patch of cargoTokenPatches)
-        Memory.patchCode(patch.target, cargoTokenPatchLength, code => code.writeByteArray(patch.replaced));
+    for (const patch of cargoTokenPatches) {
+        const destination = cargoTokenPatchDestination(patch.target);
+        if (destination !== null && destination.equals(patch.stub))
+            Memory.patchCode(patch.target, cargoTokenPatchLength, code => code.writeByteArray(patch.replaced));
+    }
 });
 cargoTokenOperations.forEach((operation, index) => {
     const target = cargoTokenLibc.getExportByName(operation);
     const replaced = cargoTokenReplacedBytes(operation, target, cargoTokenSyscalls[index]);
-    cargoTokenPatches.push({target: target, replaced: replaced});
-    installCargoTokenStub(index, target, replaced);
+    cargoTokenPatches.push({target: target, replaced: replaced, stub: installCargoTokenStub(index, target, replaced)});
 });
 sendCargoTokenEvent({event: 'ready'});
