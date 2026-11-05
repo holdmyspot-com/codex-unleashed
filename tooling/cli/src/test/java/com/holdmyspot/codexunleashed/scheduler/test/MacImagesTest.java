@@ -888,6 +888,48 @@ public final class MacImagesTest
     }
 
     /**
+     * Admits a held child whose first inspection the kernel could not complete, once a repeated inspection proves it.
+     * @throws IOException if the owner refuses the child or fails cleanup
+     */
+    @Test public void incompleteInspectionIsRepeated() throws IOException
+    {
+        try (var scope = new DefaultToolingScope())
+        {
+            var calls = new Calls(scope.getLeaderJsonMapper());
+            var root = calls.add(10, 1, 9);
+            calls.platform.add(calls.add(11, 2, 10));
+            var owner = owner(scope, calls, root);
+            owner.start();
+            calls.incomplete.put(11L, 1);
+            owner.advance(new FridaRuntime.Child(11, 10, 2, "/usr/bin/dsymutil"));
+            requireThat(calls.resumed, "repeatedInspectionResumesOnce").isEqualTo(List.of(11L), "expected");
+            requireThat(owner.incompleteInspections(), "replacedInspections").isEqualTo(1);
+            owner.close(() -> true);
+        }
+    }
+
+    /**
+     * Keeps a held child unresumed when every inspection the owner makes is incomplete.
+     * @throws IOException if cleanup fails
+     */
+    @Test public void persistentIncompleteInspectionNeverResumes() throws IOException
+    {
+        try (var scope = new DefaultToolingScope())
+        {
+            var calls = new Calls(scope.getLeaderJsonMapper());
+            var root = calls.add(10, 1, 9);
+            calls.platform.add(calls.add(11, 2, 10));
+            var owner = owner(scope, calls, root);
+            owner.start();
+            calls.incomplete.put(11L, Integer.MAX_VALUE);
+            requireException(MacImages.IncompleteImage.class,
+                () -> owner.advance(new FridaRuntime.Child(11, 10, 2, "/usr/bin/dsymutil")));
+            requireThat(calls.resumed.isEmpty(), "unprovenChildNotResumed").isTrue();
+            owner.close(() -> true);
+        }
+    }
+
+    /**
      * Classifies a child before attaching, and keeps an attach failure on a live non-platform child fatal.
      * @throws IOException if cleanup fails
      */
@@ -1108,6 +1150,8 @@ public final class MacImagesTest
          * Optional acquisition failure.
          */
         private IOException startFailure;
+        /** Remaining incomplete inspections to report for each process before it is observed. */
+        private final Map<Long, Integer> incomplete = new HashMap<>();
         /** Images that the kernel marks as Apple platform binaries. */
         private final java.util.Set<MacImages.Identity> platform = new java.util.HashSet<>();
         /** Optional change to the observed processes when a connection start fails, before it reports the failure. */
@@ -1172,6 +1216,12 @@ public final class MacImagesTest
         }
         @Override public MacImages.Identity inspect(long pid) throws IOException
         {
+            int remaining = incomplete.getOrDefault(pid, 0);
+            if (remaining > 0)
+            {
+                incomplete.put(pid, remaining - 1);
+                throw new MacImages.IncompleteImage(pid);
+            }
             var value = identities.get(pid); if (value == null) throw new IOException("missing observation"); return value;
         }
         @Override public MacDescriptorProtection.Inventory descriptors(MacImages.Identity identity)

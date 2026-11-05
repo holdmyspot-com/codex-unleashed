@@ -373,7 +373,9 @@ public interface MacWorkloadNative extends MacImages.Operations, MacImages.Workl
             try (Arena call = Arena.ofConfined())
             {
                 MemorySegment output = call.allocate(18 * Long.BYTES, Long.BYTES);
-                check("mw_snapshot", invoke("mw_snapshot", handle, (int) pid, output));
+                int status = invoke("mw_snapshot", handle, (int) pid, output);
+                if (status == -3) throw new MacImages.IncompleteImage(pid);
+                check("mw_snapshot", status);
                 return retain(output);
             }
         }

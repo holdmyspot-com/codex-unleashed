@@ -27,6 +27,12 @@ import tools.jackson.databind.json.JsonMapper;
 public final class MacImages
 {
     /**
+     * Inspections of one image before an incomplete executable-region inventory fails admission. ARM macOS
+     * {@code 42087817349} once found no executable region for a held {@code /usr/bin/dsymutil} child, while an
+     * identical sibling held a millisecond earlier inspected cleanly.
+     */
+    private static final int INSPECTIONS = 3;
+    /**
      * Constructing thread required before every operation.
      */
     private final Thread thread = Thread.currentThread();
@@ -92,6 +98,10 @@ public final class MacImages
      * First exact operation failure, retained without replay.
      */
     private Throwable failure;
+    /**
+     * Image inspections that the kernel could not complete and that a repeated inspection replaced.
+     */
+    private int incompleteInspections;
 
     /**
      * Creates a resource-free owner borrowing an active manager and caller-retained root identity.
@@ -351,11 +361,29 @@ public final class MacImages
      * Reads lineage and requires the independent workload authority before it can authorize an effect.
      * @param pid held process to inspect
      * @return authenticated live image lineage
-     * @throws IOException if the observation names another PID or authority cannot be established
+     * @throws IncompleteImage if every one of {@link #INSPECTIONS} inspections was incomplete
+     * @throws IOException     if the observation names another PID or authority cannot be established
      */
     private Identity inspect(long pid) throws IOException
     {
-        Identity observed = operations.inspect(pid);
+        Identity observed = null;
+        IncompleteImage incomplete = null;
+        int failures = 0;
+        while (observed == null)
+        {
+            try
+            {
+                observed = operations.inspect(pid);
+            }
+            catch (IncompleteImage cause)
+            {
+                if (incomplete != null) cause.addSuppressed(incomplete);
+                failures += 1;
+                if (failures == INSPECTIONS) throw cause;
+                incomplete = cause;
+            }
+        }
+        incompleteInspections += failures;
         if (observed.pid() != pid) throw new IOException("Image inspection returned another PID");
         authority.authenticate(observed);
         return observed;
@@ -436,6 +464,13 @@ public final class MacImages
     public boolean isClosed() { requireThread(); return closed; }
 
     /**
+     * Returns how many image inspections the kernel could not complete before a repeated inspection succeeded.
+     * @return replaced incomplete inspections since construction
+     * @throws IllegalStateException if another thread calls
+     */
+    public int incompleteInspections() { requireThread(); return incompleteInspections; }
+
+    /**
      * Preserves the first exact operation failure for subsequent cleanup diagnostics.
      * @param cause first uncertain operation
      */
@@ -489,6 +524,25 @@ public final class MacImages
     private void requireThread()
     {
         if (Thread.currentThread() != thread) throw new IllegalStateException("MacImages belongs to its constructing thread");
+    }
+
+    /**
+     * Reports that the kernel produced no executable-region inventory for a live image, so its identity is unproven.
+     * The image stays held; a repeated inspection may prove it.
+     */
+    public static final class IncompleteImage extends IOException
+    {
+        /** Serialization version for this stateless checked observation failure. */
+        private static final long serialVersionUID = 1L;
+
+        /**
+         * Creates the incomplete-inspection result for one process.
+         * @param pid inspected process
+         */
+        public IncompleteImage(long pid)
+        {
+            super("The kernel produced no executable-region inventory for pid " + pid);
+        }
     }
 
     /**
@@ -614,7 +668,8 @@ public final class MacImages
          * Reads one live image lineage without accepting callback fields as authority.
          * @param pid process to inspect
          * @return live native lineage
-         * @throws IOException if native observations are unavailable
+         * @throws IncompleteImage if the kernel produced no executable-region inventory for the live image
+         * @throws IOException     if native observations are unavailable
          */
         Identity inspect(long pid) throws IOException;
         /**

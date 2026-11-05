@@ -122,7 +122,8 @@ static int mw_watch(struct mw_owner *owner,pid_t pid,uint64_t unique) {
  member->next=owner->members;owner->members=member;return 0;
 }
 
-/* Authenticate a live workload image and retain its exit watch. */
+/* Authenticate a live workload image and retain its exit watch. Return -3 when the
+ * kernel produced no executable region for the image; other failures are errno values. */
 int mw_snapshot(void *handle,int pid,uint64_t out[18]) {
  struct mw_owner *owner=handle;if(!owner || owner->closed || pid<=0)return EINVAL;
  struct mw_unique selected;struct mw_coalitions membership;

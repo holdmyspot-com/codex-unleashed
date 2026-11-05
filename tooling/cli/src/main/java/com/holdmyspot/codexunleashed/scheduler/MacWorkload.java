@@ -162,8 +162,11 @@ public final class MacWorkload
     {
         report.accept("Held child: pid=" + child.pid() + ", parent=" + child.parentPid() + ", origin=" + child.origin() +
             ", path=" + child.path());
+        int incomplete = images.incompleteInspections();
         MacImages.Admission admission = images.advance(child);
-        report.accept("Admitted held child: pid=" + child.pid() + ", admission=" + admission);
+        incomplete = images.incompleteInspections() - incomplete;
+        report.accept("Admitted held child: pid=" + child.pid() + ", admission=" + admission +
+            (incomplete == 0 ? "" : ", incompleteInspections=" + incomplete));
     }
 
     /**
