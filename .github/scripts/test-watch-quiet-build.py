@@ -2,6 +2,7 @@
 from pathlib import Path
 import importlib.util
 import io
+import json
 import os
 import re
 import signal
@@ -108,6 +109,52 @@ class QuietBuildWatchTest(unittest.TestCase):
                 "--stop-after", "2")
             self.assertEqual(result.returncode, 5, result.stdout + result.stderr)
             self.assertFalse(report.exists(), "an active command was reported as quiet")
+
+
+class ResourceSampleTest(unittest.TestCase):
+    """Each test owns its temporary directory, procfs tree and command."""
+
+    def test_reads_linux_cpu_memory_swap_and_pressure(self):
+        """One Linux sample carries the cumulative counters that measure CPU idleness, swapping and memory stalls."""
+        spec = importlib.util.spec_from_file_location("watch_quiet_build", WATCHER)
+        watcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(watcher)
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+            procfs = Path(directory)
+            (procfs / "pressure").mkdir()
+            (procfs / "stat").write_text("cpu  10 1 20 300 4 5 6 7 0 0\ncpu0 1 1 1 1 1 1 1 1 0 0\n")
+            (procfs / "meminfo").write_text("MemTotal:       16000 kB\nMemFree:  10 kB\nMemAvailable:    8000 kB\n"
+                "SwapTotal:       4000 kB\nSwapFree:        3000 kB\n")
+            (procfs / "vmstat").write_text("pgmajfault 9\npswpin 11\npswpout 12\n")
+            (procfs / "pressure" / "memory").write_text("some avg10=0.00 avg60=0.00 avg300=0.00 total=500\n"
+                "full avg10=0.00 avg60=0.00 avg300=0.00 total=200\n")
+            (procfs / "pressure" / "cpu").write_text("some avg10=0.00 avg60=0.00 avg300=0.00 total=700\n")
+            sample = watcher.linux_resources(procfs)
+        self.assertEqual(sample["cpu_ticks"], {"user": 10, "nice": 1, "system": 20, "idle": 300, "iowait": 4,
+            "irq": 5, "softirq": 6, "steal": 7})
+        self.assertEqual(sample["processors"], 1)
+        self.assertEqual(sample["memory_total_bytes"], 16000 * 1024)
+        self.assertEqual(sample["memory_available_bytes"], 8000 * 1024)
+        self.assertEqual(sample["swap_used_bytes"], 1000 * 1024)
+        self.assertEqual((sample["swap_in_pages"], sample["swap_out_pages"], sample["major_faults"]), (11, 12, 9))
+        self.assertEqual(sample["memory_stall_us"], {"some": 500, "full": 200})
+        self.assertEqual(sample["cpu_stall_us"], {"some": 700})
+
+    def test_samples_resources_without_counting_them_as_output(self):
+        """Resource samples are written beside the report while the command runs, and do not keep a silent command
+        alive."""
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+            result, report = run_watcher(directory, "import time; time.sleep(600)", "--first-report", "1",
+                "--interval", "1", "--stop-after", "2", "--sample-interval", "0.2")
+            self.assertEqual(result.returncode, 124, result.stdout + result.stderr)
+            lines = (report.parent / "build-resources.jsonl").read_text().splitlines()
+            self.assertGreaterEqual(len(lines), 3)
+            samples = [json.loads(line) for line in lines]
+            times = [sample["time"] for sample in samples]
+            self.assertEqual(times, sorted(times))
+            if sys.platform.startswith("linux"):
+                self.assertIn("memory_available_bytes", samples[-1])
+                self.assertIn("swap_in_pages", samples[-1])
 
 
 class ProcessListTest(unittest.TestCase):

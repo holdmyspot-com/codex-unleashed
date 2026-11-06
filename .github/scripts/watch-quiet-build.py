@@ -10,10 +10,16 @@ Zombies are listed with their name, since they have no command line. It repeats 
 while the build stays quiet, and once the build has been quiet for --stop-after seconds it terminates the command's
 process group, or on Windows its process tree, and exits 124. Otherwise it exits with the command's own status.
 
+While the command runs, every --sample-interval seconds it appends one JSON line of host resource counters to
+build-resources.jsonl beside the report: CPU time by state, available memory, swap use and swap traffic, and on Linux
+the kernel's memory and CPU stall times. Those samples are not build output. A sample that cannot be read records the
+error instead, so sampling never changes the build's outcome.
+
 Reading other users' kernel stacks and attaching to their JVMs needs root, so the report is produced by rerunning this
 script with --dump under non-interactive sudo when that is available, and as the current user otherwise.
 """
 import argparse
+import ctypes
 import json
 import os
 from pathlib import Path
@@ -344,13 +350,170 @@ STALL_EVENT = "scheduler_stall"
 work is progressing, so it is not build output."""
 
 
-class BuildOutput:
-    """Tracks when the build last wrote output under the watched directory, other than this watcher's report and the
-    scheduler's stall reports."""
+def kibibytes(fields, name):
+    """Returns a /proc/meminfo field, given in KiB, in bytes."""
+    return int(fields[name].split()[0]) * 1024
 
-    def __init__(self, directory, report):
+
+def stall_totals(path):
+    """Returns each line's cumulative stall microseconds from a /proc/pressure file, keyed by "some" or "full"."""
+    totals = {}
+    for line in read(path).splitlines():
+        kind, *values = line.split()
+        totals[kind] = int(next(value for value in values if value.startswith("total=")).removeprefix("total="))
+    return totals
+
+
+def linux_resources(procfs=Path("/proc")):
+    """Returns the host's cumulative CPU, memory, swap and stall counters from procfs."""
+    stat = read(procfs / "stat").splitlines()
+    names = ("user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal")
+    ticks = dict(zip(names, (int(value) for value in stat[0].split()[1:])))
+    memory = dict(line.split(":", 1) for line in read(procfs / "meminfo").splitlines() if ":" in line)
+    vm = dict(line.split() for line in read(procfs / "vmstat").splitlines() if line.strip())
+    return {
+        "cpu_ticks": ticks,
+        "processors": sum(1 for line in stat if line.startswith("cpu") and line[3:4].isdigit()),
+        "memory_total_bytes": kibibytes(memory, "MemTotal"),
+        "memory_available_bytes": kibibytes(memory, "MemAvailable"),
+        "swap_used_bytes": kibibytes(memory, "SwapTotal") - kibibytes(memory, "SwapFree"),
+        "swap_in_pages": int(vm["pswpin"]),
+        "swap_out_pages": int(vm["pswpout"]),
+        "major_faults": int(vm["pgmajfault"]),
+        "memory_stall_us": stall_totals(procfs / "pressure" / "memory"),
+        "cpu_stall_us": stall_totals(procfs / "pressure" / "cpu"),
+    }
+
+
+def darwin_resources():
+    """Returns the host's cumulative CPU ticks, page and swap counters, swap use and memory pressure level."""
+    system = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+    system.mach_host_self.restype = ctypes.c_uint
+    ticks = (ctypes.c_uint * 4)()
+    count = ctypes.c_uint(4)
+    # HOST_CPU_LOAD_INFO is flavor 3: user, system, idle and nice ticks summed over every processor.
+    if system.host_statistics(system.mach_host_self(), 3, ticks, ctypes.byref(count)) != 0:
+        raise OSError("host_statistics failed")
+    values = subprocess.run(["sysctl", "-n", "vm.swapusage", "kern.memorystatus_vm_pressure_level", "hw.memsize",
+        "hw.logicalcpu"], capture_output=True, text=True, timeout=30, check=True).stdout.splitlines()
+    swap = values[0].split()
+    pages = {}
+    page_size = 4096
+    for line in subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=30, check=True).stdout.splitlines():
+        if "page size of" in line:
+            page_size = int(line.split("page size of")[1].split()[0])
+        elif ":" in line:
+            name, value = line.split(":", 1)
+            if value.strip().rstrip(".").isdigit():
+                pages[name.strip().strip('"')] = int(value.strip().rstrip("."))
+    return {
+        "cpu_ticks": dict(zip(("user", "system", "idle", "nice"), ticks)),
+        "processors": int(values[3]),
+        "memory_total_bytes": int(values[2]),
+        "memory_available_bytes": (pages.get("Pages free", 0) + pages.get("Pages inactive", 0)
+            + pages.get("Pages speculative", 0)) * page_size,
+        "swap_used_bytes": int(float(swap[swap.index("used") + 2].rstrip("M")) * 1024 * 1024),
+        "swap_in_pages": pages.get("Swapins", 0),
+        "swap_out_pages": pages.get("Swapouts", 0),
+        "page_ins": pages.get("Pageins", 0),
+        "compressed_pages": pages.get("Pages occupied by compressor", 0),
+        "memory_pressure_level": int(values[1]),
+    }
+
+
+class WindowsResources:
+    """Reads the host's cumulative CPU times, memory status and paging rates; the paging counters keep one PDH query."""
+
+    COUNTERS = ("\\Memory\\Pages Input/sec", "\\Memory\\Pages Output/sec", "\\Paging File(_Total)\\% Usage")
+
+    class MemoryStatus(ctypes.Structure):
+        _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong), ("total_physical", ctypes.c_ulonglong),
+            ("available_physical", ctypes.c_ulonglong), ("total_commit", ctypes.c_ulonglong),
+            ("available_commit", ctypes.c_ulonglong), ("total_virtual", ctypes.c_ulonglong),
+            ("available_virtual", ctypes.c_ulonglong), ("available_extended", ctypes.c_ulonglong)]
+
+    class CounterValue(ctypes.Structure):
+        _fields_ = [("status", ctypes.c_ulong), ("value", ctypes.c_double)]
+
+    def __init__(self):
+        self.kernel32 = ctypes.windll.kernel32
+        self.pdh = ctypes.windll.pdh
+        self.query = ctypes.c_void_p()
+        self.counters = {}
+        if self.pdh.PdhOpenQueryW(None, None, ctypes.byref(self.query)) != 0:
+            raise OSError("PdhOpenQueryW failed")
+        for name in self.COUNTERS:
+            handle = ctypes.c_void_p()
+            if self.pdh.PdhAddEnglishCounterW(self.query, ctypes.c_wchar_p(name), None, ctypes.byref(handle)) == 0:
+                self.counters[name] = handle
+
+    def __call__(self):
+        idle, kernel, user = ctypes.c_ulonglong(), ctypes.c_ulonglong(), ctypes.c_ulonglong()
+        if not self.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)):
+            raise OSError("GetSystemTimes failed")
+        memory = self.MemoryStatus()
+        memory.length = ctypes.sizeof(memory)
+        if not self.kernel32.GlobalMemoryStatusEx(ctypes.byref(memory)):
+            raise OSError("GlobalMemoryStatusEx failed")
+        rates = {}
+        if self.pdh.PdhCollectQueryData(self.query) == 0:
+            for name, handle in self.counters.items():
+                value = self.CounterValue()
+                # PDH_FMT_DOUBLE; a rate has no value until its second collection.
+                if self.pdh.PdhGetFormattedCounterValue(handle, 0x200, None, ctypes.byref(value)) == 0:
+                    rates[name] = value.value
+        return {
+            # 100-nanosecond units summed over every processor; kernel time includes idle time.
+            "cpu_ticks": {"idle": idle.value, "system": kernel.value - idle.value, "user": user.value},
+            "processors": os.cpu_count(),
+            "memory_total_bytes": memory.total_physical,
+            "memory_available_bytes": memory.available_physical,
+            "commit_used_bytes": memory.total_commit - memory.available_commit,
+            "commit_limit_bytes": memory.total_commit,
+            "paging": rates,
+        }
+
+
+class ResourceSampler:
+    """Appends one JSON line of host resource counters to a file at most once per interval."""
+
+    def __init__(self, path, interval):
+        self.path = path
+        self.interval = interval
+        self.next_sample = 0.0
+        self.reader = None
+
+    def poll(self, now):
+        """Writes a sample when the interval has passed; a failure to read the counters is recorded as the sample."""
+        if now < self.next_sample:
+            return
+        self.next_sample = now + self.interval
+        sample = {"time": round(now, 3)}
+        try:
+            if self.reader is None:
+                if sys.platform.startswith("linux"):
+                    self.reader = linux_resources
+                elif sys.platform == "darwin":
+                    self.reader = darwin_resources
+                else:
+                    self.reader = WindowsResources()
+            sample.update(self.reader())
+        except Exception as error:
+            sample["error"] = f"{type(error).__name__}: {error}"
+        try:
+            with open(self.path, "a") as stream:
+                stream.write(json.dumps(sample, sort_keys=True) + "\n")
+        except OSError:
+            pass
+
+
+class BuildOutput:
+    """Tracks when the build last wrote output under the watched directory, other than this watcher's report and
+    resource samples and the scheduler's stall reports."""
+
+    def __init__(self, directory, report, samples):
         self.directory = directory
-        self.excluded = os.path.abspath(report)
+        self.excluded = {os.path.abspath(report), os.path.abspath(samples)}
         self.files = {}
         """For each file seen: its modification time, the size up to which its bytes were classified, and the
         modification time of its last build output."""
@@ -361,7 +524,7 @@ class BuildOutput:
         for root, _, names in os.walk(self.directory):
             for name in names:
                 path = os.path.abspath(os.path.join(root, name))
-                if path == self.excluded:
+                if path in self.excluded:
                     continue
                 try:
                     newest = max(newest, self.observe(path))
@@ -487,6 +650,7 @@ def main():
     parser.add_argument("--first-report", type=float, default=900)
     parser.add_argument("--interval", type=float, default=900)
     parser.add_argument("--stop-after", type=float, default=3600)
+    parser.add_argument("--sample-interval", type=float, default=5)
     parser.add_argument("command", nargs="*")
     args = parser.parse_args()
     if args.dump:
@@ -498,14 +662,18 @@ def main():
         candidate = Path(os.environ["JAVA_HOME"]) / "bin" / ("jcmd.exe" if os.name == "nt" else "jcmd")
         args.jcmd = str(candidate) if candidate.is_file() else None
 
+    samples = args.report.parent / "build-resources.jsonl"
+    sampler = ResourceSampler(samples, args.sample_interval)
+    sampler.poll(time.time())
     process = subprocess.Popen(args.command, start_new_session=True)
-    output = BuildOutput(args.watch, args.report)
+    output = BuildOutput(args.watch, args.report, samples)
     last_activity = max(time.time(), output.latest())
     next_report = last_activity + args.first_report
     while process.poll() is None:
-        time.sleep(min(1.0, args.interval / 4))
+        time.sleep(min(1.0, args.interval / 4, args.sample_interval))
         changed = output.latest()
         now = time.time()
+        sampler.poll(now)
         if changed > last_activity:
             last_activity = changed
             next_report = changed + args.first_report
