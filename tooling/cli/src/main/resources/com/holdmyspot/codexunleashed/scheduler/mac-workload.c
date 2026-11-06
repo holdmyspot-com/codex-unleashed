@@ -64,12 +64,16 @@ static int mw_read(struct mw_owner *owner,pid_t pid,uint64_t unique,int flavor,v
  return n==bytes?0:(errno?errno:EIO);
 }
 
-/* Read executable vnode identity from a kernel mapped region, never stat(path). */
+/* Read executable vnode identity from a kernel mapped region; stat(path) only selects that region. */
 static int mw_executable(struct mw_owner *owner,pid_t pid,uint64_t unique,uint64_t *device,uint64_t *inode) {
  char executable[PROC_PIDPATHINFO_MAXSIZE];memset(executable,0,sizeof executable);
  int n=owner->query(2,pid,PROC_PIDPATHINFO,2,unique,0,executable,sizeof executable);
  if(n<0)return errno?errno:EIO;
  if(executable[0]==0 || memchr(executable,0,sizeof executable)==NULL)return EIO;
+ /* Both the executable path and a region's path name the vnode by the hard link most recently looked up by any
+  * process, so a concurrent lookup of another link, such as /usr/bin/make for a held /usr/bin/cc, changes the region's
+  * path between the two queries. The named file's identity matches the mapped image under every link name. */
+ struct stat named;int identified=stat(executable,&named)==0;
  uint64_t address=0;
  for(unsigned int i=0;i<65536;i++){
   struct proc_regionwithpathinfo region;memset(&region,0,sizeof region);
@@ -77,7 +81,10 @@ static int mw_executable(struct mw_owner *owner,pid_t pid,uint64_t unique,uint64
   /* This flavor returns EINVAL when the kernel cannot produce a mapped region.
    * Reject incomplete image inventory; other call failures retain their errno. */
   if(n!=(int)sizeof region){int error=errno?errno:EIO;return n<0 && error==EINVAL?-3:error;}
-  if((region.prp_prinfo.pri_protection&VM_PROT_EXECUTE)!=0 && strcmp(region.prp_vip.vip_path,executable)==0){
+  struct vinfo_stat *mapped=&region.prp_vip.vip_vi.vi_stat;
+  int same=strcmp(region.prp_vip.vip_path,executable)==0 ||
+   (identified && mapped->vst_ino!=0 && mapped->vst_dev==(uint32_t)named.st_dev && mapped->vst_ino==named.st_ino);
+  if((region.prp_prinfo.pri_protection&VM_PROT_EXECUTE)!=0 && same){
    *device=region.prp_vip.vip_vi.vi_stat.vst_dev;*inode=region.prp_vip.vip_vi.vi_stat.vst_ino;
    return *inode?0:EIO;
   }
