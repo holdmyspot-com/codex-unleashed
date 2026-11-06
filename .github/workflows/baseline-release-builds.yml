@@ -483,8 +483,11 @@ jobs:
           if [[ "$CACHE_ENABLED" == true ]]; then
             export RELEASE_CHECKPOINT_COMMAND="$RUNNER_TEMP/checkpoint-upstream-release.sh"
           fi
-          # In cold builds with swap on, x64 Linux finished fastest with three jobs and ran out
-          # of memory with four. ARM Linux keeps the two-job limit that prevented observed memory pressure.
+          # Cold rebuilds of the heaviest libraries, with swap on, set these limits. x64 Linux finished
+          # fastest with three jobs and ran out of memory with four. ARM macOS (three CPUs, 7 GB) took
+          # 2,842 s with two jobs and 6,007 s with three. ARM Linux keeps the two-job limit that prevented
+          # observed memory pressure. Windows and Intel macOS were fastest at Cargo's default of one job
+          # per CPU.
           case "$TARGET" in
             x86_64-unknown-linux-musl)
               export CARGO_BUILD_JOBS=3
@@ -493,6 +496,10 @@ jobs:
             aarch64-unknown-linux-musl)
               export CARGO_BUILD_JOBS=2
               printf 'Limiting Linux Cargo compilation to two concurrent jobs after observed memory pressure.\n'
+              ;;
+            aarch64-apple-darwin)
+              export CARGO_BUILD_JOBS=2
+              printf 'Limiting macOS Cargo compilation to two concurrent jobs, the fastest measured count.\n'
               ;;
           esac
           printf 'cargo_build_jobs=%s\n' "${CARGO_BUILD_JOBS:-default}" \
