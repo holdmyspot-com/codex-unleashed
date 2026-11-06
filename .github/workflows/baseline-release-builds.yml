@@ -132,7 +132,7 @@ jobs:
     name: Baseline - ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
     concurrency:
-      group: ${{ github.workflow }}-${{ matrix.target }}
+      group: ${{ github.workflow }}-${{ matrix.target }}${{ inputs.session_id && format('-{0}', inputs.session_id) || '' }}
       cancel-in-progress: false
       queue: max
     strategy:
