@@ -7,6 +7,7 @@ import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Diverts a suspended process's image entry point to a spin loop in a page of its own, so that its primary thread
@@ -32,6 +33,12 @@ final class WindowsEntryPark implements AutoCloseable
     private static final int MACHINE_X64 = 0x8664;
     /** {@code IMAGE_FILE_MACHINE_ARM64}. */
     private static final int MACHINE_ARM64 = 0xAA64;
+    /** {@code IMAGE_NT_OPTIONAL_HDR32_MAGIC}: the optional header of a PE32 image. */
+    private static final int OPTIONAL_HEADER_32 = 0x10B;
+    /** {@code IMAGE_NT_OPTIONAL_HDR64_MAGIC}: the optional header of a PE32+ image. */
+    private static final int OPTIONAL_HEADER_64 = 0x20B;
+    /** {@code IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR}: the data directory that marks a managed (.NET) image. */
+    private static final int COM_DESCRIPTOR = 14;
     /** {@code MEM_COMMIT | MEM_RESERVE}. */
     private static final int COMMIT_RESERVE = 0x3000;
     /** {@code PAGE_EXECUTE_READWRITE}. */
@@ -81,19 +88,25 @@ final class WindowsEntryPark implements AutoCloseable
 
     /**
      * Diverts the image entry point of a process whose primary thread has not yet run.
+     * <p>
+     * A managed (.NET) image is not diverted: the loader starts the runtime regardless of the image's entry point
+     * (<a href="https://learn.microsoft.com/en-us/dotnet/framework/unmanaged-api/hosting/corexemain-function">
+     * {@code _CorExeMain}</a>), so its primary thread would never reach the loop.
      * @param kernel borrowed native bindings of the owning controller
-     * @param handle process handle with {@link #ACCESS}; ownership transfers to the result only on success
-     * @return the diverted entry point
+     * @param handle process handle with {@link #ACCESS}; ownership transfers to the result only if it is present
+     * @return the diverted entry point, or empty if the image is managed
      * @throws NullPointerException if an argument is null
      * @throws IOException if the image is not x86, x64 or ARM64, or its memory cannot be read, allocated or written
      */
-    static WindowsEntryPark divert(WindowsProcess.Kernel kernel, MemorySegment handle) throws IOException
+    static Optional<WindowsEntryPark> divert(WindowsProcess.Kernel kernel, MemorySegment handle) throws IOException
     {
         Objects.requireNonNull(kernel, "kernel");
         Objects.requireNonNull(handle, "handle");
         long base = readLong(kernel, handle, processEnvironmentBlock(kernel, handle) + 0x10);
         long header = base + Integer.toUnsignedLong(readInt(kernel, handle, base + 0x3C));
         int machine = Short.toUnsignedInt((short) readInt(kernel, handle, header + 4));
+        if (managed(kernel, handle, header + 24))
+            return Optional.empty();
         long entryOffset = Integer.toUnsignedLong(readInt(kernel, handle, header + 24 + 16));
         if (entryOffset == 0)
             throw new IOException("Image has no entry point");
@@ -149,7 +162,7 @@ final class WindowsEntryPark implements AutoCloseable
         byte[] patch = bytes(jump);
         byte[] original = read(kernel, handle, entry, patch.length);
         replaceCode(kernel, handle, entry, patch);
-        return new WindowsEntryPark(kernel, handle, flag, entry, original);
+        return Optional.of(new WindowsEntryPark(kernel, handle, flag, entry, original));
     }
 
     /**
@@ -247,6 +260,31 @@ final class WindowsEntryPark implements AutoCloseable
     {
         if (closed)
             throw new IllegalStateException("Entry park is closed");
+    }
+
+    /**
+     * Returns whether a process's image is a managed (.NET) assembly, which has a COM descriptor data directory.
+     * @param kernel native bindings
+     * @param handle process handle with read access
+     * @param optional address of the image's optional header
+     * @return {@code true} if the COM descriptor directory is present and nonempty
+     * @throws IOException if the header cannot be read or is neither PE32 nor PE32+
+     */
+    private static boolean managed(WindowsProcess.Kernel kernel, MemorySegment handle, long optional)
+        throws IOException
+    {
+        int magic = Short.toUnsignedInt((short) readInt(kernel, handle, optional));
+        // Offset of NumberOfRvaAndSizes; the data directories follow it
+        long count = switch (magic)
+        {
+            case OPTIONAL_HEADER_32 -> optional + 92;
+            case OPTIONAL_HEADER_64 -> optional + 108;
+            default -> throw new IOException("Unsupported optional header magic: 0x" + Integer.toHexString(magic));
+        };
+        if (Integer.toUnsignedLong(readInt(kernel, handle, count)) <= COM_DESCRIPTOR)
+            return false;
+        // Each IMAGE_DATA_DIRECTORY is a 4-byte VirtualAddress and a 4-byte Size
+        return readInt(kernel, handle, count + 4 + COM_DESCRIPTOR * 8L) != 0;
     }
 
     /**

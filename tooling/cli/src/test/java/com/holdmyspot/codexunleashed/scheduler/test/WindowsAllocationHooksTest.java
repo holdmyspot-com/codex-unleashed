@@ -402,6 +402,33 @@ public final class WindowsAllocationHooksTest
     }
 
     /**
+     * A held managed (.NET) child, such as MSVC's VCTIP.EXE, whose loader runs the runtime instead of its image entry
+     * point, gets its observer and allocation hook before its single resume.
+     * @throws IOException if coordinator setup or cleanup fails
+     */
+    @Test
+    public void managedChildIsInstrumentedBeforeResume() throws IOException
+    {
+        Backend backend = new Backend();
+        WindowsAllocationHooks hooks = new WindowsAllocationHooks(backend, () -> {});
+        try
+        {
+            hooks.start();
+            backend.managed.add(200L);
+            backend.receipt(100, 200);
+            backend.children.add(new FridaRuntime.Child(200, 100, 2, "C:\\MSVC\\bin\\HostX64\\x64\\VCTIP.EXE"));
+            hooks.pump(true);
+            requireThat(backend.resumed, "resumedChild").isEqualTo(List.of(200L));
+            List<String> order = List.of("park:200", "observer-ready:200", "hook:2:200", "ready:2", "live:200",
+                "resume:200");
+            List<Integer> positions = order.stream().map(backend.events::lastIndexOf).toList();
+            requireThat(positions, "positions").doesNotContain(-1);
+            requireThat(positions.stream().sorted().toList(), "sortedPositions").isEqualTo(positions);
+        }
+        finally { hooks.close(() -> true); }
+    }
+
+    /**
      * A held child that exits during loader initialization, such as one whose imported DLL is missing, ran no
      * program code, so it needs no instrumentation and later children are still instrumented.
      * @throws IOException if coordinator setup or cleanup fails
@@ -618,6 +645,8 @@ public final class WindowsAllocationHooksTest
         final Map<Long, Integer> parkPolls = new LinkedHashMap<>();
         /** Parked children that exit before their primary thread reaches the entry point. */
         final Set<Long> exitBeforeEntry = new HashSet<>();
+        /** Children whose image is a managed assembly, so their loader never runs the image entry point. */
+        final Set<Long> managed = new HashSet<>();
         /** Number of root continuation requests. */
         int releases;
         /** Peer callback invoked while a modeled permission acknowledgement is pending. */
@@ -662,12 +691,14 @@ public final class WindowsAllocationHooksTest
                 throw new IOException("Wrong native creation birth");
             return member(receipt.childPid());
         }
-        @Override public WindowsAllocationHooks.EntryPark park(WindowsAllocationHooks.Member member)
+        @Override public Optional<WindowsAllocationHooks.EntryPark> park(WindowsAllocationHooks.Member member)
         {
             long pid = member.pid();
             events.add("park:" + pid);
+            if (managed.contains(pid))
+                return Optional.empty();
             parkPolls.put(pid, 1);
-            return new WindowsAllocationHooks.EntryPark()
+            return Optional.of(new WindowsAllocationHooks.EntryPark()
             {
                 @Override public WindowsAllocationHooks.EntryPark.Arrival arrival()
                 {
@@ -684,7 +715,7 @@ public final class WindowsAllocationHooksTest
                 }
                 @Override public void release() { events.add("park-release:" + pid); }
                 @Override public void close() { events.add("park-close:" + pid); }
-            };
+            });
         }
         @Override public long rootPid() { return 100; }
         @Override public WindowsAllocationHooks.Member member(long pid) throws IOException

@@ -982,21 +982,23 @@ public final class WindowsProcess implements AutoCloseable
         /**
          * Diverts this held member's image entry point through a separate handle with memory access, so that once
          * resumed its primary thread finishes loader initialization and then waits there.
-         * @return the diverted entry point, which owns that separate handle
+         * @return the diverted entry point, which owns that separate handle, or empty if the image is managed (.NET)
+         *     and so its loader does not run the image's entry point
          * @throws IllegalStateException if this identity or its owner is closed, or called by another thread
          * @throws IOException if the member is not live, the handle is not the same process, or diversion fails
          */
-        public WindowsEntryPark parkAtEntry() throws IOException
+        public Optional<WindowsEntryPark> parkAtEntry() throws IOException
         {
             requireLive();
             MemorySegment control = kernel.pointer("OpenProcess", WindowsEntryPark.ACCESS, 0, (int) pid);
             kernel.requireHandle("OpenProcess(entry park)", control);
+            WindowsEntryPark park;
             try
             {
                 if (creationBirth(control) != creationBirth(handle))
                     throw new IOException("Entry park handle names a different process: " + pid);
                 requireLive();
-                return WindowsEntryPark.divert(kernel, control);
+                park = WindowsEntryPark.divert(kernel, control).orElse(null);
             }
             catch (IOException | RuntimeException | Error failure)
             {
@@ -1004,6 +1006,9 @@ public final class WindowsProcess implements AutoCloseable
                 catch (IOException | RuntimeException | Error cleanup) { failure.addSuppressed(cleanup); }
                 throw failure;
             }
+            if (park == null)
+                kernel.closeHandle(control);
+            return Optional.ofNullable(park);
         }
 
         /**

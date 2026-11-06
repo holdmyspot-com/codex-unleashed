@@ -314,6 +314,10 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
      * The child's own primary thread runs loader initialization: a held child has run no thread, so attaching first
      * would make the injected thread run every DLL's process attach. The MSYS2 and Cygwin runtimes record that thread
      * as the main thread, and their signal thread deadlocks once it exits.
+     * <p>
+     * A managed (.NET) image is instrumented before its resume instead: its loader starts the runtime rather than the
+     * image's entry point, so a parked entry point is never reached. It cannot load a Cygwin-family runtime as its
+     * own, so attaching first is safe.
      * @param event copied held SPAWN notification
      * @param created validated transferred creation authority
      * @throws IOException if identity, arrival, readiness, resume or release cannot be established
@@ -324,7 +328,18 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
             throw new IOException("Held child differs from retained creation authority: " + event);
         Member member = created.member();
         member.requireLive();
-        try (EntryPark park = backend.park(member))
+        EntryPark park = backend.park(member).orElse(null);
+        if (park == null)
+        {
+            observe(member);
+            Hook hook = install(member);
+            hook.awaitReady(peers);
+            member.requireLive();
+            if (!resumeAttempts.add(event.pid())) throw new IOException("Held child continuation was already attempted: " + event.pid());
+            manager.resume(event.pid());
+            return;
+        }
+        try (park)
         {
             if (!resumeAttempts.add(event.pid())) throw new IOException("Held child continuation was already attempted: " + event.pid());
             manager.resume(event.pid());
@@ -635,10 +650,11 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
          * Diverts a held child's image entry point so that, once resumed, its primary thread finishes loader
          * initialization and then waits there.
          * @param member exact retained held child
-         * @return the diverted entry point, retained until released
+         * @return the diverted entry point, retained until released, or empty if the loader does not run the
+         *     image's entry point
          * @throws IOException if the child's image or memory cannot be read or written
          */
-        EntryPark park(Member member) throws IOException;
+        Optional<EntryPark> park(Member member) throws IOException;
         /** Releases the prepared primary thread once.
          * @throws IOException if release has an uncertain result
          */
@@ -1398,17 +1414,19 @@ public final class WindowsAllocationHooks implements WindowsAttempt.Hooks
             return bridge;
         }
         @Override public void releaseRoot() throws IOException { process.releaseRoot(); }
-        @Override public EntryPark park(Member member) throws IOException
+        @Override public Optional<EntryPark> park(Member member) throws IOException
         {
             if (!(member instanceof NativeMember child) || child.process != process)
                 throw new IOException("Entry park requires this backend's retained child");
-            WindowsEntryPark park = child.member.parkAtEntry();
-            return new EntryPark()
+            WindowsEntryPark park = child.member.parkAtEntry().orElse(null);
+            if (park == null)
+                return Optional.empty();
+            return Optional.of(new EntryPark()
             {
                 @Override public Arrival arrival() throws IOException { return park.arrival(); }
                 @Override public void release() throws IOException { park.release(); }
                 @Override public void close() throws IOException { park.close(); }
-            };
+            });
         }
     }
     /** Adapts the authoritative opaque identity without exposing its native handle. */
