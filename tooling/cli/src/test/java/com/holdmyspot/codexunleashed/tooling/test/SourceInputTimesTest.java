@@ -16,7 +16,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import org.testng.annotations.Test;
-import static com.holdmyspot.codexunleashed.scheduler.test.TestRequirements.requireException;
+import static com.holdmyspot.codexunleashed.tooling.test.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /** Verifies exact native no-follow queries and existing follow semantics with independent real link fixtures. */

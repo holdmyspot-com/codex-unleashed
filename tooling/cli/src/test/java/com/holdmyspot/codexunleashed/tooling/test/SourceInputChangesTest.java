@@ -22,7 +22,7 @@ import java.util.stream.Stream;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 
-import static com.holdmyspot.codexunleashed.scheduler.test.TestRequirements.requireException;
+import static com.holdmyspot.codexunleashed.tooling.test.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**

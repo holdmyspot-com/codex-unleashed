@@ -28,7 +28,7 @@ import org.apache.commons.io.file.StandardDeleteOption;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.holdmyspot.codexunleashed.scheduler.test.TestRequirements.requireException;
+import static com.holdmyspot.codexunleashed.tooling.test.TestRequirements.requireException;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 

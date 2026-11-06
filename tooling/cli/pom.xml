@@ -9,8 +9,6 @@
     <maven.compiler.release>27</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <tooling.build.directory>${project.basedir}/../../.cat/work/temp/build-caches/maven/source-cache</tooling.build.directory>
-    <!-- The platform whose protoc and gRPC plugin executables run during code generation. -->
-    <protoc.classifier>${os.detected.classifier}</protoc.classifier>
   </properties>
   <dependencies>
     <dependency>
@@ -39,16 +37,6 @@
       <version>2.20.0</version>
     </dependency>
     <dependency>
-      <groupId>com.github.oshi</groupId>
-      <artifactId>oshi-core-ffm</artifactId>
-      <version>7.7.2</version>
-    </dependency>
-    <dependency>
-      <groupId>com.github.oshi</groupId>
-      <artifactId>oshi-common</artifactId>
-      <version>7.7.2</version>
-    </dependency>
-    <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
       <version>2.0.20</version>
@@ -71,52 +59,8 @@
       <version>7.12.0</version>
       <scope>test</scope>
     </dependency>
-    <dependency>
-      <groupId>io.grpc</groupId>
-      <artifactId>grpc-netty-shaded</artifactId>
-      <version>1.85.1</version>
-      <!-- javax.annotation-api supplies generated annotations; jsr305 overlaps its named package. -->
-      <exclusions>
-        <exclusion><groupId>com.google.code.findbugs</groupId><artifactId>jsr305</artifactId></exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>io.grpc</groupId>
-      <artifactId>grpc-protobuf</artifactId>
-      <version>1.85.1</version>
-      <!-- javax.annotation-api supplies generated annotations; jsr305 overlaps its named package. -->
-      <exclusions>
-        <exclusion><groupId>com.google.code.findbugs</groupId><artifactId>jsr305</artifactId></exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>io.grpc</groupId>
-      <artifactId>grpc-stub</artifactId>
-      <version>1.85.1</version>
-      <!-- javax.annotation-api supplies generated annotations; jsr305 overlaps its named package. -->
-      <exclusions>
-        <exclusion><groupId>com.google.code.findbugs</groupId><artifactId>jsr305</artifactId></exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>com.google.protobuf</groupId>
-      <artifactId>protobuf-java</artifactId>
-      <version>4.36.2</version>
-    </dependency>
-    <dependency>
-      <groupId>javax.annotation</groupId>
-      <artifactId>javax.annotation-api</artifactId>
-      <version>1.3.2</version>
-    </dependency>
   </dependencies>
   <build>
-    <extensions>
-      <extension>
-        <groupId>kr.motd.maven</groupId>
-        <artifactId>os-maven-plugin</artifactId>
-        <version>1.7.1</version>
-      </extension>
-    </extensions>
     <directory>${tooling.build.directory}</directory>
     <plugins>
       <!-- Build entry points stay outside the runtime module, but participate in typed packaging tests. -->
@@ -132,21 +76,6 @@
             <configuration>
               <sources><source>${project.basedir}/src/build/java</source></sources>
             </configuration>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.xolstice.maven.plugins</groupId>
-        <artifactId>protobuf-maven-plugin</artifactId>
-        <version>0.6.1</version>
-        <configuration>
-          <protocArtifact>com.google.protobuf:protoc:4.36.2:exe:${protoc.classifier}</protocArtifact>
-          <pluginId>grpc-java</pluginId>
-          <pluginArtifact>io.grpc:protoc-gen-grpc-java:1.85.1:exe:${protoc.classifier}</pluginArtifact>
-        </configuration>
-        <executions>
-          <execution>
-            <goals><goal>compile</goal><goal>compile-custom</goal></goals>
           </execution>
         </executions>
       </plugin>
@@ -170,25 +99,13 @@
           <showWarnings>true</showWarnings>
           <failOnWarning>false</failOnWarning>
         </configuration>
-        <executions>
-          <execution>
-            <id>default-testCompile</id>
-            <configuration>
-              <!-- Build entry points and the packaging fixture need these JDK modules only during tests. -->
-              <compilerArgs>
-                <arg>--add-modules</arg><arg>java.net.http,java.compiler</arg>
-                <arg>--add-reads</arg><arg>com.holdmyspot.codexunleashed.tooling=java.net.http,java.compiler</arg>
-              </compilerArgs>
-            </configuration>
-          </execution>
-        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.6.0</version>
         <configuration>
-          <argLine>"-Djava.io.tmpdir=${java.io.tmpdir}" --add-modules java.net.http,java.compiler --add-reads com.holdmyspot.codexunleashed.tooling=java.net.http,java.compiler</argLine>
+          <argLine>"-Djava.io.tmpdir=${java.io.tmpdir}"</argLine>
         </configuration>
       </plugin>
       <plugin>
@@ -204,20 +121,6 @@
     </plugins>
   </build>
   <profiles>
-    <profile>
-      <!-- protoc and protoc-gen-grpc-java publish no Windows ARM64 executables; Windows on ARM runs the x64 ones
-        under emulation. -->
-      <id>windows-arm64-code-generators</id>
-      <activation>
-        <os>
-          <family>windows</family>
-          <arch>aarch64</arch>
-        </os>
-      </activation>
-      <properties>
-        <protoc.classifier>windows-x86_64</protoc.classifier>
-      </properties>
-    </profile>
     <profile>
       <id>runtime</id>
       <build>
@@ -291,8 +194,6 @@
                     <argument>${project.basedir}/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java</argument>
                     <argument>${project.build.directory}/modules</argument>
                     <argument>${project.build.directory}/runtime</argument>
-                    <!-- Native macOS support is compiled only by the macOS distribution builder. -->
-                    <argument>${project.basedir}/src/main/resources/com/holdmyspot/codexunleashed/scheduler</argument>
                   </arguments>
                 </configuration>
               </execution>
@@ -300,61 +201,6 @@
           </plugin>
         </plugins>
       </build>
-    </profile>
-    <!-- The backend stage consumes prebuilt products. macOS still builds its separate ordinary support below. -->
-    <profile>
-      <id>bazel-native-backend</id>
-      <build><plugins><plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>exec-maven-plugin</artifactId>
-        <version>3.6.4</version>
-        <executions><execution>
-          <id>build-bundled-runtime</id>
-          <phase>package</phase>
-          <goals><goal>exec</goal></goals>
-          <configuration>
-            <executable>${java.home}/bin/java</executable>
-            <arguments>
-              <argument>-Djava.io.tmpdir=${java.io.tmpdir}</argument>
-              <argument>${project.basedir}/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java</argument>
-              <argument>${project.build.directory}/modules</argument>
-              <argument>${project.build.directory}/runtime</argument>
-              <argument>--bazel-backend</argument>
-              <argument>${bazel.backend.directory}</argument>
-            </arguments>
-          </configuration>
-        </execution></executions>
-      </plugin></plugins></build>
-    </profile>
-    <!-- macOS needs ordinary support sources in addition to the three prebuilt backend daemons. -->
-    <profile>
-      <id>bazel-native-backend-macos</id>
-      <activation>
-        <os><family>mac</family></os>
-        <property><name>bazel.backend.directory</name></property>
-      </activation>
-      <build><plugins><plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>exec-maven-plugin</artifactId>
-        <version>3.6.4</version>
-        <executions><execution>
-          <id>build-bundled-runtime</id>
-          <phase>package</phase>
-          <goals><goal>exec</goal></goals>
-          <configuration>
-            <executable>${java.home}/bin/java</executable>
-            <arguments combine.self="override">
-              <argument>-Djava.io.tmpdir=${java.io.tmpdir}</argument>
-              <argument>${project.basedir}/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java</argument>
-              <argument>${project.build.directory}/modules</argument>
-              <argument>${project.build.directory}/runtime</argument>
-              <argument>${project.basedir}/src/main/resources/com/holdmyspot/codexunleashed/scheduler</argument>
-              <argument>--bazel-backend</argument>
-              <argument>${bazel.backend.directory}</argument>
-            </arguments>
-          </configuration>
-        </execution></executions>
-      </plugin></plugins></build>
     </profile>
   </profiles>
 </project>

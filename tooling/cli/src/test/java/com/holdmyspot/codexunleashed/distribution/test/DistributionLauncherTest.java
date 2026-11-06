@@ -1,19 +1,16 @@
 package com.holdmyspot.codexunleashed.distribution.test;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.jar.JarOutputStream;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-/** Verifies actual generated companion launchers with independent, nonnative Java receiver fixtures. */
+/** Verifies the generated tooling launcher with independent, nonnative Java receiver fixtures. */
 public final class DistributionLauncherTest
 {
 	/** The staged TOML parser and its dependencies, as resolved by the build. */
@@ -24,7 +21,6 @@ public final class DistributionLauncherTest
 	public DistributionLauncherTest()
 	{
 	}
-
 
     /**
      * Turns the staged TOML parser and ANTLR runtime into explicit modules that resolve without checker-qual,
@@ -57,11 +53,11 @@ public final class DistributionLauncherTest
     }
 
     /**
-     * Preserves supplied environment entries and arguments through the generated Linux tooling launcher, and packages
-     * the native Cargo wrapper rather than another Java launcher.
+     * Preserves supplied environment entries and arguments through the generated Linux tooling launcher.
      * <p>
-     * An independent Java receiver observes the values after the packaged launcher has executed. The packaged wrapper,
-     * started without its configuration, must refuse with its own diagnostic and never reach that receiver.
+     * An independent Java receiver observes the values after the packaged launcher has executed. The shell launcher
+     * assigns {@code LAUNCHER}, {@code DIR} and {@code JAVA_TEMP}, a POSIX shell resets {@code IFS}, and a shell drops
+     * variables whose names it cannot represent, so the fixture supplies only other portable names.
      * @throws Exception if fixture compilation, production packaging, launch or cleanup fails
      */
     @Test
@@ -113,27 +109,19 @@ public final class DistributionLauncherTest
             Path parent = Files.createDirectories(root.resolve("nested space/quote'\""));
             Path runtime = parent.resolve("runtime");
             checked(root, tool("java"), "-cp", driver.toString(),
-                "com.holdmyspot.codexunleashed.distribution.DistributionMain", modules.toString(), runtime.toString(), Path.of(System.getProperty("basedir"),
-                    "src/main/resources/com/holdmyspot/codexunleashed/scheduler").toAbsolutePath().toString());
+                "com.holdmyspot.codexunleashed.distribution.DistributionMain", modules.toString(),
+                runtime.toString());
 
             java.util.Map<String, String> supplied = new java.util.LinkedHashMap<>();
-            supplied.put("INPUT_UPTERM-VERSION", "one");
-            supplied.put("INPUT_WAIT-TIMEOUT-MINUTES", "");
-            supplied.put("INPUT_LIMIT-ACCESS-TO-ACTOR", "first\nsecond");
-            supplied.put("INPUT_KNOWN-HOSTS", "spaces 'single' \"double\" $literal");
-            supplied.put("INPUT_LIMIT-ACCESS-TO-USERS", "five");
-            supplied.put("INPUT_UPTERM-SERVER", "six");
-            supplied.put("NORMAL", "normal value");
-            supplied.put("IFS", "original separators");
+            supplied.put("NORMAL", "spaces 'single' \"double\" $literal");
+            supplied.put("MULTILINE", "first\nsecond");
+            supplied.put("EMPTY", "");
             supplied.put("SHELLOPTS", "braceexpand");
             supplied.put("BASHOPTS", "checkwinsize");
             supplied.put("SHLVL", "97");
             supplied.put("_", "original underscore");
             supplied.put("LD_LIBRARY_PATH", "/synthetic/original/library");
             supplied.put("_JPACKAGE_LAUNCHER", "");
-            supplied.put("DIR", "original directory");
-            supplied.put("LAUNCHER", "original launcher");
-            supplied.put("JAVA_TEMP", "original Java temporary value");
             supplied.put("TMPDIR", root.toString());
             supplied.put("PATH", "/usr/bin:/bin");
             List<String> arguments = List.of("argument with spaces", "", "--literal=$value", "line one\nline two");
@@ -175,21 +163,6 @@ public final class DistributionLauncherTest
             for (int index = 0; index < arguments.size(); ++index)
                 requireThat(result.getProperty("arg." + index), "actualUserArgument").isEqualTo(arguments.get(index));
 
-            Path wrapperCaptured = root.resolve("codex-cargo-wrapper-linux.properties");
-            ProcessBuilder wrapper = new ProcessBuilder(runtime.resolve("bin/codex-cargo-wrapper-linux").toString(),
-                wrapperCaptured.toString()).directory(root.toFile());
-            wrapper.environment().clear();
-            wrapper.environment().putAll(supplied);
-            Path wrapperError = root.resolve("codex-cargo-wrapper-linux-stderr.log");
-            wrapper.redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/null")))
-                .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(wrapperError.toFile());
-            try (Process child = wrapper.start())
-            {
-                requireThat(child.waitFor(), "wrapperExitWithoutConfiguration").isEqualTo(125);
-            }
-            requireThat(Files.readString(wrapperError), "wrapperDiagnostic").
-                contains("CODEX_LINUX_CARGO_WRAPPER_CONFIG is not set");
-            requireThat(Files.exists(wrapperCaptured), "wrapperReachedJava").isFalse();
         }
     }
 
@@ -268,90 +241,6 @@ public final class DistributionLauncherTest
         }
         return result;
     }
-
-	/**
-	 * Stages the companion in-process: validates the backend through the given tool with the bundled Java, copies the
-	 * build JDK's keytool and writes the companion script.
-	 * @throws Exception if fixture IO or staging fails
-	 */
-	@Test
-	public void stagesCompanionThroughBundledJava() throws Exception
-	{
-		if (!java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix"))
-			throw new SkipException("The POSIX companion's mode requires a POSIX file system");
-		try (Directory directory = new Directory())
-		{
-			Path root = directory.path;
-			Path modules = Files.createDirectory(root.resolve("modules"));
-			try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(modules.resolve("fixture.jar"))))
-			{
-				jar.finish();
-			}
-			Path runtime = Files.createDirectories(root.resolve("runtime"));
-			Path bin = Files.createDirectory(runtime.resolve("bin"));
-			Files.createDirectory(runtime.resolve("lib"));
-			Path javaHome = root.resolve("jdk");
-			Files.writeString(Files.createDirectories(javaHome.resolve("bin")).resolve("keytool"), "keytool image");
-			Path backend = root.resolve("backend");
-			Path temporary = root.resolve("temp with spaces");
-			List<List<String>> commands = new ArrayList<>();
-			com.holdmyspot.codexunleashed.distribution.DistributionMain.stageBazelCompanion(modules, runtime, backend, "Linux",
-				javaHome, temporary, (command, diagnostic) ->
-				{
-					commands.add(command);
-					return 0;
-				});
-			Path lib = runtime.resolve("lib/bazel-backend");
-			requireThat(commands, "validationCommands").isEqualTo(List.of(List.of(bin.resolve("java").toString(),
-				"-Djava.io.tmpdir=" + temporary, "-cp", lib.resolve("codex-tooling.jar").toString(),
-				"com.holdmyspot.codexunleashed.scheduler.BazelNativeBackend", backend.toString(),
-				lib.resolve("native").toString())));
-			requireThat(Files.readString(bin.resolve("keytool")), "copiedKeytool").isEqualTo("keytool image");
-			Path launcher = bin.resolve("codex-tooling-bazel");
-			requireThat(Files.readString(launcher), "companion").isEqualTo(
-				com.holdmyspot.codexunleashed.distribution.DistributionMain.companionScript(""));
-			requireThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(launcher)), "companionMode")
-				.isEqualTo("rwxr-xr-x");
-			requireThat(Files.exists(bin.resolve("codex-tooling-bazel.cmd")), "windowsCompanion").isFalse();
-		}
-	}
-
-	/**
-	 * Reports a failed backend validation with its status and diagnostic, before writing any launcher.
-	 * @throws Exception if fixture IO fails
-	 */
-	@Test
-	public void failedValidationStopsStaging() throws Exception
-	{
-		try (Directory directory = new Directory())
-		{
-			Path root = directory.path;
-			Path modules = Files.createDirectory(root.resolve("modules"));
-			try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(modules.resolve("fixture.jar"))))
-			{
-				jar.finish();
-			}
-			Path runtime = Files.createDirectories(root.resolve("runtime"));
-			Files.createDirectory(runtime.resolve("bin"));
-			Files.createDirectory(runtime.resolve("lib"));
-			try
-			{
-				com.holdmyspot.codexunleashed.distribution.DistributionMain.stageBazelCompanion(modules, runtime,
-					root.resolve("backend"), "Linux", root.resolve("jdk"), root, (command, diagnostic) ->
-					{
-						Files.writeString(diagnostic, "unsupported host");
-						return 7;
-					});
-				throw new AssertionError("Staging accepted a failed validation");
-			}
-			catch (IOException failure)
-			{
-				requireThat(failure.getMessage(), "failure").isEqualTo(
-					"Native backend package validation failed with status 7: unsupported host");
-			}
-			requireThat(Files.exists(runtime.resolve("bin/codex-tooling-bazel")), "launcherWritten").isFalse();
-		}
-	}
 
 	/** Owns and removes one test's filesystem independently. */
 	private static final class Directory implements AutoCloseable

@@ -126,7 +126,7 @@ public final class ActionsCacheRetentionPlanTest
 		}
 		try (ToolingScope scope = new DefaultToolingScope())
 		{
-			return scope.getLeaderJsonMapper().readTree(output.toString(StandardCharsets.UTF_8));
+			return scope.getJsonMapper().readTree(output.toString(StandardCharsets.UTF_8));
 		}
 	}
 

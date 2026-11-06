@@ -30,7 +30,7 @@ import org.apache.commons.io.function.IORunnable;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 
-import static com.holdmyspot.codexunleashed.scheduler.test.TestRequirements.requireException;
+import static com.holdmyspot.codexunleashed.tooling.test.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
@@ -712,7 +712,7 @@ public final class SourceInputCargoTest
 			List<JsonNode> artifacts = new ArrayList<>();
 			for (String line : output.lines().toList())
 			{
-				JsonNode value = scope.getLeaderJsonMapper().readTree(line);
+				JsonNode value = scope.getJsonMapper().readTree(line);
 				if (value.path("reason").asString().equals("compiler-artifact") &&
 					value.path("target").path("name").asString().equals(name) &&
 					value.path("target").path("kind").path(0).asString().equals(kind))
