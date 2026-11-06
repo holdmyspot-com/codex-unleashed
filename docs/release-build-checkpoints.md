@@ -456,7 +456,7 @@ uncaptured. Terminal log: `arm-kernel-signal-EFWxgu/consumers-job.log`, SHA-256
 `880c513bfe0b8bcc712284c13e1a3132239549366b41f1191428a07795ab3193`.
 
 The owner directs reducing concurrency under memory pressure and revisiting
-the limit with the scheduler. Revision
+the limit with the scheduler (dropped on 2026-11-06). Revision
 `f4f89c01b89a436bcfebb65d65575f91209f8abf` sets `CARGO_BUILD_JOBS=2`
 for the ARM release-build step only. Bash syntax and focused execution of
 the actual step's environment setup verify two jobs for ARM and no override
@@ -669,7 +669,7 @@ Independent cache groups do not make their compilation independently runnable.
 This change saves between executables; it does not publish a snapshot while Cargo
 is still writing an executable's dependencies. Further dependency build stages
 require evidence that their feature resolution preserves reuse. Single
-compilations and links may still exceed five minutes; the scheduler checkpoint
+compilations and links may still exceed five minutes; checkpoint 3
 must investigate those timings rather than infer a cache miss from duration.
 
 ## Clean verification after grouped-cache acceptance
@@ -744,7 +744,8 @@ source diff and dependency verification pass. Its 788 resource samples retain
 at least 4,017.1 MiB available memory and use at most 1,784.4 MiB swap.
 Compared with the preceding default-concurrency run, the job takes 14m 37s
 longer with substantially more observed memory headroom. Keep the two-job
-limit and revisit it with memory-aware scheduling in step 3. Evidence artifact
+limit and revisit it in step 3. (2026-11-06: the scheduler was dropped; the
+job count is now chosen by measurement, see `plan.md`.) Evidence artifact
 `12712142643` has verified ZIP SHA-256
 `13a7a700466a14b3ecdb8d746ce20b7d110e6dd406cc193dc89e8f58a09f7f48`;
 the job-log SHA-256 is
