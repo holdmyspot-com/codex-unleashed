@@ -19,17 +19,7 @@ Handoff updated 2026-11-06T18:30Z. The goal `implement plan.md` is incomplete: C
 
 ### Live operations at handoff
 
-Job-count experiments, one retained debug worker per target. Each runs `expJ.sh` (or `expJA.sh` on ARM Linux) after the job's own package build: it rebuilds `codex-tui`, `codex-exec`, `codex-app-server` and `codex-mcp` as libraries (with `codex-core`) from clean workspace outputs once per job count and appends `NAME wall=SECONDS status=CODE` to `/tmp/expJ/results.txt`. Session directories are under this session's `CAT_TEMP`.
-
-| Target | Run | Job counts | Session directory |
-| --- | --- | --- | --- |
-| `aarch64-unknown-linux-musl` | `42225639057` | 2, 3 (14,500 MB cgroup, swap on) | `armswap-RBuFhP`; the job's 6-hour limit ends 2026-11-06T19:27Z |
-| `aarch64-apple-darwin` | `42264649730` | 2, 3 | `macarmj-xkbkkH` |
-| `x86_64-apple-darwin` | `42264654272` | 3, 4 | `macx64j-DGG5dX` |
-| `x86_64-pc-windows-msvc` | `42264659111` | 3, 4 | `winx64j-KliHfD` |
-| `aarch64-pc-windows-msvc` | `42264664031` | 3, 4 | `winarmj-NmuXZ7` |
-
-When a worker's results end in `DONE`, stop it by the remote-runner protocol and cancel its run; nothing after the experiment is needed.
+None. The job-count debug workers (runs `42225639057`, `42264649730`, `42264654272`, `42264659111`, `42264664031`) were shut down and cancelled on 2026-11-06 after their measurements; their session directories under this session's `CAT_TEMP` keep the transcripts.
 
 ### Decision: the build scheduler is dropped (user, 2026-11-06)
 
@@ -52,11 +42,11 @@ The remaining CP3 build-speed work chooses standard build options that shorten a
 | ARM Linux, relink of `codex` after touching `cli/src/main.rs` (run `42225639057`, `expA`) | `cargo build` 3,827 s. Through `cargo rustc` with `RUSTC_BOOTSTRAP=1`: `-Z time-passes` 3,640 s, `-Z threads=4` 2,009 s, `-C codegen-units=16` 2,033 s. |
 | ARM Linux output hashes from the same runs | `cargo build`: `15454050…`; `-Z time-passes` and `-Z threads=4`: both `ce584d88…`; `codegen-units=16`: `b4788cc5…`. `-Z threads=4` matches the other `cargo rustc` run byte for byte; the difference from `cargo build` comes from the invocation, not from the thread count (inference: not isolated further). |
 | Windows | At most about 4% idle CPU during the build. |
+| Job counts, cold rebuild of `codex-tui`, `codex-exec`, `codex-app-server`, `codex-mcp` and `codex-core` (2026-11-06) | ARM macOS (3 CPUs, 7 GB): `-j2` 2,842 s, `-j3` 6,007 s. Intel macOS (4 CPUs): `-j3` 3,510 s, `-j4` 3,233 s. Windows x64 (4 CPUs): `-j3` 1,689 s, `-j4` 1,626 s. Windows ARM (4 CPUs): `-j3` 1,327 s, `-j4` 1,173 s. ARM Linux: the run failed in `tikv-jemalloc-sys` after an interrupted earlier build and the job reached its time limit, so it was not measured. |
 
 - `-Z threads` remains rejected by the user (2026-11-04: nightly-only through `RUSTC_BOOTSTRAP=1`, unstable and known to hang occasionally), even though it nearly halved the final ARM link.
 - `codegen-units=16` changes the output, so it is excluded.
-- ARM Linux keeps 2 jobs unless its j3 run finishes without memory kills and is faster.
-- Pending: the job-count results above. Set `CARGO_BUILD_JOBS` per target in [baseline-release-builds.yml](.github/workflows/baseline-release-builds.yml) only where a higher count is faster without memory kills; leave Cargo's default elsewhere.
+- Chosen job counts in [baseline-release-builds.yml](.github/workflows/baseline-release-builds.yml): x64 Linux 3, ARM Linux 2 (unmeasured; keeps the earlier memory-pressure limit), ARM macOS 2. Windows x64, Windows ARM and Intel macOS keep Cargo's default of one job per CPU, which was fastest.
 
 ### Directive: split slow build steps without changing the output (user, 2026-11-04)
 
