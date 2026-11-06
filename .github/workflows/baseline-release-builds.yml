@@ -12,10 +12,6 @@ on:
         description: Optional client correlation identifier for this retained worker run
         type: string
         default: ''
-      scheduler:
-        description: Opt in to the installed scheduler; requires accepted native prerequisites for every selected target
-        type: boolean
-        default: false
       cache:
         description: Use GHCR compiled outputs and Actions downloads for verified release targets
         type: boolean
@@ -84,7 +80,6 @@ jobs:
           SELECTED_TARGET: ${{ inputs.target }}
           VERIFY_INVALIDATION: ${{ inputs.verify_invalidation }}
           TRACE_SIGNALS: ${{ inputs.trace_signals }}
-          SCHEDULER_ENABLED: ${{ inputs.scheduler }}
           QUIET_STOP_MINUTES: ${{ inputs.quiet_stop_minutes }}
         run: |
           if ! [[ "$QUIET_STOP_MINUTES" =~ ^[1-9][0-9]*$ ]] || (( QUIET_STOP_MINUTES > 300 )); then
@@ -112,15 +107,6 @@ jobs:
             | (if $target == "all" then . else map(select(.target == $target)) end)
             | if length == 0 then error("Selected target is not enabled for this build mode") else {include: .} end
           ' .github/release-matrix.json)"
-          if [[ "$SCHEDULER_ENABLED" == true ]]; then
-            jq -e --argjson matrix "$value" '
-              . as $readiness | all($matrix.include[];
-                $readiness.targets[.target].cargoNativeReady == true)
-            ' .github/scheduler-release-prerequisites.json >/dev/null || {
-              printf 'Scheduler native prerequisites remain unmet for at least one selected target.\n' >&2
-              exit 1
-            }
-          fi
           printf 'value=%s\n' "$value" >> "$GITHUB_OUTPUT"
 
   build:
@@ -162,7 +148,6 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-evidence"
           cargo_home="$RUNNER_TEMP/baseline-cargo-home"
           cargo_target_dir="$RUNNER_TEMP/baseline-target"
-          if [[ '${{ inputs.scheduler }}' == true ]]; then cargo_target_dir="$GITHUB_WORKSPACE/codex-rs/target"; fi
           mkdir -p "$evidence" "$cargo_home" "$cargo_target_dir"
           printf 'CARGO_HOME=%s\nCARGO_TARGET_DIR=%s\n' "$cargo_home" "$cargo_target_dir" >> "$GITHUB_ENV"
           owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
@@ -179,16 +164,9 @@ jobs:
           cp restart-metadata/.github/scripts/test-ghcr-cargo-target-cache.sh "$RUNNER_TEMP/test-ghcr-cargo-target-cache.sh"
           cp restart-metadata/.github/scripts/test-codex-tooling-launch.py "$RUNNER_TEMP/test-codex-tooling-launch.py"
           cp restart-metadata/.github/scripts/build-upstream-release.sh "$RUNNER_TEMP/build-upstream-release.sh"
-          cp restart-metadata/.github/scripts/provision-release-scheduler.sh "$RUNNER_TEMP/provision-release-scheduler.sh"
+          cp restart-metadata/.github/scripts/release-debug-session.sh "$RUNNER_TEMP/release-debug-session.sh"
           if [[ -n "$DEBUG_PUBLIC_KEY" ]]; then
             cp -R restart-metadata/.github/actions/debug-failed-runner "$RUNNER_TEMP/release-debug-action"
-          fi
-          if [[ '${{ inputs.scheduler }}' == true ]]; then
-            cp -R restart-metadata/.github/scripts/release-scheduler-native "$RUNNER_TEMP/release-scheduler-native"
-            for script in provision-release-scheduler.sh release-scheduler-cargo.sh; do
-              cp "restart-metadata/.github/scripts/$script" "$RUNNER_TEMP/$script"
-              chmod +x "$RUNNER_TEMP/$script"
-            done
           fi
           cp restart-metadata/.github/scripts/probe-runner-signals.py "$RUNNER_TEMP/probe-runner-signals.py"
           cp restart-metadata/.github/scripts/watch-quiet-build.py "$RUNNER_TEMP/watch-quiet-build.py"
@@ -207,15 +185,9 @@ jobs:
           cp -R restart-metadata/tooling/cli "$RUNNER_TEMP/source-cache-helper"
           mkdir -p "$RUNNER_TEMP/source-cache-temp"
           printf 'TMPDIR=%s\n' "$RUNNER_TEMP/source-cache-temp" >> "$GITHUB_ENV"
-          # The build scheduler only orders and supervises compiler processes; it never changes their outputs, and Cargo
-          # still checks every restored unit's fingerprint. Excluding it, and the secrets package that holds only its
-          # access façades, keeps scheduler repairs from discarding the cache.
           (
             cd restart-metadata
             git ls-files -z -- tooling/cli/pom.xml tooling/cli/src/main tooling/cli/src/build \
-              ':(exclude)tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler' \
-              ':(exclude)tooling/cli/src/main/java/com/holdmyspot/codexunleashed/secrets' \
-              ':(exclude)tooling/cli/src/main/resources/com/holdmyspot/codexunleashed/scheduler' \
               | sort -z | xargs -0 sha256sum
           ) > "$RUNNER_TEMP/baseline-evidence/cache-helper-inputs.sha256"
 
@@ -239,7 +211,7 @@ jobs:
       - name: Prepare retained release worker
         if: inputs.public_key != ''
         run: |
-          bash "$RUNNER_TEMP/provision-release-scheduler.sh" prepare-debug-session \
+          bash "$RUNNER_TEMP/release-debug-session.sh" prepare \
             "$RUNNER_TEMP/release-debug-action" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-evidence"
 
       - name: Open authenticated release worker
@@ -250,7 +222,7 @@ jobs:
 
       - name: Wait for connected release client
         if: inputs.public_key != ''
-        run: bash "$RUNNER_TEMP/provision-release-scheduler.sh" wait-for-client "$RUNNER_TEMP/baseline-evidence"
+        run: bash "$RUNNER_TEMP/release-debug-session.sh" wait-for-client "$RUNNER_TEMP/baseline-evidence"
 
       - name: Record Linux runner capacity
         if: runner.os == 'Linux'
@@ -365,61 +337,6 @@ jobs:
             "-Dmaven.repo.local=$RUNNER_TEMP/source-cache-maven" \
             "-Djava.io.tmpdir=$TMPDIR" verify 2>&1 | tee "$evidence/cache-helper-build.log"
           printf 'CODEX_SOURCE_CACHE_TOOL=%s\n' "$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling" >> "$GITHUB_ENV"
-
-      - name: Restore the scheduler's memory history
-        # Recorded compiler peaks feed the next run's memory estimates; each run saves its own entry under a new key.
-        if: inputs.scheduler && inputs.cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          # actions/cache versions an entry by its path, so this must match the save step's path exactly.
-          path: ${{ runner.temp }}/scheduler-memory-history-save
-          key: scheduler-memory-history-v1-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: scheduler-memory-history-v1-${{ matrix.target }}-
-
-      - name: Provision the job-exclusive scheduler installation
-        if: inputs.scheduler
-        env:
-          RELEASE_SCHEDULER_HEADROOM_BYTES: "1073741824"
-          RELEASE_SCHEDULER_CONTROL_TIMEOUT_MS: "120000"
-        run: |
-          set -euo pipefail
-          # Cargo needs a fixed jobserver size; offer one slot per CPU, as Cargo does by default, and let memory
-          # admission decide how many of them run.
-          RELEASE_SCHEDULER_MAX_JOBS="$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)"
-          [[ "$RELEASE_SCHEDULER_MAX_JOBS" =~ ^[1-9][0-9]*$ ]]
-          native="$RUNNER_TEMP/release-native"
-          bash "$RUNNER_TEMP/provision-release-scheduler.sh" prepare-native \
-            "$RUNNER_TEMP/source-cache-build/runtime" "$native" "$RUNNER_TEMP/release-scheduler-native" \
-            2>&1 | tee "$RUNNER_TEMP/baseline-evidence/scheduler-native-setup.log"
-          toolchain="$(rustc --print sysroot)"
-          if [[ "$RUNNER_OS" == Windows ]]; then toolchain="$(cygpath -u "$toolchain")"; fi
-          frida_name=frida
-          if [[ "$RUNNER_OS" == Windows ]]; then frida_name=frida.dll; fi
-          dependencies=("$native/$frida_name")
-          if [[ "$RUNNER_OS" == Linux ]]; then
-            dependencies+=("$native/libcgroup.so" "$native/libbuildhook.so" "$native/codex-build-hook-exec")
-          fi
-          bash "$RUNNER_TEMP/provision-release-scheduler.sh" install \
-            "$RUNNER_TEMP/source-cache-build/runtime" "$toolchain" "${dependencies[@]}"
-          printf 'RELEASE_CARGO_COMMAND=%s/release-scheduler-cargo.sh\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
-          printf 'RELEASE_SCHEDULER_HEADROOM_BYTES=%s\nRELEASE_SCHEDULER_MAX_JOBS=%s\nRELEASE_SCHEDULER_CONTROL_TIMEOUT_MS=%s\n' \
-            "$RELEASE_SCHEDULER_HEADROOM_BYTES" "$RELEASE_SCHEDULER_MAX_JOBS" "$RELEASE_SCHEDULER_CONTROL_TIMEOUT_MS" >> "$GITHUB_ENV"
-
-      - name: Install the restored memory history
-        if: inputs.scheduler && inputs.cache
-        run: |
-          set -euo pipefail
-          restored="$RUNNER_TEMP/scheduler-memory-history-save"
-          profiles=()
-          if [[ -d "$restored" ]]; then
-            while IFS= read -r -d '' profile; do profiles+=("$profile"); done \
-              < <(find "$restored" -maxdepth 1 -type f -name '*.profile' -print0)
-          fi
-          if (( ${#profiles[@]} > 0 )); then
-            if [[ "$RUNNER_OS" == Windows ]]; then cp -- "${profiles[@]}" "$RELEASE_SCHEDULER_ROOT/history/"
-            else sudo -n cp -- "${profiles[@]}" "$RELEASE_SCHEDULER_ROOT/history/"; fi
-          fi
-          printf 'restored_profiles=%s\n' "${#profiles[@]}" | tee "$RUNNER_TEMP/baseline-evidence/memory-history-restore.log"
 
       - name: Select the declared Node version for cache transport checks
         if: inputs.cache
@@ -566,23 +483,20 @@ jobs:
           if [[ "$CACHE_ENABLED" == true ]]; then
             export RELEASE_CHECKPOINT_COMMAND="$RUNNER_TEMP/checkpoint-upstream-release.sh"
           fi
-          # The build scheduler admits compilers by measured memory, so it needs no fixed job cap. Without it, Linux
-          # keeps the two-job limit that prevented observed memory pressure.
-          if [[ -z "${RELEASE_CARGO_COMMAND:-}" ]]; then
-            case "$TARGET" in
-              aarch64-unknown-linux-musl | x86_64-unknown-linux-musl)
-                export CARGO_BUILD_JOBS=2
-                printf 'Limiting Linux Cargo compilation to two concurrent jobs after observed memory pressure.\n'
-                ;;
-            esac
-          fi
+          # In cold builds with swap on, x64 Linux finished fastest with three jobs and ran out
+          # of memory with four. ARM Linux keeps the two-job limit that prevented observed memory pressure.
+          case "$TARGET" in
+            x86_64-unknown-linux-musl)
+              export CARGO_BUILD_JOBS=3
+              printf 'Limiting Linux Cargo compilation to three concurrent jobs, the fastest measured count.\n'
+              ;;
+            aarch64-unknown-linux-musl)
+              export CARGO_BUILD_JOBS=2
+              printf 'Limiting Linux Cargo compilation to two concurrent jobs after observed memory pressure.\n'
+              ;;
+          esac
           printf 'cargo_build_jobs=%s\n' "${CARGO_BUILD_JOBS:-default}" \
             | tee "$RUNNER_TEMP/baseline-evidence/cargo-concurrency.log"
-          # Cargo downloads every dependency, for every platform, before the scheduled build, because fetching compiles
-          # nothing. The scheduler then never instruments Cargo's git children: on macOS, a forked child of a threaded
-          # `git fetch` never answered its instrumentation and held the build. The builds then find every source
-          # present and fetch nothing. This lives here, not in the release script, so the compiled-cache seed is kept.
-          cargo fetch 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/cargo-fetch.log"
           release_command=(bash "$RUNNER_TEMP/build-upstream-release.sh")
           if [[ "$VERIFY_CLI_UNITS" == true ]]; then
             cat > "$RUNNER_TEMP/build-and-check-upstream-release.sh" <<'SCRIPT'
@@ -725,43 +639,6 @@ jobs:
                 sha256sum -- "$source_path"
               fi
             done > "$evidence/final-untracked-source-digests.txt"
-
-      - name: Collect the memory history for saving
-        id: memory_collect
-        if: always() && inputs.scheduler && inputs.cache && env.RELEASE_SCHEDULER_ROOT != ''
-        run: |
-          set -euo pipefail
-          collected="$RUNNER_TEMP/scheduler-memory-history-save"
-          rm -rf -- "$collected"
-          mkdir -p "$collected"
-          # With "+", find requires {} immediately before it, so each profile is copied by its own cp.
-          if [[ "$RUNNER_OS" == Windows ]]; then
-            find "$RELEASE_SCHEDULER_ROOT/history" -maxdepth 1 -type f -name '*.profile' -exec cp -- {} "$collected/" \;
-          else
-            sudo -n find "$RELEASE_SCHEDULER_ROOT/history" -maxdepth 1 -type f -name '*.profile' -exec cp -- {} "$collected/" \;
-            sudo -n chown -R "$(id -u):$(id -g)" "$collected"
-          fi
-          count="$(find "$collected" -maxdepth 1 -type f -name '*.profile' | wc -l | tr -d ' ')"
-          printf 'collected_profiles=%s\n' "$count" | tee "$RUNNER_TEMP/baseline-evidence/memory-history-save.log"
-          printf 'profiles=%s\n' "$count" >> "$GITHUB_OUTPUT"
-
-      - name: Save the memory history
-        # An empty save would become the newest entry and hide earlier history from the prefix restore.
-        if: always() && inputs.scheduler && inputs.cache && env.RELEASE_SCHEDULER_ROOT != '' && steps.memory_collect.outcome == 'success' && steps.memory_collect.outputs.profiles != '0'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ runner.temp }}/scheduler-memory-history-save
-          key: scheduler-memory-history-v1-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
-
-      - name: Release only closed scheduler authority
-        # A failed authenticated worker retains its installation for correction.
-        # The connected owner may run this same cleanup after its final consumer;
-        # otherwise terminal hosted-worker disposal follows the debug action post wait.
-        if: always() && inputs.scheduler && env.RELEASE_SCHEDULER_ROOT != '' && (inputs.public_key == '' || success())
-        run: |
-          set -euo pipefail
-          bash "$RUNNER_TEMP/provision-release-scheduler.sh" cleanup "$RELEASE_SCHEDULER_ROOT" \
-            2>&1 | tee "$RUNNER_TEMP/baseline-evidence/scheduler-cleanup.log"
 
       - name: Keep the faulting thread of each Java crash report
         # A JVM fatal error writes hs_err_pid*.log into its working directory. Only its leading comment and the

@@ -1,8 +1,7 @@
 """Run a build command and explain it, then stop it, when its logs stay quiet.
 
 The release build writes every stage's output under one evidence directory. When no file there changes for
---first-report seconds, other than by appending the scheduler's own stall reports, this writes a report of every user
-process to --report: its state, kernel wait channel, current system call, tracer and kernel stacks, plus a Java and a
+--first-report seconds, this writes a report of every user process to --report: its state, kernel wait channel, current system call, tracer and kernel stacks, plus a Java and a
 mixed Java and native thread dump of each Java process.
 A host without /proc, such as macOS, gets each process's ps line instead, and each JVM's thread dump and native sample.
 Windows gets each process with its count of suspended threads, and each JVM's thread dump.
@@ -93,10 +92,9 @@ def descriptor_limit(pid):
 def sampled(state, command):
     """Indicates whether a process's native threads belong in the report.
 
-    JVMs are sampled for where each thread blocks; a stopped process and a Frida helper are sampled too, because a
-    build can stall while one holds the other."""
+    JVMs are sampled for where each thread blocks, and a stopped process is sampled too."""
     name = os.path.basename(command.split(" ")[0])
-    return name in ("java", "frida-helper") or state.startswith("T")
+    return name == "java" or state.startswith("T")
 
 
 def sampled_processes(lines):
@@ -345,11 +343,6 @@ def dump(jcmd, out, procfs=Path("/proc")):
     out.flush()
 
 
-STALL_EVENT = "scheduler_stall"
-"""Event of the scheduler's own stall report: a JSON line that the scheduler appends to the build log while no build
-work is progressing, so it is not build output."""
-
-
 def kibibytes(fields, name):
     """Returns a /proc/meminfo field, given in KiB, in bytes."""
     return int(fields[name].split()[0]) * 1024
@@ -509,17 +502,14 @@ class ResourceSampler:
 
 class BuildOutput:
     """Tracks when the build last wrote output under the watched directory, other than this watcher's report and
-    resource samples and the scheduler's stall reports."""
+    resource samples."""
 
     def __init__(self, directory, report, samples):
         self.directory = directory
         self.excluded = {os.path.abspath(report), os.path.abspath(samples)}
-        self.files = {}
-        """For each file seen: its modification time, the size up to which its bytes were classified, and the
-        modification time of its last build output."""
 
     def latest(self):
-        """Returns the newest modification time of any file's build output."""
+        """Returns the newest modification time of any build output file."""
         newest = 0.0
         for root, _, names in os.walk(self.directory):
             for name in names:
@@ -527,48 +517,10 @@ class BuildOutput:
                 if path in self.excluded:
                     continue
                 try:
-                    newest = max(newest, self.observe(path))
+                    newest = max(newest, os.stat(path).st_mtime)
                 except OSError:
                     pass
         return newest
-
-    def observe(self, path):
-        """Classifies one file's change since the previous call and returns the time of its last build output.
-
-        A file seen for the first time, or changed without growing, counts as output. A file that only grew counts
-        as output unless every complete line appended since the previous call is a scheduler stall report; a trailing
-        partial line is left to classify once it is complete."""
-        status = os.stat(path)
-        previous = self.files.get(path)
-        if previous is None:
-            self.files[path] = (status.st_mtime, status.st_size, status.st_mtime)
-            return status.st_mtime
-        modified, classified, output = previous
-        if status.st_mtime == modified:
-            return output
-        if status.st_size <= classified:
-            self.files[path] = (status.st_mtime, status.st_size, status.st_mtime)
-            return status.st_mtime
-        with open(path, "rb") as stream:
-            stream.seek(classified)
-            appended = stream.read(status.st_size - classified)
-        complete = appended.rfind(b"\n") + 1
-        lines = appended[:complete].splitlines()
-        partial = appended[complete:]
-        if all(stall_report(line) for line in lines) and (not partial or partial.startswith(b"{")):
-            self.files[path] = (status.st_mtime, classified + complete, output)
-            return output
-        self.files[path] = (status.st_mtime, status.st_size, status.st_mtime)
-        return status.st_mtime
-
-
-def stall_report(line):
-    """Returns whether one log line is the scheduler's stall report."""
-    try:
-        record = json.loads(line)
-    except ValueError:
-        return False
-    return isinstance(record, dict) and record.get("event") == STALL_EVENT
 
 
 def write_report(report, quiet, jcmd):
@@ -596,7 +548,7 @@ def signal_group(pgid, sig):
         return
     except PermissionError:
         pass
-    # The scheduler runs part of the build as root, so its members can outlive every member this user may signal.
+    # A member started under sudo can outlive every member this user may signal.
     if subprocess.run(["sudo", "-n", "true"], capture_output=True).returncode != 0:
         raise PermissionError(1, f"cannot signal process group {pgid}")
     result = subprocess.run(["sudo", "-n", "kill", f"-{int(sig)}", "--", f"-{pgid}"], capture_output=True, text=True)

@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 # Build the selected native upstream release bundles with default features.
 # Run from codex-rs with TARGET, CARGO_TARGET_DIR and RUNNER_TEMP configured.
-# RELEASE_CARGO_COMMAND optionally selects an executable adapter for compilations;
-# it receives the original Cargo arguments and must return the collected Cargo status.
 # Cargo failures propagate; logs and toolchain identity go to baseline-evidence.
 # RELEASE_PACKAGES optionally names whitespace-separated Cargo package specifications. When set, one Cargo build of
-# exactly those packages replaces the release stages and no release stage is checkpointed, so a scheduler change can
-# be checked on a few crates before the whole build. Each entry must be a plain package specification. The build is
+# exactly those packages replaces the release stages and no release stage is checkpointed, so a build option can be
+# checked on a few crates before the whole build. Each entry must be a plain package specification. The build is
 # verbose so that a failing compilation's log records its exact compiler command line. When it fails,
 # package-libraries.txt in baseline-evidence lists every library in a deps directory as "size modified path", sorted by
 # path with UTC modification times, so a library that a dependent could not load can be checked afterwards.
@@ -35,24 +33,19 @@ checkpoint() {
   fi
 }
 
-# Compile through the explicitly configured adapter or the ordinary Cargo command.
+# Compile with Cargo.
 # Arguments:
 #   Original Cargo arguments, forwarded individually without shell interpretation.
 # Environment:
-#   RELEASE_CARGO_COMMAND: optional executable path; empty or unset selects Cargo.
-#   PATH: command search path when the selected executable is not absolute.
+#   PATH: command search path for cargo.
 # Output:
-#   Forwards the selected command's standard output and standard error.
+#   Forwards Cargo's standard output and standard error.
 # Side effects:
 #   Runs one compilation in the caller's working directory and environment.
 # Exit status:
-#   The selected command's status, including adapter failure without fallback.
+#   Cargo's status.
 compile() {
-  if [[ -n "${RELEASE_CARGO_COMMAND:-}" ]]; then
-    "$RELEASE_CARGO_COMMAND" "$@"
-  else
-    cargo "$@"
-  fi
+  cargo "$@"
 }
 
 if [[ -n "${RELEASE_PACKAGES+set}" ]]; then

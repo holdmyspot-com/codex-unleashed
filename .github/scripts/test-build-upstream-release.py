@@ -13,14 +13,13 @@ import unittest
 
 class ReleaseStagesTest(unittest.TestCase):
     """Check platform-specific release command ordering, checkpoint failures and reuse of real Cargo outputs."""
-    def run_build(self, target, fail_binary="", fail_checkpoint="", use_scheduler=False, packages=None,
+    def run_build(self, target, fail_binary="", fail_checkpoint="", packages=None,
                   fail_packages=False):
         """Run the release script with isolated Cargo and checkpoint fixture processes.
 
         target selects platform-specific binaries. fail_binary and fail_checkpoint
         select fixture operations that exit 37 and 43 respectively; empty strings
-        disable injected failures. use_scheduler selects a fixture adapter that
-        records and forwards each compilation unchanged. packages, when not None, sets RELEASE_PACKAGES. fail_packages
+        disable injected failures. packages, when not None, sets RELEASE_PACKAGES. fail_packages
         makes a package build leave an empty and a nonempty library in deps and exit 37. Return the process result and
         ordered build/checkpoint events, keep the package library listing, if any, in self.package_libraries, and remove
         the owned fixture after reading them."""
@@ -58,15 +57,6 @@ if binary == 'bwrap':
             rustc = programs / "rustc"
             rustc.write_text("#!/usr/bin/env python3\nprint('rustc release-stage fixture')\n")
             rustc.chmod(0o755)
-            scheduler = root / "scheduler adapter ; literal"
-            scheduler.write_text("""#!/usr/bin/env python3
-import json, os, subprocess, sys
-with open(os.environ['EVENTS'], 'a') as log:
-    log.write(json.dumps(['schedule', sys.argv[1:]]) + '\\n')
-# Windows os.execv starts a new process and exits 0, so run Cargo as a child to keep its status.
-sys.exit(subprocess.run([sys.executable, os.environ['FIXTURE_CARGO'], *sys.argv[1:]]).returncode)
-""")
-            scheduler.chmod(0o755)
             checkpoint = root / "checkpoint"
             checkpoint.write_text("""#!/usr/bin/env python3
 import json, os, pathlib, sys
@@ -85,13 +75,9 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
                                FAIL_BINARY=fail_binary, FAIL_CHECKPOINT=fail_checkpoint,
                                FAIL_PACKAGES="1" if fail_packages else "",
                                RELEASE_CHECKPOINT_COMMAND=checkpoint.as_posix())
-            environment.pop("RELEASE_CARGO_COMMAND", None)
             environment.pop("RELEASE_PACKAGES", None)
             if packages is not None:
                 environment["RELEASE_PACKAGES"] = packages
-            if use_scheduler:
-                environment["RELEASE_CARGO_COMMAND"] = scheduler.as_posix()
-                environment["FIXTURE_CARGO"] = cargo.as_posix()
             script = Path(__file__).with_name("build-upstream-release.sh")
             result = subprocess.run([shutil.which("bash"), script.as_posix()], env=environment, capture_output=True, text=True)
             if packages is None:
@@ -134,48 +120,24 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
         self.assertEqual(result.returncode, 43)
         self.assertEqual(len(events), 4)
 
-    def test_scheduler_receives_every_compilation_before_its_checkpoint(self):
-        """An explicit adapter receives exact Cargo build argv, including Linux helpers, and each result is checkpointed."""
-        target = "x86_64-unknown-linux-musl" if sys.platform == "linux" else "x86_64-apple-darwin"
-        result, events = self.run_build(target, use_scheduler=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        expected_binaries = ["codex-responses-api-proxy", "codex-code-mode-host", "codex", "codex-app-server"]
-        if sys.platform == "linux":
-            expected_binaries.insert(0, "bwrap")
-        expected = []
-        for binary in expected_binaries:
-            arguments = ["build", "--target", target, "--release", "--timings", "--bin", binary]
-            expected.extend([["schedule", arguments], ["build", arguments], ["checkpoint", binary]])
-        self.assertEqual(events, expected)
-
-    def test_scheduler_failure_preserves_completed_work_and_stops_later_stages(self):
-        """The adapter's status37 propagates without fallback compilation or checkpointing the failed binary."""
-        result, events = self.run_build("x86_64-apple-darwin", fail_binary="codex", use_scheduler=True)
-        self.assertEqual(result.returncode, 37)
-        self.assertEqual([event[1] for event in events if event[0] == "checkpoint"],
-                         ["codex-responses-api-proxy", "codex-code-mode-host"])
-        self.assertEqual([event[1][-1] for event in events if event[0] == "schedule"],
-                         ["codex-responses-api-proxy", "codex-code-mode-host", "codex"])
-        self.assertEqual(len(events), 8)
-
     def test_package_selection_builds_only_those_crates_once_verbosely_without_checkpoints(self):
         """
-        A package run makes one scheduled, verbose Cargo build of exactly the listed crates and saves no release stage;
+        A package run makes one verbose Cargo build of exactly the listed crates and saves no release stage;
         verbose output records each failing compiler command line.
         """
-        result, events = self.run_build("x86_64-apple-darwin", use_scheduler=True,
+        result, events = self.run_build("x86_64-apple-darwin",
                                         packages="tikv-jemalloc-sys  aws-lc-sys@0.30.0")
         self.assertEqual(result.returncode, 0, result.stderr)
         arguments = ["build", "--target", "x86_64-apple-darwin", "--release", "--timings", "--verbose",
                      "-p", "tikv-jemalloc-sys", "-p", "aws-lc-sys@0.30.0"]
-        self.assertEqual(events, [["schedule", arguments], ["build", arguments]])
+        self.assertEqual(events, [["build", arguments]])
 
     def test_failed_package_build_records_library_sizes(self):
         """
         A failed package build keeps Cargo's status and records each library in deps with its size, so an empty
         library that a dependent could not load shows in the evidence.
         """
-        result, events = self.run_build("x86_64-apple-darwin", use_scheduler=True, packages="codex-config",
+        result, events = self.run_build("x86_64-apple-darwin", packages="codex-config",
                                         fail_packages=True)
         self.assertEqual(result.returncode, 37, result.stderr)
         self.assertIsNotNone(self.package_libraries, result.stderr)
@@ -187,7 +149,7 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
 
     def test_successful_package_build_records_no_library_listing(self):
         """A package build that succeeds writes no library listing."""
-        result, events = self.run_build("x86_64-apple-darwin", use_scheduler=True, packages="codex-config")
+        result, events = self.run_build("x86_64-apple-darwin", packages="codex-config")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIsNone(self.package_libraries)
 
@@ -229,7 +191,6 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
                                RUNNER_TEMP=str(root), GIT_AUTHOR_NAME="Fixture", GIT_AUTHOR_EMAIL="fixture@example.invalid",
                                GIT_COMMITTER_NAME="Fixture", GIT_COMMITTER_EMAIL="fixture@example.invalid")
             environment.pop("RELEASE_CHECKPOINT_COMMAND", None)
-            environment.pop("RELEASE_CARGO_COMMAND", None)
 
             def command(arguments):
                 """Run a command in the fixture workspace and environment, assert status zero, and return its captured text output."""

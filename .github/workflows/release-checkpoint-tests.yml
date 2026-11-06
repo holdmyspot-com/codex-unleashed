@@ -16,6 +16,10 @@ on:
       - .github/scripts/test-ghcr-cargo-target-cache.sh
       - .github/scripts/watch-quiet-build.py
       - .github/scripts/test-watch-quiet-build.py
+      - .github/scripts/release-debug-session.sh
+      - .github/scripts/test-release-debug-session.py
+      - .github/workflows/baseline-release-builds.yml
+      - .github/release-matrix.json
   workflow_dispatch:
     inputs:
       target:
@@ -101,6 +105,8 @@ jobs:
           if [[ "$RUNNER_OS" == Linux ]]; then
             python3 .github/scripts/test-watch-quiet-build.py \
               2>&1 | tee "$RUNNER_TEMP/checkpoint-evidence/quiet-build-watch.log"
+            python3 .github/scripts/test-release-debug-session.py \
+              2>&1 | tee "$RUNNER_TEMP/checkpoint-evidence/debug-session.log"
           fi
       - name: Preserve checkpoint verification evidence
         if: always()
@@ -111,7 +117,7 @@ jobs:
           path: |
             ${{ runner.temp }}/checkpoint-evidence
             ${{ runner.temp }}/checkpoint-tests/build/surefire-reports/TEST-com.holdmyspot.codexunleashed.tooling.*.xml
-            ${{ runner.temp }}/checkpoint-tests/build/surefire-reports/TEST-com.holdmyspot.codexunleashed.scheduler.*.xml
+            ${{ runner.temp }}/checkpoint-tests/build/surefire-reports/TEST-com.holdmyspot.codexunleashed.distribution.*.xml
           retention-days: 1
           if-no-files-found: warn
       - name: Remove owned test scratch directory

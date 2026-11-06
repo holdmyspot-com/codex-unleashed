@@ -80,36 +80,6 @@ class QuietBuildWatchTest(unittest.TestCase):
             self.assertEqual(result.returncode, 7, result.stdout + result.stderr)
             self.assertFalse(report.exists(), "an active command was reported as quiet")
 
-    def test_stops_a_command_that_writes_only_scheduler_stall_reports(self):
-        """A scheduler that reports its own stall keeps appending to the log, but those reports are not build output."""
-        command = (
-            "import pathlib, time; "
-            "log = pathlib.Path('logs/build.log'); "
-            "log.write_text('   Compiling curl-sys\\n'); "
-            "[(log.open('a').write('{\"format_version\":1,\"event\":\"scheduler_stall\",\"stalled_seconds\":' + "
-            "str(i) + '}\\n'), time.sleep(0.2)) for i in range(150)]"
-        )
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
-            result, report = run_watcher(directory, command, "--first-report", "1", "--interval", "1",
-                "--stop-after", "2.5")
-            self.assertEqual(result.returncode, 124, result.stdout + result.stderr)
-            self.assertIn("stopping quiet build", result.stderr)
-
-    def test_keeps_a_command_whose_output_follows_a_stall_report(self):
-        """Build output appended after a stall report is activity, so the command runs to its own exit."""
-        command = (
-            "import pathlib, sys, time; "
-            "log = pathlib.Path('logs/build.log'); "
-            "log.write_text('{\"event\":\"scheduler_stall\"}\\n'); "
-            "[(log.open('a').write('   Compiling crate' + str(i) + '\\n'), time.sleep(0.2)) for i in range(15)]; "
-            "sys.exit(5)"
-        )
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
-            result, report = run_watcher(directory, command, "--first-report", "1", "--interval", "1",
-                "--stop-after", "2")
-            self.assertEqual(result.returncode, 5, result.stdout + result.stderr)
-            self.assertFalse(report.exists(), "an active command was reported as quiet")
-
 
 class ResourceSampleTest(unittest.TestCase):
     """Each test owns its temporary directory, procfs tree and command."""
@@ -219,14 +189,13 @@ class WindowsReportTest(unittest.TestCase):
 class SampleSelectionTest(unittest.TestCase):
     """Each test owns its loaded watcher module."""
 
-    def test_samples_stopped_processes_and_frida_helpers(self):
-        """A stopped process or a Frida helper is sampled like a JVM, because a stalled build can be held by either."""
+    def test_samples_stopped_processes(self):
+        """A stopped process is sampled like a JVM."""
         spec = importlib.util.spec_from_file_location("watch_quiet_build", WATCHER)
         watcher = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(watcher)
         self.assertTrue(watcher.sampled("S<", "/opt/runtime/bin/java -m tool"))
         self.assertTrue(watcher.sampled("T", "/toolchain/bin/cargo build"))
-        self.assertTrue(watcher.sampled("S<s", "/private/var/root/frida-0123/frida-helper socket-fd:29"))
         self.assertFalse(watcher.sampled("S", "/usr/sbin/syslogd"))
 
     def test_samples_running_children_of_stopped_processes(self):
