@@ -7,9 +7,15 @@ on:
   workflow_dispatch:
     inputs:
       public_key:
-        description: Public SSH key for the client that connects before testing
-        required: true
+        description: Optional public SSH key for a client that connects before testing
+        required: false
         type: string
+        default: ""
+      patches:
+        description: Space-separated repository paths of downstream patches to apply with git am, in order
+        required: false
+        type: string
+        default: ""
       target:
         description: Native Windows target from the existing free release matrix
         type: choice
@@ -70,6 +76,21 @@ jobs:
           path: upstream
           persist-credentials: false
 
+      - name: Apply the selected downstream patches
+        id: patched
+        env:
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+        run: |
+          set -euo pipefail
+          : > "$FOCUSED_RUNTIME/evidence/applied-patches.txt"
+          read -r -a patch_paths <<< "$DOWNSTREAM_PATCHES"
+          for patch in "${patch_paths[@]}"; do
+            sha256sum "$patch" | tee -a "$FOCUSED_RUNTIME/evidence/applied-patches.txt"
+            git -C upstream -c user.name='Codex Unleashed' -c user.email='codex-unleashed@users.noreply.github.com' \
+              am --committer-date-is-author-date "$GITHUB_WORKSPACE/$patch"
+          done
+          printf 'commit=%s\n' "$(git -C upstream rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Set up matching Rust
         uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
         with:
@@ -118,7 +139,7 @@ jobs:
 
       - name: Connect before the changed remote commands
         id: debug
-        if: always() && env.FOCUSED_RUNTIME != ''
+        if: always() && env.FOCUSED_RUNTIME != '' && inputs.public_key != ''
         uses: ./.github/actions/debug-failed-runner
         with:
           public-key: ${{ inputs.public_key }}
@@ -171,6 +192,7 @@ jobs:
           git -C upstream diff --exit-code HEAD
           test -z "$(git -C upstream status --porcelain)"
           sha256sum .github/workflows/baseline-windows-focused-runtime.yml .github/scripts/run-windows-runtime-standard-user.ps1 > "$evidence/wrappers.txt"
+          cat "$evidence/applied-patches.txt" >> "$evidence/wrappers.txt"
           sha256sum .github/scripts/ghcr-cargo-target-cache.sh \
             tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/{Main,CargoCacheKeys,CargoCacheParts,VerifyCargoLock}.java \
             > "$evidence/helpers-transport-only.txt"
@@ -255,7 +277,7 @@ jobs:
             fi
           }
           evidence="$FOCUSED_RUNTIME/evidence"
-          test "$(git -C upstream rev-parse HEAD)" = "$(cat .github/upstream-commit)"
+          test "$(git -C upstream rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
           git -C upstream diff --binary > "$evidence/source.diff"
           git -C upstream diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
           git -C upstream status --porcelain=v1 --untracked-files=all > "$evidence/source-status.txt"

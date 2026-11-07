@@ -1,0 +1,32 @@
+From 4142126e0d83f7a3266f4a7cf5a5ff8eba159cfa Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Sat, 7 Nov 2026 01:05:57 -0500
+Subject: [PATCH] Create the WinGet daemon fixture's CODEX_HOME directory
+
+The Windows WinGet daemon test sets CODEX_HOME to a path inside its temporary
+directory but never creates it. A set CODEX_HOME must name an existing
+directory, so every daemon command fails with "failed to resolve CODEX_HOME"
+on a non-elevated runner before the daemon behavior runs. Elevated runners
+return before the assertions and never reach that point.
+
+Declared base: openai/codex main dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4.
+---
+ codex-rs/cli/tests/app_server_daemon_windows.rs | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/codex-rs/cli/tests/app_server_daemon_windows.rs b/codex-rs/cli/tests/app_server_daemon_windows.rs
+index 5f955cd..2160856 100644
+--- a/codex-rs/cli/tests/app_server_daemon_windows.rs
++++ b/codex-rs/cli/tests/app_server_daemon_windows.rs
+@@ -18,6 +18,8 @@ fn winget_package_starts_and_reselects_daemon() -> Result<()> {
+     }
+     let temp = tempfile::tempdir()?;
+     let home = temp.path().join("home");
++    // A set CODEX_HOME must name an existing directory.
++    std::fs::create_dir(&home)?;
+     let package = temp.path().join("WinGet/Packages/OpenAI.Codex");
+     let target = format!("{}-pc-windows-msvc", std::env::consts::ARCH);
+     let entrypoint = format!("codex-{target}.exe");
+-- 
+2.43.0
+
