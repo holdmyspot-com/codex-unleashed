@@ -48,6 +48,10 @@ on:
         description: Optional whitespace-separated Cargo packages; build only these, cache the partial state and fail before release checks
         type: string
         default: ''
+      patches:
+        description: Optional space-separated repository paths of downstream patches to apply with git am, in order; requires cache=false
+        type: string
+        default: ''
       target:
         description: Release target to run (all preserves the complete selected matrix)
         type: choice
@@ -81,9 +85,15 @@ jobs:
           VERIFY_INVALIDATION: ${{ inputs.verify_invalidation }}
           TRACE_SIGNALS: ${{ inputs.trace_signals }}
           QUIET_STOP_MINUTES: ${{ inputs.quiet_stop_minutes }}
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
         run: |
           if ! [[ "$QUIET_STOP_MINUTES" =~ ^[1-9][0-9]*$ ]] || (( QUIET_STOP_MINUTES > 300 )); then
             printf 'quiet_stop_minutes must be a whole number from 1 to 300.\n' >&2
+            exit 1
+          fi
+          # The compiled cache is keyed by the pristine upstream commit, so patched outputs must not read or write it.
+          if [[ -n "$DOWNSTREAM_PATCHES" && "$CACHE_ENABLED" == true ]]; then
+            printf 'patches require cache=false.\n' >&2
             exit 1
           fi
           if [[ "$CACHE_HIT_REQUIRED" == true && "$CACHE_ENABLED" == false ]]; then
@@ -156,6 +166,8 @@ jobs:
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          # The upstream checkout below cleans the workspace, removing restart-metadata.
+          cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh "$RUNNER_TEMP/ghcr-cargo-target-cache.sh"
           cp restart-metadata/.github/scripts/checkpoint-upstream-release.sh "$RUNNER_TEMP/checkpoint-upstream-release.sh"
           chmod +x "$RUNNER_TEMP/checkpoint-upstream-release.sh"
@@ -207,6 +219,24 @@ jobs:
           git diff --check
           git diff --binary > "$evidence/pristine-source.diff"
           git show HEAD:codex-rs/Cargo.lock > "$evidence/upstream-Cargo.lock"
+
+      - name: Apply the selected downstream patches
+        id: source
+        env:
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-evidence"
+          read -r -a patch_paths <<< "$DOWNSTREAM_PATCHES"
+          # The guarded expansion keeps an empty list valid under set -u in macOS's Bash 3.2.
+          for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
+            printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
+            git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
+          done
+          # Later guards compare the build against the commit and lockfile it compiles, with or without patches.
+          git show HEAD:codex-rs/Cargo.lock > "$evidence/source-Cargo.lock"
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Prepare retained release worker
         if: inputs.public_key != ''
@@ -560,7 +590,7 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ steps.inputs.outputs.commit }}"
+          test "$(git rev-parse HEAD)" = "${{ steps.source.outputs.commit }}"
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
 
       - name: Verify dependency identity before accepting build outputs
@@ -580,7 +610,7 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-evidence"
           cargo metadata --no-deps --format-version 1 > "$evidence/workspace-metadata.json"
           run_codex_tooling verify-cargo-lock \
-            "$evidence/upstream-Cargo.lock" Cargo.lock "$evidence/workspace-metadata.json" \
+            "$evidence/source-Cargo.lock" Cargo.lock "$evidence/workspace-metadata.json" \
             | tee "$evidence/lock-verification.json"
 
       - name: Record verified source inputs for cached build outputs

@@ -120,15 +120,15 @@ class ReleaseDebugPreparationTest(unittest.TestCase):
 class WorkflowSelectionTest(unittest.TestCase):
     """Execute the actual selection step against the declared release targets."""
 
-    def select(self,target,quiet_stop_minutes='75'):
+    def select(self,target,quiet_stop_minutes='75',cache='false',patches=''):
         """Run workflow selection without any Actions checkout, native acquisition or matrix dispatch."""
         import yaml
         workflow=yaml.load((SCRIPTS.parent/'workflows/baseline-release-builds.yml').read_text(),Loader=yaml.BaseLoader)
         step=workflow['jobs']['select']['steps'][-1]
         with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as tmp:
             output=Path(tmp)/'output'
-            environment=dict(os.environ,CACHE_ENABLED='false',CACHE_HIT_REQUIRED='false',SELECTED_TARGET=target,
-                VERIFY_INVALIDATION='false',TRACE_SIGNALS='false',
+            environment=dict(os.environ,CACHE_ENABLED=cache,CACHE_HIT_REQUIRED='false',SELECTED_TARGET=target,
+                VERIFY_INVALIDATION='false',TRACE_SIGNALS='false',DOWNSTREAM_PATCHES=patches,
                 QUIET_STOP_MINUTES=quiet_stop_minutes,GITHUB_OUTPUT=str(output))
             result=subprocess.run(['bash','-e','-o','pipefail','-c',step['run']],cwd=SCRIPTS.parents[1],env=environment,capture_output=True)
             matrix=json.loads(output.read_text().removeprefix('value=')) if output.exists() else None
@@ -137,6 +137,15 @@ class WorkflowSelectionTest(unittest.TestCase):
     def test_default_matrix_selects_every_target(self):
         """The default selection includes every declared standard release target."""
         result,matrix=self.select('all');self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(len(matrix['include']),6)
+
+    def test_rejects_cached_builds_of_downstream_patches(self):
+        """A patched build stops before dispatch when it would read or write the pristine compiled cache."""
+        patch='patches/holdmyspot-com/codex-unleashed/issue-47/0001.patch'
+        result,matrix=self.select('x86_64-unknown-linux-musl',cache='true',patches=patch)
+        self.assertNotEqual(result.returncode,0);self.assertIsNone(matrix)
+        self.assertIn(b'patches require cache=false',result.stderr)
+        result,matrix=self.select('all',patches=patch);self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(len(matrix['include']),6)
 
     def test_rejects_quiet_stop_outside_whole_minutes_up_to_the_step_limit(self):
