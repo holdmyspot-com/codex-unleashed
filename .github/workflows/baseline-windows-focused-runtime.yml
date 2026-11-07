@@ -260,7 +260,7 @@ jobs:
         id: test
         shell: pwsh
         run: |
-          & .github/scripts/run-windows-runtime-standard-user.ps1 -TestFilter 'test(=winget_package_starts_and_reselects_daemon)'
+          & .github/scripts/run-windows-runtime-standard-user.ps1 -TestBinary app_server_daemon_windows -TestName winget_package_starts_and_reselects_daemon
           exit $LASTEXITCODE
 
       - name: Verify source and dependency identity

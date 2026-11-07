@@ -3,21 +3,29 @@
 Run compiled Windows runtime tests under a temporary local standard-user account.
 .DESCRIPTION
 Run on Windows with permission to create local users and grant filesystem access.
-FOCUSED_RUNTIME/evidence must contain nextest binaries.json and cargo.json; cargo-nextest.exe
-must be on PATH, and CODEX_REPO_ROOT and CARGO_TARGET_DIR identify the source and build.
-Creates FOCUSED_RUNTIME/standard-user-runtime, copies metadata and nextest there, and
-passes selected environment settings to the child through runtime-env.json.
+FOCUSED_RUNTIME/evidence must contain nextest binaries.json and cargo.json, and
+CODEX_REPO_ROOT and CARGO_TARGET_DIR identify the source and build.
+Creates FOCUSED_RUNTIME/standard-user-runtime, copies the metadata there, and passes
+selected environment settings to the child through runtime-env.json.
+The child runs the libtest binary directly from the test's package directory, as nextest
+would: nextest 0.9.103 assigns each test to a job that forbids breakaway, which makes the
+daemon under test refuse to start.
 Launches the child through Task Scheduler, outside the runner's job that forbids breakaway,
 after granting the account the batch logon right; cleanup removes the task and that right.
 Writes child output, launch details, test-exit, and cleanup evidence under evidence.
 Returns the child exit code, or 78 if the non-elevated assertions were bypassed or a
-successful result lacks the expected one-passed, zero-skipped report.
+successful result lacks libtest's one-passed, zero-ignored report.
 After account creation, finally attempts to stop its processes and remove the account
 and profile. Setup, launch, evidence, or cleanup failures stop the script.
-.PARAMETER TestFilter
-Nextest filter expression selecting the already compiled test to run.
+.PARAMETER TestBinary
+Name of the already compiled test binary in binaries.json.
+.PARAMETER TestName
+Exact libtest name of the test to run.
 #>
-param([Parameter(Mandatory = $true)][string]$TestFilter)
+param(
+    [Parameter(Mandatory = $true)][string]$TestBinary,
+    [Parameter(Mandatory = $true)][string]$TestName
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -104,9 +112,12 @@ $runtime = Join-Path $env:FOCUSED_RUNTIME 'standard-user-runtime'
 $source = Join-Path $env:CODEX_REPO_ROOT 'codex-rs'
 New-Item -ItemType Directory -Path $runtime -ErrorAction Stop | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $runtime 'tmp') | Out-Null
-Copy-Item (Get-Command cargo-nextest.exe).Source (Join-Path $runtime 'cargo-nextest.exe')
-Copy-Item (Join-Path $evidence 'binaries.json') $runtime
-Copy-Item (Join-Path $evidence 'cargo.json') $runtime
+$binaries = @((Get-Content (Join-Path $evidence 'binaries.json') -Raw | ConvertFrom-Json).'rust-binaries'.PSObject.Properties.Value |
+    Where-Object 'binary-name' -eq $TestBinary)
+if ($binaries.Count -ne 1) { throw "binaries.json lists $($binaries.Count) binaries named $TestBinary." }
+$package = @((Get-Content (Join-Path $evidence 'cargo.json') -Raw | ConvertFrom-Json).packages |
+    Where-Object id -eq $binaries[0].'package-id')
+if ($package.Count -ne 1) { throw "cargo.json lists $($package.Count) packages for $TestBinary." }
 
 $settings = @{
     TEMP = Join-Path $runtime 'tmp'
@@ -119,7 +130,9 @@ $settings = @{
     RUST_MIN_STACK = $env:RUST_MIN_STACK
     GIT_REDIRECT_STDIN = 'NUL'
     CARGO_TERM_COLOR = 'never'
-    CODEX_RUNTIME_TEST_FILTER = $TestFilter
+    CODEX_RUNTIME_TEST_BINARY = $binaries[0].'binary-path'
+    CODEX_RUNTIME_TEST_DIRECTORY = Split-Path $package[0].manifest_path
+    CODEX_RUNTIME_TEST_NAME = $TestName
 }
 $settings | ConvertTo-Json | Set-Content (Join-Path $runtime 'runtime-env.json')
 $childScript = Join-Path $runtime 'run-nextest.ps1'
@@ -137,16 +150,13 @@ foreach ($property in $settings.PSObject.Properties) {
     [Environment]::SetEnvironmentVariable($property.Name, $property.Value, 'Process')
 }
 Get-JobLimits | ConvertTo-Json | Set-Content (Join-Path $PSScriptRoot 'child-job.json')
-Set-Location (Join-Path $env:CODEX_REPO_ROOT 'codex-rs')
+Set-Location $env:CODEX_RUNTIME_TEST_DIRECTORY
 # Task Scheduler gives the child no console streams, so it records its own output and exit code.
 # Windows PowerShell turns redirected native stderr into errors, which Stop would make terminating;
-# nextest's own exit code reports the outcome.
+# the test binary's own exit code reports the outcome.
 $ErrorActionPreference = 'Continue'
-& (Join-Path $PSScriptRoot 'cargo-nextest.exe') nextest run `
-    --binaries-metadata (Join-Path $PSScriptRoot 'binaries.json') `
-    --cargo-metadata (Join-Path $PSScriptRoot 'cargo.json') `
-    --no-fail-fast --test-threads 8 --success-output immediate `
-    -E $env:CODEX_RUNTIME_TEST_FILTER *> (Join-Path $PSScriptRoot 'runtime-output.log')
+& $env:CODEX_RUNTIME_TEST_BINARY --exact $env:CODEX_RUNTIME_TEST_NAME --nocapture --test-threads 1 `
+    *> (Join-Path $PSScriptRoot 'runtime-output.log')
 $code = $LASTEXITCODE
 Set-Content (Join-Path $PSScriptRoot 'runtime-exit') $code
 exit $code
@@ -211,9 +221,9 @@ try {
         $testExit = 78
         [Console]::Error.WriteLine('The test returned before exercising its non-elevated Windows assertions.')
     }
-    if (($testExit -eq 0) -and ($output -notmatch '\b1 passed\b.*\b0 skipped\b')) {
+    if (($testExit -eq 0) -and ($output -notmatch 'test result: ok\. 1 passed; 0 failed; 0 ignored;')) {
         $testExit = 78
-        [Console]::Error.WriteLine('The runtime result does not report exactly one passing test with zero skipped tests.')
+        [Console]::Error.WriteLine('The runtime result does not report exactly one passing test with zero ignored tests.')
     }
     $testExit | Set-Content (Join-Path $evidence 'test-exit')
 } catch {
