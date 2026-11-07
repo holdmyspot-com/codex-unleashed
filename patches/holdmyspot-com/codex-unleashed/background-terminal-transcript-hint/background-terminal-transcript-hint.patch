@@ -1,0 +1,272 @@
+From 0e76399d0393483382efc231e4a558eddba6b0c9 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 7 Nov 2026 09:13:06 -0500
+Subject: [PATCH] Show background terminal transcript hints
+
+While background terminals run, /ps explains that the transcript is available after completion; completed and replayed terminal entries show the Ctrl+T shortcut. Snapshots that render those entries include the hint.
+---
+ ...nknown_end_with_active_exploring_cell.snap |  4 ++-
+ .../tui/src/chatwidget/tests/exec_flow.rs     |  4 +--
+ ...ps_across_reasoning_live_and_replayed.snap |  2 ++
+ codex-rs/tui/src/exec_cell/render.rs          | 33 ++++++++++++++++++-
+ codex-rs/tui/src/history_cell/exec.rs         |  9 ++++-
+ ...put_chunk_leading_whitespace_snapshot.snap |  3 +-
+ ...output_halfwidth_sound_marks_snapshot.snap |  1 +
+ ...ests__ps_output_long_command_snapshot.snap |  3 +-
+ ...sts__ps_output_many_sessions_snapshot.snap |  3 +-
+ ...utput_multiline_long_command_snapshot.snap |  1 +
+ ...__tests__ps_output_multiline_snapshot.snap |  1 +
+ codex-rs/tui/src/history_cell/tests.rs        | 12 +++++++
+ 12 files changed, 68 insertions(+), 8 deletions(-)
+
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
+index 85259b0b1..3b64049f8 100644
+--- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
++++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
+@@ -1,10 +1,12 @@
+ ---
+-source: tui/src/chatwidget/tests.rs
++source: tui/src/chatwidget/tests/exec_flow.rs
++assertion_line: 1004
+ expression: snapshot
+ ---
+ History:
+ • Ran echo repro-marker
+   └ repro-marker
++(⌃t to view transcript)
+ 
+ Active:
+ • Exploring
+diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
+index 5d2f4693d..9f8ceb54b 100644
+--- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
++++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
+@@ -48,7 +48,7 @@ async fn external_writer_snapshot_freezes_active_command_and_mcp_rows() {
+ }
+ 
+ #[tokio::test]
+-async fn replayed_command_completion_preserves_tracking_without_duplicate_starts() {
++async fn replayed_command_completion_preserves_tracking_and_transcript_hint() {
+     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+     chat.on_task_started();
+     let mut item =
+@@ -76,7 +76,7 @@ async fn replayed_command_completion_preserves_tracking_without_duplicate_starts
+         .collect::<Vec<_>>();
+     assert_eq!(
+         history,
+-        vec!["• Ran cat replay\n  └ (no output)\n".to_string()]
++        vec!["• Ran cat replay\n  └ (no output)\n(⌃t to view transcript)\n".to_string()]
+     );
+ }
+ 
+diff --git a/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap b/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap
+index d4e4fe599..5fdea505d 100644
+--- a/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap
++++ b/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap
+@@ -1,5 +1,6 @@
+ ---
+ source: tui/src/chatwidget/tests/exec_flow.rs
++assertion_line: 328
+ expression: "renders[0]"
+ ---
+ Compact:
+@@ -9,6 +10,7 @@ Compact:
+ 
+ • Ran echo boundary
+   └ run output
++(⌃t to view transcript)
+ 
+ • Explored
+   └ Read later.txt
+diff --git a/codex-rs/tui/src/exec_cell/render.rs b/codex-rs/tui/src/exec_cell/render.rs
+index 22a0ea7d3..0634a7cd7 100644
+--- a/codex-rs/tui/src/exec_cell/render.rs
++++ b/codex-rs/tui/src/exec_cell/render.rs
+@@ -453,7 +453,14 @@ impl ExecCell {
+     }
+ 
+     fn command_display_lines(&self, width: u16) -> Vec<HyperlinkLine> {
+-        self.command_display_lines_with_hidden_details(width).lines
++        let mut lines = self.command_display_lines_with_hidden_details(width).lines;
++        if let [call] = self.group.calls.as_slice()
++            && call.source == ExecCommandSource::UnifiedExecStartup
++            && call.duration.is_some()
++        {
++            lines.push(Line::from(format!("({})", transcript_hint()).dim()).into());
++        }
++        lines
+     }
+ 
+     fn command_display_lines_with_hidden_details(&self, width: u16) -> CommandDisplay {
+@@ -856,6 +863,30 @@ mod tests {
+             .collect::<String>()
+     }
+ 
++    #[test]
++    fn completed_background_terminal_includes_transcript_hint() {
++        let cell = ExecCell::new(
++            ExecCall {
++                call_id: "call-id".to_string(),
++                command: vec!["echo".into(), "done".into()],
++                parsed: Vec::new(),
++                output: Some(CommandOutput::new(0, String::new())),
++                source: ExecCommandSource::UnifiedExecStartup,
++                start_time: None,
++                duration: Some(std::time::Duration::from_millis(1)),
++                interaction_input: None,
++            },
++            /*animations_enabled*/ false,
++        );
++        let rendered = cell
++            .display_lines(/*width*/ 80)
++            .iter()
++            .map(render_line_text)
++            .join("\n");
++
++        assert!(rendered.contains(&transcript_hint()));
++    }
++
+     #[test]
+     fn user_shell_output_is_limited_by_screen_lines() {
+         let long_url_like = format!(
+diff --git a/codex-rs/tui/src/history_cell/exec.rs b/codex-rs/tui/src/history_cell/exec.rs
+index 57c2f166c..4851e4474 100644
+--- a/codex-rs/tui/src/history_cell/exec.rs
++++ b/codex-rs/tui/src/history_cell/exec.rs
+@@ -141,13 +141,20 @@ impl HistoryCell for UnifiedExecProcessesCell {
+         let max_processes = 16usize;
+         let mut out: Vec<Line<'static>> = Vec::new();
+         out.push(vec!["Background terminals".bold()].into());
+-        out.push("".into());
+ 
+         if self.processes.is_empty() {
++            out.push("".into());
+             out.push("  • No background terminals running.".italic().into());
+             return out;
+         }
+ 
++        out.push(
++            "  (transcript will be available after terminal completes)"
++                .dim()
++                .into(),
++        );
++        out.push("".into());
++
+         let prefix = "  • ";
+         let prefix_width = display_width(prefix);
+         let truncation_suffix = " [...]";
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap
+index e13dcf0a1..1cab3f93a 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap
+@@ -1,10 +1,11 @@
+ ---
+-source: tui/src/history_cell.rs
++source: tui/src/history_cell/tests.rs
+ expression: rendered
+ ---
+ /ps
+ 
+ Background terminals
++  (transcript will be available after terminal completes)
+ 
+   • just fix
+     ↳   indented first
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap
+index a39929e48..76c0c1793 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap
+@@ -5,6 +5,7 @@ expression: rendered
+ /ps
+ 
+ Background terminals
++  (transcript will be available after terminal completes)
+ 
+   • echo ｶﾞﾊﾟｶﾞﾊﾟ [...]
+     ↳ output ｶﾞﾊﾟ [...]
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap
+index 2bd4bf9fb..cac551593 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap
+@@ -1,10 +1,11 @@
+ ---
+-source: tui/src/history_cell.rs
++source: tui/src/history_cell/tests.rs
+ expression: rendered
+ ---
+ /ps
+ 
+ Background terminals
++  (transcript will be available after terminal completes)
+ 
+   • rg "foo" src --glob '**/*. [...]
+     ↳ searching...
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap
+index d0138b274..2b021a3af 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap
+@@ -1,10 +1,11 @@
+ ---
+-source: tui/src/history_cell.rs
++source: tui/src/history_cell/tests.rs
+ expression: rendered
+ ---
+ /ps
+ 
+ Background terminals
++  (transcript will be available after terminal completes)
+ 
+   • command 0
+   • command 1
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_long_command_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_long_command_snapshot.snap
+index ce48f3512..eda1e79a5 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_long_command_snapshot.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_long_command_snapshot.snap
+@@ -5,5 +5,6 @@ expression: rendered
+ /ps
+ 
+ Background terminals
++  (transcript will be available after terminal completes)
+ 
+   • (↵  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [...]
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap
+index 609bafd3b..69b027b21 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap
+@@ -5,6 +5,7 @@ expression: rendered
+ /ps
+ 
+ Background terminals
++  (transcript will be available after terminal completes)
+ 
+   • echo hello↵and then some extra text
+     ↳ hello
+diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
+index cc7f2f668..fd3b515c5 100644
+--- a/codex-rs/tui/src/history_cell/tests.rs
++++ b/codex-rs/tui/src/history_cell/tests.rs
+@@ -730,9 +730,21 @@ fn final_message_separator_includes_worked_label_after_one_minute() {
+ fn ps_output_empty_snapshot() {
+     let cell = new_unified_exec_processes_output(Vec::new());
+     let rendered = render_lines(&cell.display_lines(/*width*/ 60)).join("\n");
++    assert!(!rendered.contains("transcript will be available after terminal completes"));
+     insta::assert_snapshot!(rendered);
+ }
+ 
++#[test]
++fn ps_output_explains_when_running_transcript_is_available() {
++    let cell = new_unified_exec_processes_output(vec![UnifiedExecProcessDetails {
++        command_display: "sleep 5".to_string(),
++        recent_chunks: Vec::new(),
++    }]);
++    let rendered = render_lines(&cell.display_lines(/*width*/ 60)).join("\n");
++
++    assert!(rendered.contains("transcript will be available after terminal completes"));
++}
++
+ #[tokio::test]
+ async fn session_info_uses_availability_nux_tooltip_override() {
+     let config = test_config().await;
+-- 
+2.43.0
+

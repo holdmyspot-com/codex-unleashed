@@ -14,3 +14,4 @@ The release applies these patches in this order:
 8. [issue-34776/avoid-duplicate-startup-skills-refresh.patch](holdmyspot-com/codex-unleashed/issue-34776/avoid-duplicate-startup-skills-refresh.patch)
 9. [issue-34776/background-session-skill-warmup.patch](holdmyspot-com/codex-unleashed/issue-34776/background-session-skill-warmup.patch)
 10. [issue-34776/avoid-slow-agent-switching-and-resume.patch](holdmyspot-com/codex-unleashed/issue-34776/avoid-slow-agent-switching-and-resume.patch)
+11. [background-terminal-transcript-hint/background-terminal-transcript-hint.patch](holdmyspot-com/codex-unleashed/background-terminal-transcript-hint/background-terminal-transcript-hint.patch)
