@@ -111,7 +111,10 @@ Get-JobLimits | ConvertTo-Json | Set-Content (Join-Path $evidence 'parent-job.js
 $runtime = Join-Path $env:FOCUSED_RUNTIME 'standard-user-runtime'
 $source = Join-Path $env:CODEX_REPO_ROOT 'codex-rs'
 New-Item -ItemType Directory -Path $runtime -ErrorAction Stop | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $runtime 'tmp') | Out-Null
+# Tests create Unix sockets under TEMP, and AF_UNIX paths must stay shorter than SUN_LEN (108 bytes),
+# so the standard user's TEMP sits directly under the drive root instead of inside the runtime directory.
+$shortTemp = Join-Path ([IO.Path]::GetPathRoot($runtime)) ('crt' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Path $shortTemp -ErrorAction Stop | Out-Null
 $binaries = @((Get-Content (Join-Path $evidence 'binaries.json') -Raw | ConvertFrom-Json).'rust-binaries'.PSObject.Properties.Value |
     Where-Object 'binary-name' -eq $TestBinary)
 if ($binaries.Count -ne 1) { throw "binaries.json lists $($binaries.Count) binaries named $TestBinary." }
@@ -120,9 +123,9 @@ $package = @((Get-Content (Join-Path $evidence 'cargo.json') -Raw | ConvertFrom-
 if ($package.Count -ne 1) { throw "cargo.json lists $($package.Count) packages for $TestBinary." }
 
 $settings = @{
-    TEMP = Join-Path $runtime 'tmp'
-    TMP = Join-Path $runtime 'tmp'
-    TMPDIR = Join-Path $runtime 'tmp'
+    TEMP = $shortTemp
+    TMP = $shortTemp
+    TMPDIR = $shortTemp
     CODEX_REPO_ROOT = $env:CODEX_REPO_ROOT
     CARGO_TARGET_DIR = $env:CARGO_TARGET_DIR
     RUST_BACKTRACE = $env:RUST_BACKTRACE
@@ -167,8 +170,10 @@ $password = ConvertTo-SecureString ([guid]::NewGuid().ToString() + 'aA1!') -AsPl
 $user = New-LocalUser -Name $accountName -Password $password -AccountNeverExpires -PasswordNeverExpires
 try {
     $writeGrant = '*' + $user.SID.Value + ':(OI)(CI)M'
-    & icacls.exe $runtime /grant $writeGrant | Out-File (Join-Path $evidence 'runtime-permissions.log')
-    if ($LASTEXITCODE -ne 0) { throw 'The standard user could not be granted access to its runtime directory.' }
+    foreach ($path in @($runtime, $shortTemp)) {
+        & icacls.exe $path /grant $writeGrant | Out-File -Append (Join-Path $evidence 'runtime-permissions.log')
+        if ($LASTEXITCODE -ne 0) { throw "The standard user could not be granted access to $path." }
+    }
 
     $readGrant = '*' + $user.SID.Value + ':(OI)(CI)RX'
     foreach ($path in @($env:CODEX_REPO_ROOT, $env:CARGO_TARGET_DIR)) {
@@ -253,6 +258,7 @@ try {
             Start-Sleep -Seconds 5
         }
     }
+    Remove-Item -LiteralPath $shortTemp -Recurse -Force
     'STANDARD-USER-CLEANUP-DONE' | Set-Content (Join-Path $evidence 'runtime-cleanup.txt')
 }
 exit $testExit
