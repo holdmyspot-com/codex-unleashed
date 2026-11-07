@@ -10,15 +10,8 @@
 
 ### Format
 
-Write every Javadoc comment in this form, including a one-sentence comment:
-
-```java
-/**
- * Single line documentation.
- */
-```
-
-Do not put the opening delimiter, documentation text, and closing delimiter on one line.
+Use the bundled Javadoc rule's multi-line form for every other Javadoc comment as well, such as a field's, even when it
+is one sentence.
 
 ### Tag Alignment
 

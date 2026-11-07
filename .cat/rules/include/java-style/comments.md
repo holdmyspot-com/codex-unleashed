@@ -6,7 +6,6 @@
 
 ## Guidance
 
-- Comments explain why, constraints, or non-obvious consequences—not what nearby code already says.
 - When a comment justifies a deliberate control, lead with the concrete unwanted outcome it prevents and the actor or
 	operation that could cause it. Do not describe only the control's mechanics, permissions, or recipients; those facts
 	do not tell a reader why the control must remain.
