@@ -1,13 +1,13 @@
-From 589d776ce8014b92ffc856e2f22d192a10a243bf Mon Sep 17 00:00:00 2001
+From 1e1b8cbab02f722296154bc8d20f24b93a464e52 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 11:25:56 -0500
 Subject: [PATCH] Route public daemon updates to Codex Unleashed releases
 
 Keep the public stable menu text and update lifecycle. Fetch installers and packages exclusively from holdmyspot-com/codex-unleashed, validate numbered vendor versions, and preserve pins and failure recovery.
 ---
- .../app-server-daemon/src/managed_install.rs  |  20 +-
- .../src/managed_install_path_tests.rs         |  27 +
- .../app-server-daemon/src/prepare_install.rs  |  10 +-
+ .../app-server-daemon/src/managed_install.rs  |  19 +-
+ .../src/managed_install_path_tests.rs         |  28 +
+ .../app-server-daemon/src/prepare_install.rs  |  11 +-
  .../src/prepare_install_tests.rs              |  27 +
  codex-rs/app-server-daemon/src/update_loop.rs |   6 +-
  .../src/update_loop_tests.rs                  |   9 +-
@@ -15,18 +15,18 @@ Keep the public stable menu text and update lifecycle. Fetch installers and pack
  scripts/install/install.sh                    |  87 +--
  scripts/install/test_install_ps1.ps1          |  40 ++
  scripts/install/test_install_sh.py            | 508 +++---------------
- 10 files changed, 230 insertions(+), 576 deletions(-)
+ 10 files changed, 231 insertions(+), 576 deletions(-)
  create mode 100644 scripts/install/test_install_ps1.ps1
 
 diff --git a/codex-rs/app-server-daemon/src/managed_install.rs b/codex-rs/app-server-daemon/src/managed_install.rs
-index 1afe10c..2fae151 100644
+index 1afe10c..aa68ff7 100644
 --- a/codex-rs/app-server-daemon/src/managed_install.rs
 +++ b/codex-rs/app-server-daemon/src/managed_install.rs
-@@ -70,6 +70,20 @@ pub(crate) fn managed_codex_bin(codex_home: &Path) -> PathBuf {
+@@ -70,6 +70,19 @@ pub(crate) fn managed_codex_bin(codex_home: &Path) -> PathBuf {
      }
  }
  
-+/// Parse a non-development stable release, including a numeric downstream build number.
++/// Parse a non-development release without a prerelease, including a numeric downstream build number.
 +pub(crate) fn stable_public_version(value: &str) -> Option<semver::Version> {
 +    let version = semver::Version::parse(value).ok()?;
 +    (version.pre.is_empty()
@@ -35,15 +35,14 @@ index 1afe10c..2fae151 100644
 +                .build
 +                .as_str()
 +                .bytes()
-+                .all(|byte| byte.is_ascii_digit()))
-+        && (version.major, version.minor, version.patch) != (0, 0, 0))
-+        .then_some(version)
++                .all(|byte| byte.is_ascii_digit())))
++    .then_some(version)
 +}
 +
  /// Only latest-channel stable releases may run the public latest-version updater.
  pub(crate) fn is_stable_standalone_release(codex_home: &Path, codex_bin: &Path) -> bool {
      let standalone = package_root(codex_home);
-@@ -105,11 +119,7 @@ pub(crate) fn is_stable_standalone_release(codex_home: &Path, codex_bin: &Path)
+@@ -105,11 +118,7 @@ pub(crate) fn is_stable_standalone_release(codex_home: &Path, codex_bin: &Path)
      else {
          return false;
      };
@@ -57,10 +56,10 @@ index 1afe10c..2fae151 100644
              .is_ok_and(|selected| selected == release_name)
          && std::fs::canonicalize(codex_bin).is_ok_and(|bin| bin.starts_with(&release))
 diff --git a/codex-rs/app-server-daemon/src/managed_install_path_tests.rs b/codex-rs/app-server-daemon/src/managed_install_path_tests.rs
-index e076e7f..c17c2b5 100644
+index e076e7f..eb702f0 100644
 --- a/codex-rs/app-server-daemon/src/managed_install_path_tests.rs
 +++ b/codex-rs/app-server-daemon/src/managed_install_path_tests.rs
-@@ -121,3 +121,30 @@ async fn older_managed_binary_does_not_claim_updater_support() {
+@@ -121,3 +121,31 @@ async fn older_managed_binary_does_not_claim_updater_support() {
      codex_utils_cargo_bin::write_executable(&binary, "#!/bin/sh\nexit 0\n").expect("newer binary");
      assert!(super::supports_daemon_update_loop(&binary).await);
  }
@@ -73,6 +72,7 @@ index e076e7f..c17c2b5 100644
 +    std::fs::create_dir_all(root.join("releases")).unwrap();
 +    for (version, expected) in [
 +        ("0.160.0+39", true),
++        ("0.0.0", true),
 +        ("0.160.0+dev", false),
 +        ("0.160.0-alpha.1+39", false),
 +    ] {
@@ -92,19 +92,20 @@ index e076e7f..c17c2b5 100644
 +    }
 +}
 diff --git a/codex-rs/app-server-daemon/src/prepare_install.rs b/codex-rs/app-server-daemon/src/prepare_install.rs
-index ef09b6d..f4ca4cd 100644
+index ef09b6d..1e0350f 100644
 --- a/codex-rs/app-server-daemon/src/prepare_install.rs
 +++ b/codex-rs/app-server-daemon/src/prepare_install.rs
-@@ -226,7 +226,7 @@ async fn prepare_from_package(
+@@ -226,7 +226,8 @@ async fn prepare_from_package(
          "daemon running state changed while awaiting confirmation; retry the command"
      );
      let backend = current_backend;
 -    let stable = stable_version(&version).is_some();
-+    let stable = managed_install::stable_public_version(&version).is_some();
++    let stable = managed_install::stable_public_version(&version)
++        .is_some_and(|version| (version.major, version.minor, version.patch) != (0, 0, 0));
      let releases = root.join("releases");
      std::fs::create_dir_all(&releases)?;
      let stage = tempfile::Builder::new()
-@@ -496,14 +496,6 @@ fn package_tree(
+@@ -496,14 +497,6 @@ fn package_tree(
      Ok(hasher.finalize().to_hex().to_string())
  }
  

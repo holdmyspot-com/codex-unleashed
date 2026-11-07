@@ -1,4 +1,4 @@
-From a0a2f8dd6287f2af9b1e35756e70e1bcb757765e Mon Sep 17 00:00:00 2001
+From ee930652ff4bf1a168a8efeda7887224ffc36efd Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 11:21:56 -0500
 Subject: [PATCH] Identify server distribution and order Unleashed versions
@@ -7,11 +7,12 @@ Warn when the connected server identifies itself as OpenAI Codex. Compare numeri
 ---
  codex-rs/app-server-client/src/lib.rs         |  11 +-
  codex-rs/tui/src/app/server_version_notice.rs |   1 +
+ ...e_reconnect__unavailable_conversation.snap |   4 +-
  ...eashed_openai_server_warning_snapshot.snap |   8 ++
  codex-rs/tui/src/history_cell/tests.rs        |  29 +++++
  codex-rs/tui/src/status/remote_connection.rs  | 117 +++++++++++++++++-
  codex-rs/tui/src/update_versions.rs           |  63 +++++++++-
- 6 files changed, 225 insertions(+), 4 deletions(-)
+ 7 files changed, 227 insertions(+), 6 deletions(-)
  create mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap
 
 diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
@@ -55,6 +56,21 @@ index bca03e3..f90cf53 100644
                      ServerVersionNoticeKind::Different => "≠",
                  };
              Some(format!(
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
+index fa06ce9..04dc152 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
+@@ -3,8 +3,8 @@ source: tui/src/app/tests/active_reconnect_tests.rs
+ expression: "format!(\"{history}\\n{}\",\nrender_bottom_popup(&app.chat_widget,\n80)).replace(&test_path_buf(\"/tmp/project\").display().to_string(),\n\"/tmp/project\")"
+ ---
+ • This conversation is unavailable. Its cached transcript and draft remain here; input is paused. Open the agent picker or return to the parent to continue.
+-⚠ A background Codex service is running v2.0.0, different from your Codex CLI
+-  v0.0.0+dev.
++⚠ The connected app-server identifies itself as OpenAI Codex v2.0.0. Update it
++  to a Codex Unleashed app-server to use Codex Unleashed server features.
+ › unavailable draft
+ 
+   gpt-test default · /tmp/project
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap
 new file mode 100644
 index 0000000..b5da90f
