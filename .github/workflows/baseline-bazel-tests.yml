@@ -19,6 +19,14 @@ on:
         description: Stage matching bwrap beside the exec-server test binary; with tracing, stage only for the empty-root diagnostic comparison
         type: boolean
         default: false
+      patches:
+        description: Space-separated repository paths of downstream patches to apply with git am, in order
+        type: string
+        default: ""
+      targets:
+        description: Space-separated Bazel test labels to run on one runner instead of partitioning every package
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -28,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: ${{ fromJSON((inputs.exec_server_shells && '[1]') || '[1,2]') }}
+        shard: ${{ fromJSON(((inputs.exec_server_shells || inputs.targets != '') && '[1]') || '[1,2]') }}
     runs-on: ubuntu-24.04
     env:
       BAZEL_TEST_SHARD: ${{ matrix.shard }}
@@ -53,6 +61,7 @@ jobs:
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           cp restart-metadata/.github/upstream-compat-releases.json "$evidence/compat-releases.json"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
       - name: Retrieve the exact stable upstream source
@@ -88,6 +97,21 @@ jobs:
           test -z "$(git status --porcelain)"
           git diff --check
           git diff --binary > "$evidence/pristine-source.diff"
+
+      - name: Apply the selected downstream patches
+        id: patched
+        env:
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-evidence"
+          read -r -a patch_paths <<< "$DOWNSTREAM_PATCHES"
+          for patch in "${patch_paths[@]}"; do
+            printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
+            git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
+          done
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Prepare upstream's native test host
         uses: ./.github/actions/setup-ci
@@ -172,8 +196,18 @@ jobs:
             //codex-rs/exec-server:exec-server-exec_process-test \
             > "$RUNNER_TEMP/baseline-bazel-evidence/selected-targets.txt"
 
+      - name: Select the requested Bazel test labels
+        if: ${{ !inputs.exec_server_shells && inputs.targets != '' }}
+        env:
+          BASELINE_TARGETS: ${{ inputs.targets }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-evidence"
+          read -r -a requested <<< "$BASELINE_TARGETS"
+          printf '%s\n' "${requested[@]}" | tee "$evidence/selected-targets.txt"
+
       - name: Partition the complete package selection across free runners
-        if: ${{ !inputs.exec_server_shells }}
+        if: ${{ !inputs.exec_server_shells && inputs.targets == '' }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-evidence"
@@ -319,7 +353,7 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ steps.inputs.outputs.commit }}"
+          test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
 
       - name: Retain test evidence for one day
