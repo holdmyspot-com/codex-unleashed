@@ -1,4 +1,4 @@
-From 9f0c0b4f47e1b069c0a9a80e59998fac1b6e298f Mon Sep 17 00:00:00 2001
+From 94cb6f611ec3393452c7e9c00e67738d1e17cd12 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:16:27 -0500
 Subject: [PATCH] Preserve mailbox work across interrupted task starts
@@ -7,18 +7,18 @@ Interrupting or replacing an automatic parent turn before its task registers no 
 ---
  .../app-server-exports-stable.json.zst        | Bin 161271 -> 161336 bytes
  codex-rs/core/src/agent_communication.rs      |   5 +
- codex-rs/core/src/session/input_queue.rs      |  92 ++++++-
+ codex-rs/core/src/session/input_queue.rs      | 104 +++++++-
  .../src/session/mailbox_retention_tests.rs    |  64 +++++
  codex-rs/core/src/session/turn_input.rs       |   3 +
  codex-rs/core/src/state/turn.rs               |   3 +
  codex-rs/core/src/tasks/mailbox_wake_tests.rs | 244 ++++++++++++++++++
- codex-rs/core/src/tasks/mod.rs                | 105 ++++++--
+ codex-rs/core/src/tasks/mod.rs                | 104 ++++++--
  codex-rs/core/src/tasks/mod_tests.rs          |   3 +
  codex-rs/protocol/src/lib.rs                  |   2 +
  codex-rs/protocol/src/mailbox_wake.rs         |  19 ++
  codex-rs/protocol/src/mailbox_wake_tests.rs   |  45 ++++
  codex-rs/protocol/src/protocol.rs             |   9 +
- 13 files changed, 563 insertions(+), 31 deletions(-)
+ 13 files changed, 577 insertions(+), 28 deletions(-)
  create mode 100644 codex-rs/core/src/session/mailbox_retention_tests.rs
  create mode 100644 codex-rs/core/src/tasks/mailbox_wake_tests.rs
  create mode 100644 codex-rs/protocol/src/mailbox_wake.rs
@@ -599,7 +599,7 @@ index 0b5c8db..57fb351 100644
  
  /// The publication state retained until this delivery is consumed or abandoned.
 diff --git a/codex-rs/core/src/session/input_queue.rs b/codex-rs/core/src/session/input_queue.rs
-index 21d31dd..8dca6a2 100644
+index 21d31dd..1d6b8f0 100644
 --- a/codex-rs/core/src/session/input_queue.rs
 +++ b/codex-rs/core/src/session/input_queue.rs
 @@ -106,6 +106,11 @@ pub(crate) struct PendingMailboxCommunication {
@@ -713,7 +713,26 @@ index 21d31dd..8dca6a2 100644
      }
  
      pub(crate) async fn defer_mailbox_delivery_to_next_turn(
-@@ -500,6 +576,10 @@ impl TurnInputQueue {
+@@ -478,6 +554,18 @@ impl TurnInputQueue {
+         self.items.is_empty()
+     }
+ 
++    /// Returns whether this input holds mail whose wake an interrupt must cancel.
++    pub(crate) fn has_interruptible_wake(&self) -> bool {
++        self.items.iter().any(|input| {
++            matches!(
++                input,
++                TurnInput::InterAgentCommunication(communication)
++                    if communication.wake_policy
++                        == codex_protocol::MailboxWakePolicy::UnlessInterrupted
++            )
++        })
++    }
++
+     fn pending_activity(&self) -> Option<InputQueueActivity> {
+         if self.has_pending_injection
+             || self.items.iter().any(|input| {
+@@ -500,6 +588,10 @@ impl TurnInputQueue {
      }
  }
  
@@ -1080,7 +1099,7 @@ index 0000000..3fcc163
 +    );
 +}
 diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
-index 2d2f7e6..0b22f84 100644
+index 2d2f7e6..40b65a9 100644
 --- a/codex-rs/core/src/tasks/mod.rs
 +++ b/codex-rs/core/src/tasks/mod.rs
 @@ -281,16 +281,34 @@ impl Session {
@@ -1232,7 +1251,7 @@ index 2d2f7e6..0b22f84 100644
          if reason == TurnAbortReason::Interrupted && aborted_turn {
              self.maybe_start_turn_for_pending_work().await;
          }
-@@ -923,19 +971,26 @@ impl Session {
+@@ -923,19 +971,31 @@ impl Session {
          }
      }
  
@@ -1242,28 +1261,30 @@ index 2d2f7e6..0b22f84 100644
 +    )]
      async fn take_active_turn(&self, reason: &TurnAbortReason) -> Option<ActiveTurn> {
          let mut active = self.active_turn.lock().await;
++        let mut reserves_interruptible_wake = false;
 +        if let Some(turn) = active.as_ref() {
-+            turn.turn_state.lock().await.task_start_abort_reason = Some(reason.clone());
++            let mut turn_state = turn.turn_state.lock().await;
++            turn_state.task_start_abort_reason = Some(reason.clone());
++            reserves_interruptible_wake = turn_state.pending_input.has_interruptible_wake();
 +        }
          if matches!(
              reason,
              TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
--        ) && active.as_ref().is_some_and(|turn| {
--            turn.task.is_some()
+         ) && active.as_ref().is_some_and(|turn| {
+             turn.task.is_some()
 -                || (self.enabled(Feature::WakeOnAgentMessages) && turn.finishing.is_none())
--        }) {
++                || (turn.finishing.is_none()
++                    && (self.enabled(Feature::WakeOnAgentMessages) || reserves_interruptible_wake))
+         }) {
 -            // Message wakes reserve work before registering a task. With the
 -            // feature enabled, stopping a reservation must block later mail too.
 -            // Finishing turns must retain their status until completion is
 -            // persisted, so capacity eviction cannot close their rollout writer.
-+        ) && active
-+            .as_ref()
-+            .is_some_and(|turn| turn.task.is_some() || turn.finishing.is_none())
-+        {
-+            // Mail wakes reserve work before registering a task, so stopping a
-+            // reservation must block later mail too. Finishing turns must retain
-+            // their status until completion is persisted, so capacity eviction
-+            // cannot close their rollout writer.
++            // Mail wakes reserve work before registering a task. Stopping a
++            // reservation must block later mail when message wakes are enabled or
++            // the reservation holds a background result that an interrupt
++            // cancels. Finishing turns must retain their status until completion
++            // is persisted, so capacity eviction cannot close their rollout writer.
              self.mark_interrupted();
          }
          active.take()
