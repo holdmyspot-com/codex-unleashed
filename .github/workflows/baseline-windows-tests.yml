@@ -1,0 +1,174 @@
+name: Stable upstream Windows tests
+
+# Runs a selected Cargo test set or an upstream PowerShell test script on a native Windows runner against the pinned
+# upstream with downstream patches applied. A red phase can first restore production files to their state before the
+# patches under test and require the same selection to fail, so the patched pass proves the patches fix it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      patches:
+        description: Space-separated repository paths of downstream patches to apply with git am, in order
+        type: string
+        default: ""
+      package:
+        description: Optional space-separated Cargo packages to test with nextest
+        type: string
+        default: ""
+      filter:
+        description: Optional nextest expression; requires package
+        type: string
+        default: ""
+      script:
+        description: Optional upstream-relative PowerShell test script to run instead of a Cargo selection
+        type: string
+        default: ""
+      red_restore:
+        description: Space-separated upstream paths to withhold for a red phase that must fail before the patched run
+        type: string
+        default: ""
+      red_patch_count:
+        description: Number of trailing patches under test; the red phase restores red_restore paths to their state before them
+        type: string
+        default: "1"
+      target:
+        description: Native Windows target from the existing free release matrix
+        type: choice
+        default: x86_64-pc-windows-msvc
+        options: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ (inputs.target == 'aarch64-pc-windows-msvc' && 'windows-11-arm') || 'windows-2025' }}
+    timeout-minutes: 240
+    env:
+      TARGET: ${{ inputs.target }}
+      TEST_PACKAGE: ${{ inputs.package }}
+      TEST_FILTER: ${{ inputs.filter }}
+      TEST_SCRIPT: ${{ inputs.script }}
+      RED_RESTORE: ${{ inputs.red_restore }}
+      RED_PATCH_COUNT: ${{ inputs.red_patch_count }}
+      CARGO_INCREMENTAL: '0'
+      RUST_BACKTRACE: '1'
+      RUST_MIN_STACK: '8388608'
+      GIT_REDIRECT_STDIN: NUL
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Validate the selection and read the pinned upstream commit
+        id: source
+        run: |
+          set -euo pipefail
+          git config --global core.longpaths true
+          if [[ -n "$TEST_PACKAGE" && -n "$TEST_SCRIPT" ]] || [[ -z "$TEST_PACKAGE" && -z "$TEST_SCRIPT" ]]; then
+            printf 'Select exactly one of package or script.\n' >&2
+            exit 1
+          fi
+          if [[ -n "$TEST_FILTER" && -z "$TEST_PACKAGE" ]]; then
+            printf 'filter requires package.\n' >&2
+            exit 1
+          fi
+          if ! [[ "$RED_PATCH_COUNT" =~ ^[1-9][0-9]*$ ]]; then
+            printf 'red_patch_count must be a positive integer, not %s.\n' "$RED_PATCH_COUNT" >&2
+            exit 1
+          fi
+          printf 'commit=%s\n' "$(cat .github/upstream-commit)" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve pristine selected upstream
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.source.outputs.commit }}
+          path: upstream
+          persist-credentials: false
+
+      - name: Apply the selected downstream patches
+        env:
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+        run: |
+          set -euo pipefail
+          read -r -a patch_paths <<< "$DOWNSTREAM_PATCHES"
+          for patch in "${patch_paths[@]}"; do
+            sha256sum "$patch"
+            git -C upstream -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$GITHUB_WORKSPACE/$patch"
+          done
+          if [[ -n "$RED_RESTORE" ]] && (( ${#patch_paths[@]} < RED_PATCH_COUNT )); then
+            printf 'red_patch_count %s exceeds the %s applied patches.\n' "$RED_PATCH_COUNT" "${#patch_paths[@]}" >&2
+            exit 1
+          fi
+
+      - name: Set up matching Rust
+        if: inputs.package != ''
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: '1.95.0'
+          targets: ${{ env.TARGET }}
+
+      - name: Install upstream's nextest version
+        if: inputs.package != ''
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: nextest@0.9.103
+
+      - name: Expose the matching MSVC environment
+        if: inputs.package != ''
+        uses: ./upstream/.github/actions/setup-msvc-env
+        with:
+          target: ${{ env.TARGET }}
+
+      - name: Preserve the accepted x86-64 SQLite build configuration
+        if: inputs.package != '' && inputs.target == 'x86_64-pc-windows-msvc'
+        run: echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
+
+      - name: Write the selected test command
+        run: |
+          set -euo pipefail
+          {
+            printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+            if [[ -n "$TEST_SCRIPT" ]]; then
+              printf 'cd "%s/upstream"\n' "$GITHUB_WORKSPACE"
+              printf 'pwsh -NoProfile -NonInteractive -File %q\n' "$TEST_SCRIPT"
+            else
+              printf 'cd "%s/upstream/codex-rs"\n' "$GITHUB_WORKSPACE"
+              args=(cargo nextest run --target "$TARGET" --no-fail-fast)
+              read -r -a packages <<< "$TEST_PACKAGE"
+              for package in "${packages[@]}"; do args+=(-p "$package"); done
+              if [[ -n "$TEST_FILTER" ]]; then args+=(-E "$TEST_FILTER"); fi
+              printf '%q ' "${args[@]}"
+              printf '\n'
+            fi
+          } > "$RUNNER_TEMP/selected-test.sh"
+          cat "$RUNNER_TEMP/selected-test.sh"
+
+      - name: Require the selection to fail without the production changes
+        if: inputs.red_restore != ''
+        run: |
+          set -euo pipefail
+          read -r -a red_paths <<< "$RED_RESTORE"
+          git -C upstream checkout "HEAD~$RED_PATCH_COUNT" -- "${red_paths[@]}"
+          set +e
+          bash "$RUNNER_TEMP/selected-test.sh"
+          result=$?
+          set -e
+          git -C upstream checkout HEAD -- "${red_paths[@]}"
+          if (( result == 0 )); then
+            printf 'The selection passed with the production changes withheld, so it does not prove the patches.\n' >&2
+            exit 1
+          fi
+          printf 'The selection failed with exit %s without the production changes.\n' "$result"
+
+      - name: Run the selection with the patches applied
+        run: |
+          set -euo pipefail
+          git -C upstream diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+          bash "$RUNNER_TEMP/selected-test.sh"
