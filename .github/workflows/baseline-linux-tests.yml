@@ -19,6 +19,14 @@ on:
         description: Optional nextest expression for an unmodified-source comparison
         type: string
         default: ""
+      patches:
+        description: Space-separated repository paths of downstream patches to apply with git am, in order
+        type: string
+        default: ""
+      red_restore:
+        description: Space-separated upstream paths to restore to the pinned base for a red phase that must fail before the patched run
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -84,6 +92,26 @@ jobs:
           test -z "$(git status --porcelain)"
           git diff --check
           git diff --binary > "$RUNNER_TEMP/baseline-test-evidence/pristine-source.diff"
+
+      - name: Apply the selected downstream patches
+        id: patched
+        env:
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+          RED_RESTORE: ${{ inputs.red_restore }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          if [[ -n "$RED_RESTORE" && -z "$DOWNSTREAM_PATCHES" ]]; then
+            printf 'A red phase needs downstream patches.\n' >&2
+            exit 1
+          fi
+          read -r -a patch_paths <<< "$DOWNSTREAM_PATCHES"
+          for patch in "${patch_paths[@]}"; do
+            printf '%s  %s\n' "$(sha256sum < "$GITHUB_WORKSPACE/restart-metadata/$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
+            git -c user.name='Codex Unleashed' -c user.email='codex-unleashed@users.noreply.github.com' \
+              am --committer-date-is-author-date "$GITHUB_WORKSPACE/restart-metadata/$patch"
+          done
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Prepare upstream's native test host
         uses: ./.github/actions/setup-ci
@@ -175,6 +203,36 @@ jobs:
           fi
           cargo-nextest nextest "${archive_args[@]}" 2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/archive.log"
           sha256sum "$RUNNER_TEMP/baseline-test-archive.tar.zst" > "$RUNNER_TEMP/baseline-test-evidence/archive.sha256"
+
+      - name: Run the red phase with the production changes withheld
+        if: inputs.red_restore != ''
+        env:
+          BASELINE_TEST_PACKAGE: ${{ inputs.package }}
+          BASELINE_TEST_FILTER: ${{ inputs.filter }}
+          RED_RESTORE: ${{ inputs.red_restore }}
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          test -n "$BASELINE_TEST_PACKAGE"
+          test -n "$BASELINE_TEST_FILTER"
+          read -r -a restore_paths <<< "$RED_RESTORE"
+          git -C .. checkout "${{ steps.inputs.outputs.commit }}" -- "${restore_paths[@]}"
+          git -C .. diff --stat HEAD | tee "$RUNNER_TEMP/baseline-test-evidence/red-withheld.txt"
+          helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
+          if env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
+            cargo-nextest nextest run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast \
+            -p "$BASELINE_TEST_PACKAGE" -E "$BASELINE_TEST_FILTER" \
+            2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/red-nextest.log"; then
+            red_status=0
+          else
+            red_status=$?
+          fi
+          git -C .. checkout HEAD -- "${restore_paths[@]}"
+          printf 'red_status=%s\n' "$red_status" | tee "$RUNNER_TEMP/baseline-test-evidence/red-status.txt"
+          if [[ "$red_status" -eq 0 ]]; then
+            printf 'The selected tests passed without the production changes; the red phase must fail.\n' >&2
+            exit 1
+          fi
 
       - name: Run the maintained nextest suite or focused comparison
         id: native_tests
@@ -388,11 +446,11 @@ jobs:
           done
           exit "$comparison_result"
 
-      - name: Verify upstream source and tests remain unmodified
+      - name: Verify the tested source matches its upstream and patch commits
         if: always()
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ steps.inputs.outputs.commit }}"
+          test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
 
       - name: Retain test evidence for one day

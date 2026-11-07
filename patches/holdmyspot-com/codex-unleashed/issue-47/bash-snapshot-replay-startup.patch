@@ -1,0 +1,80 @@
+From 7b45e7932c90991855c1c86f61689f8fb9adad78 Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Sat, 7 Nov 2026 01:03:35 -0500
+Subject: [PATCH] Avoid repeating Bash startup when replaying shell snapshots
+
+Tracks https://github.com/holdmyspot-com/codex-unleashed/issues/47.
+
+Noninteractive Bash sources .bashrc for a -c command when SSH_CLIENT is set
+or when stdin looks like a network connection. The exec-server's restricted
+seccomp policy makes getpeername() fail with EPERM, which Bash treats as a
+network connection. Snapshot replay already restores the state that the
+startup files produced, so running .bashrc again repeats its side effects
+and can fail inside a read-only sandbox. Replay now passes --norc to Bash.
+
+Declared base: openai/codex main dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4.
+---
+ codex-rs/exec-server/src/shell_snapshot.rs       | 7 +++++++
+ codex-rs/exec-server/src/shell_snapshot_tests.rs | 4 ++--
+ codex-rs/exec-server/tests/exec_process.rs       | 5 +++++
+ 3 files changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/exec-server/src/shell_snapshot.rs b/codex-rs/exec-server/src/shell_snapshot.rs
+index 55a831c..ccb1ca0 100644
+--- a/codex-rs/exec-server/src/shell_snapshot.rs
++++ b/codex-rs/exec-server/src/shell_snapshot.rs
+@@ -370,6 +370,13 @@ impl ShellSnapshotCache {
+                 params.argv[2]
+             )
+         };
++        if shell_type == ShellType::Bash {
++            // Noninteractive Bash still sources .bashrc with -p when it detects
++            // SSH or a network stdin. The snapshot already holds that startup state.
++            prepared
++                .command
++                .insert(shell_start + 1, "--norc".to_string());
++        }
+ 
+         telemetry.shell_snapshot_command(wait, availability, "used");
+         Ok(reader)
+diff --git a/codex-rs/exec-server/src/shell_snapshot_tests.rs b/codex-rs/exec-server/src/shell_snapshot_tests.rs
+index 7f5298f..b6b39ee 100644
+--- a/codex-rs/exec-server/src/shell_snapshot_tests.rs
++++ b/codex-rs/exec-server/src/shell_snapshot_tests.rs
+@@ -139,8 +139,8 @@ async fn snapshot_failure_retries_are_bounded_and_single_flight(
+         for (prepared, reader) in [(&mut prepared, first), (&mut concurrent, second)] {
+             if let Some(reader) = reader {
+                 let fd = std::os::fd::AsRawFd::as_raw_fd(&reader);
+-                prepared.command[2] =
+-                    prepared.command[2].replace(&format!("/dev/fd/{fd}"), "/dev/fd/SNAPSHOT");
++                let script = prepared.command.last_mut().expect("shell command script");
++                *script = script.replace(&format!("/dev/fd/{fd}"), "/dev/fd/SNAPSHOT");
+             }
+         }
+         assert_eq!(
+diff --git a/codex-rs/exec-server/tests/exec_process.rs b/codex-rs/exec-server/tests/exec_process.rs
+index 6823574..77583a7 100644
+--- a/codex-rs/exec-server/tests/exec_process.rs
++++ b/codex-rs/exec-server/tests/exec_process.rs
+@@ -276,6 +276,10 @@ async fn shell_snapshot_v2_filters_profile_exports_and_stays_in_memory(
+         "HOME".to_string(),
+         home.path().to_string_lossy().into_owned(),
+     )]);
++    if use_sandbox {
++        // Debian-family Bash sources .bashrc for SSH sessions even with -p.
++        configured_environment.insert("SSH_CLIENT".to_string(), "127.0.0.1 12345 22".to_string());
++    }
+     if posix_shell {
+         configured_environment.insert(
+             "ENV".to_string(),
+@@ -310,6 +314,7 @@ async fn shell_snapshot_v2_filters_profile_exports_and_stays_in_memory(
+             "HOME".to_string(),
+             "PATH".to_string(),
+             "PROFILE_*".to_string(),
++            "SSH_CLIENT".to_string(),
+         ],
+     };
+     let (command_prefix, expected_prefix) = if shell_name == "sh" {
+-- 
+2.43.0
+
