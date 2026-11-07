@@ -208,6 +208,10 @@ try {
         [Console]::Error.WriteLine('The runtime result does not report exactly one passing test with zero skipped tests.')
     }
     $testExit | Set-Content (Join-Path $evidence 'test-exit')
+} catch {
+    # Record the failure before cleanup runs, so a cleanup error cannot hide it.
+    $_ | Out-String | Tee-Object -FilePath (Join-Path $evidence 'runtime-error.txt') | Write-Host
+    throw
 } finally {
     $username = $env:COMPUTERNAME + '\' + $accountName
     if ($taskName) { Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue }
@@ -216,7 +220,17 @@ try {
     $remaining | Stop-Process -Force
     $remaining | ForEach-Object { $_.WaitForExit() }
     Remove-LocalUser -Name $accountName
-    Get-CimInstance Win32_UserProfile | Where-Object SID -eq $user.SID.Value | Remove-CimInstance
+    # The task's logon session can hold the profile briefly after its processes exit.
+    $profileDeadline = (Get-Date).AddMinutes(2)
+    while ($true) {
+        try {
+            Get-CimInstance Win32_UserProfile | Where-Object SID -eq $user.SID.Value | Remove-CimInstance
+            break
+        } catch {
+            if ((Get-Date) -gt $profileDeadline) { throw }
+            Start-Sleep -Seconds 5
+        }
+    }
     'STANDARD-USER-CLEANUP-DONE' | Set-Content (Join-Path $evidence 'runtime-cleanup.txt')
 }
 exit $testExit
