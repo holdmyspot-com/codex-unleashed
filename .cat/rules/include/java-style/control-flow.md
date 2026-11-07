@@ -32,7 +32,6 @@
 - Prefer positive conditions. When one alternative immediately returns, throws, breaks, or continues and the remaining
 	work spans multiple visual lines, express the exit as a guard clause before that work, even if the guard uses a
 	negative condition. This takes precedence over preferring positive conditions. Do not use `else` after a guard clause.
-- Use `switch` when selecting among a closed set of values; use `if` when conditions are not simple alternatives.
 
 ```java
 if (!resolvedTarget.startsWith(artifact) || !Files.isRegularFile(resolvedTarget,

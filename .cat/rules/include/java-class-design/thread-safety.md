@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Give each Java type a thread-safety contract that matches its intended concurrent use, with state types that keep
-	that contract and no thread-safe types added only as speculative protection.
+	that contract.
 - Let a caller learn from a type's documentation whether it may use the type concurrently and which state the type
 	protects, including how long the type keeps any mutable argument that the caller must then not change.
 - Let a caller that holds an interface or abstract class rely on its documented thread safety of implementations: every
@@ -18,8 +18,7 @@
 Choose types that support the class's intended thread-safety contract. A thread-safe class must use thread-safe types
 for shared mutable state; its synchronization, visibility, and collection choices must preserve its documented
 observable guarantees. A class not intended to be thread-safe should use ordinary non-thread-safe types when a
-reasonable alternative exists. Do not add concurrent collections, synchronization primitives, atomics, or other
-thread-safe types merely as speculative protection.
+reasonable alternative exists.
 
 A thread-safety guarantee covers only the state that the type owns: its fields and the objects that only it can reach,
 such as those it creates or copies. It does not extend to a mutable argument that the caller can still reach; the caller

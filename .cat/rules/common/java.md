@@ -77,9 +77,6 @@ When adding or changing logging, lazy load `${CAT_PROJECT_ROOT}/.cat/rules/inclu
 When writing or changing Java tests, assertions, exception tests, test documentation, testability seams, clocks, or
 thread-related test behavior, lazy load `${CAT_PROJECT_ROOT}/.cat/rules/include/java-testing.md`.
 
-When a Java test creates or removes a fixture, lazy load
-`${CAT_PROJECT_ROOT}/.cat/rules/include/java-temporary-resources.md`.
-
 When editing `module-info.java`, module exports/opens, module names, module layout, or Java project layout, or when
 creating, moving, or naming a test class, test package, or test module, lazy load
 `${CAT_PROJECT_ROOT}/.cat/rules/include/java-modules.md`.
