@@ -24,9 +24,13 @@ on:
         type: string
         default: ""
       red_restore:
-        description: Space-separated upstream paths to restore to the pinned base for a red phase that must fail before the patched run
+        description: Space-separated upstream paths to withhold for a red phase that must fail before the patched run
         type: string
         default: ""
+      red_patch_count:
+        description: Number of trailing patches under test; the red phase restores red_restore paths to their state before them
+        type: string
+        default: "1"
       regenerate_app_server_schema:
         description: Regenerate the precomputed stable app-server exports after applying the patches and record the binary diff
         type: boolean
@@ -233,6 +237,8 @@ jobs:
           BASELINE_TEST_PACKAGE: ${{ inputs.package }}
           BASELINE_TEST_FILTER: ${{ inputs.filter }}
           RED_RESTORE: ${{ inputs.red_restore }}
+          RED_PATCH_COUNT: ${{ inputs.red_patch_count }}
+          PATCH_LIST: ${{ inputs.patches }}
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -243,7 +249,14 @@ jobs:
           if [[ -n "$BASELINE_TEST_FILTER" ]]; then
             package_args+=(-E "$BASELINE_TEST_FILTER")
           fi
-          base="${{ steps.inputs.outputs.commit }}"
+          read -r -a patch_paths <<< "$PATCH_LIST"
+          if [[ ! "$RED_PATCH_COUNT" =~ ^[1-9][0-9]*$ ]] || (( RED_PATCH_COUNT > ${#patch_paths[@]} )); then
+            printf 'red_patch_count must be between 1 and the number of patches (%s).\n' "${#patch_paths[@]}" >&2
+            exit 1
+          fi
+          # Withhold only the patches under test; earlier queue patches stay applied.
+          base="$(git -C .. rev-parse "HEAD~$RED_PATCH_COUNT")"
+          printf 'red_base=%s\n' "$base" | tee "$RUNNER_TEMP/baseline-test-evidence/red-base.txt"
           for path in "${restore_paths[@]}"; do
             # A file the patches add is withheld by removing it; the restore below brings it back.
             if git -C .. cat-file -e "$base:$path" 2>/dev/null; then
