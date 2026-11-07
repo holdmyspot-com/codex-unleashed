@@ -484,10 +484,21 @@ jobs:
 
       - name: Verify the tested source matches its upstream and patch commits
         if: always()
+        env:
+          BASELINE_REGENERATE_APP_SERVER_SCHEMA: ${{ inputs.regenerate_app_server_schema }}
+          BASELINE_ACCEPT_SNAPSHOTS: ${{ inputs.accept_snapshots }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
-          git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+          pathspec=(. ':(exclude)codex-rs/Cargo.lock')
+          # Gathering runs change only the outputs they record as evidence diffs.
+          if [[ "$BASELINE_REGENERATE_APP_SERVER_SCHEMA" == true ]]; then
+            pathspec+=(':(exclude)codex-rs/app-server-protocol/schema')
+          fi
+          if [[ "$BASELINE_ACCEPT_SNAPSHOTS" == true ]]; then
+            pathspec+=(':(exclude,glob)**/*.snap' ':(exclude,glob)**/*.snap.new')
+          fi
+          git diff --exit-code HEAD -- "${pathspec[@]}"
 
       - name: Retain test evidence for one day
         if: always()
