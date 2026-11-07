@@ -139,6 +139,9 @@ foreach ($property in $settings.PSObject.Properties) {
 Get-JobLimits | ConvertTo-Json | Set-Content (Join-Path $PSScriptRoot 'child-job.json')
 Set-Location (Join-Path $env:CODEX_REPO_ROOT 'codex-rs')
 # Task Scheduler gives the child no console streams, so it records its own output and exit code.
+# Windows PowerShell turns redirected native stderr into errors, which Stop would make terminating;
+# nextest's own exit code reports the outcome.
+$ErrorActionPreference = 'Continue'
 & (Join-Path $PSScriptRoot 'cargo-nextest.exe') nextest run `
     --binaries-metadata (Join-Path $PSScriptRoot 'binaries.json') `
     --cargo-metadata (Join-Path $PSScriptRoot 'cargo.json') `
