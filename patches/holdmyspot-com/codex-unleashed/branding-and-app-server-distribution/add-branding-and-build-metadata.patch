@@ -1,4 +1,4 @@
-From ad056504cf8ac20708c9c8a55e36920c5421fa81 Mon Sep 17 00:00:00 2001
+From 100bf1e0861c1d78897f43e0994ef39e57a7f975 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 11:19:42 -0500
 Subject: [PATCH] Add Codex Unleashed branding and build metadata
@@ -25,6 +25,7 @@ Users need to tell a Codex Unleashed build from OpenAI Codex and see which build
  ...e_replay_reconciles_matching_captions.snap |   6 +-
  ...s_mention_usage_with_history_disabled.snap |   4 +-
  ...rame_tests__startup_tip_in_transcript.snap |  16 +--
+ .../tui/src/chatwidget/rendering_tests.rs     |   8 +-
  ...__catalog_model_session_header_resume.snap |   5 +-
  ..._catalog_model_session_header_startup.snap |   5 +-
  ...og_model_session_header_unknown_model.snap |   5 +-
@@ -72,7 +73,7 @@ Users need to tell a Codex Unleashed build from OpenAI Codex and see which build
  ...ipt_overlay_status_rate_limit_refresh.snap |  12 +-
  codex-rs/tui/src/status/tests.rs              |  27 +++-
  codex-rs/tui/src/version.rs                   |   8 +-
- 67 files changed, 603 insertions(+), 246 deletions(-)
+ 68 files changed, 608 insertions(+), 249 deletions(-)
  create mode 100644 codex-rs/cli/tests/build_info.rs
  create mode 100644 codex-rs/tui/build.rs
 
@@ -628,6 +629,32 @@ index d45000e..1663f34 100644
  › Ask Codex to do anything
  
    GPT-5.6-Sol default · /tmp/pr…
+diff --git a/codex-rs/tui/src/chatwidget/rendering_tests.rs b/codex-rs/tui/src/chatwidget/rendering_tests.rs
+index 317a17d..67e4eae 100644
+--- a/codex-rs/tui/src/chatwidget/rendering_tests.rs
++++ b/codex-rs/tui/src/chatwidget/rendering_tests.rs
+@@ -386,7 +386,7 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
+     let header = frame
+         .content
+         .chunks(usize::from(frame.area.width))
+-        .take(/*n*/ 3)
++        .take(/*n*/ 4)
+         .map(|row| {
+             row.iter()
+                 .map(ratatui::buffer::Cell::symbol)
+@@ -401,8 +401,10 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
+     let cwd = widget.config.cwd.as_path().display().to_string();
+ 
+     insta::assert_snapshot!(header.replace(&cwd, "/tmp/project"), @r"
+-      >_ OpenAI Codex (v<VERSION>)
+-         /tmp/project
++    >_ Codex Unleashed (v<VERSION>)
++       Unofficial fork of OpenAI Codex
++       https://holdmyspot.com/codex-unleashed/
++       /tmp/project
+     ");
+ }
+ 
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap
 index 915041d..e54e441 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap

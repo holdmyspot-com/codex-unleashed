@@ -1,4 +1,4 @@
-From 96958dbc6723cd35606fe406657a76023db1dd0c Mon Sep 17 00:00:00 2001
+From 589d776ce8014b92ffc856e2f22d192a10a243bf Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 11:25:56 -0500
 Subject: [PATCH] Route public daemon updates to Codex Unleashed releases
