@@ -1,6 +1,6 @@
-From 3fcb3190515ba3643e001a42e5f62a17b6dbd7c7 Mon Sep 17 00:00:00 2001
-From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
-Date: Sat, 7 Nov 2026 01:09:49 -0500
+From 0a63b5e1fac1f12960d619c37df6b605b3c24554 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 7 Nov 2026 08:53:54 -0500
 Subject: [PATCH] Use a mountable procfs denial to test snapshot descriptor
  fallback
 

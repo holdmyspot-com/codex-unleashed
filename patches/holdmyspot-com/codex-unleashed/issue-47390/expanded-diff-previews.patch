@@ -1,6 +1,6 @@
-From ed745f43be328a880b55979510b3adfab0c5d12d Mon Sep 17 00:00:00 2001
-From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
-Date: Sat, 7 Nov 2026 01:56:54 -0500
+From 2c2f32557c07aec4ef769e5d5cb8bf9e9a2959b6 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 7 Nov 2026 08:53:59 -0500
 Subject: [PATCH] Expand patch diff previews in the fullscreen transcript when
  configured
 

@@ -1,6 +1,6 @@
-From baf5618c39983ffceace2101b1c528a8c091b903 Mon Sep 17 00:00:00 2001
-From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
-Date: Sat, 7 Nov 2026 01:57:05 -0500
+From ddd7befd93f8a0e36071e57879c9a9fb47acd673 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 7 Nov 2026 08:53:58 -0500
 Subject: [PATCH] Add a shared configuration table for Codex Unleashed settings
 
 Codex Unleashed features need project settings, and each feature should

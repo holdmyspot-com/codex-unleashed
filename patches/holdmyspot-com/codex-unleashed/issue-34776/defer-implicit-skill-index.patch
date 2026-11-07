@@ -1,6 +1,6 @@
-From e66f77d72e21eaddc180a5d21ea8dc9ea0c17fa6 Mon Sep 17 00:00:00 2001
-From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
-Date: Sat, 7 Nov 2026 08:28:41 -0500
+From a6d097754b013829b5eb1867a0d09a987b71ca98 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 7 Nov 2026 08:53:56 -0500
 Subject: [PATCH] Defer implicit skill index construction until first use
 
 Tracks https://github.com/openai/codex/issues/34776.

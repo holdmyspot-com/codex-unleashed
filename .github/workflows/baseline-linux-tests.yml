@@ -110,7 +110,7 @@ jobs:
           read -r -a patch_paths <<< "$DOWNSTREAM_PATCHES"
           for patch in "${patch_paths[@]}"; do
             printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
-            git -c user.name='Codex Unleashed' -c user.email='codex-unleashed@users.noreply.github.com' \
+            git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
           done
           printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"

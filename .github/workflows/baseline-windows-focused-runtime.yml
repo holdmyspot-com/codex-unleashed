@@ -86,7 +86,7 @@ jobs:
           read -r -a patch_paths <<< "$DOWNSTREAM_PATCHES"
           for patch in "${patch_paths[@]}"; do
             sha256sum "$patch" | tee -a "$FOCUSED_RUNTIME/evidence/applied-patches.txt"
-            git -C upstream -c user.name='Codex Unleashed' -c user.email='codex-unleashed@users.noreply.github.com' \
+            git -C upstream -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$GITHUB_WORKSPACE/$patch"
           done
           printf 'commit=%s\n' "$(git -C upstream rev-parse HEAD)" >> "$GITHUB_OUTPUT"
