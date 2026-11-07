@@ -1,8 +1,8 @@
-# Responsive startup skill loading
+# Responsive startup, resume and agent switching
 
 - Issue: [openai/codex#34776](https://github.com/openai/codex/issues/34776)
-- Each patch applies on its own to upstream `openai/codex` main, commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`.
-- Prerequisites: none.
+- Applies to: upstream `openai/codex` main, commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`.
+- Prerequisites: the three skill patches have none and apply independently. [avoid-slow-agent-switching-and-resume.patch](avoid-slow-agent-switching-and-resume.patch) applies after [base-configuration](../base-configuration/README.md), [issue-47390](../issue-47390/README.md) and [collapsed-tool-activity](../collapsed-tool-activity/README.md), whose feature and schema entries surround its own.
 
 ## Deferred implicit skill index
 
@@ -54,5 +54,29 @@ From the patched upstream checkout root:
 
 ```sh
 cd codex-rs && cargo nextest run -p codex-core -p codex-app-server -E 'test(resume_warmup_tests) | test(late_skill_watches_) | test(cold_resume_refreshes_skill_metadata_after_watches_are_ready) | test(production_turn_warns_and_omits_unreadable_host_skill)'
+just fmt-check
+```
+
+## Fast agent switching and paged resume
+
+[avoid-slow-agent-switching-and-resume.patch](avoid-slow-agent-switching-and-resume.patch)
+
+### Intent
+
+Switching back to the main agent from `/subagents` replays the thread's whole history, which grows with every compaction, and resuming a session renders its full history at once. With the stable, default-on feature flag `unleashed_agent_fast_switching`, a switch replays only the latest compaction window; disabling the flag restores full-history replay. Independently of the flag, an initial resume renders a bounded recent page and fetches older pages when the user scrolls back, without dropping messages, and plain assistant messages skip a permission check that was slow with many writable roots. Inline visualizations keep trusted links and still reject unsafe fragments.
+
+The flag belongs under `[features]`:
+
+```toml
+[features]
+unleashed_agent_fast_switching = true
+```
+
+### Verification
+
+From the patched upstream checkout root:
+
+```sh
+cd codex-rs && cargo nextest run -p codex-tui -p codex-core -p codex-features -E 'test(replay_plain_assistant_messages_with_many_writable_roots_stays_responsive) | test(beginning_navigation_holds_the_view_until_the_last_page_arrives) | test(inline_visualization) | test(switching_back_replays_only_latest_compacted_conversation) | test(initial_resume_keeps_compacted_history_when_fast_switching_is_enabled) | test(config_schema_matches_fixture)'
 just fmt-check
 ```

@@ -1,0 +1,695 @@
+From 9f9f417155682c38b97861f65a9b6caa0b5357fd Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 7 Nov 2026 09:04:02 -0500
+Subject: [PATCH] Keep history replay and subagent switches responsive
+
+---
+ codex-rs/core/config.schema.json              |   6 +
+ codex-rs/features/src/lib.rs                  |   8 +
+ codex-rs/tui/src/app/reconnect.rs             |   4 +-
+ codex-rs/tui/src/app/session_lifecycle.rs     |   4 +-
+ codex-rs/tui/src/app/tests.rs                 |   2 +-
+ .../app/tests/pagination_completion_tests.rs  |  13 ++
+ .../app/tests/session_lifecycle_requests.rs   | 205 ++++++++++++++++++
+ codex-rs/tui/src/app/thread_events.rs         |  26 ++-
+ codex-rs/tui/src/app/thread_routing.rs        |  13 +-
+ codex-rs/tui/src/chatwidget/streaming.rs      |   6 +-
+ .../src/chatwidget/tests/history_replay.rs    | 103 +++++++++
+ codex-rs/tui/src/inline_visualization.rs      |  12 +
+ .../tui/src/inline_visualization_tests.rs     |  59 +++++
+ codex-rs/tui/src/thread_transcript.rs         |  14 +-
+ 14 files changed, 466 insertions(+), 9 deletions(-)
+
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index bced3b620..510393e03 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -1428,6 +1428,9 @@
+             "unified_image_budget": {
+               "type": "boolean"
+             },
++            "unleashed_agent_fast_switching": {
++              "type": "boolean"
++            },
+             "unleashed_collapsed_tool_activity": {
+               "type": "boolean"
+             },
+@@ -8087,6 +8090,9 @@
+         "unified_image_budget": {
+           "type": "boolean"
+         },
++        "unleashed_agent_fast_switching": {
++          "type": "boolean"
++        },
+         "unleashed_collapsed_tool_activity": {
+           "type": "boolean"
+         },
+diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
+index adcd58685..669d11608 100644
+--- a/codex-rs/features/src/lib.rs
++++ b/codex-rs/features/src/lib.rs
+@@ -129,6 +129,8 @@ pub enum Feature {
+     TuiMultiBackend,
+     /// Enable negotiated zstd compression for app-server WebSocket and UDS connections.
+     AppServerWebSocketCompression,
++    /// Replay only the latest compacted conversation when switching back to a thread.
++    UnleashedAgentFastSwitching,
+ 
+     // Experimental
+     /// Advertise enabled environment-backed tools and their shell parameters before the
+@@ -1108,6 +1110,12 @@ pub const FEATURES: &[FeatureSpec] = &[
+         stage: Stage::UnderDevelopment,
+         default_enabled: false,
+     },
++    FeatureSpec {
++        id: Feature::UnleashedAgentFastSwitching,
++        key: "unleashed_agent_fast_switching",
++        stage: Stage::Stable,
++        default_enabled: true,
++    },
+     FeatureSpec {
+         id: Feature::TranscriptV2,
+         key: "transcript_v2",
+diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
+index 4d13abfe1..168417ecb 100644
+--- a/codex-rs/tui/src/app/reconnect.rs
++++ b/codex-rs/tui/src/app/reconnect.rs
+@@ -498,7 +498,9 @@ impl App {
+             self.thread_event_channels.insert(id, channel);
+         }
+         if let Some(id) = displayed
+-            && let Some((receiver, snapshot)) = self.activate_thread_for_replay(id).await
++            && let Some((receiver, snapshot)) = self
++                .activate_thread_for_replay(id, ThreadEventSnapshotMode::FullHistory)
++                .await
+         {
+             self.active_thread_id = Some(id);
+             self.active_thread_rx = Some(receiver);
+diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
+index c7dc18d54..7283fca30 100644
+--- a/codex-rs/tui/src/app/session_lifecycle.rs
++++ b/codex-rs/tui/src/app/session_lifecycle.rs
+@@ -624,7 +624,9 @@ impl App {
+         }
+         self.store_active_thread_receiver().await;
+         self.active_thread_id = None;
+-        let Some((receiver, mut snapshot)) = self.activate_thread_for_replay(thread_id).await
++        let Some((receiver, mut snapshot)) = self
++            .activate_thread_for_replay(thread_id, ThreadEventSnapshotMode::AgentSwitch)
++            .await
+         else {
+             self.add_agents_overview_error(format!("Agent thread {thread_id} is already active."));
+             if let Some(previous_thread_id) = previous_thread_id {
+diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
+index cbad3bf37..df729b0a6 100644
+--- a/codex-rs/tui/src/app/tests.rs
++++ b/codex-rs/tui/src/app/tests.rs
+@@ -1360,7 +1360,7 @@ async fn replay_thread_snapshot_renders_only_retained_agent_message_deltas() {
+ 
+     app.store_active_thread_receiver().await;
+     let (_receiver, snapshot) = app
+-        .activate_thread_for_replay(thread_id)
++        .activate_thread_for_replay(thread_id, ThreadEventSnapshotMode::FullHistory)
+         .await
+         .expect("detached thread should reactivate for replay");
+     app.replay_thread_snapshot(snapshot, /*resume_restored_queue*/ false);
+diff --git a/codex-rs/tui/src/app/tests/pagination_completion_tests.rs b/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
+index ec7d8b433..fee25a1ec 100644
+--- a/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
++++ b/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
+@@ -208,6 +208,19 @@ async fn beginning_navigation_holds_the_view_until_the_last_page_arrives() -> Re
+                 crate::app_server_session::ResumeModelSettings::RestoreFromThread,
+             )
+             .await?;
++        let initial_answers = started
++            .turns
++            .iter()
++            .flat_map(|turn| &turn.items)
++            .filter_map(|item| match item {
++                ThreadItem::AgentMessage { text, .. } => Some(text.as_str()),
++                _ => None,
++            })
++            .collect::<Vec<_>>();
++        assert!(initial_answers.contains(&"Newest answer"));
++        assert!(!initial_answers.contains(&"Middle answer"));
++        assert!(!initial_answers.contains(&"Oldest answer"));
++
+         app.transcript_cells = crate::thread_transcript::thread_items_to_transcript_cells(
+             Some(thread_id),
+             &app.config.cwd,
+diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
+index f7812089c..966a24216 100644
+--- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
++++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
+@@ -1203,6 +1203,211 @@ fn spawn_approved_task_tool_call(
+     });
+ }
+ 
++#[test]
++fn switching_back_replays_only_latest_compacted_conversation() -> Result<()> {
++    const TEST_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
++    std::thread::Builder::new()
++        .stack_size(TEST_STACK_SIZE_BYTES)
++        .spawn(|| {
++            let runtime = tokio::runtime::Builder::new_multi_thread()
++                .worker_threads(1)
++                .thread_stack_size(TEST_STACK_SIZE_BYTES)
++                .enable_all()
++                .build()?;
++            runtime.block_on(async {
++                let (one_window, _) =
++                    measure_switch_back_with_compactions(
++                        /*conversation_count*/ 1,
++                        /*fast_switching_enabled*/ true,
++                    )
++                    .await?;
++                let (fifty_windows, renders_older_conversation) =
++                    measure_switch_back_with_compactions(
++                        /*conversation_count*/ 50,
++                        /*fast_switching_enabled*/ true,
++                    )
++                    .await?;
++                assert!(
++                    !renders_older_conversation,
++                    "switching back with fifty compacted windows rendered an older conversation"
++                );
++                assert!(
++                    fifty_windows <= one_window + Duration::from_secs(1),
++                    "switching scaled with compacted history: one window took {one_window:?}, fifty took {fifty_windows:?}"
++                );
++                assert!(
++                    fifty_windows < Duration::from_secs(3),
++                    "switching back to the main agent with fifty compacted windows took {fifty_windows:?}"
++                );
++                let (_, renders_older_conversation_when_disabled) =
++                    measure_switch_back_with_compactions(
++                        /*conversation_count*/ 1,
++                        /*fast_switching_enabled*/ false,
++                    )
++                    .await?;
++                assert!(
++                    renders_older_conversation_when_disabled,
++                    "disabling fast switching should replay the full conversation"
++                );
++                Ok(())
++            })
++        })
++        .map_err(|err| color_eyre::eyre::eyre!("failed to start test thread: {err}"))?
++        .join()
++        .map_err(|_| color_eyre::eyre::eyre!("test thread panicked"))?
++}
++
++async fn measure_switch_back_with_compactions(
++    conversation_count: usize,
++    fast_switching_enabled: bool,
++) -> Result<(Duration, bool)> {
++    let (mut app, mut app_events, _ops) = make_test_app_with_channels().await;
++    if !fast_switching_enabled {
++        app.config
++            .features
++            .disable(codex_features::Feature::UnleashedAgentFastSwitching)?;
++    }
++    let codex_home = tempdir()?;
++    app.config.codex_home = codex_home.path().to_path_buf().abs();
++    app.config.sqlite = SqliteConfig::new_for_testing(codex_home.path().abs());
++    let root_thread_id = ThreadId::from_string(
++        &create_fake_paginated_rollout(
++            codex_home.path(),
++            "2026-01-02T00-00-00",
++            "2026-01-02T00:00:00Z",
++            "main conversation",
++            Some(app.config.model_provider_id.as_str()),
++            /*git_info*/ None,
++        )
++        .map_err(|err| color_eyre::eyre::eyre!("failed to create root rollout: {err}"))?,
++    )?;
++    let child_thread_id = ThreadId::from_string(
++        &create_fake_parented_rollout_with_source(
++            codex_home.path(),
++            "2026-01-02T00-00-01",
++            "2026-01-02T00:00:01Z",
++            "worker response",
++            Some(app.config.model_provider_id.as_str()),
++            /*git_info*/ None,
++            RolloutSessionSource::SubAgent(SubAgentSource::ThreadSpawn {
++                parent_thread_id: root_thread_id,
++                depth: 1,
++                agent_path: Some(
++                    AgentPath::try_from("/root/worker").map_err(color_eyre::eyre::Report::msg)?,
++                ),
++                agent_nickname: Some("worker".to_string()),
++                agent_role: Some("worker".to_string()),
++            }),
++            root_thread_id.into(),
++            root_thread_id,
++        )
++        .map_err(|err| color_eyre::eyre::eyre!("failed to create child rollout: {err}"))?,
++    )?;
++    let (mut app_server, _requests, proxy) =
++        start_recording_app_server(&app.config, None, None).await?;
++    let root = app_server
++        .resume_thread(
++            &app.local_settings,
++            app.config.clone(),
++            root_thread_id,
++            crate::app_server_session::ResumeModelSettings::RestoreFromThread,
++        )
++        .await?;
++    app.enqueue_primary_thread_session(root.session, root.turns)
++        .await?;
++
++    const CONTEXT_WINDOW_TOKENS: usize = 27_200;
++    let conversation_text = "history ".repeat(CONTEXT_WINDOW_TOKENS);
++    let conversation = |index: usize| codex_app_server_protocol::Turn {
++        id: format!("turn-{index}"),
++        root_turn_id: None,
++        items_view: codex_app_server_protocol::TurnItemsView::Full,
++        items: vec![codex_app_server_protocol::ThreadItem::UserMessage {
++            id: format!("user-{index}"),
++            client_id: None,
++            content: vec![codex_app_server_protocol::UserInput::Text {
++                text: format!("conversation-{index} {conversation_text}"),
++                text_elements: Vec::new(),
++            }],
++        }],
++        status: codex_app_server_protocol::TurnStatus::Completed,
++        error: None,
++        started_at: None,
++        completed_at: None,
++        duration_ms: None,
++    };
++    let compaction = |index: usize| codex_app_server_protocol::Turn {
++        id: format!("compaction-turn-{index}"),
++        root_turn_id: None,
++        items_view: codex_app_server_protocol::TurnItemsView::Full,
++        items: vec![codex_app_server_protocol::ThreadItem::ContextCompaction {
++            id: format!("compaction-{index}"),
++        }],
++        status: codex_app_server_protocol::TurnStatus::Completed,
++        error: None,
++        started_at: None,
++        completed_at: None,
++        duration_ms: None,
++    };
++    let mut turns = Vec::new();
++    for index in 0..conversation_count {
++        turns.push(conversation(index));
++        turns.push(compaction(index));
++    }
++    turns.push(conversation(conversation_count));
++    app.thread_event_channels[&root_thread_id]
++        .store
++        .lock()
++        .await
++        .set_turns(turns);
++
++    app.agent_navigation.upsert(
++        child_thread_id,
++        Some("worker".to_string()),
++        Some("worker".to_string()),
++        /*is_closed*/ false,
++    );
++    assert!(
++        app.attach_live_thread_for_selection(&mut app_server, child_thread_id)
++            .await?
++    );
++    app.side_threads
++        .insert(child_thread_id, SideThreadState::new(root_thread_id));
++
++    let mut tui = crate::tui::test_support::make_test_tui()?;
++    app.select_agent_thread(&mut tui, &mut app_server, child_thread_id)
++        .await?;
++
++    let started = Instant::now();
++    app.select_agent_thread(&mut tui, &mut app_server, root_thread_id)
++        .await?;
++    let elapsed = started.elapsed();
++
++    let rendered = std::iter::from_fn(|| app_events.try_recv().ok())
++        .filter_map(|event| match event {
++            AppEvent::InsertHistoryCell(cell) => Some(cell.display_lines(/*width*/ 80)),
++            _ => None,
++        })
++        .map(|lines| lines_to_single_string(&lines))
++        .collect::<String>();
++    assert!(rendered.contains(&format!("conversation-{conversation_count}")));
++    let renders_older_conversation = rendered.contains("conversation-0")
++        || rendered.contains(&format!("conversation-{}", conversation_count - 1));
++    assert_eq!(
++        app.thread_event_channels[&root_thread_id]
++            .store
++            .lock()
++            .await
++            .turns
++            .len(),
++        conversation_count * 2 + 1
++    );
++
++    app_server.shutdown().await?;
++    proxy.await??;
++    Ok((elapsed, renders_older_conversation))
++}
++
+ #[tokio::test]
+ async fn external_transport_registers_dynamic_tools_and_finds_task_mentions() -> Result<()> {
+     let (app, _codex_home) = make_history_test_app().await?;
+diff --git a/codex-rs/tui/src/app/thread_events.rs b/codex-rs/tui/src/app/thread_events.rs
+index f810d3874..5c430c960 100644
+--- a/codex-rs/tui/src/app/thread_events.rs
++++ b/codex-rs/tui/src/app/thread_events.rs
+@@ -18,6 +18,12 @@ pub(super) struct ThreadEventSnapshot {
+     pub(super) input_state: Option<ThreadInputState>,
+ }
+ 
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub(super) enum ThreadEventSnapshotMode {
++    FullHistory,
++    AgentSwitch,
++}
++
+ #[derive(Debug, Clone)]
+ pub(super) enum ThreadBufferedEvent {
+     Notification(Box<ServerNotification>),
+@@ -368,10 +374,28 @@ impl ThreadEventStore {
+     }
+ 
+     pub(super) fn snapshot(&self) -> ThreadEventSnapshot {
++        self.snapshot_with_turns(self.turns.clone())
++    }
++
++    pub(super) fn snapshot_for_agent_switch(&self) -> ThreadEventSnapshot {
++        let first_latest_conversation_turn = self
++            .turns
++            .iter()
++            .rposition(|turn| {
++                turn.items
++                    .iter()
++                    .any(|item| matches!(item, ThreadItem::ContextCompaction { .. }))
++            })
++            .map(|index| index + 1)
++            .unwrap_or(0);
++        self.snapshot_with_turns(self.turns[first_latest_conversation_turn..].to_vec())
++    }
++
++    fn snapshot_with_turns(&self, turns: Vec<Turn>) -> ThreadEventSnapshot {
+         let mut snapshot = ThreadEventSnapshot {
+             session: self.session.clone(),
+             delegated_turns: self.delegated_turns.iter().cloned().collect(),
+-            turns: self.turns.clone(),
++            turns,
+             // Thread switches replay buffered events into a rebuilt ChatWidget. Only replay
+             // interactive prompts that are still pending, or answered approvals/input will reappear.
+             events: self
+diff --git a/codex-rs/tui/src/app/thread_routing.rs b/codex-rs/tui/src/app/thread_routing.rs
+index e4ecae0ec..9a21bc377 100644
+--- a/codex-rs/tui/src/app/thread_routing.rs
++++ b/codex-rs/tui/src/app/thread_routing.rs
+@@ -145,12 +145,23 @@ impl App {
+     pub(super) async fn activate_thread_for_replay(
+         &mut self,
+         thread_id: ThreadId,
++        snapshot_mode: ThreadEventSnapshotMode,
+     ) -> Option<(mpsc::Receiver<ThreadBufferedEvent>, ThreadEventSnapshot)> {
++        let replay_latest_compacted_conversation = snapshot_mode
++            == ThreadEventSnapshotMode::AgentSwitch
++            && self
++                .config
++                .features
++                .enabled(codex_features::Feature::UnleashedAgentFastSwitching);
+         let channel = self.thread_event_channels.get_mut(&thread_id)?;
+         let receiver = channel.receiver.take()?;
+         let mut store = channel.store.lock().await;
+         store.active = true;
+-        let snapshot = store.snapshot();
++        let snapshot = if replay_latest_compacted_conversation {
++            store.snapshot_for_agent_switch()
++        } else {
++            store.snapshot()
++        };
+         Some((receiver, snapshot))
+     }
+ 
+diff --git a/codex-rs/tui/src/chatwidget/streaming.rs b/codex-rs/tui/src/chatwidget/streaming.rs
+index 6229fd735..3399b325c 100644
+--- a/codex-rs/tui/src/chatwidget/streaming.rs
++++ b/codex-rs/tui/src/chatwidget/streaming.rs
+@@ -137,9 +137,10 @@ impl ChatWidget {
+             });
+             if let Some(source) = source {
+                 let inline_visualization_context = self.thread_id.and_then(|thread_id| {
+-                    crate::inline_visualization::InlineVisualizationContext::from_config(
++                    crate::inline_visualization::InlineVisualizationContext::from_config_for_markdown(
+                         &self.config,
+                         thread_id,
++                        &source,
+                     )
+                 });
+                 self.note_stream_consolidation_queued();
+@@ -465,9 +466,10 @@ impl ChatWidget {
+             self.mark_safety_buffering_agent_message_started();
+             self.bottom_pane.hide_status_indicator();
+             let context = self.thread_id.and_then(|thread_id| {
+-                crate::inline_visualization::InlineVisualizationContext::from_config(
++                crate::inline_visualization::InlineVisualizationContext::from_config_for_markdown(
+                     &self.config,
+                     thread_id,
++                    &parsed.visible_markdown,
+                 )
+             });
+             self.add_to_history(
+diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
+index 434aaa19c..dc72d0e7a 100644
+--- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
++++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
+@@ -126,6 +126,109 @@ async fn resumed_initial_messages_render_history() {
+     insta::assert_snapshot!("resumed_daybreak_banner", history);
+ }
+ 
++#[tokio::test]
++async fn replay_plain_assistant_messages_with_many_writable_roots_stays_responsive() {
++    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
++    let workspace = tempfile::tempdir().expect("temporary writable roots");
++    let mut entries = vec![FileSystemSandboxEntry {
++        path: FileSystemPath::Special {
++            value: FileSystemSpecialPath::Root,
++        },
++        access: FileSystemAccessMode::Read,
++        missing_path_behavior: None,
++    }];
++    for index in 0..64 {
++        let root = workspace.path().join(format!("root-{index}"));
++        std::fs::create_dir(&root).expect("create writable root");
++        entries.push(FileSystemSandboxEntry {
++            path: FileSystemPath::Path {
++                path: codex_utils_absolute_path::AbsolutePathBuf::from_absolute_path(root)
++                    .expect("absolute writable root")
++                    .into(),
++            },
++            access: FileSystemAccessMode::Write,
++            missing_path_behavior: None,
++        });
++    }
++    chat.config
++        .permissions
++        .set_permission_profile(PermissionProfile::Managed {
++            network: NetworkSandboxPolicy::Restricted,
++            file_system: ManagedFileSystemPermissions::Restricted {
++                entries,
++                glob_scan_max_depth: None,
++            },
++        })
++        .expect("set permission profile");
++    chat.thread_id = Some(ThreadId::new());
++
++    let started = std::time::Instant::now();
++    for index in 0..32 {
++        replay_agent_message(
++            &mut chat,
++            &format!("assistant-{index}"),
++            format!("Retained assistant message {index}."),
++            ReplayKind::ResumeInitialMessages,
++        );
++    }
++    let elapsed = started.elapsed();
++    let rendered = drain_insert_history(&mut rx)
++        .iter()
++        .map(|lines| lines_to_single_string(lines))
++        .collect::<String>();
++    for index in 0..32 {
++        assert!(rendered.contains(&format!("Retained assistant message {index}.")));
++    }
++    assert!(
++        elapsed < std::time::Duration::from_secs(/*secs*/ 3),
++        "plain assistant history replay took {elapsed:?} with many writable roots"
++    );
++}
++
++#[tokio::test]
++async fn initial_resume_keeps_compacted_history_when_fast_switching_is_enabled() {
++    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
++    let conversation = |index: usize| AppServerTurn {
++        items: vec![AppServerThreadItem::UserMessage {
++            id: format!("user-{index}"),
++            client_id: None,
++            content: vec![AppServerUserInput::Text {
++                text: format!("conversation-{index}"),
++                text_elements: Vec::new(),
++            }],
++        }],
++        ..app_server_turn(
++            &format!("turn-{index}"),
++            AppServerTurnStatus::Completed,
++            /*duration_ms*/ None,
++            /*error*/ None,
++        )
++    };
++    let compaction = AppServerTurn {
++        items: vec![AppServerThreadItem::ContextCompaction {
++            id: "compaction-0".to_string(),
++        }],
++        ..app_server_turn(
++            "compaction-turn-0",
++            AppServerTurnStatus::Completed,
++            /*duration_ms*/ None,
++            /*error*/ None,
++        )
++    };
++
++    chat.replay_thread_turns(
++        vec![conversation(0), compaction, conversation(1)],
++        ReplayKind::ResumeInitialMessages,
++    );
++
++    let rendered = drain_insert_history(&mut rx)
++        .into_iter()
++        .map(|lines| lines_to_single_string(&lines))
++        .collect::<String>();
++    assert!(rendered.contains("conversation-0"));
++    assert!(rendered.contains("conversation-1"));
++}
++
+ #[tokio::test]
+ async fn replayed_failed_turns_preserve_overload_warnings_between_retries() {
+     let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+diff --git a/codex-rs/tui/src/inline_visualization.rs b/codex-rs/tui/src/inline_visualization.rs
+index 5f5c9cd5b..143ec233f 100644
+--- a/codex-rs/tui/src/inline_visualization.rs
++++ b/codex-rs/tui/src/inline_visualization.rs
+@@ -46,6 +46,18 @@ impl InlineVisualizationContext {
+         Self::new_with_writable_roots(codex_home, thread_id, std::iter::empty())
+     }
+ 
++    pub(crate) fn from_config_for_markdown(
++        config: &crate::legacy_core::config::Config,
++        thread_id: ThreadId,
++        markdown: &str,
++    ) -> Option<Self> {
++        if !contains_inline_visualization(markdown) {
++            return None;
++        }
++
++        Self::from_config(config, thread_id)
++    }
++
+     pub(crate) fn from_config(
+         config: &crate::legacy_core::config::Config,
+         thread_id: ThreadId,
+diff --git a/codex-rs/tui/src/inline_visualization_tests.rs b/codex-rs/tui/src/inline_visualization_tests.rs
+index 75c9c5215..649042eb5 100644
+--- a/codex-rs/tui/src/inline_visualization_tests.rs
++++ b/codex-rs/tui/src/inline_visualization_tests.rs
+@@ -22,6 +22,65 @@ fn context_with_fragment(fragment: &str) -> (TempDir, InlineVisualizationContext
+     (codex_home, context)
+ }
+ 
++#[tokio::test]
++async fn markdown_context_keeps_visualization_links_and_rechecks_permissions() {
++    use crate::legacy_core::config::ConfigBuilder;
++    use crate::legacy_core::config::ConfigOverrides;
++    use codex_config::LoaderOverrides;
++    use codex_protocol::models::PermissionProfile;
++    use codex_protocol::permissions::NetworkSandboxPolicy;
++    use codex_utils_absolute_path::AbsolutePathBuf;
++
++    let codex_home = tempfile::tempdir().expect("temporary codex home");
++    let mut config = ConfigBuilder::default()
++        .codex_home(codex_home.path().to_path_buf())
++        .loader_overrides(LoaderOverrides::without_managed_config_for_tests())
++        .harness_overrides(ConfigOverrides {
++            cwd: Some(codex_home.path().to_path_buf()),
++            ..ConfigOverrides::default()
++        })
++        .build()
++        .await
++        .expect("isolated config");
++    config
++        .permissions
++        .set_permission_profile(PermissionProfile::read_only())
++        .expect("read-only permissions");
++    let thread_id = ThreadId::new();
++    assert!(
++        InlineVisualizationContext::from_config_for_markdown(&config, thread_id, "Plain answer")
++            .is_none()
++    );
++    let markdown = "::codex-inline-vis{file=\"chart.html\"}";
++    let context =
++        InlineVisualizationContext::from_config_for_markdown(&config, thread_id, markdown)
++            .expect("visualization context");
++    fs::create_dir_all(&context.thread_dir).expect("visualization directory");
++    fs::write(context.thread_dir.join("chart.html"), "<div>chart</div>").expect("fragment");
++    assert_eq!(
++        rewrite_inline_visualizations(markdown, Some(&context))
++            .trusted_file_links
++            .len(),
++        1
++    );
++
++    let writable_home =
++        AbsolutePathBuf::from_absolute_path(codex_home.path()).expect("absolute codex home");
++    config
++        .permissions
++        .set_permission_profile(PermissionProfile::workspace_write_with(
++            &[writable_home],
++            NetworkSandboxPolicy::Restricted,
++            /*exclude_tmpdir_env_var*/ true,
++            /*exclude_slash_tmp*/ true,
++        ))
++        .expect("writable viewer cache permissions");
++    assert!(
++        InlineVisualizationContext::from_config_for_markdown(&config, thread_id, markdown)
++            .is_none()
++    );
++}
++
+ #[test]
+ fn unterminated_visualization_preview_uses_the_stream_context() {
+     let (codex_home, context) = context_with_fragment("<div>chart</div>");
+diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
+index 170575b79..ff9879179 100644
+--- a/codex-rs/tui/src/thread_transcript.rs
++++ b/codex-rs/tui/src/thread_transcript.rs
+@@ -127,9 +127,19 @@ pub(crate) fn thread_items_to_transcript_cells(
+     raw_reasoning_visibility: RawReasoningVisibility,
+     config: Option<&Config>,
+ ) -> TranscriptCells {
+-    let inline_visualization_context = config.and_then(|config| {
+-        thread_id.and_then(|thread_id| InlineVisualizationContext::from_config(config, thread_id))
++    let items = items.into_iter().collect::<Vec<_>>();
++    let has_inline_visualization = items.iter().any(|item| {
++        matches!(item, ThreadItem::AgentMessage { text, .. }
++            if crate::inline_visualization::contains_inline_visualization(text))
+     });
++    let inline_visualization_context =
++        config
++            .filter(|_| has_inline_visualization)
++            .and_then(|config| {
++                thread_id.and_then(|thread_id| {
++                    InlineVisualizationContext::from_config(config, thread_id)
++                })
++            });
+     let mut cells: TranscriptCells = Vec::new();
+     let mut pending = None;
+     for item in items {
+-- 
+2.43.0
+
