@@ -1,0 +1,68 @@
+From ad8afb11f02352ac7c5f27856675051fb11cebe8 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 7 Nov 2026 09:37:40 -0500
+Subject: [PATCH] Classify TLS errors inside nested I/O errors
+
+io::Error::source skips the error an io::Error wraps, so a typed TLS failure inside nested I/O errors was reported as a proxy-resolution failure. The classifier now follows io::Error::get_ref first, and certificate-like text alone still is not TLS evidence.
+---
+ .../src/route_aware_client_pool.rs            |  9 +++++++-
+ .../src/route_aware_client_pool_tests.rs      | 23 +++++++++++++++++++
+ 2 files changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/http-client/src/route_aware_client_pool.rs b/codex-rs/http-client/src/route_aware_client_pool.rs
+index dee6fea26..5cda2c635 100644
+--- a/codex-rs/http-client/src/route_aware_client_pool.rs
++++ b/codex-rs/http-client/src/route_aware_client_pool.rs
+@@ -127,7 +127,14 @@ impl RouteAwareRequestError {
+             if error.to_string() == "tunnel error: proxy authorization required" {
+                 return Some(RouteFailureClass::ProxyAuthenticationRequired);
+             }
+-            source = error.source();
++            // WORKAROUND: io::Error::source skips its wrapped error:
++            // https://github.com/rust-lang/rust/issues/101817
++            // Remove this special case if source exposes the immediate wrapped error.
++            source = error
++                .downcast_ref::<io::Error>()
++                .and_then(io::Error::get_ref)
++                .map(|inner| inner as &(dyn std::error::Error + 'static))
++                .or_else(|| error.source());
+         }
+ 
+         match self {
+diff --git a/codex-rs/http-client/src/route_aware_client_pool_tests.rs b/codex-rs/http-client/src/route_aware_client_pool_tests.rs
+index 711bc6b0e..3e4adca85 100644
+--- a/codex-rs/http-client/src/route_aware_client_pool_tests.rs
++++ b/codex-rs/http-client/src/route_aware_client_pool_tests.rs
+@@ -780,6 +780,29 @@ fn managed_request_timeout_covers_queued_transport_construction() {
+     });
+ }
+ 
++#[test]
++fn request_failures_classify_tls_errors_inside_nested_io_errors() {
++    let error = RouteAwareRequestError::Route(RouteAwareClientPoolError::Resolve(
++        io::Error::other(io::Error::other(rustls::Error::InvalidCertificate(
++            rustls::CertificateError::UnknownIssuer,
++        ))),
++    ));
++
++    assert_eq!(error.failure_class(), Some(RouteFailureClass::TlsError));
++}
++
++#[test]
++fn request_failures_do_not_classify_certificate_text_as_a_tls_error() {
++    let error = RouteAwareRequestError::Route(RouteAwareClientPoolError::Resolve(
++        io::Error::other(io::Error::other("invalid peer certificate: UnknownIssuer")),
++    ));
++
++    assert_eq!(
++        error.failure_class(),
++        Some(RouteFailureClass::ProxyResolutionUnavailable)
++    );
++}
++
+ #[tokio::test]
+ async fn request_timeout_is_shared_across_redirect_hops() {
+     let (address, server) = spawn_response_server(vec![
+-- 
+2.43.0
+
