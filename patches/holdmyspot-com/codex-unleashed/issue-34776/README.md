@@ -37,3 +37,22 @@ From the patched upstream checkout root:
 cd codex-rs && cargo nextest run -p codex-tui -E 'test(startup_skills_refresh_)'
 just fmt-check
 ```
+
+## Background skill warmup on resume
+
+[background-session-skill-warmup.patch](background-session-skill-warmup.patch)
+
+### Intent
+
+Session startup, resume and fork wait for plugin and skill discovery before the conversation accepts input. The patch moves that discovery into a background task the session owns, so a restored conversation is available while it runs. The first execution context waits for the warmup before its normal discovery, and history restoration no longer scans skills. Cancelling a waiting request leaves the warmup for the next one, a failed warmup still lets execution discover skills, and dropping the session aborts unfinished work. Plugin setup that hooks and MCP need stays synchronous.
+
+A cold client resume registers skill watches after the resume response and its restored-state notifications, then invalidates cached metadata and sends a refresh notification so changes made before the watches were ready reach the client. Only the active listener generation can install those watches; a closed or replaced listener discards them. New sessions and forks keep registering watches before their responses.
+
+### Verification
+
+From the patched upstream checkout root:
+
+```sh
+cd codex-rs && cargo nextest run -p codex-core -p codex-app-server -E 'test(resume_warmup_tests) | test(late_skill_watches_) | test(cold_resume_refreshes_skill_metadata_after_watches_are_ready) | test(production_turn_warns_and_omits_unreadable_host_skill)'
+just fmt-check
+```
