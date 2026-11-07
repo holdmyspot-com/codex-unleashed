@@ -1,0 +1,432 @@
+From ab66b2ea9607417265456681ec362f8ed15355b6 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 7 Nov 2026 11:21:56 -0500
+Subject: [PATCH] Identify server distribution and order Unleashed versions
+
+Warn when the connected server identifies itself as OpenAI Codex. Compare numeric Unleashed versions by release precedence, then build number, so a bare equal release is older and a higher release stays newer.
+---
+ codex-rs/app-server-client/src/lib.rs         |  11 +-
+ .../app-server/tests/suite/v2/initialize.rs   |  15 +++
+ codex-rs/login/src/auth/default_client.rs     |   5 +-
+ .../login/src/auth/default_client_tests.rs    |  22 +++-
+ codex-rs/tui/src/app/server_version_notice.rs |   1 +
+ ...eashed_openai_server_warning_snapshot.snap |   8 ++
+ codex-rs/tui/src/history_cell/tests.rs        |  29 +++++
+ codex-rs/tui/src/status/remote_connection.rs  | 117 +++++++++++++++++-
+ codex-rs/tui/src/update_versions.rs           |  63 +++++++++-
+ 9 files changed, 265 insertions(+), 6 deletions(-)
+ create mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap
+
+diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
+index e7df794..99ff6b0 100644
+--- a/codex-rs/app-server-client/src/lib.rs
++++ b/codex-rs/app-server-client/src/lib.rs
+@@ -1458,7 +1458,14 @@ mod tests {
+     #[tokio::test]
+     async fn remote_typed_request_roundtrip_works() {
+         let websocket_url = start_test_remote_server(|mut websocket| async move {
+-            expect_remote_initialize(&mut websocket).await;
++            expect_remote_initialize_with_metadata(
++                &mut websocket,
++                serde_json::json!({
++                    "userAgent": "codex_cli_rs/9.8.7+39 (Test OS; x86_64) rust",
++                    "codexHome": "/server/.codex",
++                }),
++            )
++            .await;
+             let JSONRPCMessage::Request(request) = read_websocket_message(&mut websocket).await
+             else {
+                 panic!("expected account/read request");
+@@ -1484,7 +1491,7 @@ mod tests {
+             .await
+             .expect("remote client should connect");
+ 
+-        assert_eq!(client.server_version(), Some("9.8.7-test"));
++        assert_eq!(client.server_version(), Some("9.8.7+39"));
+         assert_eq!(client.codex_home(), Some("/server/.codex"));
+         let client = AppServerClient::Remote(client);
+         let response: GetAccountResponse = client
+diff --git a/codex-rs/app-server/tests/suite/v2/initialize.rs b/codex-rs/app-server/tests/suite/v2/initialize.rs
+index 1ba0f26..e345c23 100644
+--- a/codex-rs/app-server/tests/suite/v2/initialize.rs
++++ b/codex-rs/app-server/tests/suite/v2/initialize.rs
+@@ -62,6 +62,21 @@ async fn initialize_uses_client_info_name_as_originator() -> Result<()> {
+     } = to_response::<InitializeResponse>(response)?;
+ 
+     assert!(user_agent.starts_with("codex_vscode/"));
++    let version = user_agent
++        .split_once('/')
++        .unwrap()
++        .1
++        .split_whitespace()
++        .next()
++        .unwrap();
++    assert_eq!(
++        version,
++        format!(
++            "{}+{}",
++            env!("CARGO_PKG_VERSION"),
++            option_env!("CODEX_UNLEASHED_BUILD_NUMBER").unwrap_or("dev")
++        )
++    );
+     assert_eq!(response_codex_home, expected_codex_home);
+     assert_eq!(platform_family, std::env::consts::FAMILY);
+     assert_eq!(platform_os, std::env::consts::OS);
+diff --git a/codex-rs/login/src/auth/default_client.rs b/codex-rs/login/src/auth/default_client.rs
+index 28a952e..c8c1d65 100644
+--- a/codex-rs/login/src/auth/default_client.rs
++++ b/codex-rs/login/src/auth/default_client.rs
+@@ -149,11 +149,14 @@ pub fn is_first_party_chat_originator(originator_value: &str) -> bool {
+     originator_value == "codex_atlas" || originator_value == "codex_chatgpt_desktop"
+ }
+ 
++/// Return the request originator, compiled Unleashed version, host, and terminal identity.
++/// The version includes the numeric vendor build or `dev`, matching the CLI package version.
+ pub fn get_codex_user_agent() -> String {
+     // OS discovery can spawn subprocesses on Linux. Reuse it across requests,
+     // while continuing to read the mutable originator and suffix below.
+     static OS_INFO: LazyLock<os_info::Info> = LazyLock::new(os_info::get);
+-    let build_version = env!("CARGO_PKG_VERSION");
++    let build_number = option_env!("CODEX_UNLEASHED_BUILD_NUMBER").unwrap_or("dev");
++    let build_version = format!("{}+{build_number}", env!("CARGO_PKG_VERSION"));
+     let os_info = &*OS_INFO;
+     let originator = originator();
+     let prefix = format!(
+diff --git a/codex-rs/login/src/auth/default_client_tests.rs b/codex-rs/login/src/auth/default_client_tests.rs
+index 4a5d941..6433526 100644
+--- a/codex-rs/login/src/auth/default_client_tests.rs
++++ b/codex-rs/login/src/auth/default_client_tests.rs
+@@ -349,9 +349,29 @@ fn test_macos() {
+     use regex_lite::Regex;
+     let user_agent = get_codex_user_agent();
+     let originator = regex_lite::escape(originator().value.as_str());
++    let version = regex_lite::escape(&format!(
++        "{}+{}",
++        env!("CARGO_PKG_VERSION"),
++        option_env!("CODEX_UNLEASHED_BUILD_NUMBER").unwrap_or("dev")
++    ));
+     let re = Regex::new(&format!(
+-        r"^{originator}/\d+\.\d+\.\d+ \(Mac OS \d+\.\d+\.\d+; (x86_64|arm64)\) (\S+)$"
++        r"^{originator}/{version} \(Mac OS \d+\.\d+\.\d+; (x86_64|arm64)\) (\S+)$"
+     ))
+     .unwrap();
+     assert!(re.is_match(&user_agent));
+ }
++
++#[test]
++fn user_agent_identifies_unleashed_server_build() {
++    let user_agent = get_codex_user_agent();
++    let (_, version_and_details) = user_agent.split_once('/').expect("user agent version");
++    let version = version_and_details.split_whitespace().next().unwrap();
++    assert_eq!(
++        version,
++        format!(
++            "{}+{}",
++            env!("CARGO_PKG_VERSION"),
++            option_env!("CODEX_UNLEASHED_BUILD_NUMBER").unwrap_or("dev")
++        )
++    );
++}
+diff --git a/codex-rs/tui/src/app/server_version_notice.rs b/codex-rs/tui/src/app/server_version_notice.rs
+index bca03e3..f90cf53 100644
+--- a/codex-rs/tui/src/app/server_version_notice.rs
++++ b/codex-rs/tui/src/app/server_version_notice.rs
+@@ -58,6 +58,7 @@ impl App {
+             let comparison =
+                 match crate::update_versions::server_version_notice_kind(client_version, server)? {
+                     ServerVersionNoticeKind::Older => "<",
++                    ServerVersionNoticeKind::Newer => ">",
+                     ServerVersionNoticeKind::Different => "≠",
+                 };
+             Some(format!(
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap
+new file mode 100644
+index 0000000..b5da90f
+--- /dev/null
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap
+@@ -0,0 +1,8 @@
++---
++source: tui/src/history_cell/tests.rs
++expression: "render_lines(&cell.transcript_lines(100)).join(\"\\n\")"
++---
++⚠ The connected app-server identifies itself as OpenAI Codex v0.160.0, older than your Codex CLI
++  v0.160.0+39. Update it to a Codex Unleashed app-server to use Codex Unleashed server features.
++  Use /daemon to manage the local background server.
++  Updating may interrupt active or queued work.
+diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
+index f459fa3..f761676 100644
+--- a/codex-rs/tui/src/history_cell/tests.rs
++++ b/codex-rs/tui/src/history_cell/tests.rs
+@@ -100,6 +100,35 @@ fn local_daemon_version_notice_snapshot() {
+     }
+ }
+ 
++#[test]
++fn unleashed_openai_server_warning_snapshot() {
++    let target = crate::AppServerTarget::LocalDaemon {
++        allow_embedded_fallback: true,
++        endpoint: crate::RemoteAppServerEndpoint::UnixSocket {
++            socket_path: AbsolutePathBuf::from_absolute_path(
++                std::env::temp_dir().join("codex.sock"),
++            )
++            .unwrap(),
++        },
++    };
++    let settings = codex_config::types::Tui {
++        show_server_version_notice: true,
++        ..Default::default()
++    };
++    let (notice, _) = crate::status::remote_connection::pending_server_version_notice(
++        &settings,
++        &target,
++        None,
++        "0.160.0+39",
++        Some("0.160.0"),
++        None,
++    )
++    .unwrap();
++    assert!(notice.message.contains("OpenAI"));
++    let cell = new_server_version_warning(notice);
++    insta::assert_snapshot!(render_lines(&cell.transcript_lines(100)).join("\n"));
++}
++
+ async fn test_config() -> Config {
+     let codex_home = std::env::temp_dir();
+     ConfigBuilder::default()
+diff --git a/codex-rs/tui/src/status/remote_connection.rs b/codex-rs/tui/src/status/remote_connection.rs
+index 2ee0395..546dcbc 100644
+--- a/codex-rs/tui/src/status/remote_connection.rs
++++ b/codex-rs/tui/src/status/remote_connection.rs
+@@ -52,8 +52,28 @@ pub(crate) fn remote_connection_status_value(
+ 
+ pub(crate) fn server_version_notice(client: &str, server: Option<&str>) -> Option<String> {
+     let server = server?;
+-    let comparison = match crate::update_versions::server_version_notice_kind(client, server)? {
++    let client_version = semver::Version::parse(client).ok()?;
++    let server_version = semver::Version::parse(server).ok()?;
++    let client_build = client_version.build.as_str();
++    let client_is_unleashed = client_build == "dev"
++        || crate::update_versions::is_numeric_vendor_build(&client_version.build);
++    let kind = crate::update_versions::server_version_notice_kind(client, server)?;
++    if client_is_unleashed
++        && server_version.build.is_empty()
++        && kind != ServerVersionNoticeKind::Newer
++    {
++        let comparison = if kind == ServerVersionNoticeKind::Older {
++            format!(", older than your Codex CLI v{client}")
++        } else {
++            String::new()
++        };
++        return Some(format!(
++            "The connected app-server identifies itself as OpenAI Codex v{server}{comparison}. Update it to a Codex Unleashed app-server to use Codex Unleashed server features."
++        ));
++    }
++    let comparison = match kind {
+         ServerVersionNoticeKind::Older => "older than",
++        ServerVersionNoticeKind::Newer => "newer than",
+         ServerVersionNoticeKind::Different => "different from",
+     };
+     Some(format!(
+@@ -176,6 +196,101 @@ mod tests {
+     use codex_utils_absolute_path::AbsolutePathBuf;
+     use pretty_assertions::assert_eq;
+ 
++    #[test]
++    fn numeric_unleashed_versions_order_release_before_build() {
++        for (server, comparison) in [
++            ("0.160.0", "older than"),
++            ("0.160.0+40", "older than"),
++            ("0.160.0+42", "newer than"),
++            ("0.161.0", "newer than"),
++            ("0.161.0+1", "newer than"),
++            ("0.159.0+999", "older than"),
++        ] {
++            let notice = server_version_notice("0.160.0+41", Some(server)).unwrap();
++            assert!(notice.contains(comparison), "{server}: {notice}");
++        }
++        assert_eq!(
++            server_version_notice("0.160.0+41", Some("0.160.0+41")),
++            None
++        );
++    }
++
++    #[test]
++    fn newer_unmarked_server_keeps_its_release_precedence() {
++        let notice = server_version_notice("0.160.0+41", Some("0.161.0")).unwrap();
++        assert!(notice.contains("newer than"), "{notice}");
++        assert!(!notice.contains("Update it"), "{notice}");
++    }
++
++    #[test]
++    fn unleashed_client_warns_for_openai_server_and_accepts_unleashed_server() {
++        let notice = server_version_notice("0.160.0+39", Some("0.160.0"))
++            .expect("OpenAI server needs an upgrade warning");
++        assert!(notice.contains("OpenAI"), "{notice}");
++        assert!(notice.contains("Codex Unleashed app-server"), "{notice}");
++        assert_eq!(
++            server_version_notice("0.160.0+39", Some("0.160.0+39")),
++            None
++        );
++        assert_eq!(server_version_notice("0.160.0+39", None), None);
++        assert_eq!(server_version_notice("0.160.0+39", Some("unknown")), None);
++        assert!(
++            server_version_notice("0.160.0+dev", Some("0.160.0"))
++                .unwrap()
++                .contains("OpenAI")
++        );
++        assert_eq!(server_version_notice("0.160.0", Some("0.160.0")), None);
++        assert!(
++            !server_version_notice("0.160.0+39", Some("0.160.0+38"))
++                .unwrap()
++                .contains("OpenAI")
++        );
++    }
++
++    #[test]
++    fn unleashed_provider_notice_respects_settings_and_connection_identity() -> anyhow::Result<()> {
++        let endpoint = RemoteAppServerEndpoint::UnixSocket {
++            socket_path: AbsolutePathBuf::relative_to_current_dir("codex.sock")?,
++        };
++        let local = AppServerTarget::LocalDaemon {
++            allow_embedded_fallback: true,
++            endpoint: endpoint.clone(),
++        };
++        let remote = AppServerTarget::Remote { endpoint };
++        let settings = codex_config::types::Tui {
++            show_server_version_notice: true,
++            ..Default::default()
++        };
++        let pending = |settings: &codex_config::types::Tui, target, server, last_shown| {
++            pending_server_version_notice(
++                settings,
++                target,
++                Some("/server"),
++                "0.160.0+39",
++                Some(server),
++                last_shown,
++            )
++        };
++        let (notice, key) = pending(&settings, &local, "0.160.0", None).unwrap();
++        assert!(notice.offer_update);
++        assert!(notice.message.contains("OpenAI"));
++        assert!(
++            !pending(&settings, &remote, "0.160.0", None)
++                .unwrap()
++                .0
++                .offer_update
++        );
++        assert!(pending(&settings, &local, "0.160.0", Some(&key)).is_none());
++        assert!(pending(&settings, &local, "0.161.0", Some(&key)).is_some());
++        assert!(pending(&settings, &local, "0.160.0+39", Some(&key)).is_none());
++        let disabled = codex_config::types::Tui {
++            show_server_version_notice: false,
++            ..settings
++        };
++        assert!(pending(&disabled, &local, "0.160.0", None).is_none());
++        Ok(())
++    }
++
+     #[test]
+     fn remote_connection_status_value_formats_display_value() -> color_eyre::Result<()> {
+         assert_eq!(
+diff --git a/codex-rs/tui/src/update_versions.rs b/codex-rs/tui/src/update_versions.rs
+index b0aa3de..d338802 100644
+--- a/codex-rs/tui/src/update_versions.rs
++++ b/codex-rs/tui/src/update_versions.rs
+@@ -22,10 +22,12 @@ pub(crate) fn is_source_build_version(version: &str) -> bool {
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+ pub(crate) enum ServerVersionNoticeKind {
+     Older,
++    Newer,
+     Different,
+ }
+ 
+-/// Stable clients compare release precedence. Prerelease clients only order versions
++/// Numeric vendor builds compare release precedence before build metadata. Other
++/// stable clients compare release precedence. Prerelease clients only order versions
+ /// within the same release line; local builds and other release lines compare identity.
+ pub(crate) fn server_version_notice_kind(
+     client: &str,
+@@ -35,6 +37,22 @@ pub(crate) fn server_version_notice_kind(
+     let server = semver::Version::parse(server).ok()?;
+     let client_release = (client.major, client.minor, client.patch);
+     let server_release = (server.major, server.minor, server.patch);
++    if client_release != (0, 0, 0) && is_numeric_vendor_build(&client.build) {
++        let comparison = client.cmp_precedence(&server);
++        let comparison = if comparison.is_eq() {
++            if !server.build.is_empty() && !is_numeric_vendor_build(&server.build) {
++                return (client != server).then_some(ServerVersionNoticeKind::Different);
++            }
++            client.build.cmp(&server.build)
++        } else {
++            comparison
++        };
++        return match comparison {
++            std::cmp::Ordering::Greater => Some(ServerVersionNoticeKind::Older),
++            std::cmp::Ordering::Less => Some(ServerVersionNoticeKind::Newer),
++            std::cmp::Ordering::Equal => None,
++        };
++    }
+     let client_is_local = client_release == (0, 0, 0) || !client.build.is_empty();
+     if client_is_local || (!client.pre.is_empty() && client_release != server_release) {
+         return (client != server).then_some(ServerVersionNoticeKind::Different);
+@@ -43,6 +61,10 @@ pub(crate) fn server_version_notice_kind(
+         .then_some(ServerVersionNoticeKind::Older)
+ }
+ 
++pub(crate) fn is_numeric_vendor_build(build: &semver::BuildMetadata) -> bool {
++    !build.is_empty() && build.as_str().bytes().all(|byte| byte.is_ascii_digit())
++}
++
+ #[cfg(any(not(debug_assertions), test))]
+ fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
+     let mut iter = v.trim().split('.');
+@@ -57,6 +79,45 @@ mod tests {
+     use super::*;
+     use pretty_assertions::assert_eq;
+ 
++    #[test]
++    fn numeric_vendor_clients_recognize_older_servers() {
++        for server in ["0.160.0", "0.160.0+40", "0.159.0+999"] {
++            assert_eq!(
++                server_version_notice_kind("0.160.0+41", server),
++                Some(ServerVersionNoticeKind::Older),
++                "{server}"
++            );
++        }
++    }
++
++    #[test]
++    fn numeric_vendor_clients_recognize_newer_servers() {
++        for server in ["0.161.0", "0.161.0+1", "0.160.0+42"] {
++            assert_eq!(
++                server_version_notice_kind("0.160.0+41", server),
++                Some(ServerVersionNoticeKind::Newer),
++                "{server}"
++            );
++        }
++    }
++
++    #[test]
++    fn vendor_build_order_does_not_overflow_or_compare_lexically() {
++        for (client, server) in [
++            ("0.160.0+10", "0.160.0+9"),
++            (
++                "0.160.0+18446744073709551616",
++                "0.160.0+18446744073709551615",
++            ),
++            ("0.160.0+0", "0.160.0"),
++        ] {
++            assert_eq!(
++                server_version_notice_kind(client, server),
++                Some(ServerVersionNoticeKind::Older)
++            );
++        }
++    }
++
+     #[test]
+     fn extracts_version_from_latest_tag() {
+         assert_eq!(
+-- 
+2.43.0
+

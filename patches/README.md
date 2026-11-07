@@ -21,3 +21,4 @@ The release applies these patches in this order:
 15. [issue-62/classify-wrapped-tls-errors.patch](holdmyspot-com/codex-unleashed/issue-62/classify-wrapped-tls-errors.patch)
 16. [issue-70/readable-commands.patch](holdmyspot-com/codex-unleashed/issue-70/readable-commands.patch)
 17. [branding-and-app-server-distribution/add-branding-and-build-metadata.patch](holdmyspot-com/codex-unleashed/branding-and-app-server-distribution/add-branding-and-build-metadata.patch)
+18. [branding-and-app-server-distribution/warn-on-openai-app-server.patch](holdmyspot-com/codex-unleashed/branding-and-app-server-distribution/warn-on-openai-app-server.patch)

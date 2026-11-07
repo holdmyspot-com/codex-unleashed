@@ -38,3 +38,18 @@ just fmt-check
 
 Run the CLI build-information checks without `CODEX_UNLEASHED_BUILD_NUMBER` to
 check the `+dev` fallback.
+
+## Server distribution warning
+
+- Patch: `warn-on-openai-app-server.patch`.
+- Prerequisites: `add-branding-and-build-metadata.patch`.
+
+The server user agent carries the Unleashed build number. The TUI warns when
+the connected app-server identifies itself as OpenAI Codex, and compares
+numeric Unleashed versions by release precedence, then build number, so a bare
+equal release is older and a higher release stays newer.
+
+```sh
+just test -p codex-tui -p codex-login -p codex-app-server \
+  -E 'test(update_versions) | test(status::remote_connection) | test(unleashed_openai_server_warning_snapshot) | test(user_agent_identifies_unleashed_server_build) | test(initialize_uses_client_info_name_as_originator)'
+```
