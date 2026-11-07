@@ -1,4 +1,4 @@
-From fb2c4548be2d9506d727e3f5f709d0ab19a9b8f9 Mon Sep 17 00:00:00 2001
+From 92273911263b1ef3656139c4019d2e7eeb977947 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:35:08 -0500
 Subject: [PATCH] Keep active-goal parents available while children run
@@ -15,7 +15,7 @@ Automatic goal continuation no longer starts a parent turn while a V2 child is s
 
 diff --git a/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs b/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs
 new file mode 100644
-index 000000000..311b07f9e
+index 0000000..311b07f
 --- /dev/null
 +++ b/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs
 @@ -0,0 +1,293 @@
@@ -313,7 +313,7 @@ index 000000000..311b07f9e
 +    Ok(())
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/turn_start.rs b/codex-rs/app-server/tests/suite/v2/turn_start.rs
-index eae342d43..1bd1d41b5 100644
+index eae342d..1bd1d41 100644
 --- a/codex-rs/app-server/tests/suite/v2/turn_start.rs
 +++ b/codex-rs/app-server/tests/suite/v2/turn_start.rs
 @@ -120,6 +120,9 @@ use super::analytics::mount_analytics_capture;
@@ -327,7 +327,7 @@ index eae342d43..1bd1d41b5 100644
  const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(25);
  #[cfg(not(windows))]
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 0b5ea8782..f240d5bad 100644
+index 0b5ea87..f240d5b 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
 @@ -1067,6 +1067,40 @@ impl CodexThread {
@@ -372,7 +372,7 @@ index 0b5ea8782..f240d5bad 100644
      pub async fn conversation_history_snapshot(&self) -> Arc<dyn ConversationHistorySnapshot> {
          self.session.conversation_history_snapshot().await
 diff --git a/codex-rs/core/tests/suite/background_subagent_tests.rs b/codex-rs/core/tests/suite/background_subagent_tests.rs
-index 9cdc27d87..7ba359315 100644
+index 9cdc27d..7ba3593 100644
 --- a/codex-rs/core/tests/suite/background_subagent_tests.rs
 +++ b/codex-rs/core/tests/suite/background_subagent_tests.rs
 @@ -218,6 +218,7 @@ async fn background_subagent_guidance_reaches_model_only_with_wakeup_enabled(
@@ -402,7 +402,7 @@ index 9cdc27d87..7ba359315 100644
      Ok(())
  }
 diff --git a/codex-rs/ext/goal/src/runtime.rs b/codex-rs/ext/goal/src/runtime.rs
-index 8744473a0..6188beb5b 100644
+index 8744473..6188beb 100644
 --- a/codex-rs/ext/goal/src/runtime.rs
 +++ b/codex-rs/ext/goal/src/runtime.rs
 @@ -477,6 +477,14 @@ impl GoalRuntimeHandle {

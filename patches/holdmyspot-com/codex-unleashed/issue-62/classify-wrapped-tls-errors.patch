@@ -1,4 +1,4 @@
-From ad8afb11f02352ac7c5f27856675051fb11cebe8 Mon Sep 17 00:00:00 2001
+From 7985a9cb7a9c96aed1078ade35fa8de8449e2ea8 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:37:40 -0500
 Subject: [PATCH] Classify TLS errors inside nested I/O errors
@@ -10,7 +10,7 @@ io::Error::source skips the error an io::Error wraps, so a typed TLS failure ins
  2 files changed, 31 insertions(+), 1 deletion(-)
 
 diff --git a/codex-rs/http-client/src/route_aware_client_pool.rs b/codex-rs/http-client/src/route_aware_client_pool.rs
-index dee6fea26..5cda2c635 100644
+index dee6fea..5cda2c6 100644
 --- a/codex-rs/http-client/src/route_aware_client_pool.rs
 +++ b/codex-rs/http-client/src/route_aware_client_pool.rs
 @@ -127,7 +127,14 @@ impl RouteAwareRequestError {
@@ -30,7 +30,7 @@ index dee6fea26..5cda2c635 100644
  
          match self {
 diff --git a/codex-rs/http-client/src/route_aware_client_pool_tests.rs b/codex-rs/http-client/src/route_aware_client_pool_tests.rs
-index 711bc6b0e..3e4adca85 100644
+index 711bc6b..3e4adca 100644
 --- a/codex-rs/http-client/src/route_aware_client_pool_tests.rs
 +++ b/codex-rs/http-client/src/route_aware_client_pool_tests.rs
 @@ -780,6 +780,29 @@ fn managed_request_timeout_covers_queued_transport_construction() {

@@ -1,4 +1,4 @@
-From 22a550e5acb566ad1109ca29af72315f07d56364 Mon Sep 17 00:00:00 2001
+From 4c3e1219a61e16e050b0520e857132897f6d6974 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:34:55 -0500
 Subject: [PATCH] Resume available parents when V2 subagents finish
@@ -28,7 +28,7 @@ A child's completion or failure now starts a turn on an idle parent, unless the 
  create mode 100644 codex-rs/core/tests/suite/background_subagent_tests.rs
 
 diff --git a/codex-rs/app-server/tests/suite/v2/guardian_v2.rs b/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
-index c15253a11..7314e8e3c 100644
+index c15253a..7314e8e 100644
 --- a/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
 +++ b/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
 @@ -944,7 +944,8 @@ async fn guardian_v2_routes_scoped_tool_approvals(
@@ -42,7 +42,7 @@ index c15253a11..7314e8e3c 100644
      if matches!(lifecycle, ThreadLifecycle::RootUserInputCompaction) {
          mock_config = mock_config
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs b/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs
-index 16273cf31..cb03e2629 100644
+index 16273cf..cb03e26 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs
 @@ -625,6 +625,7 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
@@ -135,7 +135,7 @@ index 16273cf31..cb03e2629 100644
          if tool != "send_message" {
              let completed = timeout(
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 510393e03..e3434f99a 100644
+index 510393e..e3434f9 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
 @@ -1431,6 +1431,9 @@
@@ -159,7 +159,7 @@ index 510393e03..e3434f99a 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/core/src/agent/control/completion.rs b/codex-rs/core/src/agent/control/completion.rs
-index 587f4cdae..05552de45 100644
+index 587f4cd..05552de 100644
 --- a/codex-rs/core/src/agent/control/completion.rs
 +++ b/codex-rs/core/src/agent/control/completion.rs
 @@ -1,6 +1,6 @@
@@ -216,7 +216,7 @@ index 587f4cdae..05552de45 100644
              AgentCommunicationContext::new(AgentCommunicationKind::Result, outcome.thread_id);
          let delivery = self
 diff --git a/codex-rs/core/src/tools/handlers/multi_agents_tests.rs b/codex-rs/core/src/tools/handlers/multi_agents_tests.rs
-index 9582a977e..4e2d48b75 100644
+index 9582a97..4e2d48b 100644
 --- a/codex-rs/core/src/tools/handlers/multi_agents_tests.rs
 +++ b/codex-rs/core/src/tools/handlers/multi_agents_tests.rs
 @@ -1894,12 +1894,20 @@ async fn multi_agent_v2_send_message_rejects_interrupt_parameter() {
@@ -251,7 +251,7 @@ index 9582a977e..4e2d48b75 100644
                                  Some(communication.content)
                              }
 diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
-index 192deff7e..c3e4e2599 100644
+index 192deff..c3e4e25 100644
 --- a/codex-rs/core/src/tools/spec_plan.rs
 +++ b/codex-rs/core/src/tools/spec_plan.rs
 @@ -1469,6 +1469,18 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut Too
@@ -287,7 +287,7 @@ index 192deff7e..c3e4e2599 100644
                          spawn_agent_description.map(str::to_owned),
                      ),
 diff --git a/codex-rs/core/tests/suite/agent_execution.rs b/codex-rs/core/tests/suite/agent_execution.rs
-index 2ab7c4ec5..e3b617dbe 100644
+index 2ab7c4e..e3b617d 100644
 --- a/codex-rs/core/tests/suite/agent_execution.rs
 +++ b/codex-rs/core/tests/suite/agent_execution.rs
 @@ -248,6 +248,10 @@ async fn child_turn_start_preserves_root_attribution() -> Result<()> {
@@ -314,7 +314,7 @@ index 2ab7c4ec5..e3b617dbe 100644
                  Feature::MultiAgentV2,
 diff --git a/codex-rs/core/tests/suite/background_subagent_tests.rs b/codex-rs/core/tests/suite/background_subagent_tests.rs
 new file mode 100644
-index 000000000..9cdc27d87
+index 0000000..9cdc27d
 --- /dev/null
 +++ b/codex-rs/core/tests/suite/background_subagent_tests.rs
 @@ -0,0 +1,702 @@
@@ -1021,7 +1021,7 @@ index 000000000..9cdc27d87
 +    Ok(())
 +}
 diff --git a/codex-rs/core/tests/suite/cyber_access_program.rs b/codex-rs/core/tests/suite/cyber_access_program.rs
-index 829ec85c5..8e21d8c90 100644
+index 829ec85..8e21d8c 100644
 --- a/codex-rs/core/tests/suite/cyber_access_program.rs
 +++ b/codex-rs/core/tests/suite/cyber_access_program.rs
 @@ -305,6 +305,10 @@ async fn cyber_access_program_is_inherited_by_child_turns() -> Result<()> {
@@ -1036,7 +1036,7 @@ index 829ec85c5..8e21d8c90 100644
                      .features
                      .enable(Feature::Collab)
 diff --git a/codex-rs/core/tests/suite/guardian_root_handoff.rs b/codex-rs/core/tests/suite/guardian_root_handoff.rs
-index c39ed110b..2f2f6f7c5 100644
+index c39ed11..2f2f6f7 100644
 --- a/codex-rs/core/tests/suite/guardian_root_handoff.rs
 +++ b/codex-rs/core/tests/suite/guardian_root_handoff.rs
 @@ -61,6 +61,11 @@ pub(crate) async fn handoff_scenario(native_history: bool) -> Result<Vec<Respons
@@ -1052,7 +1052,7 @@ index c39ed110b..2f2f6f7c5 100644
                  Feature::Collab,
                  Feature::MultiAgentV2,
 diff --git a/codex-rs/core/tests/suite/guardian_subagent_authorization.rs b/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
-index a11d977bf..67a81a421 100644
+index a11d977..67a81a4 100644
 --- a/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
 +++ b/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
 @@ -734,6 +734,10 @@ async fn run_guardian_subagent_review(
@@ -1067,7 +1067,7 @@ index a11d977bf..67a81a421 100644
                  config.model_provider.name = "Local compaction test provider".to_owned();
                  config
 diff --git a/codex-rs/core/tests/suite/multi_agent_resume.rs b/codex-rs/core/tests/suite/multi_agent_resume.rs
-index 09c317d8f..750059f73 100644
+index 09c317d..750059f 100644
 --- a/codex-rs/core/tests/suite/multi_agent_resume.rs
 +++ b/codex-rs/core/tests/suite/multi_agent_resume.rs
 @@ -146,6 +146,10 @@ fn configure_multi_agent_v2_with_role(
@@ -1082,7 +1082,7 @@ index 09c317d8f..750059f73 100644
          .features
          .enable(Feature::Collab)
 diff --git a/codex-rs/core/tests/suite/scenarios.rs b/codex-rs/core/tests/suite/scenarios.rs
-index a31a92e5a..54ff77ebc 100644
+index a31a92e..54ff77e 100644
 --- a/codex-rs/core/tests/suite/scenarios.rs
 +++ b/codex-rs/core/tests/suite/scenarios.rs
 @@ -3175,6 +3175,7 @@ async fn astra_async_compaction_keeps_work_added_after_its_snapshot(
@@ -1094,7 +1094,7 @@ index a31a92e5a..54ff77ebc 100644
              .collect::<Vec<_>>();
          assert_eq!(positions.len(), 1, "{text}");
 diff --git a/codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs b/codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs
-index dc525f88c..353802558 100644
+index dc525f8..3538025 100644
 --- a/codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs
 +++ b/codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs
 @@ -29,6 +29,11 @@ async fn idle_eviction_preserves_worker_context_for_followup() -> Result<()> {
@@ -1110,7 +1110,7 @@ index dc525f88c..353802558 100644
              config.features.enable(Feature::MultiAgentV2).unwrap();
              config
 diff --git a/codex-rs/core/tests/suite/scenarios_agent_message_board.rs b/codex-rs/core/tests/suite/scenarios_agent_message_board.rs
-index 8df6c9723..ee8318281 100644
+index 8df6c97..ee83182 100644
 --- a/codex-rs/core/tests/suite/scenarios_agent_message_board.rs
 +++ b/codex-rs/core/tests/suite/scenarios_agent_message_board.rs
 @@ -75,6 +75,11 @@ fn done() -> String {
@@ -1126,7 +1126,7 @@ index 8df6c9723..ee8318281 100644
          .features
          .enable(Feature::AgentMessageBoard)
 diff --git a/codex-rs/core/tests/suite/step_settings.rs b/codex-rs/core/tests/suite/step_settings.rs
-index a6303fdec..771c2f4d4 100644
+index a6303fd..771c2f4 100644
 --- a/codex-rs/core/tests/suite/step_settings.rs
 +++ b/codex-rs/core/tests/suite/step_settings.rs
 @@ -2293,6 +2293,10 @@ async fn tool_messages_follow_mid_turn_model_changes() -> Result<()> {
@@ -1141,7 +1141,7 @@ index a6303fdec..771c2f4d4 100644
                  .features
                  .enable(Feature::MultiAgentV2)
 diff --git a/codex-rs/core/tests/suite/subagent_notifications.rs b/codex-rs/core/tests/suite/subagent_notifications.rs
-index 47629f5cb..fa4301352 100644
+index 47629f5..fa43013 100644
 --- a/codex-rs/core/tests/suite/subagent_notifications.rs
 +++ b/codex-rs/core/tests/suite/subagent_notifications.rs
 @@ -89,6 +89,8 @@ use super::direct_tool_metadata::tool_call_metadata;
@@ -1166,7 +1166,7 @@ index 47629f5cb..fa4301352 100644
                  config
                      .features
 diff --git a/codex-rs/core/tests/suite/subagent_service_tier.rs b/codex-rs/core/tests/suite/subagent_service_tier.rs
-index 74d559254..4da8c11c1 100644
+index 74d5592..4da8c11 100644
 --- a/codex-rs/core/tests/suite/subagent_service_tier.rs
 +++ b/codex-rs/core/tests/suite/subagent_service_tier.rs
 @@ -63,6 +63,10 @@ fn assert_request_service_tier(request: &ResponseMock, expected: Option<&str>) {
@@ -1181,7 +1181,7 @@ index 74d559254..4da8c11c1 100644
          config
              .features
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 669d11608..e01860aee 100644
+index 669d116..e01860a 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
 @@ -252,6 +252,8 @@ pub enum Feature {

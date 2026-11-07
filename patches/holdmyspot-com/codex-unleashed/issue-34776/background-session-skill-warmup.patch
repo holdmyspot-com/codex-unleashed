@@ -1,4 +1,4 @@
-From f1f5e7f51d38eef291050597d64cccb9047c0343 Mon Sep 17 00:00:00 2001
+From 682589a4c40f560732e5e8c4497954cab85d2e8c Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:04:02 -0500
 Subject: [PATCH] Make resumed conversations available during skill discovery
@@ -22,7 +22,7 @@ The original independent patch tree differs only by the 15 tracing-guard lines. 
  create mode 100644 codex-rs/core/src/session/resume_warmup_tests.rs
 
 diff --git a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
-index fe7602cf2..0aa621901 100644
+index fe7602c..0aa6219 100644
 --- a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
 @@ -1,8 +1,11 @@
@@ -161,7 +161,7 @@ index fe7602cf2..0aa621901 100644
                      let Some(listener_command) = listener_command else {
                          break;
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 64f8bd39e..a90292e9d 100644
+index 64f8bd3..a90292e 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
 @@ -1185,6 +1185,7 @@ impl ThreadRequestProcessor {
@@ -215,7 +215,7 @@ index 64f8bd39e..a90292e9d 100644
              Err(err) => {
                  let error = match err.details() {
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index c78613c0e..4e530f770 100644
+index c78613c..4e530f7 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
 @@ -1717,6 +1717,7 @@ impl TurnRequestProcessor {
@@ -227,7 +227,7 @@ index c78613c0e..4e530f770 100644
          .await
      }
 diff --git a/codex-rs/app-server/src/thread_state.rs b/codex-rs/app-server/src/thread_state.rs
-index 5f0bbe5ab..a4ffee79b 100644
+index 5f0bbe5..a4ffee7 100644
 --- a/codex-rs/app-server/src/thread_state.rs
 +++ b/codex-rs/app-server/src/thread_state.rs
 @@ -163,6 +163,20 @@ impl ThreadState {
@@ -299,7 +299,7 @@ index 5f0bbe5ab..a4ffee79b 100644
      fn note_thread_settings_reports_only_effective_changes() {
          let mut state = ThreadState::default();
 diff --git a/codex-rs/app-server/tests/suite/v2/skills_list.rs b/codex-rs/app-server/tests/suite/v2/skills_list.rs
-index a72104a0b..d59d1f03f 100644
+index a72104a..d59d1f0 100644
 --- a/codex-rs/app-server/tests/suite/v2/skills_list.rs
 +++ b/codex-rs/app-server/tests/suite/v2/skills_list.rs
 @@ -26,8 +26,12 @@ use codex_app_server_protocol::SkillsExtraRootsSetParams;
@@ -388,7 +388,7 @@ index a72104a0b..d59d1f03f 100644
      let skill_dir = root.path().join("skills").join(name);
      std::fs::create_dir_all(&skill_dir)?;
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index d15618440..1b4347988 100644
+index d156184..1b43479 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
 @@ -1688,7 +1688,7 @@ impl Session {
@@ -411,7 +411,7 @@ index d15618440..1b4347988 100644
                      .await;
 diff --git a/codex-rs/core/src/session/resume_warmup_tests.rs b/codex-rs/core/src/session/resume_warmup_tests.rs
 new file mode 100644
-index 000000000..0a25f481d
+index 0000000..0a25f48
 --- /dev/null
 +++ b/codex-rs/core/src/session/resume_warmup_tests.rs
 @@ -0,0 +1,243 @@
@@ -659,7 +659,7 @@ index 000000000..0a25f481d
 +    assert!(!context.model_info().slug.is_empty());
 +}
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index 59c926b9f..dfc4a4156 100644
+index 59c926b..dfc4a41 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
 @@ -48,8 +48,15 @@ use codex_sandboxing::SandboxType;
@@ -794,7 +794,7 @@ index 59c926b9f..dfc4a4156 100644
                  realtime_history: (session_configuration.history_mode
                      == ThreadHistoryMode::Paginated
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index a8525d297..ae6a29f44 100644
+index a8525d2..ae6a29f 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
 @@ -7073,6 +7073,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
@@ -820,7 +820,7 @@ index a8525d297..ae6a29f44 100644
 +#[path = "resume_warmup_tests.rs"]
 +mod resume_warmup_tests;
 diff --git a/codex-rs/core/src/session/turn_context.rs b/codex-rs/core/src/session/turn_context.rs
-index b31eeca5d..b0f0b14fe 100644
+index b31eeca..b0f0b14 100644
 --- a/codex-rs/core/src/session/turn_context.rs
 +++ b/codex-rs/core/src/session/turn_context.rs
 @@ -394,6 +394,10 @@ enum TurnContextBuildMode {
@@ -923,7 +923,7 @@ index b31eeca5d..b0f0b14fe 100644
      /// This context must not be used to capture or execute a step.
      pub(crate) async fn new_inject_items_context(&self) -> Arc<TurnContext> {
 diff --git a/codex-rs/core/tests/suite/skills_extension.rs b/codex-rs/core/tests/suite/skills_extension.rs
-index 7ac7a579e..d16c2f711 100644
+index 7ac7a57..d16c2f7 100644
 --- a/codex-rs/core/tests/suite/skills_extension.rs
 +++ b/codex-rs/core/tests/suite/skills_extension.rs
 @@ -68,6 +68,7 @@ use codex_protocol::request_permissions::RequestPermissionsResponse;

@@ -1,4 +1,4 @@
-From e5d3095002c751c7287eb0ff4628013605f357f8 Mon Sep 17 00:00:00 2001
+From 3cb9c3b7084c8f8f7ce308af74aeed8ca982bd40 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 08:53:59 -0500
 Subject: [PATCH] Group tool activity with expandable retained output
@@ -39,11 +39,11 @@ and the feature to enabled, so both must allow it.
  codex-rs/tui/src/transcript_view.rs           |  17 +-
  .../tui/src/transcript_view/disclosure.rs     |  25 ++-
  codex-rs/tui/src/transcript_view/input.rs     |  17 ++
- codex-rs/tui/src/transcript_view/layout.rs    |  16 +-
+ codex-rs/tui/src/transcript_view/layout.rs    |  20 +-
  codex-rs/tui/src/transcript_view/text.rs      |   4 +
  .../tui/src/transcript_view/tool_activity.rs  | 113 +++++++++++
  codex-rs/tui/src/transcript_view_tests.rs     | 190 ++++++++++++++++++
- 31 files changed, 1086 insertions(+), 36 deletions(-)
+ 31 files changed, 1089 insertions(+), 37 deletions(-)
  create mode 100644 codex-rs/tui/src/exec_cell/tool_activity.rs
  create mode 100644 codex-rs/tui/src/transcript_view/tool_activity.rs
 
@@ -1322,10 +1322,10 @@ index 1ce29ba..d8ba4cf 100644
              && event.kind == MouseEventKind::Down(MouseButton::Left)
              && event
 diff --git a/codex-rs/tui/src/transcript_view/layout.rs b/codex-rs/tui/src/transcript_view/layout.rs
-index cd173a8..a624ac1 100644
+index cd173a8..268b2f9 100644
 --- a/codex-rs/tui/src/transcript_view/layout.rs
 +++ b/codex-rs/tui/src/transcript_view/layout.rs
-@@ -31,7 +31,17 @@ pub(super) fn activity_layout(
+@@ -31,13 +31,25 @@ pub(super) fn activity_layout(
      let source_offset = (!lines.auxiliary.is_empty())
          .then(|| TextLayout::new(lines.activity.clone(), width).text().len());
      lines.activity.extend(lines.auxiliary);
@@ -1344,7 +1344,16 @@ index cd173a8..a624ac1 100644
      if !has_details {
          return layout;
      }
-@@ -50,7 +60,9 @@ pub(super) fn activity_layout(
+     let label = match (expanded, lines.disclosure) {
+         (true, Some(ActivityDisclosure::OutputLines(_))) => "− Show less".to_owned(),
+-        (true, Some(ActivityDisclosure::Generic) | None) => "− Hide details".to_owned(),
++        (true, Some(ActivityDisclosure::Generic | ActivityDisclosure::ToolActivity) | None) => {
++            "− Hide details".to_owned()
++        }
+         (false, Some(ActivityDisclosure::OutputLines(count))) => {
+             let noun = if count == 1 { "line" } else { "lines" };
+             let mut label = format!("+ {count} {noun}");
+@@ -50,7 +62,9 @@ pub(super) fn activity_layout(
              }
              label
          }

@@ -1,4 +1,4 @@
-From 7d552999062d2d5e96b5257965d7c3bf2d05a42e Mon Sep 17 00:00:00 2001
+From 1677a1bc20cc8c0b36a94d02764dd69bbe8cde1a Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:04:02 -0500
 Subject: [PATCH] Avoid blocking startup on a duplicate skills refresh
@@ -6,14 +6,14 @@ Subject: [PATCH] Avoid blocking startup on a duplicate skills refresh
 ---
  codex-rs/tui/src/app/background_requests.rs   |   4 +-
  codex-rs/tui/src/app/startup.rs               |   2 +-
- .../tui/src/app/tests/startup_frame_tests.rs  | 159 ++++++++++++++++++
+ .../tui/src/app/tests/startup_frame_tests.rs  | 149 ++++++++++++++++++
  codex-rs/tui/src/chatwidget.rs                |   6 +
  codex-rs/tui/src/chatwidget/constructor.rs    |   1 +
  codex-rs/tui/src/chatwidget/session_flow.rs   |  10 +-
- 6 files changed, 178 insertions(+), 4 deletions(-)
+ 6 files changed, 168 insertions(+), 4 deletions(-)
 
 diff --git a/codex-rs/tui/src/app/background_requests.rs b/codex-rs/tui/src/app/background_requests.rs
-index ad5f6e3d7..6eb71d63d 100644
+index ad5f6e3..6eb71d6 100644
 --- a/codex-rs/tui/src/app/background_requests.rs
 +++ b/codex-rs/tui/src/app/background_requests.rs
 @@ -256,7 +256,9 @@ impl App {
@@ -28,7 +28,7 @@ index ad5f6e3d7..6eb71d63d 100644
              let result = fetch_skills_list(request_handle, cwd.clone())
                  .await
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index 3d56ce516..0be5d5174 100644
+index 3d56ce5..0be5d51 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
 @@ -1115,6 +1115,7 @@ See the Codex keymap documentation for supported actions and examples."
@@ -48,10 +48,10 @@ index 3d56ce516..0be5d5174 100644
          // already has data and available reset credits can be surfaced, without
          // delaying the initial frame render.
 diff --git a/codex-rs/tui/src/app/tests/startup_frame_tests.rs b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
-index 9fe4a7663..3ef328307 100644
+index 9fe4a76..1161c12 100644
 --- a/codex-rs/tui/src/app/tests/startup_frame_tests.rs
 +++ b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
-@@ -211,3 +211,162 @@ async fn inline_startup_still_renders_with_pending_history() -> Result<()> {
+@@ -211,3 +211,152 @@ async fn inline_startup_still_renders_with_pending_history() -> Result<()> {
      assert!(frame_text(&tui).contains("inline startup draft"));
      Ok(())
  }
@@ -94,17 +94,7 @@ index 9fe4a7663..3ef328307 100644
 +            }
 +            _ => None,
 +        });
-+        assert_eq!(refresh, Some((vec![cwd.clone()], true)));
-+
-+        app.app_event_tx.list_skills(vec![cwd.clone()], true);
-+        let explicit_refresh =
-+            std::iter::from_fn(|| events.try_recv().ok()).find_map(|event| match event {
-+                AppEvent::CodexOp(AppCommand::ListSkills { cwds, force_reload }) => {
-+                    Some((cwds, force_reload))
-+                }
-+                _ => None,
-+            });
-+        assert_eq!(explicit_refresh, Some((vec![cwd], true)));
++        assert_eq!(refresh, Some((vec![cwd], true)));
 +
 +        if same_cwd {
 +            let mut tui = crate::tui::test_support::make_test_tui()?;
@@ -215,7 +205,7 @@ index 9fe4a7663..3ef328307 100644
 +    Ok(())
 +}
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 68868be0c..0610aa1b8 100644
+index 7dc4873..5e36329 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
 @@ -617,6 +617,7 @@ pub(crate) struct ChatWidget {
@@ -226,7 +216,7 @@ index 68868be0c..0610aa1b8 100644
      skills_initial_state: Option<HashMap<PathUri, bool>>,
      last_unified_wait: Option<UnifiedExecWaitState>,
      unified_exec_wait_streak: Option<UnifiedExecWaitStreak>,
-@@ -1851,6 +1852,11 @@ impl ChatWidget {
+@@ -1855,6 +1856,11 @@ impl ChatWidget {
          self.external_writer_view
      }
  
@@ -239,7 +229,7 @@ index 68868be0c..0610aa1b8 100644
          self.submit_op(AppCommand::list_skills(
              vec![self.config.cwd.to_path_buf()],
 diff --git a/codex-rs/tui/src/chatwidget/constructor.rs b/codex-rs/tui/src/chatwidget/constructor.rs
-index 7b2d08c69..d626c9509 100644
+index 7b2d08c..d626c95 100644
 --- a/codex-rs/tui/src/chatwidget/constructor.rs
 +++ b/codex-rs/tui/src/chatwidget/constructor.rs
 @@ -120,6 +120,7 @@ impl ChatWidget {
@@ -251,7 +241,7 @@ index 7b2d08c69..d626c9509 100644
              current_collaboration_mode,
              active_collaboration_mask,
 diff --git a/codex-rs/tui/src/chatwidget/session_flow.rs b/codex-rs/tui/src/chatwidget/session_flow.rs
-index a1ff412d4..69c1d5eb0 100644
+index a1ff412..69c1d5e 100644
 --- a/codex-rs/tui/src/chatwidget/session_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/session_flow.rs
 @@ -87,7 +87,11 @@ impl ChatWidget {

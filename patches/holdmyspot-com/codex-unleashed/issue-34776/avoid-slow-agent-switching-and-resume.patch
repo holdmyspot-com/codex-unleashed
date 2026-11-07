@@ -1,4 +1,4 @@
-From 9f9f417155682c38b97861f65a9b6caa0b5357fd Mon Sep 17 00:00:00 2001
+From 9f1f757f7787d5bf760211a90f6bfa0d4d6d3f0d Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:04:02 -0500
 Subject: [PATCH] Keep history replay and subagent switches responsive
@@ -9,19 +9,20 @@ Subject: [PATCH] Keep history replay and subagent switches responsive
  codex-rs/tui/src/app/reconnect.rs             |   4 +-
  codex-rs/tui/src/app/session_lifecycle.rs     |   4 +-
  codex-rs/tui/src/app/tests.rs                 |   2 +-
- .../app/tests/pagination_completion_tests.rs  |  13 ++
- .../app/tests/session_lifecycle_requests.rs   | 205 ++++++++++++++++++
- codex-rs/tui/src/app/thread_events.rs         |  26 ++-
+ .../app/tests/pagination_completion_tests.rs  |  15 ++
+ .../app/tests/session_lifecycle_requests.rs   | 209 ++++++++++++++++++
+ .../src/app/tests/streaming_interleave_e2e.rs |   2 +-
+ codex-rs/tui/src/app/thread_events.rs         |  29 ++-
  codex-rs/tui/src/app/thread_routing.rs        |  13 +-
  codex-rs/tui/src/chatwidget/streaming.rs      |   6 +-
- .../src/chatwidget/tests/history_replay.rs    | 103 +++++++++
+ .../src/chatwidget/tests/history_replay.rs    | 107 +++++++++
  codex-rs/tui/src/inline_visualization.rs      |  12 +
  .../tui/src/inline_visualization_tests.rs     |  59 +++++
  codex-rs/tui/src/thread_transcript.rs         |  14 +-
- 14 files changed, 466 insertions(+), 9 deletions(-)
+ 15 files changed, 480 insertions(+), 10 deletions(-)
 
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index bced3b620..510393e03 100644
+index bced3b6..510393e 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
 @@ -1428,6 +1428,9 @@
@@ -45,7 +46,7 @@ index bced3b620..510393e03 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index adcd58685..669d11608 100644
+index adcd586..669d116 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
 @@ -129,6 +129,8 @@ pub enum Feature {
@@ -71,7 +72,7 @@ index adcd58685..669d11608 100644
          id: Feature::TranscriptV2,
          key: "transcript_v2",
 diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index 4d13abfe1..168417ecb 100644
+index 4d13abf..168417e 100644
 --- a/codex-rs/tui/src/app/reconnect.rs
 +++ b/codex-rs/tui/src/app/reconnect.rs
 @@ -498,7 +498,9 @@ impl App {
@@ -86,7 +87,7 @@ index 4d13abfe1..168417ecb 100644
              self.active_thread_id = Some(id);
              self.active_thread_rx = Some(receiver);
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index c7dc18d54..7283fca30 100644
+index c7dc18d..7283fca 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
 @@ -624,7 +624,9 @@ impl App {
@@ -101,7 +102,7 @@ index c7dc18d54..7283fca30 100644
              self.add_agents_overview_error(format!("Agent thread {thread_id} is already active."));
              if let Some(previous_thread_id) = previous_thread_id {
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index cbad3bf37..df729b0a6 100644
+index cbad3bf..df729b0 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
 @@ -1360,7 +1360,7 @@ async fn replay_thread_snapshot_renders_only_retained_agent_message_deltas() {
@@ -114,10 +115,10 @@ index cbad3bf37..df729b0a6 100644
          .expect("detached thread should reactivate for replay");
      app.replay_thread_snapshot(snapshot, /*resume_restored_queue*/ false);
 diff --git a/codex-rs/tui/src/app/tests/pagination_completion_tests.rs b/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
-index ec7d8b433..fee25a1ec 100644
+index ec7d8b4..f6a2b3f 100644
 --- a/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
 +++ b/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
-@@ -208,6 +208,19 @@ async fn beginning_navigation_holds_the_view_until_the_last_page_arrives() -> Re
+@@ -208,6 +208,21 @@ async fn beginning_navigation_holds_the_view_until_the_last_page_arrives() -> Re
                  crate::app_server_session::ResumeModelSettings::RestoreFromThread,
              )
              .await?;
@@ -125,8 +126,10 @@ index ec7d8b433..fee25a1ec 100644
 +            .turns
 +            .iter()
 +            .flat_map(|turn| &turn.items)
-+            .filter_map(|item| match item {
-+                ThreadItem::AgentMessage { text, .. } => Some(text.as_str()),
++            .filter_map(|item| match &item.payload {
++                codex_app_server_protocol::ThreadItemPayload::AgentMessage { text, .. } => {
++                    Some(text.as_str())
++                }
 +                _ => None,
 +            })
 +            .collect::<Vec<_>>();
@@ -138,10 +141,10 @@ index ec7d8b433..fee25a1ec 100644
              Some(thread_id),
              &app.config.cwd,
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index f7812089c..966a24216 100644
+index f781208..b4e6acb 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -1203,6 +1203,211 @@ fn spawn_approved_task_tool_call(
+@@ -1203,6 +1203,215 @@ fn spawn_approved_task_tool_call(
      });
  }
  
@@ -264,14 +267,16 @@ index f7812089c..966a24216 100644
 +        id: format!("turn-{index}"),
 +        root_turn_id: None,
 +        items_view: codex_app_server_protocol::TurnItemsView::Full,
-+        items: vec![codex_app_server_protocol::ThreadItem::UserMessage {
-+            id: format!("user-{index}"),
-+            client_id: None,
-+            content: vec![codex_app_server_protocol::UserInput::Text {
-+                text: format!("conversation-{index} {conversation_text}"),
-+                text_elements: Vec::new(),
-+            }],
-+        }],
++        items: vec![codex_app_server_protocol::ThreadItem::untimed(
++            codex_app_server_protocol::ThreadItemPayload::UserMessage {
++                id: format!("user-{index}"),
++                client_id: None,
++                content: vec![codex_app_server_protocol::UserInput::Text {
++                    text: format!("conversation-{index} {conversation_text}"),
++                    text_elements: Vec::new(),
++                }],
++            },
++        )],
 +        status: codex_app_server_protocol::TurnStatus::Completed,
 +        error: None,
 +        started_at: None,
@@ -282,9 +287,11 @@ index f7812089c..966a24216 100644
 +        id: format!("compaction-turn-{index}"),
 +        root_turn_id: None,
 +        items_view: codex_app_server_protocol::TurnItemsView::Full,
-+        items: vec![codex_app_server_protocol::ThreadItem::ContextCompaction {
-+            id: format!("compaction-{index}"),
-+        }],
++        items: vec![codex_app_server_protocol::ThreadItem::untimed(
++            codex_app_server_protocol::ThreadItemPayload::ContextCompaction {
++                id: format!("compaction-{index}"),
++            },
++        )],
 +        status: codex_app_server_protocol::TurnStatus::Completed,
 +        error: None,
 +        started_at: None,
@@ -353,8 +360,21 @@ index f7812089c..966a24216 100644
  #[tokio::test]
  async fn external_transport_registers_dynamic_tools_and_finds_task_mentions() -> Result<()> {
      let (app, _codex_home) = make_history_test_app().await?;
+diff --git a/codex-rs/tui/src/app/tests/streaming_interleave_e2e.rs b/codex-rs/tui/src/app/tests/streaming_interleave_e2e.rs
+index 63d9de8..4b07fad 100644
+--- a/codex-rs/tui/src/app/tests/streaming_interleave_e2e.rs
++++ b/codex-rs/tui/src/app/tests/streaming_interleave_e2e.rs
+@@ -191,7 +191,7 @@ async fn command_start_before_message_completion_does_not_duplicate_preamble() -
+         if replay {
+             app.store_active_thread_receiver().await;
+             let (receiver, snapshot) = app
+-                .activate_thread_for_replay(thread_id)
++                .activate_thread_for_replay(thread_id, ThreadEventSnapshotMode::FullHistory)
+                 .await
+                 .expect("thread should retain its buffered notifications");
+             app.active_thread_rx = Some(receiver);
 diff --git a/codex-rs/tui/src/app/thread_events.rs b/codex-rs/tui/src/app/thread_events.rs
-index f810d3874..5c430c960 100644
+index f810d38..273d493 100644
 --- a/codex-rs/tui/src/app/thread_events.rs
 +++ b/codex-rs/tui/src/app/thread_events.rs
 @@ -18,6 +18,12 @@ pub(super) struct ThreadEventSnapshot {
@@ -370,7 +390,7 @@ index f810d3874..5c430c960 100644
  #[derive(Debug, Clone)]
  pub(super) enum ThreadBufferedEvent {
      Notification(Box<ServerNotification>),
-@@ -368,10 +374,28 @@ impl ThreadEventStore {
+@@ -368,10 +374,31 @@ impl ThreadEventStore {
      }
  
      pub(super) fn snapshot(&self) -> ThreadEventSnapshot {
@@ -382,9 +402,12 @@ index f810d3874..5c430c960 100644
 +            .turns
 +            .iter()
 +            .rposition(|turn| {
-+                turn.items
-+                    .iter()
-+                    .any(|item| matches!(item, ThreadItem::ContextCompaction { .. }))
++                turn.items.iter().any(|item| {
++                    matches!(
++                        item.payload,
++                        codex_app_server_protocol::ThreadItemPayload::ContextCompaction { .. }
++                    )
++                })
 +            })
 +            .map(|index| index + 1)
 +            .unwrap_or(0);
@@ -401,7 +424,7 @@ index f810d3874..5c430c960 100644
              // interactive prompts that are still pending, or answered approvals/input will reappear.
              events: self
 diff --git a/codex-rs/tui/src/app/thread_routing.rs b/codex-rs/tui/src/app/thread_routing.rs
-index e4ecae0ec..9a21bc377 100644
+index e4ecae0..9a21bc3 100644
 --- a/codex-rs/tui/src/app/thread_routing.rs
 +++ b/codex-rs/tui/src/app/thread_routing.rs
 @@ -145,12 +145,23 @@ impl App {
@@ -430,7 +453,7 @@ index e4ecae0ec..9a21bc377 100644
      }
  
 diff --git a/codex-rs/tui/src/chatwidget/streaming.rs b/codex-rs/tui/src/chatwidget/streaming.rs
-index 6229fd735..3399b325c 100644
+index 6229fd7..3399b32 100644
 --- a/codex-rs/tui/src/chatwidget/streaming.rs
 +++ b/codex-rs/tui/src/chatwidget/streaming.rs
 @@ -137,9 +137,10 @@ impl ChatWidget {
@@ -458,10 +481,10 @@ index 6229fd735..3399b325c 100644
              });
              self.add_to_history(
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index 434aaa19c..dc72d0e7a 100644
+index 434aaa1..2b75b0c 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-@@ -126,6 +126,109 @@ async fn resumed_initial_messages_render_history() {
+@@ -126,6 +126,113 @@ async fn resumed_initial_messages_render_history() {
      insta::assert_snapshot!("resumed_daybreak_banner", history);
  }
  
@@ -528,14 +551,16 @@ index 434aaa19c..dc72d0e7a 100644
 +async fn initial_resume_keeps_compacted_history_when_fast_switching_is_enabled() {
 +    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
 +    let conversation = |index: usize| AppServerTurn {
-+        items: vec![AppServerThreadItem::UserMessage {
-+            id: format!("user-{index}"),
-+            client_id: None,
-+            content: vec![AppServerUserInput::Text {
-+                text: format!("conversation-{index}"),
-+                text_elements: Vec::new(),
-+            }],
-+        }],
++        items: vec![ThreadItem::untimed(
++            AppServerThreadItemPayload::UserMessage {
++                id: format!("user-{index}"),
++                client_id: None,
++                content: vec![AppServerUserInput::Text {
++                    text: format!("conversation-{index}"),
++                    text_elements: Vec::new(),
++                }],
++            },
++        )],
 +        ..app_server_turn(
 +            &format!("turn-{index}"),
 +            AppServerTurnStatus::Completed,
@@ -544,9 +569,11 @@ index 434aaa19c..dc72d0e7a 100644
 +        )
 +    };
 +    let compaction = AppServerTurn {
-+        items: vec![AppServerThreadItem::ContextCompaction {
-+            id: "compaction-0".to_string(),
-+        }],
++        items: vec![ThreadItem::untimed(
++            AppServerThreadItemPayload::ContextCompaction {
++                id: "compaction-0".to_string(),
++            },
++        )],
 +        ..app_server_turn(
 +            "compaction-turn-0",
 +            AppServerTurnStatus::Completed,
@@ -572,7 +599,7 @@ index 434aaa19c..dc72d0e7a 100644
  async fn replayed_failed_turns_preserve_overload_warnings_between_retries() {
      let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
 diff --git a/codex-rs/tui/src/inline_visualization.rs b/codex-rs/tui/src/inline_visualization.rs
-index 5f5c9cd5b..143ec233f 100644
+index 5f5c9cd..143ec23 100644
 --- a/codex-rs/tui/src/inline_visualization.rs
 +++ b/codex-rs/tui/src/inline_visualization.rs
 @@ -46,6 +46,18 @@ impl InlineVisualizationContext {
@@ -595,7 +622,7 @@ index 5f5c9cd5b..143ec233f 100644
          config: &crate::legacy_core::config::Config,
          thread_id: ThreadId,
 diff --git a/codex-rs/tui/src/inline_visualization_tests.rs b/codex-rs/tui/src/inline_visualization_tests.rs
-index 75c9c5215..649042eb5 100644
+index 75c9c52..649042e 100644
 --- a/codex-rs/tui/src/inline_visualization_tests.rs
 +++ b/codex-rs/tui/src/inline_visualization_tests.rs
 @@ -22,6 +22,65 @@ fn context_with_fragment(fragment: &str) -> (TempDir, InlineVisualizationContext
@@ -665,7 +692,7 @@ index 75c9c5215..649042eb5 100644
  fn unterminated_visualization_preview_uses_the_stream_context() {
      let (codex_home, context) = context_with_fragment("<div>chart</div>");
 diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
-index 170575b79..ff9879179 100644
+index 170575b..d3d531d 100644
 --- a/codex-rs/tui/src/thread_transcript.rs
 +++ b/codex-rs/tui/src/thread_transcript.rs
 @@ -127,9 +127,19 @@ pub(crate) fn thread_items_to_transcript_cells(
@@ -676,7 +703,7 @@ index 170575b79..ff9879179 100644
 -        thread_id.and_then(|thread_id| InlineVisualizationContext::from_config(config, thread_id))
 +    let items = items.into_iter().collect::<Vec<_>>();
 +    let has_inline_visualization = items.iter().any(|item| {
-+        matches!(item, ThreadItem::AgentMessage { text, .. }
++        matches!(item, ThreadItemPayload::AgentMessage { text, .. }
 +            if crate::inline_visualization::contains_inline_visualization(text))
      });
 +    let inline_visualization_context =

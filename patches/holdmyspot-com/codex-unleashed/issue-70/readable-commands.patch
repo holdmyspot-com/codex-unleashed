@@ -1,4 +1,4 @@
-From 4066d0b7bfa589e7f2253809a7fc3b1033ee076b Mon Sep 17 00:00:00 2001
+From 81a014080b5407df071e9e2e791606ad00a6ef76 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:41:04 -0500
 Subject: [PATCH] Keep command previews readable and expandable
@@ -36,7 +36,7 @@ Collapsed command previews keep executable names and arguments visible, shorteni
  create mode 100644 codex-rs/tui/src/transcript_view/commands.rs
 
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index e3434f99a..3759ee776 100644
+index e3434f9..3759ee7 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
 @@ -1440,6 +1440,9 @@
@@ -60,7 +60,7 @@ index e3434f99a..3759ee776 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index e01860aee..5d7a36dbe 100644
+index e01860a..5d7a36d 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
 @@ -97,6 +97,8 @@ impl Stage {
@@ -86,7 +86,7 @@ index e01860aee..5d7a36dbe 100644
          id: Feature::UnleashedExpandedDiffPreviews,
          key: "unleashed_expanded_diff_previews",
 diff --git a/codex-rs/features/src/tests.rs b/codex-rs/features/src/tests.rs
-index 8368240e2..f38c5b0fc 100644
+index 8368240..f38c5b0 100644
 --- a/codex-rs/features/src/tests.rs
 +++ b/codex-rs/features/src/tests.rs
 @@ -992,3 +992,18 @@ fn unleashed_collapsed_tool_activity_is_enabled_by_default_and_can_be_disabled()
@@ -109,7 +109,7 @@ index 8368240e2..f38c5b0fc 100644
 +    assert!(!features.enabled(Feature::UnleashedReadableCommands));
 +}
 diff --git a/codex-rs/tui/src/chatwidget/command_lifecycle.rs b/codex-rs/tui/src/chatwidget/command_lifecycle.rs
-index 6b41a66d5..cd548fe9e 100644
+index 6b41a66..cd548fe 100644
 --- a/codex-rs/tui/src/chatwidget/command_lifecycle.rs
 +++ b/codex-rs/tui/src/chatwidget/command_lifecycle.rs
 @@ -253,6 +253,11 @@ impl ChatWidget {
@@ -196,7 +196,7 @@ index 6b41a66d5..cd548fe9e 100644
                      self.request_redraw();
                  } else {
 diff --git a/codex-rs/tui/src/chatwidget/tests/helpers.rs b/codex-rs/tui/src/chatwidget/tests/helpers.rs
-index 8133b9152..965ad7bd8 100644
+index 8133b91..965ad7b 100644
 --- a/codex-rs/tui/src/chatwidget/tests/helpers.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/helpers.rs
 @@ -26,6 +26,11 @@ pub(super) async fn test_config() -> (tempfile::TempDir, Config) {
@@ -212,7 +212,7 @@ index 8133b9152..965ad7bd8 100644
  }
  
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_projection.rs b/codex-rs/tui/src/chatwidget/tests/history_projection.rs
-index edd451f65..5b9bd718b 100644
+index edd451f..5b9bd71 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_projection.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_projection.rs
 @@ -387,3 +387,89 @@ fn take_history_cells(
@@ -306,7 +306,7 @@ index edd451f65..5b9bd718b 100644
 +    }
 +}
 diff --git a/codex-rs/tui/src/exec_cell/compact.rs b/codex-rs/tui/src/exec_cell/compact.rs
-index c4dcf63c3..06197412e 100644
+index c4dcf63..0619741 100644
 --- a/codex-rs/tui/src/exec_cell/compact.rs
 +++ b/codex-rs/tui/src/exec_cell/compact.rs
 @@ -66,6 +66,9 @@ impl ExecCell {
@@ -361,7 +361,7 @@ index c4dcf63c3..06197412e 100644
 +    }
 +}
 diff --git a/codex-rs/tui/src/exec_cell/mod.rs b/codex-rs/tui/src/exec_cell/mod.rs
-index 5c93f9039..54599a880 100644
+index 5c93f90..54599a8 100644
 --- a/codex-rs/tui/src/exec_cell/mod.rs
 +++ b/codex-rs/tui/src/exec_cell/mod.rs
 @@ -1,6 +1,8 @@
@@ -374,7 +374,7 @@ index 5c93f9039..54599a880 100644
  mod tool_activity;
  mod transcript;
 diff --git a/codex-rs/tui/src/exec_cell/model.rs b/codex-rs/tui/src/exec_cell/model.rs
-index 47c0b384f..be78de873 100644
+index 47c0b38..be78de8 100644
 --- a/codex-rs/tui/src/exec_cell/model.rs
 +++ b/codex-rs/tui/src/exec_cell/model.rs
 @@ -78,6 +78,9 @@ pub(crate) struct ExecCall {
@@ -447,7 +447,7 @@ index 47c0b384f..be78de873 100644
  
 diff --git a/codex-rs/tui/src/exec_cell/preview.rs b/codex-rs/tui/src/exec_cell/preview.rs
 new file mode 100644
-index 000000000..8b6b4421b
+index 0000000..8b6b442
 --- /dev/null
 +++ b/codex-rs/tui/src/exec_cell/preview.rs
 @@ -0,0 +1,224 @@
@@ -677,7 +677,7 @@ index 000000000..8b6b4421b
 +}
 diff --git a/codex-rs/tui/src/exec_cell/readable.rs b/codex-rs/tui/src/exec_cell/readable.rs
 new file mode 100644
-index 000000000..e358f9d61
+index 0000000..e358f9d
 --- /dev/null
 +++ b/codex-rs/tui/src/exec_cell/readable.rs
 @@ -0,0 +1,80 @@
@@ -762,7 +762,7 @@ index 000000000..e358f9d61
 +    }
 +}
 diff --git a/codex-rs/tui/src/exec_cell/render.rs b/codex-rs/tui/src/exec_cell/render.rs
-index a24f89eef..5af166ac6 100644
+index a24f89e..5af166a 100644
 --- a/codex-rs/tui/src/exec_cell/render.rs
 +++ b/codex-rs/tui/src/exec_cell/render.rs
 @@ -225,6 +225,13 @@ impl HistoryCell for ExecCell {
@@ -808,7 +808,7 @@ index a24f89eef..5af166ac6 100644
              return self.tool_activity_lines(width);
          }
 diff --git a/codex-rs/tui/src/exec_cell/transcript.rs b/codex-rs/tui/src/exec_cell/transcript.rs
-index 43ed4ce55..ac11bc60c 100644
+index 43ed4ce..ac11bc6 100644
 --- a/codex-rs/tui/src/exec_cell/transcript.rs
 +++ b/codex-rs/tui/src/exec_cell/transcript.rs
 @@ -24,10 +24,24 @@ impl ExecCell {
@@ -839,7 +839,7 @@ index 43ed4ce55..ac11bc60c 100644
                      .initial_indent("$ ".magenta().into())
                      .subsequent_indent("    ".into()),
 diff --git a/codex-rs/tui/src/terminal_hyperlinks/source.rs b/codex-rs/tui/src/terminal_hyperlinks/source.rs
-index b4142a313..953661647 100644
+index b4142a3..9536616 100644
 --- a/codex-rs/tui/src/terminal_hyperlinks/source.rs
 +++ b/codex-rs/tui/src/terminal_hyperlinks/source.rs
 @@ -26,6 +26,8 @@ pub(crate) struct LogicalLineSource {
@@ -868,7 +868,7 @@ index b4142a313..953661647 100644
              styles: Arc::clone(&self.styles),
              line_style: self.line_style,
 diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
-index ff9879179..e4ed3d2d5 100644
+index d3d531d..c009314 100644
 --- a/codex-rs/tui/src/thread_transcript.rs
 +++ b/codex-rs/tui/src/thread_transcript.rs
 @@ -142,6 +142,11 @@ pub(crate) fn thread_items_to_transcript_cells(
@@ -910,7 +910,7 @@ index ff9879179..e4ed3d2d5 100644
                          config.is_some_and(Config::collapsed_tool_activity_enabled),
                      );
 diff --git a/codex-rs/tui/src/thread_transcript/tools.rs b/codex-rs/tui/src/thread_transcript/tools.rs
-index 14fe7b1f0..78c0f5c2f 100644
+index 14fe7b1..78c0f5c 100644
 --- a/codex-rs/tui/src/thread_transcript/tools.rs
 +++ b/codex-rs/tui/src/thread_transcript/tools.rs
 @@ -118,6 +118,7 @@ fn replay_command_args(command: &str) -> Option<Vec<String>> {
@@ -962,7 +962,7 @@ index 14fe7b1f0..78c0f5c2f 100644
          debug_assert!(completed, "new exec cell should contain {}", self.id);
          cell
 diff --git a/codex-rs/tui/src/thread_transcript/tools_tests.rs b/codex-rs/tui/src/thread_transcript/tools_tests.rs
-index 0d7a4ffe1..10f805079 100644
+index 0d7a4ff..10f8050 100644
 --- a/codex-rs/tui/src/thread_transcript/tools_tests.rs
 +++ b/codex-rs/tui/src/thread_transcript/tools_tests.rs
 @@ -351,7 +351,7 @@ async fn unleashed_collapsed_tool_activity_resume_retains_commands_output_and_fa
@@ -1062,7 +1062,7 @@ index 0d7a4ffe1..10f805079 100644
 +    }
 +}
 diff --git a/codex-rs/tui/src/transcript_view.rs b/codex-rs/tui/src/transcript_view.rs
-index 80b595840..02084ad00 100644
+index 80b5958..02084ad 100644
 --- a/codex-rs/tui/src/transcript_view.rs
 +++ b/codex-rs/tui/src/transcript_view.rs
 @@ -7,6 +7,7 @@
@@ -1110,7 +1110,7 @@ index 80b595840..02084ad00 100644
              && self
 diff --git a/codex-rs/tui/src/transcript_view/commands.rs b/codex-rs/tui/src/transcript_view/commands.rs
 new file mode 100644
-index 000000000..5cc1a7218
+index 0000000..5cc1a72
 --- /dev/null
 +++ b/codex-rs/tui/src/transcript_view/commands.rs
 @@ -0,0 +1,92 @@
@@ -1207,7 +1207,7 @@ index 000000000..5cc1a7218
 +    }
 +}
 diff --git a/codex-rs/tui/src/transcript_view/disclosure.rs b/codex-rs/tui/src/transcript_view/disclosure.rs
-index ba494965f..4f8089053 100644
+index ba49496..4f80890 100644
 --- a/codex-rs/tui/src/transcript_view/disclosure.rs
 +++ b/codex-rs/tui/src/transcript_view/disclosure.rs
 @@ -329,7 +329,7 @@ impl TranscriptView {
@@ -1220,7 +1220,7 @@ index ba494965f..4f8089053 100644
          if ids.is_empty() {
              return;
 diff --git a/codex-rs/tui/src/transcript_view/footer.rs b/codex-rs/tui/src/transcript_view/footer.rs
-index addb462eb..6cdd15e5d 100644
+index addb462..6cdd15e 100644
 --- a/codex-rs/tui/src/transcript_view/footer.rs
 +++ b/codex-rs/tui/src/transcript_view/footer.rs
 @@ -117,6 +117,13 @@ impl TranscriptView {
@@ -1238,7 +1238,7 @@ index addb462eb..6cdd15e5d 100644
              return self.disclosure_footer(width);
          }
 diff --git a/codex-rs/tui/src/transcript_view/input.rs b/codex-rs/tui/src/transcript_view/input.rs
-index d8ba4cfd5..a7487ac2e 100644
+index d8ba4cf..a7487ac 100644
 --- a/codex-rs/tui/src/transcript_view/input.rs
 +++ b/codex-rs/tui/src/transcript_view/input.rs
 @@ -289,6 +289,11 @@ impl TranscriptView {
@@ -1264,7 +1264,7 @@ index d8ba4cfd5..a7487ac2e 100644
          {
              return Some(ViewAction::Changed);
 diff --git a/codex-rs/tui/src/transcript_view/layout.rs b/codex-rs/tui/src/transcript_view/layout.rs
-index a624ac1c9..0d7aa81b9 100644
+index 268b2f9..4d3a06a 100644
 --- a/codex-rs/tui/src/transcript_view/layout.rs
 +++ b/codex-rs/tui/src/transcript_view/layout.rs
 @@ -26,11 +26,34 @@ pub(super) fn activity_layout(
@@ -1302,7 +1302,7 @@ index a624ac1c9..0d7aa81b9 100644
      let mut layout = TextLayout::new(lines.activity, width);
      if lines.disclosure == Some(ActivityDisclosure::ToolActivity) {
          layout.disclosure = true;
-@@ -76,6 +99,7 @@ fn cell_content_layout(
+@@ -78,6 +101,7 @@ fn cell_content_layout(
      mode: HistoryRenderMode,
      presentation: CellPresentation,
      shortcut: Option<ShortcutHint>,
@@ -1310,7 +1310,7 @@ index a624ac1c9..0d7aa81b9 100644
  ) -> TextLayout {
      let mut layout = if presentation.expanded_patch_diff {
          TextLayout::new(cell.expanded_hyperlink_lines(width), width)
-@@ -93,6 +117,7 @@ fn cell_content_layout(
+@@ -95,6 +119,7 @@ fn cell_content_layout(
              width,
              presentation.expanded,
              shortcut,
@@ -1318,7 +1318,7 @@ index a624ac1c9..0d7aa81b9 100644
          )
      } else {
          TextLayout::new(
-@@ -265,6 +290,10 @@ impl TranscriptView {
+@@ -267,6 +292,10 @@ impl TranscriptView {
              .disclosure
              .keymap
              .primary_hint(KeymapContext::Global, "open_transcript");
@@ -1329,7 +1329,7 @@ index a624ac1c9..0d7aa81b9 100644
          let shares_prompt_background = is_rich_user_prompt(cell.as_ref(), mode)
              && (0..index)
                  .rev()
-@@ -288,6 +317,7 @@ impl TranscriptView {
+@@ -290,6 +319,7 @@ impl TranscriptView {
                                  mode,
                                  previous_presentation,
                                  shortcut,
@@ -1337,7 +1337,7 @@ index a624ac1c9..0d7aa81b9 100644
                              )
                          })
                  })
-@@ -297,8 +327,14 @@ impl TranscriptView {
+@@ -299,8 +329,14 @@ impl TranscriptView {
          presentation.shares_prompt_background = shares_prompt_background;
          presentation.turn_tip_space = self.turn_tip_key == Some(EntryKey::cell(cell));
          Some(self.cache.get(cell, width, presentation, || {
@@ -1355,7 +1355,7 @@ index a624ac1c9..0d7aa81b9 100644
                  layout = layout.without_leading_blank_row();
              }
 diff --git a/codex-rs/tui/src/transcript_view/text.rs b/codex-rs/tui/src/transcript_view/text.rs
-index 1164f1cdf..3c857d5d9 100644
+index 1164f1c..3c857d5 100644
 --- a/codex-rs/tui/src/transcript_view/text.rs
 +++ b/codex-rs/tui/src/transcript_view/text.rs
 @@ -8,6 +8,7 @@
@@ -1438,7 +1438,7 @@ index 1164f1cdf..3c857d5d9 100644
              leading_blank_hidden: false,
              disclosure_control: None,
 diff --git a/codex-rs/tui/src/transcript_view_tests.rs b/codex-rs/tui/src/transcript_view_tests.rs
-index 1b127cb74..4d4a3eac0 100644
+index 1b127cb..4d4a3ea 100644
 --- a/codex-rs/tui/src/transcript_view_tests.rs
 +++ b/codex-rs/tui/src/transcript_view_tests.rs
 @@ -182,6 +182,245 @@ fn detailed_only_reasoning_separates_user_prompts() {
