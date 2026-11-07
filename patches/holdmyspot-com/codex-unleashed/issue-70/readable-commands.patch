@@ -1,4 +1,4 @@
-From 81a014080b5407df071e9e2e791606ad00a6ef76 Mon Sep 17 00:00:00 2001
+From 46dc994da76c5782573bf22acb08e84e445635b8 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:41:04 -0500
 Subject: [PATCH] Keep command previews readable and expandable
@@ -212,7 +212,7 @@ index 8133b91..965ad7b 100644
  }
  
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_projection.rs b/codex-rs/tui/src/chatwidget/tests/history_projection.rs
-index edd451f..5b9bd71 100644
+index edd451f..9d14cd2 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_projection.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_projection.rs
 @@ -387,3 +387,89 @@ fn take_history_cells(
@@ -232,7 +232,7 @@ index edd451f..5b9bd71 100644
 +                .expect("readable rendering fixture permits opt-in");
 +        }
 +        drain_insert_history(&mut rx);
-+        let mut item = AppServerThreadItem::CommandExecution {
++        let mut item = AppServerThreadItemPayload::CommandExecution {
 +            id: "readable-protocol".into(),
 +            plugin_id: None,
 +            script_path: None,
@@ -272,7 +272,7 @@ index edd451f..5b9bd71 100644
 +        };
 +        chat.handle_command_execution_started_now(item.clone());
 +        check(chat.transcript.active_cell.as_deref().unwrap());
-+        if let AppServerThreadItem::CommandExecution {
++        if let AppServerThreadItemPayload::CommandExecution {
 +            status,
 +            aggregated_output,
 +            exit_code,
