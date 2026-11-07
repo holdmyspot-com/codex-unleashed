@@ -20,3 +20,4 @@ The release applies these patches in this order:
 14. [issue-35/0003-defer-goal-continuation-to-live-children.patch](holdmyspot-com/codex-unleashed/issue-35/0003-defer-goal-continuation-to-live-children.patch)
 15. [issue-62/classify-wrapped-tls-errors.patch](holdmyspot-com/codex-unleashed/issue-62/classify-wrapped-tls-errors.patch)
 16. [issue-70/readable-commands.patch](holdmyspot-com/codex-unleashed/issue-70/readable-commands.patch)
+17. [branding-and-app-server-distribution/add-branding-and-build-metadata.patch](holdmyspot-com/codex-unleashed/branding-and-app-server-distribution/add-branding-and-build-metadata.patch)
