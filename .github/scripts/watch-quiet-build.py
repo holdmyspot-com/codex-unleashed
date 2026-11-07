@@ -1,6 +1,9 @@
-"""Run a build command and explain it, then stop it, when its logs stay quiet.
+"""Run a build command and explain it, then stop it, when its logs stay quiet and its processes stop computing.
 
-The release build writes every stage's output under one evidence directory. When no file there changes for
+The release build writes every stage's output under one evidence directory. A file there changing counts as progress,
+and so does the command's own processes using at least --min-cpu seconds of CPU time between checks made every
+--cpu-interval seconds, because a long final link writes nothing while it works. The command's processes are its
+process group, or on Windows its process tree. When neither kind of progress happens for
 --first-report seconds, this writes a report of every user process to --report: its state, kernel wait channel, current system call, tracer and kernel stacks, plus a Java and a
 mixed Java and native thread dump of each Java process.
 A host without /proc, such as macOS, gets each process's ps line instead, and each JVM's thread dump and native sample.
@@ -523,6 +526,86 @@ class BuildOutput:
         return newest
 
 
+def cpu_seconds(text):
+    """Returns the seconds in one ps TIME value: macOS prints M:SS.ss and procps prints [DD-]HH:MM:SS."""
+    days, _, clock = text.rpartition("-")
+    seconds = 0.0
+    for part in clock.split(":"):
+        seconds = seconds * 60 + float(part)
+    return seconds + int(days or 0) * 86400
+
+
+def group_cpu(listing, pgid):
+    """Returns the CPU seconds of each member of one process group, keyed by process ID, from the output of
+    ps -A -o pid=,pgid=,time=."""
+    times = {}
+    for line in listing.splitlines():
+        fields = line.split()
+        if len(fields) == 3 and fields[1] == str(pgid):
+            times[int(fields[0])] = cpu_seconds(fields[2])
+    return times
+
+
+WINDOWS_CPU_QUERY = ("Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,KernelModeTime,"
+    "UserModeTime | ConvertTo-Json -Compress")
+"""Lists every process as JSON with its parent and its kernel and user times in 100-nanosecond units."""
+
+
+def tree_cpu(records, root):
+    """Returns the CPU seconds of one process and each of its descendants, keyed by process ID, from the records that
+    WINDOWS_CPU_QUERY printed."""
+    children = {}
+    for record in records:
+        children.setdefault(record["ParentProcessId"], []).append(record)
+    times = {}
+    pending = [record for record in records if record["ProcessId"] == root]
+    while pending:
+        record = pending.pop()
+        pid = record["ProcessId"]
+        if pid in times:
+            continue  # a reused process ID can make a parent appear to descend from its own child
+        times[pid] = ((record["KernelModeTime"] or 0) + (record["UserModeTime"] or 0)) / 10_000_000
+        pending.extend(children.get(pid, []))
+    return times
+
+
+def command_cpu(pid):
+    """Returns a function that reads the CPU seconds of each process of the command started as pid."""
+    if os.name == "nt":
+        def read():
+            result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", WINDOWS_CPU_QUERY],
+                                    capture_output=True, text=True, timeout=120, check=True)
+            return tree_cpu(windows_processes(result.stdout), pid)
+        return read
+    return lambda: group_cpu(subprocess.run(["ps", "-A", "-o", "pid=,pgid=,time="], capture_output=True, text=True,
+                                            timeout=60, check=True).stdout, pid)
+
+
+class CommandCpu:
+    """Tells whether the command's processes used at least a minimum of CPU time since the previous check."""
+
+    def __init__(self, read, interval, minimum):
+        self.read = read
+        self.interval = interval
+        self.minimum = minimum
+        self.previous = {}
+        self.next_check = 0.0
+
+    def advanced(self, now):
+        """Returns whether a check was due by now and found at least the minimum CPU seconds used since the previous
+        one, counting all of a newly seen process's time. A listing that cannot be read counts as no progress."""
+        if now < self.next_check:
+            return False
+        self.next_check = now + self.interval
+        try:
+            current = self.read()
+        except (OSError, subprocess.SubprocessError, ValueError, KeyError):
+            return False
+        used = sum(max(0.0, seconds - self.previous.get(pid, 0.0)) for pid, seconds in current.items())
+        self.previous = current
+        return used >= self.minimum
+
+
 def write_report(report, quiet, jcmd):
     """Appends one process report, as root when non-interactive sudo is available."""
     with open(report, "a") as out:
@@ -603,6 +686,8 @@ def main():
     parser.add_argument("--interval", type=float, default=900)
     parser.add_argument("--stop-after", type=float, default=3600)
     parser.add_argument("--sample-interval", type=float, default=5)
+    parser.add_argument("--cpu-interval", type=float, default=60)
+    parser.add_argument("--min-cpu", type=float, default=5)
     parser.add_argument("command", nargs="*")
     args = parser.parse_args()
     if args.dump:
@@ -619,6 +704,7 @@ def main():
     sampler.poll(time.time())
     process = subprocess.Popen(args.command, start_new_session=True)
     output = BuildOutput(args.watch, args.report, samples)
+    cpu = CommandCpu(command_cpu(process.pid), args.cpu_interval, args.min_cpu)
     last_activity = max(time.time(), output.latest())
     next_report = last_activity + args.first_report
     while process.poll() is None:
@@ -630,10 +716,14 @@ def main():
             last_activity = changed
             next_report = changed + args.first_report
             continue
+        if cpu.advanced(now):
+            last_activity = now
+            next_report = now + args.first_report
+            continue
         quiet = now - last_activity
         if quiet >= args.stop_after:
             write_report(args.report, quiet, args.jcmd)
-            print(f"watch-quiet-build: stopping quiet build after {quiet:.0f} seconds without output; "
+            print(f"watch-quiet-build: stopping quiet build after {quiet:.0f} seconds without output or CPU use; "
                   f"process report: {args.report}", file=sys.stderr, flush=True)
             if os.name == "nt":
                 stop_tree(process.pid)
@@ -643,7 +733,7 @@ def main():
             return 124
         if now >= next_report:
             write_report(args.report, quiet, args.jcmd)
-            print(f"watch-quiet-build: no output for {quiet:.0f} seconds; process report: {args.report}",
+            print(f"watch-quiet-build: no output or CPU use for {quiet:.0f} seconds; process report: {args.report}",
                   file=sys.stderr, flush=True)
             next_report = now + args.interval
     return process.returncode

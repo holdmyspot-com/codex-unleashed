@@ -81,6 +81,58 @@ class QuietBuildWatchTest(unittest.TestCase):
             self.assertFalse(report.exists(), "an active command was reported as quiet")
 
 
+    def test_preserves_a_silent_command_that_keeps_computing(self):
+        """A command that writes nothing but keeps using CPU, as a long final link does, is never stopped and keeps
+        its exit status."""
+        command = (
+            "import sys, time; end = time.time() + 4; "
+            "[None for _ in iter(lambda: time.time() < end, False)]; "
+            "sys.exit(5)"
+        )
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+            result, _ = run_watcher(directory, command, "--first-report", "1", "--interval", "1",
+                "--stop-after", "2", "--cpu-interval", "0.5", "--min-cpu", "0.1")
+            self.assertEqual(result.returncode, 5, result.stdout + result.stderr)
+            self.assertNotIn("stopping quiet build", result.stderr)
+
+
+class CommandCpuTest(unittest.TestCase):
+    """Each test owns its process listing text or records."""
+
+    def load(self):
+        spec = importlib.util.spec_from_file_location("watch_quiet_build", WATCHER)
+        watcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(watcher)
+        return watcher
+
+    def test_reads_the_cpu_time_of_one_process_group_from_ps(self):
+        """Only the group's members are counted, in both macOS's M:SS.ss and procps's [DD-]HH:MM:SS forms."""
+        listing = ("  10    10      1:02.50\n  11    10   01:00:03\n  12    10 2-00:00:01\n  13    99      9:00.00\n")
+        self.assertEqual(self.load().group_cpu(listing, 10), {10: 62.5, 11: 3603.0, 12: 172801.0})
+
+    def test_reads_the_cpu_time_of_one_windows_process_tree(self):
+        """The root and its descendants are counted from 100-nanosecond kernel and user times; other processes are
+        not."""
+        records = [
+            {"ProcessId": 5, "ParentProcessId": 1, "KernelModeTime": 10_000_000, "UserModeTime": 20_000_000},
+            {"ProcessId": 6, "ParentProcessId": 5, "KernelModeTime": 0, "UserModeTime": 5_000_000},
+            {"ProcessId": 7, "ParentProcessId": 6, "KernelModeTime": 1, "UserModeTime": None},
+            {"ProcessId": 8, "ParentProcessId": 1, "KernelModeTime": 99, "UserModeTime": 99},
+        ]
+        self.assertEqual(self.load().tree_cpu(records, 5), {5: 3.0, 6: 0.5, 7: 1e-07})
+
+    def test_counts_cpu_used_since_the_previous_check(self):
+        """A check is due once per interval and reports whether the command's processes, including ones that started
+        since the previous check, used at least the minimum CPU time."""
+        readings = iter([{1: 1.0}, {1: 1.5, 2: 0.2}, {1: 4.0}, {1: 4.1}])
+        cpu = self.load().CommandCpu(lambda: next(readings), interval=10, minimum=0.5)
+        self.assertTrue(cpu.advanced(0))
+        self.assertFalse(cpu.advanced(5), "a check ran before its interval passed")
+        self.assertTrue(cpu.advanced(10))
+        self.assertTrue(cpu.advanced(20))
+        self.assertFalse(cpu.advanced(30))
+
+
 class ResourceSampleTest(unittest.TestCase):
     """Each test owns its temporary directory, procfs tree and command."""
 

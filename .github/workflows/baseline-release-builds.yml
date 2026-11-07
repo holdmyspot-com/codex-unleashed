@@ -41,7 +41,7 @@ on:
         type: boolean
         default: false
       quiet_stop_minutes:
-        description: Stop a build whose evidence logs stay quiet this many minutes, after process reports
+        description: Stop a build whose evidence logs stay quiet and whose processes use no CPU this many minutes, after process reports
         type: number
         default: 75
       packages:
@@ -513,8 +513,9 @@ jobs:
           SCRIPT
             release_command=(bash "$RUNNER_TEMP/build-and-check-upstream-release.sh")
           fi
-          # A build whose evidence logs stay quiet gets process reports naming what each process waits on, then is
-          # stopped well before the step timeout. A healthy build went at most about ten minutes without output.
+          # A build whose evidence logs stay quiet while its processes use no CPU gets process reports naming what each
+          # process waits on, then is stopped well before the step timeout. CPU use counts as progress because the
+          # final link of codex on Intel macOS ran more than 75 minutes without output.
           # A diagnostic run can stop sooner; it reports every 15 minutes, or at half the stop period when that is shorter.
           # The watcher is a native Windows program there, so it is given Git Bash's Windows path rather than a name
           # that Windows' own search could resolve to another bash.
