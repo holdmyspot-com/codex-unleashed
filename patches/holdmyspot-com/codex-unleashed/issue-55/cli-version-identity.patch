@@ -1,4 +1,4 @@
-From e759532199b46550e4f0bbca14f17ce6b23ae99e Mon Sep 17 00:00:00 2001
+From c303869297247a4dbccea64a99dc550402339e14 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 11:23:12 -0500
 Subject: [PATCH] Keep CLI version identity independent of build metadata

@@ -1,4 +1,4 @@
-From ab66b2ea9607417265456681ec362f8ed15355b6 Mon Sep 17 00:00:00 2001
+From 96040b06fd3f053c1c8e0932674196e5eafb0459 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 11:21:56 -0500
 Subject: [PATCH] Identify server distribution and order Unleashed versions
@@ -6,15 +6,12 @@ Subject: [PATCH] Identify server distribution and order Unleashed versions
 Warn when the connected server identifies itself as OpenAI Codex. Compare numeric Unleashed versions by release precedence, then build number, so a bare equal release is older and a higher release stays newer.
 ---
  codex-rs/app-server-client/src/lib.rs         |  11 +-
- .../app-server/tests/suite/v2/initialize.rs   |  15 +++
- codex-rs/login/src/auth/default_client.rs     |   5 +-
- .../login/src/auth/default_client_tests.rs    |  22 +++-
  codex-rs/tui/src/app/server_version_notice.rs |   1 +
  ...eashed_openai_server_warning_snapshot.snap |   8 ++
  codex-rs/tui/src/history_cell/tests.rs        |  29 +++++
  codex-rs/tui/src/status/remote_connection.rs  | 117 +++++++++++++++++-
  codex-rs/tui/src/update_versions.rs           |  63 +++++++++-
- 9 files changed, 265 insertions(+), 6 deletions(-)
+ 6 files changed, 225 insertions(+), 4 deletions(-)
  create mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap
 
 diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
@@ -46,87 +43,6 @@ index e7df794..99ff6b0 100644
          assert_eq!(client.codex_home(), Some("/server/.codex"));
          let client = AppServerClient::Remote(client);
          let response: GetAccountResponse = client
-diff --git a/codex-rs/app-server/tests/suite/v2/initialize.rs b/codex-rs/app-server/tests/suite/v2/initialize.rs
-index 1ba0f26..e345c23 100644
---- a/codex-rs/app-server/tests/suite/v2/initialize.rs
-+++ b/codex-rs/app-server/tests/suite/v2/initialize.rs
-@@ -62,6 +62,21 @@ async fn initialize_uses_client_info_name_as_originator() -> Result<()> {
-     } = to_response::<InitializeResponse>(response)?;
- 
-     assert!(user_agent.starts_with("codex_vscode/"));
-+    let version = user_agent
-+        .split_once('/')
-+        .unwrap()
-+        .1
-+        .split_whitespace()
-+        .next()
-+        .unwrap();
-+    assert_eq!(
-+        version,
-+        format!(
-+            "{}+{}",
-+            env!("CARGO_PKG_VERSION"),
-+            option_env!("CODEX_UNLEASHED_BUILD_NUMBER").unwrap_or("dev")
-+        )
-+    );
-     assert_eq!(response_codex_home, expected_codex_home);
-     assert_eq!(platform_family, std::env::consts::FAMILY);
-     assert_eq!(platform_os, std::env::consts::OS);
-diff --git a/codex-rs/login/src/auth/default_client.rs b/codex-rs/login/src/auth/default_client.rs
-index 28a952e..c8c1d65 100644
---- a/codex-rs/login/src/auth/default_client.rs
-+++ b/codex-rs/login/src/auth/default_client.rs
-@@ -149,11 +149,14 @@ pub fn is_first_party_chat_originator(originator_value: &str) -> bool {
-     originator_value == "codex_atlas" || originator_value == "codex_chatgpt_desktop"
- }
- 
-+/// Return the request originator, compiled Unleashed version, host, and terminal identity.
-+/// The version includes the numeric vendor build or `dev`, matching the CLI package version.
- pub fn get_codex_user_agent() -> String {
-     // OS discovery can spawn subprocesses on Linux. Reuse it across requests,
-     // while continuing to read the mutable originator and suffix below.
-     static OS_INFO: LazyLock<os_info::Info> = LazyLock::new(os_info::get);
--    let build_version = env!("CARGO_PKG_VERSION");
-+    let build_number = option_env!("CODEX_UNLEASHED_BUILD_NUMBER").unwrap_or("dev");
-+    let build_version = format!("{}+{build_number}", env!("CARGO_PKG_VERSION"));
-     let os_info = &*OS_INFO;
-     let originator = originator();
-     let prefix = format!(
-diff --git a/codex-rs/login/src/auth/default_client_tests.rs b/codex-rs/login/src/auth/default_client_tests.rs
-index 4a5d941..6433526 100644
---- a/codex-rs/login/src/auth/default_client_tests.rs
-+++ b/codex-rs/login/src/auth/default_client_tests.rs
-@@ -349,9 +349,29 @@ fn test_macos() {
-     use regex_lite::Regex;
-     let user_agent = get_codex_user_agent();
-     let originator = regex_lite::escape(originator().value.as_str());
-+    let version = regex_lite::escape(&format!(
-+        "{}+{}",
-+        env!("CARGO_PKG_VERSION"),
-+        option_env!("CODEX_UNLEASHED_BUILD_NUMBER").unwrap_or("dev")
-+    ));
-     let re = Regex::new(&format!(
--        r"^{originator}/\d+\.\d+\.\d+ \(Mac OS \d+\.\d+\.\d+; (x86_64|arm64)\) (\S+)$"
-+        r"^{originator}/{version} \(Mac OS \d+\.\d+\.\d+; (x86_64|arm64)\) (\S+)$"
-     ))
-     .unwrap();
-     assert!(re.is_match(&user_agent));
- }
-+
-+#[test]
-+fn user_agent_identifies_unleashed_server_build() {
-+    let user_agent = get_codex_user_agent();
-+    let (_, version_and_details) = user_agent.split_once('/').expect("user agent version");
-+    let version = version_and_details.split_whitespace().next().unwrap();
-+    assert_eq!(
-+        version,
-+        format!(
-+            "{}+{}",
-+            env!("CARGO_PKG_VERSION"),
-+            option_env!("CODEX_UNLEASHED_BUILD_NUMBER").unwrap_or("dev")
-+        )
-+    );
-+}
 diff --git a/codex-rs/tui/src/app/server_version_notice.rs b/codex-rs/tui/src/app/server_version_notice.rs
 index bca03e3..f90cf53 100644
 --- a/codex-rs/tui/src/app/server_version_notice.rs

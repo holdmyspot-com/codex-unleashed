@@ -1,4 +1,4 @@
-From 05a3cb88834c167799d85af62d611fe5d7c635a1 Mon Sep 17 00:00:00 2001
+From 2fb2f55d42ed18d40d1cacacb49e01d88fb2bcb6 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 11:27:19 -0500
 Subject: [PATCH] Replace stale updater workers before manual daemon updates
