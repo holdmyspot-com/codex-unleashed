@@ -27,6 +27,10 @@ on:
         description: Space-separated upstream paths to restore to the pinned base for a red phase that must fail before the patched run
         type: string
         default: ""
+      regenerate_app_server_schema:
+        description: Regenerate the precomputed stable app-server exports after applying the patches and record the binary diff
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -203,6 +207,21 @@ jobs:
           for package in $BASELINE_TEST_PACKAGE; do archive_args+=(-p "$package"); done
           cargo-nextest nextest "${archive_args[@]}" 2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/archive.log"
           sha256sum "$RUNNER_TEMP/baseline-test-archive.tar.zst" > "$RUNNER_TEMP/baseline-test-evidence/archive.sha256"
+
+      - name: Regenerate the precomputed stable app-server exports
+        if: inputs.regenerate_app_server_schema
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          # Upstream's write_schema_fixtures.py runs this ignored test with the same settings; the
+          # Python SDK step it adds afterwards does not touch the precomputed exports.
+          env CODEX_APP_SERVER_SCHEMA_ROOT="$PWD/app-server-protocol/schema" CODEX_APP_SERVER_SCHEMA_EXPERIMENTAL=0 \
+            cargo-nextest nextest run --target x86_64-unknown-linux-gnu --cargo-profile ci-test \
+            -p codex-app-server-protocol --lib --run-ignored only \
+            -E 'test(=schema_fixtures_tests::write_schema_fixtures_from_env)'
+          git -C .. add -A
+          git -C .. diff --cached --binary --stat
+          git -C .. diff --cached --binary > "$RUNNER_TEMP/baseline-test-evidence/regenerated-app-server-schema.diff"
 
       - name: Run the red phase with the production changes withheld
         if: inputs.red_restore != ''

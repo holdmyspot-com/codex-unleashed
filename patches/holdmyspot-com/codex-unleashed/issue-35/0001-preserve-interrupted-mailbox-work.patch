@@ -1,0 +1,868 @@
+From 4a057b85d36a08c385379010f58c606d28832837 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 7 Nov 2026 09:16:27 -0500
+Subject: [PATCH] Preserve mailbox work across interrupted task starts
+
+Interrupting or replacing an automatic parent turn before its task registers no longer drops mail the turn had taken. Unobserved child results and unrelated input return to the session queue, and an interrupt keeps background results from waking the parent again.
+---
+ codex-rs/core/src/agent_communication.rs      |   5 +
+ codex-rs/core/src/session/input_queue.rs      |  92 ++++++-
+ .../src/session/mailbox_retention_tests.rs    |  64 +++++
+ codex-rs/core/src/session/turn_input.rs       |   3 +
+ codex-rs/core/src/state/turn.rs               |   3 +
+ codex-rs/core/src/tasks/mailbox_wake_tests.rs | 244 ++++++++++++++++++
+ codex-rs/core/src/tasks/mod.rs                | 105 ++++++--
+ codex-rs/core/src/tasks/mod_tests.rs          |   3 +
+ codex-rs/protocol/src/lib.rs                  |   2 +
+ codex-rs/protocol/src/mailbox_wake.rs         |  19 ++
+ codex-rs/protocol/src/mailbox_wake_tests.rs   |  45 ++++
+ codex-rs/protocol/src/protocol.rs             |   9 +
+ 12 files changed, 563 insertions(+), 31 deletions(-)
+ create mode 100644 codex-rs/core/src/session/mailbox_retention_tests.rs
+ create mode 100644 codex-rs/core/src/tasks/mailbox_wake_tests.rs
+ create mode 100644 codex-rs/protocol/src/mailbox_wake.rs
+ create mode 100644 codex-rs/protocol/src/mailbox_wake_tests.rs
+
+diff --git a/codex-rs/core/src/agent_communication.rs b/codex-rs/core/src/agent_communication.rs
+index 0b5c8dbff..57fb3513b 100644
+--- a/codex-rs/core/src/agent_communication.rs
++++ b/codex-rs/core/src/agent_communication.rs
+@@ -141,6 +141,11 @@ impl PendingAgentMessage {
+             delivery,
+         }
+     }
++
++    /// Keeps this mail queued without asking it to start a turn.
++    pub(crate) fn clear_trigger_turn(&mut self) {
++        self.communication.trigger_turn = false;
++    }
+ }
+ 
+ /// The publication state retained until this delivery is consumed or abandoned.
+diff --git a/codex-rs/core/src/session/input_queue.rs b/codex-rs/core/src/session/input_queue.rs
+index 21d31dd79..8dca6a28d 100644
+--- a/codex-rs/core/src/session/input_queue.rs
++++ b/codex-rs/core/src/session/input_queue.rs
+@@ -106,6 +106,11 @@ pub(crate) struct PendingMailboxCommunication {
+     _diagnostics_guard: GaugeGuard,
+ }
+ 
++enum PendingInputDisposition {
++    Discard,
++    Preserve,
++}
++
+ impl InputQueue {
+     pub(crate) fn new() -> Self {
+         let (activity_tx, _) = watch::channel(InputQueueActivity::Mailbox);
+@@ -242,6 +247,18 @@ impl InputQueue {
+         pending.drain(..).collect()
+     }
+ 
++    pub(crate) async fn suppress_interrupted_wakeups(&self) -> bool {
++        let mut mails = self.mailbox_pending_mails.lock().await;
++        for mail in mails.iter_mut() {
++            if mail.communication.wake_policy
++                == codex_protocol::MailboxWakePolicy::UnlessInterrupted
++            {
++                mail.communication.clear_trigger_turn();
++            }
++        }
++        mails.iter().any(|mail| mail.communication.trigger_turn)
++    }
++
+     pub(crate) async fn drain_mailbox_input_items(&self) -> (Vec<TurnInput>, TurnStartOptions) {
+         let pending_mails = self.drain_mailbox().await;
+         // A later follow-up supersedes the earlier choice, including an omitted choice.
+@@ -314,14 +331,73 @@ impl InputQueue {
+         })))
+     }
+ 
+-    /// Clear any pending waiters and input buffered for the current turn.
++    /// Clear turn-local input, retaining unobserved background results for an explicit turn.
+     pub(crate) async fn clear_pending(&self, active_turn: &ActiveTurn) {
+-        let mut turn_state = active_turn.turn_state.lock().await;
+-        turn_state.clear_pending_waiters();
++        self.cleanup_pending_input(
++            active_turn.turn_state.as_ref(),
++            PendingInputDisposition::Discard,
++        )
++        .await;
++    }
++
++    /// Returns unconsumed mail from an abandoned task start to the session queue.
++    /// Unrelated turn-local input remains with its original turn-state owner.
++    pub(crate) async fn recover_unstarted_input(&self, turn_state: &Mutex<TurnState>) {
++        self.cleanup_pending_input(turn_state, PendingInputDisposition::Preserve)
++            .await;
++    }
++
++    async fn cleanup_pending_input(
++        &self,
++        turn_state: &Mutex<TurnState>,
++        disposition: PendingInputDisposition,
++    ) {
+         // Pending mail can own extension attachments whose destructors need the lock released.
+-        let pending_input = std::mem::take(&mut turn_state.pending_input);
+-        drop(turn_state);
+-        drop(pending_input);
++        let (results, start_options, _discarded) = {
++            let mut turn_state = turn_state.lock().await;
++            if matches!(disposition, PendingInputDisposition::Discard) {
++                turn_state.clear_pending_waiters();
++            }
++            let pending = std::mem::take(&mut turn_state.pending_input);
++            if matches!(disposition, PendingInputDisposition::Preserve) {
++                turn_state.pending_input.has_pending_injection = pending.has_pending_injection;
++            }
++            let mut results = Vec::new();
++            let mut discarded = Vec::new();
++            for input in pending.items {
++                match input {
++                    TurnInput::InterAgentCommunication(mut communication)
++                        if matches!(disposition, PendingInputDisposition::Preserve)
++                            || communication.wake_policy
++                                == codex_protocol::MailboxWakePolicy::UnlessInterrupted =>
++                    {
++                        if communication.wake_policy
++                            == codex_protocol::MailboxWakePolicy::UnlessInterrupted
++                        {
++                            communication.clear_trigger_turn();
++                        }
++                        results.push(communication);
++                    }
++                    input if matches!(disposition, PendingInputDisposition::Preserve) => {
++                        turn_state.pending_input.items.push(input);
++                    }
++                    input => discarded.push(input),
++                }
++            }
++            let start_options = if matches!(disposition, PendingInputDisposition::Preserve) {
++                turn_state
++                    .reserved_mailbox_start_options
++                    .clone()
++                    .unwrap_or_default()
++            } else {
++                TurnStartOptions::default()
++            };
++            (results, start_options, discarded)
++        };
++        for communication in results {
++            self.enqueue_mailbox_communication(communication, start_options.clone())
++                .await;
++        }
+     }
+ 
+     pub(crate) async fn defer_mailbox_delivery_to_next_turn(
+@@ -500,6 +576,10 @@ impl TurnInputQueue {
+     }
+ }
+ 
++#[cfg(test)]
++#[path = "mailbox_retention_tests.rs"]
++mod mailbox_retention_tests;
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/codex-rs/core/src/session/mailbox_retention_tests.rs b/codex-rs/core/src/session/mailbox_retention_tests.rs
+new file mode 100644
+index 000000000..9385182f3
+--- /dev/null
++++ b/codex-rs/core/src/session/mailbox_retention_tests.rs
+@@ -0,0 +1,64 @@
++use super::*;
++use pretty_assertions::assert_eq;
++
++#[test_case::test_case(false; "background_result")]
++#[test_case::test_case(true; "explicit_followup_remains_eligible")]
++#[tokio::test]
++async fn interruption_suppresses_only_background_wakeups(explicit: bool) {
++    let queue = InputQueue::new();
++    let mut mail = InterAgentCommunication::new(
++        codex_protocol::AgentPath::root()
++            .join("worker")
++            .expect("worker"),
++        codex_protocol::AgentPath::root(),
++        Vec::new(),
++        "finished".to_string(),
++        true,
++    );
++    if !explicit {
++        mail.wake_policy = codex_protocol::MailboxWakePolicy::UnlessInterrupted;
++    }
++    queue
++        .enqueue_mailbox_communication(mail.into(), Default::default())
++        .await;
++    assert_eq!(queue.suppress_interrupted_wakeups().await, explicit);
++    let (retained, _) = queue.drain_mailbox_input_items().await;
++    let [TurnInput::InterAgentCommunication(result)] = retained.as_slice() else {
++        panic!("result must remain available");
++    };
++    assert_eq!(result.trigger_turn, explicit);
++    assert!(queue.drain_mailbox_input_items().await.0.is_empty());
++}
++
++#[tokio::test]
++async fn interruption_retains_unobserved_background_result_once() {
++    let queue = InputQueue::new();
++    let active = ActiveTurn::default();
++    let mail: InterAgentCommunication = serde_json::from_value(serde_json::json!({
++        "id": "amsg_result",
++        "author": "/root/worker",
++        "recipient": "/root",
++        "content": "finished",
++        "trigger_turn": true,
++        "wake_policy": "unless_interrupted"
++    }))
++    .expect("background result");
++    active
++        .turn_state
++        .lock()
++        .await
++        .pending_input
++        .items
++        .push(TurnInput::InterAgentCommunication(mail.clone().into()));
++
++    queue.clear_pending(&active).await;
++    let (retained, _) = queue.drain_mailbox_input_items().await;
++    let [TurnInput::InterAgentCommunication(result)] = retained.as_slice() else {
++        panic!("unobserved background result must remain available after interruption");
++    };
++    assert_eq!(result.id, mail.id);
++    assert_eq!(result.author, mail.author);
++    assert_eq!(result.content, mail.content);
++    assert!(!result.trigger_turn);
++    assert!(queue.drain_mailbox_input_items().await.0.is_empty());
++}
+diff --git a/codex-rs/core/src/session/turn_input.rs b/codex-rs/core/src/session/turn_input.rs
+index 0364e6af3..0bc8a6049 100644
+--- a/codex-rs/core/src/session/turn_input.rs
++++ b/codex-rs/core/src/session/turn_input.rs
+@@ -710,6 +710,9 @@ impl Session {
+         if active_turn.is_some() {
+             return None;
+         }
++        if self.is_interrupted() && !self.input_queue.suppress_interrupted_wakeups().await {
++            return None;
++        }
+         let has_trigger_turn = self.input_queue.has_trigger_turn_mailbox_items().await;
+         if !has_trigger_turn
+             && !self.has_outstanding_durable_sleep()
+diff --git a/codex-rs/core/src/state/turn.rs b/codex-rs/core/src/state/turn.rs
+index 0fe0fea1b..21d33b3a0 100644
+--- a/codex-rs/core/src/state/turn.rs
++++ b/codex-rs/core/src/state/turn.rs
+@@ -9,6 +9,7 @@ use tokio_util::task::AbortOnDropHandle;
+ 
+ use codex_diagnostics::GaugeGuard;
+ use codex_protocol::dynamic_tools::DynamicToolResponse;
++use codex_protocol::protocol::TurnAbortReason;
+ use codex_protocol::request_permissions::RequestPermissionProfile;
+ use codex_protocol::request_permissions::RequestPermissionsResponse;
+ use codex_protocol::request_user_input::RequestUserInputResponse;
+@@ -94,6 +95,8 @@ pub(crate) struct TurnState {
+     pending_elicitations: HashMap<(String, RequestId), oneshot::Sender<ElicitationResponse>>,
+     pending_dynamic_tools: HashMap<String, oneshot::Sender<DynamicToolResponse>>,
+     pub(crate) pending_input: TurnInputQueue,
++    pub(crate) task_start_abort_reason: Option<TurnAbortReason>,
++    pub(crate) reserved_mailbox_start_options: Option<codex_protocol::turn_input::TurnStartOptions>,
+     mailbox_delivery_phase: MailboxDeliveryPhase,
+     pub(crate) tool_calls: u64,
+     pub(crate) has_memory_citation: bool,
+diff --git a/codex-rs/core/src/tasks/mailbox_wake_tests.rs b/codex-rs/core/src/tasks/mailbox_wake_tests.rs
+new file mode 100644
+index 000000000..3fcc1636f
+--- /dev/null
++++ b/codex-rs/core/src/tasks/mailbox_wake_tests.rs
+@@ -0,0 +1,244 @@
++use crate::session::TurnInput;
++use crate::session::tests::make_session_and_context_with_auth_and_config_and_rx;
++use codex_extension_api::ExtensionRegistryBuilder;
++use codex_login::CodexAuth;
++use codex_protocol::AgentPath;
++use codex_protocol::MailboxWakePolicy;
++use codex_protocol::protocol::InterAgentCommunication;
++use codex_protocol::protocol::TurnAbortReason;
++use std::sync::Arc;
++use std::time::Duration;
++
++#[test_case::test_case(TurnAbortReason::Interrupted; "interrupted")]
++#[test_case::test_case(TurnAbortReason::Replaced; "replaced")]
++#[tokio::test]
++async fn background_subagent_reserved_turn_preserves_unrelated_pending_input(
++    reason: TurnAbortReason,
++) {
++    let (session, _context, _events) = make_session_and_context_with_auth_and_config_and_rx(
++        CodexAuth::from_api_key("test"),
++        Vec::new(),
++        |_| {},
++    )
++    .await;
++    let pending = TurnInput::ResponseItem(
++        codex_protocol::models::ResponseItem::Message {
++            id: None,
++            encrypted_content: None,
++            status: None,
++            role: "user".to_string(),
++            content: vec![codex_protocol::models::ContentItem::InputText {
++                text: "unrelated pending input".to_string(),
++            }],
++            phase: None,
++            internal_chat_message_metadata_passthrough: None,
++        }
++        .into(),
++    );
++    let mut mail = InterAgentCommunication::new(
++        AgentPath::root().join("worker").expect("worker"),
++        AgentPath::root(),
++        Vec::new(),
++        "finished".to_string(),
++        true,
++    );
++    mail.wake_policy = MailboxWakePolicy::UnlessInterrupted;
++    let turn_state = {
++        let mut active = session.active_turn.lock().await;
++        Arc::clone(&active.get_or_insert_with(Default::default).turn_state)
++    };
++    session
++        .input_queue
++        .extend_pending_input_for_turn_state(
++            turn_state.as_ref(),
++            vec![
++                pending.clone(),
++                TurnInput::InterAgentCommunication(mail.clone().into()),
++                pending.clone(),
++            ],
++        )
++        .await;
++
++    session.abort_all_tasks(reason).await;
++
++    assert!(session.active_turn.lock().await.is_none());
++    assert_eq!(
++        session
++            .input_queue
++            .take_pending_input_for_turn_state(turn_state.as_ref())
++            .await,
++        vec![pending.clone(), pending]
++    );
++    let (results, _) = session.input_queue.drain_mailbox_input_items().await;
++    let [TurnInput::InterAgentCommunication(result)] = results.as_slice() else {
++        panic!("unobserved child result must remain queued exactly once");
++    };
++    mail.trigger_turn = false;
++    assert_eq!(&**result, &mail);
++    assert!(
++        session
++            .input_queue
++            .drain_mailbox_input_items()
++            .await
++            .0
++            .is_empty()
++    );
++}
++
++#[derive(Default)]
++struct PauseTaskRegistration {
++    entered: tokio::sync::Notify,
++    release: tokio::sync::Notify,
++    aborted: std::sync::Mutex<Vec<TurnAbortReason>>,
++}
++
++impl codex_extension_api::TurnLifecycleContributor for PauseTaskRegistration {
++    fn on_turn_abort<'a>(
++        &'a self,
++        input: codex_extension_api::TurnAbortInput<'a>,
++    ) -> codex_extension_api::ExtensionFuture<'a, ()> {
++        Box::pin(async move {
++            self.aborted
++                .lock()
++                .expect("abort causes")
++                .push(input.reason);
++        })
++    }
++
++    fn on_turn_start<'a>(
++        &'a self,
++        _input: codex_extension_api::TurnStartInput<'a>,
++    ) -> codex_extension_api::ExtensionFuture<'a, ()> {
++        Box::pin(async move {
++            self.entered.notify_one();
++            self.release.notified().await;
++        })
++    }
++}
++
++#[derive(Clone, Copy, PartialEq, Eq)]
++enum ReservedMailbox {
++    BackgroundResult,
++    MixedMessages,
++    ExplicitFollowup,
++}
++
++#[test_case::test_case(ReservedMailbox::BackgroundResult; "background_only")]
++#[test_case::test_case(ReservedMailbox::MixedMessages; "mixed_messages")]
++#[test_case::test_case(ReservedMailbox::ExplicitFollowup; "explicit_followup")]
++#[tokio::test]
++async fn background_subagent_interruption_before_registration_preserves_result_without_revival(
++    contents: ReservedMailbox,
++) {
++    let (mut session, _context, _events) = make_session_and_context_with_auth_and_config_and_rx(
++        CodexAuth::from_api_key("test"),
++        Vec::new(),
++        |config| {
++            config.model_provider.base_url = Some("http://127.0.0.1:9/v1".to_string());
++            config.model_provider.request_max_retries = Some(0);
++            config.model_provider.stream_max_retries = Some(0);
++        },
++    )
++    .await;
++    let gate = Arc::new(PauseTaskRegistration::default());
++    let mut extensions = ExtensionRegistryBuilder::<crate::config::Config>::new();
++    extensions.turn_lifecycle_contributor(gate.clone());
++    Arc::get_mut(&mut session)
++        .expect("exclusive session")
++        .services
++        .extensions = Arc::new(extensions.build());
++    let mut mail = InterAgentCommunication::new(
++        AgentPath::root().join("worker").expect("worker"),
++        AgentPath::root(),
++        Vec::new(),
++        "finished".to_string(),
++        true,
++    );
++    mail.wake_policy = MailboxWakePolicy::UnlessInterrupted;
++    let unrelated = InterAgentCommunication::new(
++        AgentPath::root().join("other").expect("other agent"),
++        AgentPath::root(),
++        Vec::new(),
++        "unrelated queued message".to_string(),
++        contents == ReservedMailbox::ExplicitFollowup,
++    );
++    let followup_options = codex_protocol::turn_input::TurnStartOptions {
++        parent_turn_id: Some("original-parent-turn".to_string()),
++        root_turn_id: Some("original-root-turn".to_string()),
++        ..Default::default()
++    };
++    session
++        .input_queue
++        .enqueue_mailbox_communication(mail.clone().into(), followup_options.clone())
++        .await;
++    if contents != ReservedMailbox::BackgroundResult {
++        session
++            .input_queue
++            .enqueue_mailbox_communication(unrelated.clone().into(), followup_options.clone())
++            .await;
++    }
++    let scheduler = {
++        let session = session.clone();
++        tokio::spawn(async move {
++            session
++                .maybe_start_turn_for_pending_work_with_sub_id("automatic".to_string())
++                .await;
++        })
++    };
++    tokio::time::timeout(Duration::from_secs(5), gate.entered.notified())
++        .await
++        .expect("automatic turn reaches registration boundary");
++    session.abort_all_tasks(TurnAbortReason::Interrupted).await;
++    gate.release.notify_one();
++    scheduler.await.expect("scheduler exits");
++    let interrupted = session.is_interrupted();
++    let revived = session.active_turn.lock().await.is_some();
++    if revived {
++        session.abort_all_tasks(TurnAbortReason::Interrupted).await;
++    }
++    assert!(
++        interrupted,
++        "interrupting an automatic reservation must mark it interrupted"
++    );
++    assert!(
++        !revived,
++        "an interrupted reservation must not register a task"
++    );
++    assert_eq!(
++        *gate.aborted.lock().expect("abort causes"),
++        vec![TurnAbortReason::Interrupted]
++    );
++    let (pending, recovered_options) = session.input_queue.drain_mailbox_input_items().await;
++    let Some(TurnInput::InterAgentCommunication(retained)) = pending.first() else {
++        panic!("accepted but unobserved result must remain available");
++    };
++    assert_eq!(retained.author, mail.author);
++    assert_eq!(retained.content, mail.content);
++    assert!(!retained.trigger_turn);
++    if contents != ReservedMailbox::BackgroundResult {
++        let [_, TurnInput::InterAgentCommunication(retained)] = pending.as_slice() else {
++            panic!("unrelated mailbox input must be available to the next explicit turn");
++        };
++        assert_eq!(&**retained, &unrelated);
++        if contents == ReservedMailbox::ExplicitFollowup {
++            assert_eq!(
++                recovered_options.parent_turn_id,
++                followup_options.parent_turn_id
++            );
++            assert_eq!(
++                recovered_options.root_turn_id,
++                followup_options.root_turn_id
++            );
++        }
++    } else {
++        assert_eq!(pending.len(), 1);
++    }
++    assert!(
++        session
++            .input_queue
++            .drain_mailbox_input_items()
++            .await
++            .0
++            .is_empty()
++    );
++}
+diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
+index 2d2f7e66e..0b22f84c4 100644
+--- a/codex-rs/core/src/tasks/mod.rs
++++ b/codex-rs/core/src/tasks/mod.rs
+@@ -281,16 +281,34 @@ impl Session {
+         self.start_task(turn_context, input, task).await;
+     }
+ 
++    pub(crate) async fn start_task<T: SessionTask>(
++        self: &Arc<Self>,
++        turn_context: Arc<TurnContext>,
++        input: Vec<TurnInput>,
++        task: T,
++    ) {
++        self.start_task_with_reservation(turn_context, input, task, None)
++            .await;
++    }
++
+     #[expect(
+         clippy::await_holding_invalid_type,
+-        reason = "record the started turn atomically with task registration"
++        reason = "record the started turn atomically with task registration and its reservation"
+     )]
+-    pub(crate) async fn start_task<T: SessionTask>(
++    async fn start_task_with_reservation<T: SessionTask>(
+         self: &Arc<Self>,
+         turn_context: Arc<TurnContext>,
+         input: Vec<TurnInput>,
+         task: T,
++        reservation: Option<Arc<Mutex<TurnState>>>,
+     ) {
++        let reservation_matches = |active: &Option<ActiveTurn>| {
++            reservation.as_ref().is_none_or(|expected| {
++                active
++                    .as_ref()
++                    .is_some_and(|turn| Arc::ptr_eq(&turn.turn_state, expected))
++            })
++        };
+         // Replace the cache; in-flight acquisitions retain their previous Arc.
+         self.services
+             .thread_extension_data
+@@ -325,18 +343,24 @@ impl Session {
+         let cancellation_token = CancellationToken::new();
+         let done = Arc::new(Notify::new());
+ 
+-        let (pending_items, _) = self.input_queue.drain_mailbox_input_items().await;
+         let turn_state = {
+             let mut active = self.active_turn.lock().await;
++            if !reservation_matches(&active) {
++                drop(active);
++                self.finish_cancelled_task_start(&turn_context, reservation.as_deref())
++                    .await;
++                return;
++            }
++            let (pending_items, _) = self.input_queue.drain_mailbox_input_items().await;
+             let turn = active.get_or_insert_with(ActiveTurn::default);
+             debug_assert!(turn.task.is_none());
+             turn.finishing = None;
++            self.input_queue
++                .extend_pending_input_for_turn_state(turn.turn_state.as_ref(), pending_items)
++                .await;
+             Arc::clone(&turn.turn_state)
+         };
+         turn_state.lock().await.token_usage_at_turn_start = token_usage_at_turn_start.clone();
+-        self.input_queue
+-            .extend_pending_input_for_turn_state(turn_state.as_ref(), pending_items)
+-            .await;
+         self.emit_turn_start_lifecycle(
+             turn_context.as_ref(),
+             Some(&token_usage_at_turn_start),
+@@ -345,6 +369,12 @@ impl Session {
+         .await;
+ 
+         let mut active = self.active_turn.lock().await;
++        if !reservation_matches(&active) {
++            drop(active);
++            self.finish_cancelled_task_start(&turn_context, reservation.as_deref())
++                .await;
++            return;
++        }
+         let turn = active.get_or_insert_with(ActiveTurn::default);
+         debug_assert!(turn.task.is_none());
+         // Record lineage only when the task starts: settings changes can invalidate a reservation.
+@@ -513,6 +543,7 @@ impl Session {
+                 .await
+                 .and_then(|context| context.cyber_access_program);
+         }
++        turn_state.lock().await.reserved_mailbox_start_options = Some(start_options.clone());
+         let options = NewTurnContextOptions {
+             final_output_json_schema: start_options.final_output_json_schema,
+             cyber_access_program: start_options.cyber_access_program,
+@@ -555,19 +586,29 @@ impl Session {
+         self.input_queue
+             .extend_pending_input_for_turn_state(turn_state.as_ref(), input)
+             .await;
+-        // Context construction can outlive an interrupt or replacement. Do not let
+-        // start_task recreate a turn whose reservation is no longer ours.
+-        if self
+-            .active_turn
+-            .lock()
+-            .await
+-            .as_ref()
+-            .is_none_or(|turn| !Arc::ptr_eq(&turn.turn_state, &turn_state))
+-        {
++        self.start_task_with_reservation(
++            turn_context,
++            Vec::new(),
++            RegularTask::new(),
++            Some(turn_state),
++        )
++        .await;
++    }
++
++    async fn finish_cancelled_task_start(
++        &self,
++        turn_context: &TurnContext,
++        reservation: Option<&Mutex<TurnState>>,
++    ) {
++        let Some(reservation) = reservation else {
+             return;
++        };
++        self.input_queue.recover_unstarted_input(reservation).await;
++        let reason = reservation.lock().await.task_start_abort_reason.clone();
++        if let Some(reason) = reason {
++            self.emit_turn_abort_lifecycle(reason, turn_context.extension_data.as_ref())
++                .await;
+         }
+-        self.start_task(turn_context, Vec::new(), RegularTask::new())
+-            .await;
+     }
+ 
+     pub async fn abort_all_tasks(self: &Arc<Self>, reason: TurnAbortReason) {
+@@ -587,6 +628,10 @@ impl Session {
+             }
+             if aborted_turn {
+                 active_turn_to_clear = Some(active_turn);
++            } else {
++                self.input_queue
++                    .recover_unstarted_input(active_turn.turn_state.as_ref())
++                    .await;
+             }
+         }
+ 
+@@ -595,6 +640,9 @@ impl Session {
+             // in-flight approval wait can surface as a model-visible rejection before TurnAborted.
+             self.input_queue.clear_pending(&active_turn).await;
+         }
++        if reason == TurnAbortReason::Interrupted && self.is_interrupted() {
++            self.input_queue.suppress_interrupted_wakeups().await;
++        }
+         if reason == TurnAbortReason::Interrupted && aborted_turn {
+             self.maybe_start_turn_for_pending_work().await;
+         }
+@@ -923,19 +971,26 @@ impl Session {
+         }
+     }
+ 
++    #[expect(
++        clippy::await_holding_invalid_type,
++        reason = "record the abort cause before invalidating the turn reservation"
++    )]
+     async fn take_active_turn(&self, reason: &TurnAbortReason) -> Option<ActiveTurn> {
+         let mut active = self.active_turn.lock().await;
++        if let Some(turn) = active.as_ref() {
++            turn.turn_state.lock().await.task_start_abort_reason = Some(reason.clone());
++        }
+         if matches!(
+             reason,
+             TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
+-        ) && active.as_ref().is_some_and(|turn| {
+-            turn.task.is_some()
+-                || (self.enabled(Feature::WakeOnAgentMessages) && turn.finishing.is_none())
+-        }) {
+-            // Message wakes reserve work before registering a task. With the
+-            // feature enabled, stopping a reservation must block later mail too.
+-            // Finishing turns must retain their status until completion is
+-            // persisted, so capacity eviction cannot close their rollout writer.
++        ) && active
++            .as_ref()
++            .is_some_and(|turn| turn.task.is_some() || turn.finishing.is_none())
++        {
++            // Mail wakes reserve work before registering a task, so stopping a
++            // reservation must block later mail too. Finishing turns must retain
++            // their status until completion is persisted, so capacity eviction
++            // cannot close their rollout writer.
+             self.mark_interrupted();
+         }
+         active.take()
+diff --git a/codex-rs/core/src/tasks/mod_tests.rs b/codex-rs/core/src/tasks/mod_tests.rs
+index ba03d83a1..0610bca10 100644
+--- a/codex-rs/core/src/tasks/mod_tests.rs
++++ b/codex-rs/core/src/tasks/mod_tests.rs
+@@ -564,3 +564,6 @@ async fn hard_abort_drops_timing_guards_before_profile_completion() {
+         None
+     );
+ }
++
++#[path = "mailbox_wake_tests.rs"]
++mod mailbox_wake_tests;
+diff --git a/codex-rs/protocol/src/lib.rs b/codex-rs/protocol/src/lib.rs
+index 6e6559f9d..5952b7187 100644
+--- a/codex-rs/protocol/src/lib.rs
++++ b/codex-rs/protocol/src/lib.rs
+@@ -1,6 +1,7 @@
+ pub mod account;
+ mod agent_path;
+ pub mod auth;
++mod mailbox_wake;
+ mod response_item_id;
+ mod response_usage;
+ mod sanitized_git_url;
+@@ -8,6 +9,7 @@ mod session_id;
+ mod thread_id;
+ mod tool_name;
+ pub use agent_path::AgentPath;
++pub use mailbox_wake::MailboxWakePolicy;
+ pub use permission_profile_intersection::PermissionIntersectionError;
+ pub use permission_profile_intersection::intersect_effective_permission_profiles;
+ pub use response_item_id::ResponseItemId;
+diff --git a/codex-rs/protocol/src/mailbox_wake.rs b/codex-rs/protocol/src/mailbox_wake.rs
+new file mode 100644
+index 000000000..5d58afd2e
+--- /dev/null
++++ b/codex-rs/protocol/src/mailbox_wake.rs
+@@ -0,0 +1,19 @@
++use schemars::JsonSchema;
++use serde::Deserialize;
++use serde::Serialize;
++use ts_rs::TS;
++
++/// Controls whether a mailbox message may resume an interrupted recipient.
++#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, JsonSchema, TS)]
++#[serde(rename_all = "snake_case")]
++pub enum MailboxWakePolicy {
++    #[default]
++    Always,
++    UnlessInterrupted,
++}
++
++impl MailboxWakePolicy {
++    pub fn is_always(&self) -> bool {
++        *self == Self::Always
++    }
++}
+diff --git a/codex-rs/protocol/src/mailbox_wake_tests.rs b/codex-rs/protocol/src/mailbox_wake_tests.rs
+new file mode 100644
+index 000000000..4f294a2d2
+--- /dev/null
++++ b/codex-rs/protocol/src/mailbox_wake_tests.rs
+@@ -0,0 +1,45 @@
++use super::InterAgentCommunication;
++
++#[test]
++fn legacy_inter_agent_communication_preserves_explicit_wakeup() {
++    let value = serde_json::json!({
++        "author": "/root/worker",
++        "recipient": "/root",
++        "other_recipients": [],
++        "content": "new task",
++        "trigger_turn": true
++    });
++    let mail: InterAgentCommunication = serde_json::from_value(value.clone()).expect("legacy mail");
++    assert_eq!(mail.wake_policy, crate::MailboxWakePolicy::Always);
++    assert_eq!(
++        serde_json::to_value(mail).expect("serialize legacy mail"),
++        value
++    );
++}
++
++#[test]
++fn inter_agent_communication_preserves_conditional_wake_policy() {
++    let value = serde_json::json!({
++        "author": "/root/worker",
++        "recipient": "/root",
++        "other_recipients": [],
++        "content": "finished",
++        "trigger_turn": true,
++        "wake_policy": "unless_interrupted"
++    });
++    let mail: InterAgentCommunication =
++        serde_json::from_value(value.clone()).expect("known policy");
++    assert_eq!(serde_json::to_value(mail).expect("serialize result"), value);
++}
++
++#[test]
++fn inter_agent_communication_rejects_unknown_wake_policy() {
++    let value = serde_json::json!({
++        "author": "/root/worker",
++        "recipient": "/root",
++        "content": "finished",
++        "trigger_turn": true,
++        "wake_policy": "ignore_user_interruption"
++    });
++    assert!(serde_json::from_value::<InterAgentCommunication>(value).is_err());
++}
+diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
+index 3c79cb98a..20a9e722f 100644
+--- a/codex-rs/protocol/src/protocol.rs
++++ b/codex-rs/protocol/src/protocol.rs
+@@ -966,6 +966,8 @@ pub struct InterAgentCommunication {
+     #[ts(optional)]
+     pub internal_chat_message_metadata_passthrough: Option<InternalChatMessageMetadataPassthrough>,
+     pub trigger_turn: bool,
++    #[serde(default, skip_serializing_if = "crate::MailboxWakePolicy::is_always")]
++    pub wake_policy: crate::MailboxWakePolicy,
+ }
+ 
+ impl InterAgentCommunication {
+@@ -985,6 +987,7 @@ impl InterAgentCommunication {
+             encrypted_content: None,
+             internal_chat_message_metadata_passthrough: None,
+             trigger_turn,
++            wake_policy: crate::MailboxWakePolicy::Always,
+         }
+     }
+ 
+@@ -1004,6 +1007,7 @@ impl InterAgentCommunication {
+             encrypted_content: Some(encrypted_content),
+             internal_chat_message_metadata_passthrough: None,
+             trigger_turn,
++            wake_policy: crate::MailboxWakePolicy::Always,
+         }
+     }
+ 
+@@ -4733,6 +4737,10 @@ pub struct CollabResumeEndEvent {
+ #[path = "conversation_start_params_tests.rs"]
+ mod conversation_start_params_tests;
+ 
++#[cfg(test)]
++#[path = "mailbox_wake_tests.rs"]
++mod mailbox_wake_tests;
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+@@ -4944,6 +4952,7 @@ mod tests {
+             encrypted_content: None,
+             internal_chat_message_metadata_passthrough: None,
+             trigger_turn: true,
++            wake_policy: crate::MailboxWakePolicy::Always,
+         };
+         communication.set_turn_id_if_missing("turn-1");
+         let mut serialized_communication = communication.clone();
+-- 
+2.43.0
+

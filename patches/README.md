@@ -15,3 +15,4 @@ The release applies these patches in this order:
 9. [issue-34776/background-session-skill-warmup.patch](holdmyspot-com/codex-unleashed/issue-34776/background-session-skill-warmup.patch)
 10. [issue-34776/avoid-slow-agent-switching-and-resume.patch](holdmyspot-com/codex-unleashed/issue-34776/avoid-slow-agent-switching-and-resume.patch)
 11. [background-terminal-transcript-hint/background-terminal-transcript-hint.patch](holdmyspot-com/codex-unleashed/background-terminal-transcript-hint/background-terminal-transcript-hint.patch)
+12. [issue-35/0001-preserve-interrupted-mailbox-work.patch](holdmyspot-com/codex-unleashed/issue-35/0001-preserve-interrupted-mailbox-work.patch)
