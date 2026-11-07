@@ -32,7 +32,7 @@
   "remote_session": {
     "workflow": {
       "conclusion": "failure",
-      "headSha": "c1321e884465fb57fe5efd97fd01edecf0a50d5a",
+      "headSha": "c4babbc34ee8ef4df6c5d3ac1191c0d6cc6b669b",
       "jobs": [
         {
           "completedAt": "2026-10-28T16:39:43Z",
@@ -161,7 +161,7 @@
         "repository_id": 1356304765,
         "head_repository_id": 1356304765,
         "head_branch": "main.new",
-        "head_sha": "c1321e884465fb57fe5efd97fd01edecf0a50d5a"
+        "head_sha": "c4babbc34ee8ef4df6c5d3ac1191c0d6cc6b669b"
       }
     },
     "ssh_terminal": {

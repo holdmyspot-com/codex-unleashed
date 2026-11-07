@@ -2,7 +2,7 @@
   "schema_version": 1,
   "scope": "Local Java cache helper profile support; no Codex source or remote workflow changes.",
   "status": "local-component-accepted; native-workflow-integration-pending",
-  "predecessor_commit": "edb143e9635eecef2b2091ac9337dc107d329a2e",
+  "predecessor_commit": "60a57e295a352c4ace7df40c254abfce8a94669c",
   "jdk": "Zulu JDK 27 build 27+35",
   "fixture_rust": "1.99.1 native Linux x86-64; dependency-free fixture, not a Codex baseline build",
   "design": {

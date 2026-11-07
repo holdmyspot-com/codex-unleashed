@@ -4,7 +4,7 @@
   "run": 40839489602,
   "job": 123332141567,
   "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40839489602",
-  "head": "2ddb6303a683fb67d8d04c601395ca61461cc92c",
+  "head": "28d098590f270c1aad3821682dbb116ccdb21da5",
   "upstream_commit": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
   "target": "aarch64-unknown-linux-gnu",
   "scope": "Actual maintained focused Codex workflow: shared setup, GITHUB_ENV successor handoff, legacy restore, profile-aware preparation, one named daemon test, same-worker unchanged compilation reuse, source/dependency guards, recording and private publication.",
@@ -44,7 +44,7 @@
     "profile_prepare_record_and_private_verified_publication": "passed",
     "named_codex_test": "passed: managed_identity_survives_locale_and_timezone_changes, 3.781 seconds",
     "same_worker_unchanged_compilation": "passed: 3 seconds, no Compiling entries, identical test binary SHA-256",
-    "separate_runner_codex_unchanged_compilation": "unrun; successor run at 26edeade5f uses stable paths and may require one-time migration from this random-root producer",
+    "separate_runner_codex_unchanged_compilation": "unrun; successor run at 95cad705a4 uses stable paths and may require one-time migration from this random-root producer",
     "stable_path_action_workflow_setup": "unrun in this producer; three native isolated lifecycle cases pass separately",
     "checkpoint_2": "incomplete"
   },
@@ -65,7 +65,7 @@
       "Post Retrieve restart inputs": "success"
     },
     "temporary_key_pair_removed": true,
-    "local_directory": "Removed after verifying the committed raw archives at a648d31d0b; the successor owns its independent retained directory.",
+    "local_directory": "Removed after verifying the committed raw archives at a5b48ab4d9; the successor owns its independent retained directory.",
     "registry_outputs": "Production Codex cache retained; no temporary GHCR fixture versions created by the path probe."
   },
   "diagnostics": [

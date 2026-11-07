@@ -358,7 +358,7 @@
       "artifact_id": 12592990691,
       "run_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40170497240",
       "upstream_commit": "6aaac694803004a63c6f393d153c96d22521a6b9",
-      "restart_commit": "869fd7b200bd8de985bb595d2d6b3693f2227f13",
+      "restart_commit": "f0ad6c04eb6320eef05a829d201052bfba81e17c",
       "platform": "Linux x86-64 GNU",
       "cargo_profile": "ci-test",
       "nextest_version": "0.9.111",
@@ -691,7 +691,7 @@
   ],
   "later_bazel_runtime_evidence": {
     "run_id": 40190837597,
-    "restart_commit": "053b0fa3fd29f332a97fe3072dc6e2a5523f60bd",
+    "restart_commit": "168a830cfd427986d69d7ed571969956de1bd3c3",
     "source_state": "Historical ten baseline repairs plus two nonfatal policy patches; not pristine-source runtime acceptance.",
     "receipt_path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/baseline-3SlL5r/native-bazel-tests-6-verified.json",
     "receipt_sha256": "b24c133bc0c80dbfd95f2d00bad07c92c5836f5477abe93d156ea84929d0ee6c",
@@ -827,7 +827,7 @@
   "native_platform_runtime_reconciliation": {
     "windows_x86_64": {
       "run_id": 40190837633,
-      "restart_commit": "053b0fa3fd29f332a97fe3072dc6e2a5523f60bd",
+      "restart_commit": "168a830cfd427986d69d7ed571969956de1bd3c3",
       "source_state": "Historical ten baseline repairs and two nonfatal policies; not pristine-source acceptance.",
       "receipt_path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/baseline-3SlL5r/windows-bazel-tests-5-remaining-artifacts-verified.json",
       "receipt_sha256": "1c26208c5acd3beac51497fc12f52840bfee4b73e83bd2bccba84d78051c1d1d",
@@ -1200,7 +1200,7 @@
   "current_source_package_runtime": {
     "run_id": 40681183363,
     "job_id": 122792026783,
-    "restart_commit": "367fe460061f9bb50bb82e578966082123a1cb08",
+    "restart_commit": "68824e2a3a41a7c0cb01bd3598b643c3d2696934",
     "upstream_commit": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
     "target": "x86_64-unknown-linux-musl",
     "rust": "1.95.0",

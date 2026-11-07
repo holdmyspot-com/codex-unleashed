@@ -77,7 +77,7 @@
           }
         ]
       },
-      "review_head": "e5f9d8571b7c2f8fc41bc0b833d5186c680b42a7",
+      "review_head": "ccba84efb6ec0f5ab36533983d57b58200a70c01",
       "method": "Read all14 frozen old-main patches. Compare selected exact upstream raw files and maintained source/evidence. No builds, tests, workflows, source edits or issue writes. No accepted-check reruns. Missing local upstream Git object resolved with exact pinned GitHub raw URLs; HTTP404 locators recorded as absent paths only.",
       "policy": {
         "steps_1_3": "No upstream source/test modification; accepted environment evidence reused.",
@@ -471,7 +471,7 @@
         "plan_sha256": "602c99adf578dcdfe0abf999201e6ebff36d23bb88238e8c1021d75d25637abf",
         "frozen_main": "545479059ac86394049b6efd3bf4297b1ca18d17",
         "pinned_upstream": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
-        "current_head": "b54f305349182660bdc013cf22060a43db92c319",
+        "current_head": "e259e0b5646efce127c37dccdbd44b1f4a9f6dca",
         "object_availability": {
           "frozen_main": {
             "revision": "545479059ac86394049b6efd3bf4297b1ca18d17",
@@ -1204,7 +1204,7 @@
       "identities": {
         "old_main": "545479059ac86394049b6efd3bf4297b1ca18d17",
         "pinned_upstream": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
-        "current_maintained_head": "b54f305349182660bdc013cf22060a43db92c319",
+        "current_maintained_head": "e259e0b5646efce127c37dccdbd44b1f4a9f6dca",
         "plan_sha256_at_freeze": "602c99adf578dcdfe0abf999201e6ebff36d23bb88238e8c1021d75d25637abf"
       },
       "scope_file": "scope.json",

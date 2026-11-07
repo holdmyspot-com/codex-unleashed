@@ -3,7 +3,7 @@
   "checkpoint": 1,
   "status": "accepted-with-owner-approved-deferrals",
   "upstream_commit": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
-  "predecessor_commit": "f1c87fe802ebf06fc373666e7f6d5df3c7cef15a",
+  "predecessor_commit": "f7d31892e49f5f8b39f64d548f66ff3352a121ef",
   "recorded_by": "root goal orchestrator",
   "completion_tag": "checkpoint-1-upstream-baseline",
   "acceptance_scope": "Codex CLI/app-server selected release artifacts, required helpers and selected native runtime checks; unrelated workspace/SDK targets excluded by owner.",
@@ -152,5 +152,5 @@
     ]
   },
   "next_action": "Complete checkpoint 2 profile-aware content-checked freshness handling for focused ci-test caches; preserve accepted results.",
-  "completion_commit": "63fc192f549dd4e516e0357d7f66d5ea2be1417e"
+  "completion_commit": "3ce2e1cfa0cdf21a82bea070ca6406aa2b4bb551"
 }

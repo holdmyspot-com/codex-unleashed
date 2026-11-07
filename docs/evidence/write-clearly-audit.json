@@ -4,7 +4,7 @@
   "scope": {
     "request": "Apply write-clearly.md to all project-owned classes, methods and their documentation, including tests and maintained embedded code.",
     "branch": "main.new",
-    "source_base_commit": "0bda5c6f621c3535692ab01f5b30f76fd1f0e520",
+    "source_base_commit": "e16d8e853f91b142a8624f0779cae5225802723b",
     "standalone_source_files": 111,
     "workflow_and_action_yaml_files": 43,
     "reviewed_files": 154,

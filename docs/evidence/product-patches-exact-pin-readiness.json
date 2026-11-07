@@ -8,8 +8,8 @@
       "sha256": "24f987263720d4977324006bcfffd9422b69f819444cc4a00e51152ec6b09aad",
       "unchanged": true
     },
-    "main_new_snapshot": "63c5a7d7bcfc7bb03eec605c19cedf47af3be264",
-    "current_root_not_modified": "e30c101f3218aa41f5faabd938cbf95f052917bb",
+    "main_new_snapshot": "97f91064051e2b69170ff888a42f7dab11bf0ec5",
+    "current_root_not_modified": "2f7dc659e28f4a2eaaf04cc3e1a0faff6980f9fe",
     "frozen_old_main": "545479059ac86394049b6efd3bf4297b1ca18d17",
     "selected_upstream_commit": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
     "selected_upstream_tree": "16b1c50831e79726bca339e0da0b51c682944959"
@@ -28,7 +28,7 @@
   },
   "conflicts_with_inherited_inventory": [
     {
-      "locator": "plan.md:698 at63c5a7d7bcfc7bb03eec605c19cedf47af3be264",
+      "locator": "plan.md:698 at97f91064051e2b69170ff888a42f7dab11bf0ec5",
       "claim": "several Rust warning/toolchain source changes already upstream",
       "observed": "Selected immutable pin still has fetch_update in three named owners, unboxed MCP send-error result, params:_ request patterns, borrowed normalizer and other old fragments. Exact hunk observations and decisive-source-excerpts.json supply source hashes/lines.",
       "consequence": "Do not carry already-upstream disposition to these hunks; remain excluded warning/toolchain candidates, requiring actual later diagnostics. No CP4 repair implied."

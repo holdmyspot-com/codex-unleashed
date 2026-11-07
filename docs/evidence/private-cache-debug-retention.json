@@ -2,7 +2,7 @@
   "schema_version": 1,
   "run_id": 40689926766,
   "job_id": 122821890674,
-  "restart_commit": "a615d3049b95afa727f8845c89406ccf9a929b53",
+  "restart_commit": "3f6003017e37c6b73d4865e17019dd5ad1943329",
   "target": "x86_64-unknown-linux-musl",
   "purpose": "Verify private-cache write authority and the production grouped-cache push/pull operation before another costly retained-runner compilation.",
   "permission_change": {

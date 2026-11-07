@@ -41,7 +41,7 @@ The maintained `.github/workflows/cache-cleanup.yml` passes the repository's pin
 
 These runs used a read-only inventory workflow, since replaced by the pruning workflow described in the next section,
 to collect paginated upstream release metadata and private package-version metadata with `packages: read`. Run `40396840902` at
-`b11b37a2e8326938b950178efd3935584366670c` first receives HTTP 504 while listing
+`3d67dfdc65e1ba165708ed8045391ef584f5affa` first receives HTTP 504 while listing
 upstream releases, before package enumeration. Its unchanged read-only retry
 passes in 1m 22s. The local token separately lacks `read:packages`; that local
 permission failure is not evidence that the workflow token cannot read packages.
@@ -57,7 +57,7 @@ No package version is deleted. This verifies the current tag association against
 old main's policy; it does not establish safe concurrent deletion or complete
 the retention-tool migration.
 
-Integrated preview run `40401691282` at `4120107dabe19dd3864f145dd57b0b39cda50879`
+Integrated preview run `40401691282` at `37b957732f4bd39b1425f8dba94b856847010b76`
 fails in both attempts while listing upstream releases, before package collection
 or helper compilation. Each reports GitHub HTTP 504 and retains only the three
 pre-package files. A local request for the same 100-release REST page reproduces
@@ -70,7 +70,7 @@ Old main's smaller GraphQL field query was also evaluated: it returns only
 complete inventory.
 
 Hosted run `40404430412`, job `121858399002`, at
-`ea688c75dceab7d725de25d5027686582a66a9d1` passes the integrated read-only
+`0882a33d1c673874d3dcd38c9e24fe6e92ac1729` passes the integrated read-only
 workflow in 2m 13s. It captures 1,245 distinct releases and 137 private package
 versions, passes all 37 helper tests and runtime assembly, and previews 52
 retained versions, 85 obsolete candidates and zero unmanaged versions. The
@@ -88,7 +88,7 @@ That action's own definition fixes the toolchain to 1.99.1 and declares only
 target/component inputs; its log confirms rustc 1.99.1 actually ran. The redundant
 unsupported input is removed, preserving that immutable action and version.
 Run `40404968404`, job `121860246662`, at
-`1f4dc30343160fe88c2442029085b1c0d1643fa7` confirms the correction in 2m 15s:
+`ae6f9924bbbdd40b01a193a0b5dc86a73490b927` confirms the correction in 2m 15s:
 zero check annotations, actual rustc 1.99.1, all 37 tests passing, runtime
 assembly passing and the same 52/85/0 preview classification. No deletion runs.
 
@@ -172,7 +172,7 @@ to another GHCR package does not implement that Actions retention policy.
 The focused [cache-package-transfer.yml](../.github/workflows/cache-package-transfer.yml)
 workflow verifies the existing ORAS copy operation before moving build caches.
 Run [`40501668304`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40501668304)
-at `e95e2aff946422c24a100aa6394341b820fd15e6` passes transfer, consumption
+at `3dd0afe97901885c115598a9a141ba9a13b4cbe2` passes transfer, consumption
 with a fresh job token, and owned-fixture cleanup. Both package metadata responses
 report private visibility; anonymous resolution is rejected with authentication
 required. The source and both destination aliases resolve to
@@ -202,7 +202,7 @@ unchanged. Automatic retention and concurrent publication/deletion acceptance
 remain open.
 
 Migration run [`40502368002`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40502368002)
-at `ca5d6d6ac6a0e2be30af52def835b3c4eabff655` passes in 51 seconds.
+at `0e86364e4dfcf4fcb23face91e0d103f322ab362` passes in 51 seconds.
 It copies eight current compatible-cache manifests across all six targets and
 verifies all 24 destination aliases against their source digests. Its
 copy logs report 41 server-side blob mounts, seven existing blobs and zero
@@ -226,11 +226,11 @@ these historical request entries; migration acceptance does not imply the absent
 historical manifests can still be restored.
 
 Isolated inventory run `40502660726` at
-`4325b567859884b936eb0aea44ad4a390cd3dc61` passes the complete read-only
+`b427f02d00e8d51b7e6cb41b095647b858595b79` passes the complete read-only
 workflow in 2m 19s. Its preview retains all eight compiled-cache versions,
 reports zero obsolete candidates and classifies the one bootstrap as unmanaged.
 Follow-up migration/cleanup `40503122313` at
-`613f90ee2caa0cdc081355659055be8bbec25f17` passes in 39 seconds. It verifies
+`a10a5ad4b87830c5beacfb0e7cc8b3f18a5b1df5` passes in 39 seconds. It verifies
 the bootstrap's exact version ID `1452472811`, digest and complete alias set,
 deletes only that version and confirms its absence from the resulting inventory.
 This completes the bootstrap cleanup handoff; no real build cache is deleted.
@@ -239,13 +239,13 @@ For cache-only acceptance, dispatch the release workflow with `cache=true` and
 `require_cache_hit=true`. The latter stops before compilation when every
 compiled-cache lookup misses; its default remains false for cold population and
 ordinary baseline builds. Expected-negative run `40508191624` at
-`25697e6ad0c610fc569ddcf72ade15acc16aa923` rejects `require_cache_hit=true`
+`943474bdfa519823f3656e18942e1584fd93d9a6` rejects `require_cache_hit=true`
 with `cache=false` during target selection and skips the build job. This checks
 input validation only; the separate shell and native checks below establish miss
 rejection and successful hit-required compilation.
 
 Focused Linux run [`40502660994`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40502660994)
-at `4325b567859884b936eb0aea44ad4a390cd3dc61` passes in 1h 26m 22s,
+at `b427f02d00e8d51b7e6cb41b095647b858595b79` passes in 1h 26m 22s,
 including both native version smokes, source/dependency guards and verified
 private publication. All four initial lookups (exact/compatible, verified/partial)
 report misses. Its compatible identity is
@@ -270,7 +270,7 @@ recorded, then removes that owned directory.
 
 The hit-required follow-up's Linux job `122203527267`, in
 [run `40508366323`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40508366323)
-at `25697e6ad0c610fc569ddcf72ade15acc16aa923`, passes in 6m 39s. It restores
+at `943474bdfa519823f3656e18942e1584fd93d9a6`, passes in 6m 39s. It restores
 the migrated six-group manifest
 `sha256:366a6e9ed4ff002d45f4774f82fb991a970a61b95a51fcac4533855c811e9761`
 through compatible identity
@@ -301,7 +301,7 @@ A local check executes the actual restore-step shell with the transport's
 recorded missing-state exit code, `3`, supplied by a fixture. The hit-required
 case exits 1 before the next-step marker; optional caching permits the same
 miss. A hit proceeds and transport exit 42 propagates without reaching that
-marker. The same missing-state check on predecessor `4325b56785` proceeds,
+marker. The same missing-state check on predecessor `b427f02d00` proceeds,
 demonstrating the guard's behavioral difference. This verifies shell branching,
 not registry behavior; the real-registry restore above covers the positive
 integration. The first probe stops at an incorrect harness job-name lookup;
@@ -335,9 +335,9 @@ A real ORAS 1.3.1 local OCI-layout fixture verifies archive round-trip bytes, de
 
 A no-dependency Cargo fixture using Rust 1.99.1 reports `fresh=false` on its cold build, `fresh=true` for an unchanged second build, and `fresh=false` after only the source modification timestamp advances. Source bytes stay identical. This demonstrates a timestamp-related reuse risk at Cargo's fixture boundary; it does not prove the behavior of a hosted Codex warm run. Retain the hosted cold/warm evidence before choosing the required source-input helper migration. No source timestamps are altered in the Codex checkout by this probe. Evidence is retained in the session's `cache-migration-40B3Cg/cargo-freshness-probe/verified.json`.
 
-Focused Windows ARM run `40212093326` verifies the checksum-pinned ORAS Windows amd64 executable and native real-OCI transport fixture. Its later restore fails our tag validation because filename escaping adds a backslash to the displayed checksum. The stdin-hash correction is published at `c6b7572c8ed8ad9ead5a0ef438c6ab574813eb43`; retry `40212476702` subsequently passes the cold build and authenticated upload, as recorded below. Native fixture success and GHCR login alone do not establish registry writes, compiled-output reuse or capacity under full builds.
+Focused Windows ARM run `40212093326` verifies the checksum-pinned ORAS Windows amd64 executable and native real-OCI transport fixture. Its later restore fails our tag validation because filename escaping adds a backslash to the displayed checksum. The stdin-hash correction is published at `9a52d526c28a568350016f90764ad0899f5dffdc`; retry `40212476702` subsequently passes the cold build and authenticated upload, as recorded below. Native fixture success and GHCR login alone do not establish registry writes, compiled-output reuse or capacity under full builds.
 
-The first Linux cold-cache jobs in `40211546824` each pass the native archive fixture and see a registry cache miss, then receive runner shutdown signals during compilation (exit 143). Final guards, smokes and saves are skipped. The observed logs establish interrupted execution, not its underlying host cause or a cache-size failure. Targeted cold retries are `40213326832` (Linux x86-64) and `40213329117` (Linux ARM64), from restart `257a54b6ee6762a44861d7bcde886db6e8e80c31`. The ARM retry terminates after 59 minutes with GitHub reporting that the hosted runner lost communication. Its build step fails; final source guard, smokes, artifact upload and GHCR save are skipped. The job-log API returns 404, and the available workflow-log archive contains only the selector job. No build artifact survives. This establishes a lost runner, not a compiler, OOM, disk-full or cache-size cause. The x86-64 retry passes its cold build, as recorded below; the two runs must not be conflated. A source comparison against successful pristine release commit `1e74872eb42d3870ccf985c80bcc4f94e49710e1` verifies unchanged ARM runner label, upstream identity, build environment, prerequisites and serial default-feature Cargo commands. The added precompile operations are download caches, ORAS transport checks, GHCR login, key derivation and optional exact-key restore; cache save runs only after compilation and guards. This bounds the configuration differences but supplies no runtime resource measurement for the lost runner.
+The first Linux cold-cache jobs in `40211546824` each pass the native archive fixture and see a registry cache miss, then receive runner shutdown signals during compilation (exit 143). Final guards, smokes and saves are skipped. The observed logs establish interrupted execution, not its underlying host cause or a cache-size failure. Targeted cold retries are `40213326832` (Linux x86-64) and `40213329117` (Linux ARM64), from restart `1aa020539343840a47995c2fb77c98433829f0d9`. The ARM retry terminates after 59 minutes with GitHub reporting that the hosted runner lost communication. Its build step fails; final source guard, smokes, artifact upload and GHCR save are skipped. The job-log API returns 404, and the available workflow-log archive contains only the selector job. No build artifact survives. This establishes a lost runner, not a compiler, OOM, disk-full or cache-size cause. The x86-64 retry passes its cold build, as recorded below; the two runs must not be conflated. A source comparison against successful pristine release commit `15d8ed333e94aa6cccd93888681565a57a2e2283` verifies unchanged ARM runner label, upstream identity, build environment, prerequisites and serial default-feature Cargo commands. The added precompile operations are download caches, ORAS transport checks, GHCR login, key derivation and optional exact-key restore; cache save runs only after compilation and guards. This bounds the configuration differences but supplies no runtime resource measurement for the lost runner.
 
 ARM attempt 2 retains runner diagnostics and fails after 12 min 50 s of compilation with exit 143 and shutdown classification `UserCancelled`. The initiating actor remains unknown after the available audit checks; no compiler, OOM, disk or source failure is established. Smokes, final guard and save are skipped, so this is not an accepted ARM cold cache build. See the [baseline investigation](build-baseline.md) and retained `linux-arm-cold-debug-1-verified.json`. The successful Linux x86-64 and Windows ARM cold saves below establish authenticated writes. Warm compiled-unit reuse remains unverified.
 

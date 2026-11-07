@@ -79,7 +79,7 @@ durations, group counts, uploaded archive bytes and reused group counts. Complet
 the required clean matrix separately before accepting the plan's cache gate.
 
 The earlier Cargo-unit grouping's native fixture [run `40332295510`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40332295510)
-passes on all six release hosts at `f9745689f29b7e3f81c3fa643824d8ac5ac45337`.
+passes on all six release hosts at `2cbbd79c01169169b3eeb9620184374b5190119e`.
 Windows verification resolves Git Bash and GNU tar explicitly at the native
 Python launch boundary. The [failure comparison](upstream-failure-comparison.md)
 retains the failed launcher results and passing counterfactuals. Full Codex
@@ -92,7 +92,7 @@ real-ORAS checks pass final-save reuse with both older verified and older partia
 state, cache relocation, imported bootstrap ownership, legacy and earlier-parts
 reads, removed files, hardlinks and exact timestamps. Native fixture
 [run `40360535128`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40360535128)
-passes on all six release hosts at `32cb038e1e4ee6835cddc9247bea2f265a24a31e`.
+passes on all six release hosts at `6f7c2c210afd31d5965b0dd815ab9c3c1a780e50`.
 Actual Codex transfer measurements remain a separate gate.
 
 Actual Linux x86-64 [run `40332032199`, attempt 1](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40332032199/attempts/1)
@@ -130,7 +130,7 @@ manifest rather than looking up a newly written tag. A local regression supplies
 the observed tag-lookup failure and verifies successful publication, alias
 resolution and restoration for both grouped and legacy archives. Native fixture
 [run `40365691558`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40365691558)
-passes all six release hosts at `d50b36a7a185e8b7a04554229797a1c8fa8afb9b`.
+passes all six release hosts at `fc756e3a8c843a3adf64212a58315fa961f6c2d8`.
 These fixtures use local OCI layouts. Actual Linux
 [run `40365751436`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40365751436)
 passes at the same revision, including compilation, both native smokes,
@@ -159,7 +159,7 @@ fails because a report update changes the compiled archive's digest, then passes
 with that archive reused and the updated report restored. Preserve these
 successful build results. Native fixture run
 [`40371907954`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40371907954)
-passes on all six release hosts at `f550feafad644576c1d03bece323785a8850b30f`,
+passes on all six release hosts at `44090e15a06f1bddcde916329015403e2a97a78f`,
 including compiled-archive reuse after a dependency-report update and restoration
 of the updated report. Actual grouped Linux
 [run `40371906652`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40371906652)
@@ -197,7 +197,7 @@ preserves it through the checkpoint. It fails with the previous command, then
 passes with `strip --preserve-dates`; all four local release-stage tests and
 ShellCheck pass. Native fixture run
 [`40376947788`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40376947788)
-passes on all six hosts at `5e5f3407160dc337c04aa7e78b8a6d79c83390c3`.
+passes on all six hosts at `ae08d235a21d70fda34d4d99a70d627a610b6915`.
 This changes the downstream build wrapper only. Full Codex verification run
 `40376998616` passes all five default-feature builds, both native smokes,
 source/dependency guards and private publication. It saves six groups; the final
@@ -217,7 +217,7 @@ Actions endpoint reported zero; use the affected endpoint's response headers whe
 establishing whether that operation can resume.
 
 Linux ARM64 run `40378411257` at
-`d4676c21cd03aafab25af89efd355b41bf680a14` reaches CLI compilation but ends
+`a35f77972e8ef344c9e586676274ab30054c3bcf` reaches CLI compilation but ends
 with exit 143 in both attempts. Its retry restores completed checkpoints:
 bwrap/proxy/code-mode-host invocations take 6/1/1 seconds, and each checkpoint
 reuses all three output archives while uploading about 1.4 MB of metadata in
@@ -236,7 +236,7 @@ overhead. A local SIGTERM probe retains the sender and exit 143, and all four
 release-stage fixtures pass under tracing. A host shutdown may still remove the
 runner before a signal record survives; absence of a record cannot establish
 the initiating cause. Ordinary runs keep tracing disabled. Run `40395599813`
-uses this diagnostic at `ee711a9716fb4dfda3ab18f41256134b459dd5f4`;
+uses this diagnostic at `ee98c7610d79eddbb1ea10aac035c8a34a7ea2f3`;
 job `121827730955` fails after the runner reports a shutdown signal and the build
 exits 143. No SIGTERM sender record survives. Even the `always()` evidence and
 guard steps are skipped. This narrows the observed boundary to runner shutdown,
@@ -271,14 +271,14 @@ in session temp `arm-runner-debug-7v1SYj/logs.zip` until ARM cache acceptance
 and owns its cleanup; the source, smoke and cache-save gates remain unrun.
 
 Run [`40412484686`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40412484686)
-at `2701312d8cb1ea6d345b7e542da678305a209212` is a compilation-free ARM64
+at `7267778bf914896b6e0a11defa6765eef54a9f0d` is a compilation-free ARM64
 preflight for kernel signal observation. It installs bpftrace, starts an owned
 observer and marker, waits for a recorded SIGCONT from the known Python sender,
 then verifies a matching SIGTERM record and the marker's signal exit. Both
 processes are reaped, and probe receipts/logs have one-day artifact retention.
 The first hosted probe fails before attachment: bpftrace rejects `str(args->comm)`
 because the tracepoint field is already a string array. Commit
-`1d7046a34d4516c12c8ae0ea51ef025acf0f1586` passes the field directly; workflow
+`3f28138cd51c7bdfd0dd0ed43b5e24249297aa1c` passes the field directly; workflow
 lint and Python syntax checks pass. The local negative check records sudo's
 no-new-privileges rejection without hanging. This diagnostic is
 downstream-only, with no upstream Codex counterpart. Its first manual dispatch
@@ -298,9 +298,9 @@ The next diagnostic must keep this observer active across the actual ARM build
 and stream records to the job log, including signals outside the build child.
 
 The command-observation regression initially fails in run `40413278649` at
-`bcc1342a3ea2c330484ce80fc432052839f9eeca`: the supplied command never runs,
+`2ebd41cec5217664424048090e05800754b959e1`: the supplied command never runs,
 and the wrapper returns zero instead of its requested exit 17. The corrected
-wrapper at `a85255a594c8bc6912f4acefefbde23350943777` passes focused hosted run
+wrapper at `8623a398b5d4f3ddb82999db30c36a22ef2cc8cb` passes focused hosted run
 [`40413519826`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40413519826)
 in 21 seconds. Its real-process fixture verifies command execution, SIGCONT
 capture during each command, successful exit and propagation of exit 17.
@@ -319,7 +319,7 @@ the new shell commands have no ShellCheck findings. Actual ARM build observation
 and cache acceptance remain pending.
 
 Run [`40413740004`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40413740004)
-at `2fd2eee04e49d0c3cdfb868ea64d1d3ed8646447` is now terminal: ARM job
+at `5348e62cd1c8ad1f6d07e59b2548302b5ad13b23` is now terminal: ARM job
 `121890734990` fails after 17m 10s with exit 143. The streamed observer records
 SIGKILL generation for rustc PID 55525 with `code=128`, in the current process
 context of PID 1996 (`provjobd9019055`). Forty-four milliseconds later it records
@@ -367,9 +367,9 @@ diagnostic; verify the hit rather than assuming it. CLI compilation after that
 checkpoint is not preserved by this failed run.
 
 The SIGKILL-stack fixture first fails in `40416615813` at
-`f249c304e1b6946c47df92137353056cabc7c11b`: self-kill capture and exit 137
+`f799d77b8fe66dcc7bc3a346230941e965daea76`: self-kill capture and exit 137
 propagation work, but no kernel stack is present. Correction
-`bce36d792e6752b60a355b8068d8f24fe970e272` adds SIGKILL stacks and the OOM
+`e0e5554894e4ea204c6cbec5282d8a5ebf300797` adds SIGKILL stacks and the OOM
 victim tracepoint to the existing observer. Focused native run `40416773654`
 passes in 18 seconds: both probes attach and the real self-kill fixture captures
 the ARM kill-syscall stack. Ordinary command exits zero/17 and signal exit 137
@@ -392,7 +392,7 @@ retained as `arm-kernel-signal-EFWxgu/oom-job.log`, SHA-256
 `72653d40e7cd71980d371b227b15d08591d3f7610c7a68169a3015e59931ebdc`,
 with cleanup owned by the goal executor after ARM acceptance.
 
-Observer correction `935004033ddc9ac5d36b3f2367cbe4b0639aa72b` emits a kill's
+Observer correction `12c828b59ec510d4ef52f20e8ed3acf85466f4d4` emits a kill's
 stack in the same output record as its header, observes `oom_kill_process` entry
 before victim signalling and omits routine SIGURG traffic. Focused probe
 `40418699391` must pass attachment and the existing real-process stack/exit
@@ -416,14 +416,14 @@ during compilation, rather than infer a cause from the missing final records.
 
 The compilation-free telemetry regression in run `40421161808` fails all
 three exit-status cases because no memory sample is present. Revision
-`5d0203acfc506e4fd58314da750a15ade6709de2` adds five-second `top` samples
+`559076518f1ada4b4a5652f518624803a86ba7ae` adds five-second `top` samples
 covering memory, swap and the wrapper/observer/output processes, alongside
 warning-level system journal streaming. Both sources share the retained
 `signal-observer.log` and the live job log. Readiness requires a memory
 sample and a journal marker sent by `logger` before compilation starts.
 The first integration delivers both, but run `40421290639` fails an assertion
 that omitted the native journal tag's PID. Corrected regression
-`0a7c8e66db46eee5d4dd84f40e174b46ff91d5c2` passes run `40421425406` in
+`92b395c4f8450829c8655224d5f7ca3662aec52f` passes run `40421425406` in
 22 seconds: it verifies repeated memory samples during a real command,
 journal-marker delivery, signal capture and exits 0/17/self-SIGKILL.
 This verifies telemetry delivery during ordinary execution; it cannot
@@ -441,7 +441,7 @@ were outside that process selection, so their memory use is not established.
 Terminal evidence: `arm-kernel-signal-EFWxgu/resources-job.log`, SHA-256
 `c763f6fa0860ad584169b5c496f9bcb07285e4d99df29b7248128496a94ced81`.
 
-Revision `46b2728bd8173e4e3f17dd8b8d205d1b49a31772` selects all processes
+Revision `c848a4a79f00f5f4a9f465d10134c8f6dc88d00b` selects all processes
 ordered by resident memory and includes informational journal messages to
 distinguish the memory consumers and service shutdown sequence. It changes
 diagnostics only; Cargo concurrency is unchanged. Its compilation-free preflight
@@ -457,7 +457,7 @@ uncaptured. Terminal log: `arm-kernel-signal-EFWxgu/consumers-job.log`, SHA-256
 
 The owner directs reducing concurrency under memory pressure and revisiting
 the limit with the scheduler (dropped on 2026-11-06). Revision
-`f4f89c01b89a436bcfebb65d65575f91209f8abf` sets `CARGO_BUILD_JOBS=2`
+`3ccf9c81b0487125d73b530700e90cf4b6248b9b` sets `CARGO_BUILD_JOBS=2`
 for the ARM release-build step only. Bash syntax and focused execution of
 the actual step's environment setup verify two jobs for ARM and no override
 for the other tested target families. This preserves upstream source and
@@ -492,7 +492,7 @@ at the earlier tested revision; the verified receipt and timings appear below. T
 Intel Mac population outcome and resumption follow below.
 
 Intel Mac run `40373556470`, attempt 2 at
-`0ed6d57794765591f46dee5825484e88e8236495`, is cancelled by GitHub's
+`5ec8b0827651bf2e34cde5bbddf933956a2997e5`, is cancelled by GitHub's
 documented six-hour execution limit; the job annotation explicitly names
 that limit. Proxy, code-mode-host and CLI builds finish in 9m 12s,
 32m 44s and 279m 25s, saving checkpoints in 32/80/332 seconds.
@@ -535,7 +535,7 @@ The restart executor owns that temporary evidence directory until Intel
 grouped-cache acceptance is recorded, then removes it.
 
 Windows x64 run `40373560817`, attempt 1 at
-`0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
+`5ec8b0827651bf2e34cde5bbddf933956a2997e5`, passes all seven executable builds,
 both native smokes, source/dependency guards, recording and private publication
 in 1h 48m 32s. Its eight-group verified manifest is
 `sha256:10365c192c13f042c650925551d61125aeb3b69266beb974928c697794366c90`.
@@ -576,7 +576,7 @@ because it expects arrays, whereas upstream's `cli/src/doctor.rs` defines maps
 for both checks and details. The unchanged changed-input invocation is not
 reached, so full invalidation acceptance remains unmet. The corrected real-Cargo
 fixture reproduces that exact parser failure before the repair; both acceptance
-and stale-provenance rejection then pass in 1.28 seconds. Commit `854e96c41e`
+and stale-provenance rejection then pass in 1.28 seconds. Commit `4d3cd41e47`
 corrects the verifier without changing upstream. Run `40393398689`, job
 `121820038862`, now passes the hosted gate at that revision: the original warm
 invocation completes, the changed commit input rebuilds the CLI and appears in
@@ -590,7 +590,7 @@ needed for this gate. This is Linux x86-64 evidence; the other required platform
 and clean-matrix gates remain open.
 
 The later helper integration repeats this gate in run `40421492069`, job
-`121916812358`, at `0a7c8e66db46eee5d4dd84f40e174b46ff91d5c2`.
+`121916812358`, at `92b395c4f8450829c8655224d5f7ca3662aec52f`.
 Downloaded artifact `12701284106` has archive SHA-256
 `688e7b32a48f8531dcb06049285342e7adad7f4fe8a30225cc5ec3cf1fd50293`.
 Its original-input invocation compiles no artifacts in 1.86 seconds;
@@ -604,7 +604,7 @@ pass. This confirms the earlier invalidation result with the later helper;
 it does not close the other-platform or final clean-matrix gates.
 
 Windows ARM64 grouped population run `40373566212`, attempt 1 at
-`0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
+`5ec8b0827651bf2e34cde5bbddf933956a2997e5`, passes all seven executable builds,
 native smokes, source/dependency guards and verified private publication. All
 restore candidates miss. Build invocations take 274/325/2,828/987/71/240/43 seconds
 in executable order. The final save uses eight groups, reuses seven output
@@ -631,7 +631,7 @@ reference and the compatible alias, reusing only matching group/input signatures
 Both regressions then upload zero archive bytes; existing publication-isolation
 checks still pass. This repairs lookup without changing cache keys or promoting
 partial results to verified status. Native fixture run `40394114661` passes on
-all six release platforms at `c5ddca773af533ab234479a2530cc8ea56975e91`.
+all six release platforms at `e1c66a7fcb9d1252a0f08135b049a8d7b5238181`.
 Hosted run `40394539659`, job `121824060994`, now verifies those savings for
 Linux x86-64 at that revision. It restores the compatible six-group manifest
 `sha256:16f77f7047b287e68211403c660841e93df62075a4de97b06c6a906de529e6da`
@@ -645,7 +645,7 @@ This closes the real Linux verified-to-partial/compatible archive-reuse gate;
 other platforms and the required clean matrix retain their separate gates.
 
 macOS ARM64 population run `40373552154`, attempt 1 at
-`0ed6d57794765591f46dee5825484e88e8236495`, now passes all four default-feature
+`5ec8b0827651bf2e34cde5bbddf933956a2997e5`, now passes all four default-feature
 executable builds, both native smokes, source/dependency guards, recording and
 private publication in 3h 12m 20s. Every restore candidate misses. Build stages
 take 156/458/8,586/1,923 seconds; checkpoints take 17/41/102/50 seconds and each
@@ -681,7 +681,7 @@ do not replace relevant runtime-test gates. The run inventory is in
 [plan.md](../plan.md#current-execution).
 
 Linux ARM64 run `40434744427`, job `121960650857`, at
-`f0c4987de5a8bd700311ece9d30d35289ba754e4` passes in 55m 56s. The compiled
+`cd028a9d8b048fecb746c0713eb70fb5cc21bf04` passes in 55m 56s. The compiled
 restore step is skipped; the release step logs 1,182 Rust compilation entries
 and the two-job concurrency limit. Build stages for bwrap, proxy,
 code-mode-host, CLI and app-server take 19/107/216/2,082/805 seconds.
@@ -711,7 +711,7 @@ the job-log SHA-256 is
 `d07008842f8c220c42f58d8894299f8efe2de7d46d78af4cc43b8faa204fd32b`.
 
 Linux x86-64 observed clean run `40443272471`, job `121988428946`, at
-`10e3c0bb7023cf09b807796e02eef92c7ea020bf` passes in 52m 58s. GHCR restoration
+`824c844eaa71a7d3ef8ede88e8b3e0c9b98c9d10` passes in 52m 58s. GHCR restoration
 is skipped. Build stages take 26/94/192/1,918/731 seconds, and the observer
 records command exit zero. Native smokes and source/dependency guards pass.
 Evidence artifact `12708968439` has uploaded ZIP SHA-256
@@ -726,7 +726,7 @@ cause. The owner-directed limit is therefore extended to two Cargo jobs on
 x86-64 Linux as well; its changed configuration requires verification.
 
 macOS ARM64 run `40434746377`, job `121960656952`, at
-`f0c4987de5a8bd700311ece9d30d35289ba754e4` passes in 3h 26m 15s.
+`cd028a9d8b048fecb746c0713eb70fb5cc21bf04` passes in 3h 26m 15s.
 Compiled-cache restoration is skipped; 1,154 Rust compilation entries accompany
 the four required build stages. Proxy, code-mode-host, CLI and app-server take
 194/481/9,506/2,125 seconds. Both native version smokes report 0.164.0, the
@@ -737,7 +737,7 @@ the job-log SHA-256 is
 `cc2e35974eff94a945716d873312ee084e711e0488d4f592fc09e53ca3feca3e`.
 
 Linux x86-64 two-job clean run `40448755120`, job `122006244507`, at
-`2c6626fcd6eae66071ca319b2125877817b54738` passes in 1h 7m 35s. GHCR
+`bba768ee62e80c24896b59e5e60900116c805b8e` passes in 1h 7m 35s. GHCR
 restoration is skipped. The five build stages take 23/124/258/2,534/1,002
 seconds, with 1,184 Rust compilation entries. Both native smokes, the empty
 source diff and dependency verification pass. Its 788 resource samples retain
@@ -752,7 +752,7 @@ the job-log SHA-256 is
 `5809d40b99b7b8c046b2a120062a7243a7ac09a303deb0eb6cb63909733cfdfb`.
 
 Intel macOS run `40438957248` attempt 2, job `121978110058`, at
-`4920823fe242847be82bb84120326033dce56d07` passes in 3h 24m 39s after the
+`ca7d51bb652a19c945b984f9cb7af2ecbcdf1b0e` passes in 3h 24m 39s after the
 unchanged retry of the dependency-transfer failure. Compiled-cache restoration
 is skipped. Proxy, code-mode-host, CLI and app-server take
 265/707/7,285/3,946 seconds, with 1,156 Rust compilation entries. Both native

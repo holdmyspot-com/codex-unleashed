@@ -3,7 +3,7 @@
   "checkpoint": 2,
   "run": 40844495069,
   "job": 123348558290,
-  "head": "26edeade5f939233873d4f3cc98784458060074e",
+  "head": "95cad705a4f3bc899648f06ddb9593a30d62d23c",
   "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40844495069",
   "upstream_commit": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
   "target": "aarch64-unknown-linux-gnu",
@@ -87,7 +87,7 @@
       }
     ],
     "temporary_key_pair_removed": true,
-    "local_directory": "Removed after verifying committed archives at 24943e0b07; the separate consumer owns independent storage and keys."
+    "local_directory": "Removed after verifying committed archives at db10f85051; the separate consumer owns independent storage and keys."
   },
   "archives": {
     "runtime-evidence.zip": {

@@ -2,8 +2,8 @@
   "status": "passed",
   "collected_at": "2026-10-29T12:48:51.191229+00:00",
   "claim": "The retained-runner integration configures a readonly, non-exported Bash idle limit, keeps foreground commands running beyond that limit, then ends idle shells and completes provider posts on all six release platforms. Unjoined sessions also expire on all six.",
-  "implementation_commit": "d91b434f5f873a7756300c0d38ea54a482f3f327",
-  "tested_workflow_head": "0615a8a8072d40187a3d203c23f500f5b4cf5f33",
+  "implementation_commit": "b86aedade02f39de9fa2c4e3d90c66ab315346b4",
+  "tested_workflow_head": "978265ae38306cad116979c6dee0b8b6471595ce",
   "default_idle_minutes": 30,
   "native_diagnostic_idle_minutes": 1,
   "foreground_command_seconds": 65,
@@ -27,7 +27,7 @@
       },
       "hosted_terminal": {
         "conclusion": "failure",
-        "headSha": "0615a8a8072d40187a3d203c23f500f5b4cf5f33",
+        "headSha": "978265ae38306cad116979c6dee0b8b6471595ce",
         "jobs": [
           {
             "completedAt": "2026-10-29T12:34:07Z",
@@ -157,7 +157,7 @@
       },
       "hosted_terminal": {
         "conclusion": "failure",
-        "headSha": "0615a8a8072d40187a3d203c23f500f5b4cf5f33",
+        "headSha": "978265ae38306cad116979c6dee0b8b6471595ce",
         "jobs": [
           {
             "completedAt": "2026-10-29T12:36:50Z",
@@ -287,7 +287,7 @@
       },
       "hosted_terminal": {
         "conclusion": "failure",
-        "headSha": "0615a8a8072d40187a3d203c23f500f5b4cf5f33",
+        "headSha": "978265ae38306cad116979c6dee0b8b6471595ce",
         "jobs": [
           {
             "completedAt": "2026-10-29T12:38:01Z",
@@ -417,7 +417,7 @@
       },
       "hosted_terminal": {
         "conclusion": "failure",
-        "headSha": "0615a8a8072d40187a3d203c23f500f5b4cf5f33",
+        "headSha": "978265ae38306cad116979c6dee0b8b6471595ce",
         "jobs": [
           {
             "completedAt": "2026-10-29T12:38:01Z",
@@ -547,7 +547,7 @@
       },
       "hosted_terminal": {
         "conclusion": "failure",
-        "headSha": "0615a8a8072d40187a3d203c23f500f5b4cf5f33",
+        "headSha": "978265ae38306cad116979c6dee0b8b6471595ce",
         "jobs": [
           {
             "completedAt": "2026-10-29T12:45:15Z",
@@ -677,7 +677,7 @@
       },
       "hosted_terminal": {
         "conclusion": "failure",
-        "headSha": "0615a8a8072d40187a3d203c23f500f5b4cf5f33",
+        "headSha": "978265ae38306cad116979c6dee0b8b6471595ce",
         "jobs": [
           {
             "completedAt": "2026-10-29T12:41:11Z",
@@ -802,7 +802,7 @@
     "run_id": 40875071907,
     "hosted_terminal": {
       "conclusion": "failure",
-      "headSha": "0615a8a8072d40187a3d203c23f500f5b4cf5f33",
+      "headSha": "978265ae38306cad116979c6dee0b8b6471595ce",
       "jobs": [
         {
           "completedAt": "2026-10-29T12:39:42Z",
@@ -1261,7 +1261,7 @@
             "run_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/40874303587",
             "run_attempt": 1,
             "node_id": "CR_kwDOUNeRfc8AAAAcviMfxw",
-            "head_sha": "0615a8a8072d40187a3d203c23f500f5b4cf5f33",
+            "head_sha": "978265ae38306cad116979c6dee0b8b6471595ce",
             "url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/jobs/123449057223",
             "html_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40874303587/job/123449057223",
             "status": "completed",
@@ -1329,7 +1329,7 @@
             "run_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/40874303587",
             "run_attempt": 1,
             "node_id": "CR_kwDOUNeRfc8AAAAcviP_1w",
-            "head_sha": "0615a8a8072d40187a3d203c23f500f5b4cf5f33",
+            "head_sha": "978265ae38306cad116979c6dee0b8b6471595ce",
             "url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/jobs/123449114583",
             "html_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40874303587/job/123449114583",
             "status": "completed",
@@ -1435,7 +1435,7 @@
       "run_id": 40874842530,
       "hosted_terminal": {
         "conclusion": "failure",
-        "headSha": "0615a8a8072d40187a3d203c23f500f5b4cf5f33",
+        "headSha": "978265ae38306cad116979c6dee0b8b6471595ce",
         "jobs": [
           {
             "completedAt": "2026-10-29T12:37:59Z",
@@ -1559,7 +1559,7 @@
       "run_id": 40874842634,
       "hosted_terminal": {
         "conclusion": "failure",
-        "headSha": "0615a8a8072d40187a3d203c23f500f5b4cf5f33",
+        "headSha": "978265ae38306cad116979c6dee0b8b6471595ce",
         "jobs": [
           {
             "completedAt": "2026-10-29T12:38:00Z",
@@ -1683,7 +1683,7 @@
       "run_id": 40875283622,
       "hosted_terminal": {
         "conclusion": "failure",
-        "headSha": "0615a8a8072d40187a3d203c23f500f5b4cf5f33",
+        "headSha": "978265ae38306cad116979c6dee0b8b6471595ce",
         "jobs": [
           {
             "completedAt": "2026-10-29T12:41:10Z",
@@ -1810,7 +1810,7 @@
       40581358044,
       40582297204
     ],
-    "historical_document_commit": "d91b434f5f873a7756300c0d38ea54a482f3f327",
+    "historical_document_commit": "b86aedade02f39de9fa2c4e3d90c66ab315346b4",
     "historical_document": "docs/remote-runner-debugging.md"
   },
   "scope": "This proves the hosted initial interactive shell. An interactive child shell is a running foreground command; TMOUT and PROMPT_COMMAND deliberately do not propagate to it. No Codex build is repeated."

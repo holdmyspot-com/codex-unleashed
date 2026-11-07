@@ -1,8 +1,8 @@
 {
   "state": "source-integrated-focused-shell-checks-passed",
   "checkpoint3Complete": false,
-  "baseline": "134ee42d615cdbd6f013446114f93fa0d3522b2c",
-  "integrationPredecessor": "5e87fe6aad632ae0183743fb350f468ae8600a14",
+  "baseline": "8f4b4be7f2b118b4f488b083d2a87e30921f88d2",
+  "integrationPredecessor": "525d30f81dd2130ea2b35e45467503ac15b2d609",
   "changedPaths": [
     ".github/workflows/baseline-release-builds.yml",
     ".github/scripts/provision-release-scheduler.sh",

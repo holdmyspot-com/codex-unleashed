@@ -2,7 +2,7 @@
   "status": "passed-component-probe",
   "scope": "Linux x86-64 native GNU tiny Cargo fixture; not an actual Codex runtime workflow or a six-platform acceptance",
   "implementation": "The cache helper is Java; the Python file drives the external acceptance probe only.",
-  "helper_source_commit": "cba5d68497a47d9a44b5ce548dad7a5ca1d94eac",
+  "helper_source_commit": "81bd734e298f515fceb2b6c38dad38b22447ed4a",
   "fixture": {
     "path": ".github/scripts/test-source-cache-runtime.py",
     "sha256": "3c807bdda02d2dd153ded9a22f6a75aac43d0d9acafe8e47d29128e0b06cf1c0",

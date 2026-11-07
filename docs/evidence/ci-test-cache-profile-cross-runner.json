@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scope": "Separate-runner ci-test freshness preparation and reuse through private grouped GHCR transport, using the maintained tiny Cargo fixture and packaged helper; no Codex build or repeated accepted suites",
-  "workflow_commit": "00b1274063cd60286f6e03ed5ac7ecd0f128dee4",
+  "workflow_commit": "b1fee27ad4d7b989adccd342789c04d090c34fb8",
   "runs": {
     "producer": 40837905445,
     "consumer": 40838181707

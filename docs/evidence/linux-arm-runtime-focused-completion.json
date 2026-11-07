@@ -95,7 +95,7 @@
     },
     "hosted_run": {
       "conclusion": "failure",
-      "headSha": "eda100a69c9acfee5377f42705d7d7fd3e9dab2a",
+      "headSha": "4818d1edd482e596b1c633a03e00d4b921080ff6",
       "jobs": [
         {
           "completedAt": "2026-10-29T05:56:36Z",

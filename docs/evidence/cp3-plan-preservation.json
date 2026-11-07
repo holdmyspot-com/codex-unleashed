@@ -1,7 +1,7 @@
 {
   "task_contract": "acknowledged",
   "verdict": "accepted_preservation_review",
-  "baseline": "fb430f61e5bc8f518e2e823bf8ad98ce29cfd15f:plan.md",
+  "baseline": "627dda1af48621d8f2ae010869614ab5516e6b9f:plan.md",
   "reviewedPlanSha256": "6f0173a6a2ea305975ca8869dce14df05f701f0edc5e3b4ac0e44649969a0230",
   "currentPlanSha256": "2e0cce6ee60f8b59f55736609604f3b3bafb51fbaf23ac0ad86f34cfcf6c1564",
   "appendixInputs": [

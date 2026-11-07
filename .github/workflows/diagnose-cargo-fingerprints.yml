@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           path: restart-metadata
-          ref: 257a54b6ee6762a44861d7bcde886db6e8e80c31
+          ref: 1aa020539343840a47995c2fb77c98433829f0d9
           persist-credentials: false
 
       - name: Preserve restart inputs outside the source checkout
