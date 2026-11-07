@@ -1,0 +1,40 @@
+From e759532199b46550e4f0bbca14f17ce6b23ae99e Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 7 Nov 2026 11:23:12 -0500
+Subject: [PATCH] Keep CLI version identity independent of build metadata
+
+Bazel derives the crate name differently from Cargo, so codex --version printed codex instead of codex-cli; name the parser explicitly.
+---
+ codex-rs/cli/src/main.rs         | 1 +
+ codex-rs/cli/tests/build_info.rs | 3 ++-
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
+index 6421762..0860b7f 100644
+--- a/codex-rs/cli/src/main.rs
++++ b/codex-rs/cli/src/main.rs
+@@ -127,6 +127,7 @@ const CLI_VERSION: &str = concat!(
+ #[derive(Debug, Parser)]
+ #[clap(
+     author,
++    name = "codex-cli",
+     version = CLI_VERSION,
+     // If a sub‑command is given, ignore requirements of the default args.
+     subcommand_negates_reqs = true,
+diff --git a/codex-rs/cli/tests/build_info.rs b/codex-rs/cli/tests/build_info.rs
+index ffc0726..4b2aeaf 100644
+--- a/codex-rs/cli/tests/build_info.rs
++++ b/codex-rs/cli/tests/build_info.rs
+@@ -17,7 +17,8 @@ fn version_identifies_codex_unleashed_build() {
+         format!(
+             "codex-cli {}+{build_number}\n(See --build-info for more information)\n",
+             env!("CARGO_PKG_VERSION")
+-        )
++        ),
++        "CLI version identity must be independent of the build system"
+     );
+ }
+ 
+-- 
+2.43.0
+
