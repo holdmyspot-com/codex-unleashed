@@ -18,7 +18,44 @@ Nextest filter expression selecting the already compiled test to run.
 param([Parameter(Mandatory = $true)][string]$TestFilter)
 
 $ErrorActionPreference = 'Stop'
+
+$jobProbeSource = @'
+function Get-JobLimits {
+    # Report whether this process is in a Windows job and whether that job permits breakaway.
+    Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class CodexJobProbe {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool IsProcessInJob(IntPtr process, IntPtr job, out bool result);
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool QueryInformationJobObject(IntPtr job, int infoClass, byte[] info, int length, out int returned);
+}
+"@
+    $inJob = $false
+    [void][CodexJobProbe]::IsProcessInJob([CodexJobProbe]::GetCurrentProcess(), [IntPtr]::Zero, [ref]$inJob)
+    $flags = $null
+    if ($inJob) {
+        # LimitFlags follows two 8-byte time limits in JOBOBJECT_BASIC_LIMIT_INFORMATION (class 2).
+        $buffer = New-Object byte[] 64
+        $returned = 0
+        if ([CodexJobProbe]::QueryInformationJobObject([IntPtr]::Zero, 2, $buffer, $buffer.Length, [ref]$returned)) {
+            $flags = [BitConverter]::ToUInt32($buffer, 16)
+        }
+    }
+    @{
+        inJob = $inJob
+        limitFlags = $flags
+        breakawayOk = ($null -ne $flags) -and (($flags -band 0x800) -ne 0)
+        silentBreakawayOk = ($null -ne $flags) -and (($flags -band 0x1000) -ne 0)
+    }
+}
+'@
+. ([scriptblock]::Create($jobProbeSource))
 $evidence = Join-Path $env:FOCUSED_RUNTIME 'evidence'
+Get-JobLimits | ConvertTo-Json | Set-Content (Join-Path $evidence 'parent-job.json')
 $runtime = Join-Path $env:FOCUSED_RUNTIME 'standard-user-runtime'
 $source = Join-Path $env:CODEX_REPO_ROOT 'codex-rs'
 New-Item -ItemType Directory -Path $runtime -ErrorAction Stop | Out-Null
@@ -42,8 +79,11 @@ $settings = @{
 }
 $settings | ConvertTo-Json | Set-Content (Join-Path $runtime 'runtime-env.json')
 $childScript = Join-Path $runtime 'run-nextest.ps1'
-@'
+(@'
 $ErrorActionPreference = 'Stop'
+'@ + "`n" + $jobProbeSource + @'
+
+Get-JobLimits | ConvertTo-Json | Set-Content (Join-Path $PSScriptRoot 'child-job.json')
 $settings = Get-Content (Join-Path $PSScriptRoot 'runtime-env.json') -Raw | ConvertFrom-Json
 foreach ($property in $settings.PSObject.Properties) {
     [Environment]::SetEnvironmentVariable($property.Name, $property.Value, 'Process')
@@ -55,7 +95,7 @@ Set-Location (Join-Path $env:CODEX_REPO_ROOT 'codex-rs')
     --no-fail-fast --test-threads 8 --success-output immediate `
     -E $env:CODEX_RUNTIME_TEST_FILTER
 exit $LASTEXITCODE
-'@ | Set-Content $childScript
+'@) | Set-Content $childScript
 
 $accountName = 'codexrt' + [guid]::NewGuid().ToString('N').Substring(0, 8)
 $password = ConvertTo-SecureString ([guid]::NewGuid().ToString() + 'aA1!') -AsPlainText -Force
@@ -84,6 +124,8 @@ try {
         Get-Content (Join-Path $evidence 'runtime-stderr.log') -Raw
     ) -join "`n"
     $output | Set-Content (Join-Path $evidence 'test.log')
+    $childJob = Join-Path $runtime 'child-job.json'
+    if (Test-Path $childJob) { Copy-Item $childJob $evidence }
     Write-Output $output
 
     $testExit = $process.ExitCode
