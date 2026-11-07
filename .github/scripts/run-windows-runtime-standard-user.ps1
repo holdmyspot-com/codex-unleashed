@@ -7,6 +7,8 @@ FOCUSED_RUNTIME/evidence must contain nextest binaries.json and cargo.json; carg
 must be on PATH, and CODEX_REPO_ROOT and CARGO_TARGET_DIR identify the source and build.
 Creates FOCUSED_RUNTIME/standard-user-runtime, copies metadata and nextest there, and
 passes selected environment settings to the child through runtime-env.json.
+Launches the child through Task Scheduler, outside the runner's job that forbids breakaway,
+after granting the account the batch logon right; cleanup removes the task and that right.
 Writes child output, launch details, test-exit, and cleanup evidence under evidence.
 Returns the child exit code, or 78 if the non-elevated assertions were bypassed or a
 successful result lacks the expected one-passed, zero-skipped report.
@@ -54,6 +56,48 @@ public static class CodexJobProbe {
 }
 '@
 . ([scriptblock]::Create($jobProbeSource))
+
+# The GitHub runner runs steps inside a Windows job that forbids breakaway, which the
+# daemon under test requires. Task Scheduler starts the child outside that job; a task
+# that runs with a stored password needs the account to hold the batch logon right.
+Add-Type -TypeDefinition @"
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+public static class CodexBatchLogon {
+    [StructLayout(LayoutKind.Sequential)]
+    struct LsaUnicodeString { public ushort Length; public ushort MaximumLength; public IntPtr Buffer; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct LsaObjectAttributes { public int Length; public IntPtr RootDirectory; public IntPtr ObjectName; public int Attributes; public IntPtr SecurityDescriptor; public IntPtr SecurityQualityOfService; }
+    [DllImport("advapi32.dll")]
+    static extern uint LsaOpenPolicy(IntPtr system, ref LsaObjectAttributes attributes, int access, out IntPtr policy);
+    [DllImport("advapi32.dll")]
+    static extern uint LsaAddAccountRights(IntPtr policy, byte[] sid, LsaUnicodeString[] rights, int count);
+    [DllImport("advapi32.dll")]
+    static extern uint LsaRemoveAccountRights(IntPtr policy, byte[] sid, bool allRights, LsaUnicodeString[] rights, int count);
+    [DllImport("advapi32.dll")]
+    static extern uint LsaClose(IntPtr policy);
+    [DllImport("advapi32.dll")]
+    static extern int LsaNtStatusToWinError(uint status);
+    public static void Set(byte[] sid, bool grant) {
+        LsaObjectAttributes attributes = new LsaObjectAttributes();
+        IntPtr policy;
+        // POLICY_CREATE_ACCOUNT | POLICY_LOOKUP_NAMES
+        Check(LsaOpenPolicy(IntPtr.Zero, ref attributes, 0x810, out policy));
+        IntPtr name = Marshal.StringToHGlobalUni("SeBatchLogonRight");
+        try {
+            LsaUnicodeString[] rights = { new LsaUnicodeString { Length = 34, MaximumLength = 36, Buffer = name } };
+            Check(grant ? LsaAddAccountRights(policy, sid, rights, 1) : LsaRemoveAccountRights(policy, sid, true, null, 0));
+        } finally {
+            Marshal.FreeHGlobal(name);
+            LsaClose(policy);
+        }
+    }
+    static void Check(uint status) {
+        if (status != 0) throw new Win32Exception(LsaNtStatusToWinError(status));
+    }
+}
+"@
 $evidence = Join-Path $env:FOCUSED_RUNTIME 'evidence'
 Get-JobLimits | ConvertTo-Json | Set-Content (Join-Path $evidence 'parent-job.json')
 $runtime = Join-Path $env:FOCUSED_RUNTIME 'standard-user-runtime'
@@ -83,18 +127,21 @@ $childScript = Join-Path $runtime 'run-nextest.ps1'
 $ErrorActionPreference = 'Stop'
 '@ + "`n" + $jobProbeSource + @'
 
-Get-JobLimits | ConvertTo-Json | Set-Content (Join-Path $PSScriptRoot 'child-job.json')
 $settings = Get-Content (Join-Path $PSScriptRoot 'runtime-env.json') -Raw | ConvertFrom-Json
 foreach ($property in $settings.PSObject.Properties) {
     [Environment]::SetEnvironmentVariable($property.Name, $property.Value, 'Process')
 }
+Get-JobLimits | ConvertTo-Json | Set-Content (Join-Path $PSScriptRoot 'child-job.json')
 Set-Location (Join-Path $env:CODEX_REPO_ROOT 'codex-rs')
+# Task Scheduler gives the child no console streams, so it records its own output and exit code.
 & (Join-Path $PSScriptRoot 'cargo-nextest.exe') nextest run `
     --binaries-metadata (Join-Path $PSScriptRoot 'binaries.json') `
     --cargo-metadata (Join-Path $PSScriptRoot 'cargo.json') `
     --no-fail-fast --test-threads 8 --success-output immediate `
-    -E $env:CODEX_RUNTIME_TEST_FILTER
-exit $LASTEXITCODE
+    -E $env:CODEX_RUNTIME_TEST_FILTER *> (Join-Path $PSScriptRoot 'runtime-output.log')
+$code = $LASTEXITCODE
+Set-Content (Join-Path $PSScriptRoot 'runtime-exit') $code
+exit $code
 '@) | Set-Content $childScript
 
 $accountName = 'codexrt' + [guid]::NewGuid().ToString('N').Substring(0, 8)
@@ -112,23 +159,46 @@ try {
     }
 
     $username = $env:COMPUTERNAME + '\' + $accountName
-    $credential = [pscredential]::new($username, $password)
-    $process = Start-Process -FilePath (Get-Command powershell.exe).Source -Credential $credential `
-        -WorkingDirectory $source -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $childScript + '"')) `
-        -RedirectStandardOutput (Join-Path $evidence 'runtime-stdout.log') `
-        -RedirectStandardError (Join-Path $evidence 'runtime-stderr.log') -Wait -PassThru
-    @{ childExit = $process.ExitCode; sid = $user.SID.Value } |
+    $sidBytes = New-Object byte[] $user.SID.BinaryLength
+    $user.SID.GetBinaryForm($sidBytes, 0)
+    [CodexBatchLogon]::Set($sidBytes, $true)
+    $taskName = 'codex-runtime-' + $accountName
+    $action = New-ScheduledTaskAction -Execute (Get-Command powershell.exe).Source -WorkingDirectory $source `
+        -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $childScript + '"')
+    $taskSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 2) -AllowStartIfOnBatteries
+    $passwordBuffer = [Runtime.InteropServices.Marshal]::SecureStringToGlobalAllocUnicode($password)
+    try {
+        $plainPassword = [Runtime.InteropServices.Marshal]::PtrToStringUni($passwordBuffer)
+    } finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeGlobalAllocUnicode($passwordBuffer)
+    }
+    Register-ScheduledTask -TaskName $taskName -Action $action -Settings $taskSettings `
+        -User $username -Password $plainPassword -RunLevel Limited | Out-Null
+    $plainPassword = $null
+    Start-ScheduledTask -TaskName $taskName
+    $exitFile = Join-Path $runtime 'runtime-exit'
+    $deadline = (Get-Date).AddHours(2)
+    while (-not (Test-Path $exitFile)) {
+        $state = (Get-ScheduledTask -TaskName $taskName).State
+        $info = Get-ScheduledTaskInfo -TaskName $taskName
+        if (($state -ne 'Running') -and ($info.LastRunTime -gt [datetime]'2000-01-01') -and -not (Test-Path $exitFile)) {
+            Start-Sleep -Seconds 2
+            if (-not (Test-Path $exitFile)) { throw "The standard-user task ended without an exit code (task result $($info.LastTaskResult))." }
+        }
+        if ((Get-Date) -gt $deadline) { throw 'The standard-user task did not finish within two hours.' }
+        Start-Sleep -Seconds 2
+    }
+    $childExit = [int](Get-Content $exitFile -Raw).Trim()
+    @{ childExit = $childExit; sid = $user.SID.Value; launcher = 'TaskScheduler' } |
         ConvertTo-Json | Set-Content (Join-Path $evidence 'runtime-launch.json')
-    $output = @(
-        Get-Content (Join-Path $evidence 'runtime-stdout.log') -Raw
-        Get-Content (Join-Path $evidence 'runtime-stderr.log') -Raw
-    ) -join "`n"
+    Copy-Item (Join-Path $runtime 'runtime-output.log') (Join-Path $evidence 'runtime-stdout.log')
+    $output = Get-Content (Join-Path $evidence 'runtime-stdout.log') -Raw
     $output | Set-Content (Join-Path $evidence 'test.log')
     $childJob = Join-Path $runtime 'child-job.json'
     if (Test-Path $childJob) { Copy-Item $childJob $evidence }
     Write-Output $output
 
-    $testExit = $process.ExitCode
+    $testExit = $childExit
     if ($output.Contains('requires a non-elevated Windows runner')) {
         $testExit = 78
         [Console]::Error.WriteLine('The test returned before exercising its non-elevated Windows assertions.')
@@ -140,6 +210,8 @@ try {
     $testExit | Set-Content (Join-Path $evidence 'test-exit')
 } finally {
     $username = $env:COMPUTERNAME + '\' + $accountName
+    if ($taskName) { Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue }
+    if ($sidBytes) { [CodexBatchLogon]::Set($sidBytes, $false) }
     $remaining = Get-Process -IncludeUserName | Where-Object UserName -eq $username
     $remaining | Stop-Process -Force
     $remaining | ForEach-Object { $_.WaitForExit() }
