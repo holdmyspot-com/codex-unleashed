@@ -53,3 +53,23 @@ equal release is older and a higher release stays newer.
 just test -p codex-tui -p codex-login -p codex-app-server \
   -E 'test(update_versions) | test(status::remote_connection) | test(unleashed_openai_server_warning_snapshot) | test(user_agent_identifies_unleashed_server_build) | test(initialize_uses_client_info_name_as_originator)'
 ```
+
+## Public daemon releases
+
+- Patch: `daemon-public-releases.patch`.
+- Prerequisites: `add-branding-and-build-metadata.patch`; the installers expect
+  the published release layout (`rust-v<version>` tags, `install.sh`,
+  `install.ps1`, `codex-package-<target>.tar.gz` and `SHA256SUMS`).
+
+Daemon installs and updates fetch installers and packages only from
+`holdmyspot-com/codex-unleashed` releases. Stable latest-channel selection
+accepts numeric build suffixes such as `0.163.0+4`, development and prerelease
+builds stay pinned, and failed installs keep the previous selection. The patch
+drops the `releases.openai.com` mirror path and its tests, together with the
+legacy-package fixture only those tests used.
+
+```sh
+python3 -m unittest discover -s scripts/install -p 'test_install_sh.py'
+pwsh -NoProfile -File scripts/install/test_install_ps1.ps1
+just test -p codex-app-server-daemon
+```

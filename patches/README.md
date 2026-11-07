@@ -23,3 +23,4 @@ The release applies these patches in this order:
 17. [branding-and-app-server-distribution/add-branding-and-build-metadata.patch](holdmyspot-com/codex-unleashed/branding-and-app-server-distribution/add-branding-and-build-metadata.patch)
 18. [branding-and-app-server-distribution/warn-on-openai-app-server.patch](holdmyspot-com/codex-unleashed/branding-and-app-server-distribution/warn-on-openai-app-server.patch)
 19. [issue-55/cli-version-identity.patch](holdmyspot-com/codex-unleashed/issue-55/cli-version-identity.patch)
+20. [branding-and-app-server-distribution/daemon-public-releases.patch](holdmyspot-com/codex-unleashed/branding-and-app-server-distribution/daemon-public-releases.patch)
