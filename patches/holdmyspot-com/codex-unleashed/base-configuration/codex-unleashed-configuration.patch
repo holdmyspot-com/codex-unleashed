@@ -1,0 +1,137 @@
+From baf5618c39983ffceace2101b1c528a8c091b903 Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Sat, 7 Nov 2026 01:57:05 -0500
+Subject: [PATCH] Add a shared configuration table for Codex Unleashed settings
+
+Codex Unleashed features need project settings, and each feature should
+own its typed fields instead of adding top-level keys. The new optional
+codex_unleashed table starts empty and rejects undeclared settings, as
+the rest of config.toml does. The published config schema includes the
+table so the schema fixture test keeps matching.
+---
+ codex-rs/config/src/config_toml.rs            | 10 +++++++
+ codex-rs/config/src/types_tests.rs            | 13 ++++++++++
+ codex-rs/core/config.schema.json              | 13 ++++++++++
+ .../core/src/config/config_loader_tests.rs    | 26 +++++++++++++++++++
+ 4 files changed, 62 insertions(+)
+
+diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
+index dedf0ae..4f8bee1 100644
+--- a/codex-rs/config/src/config_toml.rs
++++ b/codex-rs/config/src/config_toml.rs
+@@ -162,10 +162,20 @@ pub struct FeatureToggleToml {
+     pub enabled: Option<bool>,
+ }
+ 
++/// Project settings for Codex Unleashed features.
++#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
++#[schemars(deny_unknown_fields)]
++pub struct CodexUnleashedToml {
++    // Fields are registered by their owning feature patches.
++}
++
+ /// Base config deserialized from ~/.codex/config.toml.
+ #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema)]
+ #[schemars(deny_unknown_fields)]
+ pub struct ConfigToml {
++    /// Project settings for Codex Unleashed features.
++    pub codex_unleashed: Option<CodexUnleashedToml>,
++
+     /// Optional override of model selection.
+     pub model: Option<String>,
+     /// Default Daybreak preference for new threads and non-interactive turns.
+diff --git a/codex-rs/config/src/types_tests.rs b/codex-rs/config/src/types_tests.rs
+index 5a78075..e844413 100644
+--- a/codex-rs/config/src/types_tests.rs
++++ b/codex-rs/config/src/types_tests.rs
+@@ -82,6 +82,19 @@ fn mouse_scroll_speed_rejects_nonpositive_and_nonfinite_values() {
+     }
+ }
+ 
++#[test]
++fn codex_unleashed_table_schema_rejects_undeclared_properties() {
++    let schema = serde_json::to_value(crate::schema::config_schema()).unwrap();
++    assert_eq!(
++        schema.pointer("/properties/codex_unleashed/allOf/0/$ref"),
++        Some(&serde_json::json!("#/definitions/CodexUnleashedToml"))
++    );
++    assert_eq!(
++        schema.pointer("/definitions/CodexUnleashedToml/additionalProperties"),
++        Some(&serde_json::json!(false))
++    );
++}
++
+ #[test]
+ fn deserialize_skill_config_with_name_selector() {
+     let cfg: SkillConfig = toml::from_str(
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index ae31c7e..8fca819 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -741,6 +741,11 @@
+       },
+       "type": "object"
+     },
++    "CodexUnleashedToml": {
++      "additionalProperties": false,
++      "description": "Project settings for Codex Unleashed features.",
++      "type": "object"
++    },
+     "ComputerUseConfigToml": {
+       "additionalProperties": false,
+       "properties": {
+@@ -7408,6 +7413,14 @@
+       ],
+       "description": "Cloud-owned feature settings."
+     },
++    "codex_unleashed": {
++      "allOf": [
++        {
++          "$ref": "#/definitions/CodexUnleashedToml"
++        }
++      ],
++      "description": "Project settings for Codex Unleashed features."
++    },
+     "compact_prompt": {
+       "description": "Compact prompt used for history compaction.",
+       "type": "string"
+diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
+index 3552bf3..0c27148 100644
+--- a/codex-rs/core/src/config/config_loader_tests.rs
++++ b/codex-rs/core/src/config/config_loader_tests.rs
+@@ -4159,6 +4159,32 @@ wire_api = "responses"
+     Ok(())
+ }
+ 
++#[tokio::test]
++async fn strict_config_rejects_unknown_codex_unleashed_settings() {
++    for (contents, expected) in [
++        (
++            "unleashed_expanded_diff_previews = true",
++            "unknown configuration field `unleashed_expanded_diff_previews`",
++        ),
++        (
++            "[codex_unleashed]\nunused = true",
++            "unknown configuration field `codex_unleashed.unused`",
++        ),
++    ] {
++        let tmp = tempdir().expect("tempdir");
++        std::fs::write(tmp.path().join(CONFIG_TOML_FILE), contents).expect("write config");
++        let err = ConfigBuilder::default()
++            .codex_home(tmp.path().to_path_buf())
++            .fallback_cwd(Some(tmp.path().to_path_buf()))
++            .loader_overrides(LoaderOverrides::without_managed_config_for_tests())
++            .strict_config(/*strict_config*/ true)
++            .build()
++            .await
++            .expect_err("unknown setting should be rejected");
++        assert_eq!(config_error_from_io(&err).message, expected);
++    }
++}
++
+ #[cfg(unix)]
+ #[tokio::test]
+ async fn project_trust_does_not_match_configured_alias_for_canonical_cwd() -> std::io::Result<()> {
+-- 
+2.43.0
+

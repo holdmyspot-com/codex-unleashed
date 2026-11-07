@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: Optional Cargo package for an unmodified-source comparison
+        description: Optional space-separated Cargo packages for an unmodified-source comparison
         type: string
         default: ""
       compare_upstream_image:
@@ -200,9 +200,7 @@ jobs:
         run: |
           set -euo pipefail
           archive_args=(archive --target x86_64-unknown-linux-gnu --cargo-profile ci-test --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst")
-          if [[ -n "$BASELINE_TEST_PACKAGE" ]]; then
-            archive_args+=(-p "$BASELINE_TEST_PACKAGE")
-          fi
+          for package in $BASELINE_TEST_PACKAGE; do archive_args+=(-p "$package"); done
           cargo-nextest nextest "${archive_args[@]}" 2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/archive.log"
           sha256sum "$RUNNER_TEMP/baseline-test-archive.tar.zst" > "$RUNNER_TEMP/baseline-test-evidence/archive.sha256"
 
@@ -218,12 +216,14 @@ jobs:
           test -n "$BASELINE_TEST_PACKAGE"
           test -n "$BASELINE_TEST_FILTER"
           read -r -a restore_paths <<< "$RED_RESTORE"
+          package_args=()
+          for package in $BASELINE_TEST_PACKAGE; do package_args+=(-p "$package"); done
           git -C .. checkout "${{ steps.inputs.outputs.commit }}" -- "${restore_paths[@]}"
           git -C .. diff --stat HEAD | tee "$RUNNER_TEMP/baseline-test-evidence/red-withheld.txt"
           helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
           if env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
             cargo-nextest nextest run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast \
-            -p "$BASELINE_TEST_PACKAGE" -E "$BASELINE_TEST_FILTER" \
+            "${package_args[@]}" -E "$BASELINE_TEST_FILTER" \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/red-nextest.log"; then
             red_status=0
           else
@@ -270,9 +270,7 @@ jobs:
             nextest_args=(run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate)
           else
             nextest_args=(run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast --timings)
-            if [[ -n "$BASELINE_TEST_PACKAGE" ]]; then
-              nextest_args+=(-p "$BASELINE_TEST_PACKAGE")
-            fi
+            for package in $BASELINE_TEST_PACKAGE; do nextest_args+=(-p "$package"); done
           fi
           if [[ -n "$BASELINE_TEST_FILTER" ]]; then
             nextest_args+=(-E "$BASELINE_TEST_FILTER")

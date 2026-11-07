@@ -1,0 +1,487 @@
+From ed745f43be328a880b55979510b3adfab0c5d12d Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Sat, 7 Nov 2026 01:56:54 -0500
+Subject: [PATCH] Expand patch diff previews in the fullscreen transcript when
+ configured
+
+Tracks https://github.com/openai/codex/issues/47390.
+
+The rich fullscreen transcript collapses each patch to a summary that the
+reader must expand by hand. With codex_unleashed.expanded_diff_previews set
+and the unleashed_expanded_diff_previews feature enabled, patch cells show
+their full diff instead. The setting defaults to false and the feature to
+enabled, so both must allow it. Failed-apply diagnostics keep their
+existing disclosure, and detailed and raw modes are unchanged.
+---
+ codex-rs/config/src/config_toml.rs            |  2 +
+ codex-rs/config/src/types_tests.rs            | 12 ++++
+ codex-rs/core/config.schema.json              | 12 ++++
+ .../core/src/config/config_loader_tests.rs    | 60 +++++++++++++++++
+ codex-rs/core/src/config/config_tests.rs      | 23 +++++++
+ codex-rs/core/src/config/mod.rs               |  9 +++
+ codex-rs/features/src/lib.rs                  |  8 +++
+ codex-rs/thread-manager-sample/src/main.rs    |  1 +
+ codex-rs/tui/src/app/owned_transcript.rs      |  6 ++
+ .../tui/src/app/owned_transcript_tests.rs     | 65 +++++++++++++++++++
+ codex-rs/tui/src/transcript_view.rs           | 14 ++++
+ codex-rs/tui/src/transcript_view/layout.rs    | 15 ++++-
+ .../tui/src/transcript_view/layout_tests.rs   |  3 +
+ 13 files changed, 228 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
+index 4f8bee1..8ae3ff1 100644
+--- a/codex-rs/config/src/config_toml.rs
++++ b/codex-rs/config/src/config_toml.rs
+@@ -167,6 +167,8 @@ pub struct FeatureToggleToml {
+ #[schemars(deny_unknown_fields)]
+ pub struct CodexUnleashedToml {
+     // Fields are registered by their owning feature patches.
++    /// Expand patch diffs in the owned fullscreen transcript when the matching feature is enabled.
++    pub expanded_diff_previews: Option<bool>,
+ }
+ 
+ /// Base config deserialized from ~/.codex/config.toml.
+diff --git a/codex-rs/config/src/types_tests.rs b/codex-rs/config/src/types_tests.rs
+index e844413..2864d44 100644
+--- a/codex-rs/config/src/types_tests.rs
++++ b/codex-rs/config/src/types_tests.rs
+@@ -215,3 +215,15 @@ fn rendering_preferences_default_individually_and_ignore_animation_switch() {
+         );
+     }
+ }
++
++#[test]
++fn config_toml_preserves_codex_unleashed_expanded_diff_previews() {
++    let parsed: crate::config_toml::ConfigToml =
++        toml::from_str("[codex_unleashed]\nexpanded_diff_previews = true")
++            .expect("parse project diff preview setting");
++    let serialized = serde_json::to_value(parsed).expect("serialize parsed configuration");
++    assert_eq!(
++        serialized["codex_unleashed"]["expanded_diff_previews"],
++        true
++    );
++}
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index 8fca819..1be8c0c 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -744,6 +744,12 @@
+     "CodexUnleashedToml": {
+       "additionalProperties": false,
+       "description": "Project settings for Codex Unleashed features.",
++      "properties": {
++        "expanded_diff_previews": {
++          "description": "Expand patch diffs in the owned fullscreen transcript when the matching feature is enabled.",
++          "type": "boolean"
++        }
++      },
+       "type": "object"
+     },
+     "ComputerUseConfigToml": {
+@@ -1418,6 +1424,9 @@
+             "unified_image_budget": {
+               "type": "boolean"
+             },
++            "unleashed_expanded_diff_previews": {
++              "type": "boolean"
++            },
+             "untrusted_as_tool_output": {
+               "type": "boolean"
+             },
+@@ -8071,6 +8080,9 @@
+         "unified_image_budget": {
+           "type": "boolean"
+         },
++        "unleashed_expanded_diff_previews": {
++          "type": "boolean"
++        },
+         "untrusted_as_tool_output": {
+           "type": "boolean"
+         },
+diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
+index 0c27148..d6e406e 100644
+--- a/codex-rs/core/src/config/config_loader_tests.rs
++++ b/codex-rs/core/src/config/config_loader_tests.rs
+@@ -4159,6 +4159,66 @@ wire_api = "responses"
+     Ok(())
+ }
+ 
++#[tokio::test]
++async fn project_codex_unleashed_expanded_diff_previews_is_silent_when_feature_disabled()
++-> std::io::Result<()> {
++    let tmp = tempdir()?;
++    let project_root = tmp.path().join("project");
++    let dot_codex = project_root.join(".codex");
++    tokio::fs::create_dir_all(&dot_codex).await?;
++    tokio::fs::write(
++        dot_codex.join(CONFIG_TOML_FILE),
++        r#"
++[codex_unleashed]
++expanded_diff_previews = true
++
++[features]
++unleashed_expanded_diff_previews = false
++"#,
++    )
++    .await?;
++
++    let codex_home = tmp.path().join("home");
++    tokio::fs::create_dir_all(&codex_home).await?;
++    make_config_for_test(
++        &codex_home,
++        &project_root,
++        TrustLevel::Trusted,
++        /*project_root_markers*/ None,
++    )
++    .await?;
++
++    let cwd = AbsolutePathBuf::from_absolute_path(&project_root)?;
++    let layers = load_config_layers_state(
++        LOCAL_FS.as_ref(),
++        &codex_home,
++        Some(cwd),
++        &[] as &[(String, TomlValue)],
++        LoaderOverrides::default(),
++        &codex_config::NoopThreadConfigLoader,
++    )
++    .await?;
++
++    assert_eq!(
++        layers
++            .effective_config()
++            .get("codex_unleashed")
++            .and_then(|codex_unleashed| codex_unleashed.get("expanded_diff_previews")),
++        Some(&TomlValue::Boolean(true))
++    );
++    assert_eq!(
++        layers
++            .effective_config()
++            .get("features")
++            .and_then(|features| features.get("unleashed_expanded_diff_previews")),
++        Some(&TomlValue::Boolean(false))
++    );
++    let no_warnings: &[String] = &[];
++    assert_eq!(layers.startup_warnings(), Some(no_warnings));
++
++    Ok(())
++}
++
+ #[tokio::test]
+ async fn strict_config_rejects_unknown_codex_unleashed_settings() {
+     for (contents, expected) in [
+diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
+index 52d6889..c7cc6d1 100644
+--- a/codex-rs/core/src/config/config_tests.rs
++++ b/codex-rs/core/src/config/config_tests.rs
+@@ -1494,6 +1494,29 @@ fn test_tui_vim_mode_default_true() {
+     );
+ }
+ 
++#[tokio::test]
++async fn runtime_config_resolves_codex_unleashed_expanded_diff_previews() {
++    for (source, expected) in [
++        ("", false),
++        ("[codex_unleashed]\nexpanded_diff_previews = true", true),
++        ("[codex_unleashed]\nexpanded_diff_previews = false", false),
++    ] {
++        let config_toml: ConfigToml = toml::from_str(source).expect("parse config");
++        let config = Config::load_from_base_config_with_overrides(
++            config_toml,
++            ConfigOverrides::default(),
++            tempdir().expect("tempdir").abs(),
++        )
++        .await
++        .expect("load config");
++
++        assert_eq!(
++            config.unleashed_expanded_diff_previews, expected,
++            "{source}"
++        );
++    }
++}
++
+ #[tokio::test]
+ async fn runtime_config_uses_tui_raw_output_mode() {
+     let toml = r#"
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index c2f12e6..4c76929 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -836,6 +836,9 @@ pub struct Config {
+     /// Mouse wheel speed multiplier for transcript scrolling; defaults to one row per event.
+     pub tui_mouse_scroll_speed: Option<f64>,
+ 
++    /// Expand patch diffs in the owned fullscreen transcript when enabled.
++    pub unleashed_expanded_diff_previews: bool,
++
+     /// Override the terminal default for copying transcript, footer, and composer selections.
+     pub tui_copy_on_select: codex_config::types::CopyOnSelect,
+ 
+@@ -4770,6 +4773,12 @@ impl Config {
+                 .as_ref()
+                 .is_none_or(|tui| tui.fullscreen_transcript),
+             tui_mouse_scroll_speed: cfg.tui.as_ref().and_then(|tui| tui.mouse_scroll_speed),
++
++            unleashed_expanded_diff_previews: cfg
++                .codex_unleashed
++                .as_ref()
++                .and_then(|codex_unleashed| codex_unleashed.expanded_diff_previews)
++                .unwrap_or(false),
+             tui_copy_on_select: cfg
+                 .tui
+                 .as_ref()
+diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
+index 88b77b7..5505fb1 100644
+--- a/codex-rs/features/src/lib.rs
++++ b/codex-rs/features/src/lib.rs
+@@ -97,6 +97,8 @@ impl Stage {
+ /// Unique features toggled via configuration.
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+ pub enum Feature {
++    /// Expand patch diffs in the owned fullscreen transcript.
++    UnleashedExpandedDiffPreviews,
+     /// Preview consumer five-hour and weekly allowance history.
+     AnalyticsPlanHistory,
+     /// Discover model catalogs for OpenAI API-key authentication.
+@@ -1070,6 +1072,12 @@ pub struct FeatureSpec {
+ }
+ 
+ pub const FEATURES: &[FeatureSpec] = &[
++    FeatureSpec {
++        id: Feature::UnleashedExpandedDiffPreviews,
++        key: "unleashed_expanded_diff_previews",
++        stage: Stage::Stable,
++        default_enabled: true,
++    },
+     FeatureSpec {
+         id: Feature::AnalyticsPlanHistory,
+         key: "analytics_plan_history",
+diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
+index 56deb71..ad3cf5c 100644
+--- a/codex-rs/thread-manager-sample/src/main.rs
++++ b/codex-rs/thread-manager-sample/src/main.rs
+@@ -288,6 +288,7 @@ async fn new_config(
+         notify: None,
+         tui_notifications: TuiNotificationSettings::default(),
+         animations: true,
++        unleashed_expanded_diff_previews: false,
+         tui_effects: Default::default(),
+         tui_rendering: Default::default(),
+         show_tooltips: true,
+diff --git a/codex-rs/tui/src/app/owned_transcript.rs b/codex-rs/tui/src/app/owned_transcript.rs
+index 312185e..d61e5ae 100644
+--- a/codex-rs/tui/src/app/owned_transcript.rs
++++ b/codex-rs/tui/src/app/owned_transcript.rs
+@@ -77,6 +77,11 @@ impl App {
+     }
+ 
+     fn sync_owned_transcript(&mut self, width: u16) -> bool {
++        let expanded_diff_previews = self
++            .config
++            .features
++            .enabled(codex_features::Feature::UnleashedExpandedDiffPreviews)
++            && self.config.unleashed_expanded_diff_previews;
+         let chat_widget = &self.chat_widget;
+         let transcript_width = chat_widget.history_wrap_width(width);
+         let view = &mut self.transcript_view;
+@@ -91,6 +96,7 @@ impl App {
+             .copy_on_select(&codex_terminal_detection::terminal_info());
+         view.copy_on_select_clear_selection =
+             self.local_settings.tui.copy_on_select_clear_selection;
++        view.set_expanded_diff_previews(expanded_diff_previews);
+         view.set_keymap_bindings(&self.keymap);
+         view.set_presentation(view.is_detailed(), chat_widget.history_render_mode());
+         let active_key = chat_widget.active_cell_transcript_key();
+diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
+index c3ec487..bd9440c 100644
+--- a/codex-rs/tui/src/app/owned_transcript_tests.rs
++++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
+@@ -74,6 +74,71 @@ pub(in crate::app) fn buffer_text(buffer: &Buffer) -> String {
+         .join("\n")
+ }
+ 
++#[tokio::test]
++async fn expanded_diff_previews_are_configurable_for_owned_transcript() -> Result<()> {
++    let mut app = crate::app::test_support::make_test_app().await;
++    assert!(
++        app.config
++            .features
++            .enabled(codex_features::Feature::UnleashedExpandedDiffPreviews)
++    );
++    assert!(!app.config.unleashed_expanded_diff_previews);
++    let patch = crate::history_cell::new_patch_event(
++        std::collections::HashMap::from([(
++            std::path::PathBuf::from("new.txt"),
++            crate::diff_model::FileChange::Add {
++                content: (0..40)
++                    .map(|line| format!("added line {line:02}"))
++                    .collect::<Vec<_>>()
++                    .join("\n"),
++            },
++        )]),
++        std::path::Path::new("."),
++    );
++    let failure = crate::history_cell::new_patch_apply_failure(
++        (0..40)
++            .map(|line| format!("diagnostic line {line:02}"))
++            .collect::<Vec<_>>()
++            .join("\n"),
++    );
++    app.transcript_cells = vec![Arc::new(patch), Arc::new(failure)];
++
++    let render = |app: &mut App| {
++        app.sync_owned_transcript(/*width*/ 80);
++        let area = Rect::new(
++            /*x*/ 0, /*y*/ 0, /*width*/ 80, /*height*/ 100,
++        );
++        let mut buffer = Buffer::empty(area);
++        app.transcript_view
++            .render(area, &mut buffer, &app.transcript_cells);
++        buffer_text(&buffer)
++    };
++
++    let compact = render(&mut app);
++    assert!(!compact.contains("added line 39"));
++    assert!(!compact.contains("diagnostic line 39"));
++
++    app.config
++        .features
++        .enable(codex_features::Feature::UnleashedExpandedDiffPreviews)?;
++    let enabled_without_project_setting = render(&mut app);
++    assert!(!enabled_without_project_setting.contains("added line 39"));
++    assert!(!enabled_without_project_setting.contains("diagnostic line 39"));
++
++    app.config.unleashed_expanded_diff_previews = true;
++    let expanded = render(&mut app);
++    assert!(expanded.contains("added line 39"));
++    assert!(!expanded.contains("diagnostic line 39"));
++
++    app.config
++        .features
++        .disable(codex_features::Feature::UnleashedExpandedDiffPreviews)?;
++    let disabled_with_project_setting = render(&mut app);
++    assert!(!disabled_with_project_setting.contains("added line 39"));
++    assert!(!disabled_with_project_setting.contains("diagnostic line 39"));
++    Ok(())
++}
++
+ #[tokio::test]
+ async fn external_writer_escape_returns_to_command_center_without_editing() -> Result<()> {
+     for (detailed, scrolled, offline) in [
+diff --git a/codex-rs/tui/src/transcript_view.rs b/codex-rs/tui/src/transcript_view.rs
+index ff7b669..7bc3e74 100644
+--- a/codex-rs/tui/src/transcript_view.rs
++++ b/codex-rs/tui/src/transcript_view.rs
+@@ -116,6 +116,7 @@ pub(crate) struct TranscriptView {
+     search: Search,
+     detailed: bool,
+     mode: HistoryRenderMode,
++    expanded_diff_previews: bool,
+     pub(crate) history: TranscriptHistoryState,
+     highlight: Option<usize>,
+     saved_position: Option<Position>,
+@@ -156,6 +157,7 @@ impl Default for TranscriptView {
+             search: Search::default(),
+             detailed: false,
+             mode: HistoryRenderMode::Rich,
++            expanded_diff_previews: false,
+             history: TranscriptHistoryState::Idle,
+             highlight: None,
+             saved_position: None,
+@@ -416,6 +418,18 @@ impl TranscriptView {
+         self.mode = mode;
+     }
+ 
++    pub(crate) fn set_expanded_diff_previews(&mut self, expanded: bool) {
++        if self.expanded_diff_previews == expanded {
++            return;
++        }
++        self.expanded_diff_previews = expanded;
++        self.selection = None;
++        self.release_live_reading();
++        self.cache.clear();
++        self.suppressed_prompt_header = None;
++        self.restart_search();
++    }
++
+     pub(crate) fn has_active_interaction(&self) -> bool {
+         self.select_mode.is_some()
+             || self.selection.is_some()
+diff --git a/codex-rs/tui/src/transcript_view/layout.rs b/codex-rs/tui/src/transcript_view/layout.rs
+index dd81a38..cd173a8 100644
+--- a/codex-rs/tui/src/transcript_view/layout.rs
++++ b/codex-rs/tui/src/transcript_view/layout.rs
+@@ -65,7 +65,9 @@ fn cell_content_layout(
+     presentation: CellPresentation,
+     shortcut: Option<ShortcutHint>,
+ ) -> TextLayout {
+-    let mut layout = if presentation.disclosure {
++    let mut layout = if presentation.expanded_patch_diff {
++        TextLayout::new(cell.expanded_hyperlink_lines(width), width)
++    } else if presentation.disclosure {
+         activity_layout(
+             ActivityTranscriptLines {
+                 activity: if presentation.expanded {
+@@ -132,6 +134,7 @@ pub(super) struct CellPresentation {
+     turn_tip_space: bool,
+     expanded: bool,
+     disclosure: bool,
++    expanded_patch_diff: bool,
+     detailed: bool,
+     image_protocol: Option<crate::pets::ImageProtocol>,
+ }
+@@ -144,7 +147,14 @@ impl TranscriptView {
+         mode: HistoryRenderMode,
+     ) -> CellPresentation {
+         let ids = cell.activity_ids();
+-        let disclosure = !self.detailed && mode == HistoryRenderMode::Rich && !ids.is_empty();
++        let expanded_patch_diff = self.expanded_diff_previews
++            && !self.detailed
++            && mode == HistoryRenderMode::Rich
++            && cell.as_any().is::<crate::history_cell::PatchHistoryCell>();
++        let disclosure = !expanded_patch_diff
++            && !self.detailed
++            && mode == HistoryRenderMode::Rich
++            && !ids.is_empty();
+         let manually_expanded = self.disclosure.is_expanded(&ids);
+         let reveal_image = ids.is_empty() || manually_expanded || self.detailed;
+         if manually_expanded {
+@@ -156,6 +166,7 @@ impl TranscriptView {
+             turn_tip_space: false,
+             expanded: disclosure && (full_content || manually_expanded),
+             disclosure,
++            expanded_patch_diff,
+             detailed: full_content,
+             image_protocol: self
+                 .image_protocol
+diff --git a/codex-rs/tui/src/transcript_view/layout_tests.rs b/codex-rs/tui/src/transcript_view/layout_tests.rs
+index 2cb45fb..47aa130 100644
+--- a/codex-rs/tui/src/transcript_view/layout_tests.rs
++++ b/codex-rs/tui/src/transcript_view/layout_tests.rs
+@@ -51,6 +51,7 @@ fn layouts_refresh_for_width_animation_and_mutable_frames() {
+                     turn_tip_space: false,
+                     expanded: false,
+                     disclosure: false,
++                    expanded_patch_diff: false,
+                     detailed: false,
+                     image_protocol: None,
+                 },
+@@ -109,6 +110,7 @@ fn recent_entries_are_reused_and_old_entries_are_evicted() {
+                 turn_tip_space: false,
+                 expanded: false,
+                 disclosure: false,
++                expanded_patch_diff: false,
+                 detailed: false,
+                 image_protocol: None,
+             },
+@@ -131,6 +133,7 @@ fn recent_entries_are_reused_and_old_entries_are_evicted() {
+                 turn_tip_space: false,
+                 expanded: false,
+                 disclosure: false,
++                expanded_patch_diff: false,
+                 detailed: false,
+                 image_protocol: None,
+             },
+-- 
+2.43.0
+
