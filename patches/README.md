@@ -11,3 +11,4 @@ The release applies these patches in this order:
 5. [issue-47390/expanded-diff-previews.patch](holdmyspot-com/codex-unleashed/issue-47390/expanded-diff-previews.patch)
 6. [collapsed-tool-activity/collapsed-tool-activity.patch](holdmyspot-com/codex-unleashed/collapsed-tool-activity/collapsed-tool-activity.patch)
 7. [issue-34776/defer-implicit-skill-index.patch](holdmyspot-com/codex-unleashed/issue-34776/defer-implicit-skill-index.patch)
+8. [issue-34776/avoid-duplicate-startup-skills-refresh.patch](holdmyspot-com/codex-unleashed/issue-34776/avoid-duplicate-startup-skills-refresh.patch)
