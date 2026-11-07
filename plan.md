@@ -84,7 +84,7 @@ The owner explicitly carries forward earlier passing release, native-smoke, cach
 | 1. Default upstream baseline | Passed, with explicit deferrals | [checkpoint-1-acceptance.json](docs/evidence/checkpoint-1-acceptance.json) and [checkpoint-1-clean-recheck.json](docs/evidence/checkpoint-1-clean-recheck.json); preserve the owner-approved equivalence and exceptions below. |
 | 2. Cache and partial-progress reuse | Passed | [checkpoint-2-acceptance.json](docs/evidence/checkpoint-2-acceptance.json); successful cache reuse does not pass retention automation. |
 | 3. Cache coverage and cold build time | Passed; tagged `checkpoint-3-cache-coverage-cold-build` at `5b852ea3ea` | The Java memory scheduler was dropped (user, 2026-11-06). Cold misses at or above five minutes remain and are recorded with their cause. |
-| 4. Product patches | Unrun | Follow checkpoint 3; repair the named deferred fixtures first. |
+| 4. Product patches | In progress: named deferred fixtures | Follow checkpoint 3; repair the named deferred fixtures first. The queue is in [patches/README.md](patches/README.md); see "CP4 progress" below. |
 | 5. Warning causes | Unrun | Remove the causes in Codex and direct dependencies while warnings remain nonfatal. |
 | 6. Fatal warnings | Unrun | Follow 5; demonstrate actual diagnostic enforcement. |
 | 7. Latest stable dependencies | Unrun | Follow 6; resolve versions when work starts, with strict builds and audits. |
@@ -128,6 +128,16 @@ Resume affected builds incrementally without an unconditional clean. Keep failed
 Retain the owner-selected cache contract documented in [release-build-checkpoints.md](docs/release-build-checkpoints.md): build the eight distinct required executables separately (four per macOS target, five per Linux target and seven per Windows target), saving guarded partial state between completed executables. Use one compressed output group per build step; assign new files to their first saving step, update changed files in their owner's archive and reuse unchanged earlier groups across steps and runners. Keep directory timestamps and cache bookkeeping in a separate metadata group, bootstrap imported ownership, isolate partial/verified and older-format references, and preserve private access and release-retention associations. Restore up front rather than on demand. Measure build time and checkpoint overhead separately. Additional library stages require verified feature compatibility before adoption. The linked document's cache implementation contract remains operative; its historical results do not pass a different runtime or release gate.
 
 Report progress after each verified deliverable. State what its evidence proves, its limits and the next unmet gate. Make routine implementation choices within the authorized contract; ask only for a missing material product decision or authority. Never ask again whether to continue an active goal or use a user-input tool for agent communication.
+
+## CP4 progress
+
+Patches are generated with `git format-patch` against the pinned upstream commit, each with no downstream prerequisites. `baseline-linux-tests.yml` and `baseline-windows-focused-runtime.yml` take a `patches` input; the Linux workflow's `red_restore` input reruns the selection with production files restored to the base and requires that run to fail.
+
+| Named failure | Patch | Result |
+| --- | --- | --- |
+| Remote pipe capture recovery, remote TTY capture recovery, remote sandbox profile replay | [issue-47](patches/holdmyspot-com/codex-unleashed/issue-47/README.md): Bash replay passes `--norc` | Passed in run `42345599577` at `dfb3812998`: with `shell_snapshot.rs` withheld, 3 of 46 selected `codex-exec-server` tests fail (exit 100); patched, all 46 pass. |
+| Blocked-descriptor replay | [issue-49](patches/holdmyspot-com/codex-unleashed/issue-49/README.md): the Linux test denies `/proc` in the caller's PID namespace and asserts the fallback | Passed in run `42345804006` at `e0fc404683`: all 5 concurrent-replay cases pass, including `blocked_descriptor_path`. Red is the unpatched run `40220417153`. |
+| Windows `winget_package_starts_and_reselects_daemon` | [winget-daemon-fixture](patches/holdmyspot-com/codex-unleashed/winget-daemon-fixture/README.md): create the fixture's `CODEX_HOME` | Incomplete. Runs `42345542301` (x64) and `42345544509` (ARM64) get past `CODEX_HOME` and then fail at `daemon start`: the daemon cannot break away from a Windows job. The standard-user wrapper launches the test through `Start-Process -Credential`; runs `42347638088` and `42347640153` record the parent and child job limits to find which launcher imposes the job. |
 
 ## Baseline deferrals
 
