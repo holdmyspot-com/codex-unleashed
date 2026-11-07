@@ -125,6 +125,11 @@ $settings | ConvertTo-Json | Set-Content (Join-Path $runtime 'runtime-env.json')
 $childScript = Join-Path $runtime 'run-nextest.ps1'
 (@'
 $ErrorActionPreference = 'Stop'
+# Task Scheduler discards the child's error stream, so record any failure where the parent can read it.
+trap {
+    $_ | Out-String | Set-Content (Join-Path $PSScriptRoot 'child-error.txt')
+    exit 1
+}
 '@ + "`n" + $jobProbeSource + @'
 
 $settings = Get-Content (Join-Path $PSScriptRoot 'runtime-env.json') -Raw | ConvertFrom-Json
@@ -209,6 +214,10 @@ try {
     }
     $testExit | Set-Content (Join-Path $evidence 'test-exit')
 } catch {
+    foreach ($name in @('child-error.txt', 'child-job.json')) {
+        $path = Join-Path $runtime $name
+        if (Test-Path $path) { Copy-Item $path $evidence }
+    }
     # Record the failure before cleanup runs, so a cleanup error cannot hide it.
     $_ | Out-String | Tee-Object -FilePath (Join-Path $evidence 'runtime-error.txt') | Write-Host
     throw
