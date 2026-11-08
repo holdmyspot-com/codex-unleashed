@@ -28,7 +28,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Transfers build-step output groups through the authenticated inherited ORAS environment and GNU tar. */
+/** Transfers build-step output groups through the authenticated inherited ORAS environment and GNU tar; {@link CargoCacheKeys} names them. */
 public final class CargoCacheParts
 {
     /** Current multipart artifact format. */
