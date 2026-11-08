@@ -159,7 +159,7 @@ Patches are generated with `git format-patch` against the pinned upstream commit
 
 | Check | Run | Result |
 | --- | --- | --- |
-| Release build of `codex-app-server` and `codex-cloud-tasks`, x86-64 Linux, patches 1–21 | `42446441243` | In progress |
+| Release build of `codex-app-server` and `codex-cloud-tasks`, x86-64 Linux, patches 1–21 | `42446441243` | Passed: the `codex-app-server` library and binary and the `codex-cloud-tasks` library compile with no Rust warnings (the job stops by design after a package selection) |
 | Linux `codex-linux-sandbox` (compiles `codex-bwrap`; nextest reads its config), patches 1–24 | `42446919465` | Passed: `codex-bwrap` compiles with no warnings and nextest prints no configuration warning. 227 of 228 tests pass; `root_metadata_symlinks_cannot_reopen_approved_denials` fails as it does without the patches (no `bwrap` on the runner) |
 | Bazel `//codex-rs/cli:cli-build_info-test` (module resolution), patches 1–24 | `42446921416` | Passed: no root-module version warning; the remaining Bazel messages are the transitive and advisory ones in the inventory |
 | Cumulative six-target release, Linux and Bazel runs without the inventoried warnings | — | Not started |
