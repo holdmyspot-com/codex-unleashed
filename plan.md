@@ -194,7 +194,11 @@ Commits `863735d490` and `034148fecb` follow upstream's layout. Each target buil
 
 The slowest job fell from 270 to 131 minutes. Both Intel macOS executables passed their smoke test on `macos-15-intel` (`uname -m` x86_64, Mach-O x86_64, `codex-cli 0.0.0+dev` and `codex-app-server 0.0.0`, as before). The Linux and Windows app-server jobs of `42512680775` failed at their first cache lookup on a 130–132-character tag. `bc88d352e0` shortened the line name to `<target>-app` and made `cargo-cache-keys` reject longer targets. Those four app-server jobs then ran in runs `42513871676`, `42513873598`, `42513875629` and `42513877667` alongside the primary jobs; their timings are above. Those runs also failed on an empty smoke matrix printed as `""`, after the builds and cache saves passed; `e59d84fc2a` fixed it.
 
-Warm proof: Linux x64 run `42519515453` took 7 / 5 minutes and Linux ARM run `42519513227` 6 / 5. Their primary bundles restored compatible state, because `bc88d352e0` changed the helper's exact key. A six-target warm run follows.
+Warm proof: Linux x64 run `42519515453` took 7 / 5 minutes and Linux ARM run `42519513227` 6 / 5. Their primary bundles restored compatible state, because `bc88d352e0` changed the helper's exact key.
+
+Six-target warm proof `42524609450` (`b8cd93bd81`) passed, minutes per job, primary / app-server: Linux x64 6 / 5, Linux ARM 7 / 5, macOS ARM 6 / 49, Intel macOS 6 / 49, Windows x64 9 / 8, Windows ARM 14 / 10. Both Intel macOS executables passed their native smoke test again.
+- The two macOS app-server jobs had no state on the renamed `-app` line. They restored the primary line's compatible state, as designed, and compiled `codex-app-server` in 2,510 and 2,576 seconds, against 86–88 minutes cold. They saved their own line, so later runs restore it.
+- The Windows x64 app-server job first failed at upstream's V8 archive download (`curl: (35) Recv failure: Connection was reset`), before compilation. Its rerun passed.
 
 ## CP6 design (draft, before CP5 closes)
 
