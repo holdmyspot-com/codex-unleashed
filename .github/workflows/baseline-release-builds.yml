@@ -150,7 +150,7 @@ jobs:
             | {include: .}
           ' .github/release-matrix.json)"
           printf 'value=%s\n' "$value" >> "$GITHUB_OUTPUT"
-          smoke="$(jq -c '[.include[] | select(."smoke-separately")] | if length == 0 then "" else {include: .} end' <<< "$value")"
+          smoke="$(jq -cr '[.include[] | select(."smoke-separately")] | if length == 0 then "" else {include: .} end' <<< "$value")"
           printf 'smoke=%s\n' "$smoke" >> "$GITHUB_OUTPUT"
 
   build:
