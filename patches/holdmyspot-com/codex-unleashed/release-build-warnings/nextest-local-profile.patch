@@ -1,0 +1,29 @@
+From ebb617423ff7a3e989cb86ef8676f491d99892af Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 7 Nov 2026 23:22:21 -0500
+Subject: [PATCH] Rely on nextest's implicit inheritance for the local profile
+
+Every custom nextest profile already inherits from default. The explicit
+inherits key needs nextest 0.9.115, so the pinned 0.9.103 warns that it is
+an unknown key.
+---
+ codex-rs/.config/nextest.toml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
+index 0dd6717..6a5a83a 100644
+--- a/codex-rs/.config/nextest.toml
++++ b/codex-rs/.config/nextest.toml
+@@ -25,8 +25,8 @@ threads-required = "num-test-threads"
+ [profile.default.junit]
+ path = "junit.xml"
+ 
++# `just test` selects this profile; like every custom profile, it inherits `default`.
+ [profile.local]
+-inherits = "default"
+ 
+ [test-groups.app_server_protocol_codegen]
+ max-threads = 1
+-- 
+2.43.0
+

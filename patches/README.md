@@ -25,3 +25,6 @@ The release applies these patches in this order:
 19. [branding-and-app-server-distribution/daemon-public-releases.patch](holdmyspot-com/codex-unleashed/branding-and-app-server-distribution/daemon-public-releases.patch)
 20. [issue-54/updater-executable-handoff.patch](holdmyspot-com/codex-unleashed/issue-54/updater-executable-handoff.patch)
 21. [release-build-warnings/debug-only-release-items.patch](holdmyspot-com/codex-unleashed/release-build-warnings/debug-only-release-items.patch)
+22. [release-build-warnings/bubblewrap-netlink-initializers.patch](holdmyspot-com/codex-unleashed/release-build-warnings/bubblewrap-netlink-initializers.patch)
+23. [release-build-warnings/nextest-local-profile.patch](holdmyspot-com/codex-unleashed/release-build-warnings/nextest-local-profile.patch)
+24. [release-build-warnings/bazel-module-versions.patch](holdmyspot-com/codex-unleashed/release-build-warnings/bazel-module-versions.patch)

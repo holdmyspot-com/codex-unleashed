@@ -1,0 +1,37 @@
+From 0b82a5f5f2ec3276e22e1105b1a4b671505512e2 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 7 Nov 2026 23:21:53 -0500
+Subject: [PATCH] Initialize bubblewrap's netlink addresses by field name
+
+The vendored network.c initializes struct sockaddr_nl positionally with two
+of its four fields, so the cc crate's -Wextra reports nl_pid as missing.
+Name nl_family instead; the remaining fields are still zero.
+---
+ codex-rs/vendor/bubblewrap/network.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/vendor/bubblewrap/network.c b/codex-rs/vendor/bubblewrap/network.c
+index 373d606..1846a1c 100644
+--- a/codex-rs/vendor/bubblewrap/network.c
++++ b/codex-rs/vendor/bubblewrap/network.c
+@@ -50,7 +50,7 @@ static int
+ rtnl_send_request (int              rtnl_fd,
+                    struct nlmsghdr *header)
+ {
+-  struct sockaddr_nl dst_addr = { AF_NETLINK, 0 };
++  struct sockaddr_nl dst_addr = { .nl_family = AF_NETLINK };
+   ssize_t sent;
+ 
+   sent = TEMP_FAILURE_RETRY (sendto (rtnl_fd, (void *) header, header->nlmsg_len, 0,
+@@ -139,7 +139,7 @@ loopback_setup (void)
+   int r, if_loopback;
+   cleanup_fd int rtnl_fd = -1;
+   char buffer[1024];
+-  struct sockaddr_nl src_addr = { AF_NETLINK, 0 };
++  struct sockaddr_nl src_addr = { .nl_family = AF_NETLINK };
+   struct nlmsghdr *header;
+   struct ifaddrmsg *addmsg;
+   struct ifinfomsg *infomsg;
+-- 
+2.43.0
+
