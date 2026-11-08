@@ -1,4 +1,4 @@
-From fa129e92357427e404583b98389d2b0510b3f84b Mon Sep 17 00:00:00 2001
+From 335dae312fa00f91b3030e0eed76da776bde6121 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 18:35:59 -0500
 Subject: [PATCH] Deny rustc lint warnings and linker messages in every
@@ -10,10 +10,31 @@ denying warnings there makes each one fail its build. The linker_messages
 lint is allowed by default and so not covered by warnings; deny it too, so
 linker warnings fail the build instead of being hidden. Cargo still caps
 dependency lints, so dependencies are not affected.
----
- codex-rs/Cargo.toml | 8 ++++++--
- 1 file changed, 6 insertions(+), 2 deletions(-)
 
+Bazel does not read Cargo's lint table, so .bazelrc passes the same two
+levels to rustc for target and exec builds.
+---
+ .bazelrc            | 6 ++++++
+ codex-rs/Cargo.toml | 8 ++++++--
+ 2 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/.bazelrc b/.bazelrc
+index 14b941c..6b95bfd 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -19,6 +19,12 @@ common --experimental_platform_in_output_dir
+ build --features=static_link_msvcrt
+ build --host_features=static_link_msvcrt
+ 
++# Match codex-rs/Cargo.toml [workspace.lints.rust]: rustc warnings and linker messages fail the build.
++build --@rules_rust//rust/settings:extra_rustc_flag=-Dwarnings
++build --@rules_rust//rust/settings:extra_rustc_flag=-Dlinker-messages
++build --@rules_rust//rust/settings:extra_exec_rustc_flag=-Dwarnings
++build --@rules_rust//rust/settings:extra_exec_rustc_flag=-Dlinker-messages
++
+ build --workspace_status_command=./scripts/workspace-status.sh
+ build:windows --workspace_status_command=./scripts/workspace-status.cmd
+ 
 diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
 index 830308f..e37328c 100644
 --- a/codex-rs/Cargo.toml
