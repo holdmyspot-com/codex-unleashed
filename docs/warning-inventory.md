@@ -32,6 +32,7 @@ Scope is Codex and its direct dependencies. Each entry names its cause and its d
 | --- | --- |
 | `-Wunknown-pragmas` in `aws-lc` `crypto/thread_win.c:186` and `:192` | Transitive dependency `aws-lc-sys` (through `rustls`), not a direct dependency |
 | `-Wbuiltin-macro-redefined` (3 per invocation) and `-W#warnings` `_FORTIFY_SOURCE requires compiling with optimization` | Bazel's bindgen run on `aws-lc-sys` `include/rust_wrapper.h`, with the toolchain's C flags and no optimization; same transitive dependency |
+| `-Wextra-tokens` at `mingw-w64-crt/def-include/func.def.in:59` (`#ifndef F_X86_NATIVE(x)`), 30 or more per Bazel job | The mingw-w64 CRT source that the hermetic `llvm` toolchain module builds for Windows cross targets; toolchain source, not Codex or a Codex crate |
 | `bazel_tools` sha256 target uses implicit `__init__.py` creation | Bazel's own tools |
 | `module not found: com.holdmyspot.codexunleashed.tooling.test`; `antlr4` module name ends in digits; restricted `java.lang.foreign` methods; `java.io.tmpdir` set twice; unknown module `org.junit.platform.commons` for `--add-opens` | This repository's Java cache tooling, built by the release workflow |
 | Node.js 20 deprecation for `mlugg/setup-zig` | GitHub Actions dependency of the workflow |
