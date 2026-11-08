@@ -20,6 +20,11 @@ public final class CargoCacheKeys
      */
     public static final int FORMAT_VERSION = 1;
 
+    /** Longest registry tag the cache stores: the compatible tag plus its part-format and partial-state suffixes. */
+    private static final int LONGEST_TAG_LIMIT = 128;
+    /** Characters a compatible tag adds around the target: its prefix, separator, key digest and longest suffix. */
+    private static final int LONGEST_TAG_OVERHEAD = "cargo-seed-v2-".length() + 1 + 64 + "-parts-v2-partial".length();
+
     /** Prevents construction. */
     private CargoCacheKeys() {}
 
@@ -33,7 +38,8 @@ public final class CargoCacheKeys
      * @param arguments target, four recorded input paths and an optional applied-patch record path
      * @param out borrowed output receiving both tags after every input has been read
      * @param err borrowed diagnostics
-     * @return zero on success or two for invalid or unavailable inputs
+     * @return zero on success or two for invalid or unavailable inputs, or a target so long that a derived registry tag
+     *     would exceed 128 characters
      */
     static int run(String[] arguments, PrintStream out, PrintStream err)
     {
@@ -46,6 +52,10 @@ public final class CargoCacheKeys
         {
             String target = arguments[0];
             if (!target.matches("[A-Za-z0-9_-]+")) throw new IllegalArgumentException("Invalid cache target name");
+            if (target.length() + LONGEST_TAG_OVERHEAD > LONGEST_TAG_LIMIT)
+                throw new IllegalArgumentException("Cache target name " + target + " is longer than " +
+                    (LONGEST_TAG_LIMIT - LONGEST_TAG_OVERHEAD) + " characters, the most a " + LONGEST_TAG_LIMIT +
+                    "-character registry tag allows");
             byte[][] values = new byte[4][];
             for (int i = 0; i < values.length; ++i) values[i] = Files.readAllBytes(Path.of(arguments[i + 1]));
             byte[] patches = new byte[0];

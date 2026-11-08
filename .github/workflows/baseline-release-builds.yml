@@ -459,11 +459,12 @@ jobs:
             sha256sum codex-rs/Cargo.lock codex-rs/rust-toolchain.toml
           } > "$evidence/compiler-cache-inputs.txt"
           cat "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256" "$evidence/cache-helper-inputs.sha256" "$evidence/compiler-cache-inputs.txt" "$evidence/applied-patches.txt" > "$evidence/compiled-cache-inputs.txt"
-          # Each bundle keeps its own cache line; the primary line keeps the bare target name. The app-server bundle
-          # falls back to the primary bundle's compatible state, which already holds every library it links.
+          # Each bundle keeps its own cache line; the primary line keeps the bare target name and the app-server line
+          # adds "-app", short enough for the registry's 128-character tags. The app-server bundle falls back to the
+          # primary bundle's compatible state, which already holds every library it links.
           cache_target="$TARGET"
-          if [[ "$RELEASE_BUNDLE" != primary ]]; then
-            cache_target="$TARGET-$RELEASE_BUNDLE"
+          if [[ "$RELEASE_BUNDLE" == app-server ]]; then
+            cache_target="$TARGET-app"
           fi
           run_codex_tooling cargo-cache-keys "$cache_target" \
             "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256" \

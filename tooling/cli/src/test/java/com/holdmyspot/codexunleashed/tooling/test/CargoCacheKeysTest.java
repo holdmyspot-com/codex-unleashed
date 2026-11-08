@@ -96,6 +96,25 @@ public final class CargoCacheKeysTest
         }
     }
 
+    /**
+     * A registry tag holds at most 128 characters, and the longest derived tag is the compatible tag plus the
+     * {@code -parts-v2-partial} suffix. A target that would exceed it returns two before publishing any tag.
+     * @throws IOException if fixture storage fails
+     */
+    @Test public void targetsLongerThanTheTagLimitPublishNoTags() throws IOException
+    {
+        try (Fixture fixture = new Fixture())
+        {
+            String longest = "a".repeat(128 - "cargo-seed-v2-".length() - 1 - 64 - "-parts-v2-partial".length());
+            requireThat(fixture.run(longest), "longestStatus").isEqualTo(0);
+            String seed = fixture.output.toString().lines().toList().getLast().substring("seed_tag=".length());
+            requireThat((seed + "-parts-v2-partial").length(), "longestTag").isEqualTo(128);
+            fixture.output.reset();
+            requireThat(fixture.run(longest + "a"), "tooLongStatus").isEqualTo(2);
+            requireThat(fixture.output.size(), "noTooLongOutputs").isEqualTo(0);
+        }
+    }
+
     /** Owns independent original recorded bytes and borrowed command output. */
     private static final class Fixture implements AutoCloseable
     {
