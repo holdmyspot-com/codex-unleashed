@@ -168,12 +168,20 @@ Patches are generated with `git format-patch` against the pinned upstream commit
 
 Accepted by the user on 2026-11-08 to make patched builds warm. Commit `2003623e23` replaces `cargo-seed-v1` with `cargo-seed-v2`, keyed on an explicit cache-format version and the compiler inputs only, and published by every build; see "Shared compatible state" in [source-cache-migration.md](docs/source-cache-migration.md). It is one shared state rather than two layers: Cargo's content-checked freshness after a restore already rebuilds only changed crates, so a separate third-party layer would only reduce download size.
 
+Job durations in minutes, in target order Linux x64, Linux ARM, macOS ARM, Windows x64, Windows ARM, Intel macOS:
+
 | Proof | Run | Result |
 | --- | --- | --- |
-| Cold, patches 1–24, `2003623e23` | `42480268759` | Running |
-| Same inputs again (exact hit) | `42480281160` | Queued |
-| Helper-only edit `690b76f0c7`, patches 1–24 (compatible hit) | `42480339549` | Queued |
-| Leaf change: patches 1–24 without patch 21, `690b76f0c7` | `42480425341` | Queued |
+| Cold, patches 1–24, `2003623e23` | `42480268759` | Passed: 82, 71, 137, 152, 97, 270 |
+| Same inputs again (exact hit) | `42480281160` | Passed: 6, 5, 5, 10, 16, 10 |
+| Helper-only edit `690b76f0c7`, patches 1–24 (compatible hit) | `42480339549` | 7, 6, 6, 11, 18; Intel macOS running |
+| Leaf change: patches 1–24 without patch 21, `690b76f0c7` | `42480425341` | 55, 56, 150, 107, 79; Intel macOS cancelled while queued, since that target moves to an ARM build host |
+
+A helper edit now restores the shared state. A leaf change near the root saves less, because `codex` links most of the workspace and its thin-LTO link dominates. In the cold run, `codex` alone took 43 to 93 minutes per target, and `codex-app-server` took 16 to 33.
+
+### Release build layout
+
+Commits `863735d490` and `034148fecb` follow upstream's layout. Each target builds its `primary` and `app-server` bundles on separate runners. `x86_64-apple-darwin` cross-compiles on `macos-15` and smoke-tests on `macos-15-intel`. A bundle that reaches the 320-minute limit continues in a new cached run, at most twice. See "Release build layout" in [source-cache-migration.md](docs/source-cache-migration.md). Proof: a cold and a warm six-target run with per-job timings, dispatched after the CP5 Intel macOS rerun finishes.
 
 ## Baseline deferrals
 

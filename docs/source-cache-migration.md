@@ -258,6 +258,17 @@ A restore from a different upstream commit or patch set is safe for the same rea
 
 The lookup order is unchanged: exact verified, exact partial, compatible verified, compatible partial. Retention keeps the newest version of each of the two newest seed lines per protected reference and target. With one shared compatible tag, those are the newest compatible state and one earlier exact state.
 
+### Release build layout
+
+A cold build is bounded by its slowest machine. Cold run `42480268759` took 82 to 152 minutes on five targets, while Intel macOS took four and a half hours. The CP5 Intel macOS job hit the 320-minute step limit. Upstream builds `codex-app-server` as a separate release bundle and builds `x86_64-apple-darwin` on Apple Silicon. The workflow now does both:
+
+- Each target builds two bundles on separate runners. `primary` builds every binary except `codex-app-server`, and `app-server` builds that one alone. A package selection builds only as `primary`. The `bundle` input selects one bundle.
+- Each bundle keeps its own cache line. The primary line keeps the bare target name, and the app-server line is `<target>-app-server`. When the app-server line misses entirely, it restores the primary line's compatible state, which already holds every library it links.
+- A matrix entry with `build-runner` compiles there. Its native smoke test runs on its `runner` in the `smoke` job, which downloads the executable. `x86_64-apple-darwin` compiles on `macos-15` and smoke-tests on `macos-15-intel`. Other workflows still read `runner` as the native host.
+- A bundle whose release build ran until its 320-minute limit and saved partial state requests a continuation. The `continue` job dispatches one cached run for that target and bundle, with `require_cache_hit=true`, so it restores the saved state. Two continuations bound the chain. Any other failure stays failed.
+
+Moving Intel macOS to an ARM host changes its compiler inputs (`RUNNER_ARCH`), so its first run under this layout is cold.
+
 - Verify the bundled runtime and maintained launcher on every selected native host; local Linux verification passes.
 - Verify the hosted preserved-helper build and its contribution to compiled-cache identity.
 - Verify hosted preparation after V8 setup and restoration, before all release compilation, covering all selected executables.
