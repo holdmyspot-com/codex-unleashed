@@ -1,0 +1,26 @@
+From e2aa1af4b34c8151db610a3b8f451186e50df448 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 8 Nov 2026 18:36:40 -0500
+Subject: [PATCH] Fixture: add an unused variable to codex-utils-elapsed
+
+Red-phase fixture for the workspace deny-warnings patch. It must fail the
+build with rustc's unused_variables diagnostic. Not part of the queue.
+---
+ codex-rs/utils/elapsed/src/lib.rs | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/codex-rs/utils/elapsed/src/lib.rs b/codex-rs/utils/elapsed/src/lib.rs
+index 209657e..d60658d 100644
+--- a/codex-rs/utils/elapsed/src/lib.rs
++++ b/codex-rs/utils/elapsed/src/lib.rs
+@@ -7,6 +7,7 @@ use std::time::Duration;
+ /// * < 60 s ->  "{sec:.2}s" (two decimal places)
+ /// * >= 60 s ->  "{min}m {sec:02}s"
+ pub fn format_duration(duration: Duration) -> String {
++    let fatal_warning_fixture = 0;
+     let millis = duration.as_millis() as i64;
+     format_elapsed_millis(millis)
+ }
+-- 
+2.43.0
+

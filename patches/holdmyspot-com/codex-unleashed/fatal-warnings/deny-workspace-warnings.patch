@@ -1,0 +1,33 @@
+From 8d92b717feb5f86ce7624a9cc047a8b0ab641a20 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 8 Nov 2026 18:35:59 -0500
+Subject: [PATCH] Deny rustc lint warnings in every workspace crate
+
+The workspace lint table set no rustc levels, so a new warning in Codex
+only scrolled past in the build log. Every crate inherits the table, so
+denying warnings there makes each one fail its build. Cargo still caps
+dependency lints, so dependencies are not affected.
+---
+ codex-rs/Cargo.toml | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
+index 830308f..b599353 100644
+--- a/codex-rs/Cargo.toml
++++ b/codex-rs/Cargo.toml
+@@ -582,8 +582,10 @@ zstd = "0.13"
+ wiremock = "0.6"
+ zeroize = "1.8.2"
+ 
+-[workspace.lints]
+-rust = {}
++[workspace.lints.rust]
++# Every workspace crate inherits these lints, so any rustc lint warning in Codex fails
++# its build. Dependencies keep Cargo's cap and are not affected.
++warnings = "deny"
+ 
+ [workspace.lints.clippy]
+ await_holding_invalid_type = "deny"
+-- 
+2.43.0
+

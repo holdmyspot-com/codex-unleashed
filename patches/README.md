@@ -28,3 +28,4 @@ The release applies these patches in this order:
 22. [release-build-warnings/bubblewrap-netlink-initializers.patch](holdmyspot-com/codex-unleashed/release-build-warnings/bubblewrap-netlink-initializers.patch)
 23. [release-build-warnings/nextest-local-profile.patch](holdmyspot-com/codex-unleashed/release-build-warnings/nextest-local-profile.patch)
 24. [release-build-warnings/bazel-module-versions.patch](holdmyspot-com/codex-unleashed/release-build-warnings/bazel-module-versions.patch)
+25. [fatal-warnings/deny-workspace-warnings.patch](holdmyspot-com/codex-unleashed/fatal-warnings/deny-workspace-warnings.patch)
