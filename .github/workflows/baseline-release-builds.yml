@@ -650,7 +650,14 @@ jobs:
 
       - name: Fail on warnings in the Cargo build logs
         # Rustc warnings already fail compilation; this catches build-script cargo:warning lines and Cargo's own.
-        run: bash "$RUNNER_TEMP/fail-on-cargo-warnings.sh" "$RUNNER_TEMP/baseline-evidence"
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/baseline-evidence"
+          logs=(cargo-build-*.log)
+          if [[ -f bwrap-build.log ]]; then
+            logs+=(bwrap-build.log)
+          fi
+          bash "$RUNNER_TEMP/fail-on-cargo-warnings.sh" "${logs[@]}"
 
       - name: Smoke-test the bundle's native executable
         if: ${{ !matrix.smoke-separately }}

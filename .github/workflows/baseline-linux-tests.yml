@@ -73,6 +73,7 @@ jobs:
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
+          cp restart-metadata/.github/scripts/fail-on-cargo-warnings.sh "$RUNNER_TEMP/fail-on-cargo-warnings.sh"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
@@ -281,6 +282,29 @@ jobs:
             printf 'The selected tests passed without the production changes; the red phase must fail.\n' >&2
             exit 1
           fi
+
+      - name: Build the test binaries and fail on build or nextest configuration warnings
+        env:
+          BASELINE_TEST_PACKAGE: ${{ inputs.package }}
+          BASELINE_ARCHIVE_COMPARE: ${{ inputs.compare_upstream_image || inputs.trace_shell_startup }}
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          logs=("$evidence/test-helper-build.log")
+          if [[ "$BASELINE_ARCHIVE_COMPARE" == true ]]; then
+            logs+=("$evidence/archive.log")
+          else
+            # Listing builds every selected test binary and loads the nextest configuration without running a test,
+            # so test output never reaches the scanned log. The run below reuses the binaries.
+            list_args=(list --target x86_64-unknown-linux-gnu --cargo-profile ci-test --list-type binaries-only)
+            for package in $BASELINE_TEST_PACKAGE; do list_args+=(-p "$package"); done
+            helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
+            env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
+              cargo-nextest nextest "${list_args[@]}" 2>&1 > "$evidence/test-binaries.txt" | tee "$evidence/test-build.log"
+            logs+=("$evidence/test-build.log")
+          fi
+          bash "$RUNNER_TEMP/fail-on-cargo-warnings.sh" "${logs[@]}"
 
       - name: Run the maintained nextest suite or focused comparison
         id: native_tests
