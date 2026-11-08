@@ -183,6 +183,23 @@ A helper edit now restores the shared state. A leaf change near the root saves l
 
 Commits `863735d490` and `034148fecb` follow upstream's layout. Each target builds its `primary` and `app-server` bundles on separate runners. `x86_64-apple-darwin` cross-compiles on `macos-15` and smoke-tests on `macos-15-intel`. A bundle that reaches the 320-minute limit continues in a new cached run, at most twice. See "Release build layout" in [source-cache-migration.md](docs/source-cache-migration.md). Proof: a cold and a warm six-target run with per-job timings, dispatched after the CP5 Intel macOS rerun finishes.
 
+## CP6 design (draft, before CP5 closes)
+
+Starting points, from upstream `dddc3c0a79` and the Cargo reference. Each boundary needs a clean pass, a controlled failure at its own diagnostic with the original text retained, and a restored pass.
+
+| Boundary | Upstream today | Planned enforcement |
+| --- | --- | --- |
+| rustc lints in workspace crates, release and test builds | None outside Clippy; `[workspace.lints] rust = {}` is empty | `CARGO_BUILD_WARNINGS=deny` (stable since Cargo 1.97). It is a Cargo-side level, not a rustc flag, so it should leave the cache keys and fingerprints alone; verify with a cache-hit run |
+| Clippy | `cargo clippy --target T --tests --profile P -- -D warnings` (`rust-ci-full.yml`), Bazel `--config=clippy` | Run upstream's command in our CI for the six targets |
+| Rustdoc | None | `RUSTDOCFLAGS=-Dwarnings cargo doc --no-deps`, as a separate job |
+| Linker messages | Raw stderr; `linker-messages` is a rustc lint | Deny `linker-messages` in `[workspace.lints.rust]` if the selected toolchain reports linker output through it; establish that first |
+| Build-script `cargo:warning` (C compilation: bubblewrap, aws-lc-sys) | Not a lint; `build.warnings` does not cover it | Fail on build-script warnings from Cargo's JSON messages, keeping the full log. Dependencies' build-script output is hidden by Cargo unless verbose, so cover direct dependencies with `-vv` or JSON output |
+| Direct dependencies' rustc lints | Capped by Cargo (`--cap-lints`) | An uncapped check of direct dependencies in its own cache namespace, never in the release build; no blanket exclusion |
+| Bazel rustc and C/C++ | Only Clippy is strict; V8 keeps its own `-Werror` | `extra_rustc_flag=-Dwarnings` and `extra_exec_rustc_flag=-Dwarnings`; keep V8's `-Werror` and do not import the old patch's V8/LLVM relaxations |
+| nextest configuration | Diagnostics on stderr | Fail on configuration warnings in the nextest job |
+
+The old `native-and-rust-warning-policy.patch` supplies the `build.warnings`, rustdoc and Bazel lines and the clean/fatal/restored fixture pattern. Its nonfatal-dependency policy is not inherited (see [restart-scope.md](docs/plans/restart-scope.md)).
+
 ## Baseline deferrals
 
 These explicit owner exclusions apply through CP3; retain the original failed statuses, diagnostics and source guards. They do not cover unrelated failures or authorize suppression, diagnostic production workarounds or upstream source edits.
