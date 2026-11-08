@@ -23,6 +23,7 @@ Scope is Codex and its direct dependencies. Each entry names its cause and its d
 | Warning | Where it appears | Cause | Disposition |
 | --- | --- | --- | --- |
 | `MODULE.bazel` requires `rules_cc@0.2.18` and `platforms@1.0.0`, but the resolved graph uses 0.2.20 and 1.1.0 | Bazel | Direct `bazel_dep` versions are older than what other modules require | Patch 24 |
+| Test execution time outside the range for the declared size (for example `app-server-all-test`: consider `size="medium"`), about 200 per job | Bazel | Upstream's Bazel CI passes `--test_verbose_timeout_warnings` to report them; durations depend on the runner (Linux, macOS, Windows, Wine) | Kept: a timing report the flag requests, not a code diagnostic. Resizing from one runner's timings would shorten timeouts on slower ones |
 | Suggested crate annotations for `tikv-jemalloc-sys` and `libgit2-sys` | Bazel | `rules_rs` advises replacing these crates' build scripts with BCR modules (for jemalloc, `5.3.0-bcr.alpha.4`) | Kept: upstream deliberately builds `tikv-jemalloc-sys` from its build script with two local patches. Applying the advice changes the built allocator, and disabling it would only suppress the message |
 
 ## Outside the Codex scope (reported separately)

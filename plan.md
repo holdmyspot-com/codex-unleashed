@@ -153,6 +153,17 @@ Patches are generated with `git format-patch` against the pinned upstream commit
 | Manual updater handoff (issue-54) | [issue-54](patches/holdmyspot-com/codex-unleashed/issue-54/README.md) | Adapted the two rejected hunks; the Windows handoff keeps upstream's newer stderr-pruning pause. Passed red/green in run `42391403362`; on Windows, run `42396334632` restores `pid_start.rs`, `pid_windows.rs` and `manual_update.rs`, and `failed_updater_handoff_preserves_predecessor_record` fails; patched, all 23 selected tests pass. |
 | Cumulative checks | All 20 patches in [patches/README.md](patches/README.md) order; the fresh-base apply reproduces the patch chain's tree | Fixes found by the first cumulative runs: `a5e588ccf0` keeps `0.0.0` standalone releases eligible for the daemon updater and updates the reconnect warning snapshot (focused run `42404017231`, 94 tests pass); `0186f57fe6` keeps an interrupt from changing agent status when message wake is off (focused run `42406852920`, 36 tests pass). Linux nextest `42410922258` attempt 3 at `0186f57fe6` runs 23,182 tests: 3 fail, and all 3 also fail in run `42419135579` without patches, which additionally fails the four deferred shell cases the patches repair. Bazel `42410924616` fails the same targets as unpatched `42403726387`, plus `cli-rollout_trace-test` and `tui-all-test`, which pass in focused patched run `42419575029`. The shared failures are recorded in [upstream-failure-comparison.md](docs/upstream-failure-comparison.md) under "Checkpoint 4 cumulative runs". Patched six-target release build: run `42427338720` at `262062698d` (cold, `cache=false`) passed on all six targets between 2026-11-07T23:54Z and 2026-11-08T04:13Z; x86_64-apple-darwin took longest (4 h 19 min). |
 
+## CP5 progress
+
+[warning-inventory.md](docs/warning-inventory.md) lists every warning in the cumulative CP4 release (`42427338720`), Linux nextest (`42410922258`) and Bazel (`42410924616`) logs, with each cause and disposition. Patches 21–24 in [release-build-warnings](patches/holdmyspot-com/codex-unleashed/release-build-warnings/README.md) repair the in-scope causes.
+
+| Check | Run | Result |
+| --- | --- | --- |
+| Release build of `codex-app-server` and `codex-cloud-tasks`, x86-64 Linux, patches 1–21 | `42446441243` | In progress |
+| Linux `codex-linux-sandbox` (compiles `codex-bwrap`; nextest reads its config), patches 1–24 | `42446919465` | Passed: `codex-bwrap` compiles with no warnings and nextest prints no configuration warning. 227 of 228 tests pass; `root_metadata_symlinks_cannot_reopen_approved_denials` fails as it does without the patches (no `bwrap` on the runner) |
+| Bazel `//codex-rs/cli:cli-build_info-test` (module resolution), patches 1–24 | `42446921416` | Passed: no root-module version warning; the remaining Bazel messages are the transitive and advisory ones in the inventory |
+| Cumulative six-target release, Linux and Bazel runs without the inventoried warnings | — | Not started |
+
 ## Baseline deferrals
 
 These explicit owner exclusions apply through CP3; retain the original failed statuses, diagnostics and source guards. They do not cover unrelated failures or authorize suppression, diagnostic production workarounds or upstream source edits.
