@@ -1,5 +1,5 @@
 name: Stable upstream release builds
-run-name: ${{ inputs.session_id && format('Release builds - {0} - {1}', inputs.target, inputs.session_id) || 'Stable upstream release builds' }}
+run-name: ${{ inputs.session_id && format('Release builds - {0} - {1}', inputs.target, inputs.session_id) || inputs.continuation > 0 && format('Release builds - {0} - {1} - continuation {2}', inputs.target, inputs.bundle, inputs.continuation) || 'Stable upstream release builds' }}
 
 on:
   workflow_dispatch:
@@ -64,6 +64,18 @@ on:
           - x86_64-apple-darwin
           - x86_64-pc-windows-msvc
           - aarch64-pc-windows-msvc
+      bundle:
+        description: Release bundle to build (all builds the primary and app-server bundles on separate runners)
+        type: choice
+        default: all
+        options:
+          - all
+          - primary
+          - app-server
+      continuation:
+        description: Automatic only; how many earlier runs this one continues after they reached the build time limit
+        type: number
+        default: 0
 
 permissions:
   contents: read
@@ -88,7 +100,17 @@ jobs:
           QUIET_STOP_MINUTES: ${{ inputs.quiet_stop_minutes }}
           SELECTED_PACKAGES: ${{ inputs.packages }}
           VERIFY_CLI_UNITS: ${{ inputs.verify_cli_units }}
+          SELECTED_BUNDLE: ${{ inputs.bundle }}
+          CONTINUATION: ${{ inputs.continuation }}
         run: |
+          if ! [[ "$CONTINUATION" =~ ^[0-9]+$ ]]; then
+            printf 'continuation must be a whole number.\n' >&2
+            exit 1
+          fi
+          if [[ -n "$SELECTED_PACKAGES" && "$SELECTED_BUNDLE" == app-server ]]; then
+            printf 'A package selection builds as the primary bundle.\n' >&2
+            exit 1
+          fi
           if ! [[ "$QUIET_STOP_MINUTES" =~ ^[1-9][0-9]*$ ]] || (( QUIET_STOP_MINUTES > 300 )); then
             printf 'quiet_stop_minutes must be a whole number from 1 to 300.\n' >&2
             exit 1
@@ -116,11 +138,13 @@ jobs:
           # Each target builds upstream's two release bundles on separate machines: "primary" (every binary except
           # codex-app-server) and "app-server". A package selection builds once, as the primary bundle. An entry with a
           # build-runner compiles there and runs its native smoke tests on its runner in the smoke job.
-          value="$(jq -ce --argjson cache "$CACHE_ENABLED" --arg target "$SELECTED_TARGET" --arg packages "$SELECTED_PACKAGES" '
+          value="$(jq -ce --argjson cache "$CACHE_ENABLED" --arg target "$SELECTED_TARGET" --arg packages "$SELECTED_PACKAGES" \
+            --arg bundle "$SELECTED_BUNDLE" '
             (if $cache then map(select(."baseline-verified" == true)) else . end)
             | (if $target == "all" then . else map(select(.target == $target)) end)
             | if length == 0 then error("Selected target is not enabled for this build mode") else . end
-            | [.[] | . as $entry | (if $packages == "" then ["primary", "app-server"] else ["primary"] end)[]
+            | [.[] | . as $entry
+                | (if $packages != "" then ["primary"] elif $bundle == "all" then ["primary", "app-server"] else [$bundle] end)[]
                 | $entry + {bundle: ., "build-runner": ($entry."build-runner" // $entry.runner),
                   "smoke-separately": ($entry."build-runner" != null)}]
             | {include: .}
@@ -151,6 +175,7 @@ jobs:
       TARGET: ${{ matrix.target }}
       BINARY_SUFFIX: ${{ matrix.binary-suffix }}
       RELEASE_BUNDLE: ${{ matrix.bundle }}
+      RELEASE_BUILD_LIMIT_MINUTES: "320"
       CARGO_CACHE_PARTS: "1"
     defaults:
       run:
@@ -537,6 +562,7 @@ jobs:
         id: release_build
         working-directory: codex-rs
         # End before the 360-minute job limit, so the build fails instead of being cancelled and its partial state is saved.
+        # Keep RELEASE_BUILD_LIMIT_MINUTES equal to this limit.
         timeout-minutes: 320
         env:
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
@@ -547,6 +573,7 @@ jobs:
           SELECTED_PACKAGES: ${{ inputs.packages }}
           QUIET_STOP_MINUTES: ${{ inputs.quiet_stop_minutes }}
         run: |
+          date +%s > "$RUNNER_TEMP/release-build-started"
           if [[ -n "$SELECTED_PACKAGES" ]]; then
             export RELEASE_PACKAGES="$SELECTED_PACKAGES"
           fi
@@ -695,6 +722,7 @@ jobs:
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" ${CACHE_SEED_TAG:+"$CACHE_SEED_TAG"} 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compiled-cache-save.log"
 
       - name: Save unverified partial compilation state for retry
+        id: partial_save
         if: failure() && inputs.cache && steps.cache_prepare.outcome == 'success' && steps.source_guard.outcome == 'success' && steps.dependency_guard.outcome == 'success'
         env:
           CARGO_CACHE_STAGE: final
@@ -704,6 +732,35 @@ jobs:
           set -euo pipefail
           printf 'Saving unverified compilation state after completed preparation and source/dependency verification; this run remains failed.\n'
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" ${CACHE_SEED_TAG:+"$CACHE_SEED_TAG"} 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-save.log"
+
+      - name: Request a continuation of a build stopped by its time limit
+        id: continuation
+        # Only a release build that ran until its limit and whose partial state was saved continues; any other failure
+        # stays failed. The continue job dispatches the next run.
+        if: failure() && steps.partial_save.outcome == 'success' && steps.release_build.outcome == 'failure' && inputs.packages == ''
+        run: |
+          set -euo pipefail
+          started="$(cat "$RUNNER_TEMP/release-build-started")"
+          elapsed=$(( $(date +%s) - started ))
+          if (( elapsed < (RELEASE_BUILD_LIMIT_MINUTES - 2) * 60 )); then
+            printf 'The release build failed after %s s, before its time limit; no continuation.\n' "$elapsed"
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/continuation"
+          jq -cn --arg target "$TARGET" --arg bundle "$RELEASE_BUNDLE" '{target: $target, bundle: $bundle}' \
+            > "$RUNNER_TEMP/continuation/$TARGET-$RELEASE_BUNDLE.json"
+          printf 'The release build reached its %s-minute limit after %s s; requesting a continuation.\n' \
+            "$RELEASE_BUILD_LIMIT_MINUTES" "$elapsed" | tee "$RUNNER_TEMP/baseline-evidence/continuation.log"
+          printf 'requested=true\n' >> "$GITHUB_OUTPUT"
+
+      - name: Hand the continuation request to the continue job
+        if: failure() && steps.continuation.outputs.requested == 'true'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: continue-${{ matrix.target }}-${{ matrix.bundle }}
+          path: ${{ runner.temp }}/continuation
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Verify changed CLI input without publishing diagnostic outputs
         if: success() && inputs.verify_invalidation && matrix.bundle == 'primary'
@@ -785,6 +842,47 @@ jobs:
             file "$executable"
             "$executable" --version
           } | tee "$RUNNER_TEMP/smoke/version.log"
+
+  continue:
+    # Dispatches one cached run per bundle that reached its build time limit. Each continuation restores the saved
+    # partial state, so a cold build that needs more than one job's time finishes over several runs. Two continuations
+    # bound the chain; a build that still has not finished needs investigation.
+    needs: [select, build]
+    if: ${{ !cancelled() && needs.build.result == 'failure' && inputs.cache && inputs.packages == '' && inputs.continuation < 2 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    steps:
+      - name: Collect the continuation requests
+        id: requests
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        continue-on-error: true
+        with:
+          pattern: continue-*
+          path: ${{ runner.temp }}/continuation
+          merge-multiple: true
+
+      - name: Dispatch the continuations
+        if: steps.requests.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONTINUATION: ${{ inputs.continuation }}
+          PATCHES: ${{ inputs.patches }}
+          PRUNE: ${{ inputs.prune }}
+          QUIET_STOP_MINUTES: ${{ inputs.quiet_stop_minutes }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          next=$((CONTINUATION + 1))
+          for request in "$RUNNER_TEMP"/continuation/*.json; do
+            target="$(jq -r .target "$request")"
+            bundle="$(jq -r .bundle "$request")"
+            printf 'Continuing %s %s as continuation %s.\n' "$target" "$bundle" "$next"
+            gh workflow run baseline-release-builds.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
+              -f cache=true -f require_cache_hit=true -f target="$target" -f bundle="$bundle" -f continuation="$next" \
+              -f patches="$PATCHES" -f prune="$PRUNE" -f quiet_stop_minutes="$QUIET_STOP_MINUTES"
+          done
 
   prune-caches:
     # Runs after every cached build, including a failed one, so caches it superseded do not wait for the schedule.
