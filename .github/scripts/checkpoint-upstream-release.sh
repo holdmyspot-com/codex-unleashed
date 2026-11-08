@@ -7,7 +7,7 @@
 # source commit is the pinned upstream commit with any downstream patches applied.
 # CARGO_CACHE_REPOSITORY, CACHE_TAG and CARGO_TARGET_DIR select the registry, exact
 # alias and idle Cargo outputs to save. A non-empty CACHE_SEED_TAG also publishes the
-# compatible alias; patched builds leave it empty so the pristine seed stays pristine.
+# compatible alias, which every build with the same compiler inputs shares.
 # CODEX_SOURCE_CACHE_TOOL names the bundled codex-tooling launcher.
 # Require the recorded source commit, unchanged tracked sources except Cargo.lock and
 # permitted workspace-version lockfile synchronization before uploading.

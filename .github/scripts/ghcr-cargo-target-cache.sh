@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Transfer compiled Cargo outputs under an exact cargo-v3 tag. Push accepts an
-# optional cargo-seed-v1 tag for the same target, attaching it to the same manifest;
+# optional cargo-seed-v2 tag for the same target, attaching it to the same manifest;
 # pull accepts either tag family. Callers must run Cargo and verification after
 # every restore. Partial operations append -partial to both references and never
 # update their successful counterparts. A protected-release alias accompanies
@@ -33,7 +33,7 @@ upstream_tag="$5"
 seed_tag="${6:-}"
 if [[ "$tag" =~ ^cargo-v3-([A-Za-z0-9_-]+)-([0-9a-f]{64})$ ]]; then
   cache_target="${BASH_REMATCH[1]}"
-elif [[ "$tag" =~ ^cargo-seed-v1-([A-Za-z0-9_-]+)-([0-9a-f]{64})$ ]]; then
+elif [[ "$tag" =~ ^cargo-seed-v2-([A-Za-z0-9_-]+)-([0-9a-f]{64})$ ]]; then
   cache_target="${BASH_REMATCH[1]}"
   case "$operation" in
     pull|pull-partial) ;;
@@ -48,7 +48,7 @@ if [[ $# == 6 ]]; then
     push|push-partial) ;;
     *) printf 'A compatible seed alias is accepted only when pushing outputs.\n' >&2; exit 2 ;;
   esac
-  if [[ ! "$seed_tag" =~ ^cargo-seed-v1-$cache_target-([0-9a-f]{64})$ ]]; then
+  if [[ ! "$seed_tag" =~ ^cargo-seed-v2-$cache_target-([0-9a-f]{64})$ ]]; then
     printf 'Compatible seed alias must name target %s and a 64-character digest: %s\n' "$cache_target" "$seed_tag" >&2
     exit 2
   fi

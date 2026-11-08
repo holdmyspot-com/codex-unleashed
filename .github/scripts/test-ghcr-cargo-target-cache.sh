@@ -173,7 +173,7 @@ result=$?
 set -e
 test "$result" = 3
 
-seed_tag="cargo-seed-v1-$target-$identity"
+seed_tag="cargo-seed-v2-$target-$identity"
 next_tag="cargo-v3-$target-$changed_identity"
 bash "$cache" push-partial "$repository" "$next_tag" "$fixture/source target" rust-v0.164.0 "$seed_tag"
 set +e
@@ -200,7 +200,7 @@ test "$(cat "$restored/deps/libfixture.rlib")" = verified-seed
 bash "$cache" pull-partial "$repository" "$seed_tag" "$fixture/restored target" rust-v0.164.0
 test "$(cat "$restored/deps/libfixture.rlib")" = newer-partial
 
-for invalid_seed_tag in '' "cargo-seed-v1-aarch64-unknown-linux-musl-$identity" "$tag"; do
+for invalid_seed_tag in '' "cargo-seed-v2-aarch64-unknown-linux-musl-$identity" "$tag"; do
   set +e
   bash "$cache" push "$repository" "$next_tag" "$fixture/source target" rust-v0.164.0 "$invalid_seed_tag"
   result=$?

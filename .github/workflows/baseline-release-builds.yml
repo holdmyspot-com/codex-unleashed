@@ -234,12 +234,6 @@ jobs:
           git show HEAD:codex-rs/Cargo.lock > "$evidence/source-Cargo.lock"
           git rev-parse HEAD > "$evidence/source-commit"
           printf 'commit=%s\n' "$(cat "$evidence/source-commit")" >> "$GITHUB_OUTPUT"
-          # A patched build seeds from the pristine compatible outputs but publishes only its exact alias.
-          if (( ${#patch_paths[@]} == 0 )); then
-            printf 'publish_seed=true\n' >> "$GITHUB_OUTPUT"
-          else
-            printf 'publish_seed=false\n' >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Prepare retained release worker
         if: inputs.public_key != ''
@@ -504,7 +498,7 @@ jobs:
         timeout-minutes: 320
         env:
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
-          CACHE_SEED_TAG: ${{ steps.source.outputs.publish_seed == 'true' && steps.cache_inputs.outputs.seed_tag || '' }}
+          CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
           CACHE_ENABLED: ${{ inputs.cache }}
           TRACE_SIGNALS: ${{ inputs.trace_signals }}
           VERIFY_CLI_UNITS: ${{ inputs.verify_cli_units }}
@@ -639,7 +633,7 @@ jobs:
         env:
           CARGO_CACHE_STAGE: final
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
-          CACHE_SEED_TAG: ${{ steps.source.outputs.publish_seed == 'true' && steps.cache_inputs.outputs.seed_tag || '' }}
+          CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
         run: |
           set -euo pipefail
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" ${CACHE_SEED_TAG:+"$CACHE_SEED_TAG"} 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compiled-cache-save.log"
@@ -649,7 +643,7 @@ jobs:
         env:
           CARGO_CACHE_STAGE: final
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
-          CACHE_SEED_TAG: ${{ steps.source.outputs.publish_seed == 'true' && steps.cache_inputs.outputs.seed_tag || '' }}
+          CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
         run: |
           set -euo pipefail
           printf 'Saving unverified compilation state after completed preparation and source/dependency verification; this run remains failed.\n'

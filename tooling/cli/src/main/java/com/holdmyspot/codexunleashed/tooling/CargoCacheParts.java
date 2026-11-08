@@ -32,7 +32,7 @@ import tools.jackson.databind.node.ObjectNode;
 public final class CargoCacheParts
 {
     /** Current multipart artifact format. */
-    static final String ARTIFACT = "application/vnd.codex-unleashed.cargo-target.v2";
+    public static final String ARTIFACT = "application/vnd.codex-unleashed.cargo-target.v2";
     /** Compressed tar layer format. */
     private static final String LAYER = "application/vnd.codex-unleashed.cargo-target.tar+zstd";
     /** Durable target-relative ownership record. */

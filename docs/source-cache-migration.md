@@ -246,6 +246,18 @@ A further local check executes the actual restore step extracted from the workfl
 
 Hosted compatible fallback is verified on Linux x64 by the actual release-job proof above. Other platforms remain unverified; existing caches without seed aliases are not automatically adopted.
 
+### Shared compatible state (`cargo-seed-v2`)
+
+Run `42436915786` showed that the `cargo-seed-v1` key made patched builds cold. Its key hashed the upstream commit and every helper source file, and only unpatched builds published it. So a helper edit reset every seed, and no seed existed for a patched build.
+
+The compatible tag is now `cargo-seed-v2-<target>-sha256("cargo-cache-format=<N>\n" + compiler inputs)`. The compiler inputs are unchanged: Rust and Cargo identity, the release-build script hash, the target, host, image and build environment, and the `Cargo.lock` and `rust-toolchain.toml` hashes. The key leaves out the upstream commit, the patch set, the wrappers and the helper's source. Every successful or partial build publishes it, so it names the most recent build with the same compiler inputs.
+
+A restore from a different upstream commit or patch set is safe for the same reason the v1 seed was: preparation compares every source digest with the restored snapshot. It keeps the timestamps of unchanged files and marks changed, added and removed ones with the clock time, so Cargo rebuilds exactly the affected crates. Third-party crates stay fresh while the lockfile, toolchain and build command are unchanged, and so do workspace crates that no patch touches.
+
+`CargoCacheKeys.FORMAT_VERSION` replaces the helper hash as the guard against format drift. `CargoCacheFormatTest` pins a fingerprint of the archive artifact type, the ownership record, the collected entry layout, the digest-index fields and the source-snapshot encoding. A format change fails it until `FORMAT_VERSION` is incremented. The exact `cargo-v3` tag is unchanged and still includes the helper hash, the wrappers, the upstream commit and the patch set.
+
+The lookup order is unchanged: exact verified, exact partial, compatible verified, compatible partial. Retention keeps the newest version of each of the two newest seed lines per protected reference and target. With one shared compatible tag, those are the newest compatible state and one earlier exact state.
+
 - Verify the bundled runtime and maintained launcher on every selected native host; local Linux verification passes.
 - Verify the hosted preserved-helper build and its contribution to compiled-cache identity.
 - Verify hosted preparation after V8 setup and restoration, before all release compilation, covering all selected executables.

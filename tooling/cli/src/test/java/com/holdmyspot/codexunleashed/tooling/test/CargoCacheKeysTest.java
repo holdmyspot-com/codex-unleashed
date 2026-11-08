@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.tooling.test;
 
+import com.holdmyspot.codexunleashed.tooling.CargoCacheKeys;
 import com.holdmyspot.codexunleashed.tooling.Main;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -8,6 +9,7 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
@@ -21,10 +23,12 @@ public final class CargoCacheKeysTest
     public CargoCacheKeysTest() {}
 
     /**
-     * Retains exact input byte order, including binary bytes and line endings; seeds omit only wrappers.
-     * @throws Exception if fixture allocation or digest acquisition fails
+     * Retains exact input byte order, including binary bytes and line endings, in the exact tag. The compatible tag
+     * hashes only the cache format version and the compiler inputs, so upstream, wrapper and helper changes keep it.
+     * @throws IOException if fixture storage fails
+     * @throws NoSuchAlgorithmException if SHA-256 is unavailable
      */
-    @Test public void exactBytesAndCompatibleSeeds() throws Exception
+    @Test public void exactBytesAndCompatibleSeeds() throws IOException, NoSuchAlgorithmException
     {
         try (Fixture fixture = new Fixture())
         {
@@ -33,15 +37,20 @@ public final class CargoCacheKeysTest
             for (int i = 0; i < bytes.length; ++i) Files.write(fixture.inputs.get(i), bytes[i]);
             requireThat(fixture.run("target"), "publicStatus").isEqualTo(0);
             MessageDigest exact = MessageDigest.getInstance("SHA-256"); MessageDigest seed = MessageDigest.getInstance("SHA-256");
-            for (int i = 0; i < bytes.length; ++i) { exact.update(bytes[i]); if (i != 1) seed.update(bytes[i]); }
+            for (byte[] value : bytes) exact.update(value);
+            seed.update(("cargo-cache-format=" + CargoCacheKeys.FORMAT_VERSION + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            seed.update(bytes[3]);
             requireThat(fixture.output.toString(), "orderedIdentityBytes").isEqualTo("tag=cargo-v3-target-" + HexFormat.of().formatHex(exact.digest()) +
-                "\nseed_tag=cargo-seed-v1-target-" + HexFormat.of().formatHex(seed.digest()) + "\n");
+                "\nseed_tag=cargo-seed-v2-target-" + HexFormat.of().formatHex(seed.digest()) + "\n");
             String originalSeed = fixture.output.toString().lines().toList().getLast();
-            fixture.output.reset(); Files.writeString(fixture.inputs.get(1), "wrapper repair");
-            requireThat(fixture.run("target"), "repairStatus").isEqualTo(0);
-            requireThat(fixture.output.toString().lines().toList().getLast(), "wrapperIndependentSeed").isEqualTo(originalSeed);
-            fixture.output.reset(); Files.writeString(fixture.inputs.get(2), "new helper"); fixture.run("target");
-            requireThat(fixture.output.toString().lines().toList().getLast().equals(originalSeed), "helperPartitionsSeed").isFalse();
+            for (int changed = 0; changed < 3; ++changed)
+            {
+                fixture.output.reset(); Files.writeString(fixture.inputs.get(changed), "changed " + changed);
+                requireThat(fixture.run("target"), "changedStatus").isEqualTo(0);
+                requireThat(fixture.output.toString().lines().toList().getLast(), "compilerOnlySeed").isEqualTo(originalSeed);
+            }
+            fixture.output.reset(); Files.writeString(fixture.inputs.get(3), "new compiler"); fixture.run("target");
+            requireThat(fixture.output.toString().lines().toList().getLast().equals(originalSeed), "compilerPartitionsSeed").isFalse();
         }
     }
 

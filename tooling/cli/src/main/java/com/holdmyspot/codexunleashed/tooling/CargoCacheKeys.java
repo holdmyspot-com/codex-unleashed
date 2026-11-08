@@ -2,23 +2,34 @@ package com.holdmyspot.codexunleashed.tooling;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
-/** Derives exact and compatible cache tags from the unchanged ordered recorded input bytes. */
+/** Derives exact and compatible cache tags from recorded input bytes. */
 public final class CargoCacheKeys
 {
+    /**
+     * Version of the restored-state format: the archive layout, ownership record, digest index and source snapshot.
+     * <p>
+     * The compatible tag hashes this instead of the helper's source, so a helper change that keeps the format still
+     * restores earlier state. {@code CargoCacheFormatTest} fails when the format changes without an increment.
+     */
+    public static final int FORMAT_VERSION = 1;
+
     /** Prevents construction. */
     private CargoCacheKeys() {}
 
     /**
-     * Hashes upstream, wrappers, helper and compiler bytes in that exact order; seeds omit only wrappers.
+     * Hashes upstream, wrappers, helper and compiler bytes in that exact order for the exact tag, followed by an optional
+     * applied-patch record. An empty record leaves the exact tag unchanged.
      * <p>
-     * An optional applied-patch record follows them in the exact tag only. An empty record leaves both tags unchanged,
-     * and a patched build keeps the pristine seed, so it can start from pristine outputs but never matches them exactly.
+     * The compatible tag hashes only {@link #FORMAT_VERSION} and the compiler bytes, which include the lockfile, toolchain,
+     * target and build command. Every build of any upstream commit, patch set or helper revision with those inputs shares
+     * it, so the most recent one seeds the next: Cargo then rebuilds only the crates whose sources differ.
      * @param arguments target, four recorded input paths and an optional applied-patch record path
      * @param out borrowed output receiving both tags after every input has been read
      * @param err borrowed diagnostics
@@ -40,15 +51,13 @@ public final class CargoCacheKeys
             byte[] patches = new byte[0];
             if (arguments.length == 6) patches = Files.readAllBytes(Path.of(arguments[5]));
             MessageDigest exact = digest(); MessageDigest seed = digest();
-            for (int i = 0; i < values.length; ++i)
-            {
-                exact.update(values[i]);
-                if (i != 1) seed.update(values[i]);
-            }
+            for (byte[] value : values) exact.update(value);
             exact.update(patches);
+            seed.update(("cargo-cache-format=" + FORMAT_VERSION + "\n").getBytes(StandardCharsets.UTF_8));
+            seed.update(values[3]);
             // Write LF on every platform: callers append these lines to GITHUB_OUTPUT.
             out.print("tag=cargo-v3-" + target + "-" + HexFormat.of().formatHex(exact.digest()) + "\n");
-            out.print("seed_tag=cargo-seed-v1-" + target + "-" + HexFormat.of().formatHex(seed.digest()) + "\n");
+            out.print("seed_tag=cargo-seed-v2-" + target + "-" + HexFormat.of().formatHex(seed.digest()) + "\n");
             return 0;
         }
         catch (IOException | IllegalArgumentException failure) { err.println(failure.getMessage()); return 2; }
