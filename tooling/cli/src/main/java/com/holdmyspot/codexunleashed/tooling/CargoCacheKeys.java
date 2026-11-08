@@ -16,26 +16,36 @@ public final class CargoCacheKeys
 
     /**
      * Hashes upstream, wrappers, helper and compiler bytes in that exact order; seeds omit only wrappers.
-     * @param arguments target and four recorded input paths
+     * <p>
+     * An optional applied-patch record follows them in the exact tag only. An empty record leaves both tags unchanged,
+     * and a patched build keeps the pristine seed, so it can start from pristine outputs but never matches them exactly.
+     * @param arguments target, four recorded input paths and an optional applied-patch record path
      * @param out borrowed output receiving both tags after every input has been read
      * @param err borrowed diagnostics
      * @return zero on success or two for invalid or unavailable inputs
      */
     static int run(String[] arguments, PrintStream out, PrintStream err)
     {
-        if (arguments.length != 5) { err.println("Expected target, upstream, wrappers, helper and compiler paths"); return 2; }
+        if (arguments.length != 5 && arguments.length != 6)
+        {
+            err.println("Expected target, upstream, wrappers, helper and compiler paths and an optional applied-patch record");
+            return 2;
+        }
         try
         {
             String target = arguments[0];
             if (!target.matches("[A-Za-z0-9_-]+")) throw new IllegalArgumentException("Invalid cache target name");
             byte[][] values = new byte[4][];
             for (int i = 0; i < values.length; ++i) values[i] = Files.readAllBytes(Path.of(arguments[i + 1]));
+            byte[] patches = new byte[0];
+            if (arguments.length == 6) patches = Files.readAllBytes(Path.of(arguments[5]));
             MessageDigest exact = digest(); MessageDigest seed = digest();
             for (int i = 0; i < values.length; ++i)
             {
                 exact.update(values[i]);
                 if (i != 1) seed.update(values[i]);
             }
+            exact.update(patches);
             // Write LF on every platform: callers append these lines to GITHUB_OUTPUT.
             out.print("tag=cargo-v3-" + target + "-" + HexFormat.of().formatHex(exact.digest()) + "\n");
             out.print("seed_tag=cargo-seed-v1-" + target + "-" + HexFormat.of().formatHex(seed.digest()) + "\n");

@@ -49,7 +49,7 @@ on:
         type: string
         default: ''
       patches:
-        description: Optional space-separated repository paths of downstream patches to apply with git am, in order; requires cache=false
+        description: Optional space-separated repository paths of downstream patches to apply with git am, in order
         type: string
         default: ''
       target:
@@ -85,15 +85,9 @@ jobs:
           VERIFY_INVALIDATION: ${{ inputs.verify_invalidation }}
           TRACE_SIGNALS: ${{ inputs.trace_signals }}
           QUIET_STOP_MINUTES: ${{ inputs.quiet_stop_minutes }}
-          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
         run: |
           if ! [[ "$QUIET_STOP_MINUTES" =~ ^[1-9][0-9]*$ ]] || (( QUIET_STOP_MINUTES > 300 )); then
             printf 'quiet_stop_minutes must be a whole number from 1 to 300.\n' >&2
-            exit 1
-          fi
-          # The compiled cache is keyed by the pristine upstream commit, so patched outputs must not read or write it.
-          if [[ -n "$DOWNSTREAM_PATCHES" && "$CACHE_ENABLED" == true ]]; then
-            printf 'patches require cache=false.\n' >&2
             exit 1
           fi
           if [[ "$CACHE_HIT_REQUIRED" == true && "$CACHE_ENABLED" == false ]]; then
@@ -227,6 +221,8 @@ jobs:
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-evidence"
+          # The exact cache tag hashes this record; an empty record keeps the pristine tag.
+          : > "$evidence/applied-patches.txt"
           read -r -a patch_paths <<< "$DOWNSTREAM_PATCHES"
           # The guarded expansion keeps an empty list valid under set -u in macOS's Bash 3.2.
           for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
@@ -236,7 +232,14 @@ jobs:
           done
           # Later guards compare the build against the commit and lockfile it compiles, with or without patches.
           git show HEAD:codex-rs/Cargo.lock > "$evidence/source-Cargo.lock"
-          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git rev-parse HEAD > "$evidence/source-commit"
+          printf 'commit=%s\n' "$(cat "$evidence/source-commit")" >> "$GITHUB_OUTPUT"
+          # A patched build seeds from the pristine compatible outputs but publishes only its exact alias.
+          if (( ${#patch_paths[@]} == 0 )); then
+            printf 'publish_seed=true\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'publish_seed=false\n' >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Prepare retained release worker
         if: inputs.public_key != ''
@@ -419,10 +422,11 @@ jobs:
             env | LC_ALL=C sort | grep -E '^(RUSTC|RUSTC_WRAPPER|RUSTFLAGS|RUSTDOCFLAGS|RUSTY_V8_[A-Z_]+|CARGO_INCREMENTAL|CARGO_BUILD_TARGET|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CARGO_PROFILE_RELEASE_[A-Z_]+|CARGO_TARGET_[A-Z0-9_]+_LINKER|CC(_[A-Za-z0-9_]+)?|CXX(_[A-Za-z0-9_]+)?|AR(_[A-Za-z0-9_]+)?|TARGET_CC|TARGET_CXX|CFLAGS(_[A-Za-z0-9_]+)?|CXXFLAGS(_[A-Za-z0-9_]+)?|CMAKE_[A-Z_]+|([A-Z0-9_]+_)?OPENSSL_[A-Z_]+|AWS_LC_SYS_NO_JITTER_ENTROPY[A-Za-z0-9_]*|LIBSQLITE3_FLAGS|PKG_CONFIG_[A-Za-z0-9_]+)='
             sha256sum codex-rs/Cargo.lock codex-rs/rust-toolchain.toml
           } > "$evidence/compiler-cache-inputs.txt"
-          cat "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256" "$evidence/cache-helper-inputs.sha256" "$evidence/compiler-cache-inputs.txt" > "$evidence/compiled-cache-inputs.txt"
+          cat "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256" "$evidence/cache-helper-inputs.sha256" "$evidence/compiler-cache-inputs.txt" "$evidence/applied-patches.txt" > "$evidence/compiled-cache-inputs.txt"
           run_codex_tooling cargo-cache-keys "$TARGET" \
             "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256" \
             "$evidence/cache-helper-inputs.sha256" "$evidence/compiler-cache-inputs.txt" \
+            "$evidence/applied-patches.txt" \
             | tee "$evidence/cache-keys.txt" >> "$GITHUB_OUTPUT"
 
       - name: Restore compiled Cargo outputs from GHCR
@@ -500,7 +504,7 @@ jobs:
         timeout-minutes: 320
         env:
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
-          CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
+          CACHE_SEED_TAG: ${{ steps.source.outputs.publish_seed == 'true' && steps.cache_inputs.outputs.seed_tag || '' }}
           CACHE_ENABLED: ${{ inputs.cache }}
           TRACE_SIGNALS: ${{ inputs.trace_signals }}
           VERIFY_CLI_UNITS: ${{ inputs.verify_cli_units }}
@@ -635,21 +639,21 @@ jobs:
         env:
           CARGO_CACHE_STAGE: final
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
-          CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
+          CACHE_SEED_TAG: ${{ steps.source.outputs.publish_seed == 'true' && steps.cache_inputs.outputs.seed_tag || '' }}
         run: |
           set -euo pipefail
-          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" "$CACHE_SEED_TAG" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compiled-cache-save.log"
+          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" ${CACHE_SEED_TAG:+"$CACHE_SEED_TAG"} 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compiled-cache-save.log"
 
       - name: Save unverified partial compilation state for retry
         if: failure() && inputs.cache && steps.cache_prepare.outcome == 'success' && steps.source_guard.outcome == 'success' && steps.dependency_guard.outcome == 'success'
         env:
           CARGO_CACHE_STAGE: final
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
-          CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
+          CACHE_SEED_TAG: ${{ steps.source.outputs.publish_seed == 'true' && steps.cache_inputs.outputs.seed_tag || '' }}
         run: |
           set -euo pipefail
           printf 'Saving unverified compilation state after completed preparation and source/dependency verification; this run remains failed.\n'
-          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" "$CACHE_SEED_TAG" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-save.log"
+          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" ${CACHE_SEED_TAG:+"$CACHE_SEED_TAG"} 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-save.log"
 
       - name: Verify changed CLI input without publishing diagnostic outputs
         if: success() && inputs.verify_invalidation

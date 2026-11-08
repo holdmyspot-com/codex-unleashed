@@ -110,7 +110,7 @@ public final class Main
 			" [--record-source-inputs] [--profile release|ci-test] <workspace> <target> [binary ...]");
 		err.println("       codex-tooling " + GhcrRetentionPlan.NAME + " < inventory.json");
 		err.println("       codex-tooling " + ActionsCacheRetentionPlan.NAME + " < inventory.json");
-		err.println("       codex-tooling cargo-cache-keys <target> <upstream> <wrappers> <helper> <compiler>");
+		err.println("       codex-tooling cargo-cache-keys <target> <upstream> <wrappers> <helper> <compiler> [<patches>]");
 		err.println("       codex-tooling verify-cargo-lock <original> <current> <workspace-metadata>");
 		err.println("       codex-tooling cargo-cache-parts <push|pull> <repository> <reference> <previous> <target> <temporary> [options]");
 		err.println("       codex-tooling " + V8_SCRIPT_COMMAND + " <upstream-action.yml>");

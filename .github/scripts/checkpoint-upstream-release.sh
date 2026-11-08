@@ -3,11 +3,13 @@
 # Run from codex-rs with one supported release binary name; invalid arguments exit 2.
 # GITHUB_WORKSPACE names the pristine upstream checkout. RUNNER_TEMP must contain
 # ghcr-cargo-target-cache.sh and baseline-evidence records
-# upstream-commit, upstream-ref and upstream-Cargo.lock from the release workflow.
-# CARGO_CACHE_REPOSITORY, CACHE_TAG, CACHE_SEED_TAG and CARGO_TARGET_DIR select
-# the registry, exact/compatible aliases and idle Cargo outputs to save.
+# source-commit, upstream-ref and source-Cargo.lock from the release workflow; the
+# source commit is the pinned upstream commit with any downstream patches applied.
+# CARGO_CACHE_REPOSITORY, CACHE_TAG and CARGO_TARGET_DIR select the registry, exact
+# alias and idle Cargo outputs to save. A non-empty CACHE_SEED_TAG also publishes the
+# compatible alias; patched builds leave it empty so the pristine seed stays pristine.
 # CODEX_SOURCE_CACHE_TOOL names the bundled codex-tooling launcher.
-# Require the recorded commit, unchanged tracked sources except Cargo.lock and
+# Require the recorded source commit, unchanged tracked sources except Cargo.lock and
 # permitted workspace-version lockfile synchronization before uploading.
 # Write metadata, verification receipts, transfer logs and elapsed seconds under
 # baseline-evidence; propagate guard, Cargo, verifier and upload failures.
@@ -35,20 +37,20 @@ esac
 : "${RUNNER_TEMP:?Set the owned evidence directory}"
 : "${CARGO_CACHE_REPOSITORY:?Set the private cache repository}"
 : "${CACHE_TAG:?Set the exact cache identity}"
-: "${CACHE_SEED_TAG:?Set the compatible cache identity}"
+: "${CACHE_SEED_TAG?Set the compatible cache identity, or an empty value to publish only the exact alias}"
 : "${CARGO_TARGET_DIR:?Set the owned Cargo output directory}"
 : "${CODEX_SOURCE_CACHE_TOOL:?Set the bundled codex-tooling launcher}"
 evidence="$RUNNER_TEMP/baseline-evidence"
 started=$SECONDS
-test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
+test "$(git rev-parse HEAD)" = "$(cat "$evidence/source-commit")"
 git -C "$GITHUB_WORKSPACE" diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
 cargo metadata --no-deps --format-version 1 > "$evidence/workspace-metadata-$binary.json"
 run_codex_tooling verify-cargo-lock \
-  "$evidence/upstream-Cargo.lock" Cargo.lock "$evidence/workspace-metadata-$binary.json" \
+  "$evidence/source-Cargo.lock" Cargo.lock "$evidence/workspace-metadata-$binary.json" \
   > "$evidence/lock-verification-$binary.json"
 CARGO_CACHE_STAGE="$binary" bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial \
   "$CARGO_CACHE_REPOSITORY" "$CACHE_TAG" "$CARGO_TARGET_DIR" \
-  "$(cat "$evidence/upstream-ref")" "$CACHE_SEED_TAG" \
+  "$(cat "$evidence/upstream-ref")" ${CACHE_SEED_TAG:+"$CACHE_SEED_TAG"} \
   2>&1 | tee "$evidence/checkpoint-$binary.log"
 printf 'binary=%s checkpoint_seconds=%s\n' "$binary" "$((SECONDS-started))" \
   | tee -a "$evidence/build-stage-timings.log"

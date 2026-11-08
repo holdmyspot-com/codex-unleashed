@@ -46,6 +46,32 @@ public final class CargoCacheKeysTest
     }
 
     /**
+     * An empty applied-patch record keeps the pristine tags, and applied patches partition only the exact tag, so a
+     * patched build seeds from pristine outputs without ever matching them exactly.
+     * @throws IOException if fixture storage fails
+     */
+    @Test public void appliedPatchesPartitionOnlyExactTags() throws IOException
+    {
+        try (Fixture fixture = new Fixture())
+        {
+            requireThat(fixture.run("target"), "pristineStatus").isEqualTo(0);
+            List<String> pristine = fixture.output.toString().lines().toList();
+            Path patches = fixture.root.resolve("patches");
+            Files.writeString(patches, "");
+            fixture.output.reset();
+            requireThat(fixture.run("target", patches), "emptyPatchesStatus").isEqualTo(0);
+            requireThat(fixture.output.toString().lines().toList(), "emptyPatchesTags").isEqualTo(pristine);
+
+            Files.writeString(patches, "0123  patches/one.patch\n");
+            fixture.output.reset();
+            requireThat(fixture.run("target", patches), "patchedStatus").isEqualTo(0);
+            List<String> patched = fixture.output.toString().lines().toList();
+            requireThat(patched.getFirst(), "patchedExactTag").isNotEqualTo(pristine.getFirst());
+            requireThat(patched.getLast(), "sharedSeedTag").isEqualTo(pristine.getLast());
+        }
+    }
+
+    /**
      * Invalid targets and unreadable inputs return two without publishing partial tags.
      * @throws IOException if fixture storage fails
      */
@@ -82,11 +108,13 @@ public final class CargoCacheKeysTest
         /**
          * Invokes the actual public command without closing borrowed streams.
          * @param target supplied target name
+         * @param extra optional trailing input paths
          * @return public status
          */
-        private int run(String target)
+        private int run(String target, Path... extra)
         {
             List<String> args = new ArrayList<>(List.of("cargo-cache-keys", target)); inputs.forEach(path -> args.add(path.toString()));
+            for (Path path : extra) args.add(path.toString());
             return Main.run(args.toArray(String[]::new), new ByteArrayInputStream(new byte[0]), out, err);
         }
         /**
@@ -95,7 +123,8 @@ public final class CargoCacheKeysTest
          */
         @Override public void close() throws IOException
         {
-            out.close(); err.close(); for (Path input : inputs) Files.deleteIfExists(input); Files.delete(root);
+            out.close(); err.close(); for (Path input : inputs) Files.deleteIfExists(input);
+            Files.deleteIfExists(root.resolve("patches")); Files.delete(root);
         }
     }
 }
