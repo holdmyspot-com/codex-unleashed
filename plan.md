@@ -162,7 +162,18 @@ Patches are generated with `git format-patch` against the pinned upstream commit
 | Release build of `codex-app-server` and `codex-cloud-tasks`, x86-64 Linux, patches 1–21 | `42446441243` | Passed: the `codex-app-server` library and binary and the `codex-cloud-tasks` library compile with no Rust warnings (the job stops by design after a package selection) |
 | Linux `codex-linux-sandbox` (compiles `codex-bwrap`; nextest reads its config), patches 1–24 | `42446919465` | Passed: `codex-bwrap` compiles with no warnings and nextest prints no configuration warning. 227 of 228 tests pass; `root_metadata_symlinks_cannot_reopen_approved_denials` fails as it does without the patches (no `bwrap` on the runner) |
 | Bazel `//codex-rs/cli:cli-build_info-test` (module resolution), patches 1–24 | `42446921416` | Passed: no root-module version warning; the remaining Bazel messages are the transitive and advisory ones in the inventory |
-| Cumulative six-target release, Linux and Bazel runs without the inventoried warnings, patches 1–24 | Release `42450252549`, Linux `42450254107`, Bazel `42450255818` | Linux and Bazel done; release in progress. Linux runs 23,182 tests: 3 fail (`v8-poc` sandbox feature, skills `repo_ancestry`, linux-sandbox `root_metadata`), all shared with the unpatched base, and it reports no compiler or nextest warnings. Bazel fails `wine-test-support` (TIMEOUT), `exec_process`, `rollout-unit-tests` and `linux-sandbox-all-test`, all shared failures recorded in [upstream-failure-comparison.md](docs/upstream-failure-comparison.md); its only remaining warnings are the transitive, toolchain and advisory ones in the inventory |
+| Cumulative six-target release, Linux and Bazel runs without the inventoried warnings, patches 1–24 | Release `42450252549`, Linux `42450254107`, Bazel `42450255818` | Linux and Bazel done. Release: five targets pass with no compiler warnings; `x86_64-apple-darwin` reached the 320-minute step limit while compiling `codex-app-server` (the `codex` binary alone took 235 minutes on that runner), saved partial state, and its rerun of attempt 2 is queued. Linux runs 23,182 tests: 3 fail (`v8-poc` sandbox feature, skills `repo_ancestry`, linux-sandbox `root_metadata`), all shared with the unpatched base, and it reports no compiler or nextest warnings. Bazel fails `wine-test-support` (TIMEOUT), `exec_process`, `rollout-unit-tests` and `linux-sandbox-all-test`, all shared failures recorded in [upstream-failure-comparison.md](docs/upstream-failure-comparison.md); its only remaining warnings are the transitive, toolchain and advisory ones in the inventory |
+
+## Cache: shared compatible state (between CP5 and CP6)
+
+Accepted by the user on 2026-11-08 to make patched builds warm. Commit `2003623e23` replaces `cargo-seed-v1` with `cargo-seed-v2`, keyed on an explicit cache-format version and the compiler inputs only, and published by every build; see "Shared compatible state" in [source-cache-migration.md](docs/source-cache-migration.md). It is one shared state rather than two layers: Cargo's content-checked freshness after a restore already rebuilds only changed crates, so a separate third-party layer would only reduce download size.
+
+| Proof | Run | Result |
+| --- | --- | --- |
+| Cold, patches 1–24, `2003623e23` | `42480268759` | Running |
+| Same inputs again (exact hit) | `42480281160` | Queued |
+| Helper-only edit `690b76f0c7`, patches 1–24 (compatible hit) | `42480339549` | Queued |
+| Leaf change: patches 1–24 without patch 21, `690b76f0c7` | `42480425341` | Queued |
 
 ## Baseline deferrals
 
