@@ -14,12 +14,13 @@ import unittest
 class ReleaseStagesTest(unittest.TestCase):
     """Check platform-specific release command ordering, checkpoint failures and reuse of real Cargo outputs."""
     def run_build(self, target, fail_binary="", fail_checkpoint="", packages=None,
-                  fail_packages=False):
+                  fail_packages=False, bundle=None):
         """Run the release script with isolated Cargo and checkpoint fixture processes.
 
         target selects platform-specific binaries. fail_binary and fail_checkpoint
         select fixture operations that exit 37 and 43 respectively; empty strings
-        disable injected failures. packages, when not None, sets RELEASE_PACKAGES. fail_packages
+        disable injected failures. packages, when not None, sets RELEASE_PACKAGES; bundle, when not None, sets
+        RELEASE_BUNDLE. fail_packages
         makes a package build leave an empty and a nonempty library in deps and exit 37. Return the process result and
         ordered build/checkpoint events, keep the package library listing, if any, in self.package_libraries, and remove
         the owned fixture after reading them."""
@@ -78,9 +79,12 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
             environment.pop("RELEASE_PACKAGES", None)
             if packages is not None:
                 environment["RELEASE_PACKAGES"] = packages
+            environment.pop("RELEASE_BUNDLE", None)
+            if bundle is not None:
+                environment["RELEASE_BUNDLE"] = bundle
             script = Path(__file__).with_name("build-upstream-release.sh")
             result = subprocess.run([shutil.which("bash"), script.as_posix()], env=environment, capture_output=True, text=True)
-            if packages is None:
+            if packages is None and bundle in (None, "primary", "app-server"):
                 self.assertTrue(events.exists(), result.stdout + result.stderr)
             recorded = [json.loads(line) for line in events.read_text().splitlines()] if events.exists() else []
             listing = root / "baseline-evidence" / "package-libraries.txt"
@@ -105,6 +109,36 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
                     expected.extend([["build", ["build", "--target", target, "--release", "--timings", "--bin", binary]],
                                      ["checkpoint", binary]])
                 self.assertEqual(events, expected)
+
+    def test_bundles_split_the_release_binaries(self):
+        """
+        The primary bundle builds every release binary except codex-app-server, in release order, and the app-server
+        bundle builds only codex-app-server, so the two can run on separate machines.
+        """
+        windows = ["codex-windows-sandbox-setup", "codex-windows-sandbox-service", "codex-command-runner"]
+        cases = {
+            ("x86_64-apple-darwin", "primary"): ["codex-responses-api-proxy", "codex-code-mode-host", "codex"],
+            ("x86_64-apple-darwin", "app-server"): ["codex-app-server"],
+            ("x86_64-pc-windows-msvc", "primary"): ["codex-responses-api-proxy", "codex-code-mode-host", "codex"] + windows,
+            ("x86_64-pc-windows-msvc", "app-server"): ["codex-app-server"],
+        }
+        if sys.platform == "linux":
+            cases[("x86_64-unknown-linux-musl", "primary")] = ["bwrap", "codex-responses-api-proxy",
+                                                               "codex-code-mode-host", "codex"]
+            cases[("x86_64-unknown-linux-musl", "app-server")] = ["codex-app-server"]
+        for (target, bundle), binaries in cases.items():
+            with self.subTest(target=target, bundle=bundle):
+                result, events = self.run_build(target, bundle=bundle)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual([event[1] for event in events if event[0] == "checkpoint"], binaries)
+
+    def test_unknown_bundle_fails_before_compilation(self):
+        """An unknown RELEASE_BUNDLE fails with status 2 before any compilation."""
+        for bundle in ("all", "codex", "Primary"):
+            with self.subTest(bundle=bundle):
+                result, events = self.run_build("x86_64-apple-darwin", bundle=bundle)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertEqual(events, [])
 
     def test_compiler_failure_keeps_earlier_checkpoints_and_stops(self):
         """A Cargo fixture failure preserves earlier checkpoint events, propagates status 37 and stops later release stages."""

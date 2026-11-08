@@ -73,6 +73,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.matrix.outputs.value }}
+      smoke: ${{ steps.matrix.outputs.smoke }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -85,6 +86,8 @@ jobs:
           VERIFY_INVALIDATION: ${{ inputs.verify_invalidation }}
           TRACE_SIGNALS: ${{ inputs.trace_signals }}
           QUIET_STOP_MINUTES: ${{ inputs.quiet_stop_minutes }}
+          SELECTED_PACKAGES: ${{ inputs.packages }}
+          VERIFY_CLI_UNITS: ${{ inputs.verify_cli_units }}
         run: |
           if ! [[ "$QUIET_STOP_MINUTES" =~ ^[1-9][0-9]*$ ]] || (( QUIET_STOP_MINUTES > 300 )); then
             printf 'quiet_stop_minutes must be a whole number from 1 to 300.\n' >&2
@@ -106,12 +109,25 @@ jobs:
               exit 1
             fi
           fi
-          value="$(jq -ce --argjson cache "$CACHE_ENABLED" --arg target "$SELECTED_TARGET" '
+          if [[ "$VERIFY_CLI_UNITS" == true && "$SELECTED_TARGET" == x86_64-apple-darwin ]]; then
+            printf 'verify_cli_units runs target tests, which the cross-compiling x86_64-apple-darwin build cannot run.\n' >&2
+            exit 1
+          fi
+          # Each target builds upstream's two release bundles on separate machines: "primary" (every binary except
+          # codex-app-server) and "app-server". A package selection builds once, as the primary bundle. An entry with a
+          # build-runner compiles there and runs its native smoke tests on its runner in the smoke job.
+          value="$(jq -ce --argjson cache "$CACHE_ENABLED" --arg target "$SELECTED_TARGET" --arg packages "$SELECTED_PACKAGES" '
             (if $cache then map(select(."baseline-verified" == true)) else . end)
             | (if $target == "all" then . else map(select(.target == $target)) end)
-            | if length == 0 then error("Selected target is not enabled for this build mode") else {include: .} end
+            | if length == 0 then error("Selected target is not enabled for this build mode") else . end
+            | [.[] | . as $entry | (if $packages == "" then ["primary", "app-server"] else ["primary"] end)[]
+                | $entry + {bundle: ., "build-runner": ($entry."build-runner" // $entry.runner),
+                  "smoke-separately": ($entry."build-runner" != null)}]
+            | {include: .}
           ' .github/release-matrix.json)"
           printf 'value=%s\n' "$value" >> "$GITHUB_OUTPUT"
+          smoke="$(jq -c '[.include[] | select(."smoke-separately")] | if length == 0 then "" else {include: .} end' <<< "$value")"
+          printf 'smoke=%s\n' "$smoke" >> "$GITHUB_OUTPUT"
 
   build:
     needs: select
@@ -119,10 +135,10 @@ jobs:
     permissions:
       contents: read
       packages: write
-    name: Baseline - ${{ matrix.target }}
-    runs-on: ${{ matrix.runner }}
+    name: Baseline - ${{ matrix.target }} - ${{ matrix.bundle }}
+    runs-on: ${{ matrix.build-runner }}
     concurrency:
-      group: ${{ github.workflow }}-${{ matrix.target }}
+      group: ${{ github.workflow }}-${{ matrix.target }}-${{ matrix.bundle }}
       cancel-in-progress: false
       queue: max
     strategy:
@@ -134,6 +150,7 @@ jobs:
       CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ matrix.split-debug-info }}
       TARGET: ${{ matrix.target }}
       BINARY_SUFFIX: ${{ matrix.binary-suffix }}
+      RELEASE_BUNDLE: ${{ matrix.bundle }}
       CARGO_CACHE_PARTS: "1"
     defaults:
       run:
@@ -417,17 +434,31 @@ jobs:
             sha256sum codex-rs/Cargo.lock codex-rs/rust-toolchain.toml
           } > "$evidence/compiler-cache-inputs.txt"
           cat "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256" "$evidence/cache-helper-inputs.sha256" "$evidence/compiler-cache-inputs.txt" "$evidence/applied-patches.txt" > "$evidence/compiled-cache-inputs.txt"
-          run_codex_tooling cargo-cache-keys "$TARGET" \
+          # Each bundle keeps its own cache line; the primary line keeps the bare target name. The app-server bundle
+          # falls back to the primary bundle's compatible state, which already holds every library it links.
+          cache_target="$TARGET"
+          if [[ "$RELEASE_BUNDLE" != primary ]]; then
+            cache_target="$TARGET-$RELEASE_BUNDLE"
+          fi
+          run_codex_tooling cargo-cache-keys "$cache_target" \
             "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256" \
             "$evidence/cache-helper-inputs.sha256" "$evidence/compiler-cache-inputs.txt" \
             "$evidence/applied-patches.txt" \
             | tee "$evidence/cache-keys.txt" >> "$GITHUB_OUTPUT"
+          if [[ "$RELEASE_BUNDLE" != primary ]]; then
+            run_codex_tooling cargo-cache-keys "$TARGET" \
+              "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256" \
+              "$evidence/cache-helper-inputs.sha256" "$evidence/compiler-cache-inputs.txt" \
+              "$evidence/applied-patches.txt" \
+              | sed -n 's/^seed_tag=/primary_seed_tag=/p' | tee -a "$evidence/cache-keys.txt" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Restore compiled Cargo outputs from GHCR
         if: inputs.cache
         env:
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
           CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
+          PRIMARY_SEED_TAG: ${{ steps.cache_inputs.outputs.primary_seed_tag }}
           CACHE_HIT_REQUIRED: ${{ inputs.require_cache_hit }}
         run: |
           set -euo pipefail
@@ -452,6 +483,13 @@ jobs:
           if [[ "$result" == 3 ]]; then
             set +e
             bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull-partial "${CARGO_CACHE_REPOSITORY}" "$CACHE_SEED_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compatible-partial-cache-restore.log"
+            result=${PIPESTATUS[0]}
+            set -e
+          fi
+          if [[ "$result" == 3 && -n "$PRIMARY_SEED_TAG" ]]; then
+            printf 'This bundle has no compatible state; trying the primary bundle'"'"'s compatible state.\n'
+            set +e
+            bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull "${CARGO_CACHE_REPOSITORY}" "$PRIMARY_SEED_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/primary-compatible-cache-restore.log"
             result=${PIPESTATUS[0]}
             set -e
           fi
@@ -480,13 +518,17 @@ jobs:
               bash "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
             fi
           }
-          binaries=(codex codex-code-mode-host codex-responses-api-proxy codex-app-server)
-          case "$TARGET" in
-            *-linux-musl) binaries+=(bwrap) ;;
-            *-windows-msvc)
-              binaries+=(codex-windows-sandbox-setup codex-windows-sandbox-service codex-command-runner)
-              ;;
-          esac
+          if [[ "$RELEASE_BUNDLE" == app-server ]]; then
+            binaries=(codex-app-server)
+          else
+            binaries=(codex codex-code-mode-host codex-responses-api-proxy)
+            case "$TARGET" in
+              *-linux-musl) binaries+=(bwrap) ;;
+              *-windows-msvc)
+                binaries+=(codex-windows-sandbox-setup codex-windows-sandbox-service codex-command-runner)
+                ;;
+            esac
+          fi
           run_codex_tooling \
             clean-cached-release-binaries "$GITHUB_WORKSPACE/codex-rs" "$TARGET" "${binaries[@]}" \
             2>&1 | tee "$RUNNER_TEMP/baseline-evidence/source-cache-prepare.log"
@@ -501,7 +543,7 @@ jobs:
           CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
           CACHE_ENABLED: ${{ inputs.cache }}
           TRACE_SIGNALS: ${{ inputs.trace_signals }}
-          VERIFY_CLI_UNITS: ${{ inputs.verify_cli_units }}
+          VERIFY_CLI_UNITS: ${{ inputs.verify_cli_units && matrix.bundle == 'primary' }}
           SELECTED_PACKAGES: ${{ inputs.packages }}
           QUIET_STOP_MINUTES: ${{ inputs.quiet_stop_minutes }}
         run: |
@@ -514,15 +556,16 @@ jobs:
           # Cold rebuilds of the heaviest libraries, with swap on, set these limits. Both Linux targets
           # finished fastest with three jobs and ran out of memory with four; ARM Linux took 982 s with two
           # and 719 s with three. ARM macOS (three CPUs, 7 GB) took 2,842 s with two jobs and 6,007 s with
-          # three. Windows and Intel macOS were fastest at Cargo's default of one job per CPU.
-          case "$TARGET" in
-            x86_64-unknown-linux-musl | aarch64-unknown-linux-musl)
+          # three. Windows and Intel macOS were fastest at Cargo's default of one job per CPU. The x86-64 macOS
+          # target cross-compiles on the same ARM macOS runner, so it takes the ARM limit.
+          case "$RUNNER_OS:$RUNNER_ARCH" in
+            Linux:*)
               export CARGO_BUILD_JOBS=3
               printf 'Limiting Linux Cargo compilation to three concurrent jobs, the fastest measured count.\n'
               ;;
-            aarch64-apple-darwin)
+            macOS:ARM64)
               export CARGO_BUILD_JOBS=2
-              printf 'Limiting macOS Cargo compilation to two concurrent jobs, the fastest measured count.\n'
+              printf 'Limiting ARM macOS Cargo compilation to two concurrent jobs, the fastest measured count.\n'
               ;;
           esac
           printf 'cargo_build_jobs=%s\n' "${CARGO_BUILD_JOBS:-default}" \
@@ -576,12 +619,25 @@ jobs:
             | tee "$RUNNER_TEMP/baseline-evidence/controlled-failure.log"
           exit 1
 
-      - name: Smoke-test both native executable variants
+      - name: Smoke-test the bundle's native executable
+        if: ${{ !matrix.smoke-separately }}
         run: |
           set -euo pipefail
           output="$CARGO_TARGET_DIR/$TARGET/release"
-          "$output/codex$BINARY_SUFFIX" --version | tee "$RUNNER_TEMP/baseline-evidence/codex-version.log"
-          "$output/codex-app-server$BINARY_SUFFIX" --version | tee "$RUNNER_TEMP/baseline-evidence/app-server-version.log"
+          if [[ "$RELEASE_BUNDLE" == app-server ]]; then
+            "$output/codex-app-server$BINARY_SUFFIX" --version | tee "$RUNNER_TEMP/baseline-evidence/app-server-version.log"
+          else
+            "$output/codex$BINARY_SUFFIX" --version | tee "$RUNNER_TEMP/baseline-evidence/codex-version.log"
+          fi
+
+      - name: Hand the cross-compiled executable to its native smoke test
+        if: matrix.smoke-separately
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: smoke-${{ matrix.target }}-${{ matrix.bundle }}
+          path: ${{ env.CARGO_TARGET_DIR }}/${{ matrix.target }}/release/${{ matrix.bundle == 'app-server' && 'codex-app-server' || 'codex' }}${{ matrix.binary-suffix }}
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Verify upstream source and tests remain unmodified
         id: source_guard
@@ -650,7 +706,7 @@ jobs:
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" ${CACHE_SEED_TAG:+"$CACHE_SEED_TAG"} 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-save.log"
 
       - name: Verify changed CLI input without publishing diagnostic outputs
-        if: success() && inputs.verify_invalidation
+        if: success() && inputs.verify_invalidation && matrix.bundle == 'primary'
         working-directory: codex-rs
         run: python3 "$RUNNER_TEMP/verify-codex-cache-invalidation.py"
 
@@ -688,12 +744,47 @@ jobs:
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: baseline-${{ matrix.target }}
+          name: baseline-${{ matrix.target }}-${{ matrix.bundle }}
           path: |
             ${{ runner.temp }}/baseline-evidence
             ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings
           retention-days: 1
           if-no-files-found: warn
+
+  smoke:
+    # Runs each cross-compiled executable on its native runner. The build job's source, dependency and cache checks
+    # already passed, but its compiled cache is published before this job: smoke failure fails the run, not the cache.
+    needs: [select, build]
+    # Another target's failure does not skip this target's smoke test; a missing executable fails its download.
+    if: ${{ !cancelled() && needs.select.outputs.smoke != '' }}
+    name: Smoke - ${{ matrix.target }} - ${{ matrix.bundle }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.smoke) }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve the cross-compiled executable
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: smoke-${{ matrix.target }}-${{ matrix.bundle }}
+          path: ${{ runner.temp }}/smoke
+
+      - name: Smoke-test the executable on its native platform
+        env:
+          BINARY: ${{ matrix.bundle == 'app-server' && 'codex-app-server' || 'codex' }}${{ matrix.binary-suffix }}
+        run: |
+          set -euo pipefail
+          executable="$RUNNER_TEMP/smoke/$BINARY"
+          chmod +x "$executable"
+          {
+            uname -m
+            file "$executable"
+            "$executable" --version
+          } | tee "$RUNNER_TEMP/smoke/version.log"
 
   prune-caches:
     # Runs after every cached build, including a failed one, so caches it superseded do not wait for the schedule.

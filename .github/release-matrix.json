@@ -25,7 +25,8 @@
     "target": "x86_64-apple-darwin",
     "split-debug-info": "packed",
     "binary-suffix": "",
-    "baseline-verified": true
+    "baseline-verified": true,
+    "build-runner": "macos-15"
   },
   {
     "runner": "windows-2025",

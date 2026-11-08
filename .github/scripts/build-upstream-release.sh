@@ -8,11 +8,24 @@
 # verbose so that a failing compilation's log records its exact compiler command line. When it fails,
 # package-libraries.txt in baseline-evidence lists every library in a deps directory as "size modified path", sorted by
 # path with UTC modification times, so a library that a dependent could not load can be checked afterwards.
+# RELEASE_BUNDLE optionally selects the release binaries one machine builds: "primary" builds every binary except
+# codex-app-server, which "app-server" builds alone, so upstream's two release bundles can build in parallel. Unset
+# builds them all; any other value exits 2 before compilation.
 set -euo pipefail
 
 : "${TARGET:?Set the release target}"
 : "${CARGO_TARGET_DIR:?Set the owned Cargo output directory}"
 : "${RUNNER_TEMP:?Set the owned runner temporary directory}"
+bundle=all
+if [[ -n "${RELEASE_BUNDLE+set}" ]]; then
+  case "$RELEASE_BUNDLE" in
+    primary | app-server) bundle="$RELEASE_BUNDLE" ;;
+    *)
+      printf 'Unknown release bundle: %s\n' "$RELEASE_BUNDLE" >&2
+      exit 2
+      ;;
+  esac
+fi
 evidence="$RUNNER_TEMP/baseline-evidence"
 mkdir -p "$evidence"
 
@@ -83,7 +96,8 @@ LIST
   exit 0
 fi
 
-case "$TARGET" in
+case "$bundle:$TARGET" in
+  app-server:*) ;;
   *-linux-musl)
     started=$SECONDS
     compile build --target "$TARGET" --release --timings --bin bwrap 2>&1 | tee "$evidence/bwrap-build.log"
@@ -100,8 +114,13 @@ STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
 export STABLE_GIT_COMMIT
 rustc -vV > "$evidence/rust-toolchain.txt"
 cargo --version >> "$evidence/rust-toolchain.txt"
-binaries=(codex-responses-api-proxy codex-code-mode-host codex codex-app-server)
-case "$TARGET" in
+case "$bundle" in
+  all) binaries=(codex-responses-api-proxy codex-code-mode-host codex codex-app-server) ;;
+  primary) binaries=(codex-responses-api-proxy codex-code-mode-host codex) ;;
+  app-server) binaries=(codex-app-server) ;;
+esac
+case "$bundle:$TARGET" in
+  app-server:*) ;;
   *-windows-msvc)
     binaries+=(codex-windows-sandbox-setup codex-windows-sandbox-service codex-command-runner)
     ;;
