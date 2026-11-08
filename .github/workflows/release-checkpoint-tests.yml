@@ -13,6 +13,8 @@ on:
       - tooling/cli/src/test/**
       - .github/scripts/ghcr-cargo-target-cache.sh
       - .github/scripts/test-build-upstream-release.py
+      - .github/scripts/fail-on-cargo-warnings.sh
+      - .github/scripts/test-fail-on-cargo-warnings.py
       - .github/scripts/test-ghcr-cargo-target-cache.sh
       - .github/scripts/watch-quiet-build.py
       - .github/scripts/test-watch-quiet-build.py
@@ -102,6 +104,8 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/checkpoint-evidence/transport.log"
           python3 .github/scripts/test-build-upstream-release.py \
             2>&1 | tee "$RUNNER_TEMP/checkpoint-evidence/stages.log"
+          python3 .github/scripts/test-fail-on-cargo-warnings.py \
+            2>&1 | tee "$RUNNER_TEMP/checkpoint-evidence/warning-gate.log"
           if [[ "$RUNNER_OS" == Linux ]]; then
             python3 .github/scripts/test-watch-quiet-build.py \
               2>&1 | tee "$RUNNER_TEMP/checkpoint-evidence/quiet-build-watch.log"

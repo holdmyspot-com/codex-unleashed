@@ -212,6 +212,7 @@ jobs:
           cp restart-metadata/.github/scripts/test-ghcr-cargo-target-cache.sh "$RUNNER_TEMP/test-ghcr-cargo-target-cache.sh"
           cp restart-metadata/.github/scripts/test-codex-tooling-launch.py "$RUNNER_TEMP/test-codex-tooling-launch.py"
           cp restart-metadata/.github/scripts/build-upstream-release.sh "$RUNNER_TEMP/build-upstream-release.sh"
+          cp restart-metadata/.github/scripts/fail-on-cargo-warnings.sh "$RUNNER_TEMP/fail-on-cargo-warnings.sh"
           cp restart-metadata/.github/scripts/release-debug-session.sh "$RUNNER_TEMP/release-debug-session.sh"
           if [[ -n "$DEBUG_PUBLIC_KEY" ]]; then
             cp -R restart-metadata/.github/actions/debug-failed-runner "$RUNNER_TEMP/release-debug-action"
@@ -646,6 +647,10 @@ jobs:
           printf 'Deliberate post-compilation failure: fail_after_build=true. Retry this revision with fail_after_build=false.\n' \
             | tee "$RUNNER_TEMP/baseline-evidence/controlled-failure.log"
           exit 1
+
+      - name: Fail on warnings in the Cargo build logs
+        # Rustc warnings already fail compilation; this catches build-script cargo:warning lines and Cargo's own.
+        run: bash "$RUNNER_TEMP/fail-on-cargo-warnings.sh" "$RUNNER_TEMP/baseline-evidence"
 
       - name: Smoke-test the bundle's native executable
         if: ${{ !matrix.smoke-separately }}
