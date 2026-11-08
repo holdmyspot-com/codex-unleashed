@@ -206,7 +206,7 @@ Starting points, from upstream `dddc3c0a79` and the Cargo reference. Each bounda
 
 | Boundary | Upstream today | Planned enforcement |
 | --- | --- | --- |
-| rustc lints in workspace crates, release and test builds | None outside Clippy; `[workspace.lints] rust = {}` is empty | `CARGO_BUILD_WARNINGS=deny` (stable since Cargo 1.97). It is a Cargo-side level, not a rustc flag, so it should leave the cache keys and fingerprints alone; verify with a cache-hit run |
+| rustc lints in workspace crates, release and test builds | None outside Clippy; `[workspace.lints] rust = {}` is empty | Patch 25, [fatal-warnings](patches/holdmyspot-com/codex-unleashed/fatal-warnings/README.md): `warnings = "deny"` in `[workspace.lints.rust]`, which all 169 crates inherit. `CARGO_BUILD_WARNINGS=deny` would need Cargo 1.97, and upstream pins Rust 1.95.0. Cargo passes the level only to workspace members, so the compatible cache seed and dependency outputs are reused; workspace crates rebuild once |
 | Clippy | `cargo clippy --target T --tests --profile P -- -D warnings` (`rust-ci-full.yml`), Bazel `--config=clippy` | Run upstream's command in our CI for the six targets |
 | Rustdoc | None | `RUSTDOCFLAGS=-Dwarnings cargo doc --no-deps`, as a separate job |
 | Linker messages | Raw stderr; `linker-messages` is a rustc lint | Deny `linker-messages` in `[workspace.lints.rust]` if the selected toolchain reports linker output through it; establish that first |
