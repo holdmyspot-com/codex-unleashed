@@ -174,7 +174,7 @@ Job durations in minutes, in target order Linux x64, Linux ARM, macOS ARM, Windo
 | --- | --- | --- |
 | Cold, patches 1–24, `2003623e23` | `42480268759` | Passed: 82, 71, 137, 152, 97, 270 |
 | Same inputs again (exact hit) | `42480281160` | Passed: 6, 5, 5, 10, 16, 10 |
-| Helper-only edit `690b76f0c7`, patches 1–24 (compatible hit) | `42480339549` | 7, 6, 6, 11, 18; Intel macOS running |
+| Helper-only edit `690b76f0c7`, patches 1–24 (compatible hit) | `42480339549` | Passed: 7, 6, 6, 11, 18, 10 |
 | Leaf change: patches 1–24 without patch 21, `690b76f0c7` | `42480425341` | 55, 56, 150, 107, 79; Intel macOS cancelled while queued, since that target moves to an ARM build host |
 
 A helper edit now restores the shared state. A leaf change near the root saves less, because `codex` links most of the workspace and its thin-LTO link dominates. In the cold run, `codex` alone took 43 to 93 minutes per target, and `codex-app-server` took 16 to 33.
