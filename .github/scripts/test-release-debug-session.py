@@ -129,15 +129,20 @@ class WorkflowSelectionTest(unittest.TestCase):
             output=Path(tmp)/'output'
             environment=dict(os.environ,CACHE_ENABLED='false',CACHE_HIT_REQUIRED='false',SELECTED_TARGET=target,
                 VERIFY_INVALIDATION='false',TRACE_SIGNALS='false',
-                QUIET_STOP_MINUTES=quiet_stop_minutes,GITHUB_OUTPUT=str(output))
+                QUIET_STOP_MINUTES=quiet_stop_minutes,SELECTED_PACKAGES='',VERIFY_CLI_UNITS='false',SELECTED_BUNDLE='all',
+                CONTINUATION='0',GITHUB_OUTPUT=str(output))
             result=subprocess.run(['bash','-e','-o','pipefail','-c',step['run']],cwd=SCRIPTS.parents[1],env=environment,capture_output=True)
-            matrix=json.loads(output.read_text().removeprefix('value=')) if output.exists() else None
+            values=[line.removeprefix('value=') for line in output.read_text().splitlines() if line.startswith('value=')] if output.exists() else []
+            matrix=json.loads(values[0]) if values else None
             return result,matrix
 
     def test_default_matrix_selects_every_target(self):
-        """The default selection includes every declared standard release target."""
+        """The default selection includes both bundles of every declared standard release target."""
         result,matrix=self.select('all');self.assertEqual(result.returncode,0,result.stderr)
-        self.assertEqual(len(matrix['include']),6)
+        targets=[entry['target'] for entry in json.loads((SCRIPTS.parent/'release-matrix.json').read_text())]
+        self.assertEqual(len(targets),6)
+        self.assertEqual(sorted((entry['target'],entry['bundle']) for entry in matrix['include']),
+                         sorted((target,bundle) for target in targets for bundle in ('primary','app-server')))
 
     def test_rejects_quiet_stop_outside_whole_minutes_up_to_the_step_limit(self):
         """A quiet-build stop period that is not a whole number of minutes from 1 to 300 stops before dispatch."""
