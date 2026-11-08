@@ -181,7 +181,20 @@ A helper edit now restores the shared state. A leaf change near the root saves l
 
 ### Release build layout
 
-Commits `863735d490` and `034148fecb` follow upstream's layout. Each target builds its `primary` and `app-server` bundles on separate runners. `x86_64-apple-darwin` cross-compiles on `macos-15` and smoke-tests on `macos-15-intel`. A bundle that reaches the 320-minute limit continues in a new cached run, at most twice. See "Release build layout" in [source-cache-migration.md](docs/source-cache-migration.md). Proof: a cold and a warm six-target run with per-job timings, dispatched after the CP5 Intel macOS rerun finishes.
+Commits `863735d490` and `034148fecb` follow upstream's layout. Each target builds its `primary` and `app-server` bundles on separate runners. `x86_64-apple-darwin` cross-compiles on `macos-15` and smoke-tests on `macos-15-intel`. A bundle that reaches the 320-minute limit continues in a new cached run, at most twice. See "Release build layout" in [source-cache-migration.md](docs/source-cache-migration.md). Cold proof `42512680775` (patches 1–24, upstream `dddc3c0a79`), minutes per job, primary / app-server, against the one-machine cold run `42480268759`:
+
+| Target | Parallel bundles | One machine |
+| --- | --- | --- |
+| Linux x64 | 67 / 49 | 82 |
+| Linux ARM | 54 / 39 | 71 |
+| macOS ARM | 131 / 88 | 137 |
+| Intel macOS (built on `macos-15`) | 129 / 86 | 270 |
+| Windows x64 | 118 / 59 | 152 |
+| Windows ARM | 89 / 62 | 97 |
+
+The slowest job fell from 270 to 131 minutes. Both Intel macOS executables passed their smoke test on `macos-15-intel` (`uname -m` x86_64, Mach-O x86_64, `codex-cli 0.0.0+dev` and `codex-app-server 0.0.0`, as before). The Linux and Windows app-server jobs of `42512680775` failed at their first cache lookup on a 130–132-character tag. `bc88d352e0` shortened the line name to `<target>-app` and made `cargo-cache-keys` reject longer targets. Those four app-server jobs then ran in runs `42513871676`, `42513873598`, `42513875629` and `42513877667` alongside the primary jobs; their timings are above. Those runs also failed on an empty smoke matrix printed as `""`, after the builds and cache saves passed; `e59d84fc2a` fixed it.
+
+Warm proof: Linux x64 run `42519515453` took 7 / 5 minutes and Linux ARM run `42519513227` 6 / 5. Their primary bundles restored compatible state, because `bc88d352e0` changed the helper's exact key. A six-target warm run follows.
 
 ## CP6 design (draft, before CP5 closes)
 
