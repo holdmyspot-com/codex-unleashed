@@ -2,6 +2,11 @@ name: Stable upstream Bazel Clippy
 
 on:
   workflow_dispatch:
+    inputs:
+      patches:
+        description: Space-separated repository paths of downstream patches to apply with git am, in order
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -50,6 +55,8 @@ jobs:
           cp restart-metadata/.github/scripts/reclaim-baseline-macos-xcodes.py "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          # The upstream checkout below cleans the workspace, removing restart-metadata.
+          cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
@@ -68,6 +75,22 @@ jobs:
           test -z "$(git status --porcelain)"
           git diff --check
           git diff --binary > "$evidence/pristine-source.diff"
+
+      - name: Apply the selected downstream patches
+        id: patched
+        env:
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-lint-evidence"
+          : > "$evidence/applied-patches.txt"
+          read -r -a patch_paths <<< "$DOWNSTREAM_PATCHES"
+          for patch in "${patch_paths[@]}"; do
+            printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
+            git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
+          done
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Prepare upstream's Bazel host and toolchain
         uses: ./.github/actions/prepare-bazel-ci
@@ -173,7 +196,7 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-      - name: Run the maintained Bazel Clippy selection with nonfatal warnings
+      - name: Run the maintained Bazel Clippy selection with fatal warnings
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-lint-evidence"
@@ -184,7 +207,7 @@ jobs:
             CODEX_COMPAT_RELEASES="$(cat "$evidence/compat-releases.json")"
           fi
           wrapper_args=(--print-failed-action-summary)
-          clippy_args=(--config=clippy --@rules_rust//rust/settings:clippy_flag=-Wwarnings --disk_cache=)
+          clippy_args=(--config=clippy --disk_cache=)
           if [[ "$RUNNER_OS" == Windows ]]; then
             wrapper_args+=(--windows-cross-compile)
             clippy_args+=(--workspace_status_command=./scripts/workspace-status.cmd --skip_incompatible_explicit_targets --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1)
@@ -274,11 +297,11 @@ jobs:
           cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
           exit "$result"
 
-      - name: Verify upstream source and tests remain unmodified
+      - name: Verify the patched source and tests remain unmodified
         if: always()
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ steps.inputs.outputs.commit }}"
+          test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
 
       - name: Retain lint evidence for one day

@@ -2,6 +2,11 @@ name: Stable upstream platform lints
 
 on:
   workflow_dispatch:
+    inputs:
+      patches:
+        description: Space-separated repository paths of downstream patches to apply with git am, in order
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -45,6 +50,8 @@ jobs:
           printf 'CARGO_HOME=%s\nCARGO_TARGET_DIR=%s\n' "$cargo_home" "$cargo_target_dir" >> "$GITHUB_ENV"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          # The upstream checkout below cleans the workspace, removing restart-metadata.
+          cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
@@ -63,6 +70,22 @@ jobs:
           test -z "$(git status --porcelain)"
           git diff --check
           git diff --binary > "$evidence/pristine-source.diff"
+
+      - name: Apply the selected downstream patches
+        id: patched
+        env:
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-evidence"
+          : > "$evidence/applied-patches.txt"
+          read -r -a patch_paths <<< "$DOWNSTREAM_PATCHES"
+          for patch in "${patch_paths[@]}"; do
+            printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
+            git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
+          done
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Install upstream Linux Clippy prerequisites
         run: |
@@ -90,20 +113,20 @@ jobs:
         with:
           target: ${{ matrix.target }}
 
-      - name: Check all default workspace test targets with nonfatal warnings
+      - name: Check all default workspace test targets with fatal warnings
         working-directory: codex-rs
         run: |
           set -euo pipefail
           rustc -vV > "$RUNNER_TEMP/baseline-evidence/rust-toolchain.txt"
           cargo --version >> "$RUNNER_TEMP/baseline-evidence/rust-toolchain.txt"
-          cargo clippy --target "$TARGET" --tests --profile dev --timings \
+          cargo clippy --target "$TARGET" --tests --profile dev --timings -- -D warnings \
             2>&1 | tee "$RUNNER_TEMP/baseline-evidence/clippy.log"
 
-      - name: Verify upstream source and tests remain unmodified
+      - name: Verify the patched source and tests remain unmodified
         if: always()
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ steps.inputs.outputs.commit }}"
+          test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
 
       - name: Retain lint evidence for one day
