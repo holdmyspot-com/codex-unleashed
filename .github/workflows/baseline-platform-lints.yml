@@ -29,6 +29,9 @@ jobs:
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-musl
             check: rustdoc
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            check: dependency-lints
     env:
       CODEX_REPO_ROOT: ${{ github.workspace }}
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
@@ -57,6 +60,8 @@ jobs:
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
+          cp restart-metadata/.github/scripts/direct-dependency-lints.py "$RUNNER_TEMP/direct-dependency-lints.py"
+          cp restart-metadata/.github/scripts/fail-on-cargo-warnings.sh "$RUNNER_TEMP/fail-on-cargo-warnings.sh"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
@@ -141,6 +146,30 @@ jobs:
           set -euo pipefail
           cargo doc --target "$TARGET" --workspace --no-deps --profile dev --timings \
             2>&1 | tee "$RUNNER_TEMP/baseline-evidence/rustdoc.log"
+
+      - name: Check direct dependencies with their own lint levels
+        # Cargo caps every non-workspace package's lints. This leg lifts the cap for direct dependencies only, in its own
+        # target directory, so their warnings and their build scripts' cargo:warning lines fail it; the release build
+        # keeps Cargo's cap.
+        if: matrix.check == 'dependency-lints'
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-evidence"
+          cargo metadata --format-version 1 --locked --filter-platform "$TARGET" \
+            | python3 -I "$RUNNER_TEMP/direct-dependency-lints.py" list > "$evidence/direct-dependencies.txt"
+          wc -l < "$evidence/direct-dependencies.txt"
+          export CODEX_DIRECT_DEPENDENCIES="$evidence/direct-dependencies.txt"
+          export RUSTC_WRAPPER="$RUNNER_TEMP/direct-dependency-lints.py"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/dependency-lints-target"
+          chmod +x "$RUSTC_WRAPPER"
+          cargo check --target "$TARGET" --tests --profile dev --timings \
+            2>&1 | tee "$evidence/dependency-lints.log"
+          status=0
+          bash "$RUNNER_TEMP/fail-on-cargo-warnings.sh" "$evidence/dependency-lints.log" || status=$?
+          python3 -I "$RUNNER_TEMP/direct-dependency-lints.py" build-warnings "$CODEX_DIRECT_DEPENDENCIES" "$CARGO_TARGET_DIR" \
+            | tee "$evidence/dependency-build-script-warnings.txt" || status=$?
+          exit "$status"
 
       - name: Verify the patched source and tests remain unmodified
         if: always()
