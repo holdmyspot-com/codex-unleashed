@@ -217,6 +217,8 @@ Starting points, from upstream `dddc3c0a79` and the Cargo reference. Each bounda
 
 The old `native-and-rust-warning-policy.patch` supplies the `build.warnings`, rustdoc and Bazel lines and the clean/fatal/restored fixture pattern. Its nonfatal-dependency policy is not inherited (see [restart-scope.md](docs/plans/restart-scope.md)).
 
+**Owner decision 2026-11-09:** the uncapped direct-dependency check found warnings in at least 22 third-party direct dependencies, and nine `dangerous_implicit_autorefs` errors in the deprecated `serde_yaml` 0.9.34 (platform lint run `42537177622`). The owner chose to do the CP7 dependency upgrades first. CP6 closes its other boundaries now; its direct-dependency boundary closes after the CP7 upgrades, against the upgraded graph.
+
 ## Baseline deferrals
 
 These explicit owner exclusions apply through CP3; retain the original failed statuses, diagnostics and source guards. They do not cover unrelated failures or authorize suppression, diagnostic production workarounds or upstream source edits.
