@@ -86,19 +86,28 @@ jobs:
           set -euo pipefail
           work="$RUNNER_TEMP/detect"
           mkdir -p "$work"
+          # GitHub's API answers an occasional 504, so every read retries.
+          gh_api() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              gh api "$@" && return 0
+              sleep $((attempt * 10))
+            done
+            return 1
+          }
           # The newest releases (alphas included) cover the recent history; /latest names the newest stable one.
           {
-            for page in 1 2 3; do
-              gh api "repos/openai/codex/releases?per_page=100&page=$page"
+            for page in 1 2 3 4 5; do
+              gh_api "repos/openai/codex/releases?per_page=30&page=$page"
             done
-            gh api repos/openai/codex/releases/latest | jq -c '[.]'
+            gh_api repos/openai/codex/releases/latest | jq -c '[.]'
             if [[ -n "$REQUESTED_TAG" ]]; then
               tag="$REQUESTED_TAG"
               [[ "$tag" == rust-v* ]] || tag="rust-v$tag"
-              gh api "repos/openai/codex/releases/tags/$tag" | jq -c '[.]'
+              gh_api "repos/openai/codex/releases/tags/$tag" | jq -c '[.]'
             fi
           } | jq -s 'add' > "$work/upstream.json"
-          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" | jq -s 'add' > "$work/fork.json"
+          gh_api --paginate "repos/$GITHUB_REPOSITORY/releases" | jq -s 'add' > "$work/fork.json"
           python3 -I .github/scripts/upstream-auto-release.py detect --upstream-releases "$work/upstream.json" \
             --fork-releases "$work/fork.json" --requested-tag "$REQUESTED_TAG" | tee -a "$GITHUB_OUTPUT"
 
@@ -108,8 +117,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           UPSTREAM_TAG: ${{ steps.detect.outputs.upstream_tag }}
         run: |
+          # GitHub's API answers an occasional 504, so every read retries.
+          gh_api() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              gh api "$@" && return 0
+              sleep $((attempt * 10))
+            done
+            return 1
+          }
           set -euo pipefail
-          commit="$(gh api "repos/openai/codex/commits/$UPSTREAM_TAG" --jq .sha)"
+          commit="$(gh_api "repos/openai/codex/commits/$UPSTREAM_TAG" --jq .sha)"
           [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
           printf 'upstream_commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
           printf 'patches=%s\n' "$(python3 -I .github/scripts/upstream-auto-release.py patches --readme patches/README.md)" >> "$GITHUB_OUTPUT"
@@ -420,8 +438,17 @@ jobs:
           set -euo pipefail
           work="$RUNNER_TEMP/recheck"
           mkdir -p "$work"
-          gh api "repos/openai/codex/releases/tags/$UPSTREAM_TAG" | jq -c '[.]' > "$work/upstream.json"
-          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" | jq -s 'add' > "$work/fork.json"
+          # GitHub's API answers an occasional 504, so every read retries.
+          gh_api() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              gh api "$@" && return 0
+              sleep $((attempt * 10))
+            done
+            return 1
+          }
+          gh_api "repos/openai/codex/releases/tags/$UPSTREAM_TAG" | jq -c '[.]' > "$work/upstream.json"
+          gh_api --paginate "repos/$GITHUB_REPOSITORY/releases" | jq -s 'add' > "$work/fork.json"
           python3 -I .github/scripts/upstream-auto-release.py detect --upstream-releases "$work/upstream.json" \
             --fork-releases "$work/fork.json" --requested-tag "$UPSTREAM_TAG" | tee -a "$GITHUB_OUTPUT"
 
