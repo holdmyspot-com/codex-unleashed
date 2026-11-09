@@ -1,4 +1,4 @@
-From 8a74375c3ce684f16ee434766b82f15617322e06 Mon Sep 17 00:00:00 2001
+From 51c0ff6f3523331135faa6c7c371d3e57e791c66 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:07:55 -0500
 Subject: [PATCH] Build with Rust 1.99.1 so macOS links pass under fatal linker
@@ -25,22 +25,26 @@ Bazel toolchain, setup-windows.ps1 and every workflow's toolchain action.
  .github/workflows/rusty-v8-release.yml        |  10 +-
  .github/workflows/v8-canary.yml               |  10 +-
  MODULE.bazel                                  |   2 +-
- MODULE.bazel.lock                             | 202 +++++++++---------
+ MODULE.bazel.lock                             | 203 +++++++++---------
  codex-rs/Cargo.lock                           |   6 +-
  codex-rs/Cargo.toml                           |   2 +-
  .../src/session_runtime/mod.rs                |   2 +-
  .../core/src/tools/executed_tool_calls.rs     |   2 +-
  .../core/tests/common/apps_test_server.rs     |   2 +-
  codex-rs/diagnostics/src/lib.rs               |   2 +-
+ codex-rs/exec-server-protocol/src/protocol.rs |   2 +-
  .../otel/tests/suite/otlp_http_loopback.rs    |  42 ++--
  codex-rs/rust-toolchain.toml                  |   2 +-
  codex-rs/scripts/setup-windows.ps1            |   2 +-
  codex-rs/shell-command/src/bash.rs            |   6 +-
+ codex-rs/tui/src/app/reconnect.rs             |   2 +-
+ codex-rs/tui/src/app_backtrack.rs             |   2 +-
+ codex-rs/tui/src/app_server_connection.rs     |   2 +-
  .../utils/path-uri/src/api_path_string.rs     |   6 +-
  codex-rs/utils/path-uri/src/lib.rs            |   6 +-
  .../stream-parser/src/inline_hidden_tag.rs    |   2 +-
  codex-rs/websocket-auth/src/lib.rs            |   6 +-
- 26 files changed, 171 insertions(+), 171 deletions(-)
+ 30 files changed, 176 insertions(+), 175 deletions(-)
 
 diff --git a/.github/actions/build-bazel-package-binaries/action.yml b/.github/actions/build-bazel-package-binaries/action.yml
 index dd918ba..ae8660b 100644
@@ -294,10 +298,18 @@ index 3e513f2..09da54c 100644
  use_repo(toolchains, "default_rust_toolchains")
  
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index 181fbf8..06d87cd 100644
+index 181fbf8..8a32c1b 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
-@@ -2419,107 +2419,107 @@
+@@ -1011,6 +1011,7 @@
+       "async-stream_0.3.6": "{\"dependencies\":[{\"name\":\"async-stream-impl\",\"req\":\"=0.3.6\"},{\"name\":\"futures-core\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"futures-util\",\"req\":\"^0.3\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1\"}],\"features\":{}}",
+       "async-task_4.7.1": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"atomic-waker\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"easy-parallel\",\"req\":\"^3\"},{\"kind\":\"dev\",\"name\":\"flaky_test\",\"req\":\"^0.2\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"flume\",\"req\":\"^0.11\"},{\"kind\":\"dev\",\"name\":\"futures-lite\",\"req\":\"^2.0.0\"},{\"kind\":\"dev\",\"name\":\"once_cell\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"pin-project-lite\",\"req\":\"^0.2.10\"},{\"default_features\":false,\"name\":\"portable-atomic\",\"optional\":true,\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"smol\",\"req\":\"^2\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
+       "async-trait_0.1.89": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"futures\",\"req\":\"^0.3.30\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.13\"},{\"default_features\":false,\"features\":[\"clone-impls\",\"full\",\"parsing\",\"printing\",\"proc-macro\",\"visit-mut\"],\"name\":\"syn\",\"req\":\"^2.0.46\"},{\"kind\":\"dev\",\"name\":\"tracing\",\"req\":\"^0.1.40\"},{\"kind\":\"dev\",\"name\":\"tracing-attributes\",\"req\":\"^0.1.27\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.81\"}],\"features\":{}}",
++      "async-trait_0.1.92": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"futures\",\"req\":\"^0.3.30\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.13\"},{\"default_features\":false,\"features\":[\"clone-impls\",\"full\",\"parsing\",\"printing\",\"proc-macro\",\"visit-mut\"],\"name\":\"syn\",\"req\":\"^3\"},{\"kind\":\"dev\",\"name\":\"tracing\",\"req\":\"^0.1.40\"},{\"kind\":\"dev\",\"name\":\"tracing-attributes\",\"req\":\"^0.1.27\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.108\"}],\"features\":{}}",
+       "asynk-strim_0.1.5": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"async-fn-stream\",\"req\":\"^0.3.2\"},{\"kind\":\"dev\",\"name\":\"async-stream\",\"req\":\"^0.3.6\"},{\"default_features\":false,\"features\":[\"cargo_bench_support\",\"plotters\"],\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.7.0\"},{\"default_features\":false,\"name\":\"futures-core\",\"req\":\"^0.3.31\"},{\"default_features\":false,\"features\":[\"std\"],\"kind\":\"dev\",\"name\":\"futures-lite\",\"req\":\"^2.3.0\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2.14\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.99\"}],\"features\":{}}",
+       "atoi_2.0.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"num-traits\",\"req\":\"^0.2.14\"}],\"features\":{\"default\":[\"std\"],\"std\":[\"num-traits/std\"]}}",
+       "atomic-polyfill_1.0.3": "{\"dependencies\":[{\"name\":\"critical-section\",\"req\":\"^1.0.0\"}],\"features\":{}}",
+@@ -2419,107 +2420,107 @@
        "zvariant_utils_2.1.0": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.81\"},{\"name\":\"quote\",\"req\":\"^1.0.36\"},{\"features\":[\"extra-traits\",\"full\"],\"name\":\"syn\",\"req\":\"^2.0.64\"}],\"features\":{}}"
      },
      "@@rules_rs+//rs/toolchains:module_extension.bzl%toolchains": {
@@ -592,6 +604,19 @@ index a966e4a..91b878b 100644
                  Some(value.saturating_sub(1))
              });
      }
+diff --git a/codex-rs/exec-server-protocol/src/protocol.rs b/codex-rs/exec-server-protocol/src/protocol.rs
+index 352a46a..dad1132 100644
+--- a/codex-rs/exec-server-protocol/src/protocol.rs
++++ b/codex-rs/exec-server-protocol/src/protocol.rs
+@@ -268,7 +268,7 @@ impl EnvironmentInfo {
+             if let Some(path) = std::env::var_os(name)
+                 .filter(|path| !path.is_empty())
+                 .filter(|path| cfg!(unix) || std::path::Path::new(path).is_absolute())
+-                .and_then(&normalize_temp_path)
++                .and_then(normalize_temp_path)
+                 && !temporary_directories.contains(&path)
+             {
+                 temporary_directories.push(path);
 diff --git a/codex-rs/otel/tests/suite/otlp_http_loopback.rs b/codex-rs/otel/tests/suite/otlp_http_loopback.rs
 index 3fd9249..bcd2dc8 100644
 --- a/codex-rs/otel/tests/suite/otlp_http_loopback.rs
@@ -779,6 +804,45 @@ index ddd5807..2be91e6 100644
      }
      Some(commands)
  }
+diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
+index 168417e..5556fb7 100644
+--- a/codex-rs/tui/src/app/reconnect.rs
++++ b/codex-rs/tui/src/app/reconnect.rs
+@@ -129,7 +129,7 @@ pub(super) async fn reconnect(
+         }
+         // Transport errors can contain endpoint credentials. Do not render or log them.
+     }
+-    color_eyre::eyre::bail!("Server connection could not be restored")
++    color_eyre::eyre::bail!("Server connection could not be restored");
+ }
+ 
+ impl App {
+diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
+index 691136b..227f8f1 100644
+--- a/codex-rs/tui/src/app_backtrack.rs
++++ b/codex-rs/tui/src/app_backtrack.rs
+@@ -671,7 +671,7 @@ pub(crate) fn backtrack_revert_before_turn_id(
+         }
+     }
+ 
+-    bail!("the selected prompt was not found in the persisted thread")
++    bail!("the selected prompt was not found in the persisted thread");
+ }
+ 
+ /// Returns whether a turn is the reconstructed inline-review child with duplicated prompt inputs.
+diff --git a/codex-rs/tui/src/app_server_connection.rs b/codex-rs/tui/src/app_server_connection.rs
+index ac3ab1c..afa82e0 100644
+--- a/codex-rs/tui/src/app_server_connection.rs
++++ b/codex-rs/tui/src/app_server_connection.rs
+@@ -17,7 +17,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
+ pub(crate) async fn connect(target: &AppServerTarget) -> color_eyre::Result<AppServerClient> {
+     match target {
+         AppServerTarget::Embedded => {
+-            color_eyre::eyre::bail!("embedded sessions have no remote connection")
++            color_eyre::eyre::bail!("embedded sessions have no remote connection");
+         }
+         #[cfg(windows)]
+         AppServerTarget::LocalDaemon {
 diff --git a/codex-rs/utils/path-uri/src/api_path_string.rs b/codex-rs/utils/path-uri/src/api_path_string.rs
 index b2ecdf0..85e577d 100644
 --- a/codex-rs/utils/path-uri/src/api_path_string.rs

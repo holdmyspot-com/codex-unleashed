@@ -16,7 +16,7 @@ Toolchain upgrades are otherwise deferred (D9 in [restart-scope.md](../../../../
 
 The patch pins 1.99.1 in:
 - `codex-rs/rust-toolchain.toml`;
-- the Bazel toolchain in `MODULE.bazel`, with `MODULE.bazel.lock` from upstream's generator (`bazel-lock`, platform lint workflow run `42555602888`);
+- the Bazel toolchain in `MODULE.bazel`, with `MODULE.bazel.lock` from upstream's generator (`bazel-lock`, platform lint workflow run `42559227280`);
 - `codex-rs/scripts/setup-windows.ps1`;
 - every workflow's `dtolnay/rust-toolchain` action (branch `1.99.1`, commit `d124f86f28ff42855784ff3319f48ac182c248f8`), `toolchain:` input, `cargo +1.95.0` call and cargo-deny `rust-version`.
 
@@ -28,6 +28,8 @@ Rust 1.99 also adds lints that fail the workspace under patch 25 (platform lint 
 - Clippy's `map_or_identity`: `map_or(0, identity)` becomes `unwrap_or(0)`.
 - Clippy's `useless_borrows_in_formatting`: 21 `assert!` messages in the OTLP loopback tests drop a redundant `&` (lint run `42558019944`).
 - Clippy's `question_mark`: one `if let … else { return None }` in `shell-command/src/bash.rs` becomes `?`.
+- Clippy's `needless_borrows_for_generic_args`: `and_then(&normalize_temp_path)` in `exec-server-protocol` passes the function by value.
+- rustc's `semicolon_in_expressions_from_non_local_macros`: three TUI functions that end in eyre's `bail!` end it with `;`, since the macro expands to a `return` statement (lint run `42559229185`).
 - Clippy's `double_must_use` fires on tonic's generated `ThreadConfigLoader` trait, because async-trait 0.1.89 adds `#[must_use]` to the boxed future it returns. async-trait 0.1.92 no longer adds it, so the lockfile moves that transitive dependency, and only that one, to 0.1.92.
 
 ### Reproduction

@@ -1,4 +1,4 @@
-From ff3312f98d6720d87741d9d3d1db04995d7a6780 Mon Sep 17 00:00:00 2001
+From b5a44a5d0568f24e0506ee204e1fb708cdb3f082 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:56:48 -0500
 Subject: [PATCH] WIP: adapt to whoami 2 and base64 0.23

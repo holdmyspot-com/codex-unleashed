@@ -1,0 +1,66 @@
+From 0d8814c68e460a23e072db534fa97b679cbcf44c Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 8 Nov 2026 23:36:11 -0500
+Subject: [PATCH] WIP: adapt the TUI to rand 0.10 and zbus 6, and name the
+ hosted web-search schema
+
+rand 0.10 keeps the sampling methods on RngExt, zbus 6 deprecates the
+zvariant module for OwnedVariant, and core's WebSearchItem collides with
+the web extension's in the rollout schema.
+---
+ codex-rs/protocol/src/items.rs    | 2 ++
+ codex-rs/tui/src/system_motion.rs | 2 +-
+ codex-rs/tui/src/tooltips.rs      | 4 ++--
+ 3 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/codex-rs/protocol/src/items.rs b/codex-rs/protocol/src/items.rs
+index 5f1ffe0..340b120 100644
+--- a/codex-rs/protocol/src/items.rs
++++ b/codex-rs/protocol/src/items.rs
+@@ -377,6 +377,8 @@ pub struct SubAgentActivityItem {
+ }
+ 
+ #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq)]
++// The web extension's item shares this Rust name, and both reach the rollout schema.
++#[schemars(rename = "HostedWebSearchItem")]
+ pub struct WebSearchItem {
+     pub id: String,
+     pub query: String,
+diff --git a/codex-rs/tui/src/system_motion.rs b/codex-rs/tui/src/system_motion.rs
+index b11c643..48647b2 100644
+--- a/codex-rs/tui/src/system_motion.rs
++++ b/codex-rs/tui/src/system_motion.rs
+@@ -60,7 +60,7 @@ async fn detect() -> Option<MotionMode> {
+         )
+         .await
+         .ok()?;
+-        let value: zbus::zvariant::OwnedValue = proxy
++        let value: zbus::OwnedVariant = proxy
+             .call("ReadOne", &("org.freedesktop.appearance", "reduced-motion"))
+             .await
+             .ok()?;
+diff --git a/codex-rs/tui/src/tooltips.rs b/codex-rs/tui/src/tooltips.rs
+index 62b6ead..43f191c 100644
+--- a/codex-rs/tui/src/tooltips.rs
++++ b/codex-rs/tui/src/tooltips.rs
+@@ -53,7 +53,7 @@ pub(crate) fn get_tooltip(plan: Option<PlanType>, keymap: &TuiKeymap) -> Option<
+ 
+ /// Apply the shared announcement and promotion policy before falling back to local tips.
+ /// The announcement lookup only reads the prewarmed cache.
+-pub(crate) fn preferred_tooltip<R: Rng + ?Sized>(
++pub(crate) fn preferred_tooltip<R: RngExt + ?Sized>(
+     rng: &mut R,
+     plan: Option<PlanType>,
+ ) -> Option<String> {
+@@ -109,7 +109,7 @@ fn app_tooltip() -> Option<&'static str> {
+     }
+ }
+ 
+-fn pick_tooltip<R: Rng + ?Sized>(rng: &mut R, keymap: &TuiKeymap) -> Option<String> {
++fn pick_tooltip<R: RngExt + ?Sized>(rng: &mut R, keymap: &TuiKeymap) -> Option<String> {
+     // Resolve current settings for each new tip; never replace an invalid or unbound keymap
+     // with defaults, or cache shortcut text across /keymap edits.
+     let keymap = RuntimeKeymap::from_config(keymap).ok();
+-- 
+2.43.0
+

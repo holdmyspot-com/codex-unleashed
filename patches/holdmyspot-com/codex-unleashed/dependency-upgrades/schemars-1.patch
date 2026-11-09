@@ -1,4 +1,4 @@
-From 7ecdc5737d09d816e4d4547387e56ede4a372986 Mon Sep 17 00:00:00 2001
+From a2ccc3cae5e20b9a288563326d75052e3cc032f9 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:20:01 -0500
 Subject: [PATCH] WIP: migrate to schemars 1
