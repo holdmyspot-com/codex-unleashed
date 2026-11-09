@@ -41,7 +41,7 @@ Rust 1.99 also adds lints that fail the workspace under patch 25 (platform lint 
 
 ### The `__eh_frame` notice on macOS
 
-With Rust 1.99.1 the release `codex` binary links, but ld prints `ld: __eh_frame section too large (max 16MB) to encode dwarf unwind offsets in compact unwind table, performance of exception handling might be affected`, which `linker_messages` turns into an error (macOS ARM release run `42563009608`).
+With Rust 1.99.1 the release `codex` binary links, but ld prints `ld: warning: __eh_frame section too large (max 16MB) to encode dwarf unwind offsets in compact unwind table, performance of exception handling might be affected`, which `linker_messages` turns into an error (macOS ARM release run `42563009608`). rustc's error shows it as `ld: __eh_frame …` because rustc removes `: warning: ` from linker output; the wrapper's first version matched that displayed form and missed the real line (release run `42619462435`).
 
 Compact unwind stores one 32-bit entry per function in `__unwind_info`. Functions that need DWARF unwind information point into `__eh_frame` through a 24-bit offset, so entries past 16 MB can't be encoded, and the unwinder finds those functions by searching `__eh_frame` instead. Unwinding stays correct; only a panic that unwinds through those functions is slower. The alternative, `-Wl,-no_compact_unwind`, drops the compact table for every function, and the owner chose to keep it.
 

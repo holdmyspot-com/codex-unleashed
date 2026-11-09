@@ -1,4 +1,4 @@
-From 3ad7ae95029c46d138662be939443a4a49a03e98 Mon Sep 17 00:00:00 2001
+From f63e877125de0b9c892c627f91247ec747b18b3c Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:07:55 -0500
 Subject: [PATCH] Build with Rust 1.99.1 so macOS links pass under fatal linker
@@ -50,7 +50,7 @@ drops that one exact notice and passes every other linker message through.
  codex-rs/external-agent-migration/src/mcp.rs  |   5 +-
  .../otel/tests/suite/otlp_http_loopback.rs    |  42 ++--
  codex-rs/rust-toolchain.toml                  |   2 +-
- codex-rs/scripts/apple-linker.sh              |  24 +++
+ codex-rs/scripts/apple-linker.sh              |  25 +++
  codex-rs/scripts/setup-windows.ps1            |   2 +-
  codex-rs/shell-command/src/bash.rs            |   6 +-
  codex-rs/tui/src/app/reconnect.rs             |   2 +-
@@ -67,7 +67,7 @@ drops that one exact notice and passes every other linker message through.
  codex-rs/utils/path-uri/src/lib.rs            |   6 +-
  .../stream-parser/src/inline_hidden_tag.rs    |   2 +-
  codex-rs/websocket-auth/src/lib.rs            |   6 +-
- 48 files changed, 326 insertions(+), 292 deletions(-)
+ 48 files changed, 327 insertions(+), 292 deletions(-)
  create mode 100755 codex-rs/scripts/apple-linker.sh
 
 diff --git a/.github/actions/build-bazel-package-binaries/action.yml b/.github/actions/build-bazel-package-binaries/action.yml
@@ -1746,10 +1746,10 @@ index 910c651..d73899d 100644
  components = ["clippy", "rustfmt", "rust-src"]
 diff --git a/codex-rs/scripts/apple-linker.sh b/codex-rs/scripts/apple-linker.sh
 new file mode 100755
-index 0000000..84f0baa
+index 0000000..b2360a4
 --- /dev/null
 +++ b/codex-rs/scripts/apple-linker.sh
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,25 @@
 +#!/bin/sh
 +# Links an Apple target with `cc`, the linker rustc uses by default, and drops one ld notice from its stderr.
 +#
@@ -1758,12 +1758,13 @@ index 0000000..84f0baa
 +# a slower `__eh_frame` search for those functions. Unwinding still works; only panics that unwind pay the cost.
 +# Keeping compact unwind is the better trade than `-no_compact_unwind`, which would drop the fast path for every
 +# function. Only this exact line is removed: every other linker message still reaches rustc and fails the build.
++# ld writes it as `ld: warning: ...`; rustc shows it as `ld: ...` because it drops `: warning: ` from linker output.
 +#
 +# Usage: apple-linker.sh ARGUMENT...
 +#   Runs `cc ARGUMENT...` with the same standard input and output, forwards its stderr without that line, and exits
 +#   with its status.
 +set -u
-+notice='ld: __eh_frame section too large (max 16MB) to encode dwarf unwind offsets in compact unwind table, performance of exception handling might be affected'
++notice='ld: warning: __eh_frame section too large (max 16MB) to encode dwarf unwind offsets in compact unwind table, performance of exception handling might be affected'
 +log=$(mktemp "${TMPDIR:-/tmp}/apple-linker.XXXXXX") || exit 1
 +trap 'rm -f "$log"' EXIT
 +cc "$@" 2>"$log"

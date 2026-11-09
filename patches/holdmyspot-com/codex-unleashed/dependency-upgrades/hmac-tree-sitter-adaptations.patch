@@ -1,4 +1,4 @@
-From 989ae1f03fd54f224d120ce13da05c0d386c4ef9 Mon Sep 17 00:00:00 2001
+From f06c3ef4a57dd284d3eb85ac23425b5e1c183c1c Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:21:02 -0500
 Subject: [PATCH] WIP: adapt to hmac 0.13 and tree-sitter 0.27
