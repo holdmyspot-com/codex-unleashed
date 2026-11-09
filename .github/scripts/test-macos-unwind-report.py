@@ -108,6 +108,16 @@ class MacosUnwindReportTest(unittest.TestCase):
         self.assertFalse(report.walk_passed("unwind-frame 0x1 /tmp/x/trace.dylib traced_write\nunwind-end 5 1\n",
                                             "/bin/codex")[0])
 
+    def test_walk_on_a_spawned_thread_passes_when_it_reaches_the_thread_start(self):
+        """codex runs its command line on a spawned thread, so the walk passes when it reaches the end of the stack at
+        _pthread_start after frames in the binary, and fails when it stops before _pthread_start."""
+        frames = ("unwind-frame 0x1 /tmp/x/trace.dylib traced_write\n"
+                  "unwind-frame 0x100002010 /bin/codex __ZN3std2io5stdio17hE\n"
+                  "unwind-frame 0x100002020 /bin/codex _RNvNvMs0_NtNtNtCs1_3std3sys6thread4unix6Thread3new12thread_start\n"
+                  "unwind-frame 0x196aa3bc8 /usr/lib/system/libsystem_pthread.dylib _pthread_start\n")
+        self.assertTrue(report.walk_passed(frames + "unwind-end 5 4\n", "/bin/codex")[0])
+        self.assertFalse(report.walk_passed(frames.rsplit("unwind-frame", 1)[0] + "unwind-end 5 3\n", "/bin/codex")[0])
+
 
 if __name__ == "__main__":
     unittest.main()

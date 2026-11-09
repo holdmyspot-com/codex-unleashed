@@ -59,4 +59,12 @@ cd codex-rs && cargo build --release --target aarch64-apple-darwin
 
 The macOS builds link without linker diagnostics other than the `__eh_frame` notice that `apple-linker.sh` removes, and the platform lints pass with Rust 1.99.1.
 
-On the ARM macOS release runner, `.github/scripts/macos-unwind-report.py` (the release workflow's unwind report step) records the `__eh_frame` and `__unwind_info` sizes, the crates that fill `__eh_frame`, and how many FDEs start past 16 MB. It also walks the running `codex --version` stack with `_Unwind_Backtrace`, the unwinder that panics and Rust backtraces use, and fails unless the walk reaches the end of the stack through `main`.
+On the ARM macOS release runner, `.github/scripts/macos-unwind-report.py` (the release workflow's unwind report step) records the `__eh_frame` and `__unwind_info` sizes, the crates that fill `__eh_frame`, and how many FDEs start past 16 MB. It also walks the running `codex --version` stack with `_Unwind_Backtrace`, the unwinder that panics and Rust backtraces use, and fails unless the walk reaches the end of the stack, either through `main` or at `_pthread_start`, since codex runs its command line on a spawned thread.
+
+ARM macOS release run `42665564052` (CP7 queue) measured:
+- `__eh_frame` is 22,837,340 bytes (21.8 MiB) and `__unwind_info` 3,648,672 bytes (3.5 MiB).
+- 76,912 of the 286,376 FDEs start past 16 MB.
+- `core` fills 39.9% of `__eh_frame`, followed by `tokio` (6.9%), `serde_json` (6.0%), `alloc` (5.8%) and `serde_path_to_error` (5.0%); monomorphized generics, not one crate, make the section large.
+- The `codex --version` walk reached the end of the stack (`_URC_END_OF_STACK`) through 11 frames, 9 of them in the binary. Two of those are functions whose FDE starts past 16 MB, which the unwinder finds by searching `__eh_frame`. So unwinding works through the functions that compact unwind can't encode.
+
+That run's report step failed only because the script then required `main`, and this walk ends at `_pthread_start`.

@@ -8,12 +8,14 @@ address. Functions whose FDE lies past that point are found by searching __eh_fr
   - the __eh_frame bytes of each crate or library, from each FDE's first address and the symbol that contains it
     (dwarfdump --eh-frame and nm -n), and how many FDEs of each start past 16 MB;
   - a stack walk through the running binary: a library interposed on write() calls _Unwind_Backtrace, the unwinder
-    that panics and Rust backtraces use, the first time the binary writes to standard output.
+    that panics and Rust backtraces use, the first time the binary writes to standard output. The write can come
+    from the main thread, whose walk passes through the binary's main, or from a spawned thread, whose walk ends at
+    _pthread_start.
 
 Usage:
   macos-unwind-report.py BINARY ARGUMENT...
       Report on BINARY, running it with the arguments for the stack walk, which must write to standard output. Exits 1
-      if the walk does not reach the end of the stack through the binary's main.
+      if the walk does not reach the end of the stack, through the binary's main or at a spawned thread's entry.
 """
 
 import bisect
@@ -32,6 +34,8 @@ LEGACY = re.compile(r"^_{1,2}ZN[KVrO]*(\d+)")
 V0 = re.compile(r"C(?:s[0-9A-Za-z]*_)?(\d+)_?")
 # _Unwind_Backtrace returns this when the walk reaches the outermost frame.
 END_OF_STACK = 5
+# The outermost function of a spawned thread's stack; codex runs its command line on one.
+THREAD_ENTRY = "_pthread_start"
 
 TRACER = r"""
 #include <dlfcn.h>
@@ -144,14 +148,17 @@ def attribute(entries, symbols):
 def walk_passed(trace, binary):
     """
     Return (passed, frames in the binary) for the interposed walk's output: it passes when the unwinder reached the end
-    of the stack and the walk passed through the binary's own main.
+    of the stack after at least two frames in the binary, and the walk passed through the binary's own main or ended
+    at a spawned thread's entry.
     """
     binary = os.path.realpath(binary)
     ends = [line.split() for line in trace.splitlines() if line.startswith("unwind-end ")]
     frames = [line.split(maxsplit=3) for line in trace.splitlines() if line.startswith("unwind-frame ")]
     own = [frame for frame in frames if len(frame) == 4 and os.path.realpath(frame[2]) == binary]
     reached_main = any(frame[3] == "main" for frame in own)
-    passed = len(ends) == 1 and int(ends[0][1]) == END_OF_STACK and reached_main and len(own) >= 2
+    reached_thread_entry = bool(frames) and len(frames[-1]) == 4 and frames[-1][3] == THREAD_ENTRY
+    passed = (len(ends) == 1 and int(ends[0][1]) == END_OF_STACK and (reached_main or reached_thread_entry)
+              and len(own) >= 2)
     return passed, own
 
 
@@ -207,7 +214,8 @@ def main(arguments):
         if index >= 0 and starts[index][1] >= COMPACT_REACH:
             past += 1
     print(f"{len(own)} frames in the binary, {past} in functions whose FDE starts past 16 MB")
-    print("Stack walk passed" if passed else "Stack walk FAILED: it did not reach the end of the stack through main")
+    print("Stack walk passed" if passed else
+          f"Stack walk FAILED: it did not reach the end of the stack through main or at {THREAD_ENTRY}")
     return 0 if passed else 1
 
 
