@@ -1,4 +1,4 @@
-From 4bd62edc8fe7e7ef7479400a9100fe12a0006877 Mon Sep 17 00:00:00 2001
+From 17cf98925b5fd8b074007e18597d5400cd7def57 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 20:58:49 -0500
 Subject: [PATCH] WIP: raise direct dependency requirements to their latest
@@ -24,7 +24,7 @@ Subject: [PATCH] WIP: raise direct dependency requirements to their latest
  16 files changed, 1150 insertions(+), 749 deletions(-)
 
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index b3a6264..08db320 100644
+index 215d7c1..3d3ea86 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -94,7 +94,7 @@ dependencies = [

@@ -1,4 +1,4 @@
-From c47fd41c47362d591b9582f360753feb8eefd6af Mon Sep 17 00:00:00 2001
+From 366d22ce7213b7bdb045f57f5d949b9cbfd01b75 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 20:57:06 -0500
 Subject: [PATCH] Update direct dependencies to their latest semver-compatible
@@ -9,8 +9,8 @@ dependencies change only where those releases require it. The tonic annotation f
 ---
  MODULE.bazel        |    2 +-
  MODULE.bazel.lock   |  374 ++++---
- codex-rs/Cargo.lock | 2359 +++++++++++++++++++++++--------------------
- 3 files changed, 1444 insertions(+), 1291 deletions(-)
+ codex-rs/Cargo.lock | 2357 +++++++++++++++++++++++--------------------
+ 3 files changed, 1443 insertions(+), 1290 deletions(-)
 
 diff --git a/MODULE.bazel b/MODULE.bazel
 index 09da54c..8cb8333 100644
@@ -1040,7 +1040,7 @@ index 06d87cd..cf89f21 100644
        "zvariant_4.2.0": "{\"dependencies\":[{\"features\":[\"serde\"],\"name\":\"arrayvec\",\"optional\":true,\"req\":\"^0.7.4\"},{\"default_features\":false,\"features\":[\"serde\"],\"name\":\"chrono\",\"optional\":true,\"req\":\"^0.4.38\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5.1\"},{\"name\":\"endi\",\"req\":\"^1.1.0\"},{\"features\":[\"serde\"],\"name\":\"enumflags2\",\"optional\":true,\"req\":\"^0.7.9\"},{\"kind\":\"dev\",\"name\":\"glib\",\"req\":\"^0.20.0\"},{\"features\":[\"serde\"],\"name\":\"heapless\",\"optional\":true,\"req\":\"^0.8.0\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.8.5\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"req\":\"^1.0.200\"},{\"name\":\"serde_bytes\",\"optional\":true,\"req\":\"^0.11.14\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.116\"},{\"kind\":\"dev\",\"name\":\"serde_repr\",\"req\":\"^0.1.19\"},{\"name\":\"static_assertions\",\"req\":\"^1.1.0\"},{\"features\":[\"serde\"],\"name\":\"time\",\"optional\":true,\"req\":\"^0.3.36\"},{\"features\":[\"serde\"],\"name\":\"url\",\"optional\":true,\"req\":\"^2.5.0\"},{\"features\":[\"serde\"],\"name\":\"uuid\",\"optional\":true,\"req\":\"^1.8.0\"},{\"name\":\"zvariant_derive\",\"req\":\"=4.2.0\"}],\"features\":{\"default\":[],\"gvariant\":[],\"option-as-array\":[],\"ostree-tests\":[\"gvariant\"]}}",
        "zvariant_derive_4.2.0": "{\"dependencies\":[{\"features\":[\"serde\"],\"kind\":\"dev\",\"name\":\"enumflags2\",\"req\":\"^0.7.9\"},{\"name\":\"proc-macro-crate\",\"req\":\"^3.1.0\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.81\"},{\"name\":\"quote\",\"req\":\"^1.0.36\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.200\"},{\"kind\":\"dev\",\"name\":\"serde_repr\",\"req\":\"^0.1.19\"},{\"features\":[\"extra-traits\",\"full\"],\"name\":\"syn\",\"req\":\"^2.0.64\"},{\"name\":\"zvariant_utils\",\"req\":\"=2.1.0\"}],\"features\":{}}",
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 784236e..b3a6264 100644
+index 97afc8e..215d7c1 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -57,6 +57,7 @@ dependencies = [
@@ -1270,15 +1270,6 @@ index 784236e..b3a6264 100644
   "slab",
   "windows-sys 0.61.2",
 @@ -616,7 +641,7 @@ checksum = "c7c24de15d275a1ecfd47a380fb4d5ec9bfe0933f309ed5e705b775596a3574d"
- dependencies = [
-  "proc-macro2",
-  "quote",
-- "syn 2.0.117",
-+ "syn 2.0.119",
- ]
- 
- [[package]]
-@@ -633,7 +658,7 @@ checksum = "9035ad2d096bed7955a320ee7e2230574d28fd3c3a0f186cbea1ff3c7eed5dbb"
  dependencies = [
   "proc-macro2",
   "quote",

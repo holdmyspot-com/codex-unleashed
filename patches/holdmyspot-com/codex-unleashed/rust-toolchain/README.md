@@ -26,6 +26,9 @@ Rust 1.99 also adds lints that fail the workspace under patch 25 (platform lint 
 - `Atomic*::fetch_update` is deprecated and renamed `try_update`, with the same arguments and result (four sites).
 - Clippy's `chunks_exact_to_as_chunks`: three byte-pair loops use `as_chunks::<2>()`. Each already checks for an even length, so the remainder is empty.
 - Clippy's `map_or_identity`: `map_or(0, identity)` becomes `unwrap_or(0)`.
+- Clippy's `useless_borrows_in_formatting`: 21 `assert!` messages in the OTLP loopback tests drop a redundant `&` (lint run `42558019944`).
+- Clippy's `question_mark`: one `if let … else { return None }` in `shell-command/src/bash.rs` becomes `?`.
+- Clippy's `double_must_use` fires on tonic's generated `ThreadConfigLoader` trait, because async-trait 0.1.89 adds `#[must_use]` to the boxed future it returns. async-trait 0.1.92 no longer adds it, so the lockfile moves that transitive dependency, and only that one, to 0.1.92.
 
 ### Reproduction
 

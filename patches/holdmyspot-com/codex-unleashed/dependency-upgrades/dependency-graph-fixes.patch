@@ -1,4 +1,4 @@
-From ba8bc60cbf0222d9a4f5b3da6ff278b58ab8e6d6 Mon Sep 17 00:00:00 2001
+From 0b813c644f0303d6d7fb5ffa33f436f7ef9b2a21 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:03:24 -0500
 Subject: [PATCH] WIP: keep secret-service on keyring's release and limit
@@ -14,7 +14,7 @@ Windows.
  3 files changed, 17 insertions(+), 126 deletions(-)
 
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 93d55d4..a5c3f23 100644
+index 46a3915..2fc1443 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -3911,7 +3911,7 @@ version = "0.0.0"

@@ -1,4 +1,4 @@
-From 0e61dbc2f387e25a8939344fe7c536707182629a Mon Sep 17 00:00:00 2001
+From 16ac8ba2f664b648ffcb4b6fbb13f30d7db6ab7f Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:22:06 -0500
 Subject: [PATCH] WIP: name the hosted image-generation item's schema apart

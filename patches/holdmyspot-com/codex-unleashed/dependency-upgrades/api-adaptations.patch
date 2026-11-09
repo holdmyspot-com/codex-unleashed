@@ -1,4 +1,4 @@
-From f8087c0384dc6a3ff1932b2173213deebbcc1a7b Mon Sep 17 00:00:00 2001
+From f7c752412ac2b3ef34298e8783e9fd34e25c7ece Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:08:34 -0500
 Subject: [PATCH] WIP: adapt to rand 0.10, digest 0.11, p256 0.14, reqwest
@@ -142,7 +142,7 @@ AsyncFd::new for the unsafe AsyncFd::register, and ctor 1 requires every constru
  130 files changed, 331 insertions(+), 226 deletions(-)
 
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index a5c3f23..71b6546 100644
+index 2fc1443..ee8ffc5 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -2065,6 +2065,7 @@ dependencies = [

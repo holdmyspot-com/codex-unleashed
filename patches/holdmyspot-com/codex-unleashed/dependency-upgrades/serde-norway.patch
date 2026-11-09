@@ -1,4 +1,4 @@
-From 4faf9a0683916742ef4800289efc2e832bd8eb7c Mon Sep 17 00:00:00 2001
+From e59130f4ffab9822e578a1665069a601151ddd86 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 20:08:26 -0500
 Subject: [PATCH] Replace the deprecated serde_yaml with serde_norway
@@ -34,7 +34,7 @@ index 987c9d4..c5880ee 100644
      "RUSTSEC-2024-0436", # paste 1.0.15 via starlark/v8; upstream crate is unmaintained
      "RUSTSEC-2023-0089", # atomic-polyfill via postcard/heapless/pagable; upstream crate is unmaintained
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 08db320..93d55d4 100644
+index 3d3ea86..46a3915 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -3217,8 +3217,8 @@ dependencies = [

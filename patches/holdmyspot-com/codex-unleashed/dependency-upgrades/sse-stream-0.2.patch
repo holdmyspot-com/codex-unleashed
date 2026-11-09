@@ -1,4 +1,4 @@
-From 1550aa02f7c385714937bd2525c34c36b376f179 Mon Sep 17 00:00:00 2001
+From 502ff46ad20b9346eaa85efcf940f274b1e75b7e Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:21:02 -0500
 Subject: [PATCH] WIP: keep sse-stream on the 0.2 series that rmcp requires
@@ -11,7 +11,7 @@ release through 3.9.0 requires ^0.2.4.
  2 files changed, 3 insertions(+), 19 deletions(-)
 
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 73a6df3..c41c3e5 100644
+index bbbcf19..d2eb8d7 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -4670,7 +4670,7 @@ dependencies = [

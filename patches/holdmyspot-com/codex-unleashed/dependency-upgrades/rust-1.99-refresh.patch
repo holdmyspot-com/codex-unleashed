@@ -1,4 +1,4 @@
-From ddd601e7db98c4b9189eed1843680e48a61e790e Mon Sep 17 00:00:00 2001
+From f0b94b1c5b5bddbb265d3fa4f7826affeb91e3bc Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:12:47 -0500
 Subject: [PATCH] WIP: refresh direct dependencies under Rust 1.99.1
@@ -8,7 +8,7 @@ Subject: [PATCH] WIP: refresh direct dependencies under Rust 1.99.1
  1 file changed, 110 insertions(+), 110 deletions(-)
 
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 71b6546..73a6df3 100644
+index ee8ffc5..bbbcf19 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -970,7 +970,7 @@ dependencies = [

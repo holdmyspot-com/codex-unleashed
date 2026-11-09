@@ -1,0 +1,58 @@
+From ff3312f98d6720d87741d9d3d1db04995d7a6780 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 8 Nov 2026 22:56:48 -0500
+Subject: [PATCH] WIP: adapt to whoami 2 and base64 0.23
+
+whoami 2 returns names as Results, and base64 0.23 leaves the test
+module's Engine import unused.
+---
+ codex-rs/agent-identity/src/lib.rs                 | 1 -
+ codex-rs/core/src/realtime_prompt.rs               | 2 ++
+ codex-rs/core/tests/suite/realtime_conversation.rs | 2 ++
+ 3 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/agent-identity/src/lib.rs b/codex-rs/agent-identity/src/lib.rs
+index 9b4cbc3..46766b8 100644
+--- a/codex-rs/agent-identity/src/lib.rs
++++ b/codex-rs/agent-identity/src/lib.rs
+@@ -564,7 +564,6 @@ fn signing_key_from_private_key_pkcs8_base64(private_key_pkcs8_base64: &str) ->
+ 
+ #[cfg(test)]
+ mod tests {
+-    use base64::Engine as _;
+     use ed25519_dalek::Signature;
+     use ed25519_dalek::Verifier as _;
+     use jsonwebtoken::EncodingKey;
+diff --git a/codex-rs/core/src/realtime_prompt.rs b/codex-rs/core/src/realtime_prompt.rs
+index 689c412..4a79980 100644
+--- a/codex-rs/core/src/realtime_prompt.rs
++++ b/codex-rs/core/src/realtime_prompt.rs
+@@ -24,8 +24,10 @@ pub(crate) fn prepare_realtime_backend_prompt(
+ }
+ 
+ fn current_user_first_name() -> String {
++    // whoami 2 reports a missing name as an error; fall through to the next source.
+     [whoami::realname(), whoami::username()]
+         .into_iter()
++        .filter_map(Result::ok)
+         .filter_map(|name| name.split_whitespace().next().map(str::to_string))
+         .find(|name| !name.is_empty())
+         .unwrap_or_else(|| DEFAULT_USER_FIRST_NAME.to_string())
+diff --git a/codex-rs/core/tests/suite/realtime_conversation.rs b/codex-rs/core/tests/suite/realtime_conversation.rs
+index 3d0dc16..1e39ea1 100644
+--- a/codex-rs/core/tests/suite/realtime_conversation.rs
++++ b/codex-rs/core/tests/suite/realtime_conversation.rs
+@@ -170,8 +170,10 @@ fn expected_realtime_backend_prompt() -> String {
+ }
+ 
+ fn test_user_first_name() -> String {
++    // whoami 2 reports a missing name as an error; fall through to the next source.
+     [whoami::realname(), whoami::username()]
+         .into_iter()
++        .filter_map(Result::ok)
+         .filter_map(|name| name.split_whitespace().next().map(str::to_string))
+         .find(|name| !name.is_empty())
+         .unwrap_or_else(|| "there".to_string())
+-- 
+2.43.0
+
