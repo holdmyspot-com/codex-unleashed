@@ -1,0 +1,251 @@
+From 0d6b9b5d9c1f85da28af65290914939c7f5b1560 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 9 Nov 2026 18:11:33 -0500
+Subject: [PATCH] WIP: Fix the clippy findings in the rama 0.4 port.
+
+---
+ codex-rs/network-proxy/src/aws_sigv4.rs       |  2 +-
+ codex-rs/network-proxy/src/brokered_tunnel.rs |  3 +-
+ codex-rs/network-proxy/src/http_proxy.rs      | 42 ++++++++++++++-----
+ codex-rs/network-proxy/src/mitm_hook.rs       |  2 +-
+ codex-rs/network-proxy/src/socks5.rs          |  5 +--
+ .../src/windows_proxy_ingress.rs              |  7 ++--
+ 6 files changed, 39 insertions(+), 22 deletions(-)
+
+diff --git a/codex-rs/network-proxy/src/aws_sigv4.rs b/codex-rs/network-proxy/src/aws_sigv4.rs
+index 02f27fc..fae4bab 100644
+--- a/codex-rs/network-proxy/src/aws_sigv4.rs
++++ b/codex-rs/network-proxy/src/aws_sigv4.rs
+@@ -365,7 +365,7 @@ impl AwsSigV4Signer {
+         let raw_query = req
+             .uri()
+             .query()
+-            .map(|query| query.as_encoded_str())
++            .map(rama_net::uri::QueryRef::as_encoded_str)
+             .unwrap_or_default();
+         let mut query = url::form_urlencoded::parse(raw_query.as_bytes());
+         ensure!(
+diff --git a/codex-rs/network-proxy/src/brokered_tunnel.rs b/codex-rs/network-proxy/src/brokered_tunnel.rs
+index c09d045..0c362c6 100644
+--- a/codex-rs/network-proxy/src/brokered_tunnel.rs
++++ b/codex-rs/network-proxy/src/brokered_tunnel.rs
+@@ -4,7 +4,6 @@
+ use anyhow::Context;
+ use anyhow::Result;
+ use rama_core::Service;
+-use rama_core::error::ErrorExt as _;
+ use rama_core::extensions::ExtensionsRef;
+ use rama_core::io::Io;
+ use rama_core::io::PrefixedIo;
+@@ -189,7 +188,7 @@ pub(crate) async fn forward_http_request(
+         tokio::spawn(async move {
+             let result = async {
+                 let (mut downstream, mut upstream) = tokio::try_join!(downstream, upstream)
+-                    .map_err(|err| err.into_opaque_error())?;
++                    .map_err(rama_core::error::ErrorExt::into_opaque_error)?;
+                 tokio::io::copy_bidirectional(&mut downstream, &mut upstream).await?;
+                 anyhow::Ok(())
+             }
+diff --git a/codex-rs/network-proxy/src/http_proxy.rs b/codex-rs/network-proxy/src/http_proxy.rs
+index 46f2dd2..7e3e8a4 100644
+--- a/codex-rs/network-proxy/src/http_proxy.rs
++++ b/codex-rs/network-proxy/src/http_proxy.rs
+@@ -112,7 +112,7 @@ pub async fn run_http_proxy(
+         // lifetime bound, which means it doesn't satisfy `anyhow::Context`'s `StdError` constraint.
+         // Wrap it in Rama's `OpaqueError` so we can preserve the original error as a source and
+         // still use `anyhow` for chaining.
+-        .map_err(|err| err.into_opaque_error())
++        .map_err(rama_core::error::ErrorExt::into_opaque_error)
+         .map_err(anyhow::Error::from)
+         .with_context(|| format!("bind HTTP proxy: {addr}"))?;
+ 
+@@ -128,7 +128,7 @@ pub async fn run_http_proxy_with_std_listener(
+ ) -> Result<()> {
+     let executor = Executor::graceful(guard);
+     let listener = TcpListener::try_from_std_tcp_listener(listener, executor.clone())
+-        .map_err(|err| err.into_opaque_error())
++        .map_err(rama_core::error::ErrorExt::into_opaque_error)
+         .map_err(anyhow::Error::from)
+         .context("convert std listener to HTTP proxy listener")?;
+     run_http_proxy_with_listener(state, listener, policy_decider, environment_id, executor).await
+@@ -176,7 +176,6 @@ pub(crate) fn http_proxy_service(
+                 service_fn({
+                     let policy_decider = policy_decider.clone();
+                     let environment_id = environment_id.clone();
+-                    let executor = executor.clone();
+                     move |req| {
+                         http_connect_accept(
+                             policy_decider.clone(),
+@@ -1064,7 +1063,7 @@ async fn proxy_via_unix_socket(req: Request, socket_path: &str) -> Result<Respon
+         let (mut parts, body) = req.into_parts();
+         let path = parts.uri.request_target().into_owned();
+         parts.uri = rama_net::uri::Uri::parse(path.as_str())
+-            .map_err(|err| err.into_opaque_error())
++            .map_err(rama_core::error::ErrorExt::into_opaque_error)
+             .with_context(|| format!("invalid unix socket request path: {path}"))?;
+         parts.headers.remove("x-unix-socket");
+         remove_hop_by_hop_request_headers(&mut parts.headers);
+@@ -1636,7 +1635,10 @@ mod tests {
+             req.extensions().insert_arc(state.clone());
+ 
+             let response = http_plain_proxy(
+-                /*policy_decider*/ None, /*environment_id*/ None, req,
++                /*policy_decider*/ None,
++                /*environment_id*/ None,
++                Executor::default(),
++                req,
+             )
+             .await
+             .expect("provider-alias policy should return a response");
+@@ -1889,7 +1891,10 @@ mod tests {
+         req.extensions().insert_arc(state);
+ 
+         let response = http_plain_proxy(
+-            /*policy_decider*/ None, /*environment_id*/ None, req,
++            /*policy_decider*/ None,
++            /*environment_id*/ None,
++            Executor::default(),
++            req,
+         )
+         .await
+         .unwrap();
+@@ -1914,7 +1919,10 @@ mod tests {
+         req.extensions().insert_arc(state);
+ 
+         let response = http_plain_proxy(
+-            /*policy_decider*/ None, /*environment_id*/ None, req,
++            /*policy_decider*/ None,
++            /*environment_id*/ None,
++            Executor::default(),
++            req,
+         )
+         .await
+         .unwrap();
+@@ -1948,7 +1956,10 @@ mod tests {
+         req.extensions().insert_arc(state);
+ 
+         let response = http_plain_proxy(
+-            /*policy_decider*/ None, /*environment_id*/ None, req,
++            /*policy_decider*/ None,
++            /*environment_id*/ None,
++            Executor::default(),
++            req,
+         )
+         .await
+         .unwrap();
+@@ -2017,13 +2028,19 @@ mod tests {
+                 req.extensions().insert_arc(state.clone());
+                 let response = if method == Method::CONNECT {
+                     http_connect_accept(
+-                        /*policy_decider*/ None, /*environment_id*/ None, req,
++                        /*policy_decider*/ None,
++                        /*environment_id*/ None,
++                        Executor::default(),
++                        req,
+                     )
+                     .await
+                     .unwrap_err()
+                 } else {
+                     http_plain_proxy(
+-                        /*policy_decider*/ None, /*environment_id*/ None, req,
++                        /*policy_decider*/ None,
++                        /*environment_id*/ None,
++                        Executor::default(),
++                        req,
+                     )
+                     .await
+                     .unwrap()
+@@ -2049,7 +2066,10 @@ mod tests {
+         req.extensions().insert_arc(state);
+ 
+         let response = http_plain_proxy(
+-            /*policy_decider*/ None, /*environment_id*/ None, req,
++            /*policy_decider*/ None,
++            /*environment_id*/ None,
++            Executor::default(),
++            req,
+         )
+         .await;
+         assert_eq!(response.unwrap().status(), StatusCode::BAD_REQUEST);
+diff --git a/codex-rs/network-proxy/src/mitm_hook.rs b/codex-rs/network-proxy/src/mitm_hook.rs
+index efe4ab1..e939fd3 100644
+--- a/codex-rs/network-proxy/src/mitm_hook.rs
++++ b/codex-rs/network-proxy/src/mitm_hook.rs
+@@ -504,7 +504,7 @@ fn query_matches(query_constraints: &[QueryConstraint], req: &Request) -> bool {
+     let actual_query = req
+         .uri()
+         .query()
+-        .map(|query| query.as_encoded_str())
++        .map(rama_net::uri::QueryRef::as_encoded_str)
+         .unwrap_or_default();
+     let mut actual_values: BTreeMap<String, Vec<String>> = BTreeMap::new();
+     for (name, value) in form_urlencoded::parse(actual_query.as_bytes()) {
+diff --git a/codex-rs/network-proxy/src/socks5.rs b/codex-rs/network-proxy/src/socks5.rs
+index d005f1c..abb1b23 100644
+--- a/codex-rs/network-proxy/src/socks5.rs
++++ b/codex-rs/network-proxy/src/socks5.rs
+@@ -27,7 +27,6 @@ use anyhow::Context as _;
+ use anyhow::Result;
+ use rama_core::Service;
+ use rama_core::error::BoxError;
+-use rama_core::error::ErrorExt as _;
+ use rama_core::extensions::Extensions;
+ use rama_core::extensions::ExtensionsRef;
+ use rama_core::graceful::ShutdownGuard;
+@@ -76,7 +75,7 @@ pub async fn run_socks5(
+         .bind_address(addr)
+         .await
+         // See `http_proxy.rs` for details on why we wrap `BoxError` before converting to anyhow.
+-        .map_err(|err| err.into_opaque_error())
++        .map_err(rama_core::error::ErrorExt::into_opaque_error)
+         .map_err(anyhow::Error::from)
+         .with_context(|| format!("bind SOCKS5 proxy: {addr}"))?;
+ 
+@@ -101,7 +100,7 @@ pub async fn run_socks5_with_std_listener(
+ ) -> Result<()> {
+     let executor = Executor::graceful(guard);
+     let listener = TcpListener::try_from_std_tcp_listener(listener, executor.clone())
+-        .map_err(|err| err.into_opaque_error())
++        .map_err(rama_core::error::ErrorExt::into_opaque_error)
+         .map_err(anyhow::Error::from)
+         .context("convert std listener to SOCKS5 proxy listener")?;
+     run_socks5_with_listener(
+diff --git a/codex-rs/network-proxy/src/windows_proxy_ingress.rs b/codex-rs/network-proxy/src/windows_proxy_ingress.rs
+index 3ffb75c..3d07533 100644
+--- a/codex-rs/network-proxy/src/windows_proxy_ingress.rs
++++ b/codex-rs/network-proxy/src/windows_proxy_ingress.rs
+@@ -6,7 +6,6 @@ use anyhow::Context;
+ use anyhow::Result;
+ use rama_core::Service;
+ use rama_core::error::BoxError;
+-use rama_core::error::ErrorExt as _;
+ use rama_core::rt::Executor;
+ use rama_core::service::BoxService;
+ use rama_net::stream::Socket;
+@@ -140,12 +139,12 @@ impl WindowsProxyIngress {
+         let (http_listener, socks_listener) = listeners.into_listeners();
+         let http_listener =
+             TcpListener::try_from_std_tcp_listener(http_listener, Executor::default())
+-                .map_err(|err| err.into_opaque_error())
++                .map_err(rama_core::error::ErrorExt::into_opaque_error)
+                 .context("convert shared HTTP ingress listener")?;
+         let socks_listener = socks_listener
+             .map(|listener| TcpListener::try_from_std_tcp_listener(listener, Executor::default()))
+             .transpose()
+-            .map_err(|err| err.into_opaque_error())
++            .map_err(rama_core::error::ErrorExt::into_opaque_error)
+             .context("convert shared SOCKS5 ingress listener")?;
+         let runtime =
+             Handle::try_current().context("start shared managed Windows proxy ingress")?;
+@@ -262,7 +261,7 @@ impl WindowsProxyIngress {
+             let _runtime = self.runtime.enter();
+             TcpListener::try_from_std_tcp_listener(listener, Executor::default())
+         }
+-        .map_err(|err| err.into_opaque_error())
++        .map_err(rama_core::error::ErrorExt::into_opaque_error)
+         .context("convert shared SOCKS5 ingress listener")?;
+         let task = spawn_socks_listener(&self.runtime, &self.routes, listener, addr);
+         socks.addr = addr;
+-- 
+2.43.0
+
