@@ -1,4 +1,4 @@
-From d42d2e75cfd619bf79915275b3f0d73951315916 Mon Sep 17 00:00:00 2001
+From 2033cee4e8ec89a7be9263f697d3858522d3cf2c Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 23:36:11 -0500
 Subject: [PATCH] WIP: adapt the TUI to rand 0.10 and zbus 6, and name the

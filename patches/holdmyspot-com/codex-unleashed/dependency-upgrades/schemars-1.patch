@@ -1,4 +1,4 @@
-From ae15dd912a5e2f7493aead956b43aa9dd5618b9b Mon Sep 17 00:00:00 2001
+From 715dd407aca5a5ac913c124462c1e1f7bbeccfa3 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:20:01 -0500
 Subject: [PATCH] WIP: migrate to schemars 1
@@ -1260,10 +1260,10 @@ index 85e577d..e5761c5 100644
      }
  }
 diff --git a/codex-rs/utils/path-uri/src/lib.rs b/codex-rs/utils/path-uri/src/lib.rs
-index 78bec0a..92b328f 100644
+index 4e6e0a2..b2866c0 100644
 --- a/codex-rs/utils/path-uri/src/lib.rs
 +++ b/codex-rs/utils/path-uri/src/lib.rs
-@@ -696,11 +696,11 @@ impl Serialize for PathUri {
+@@ -698,11 +698,11 @@ impl Serialize for PathUri {
  }
  
  impl JsonSchema for PathUri {

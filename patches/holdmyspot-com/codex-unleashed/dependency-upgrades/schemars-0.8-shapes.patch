@@ -1,4 +1,4 @@
-From a4b3d9001dd0d50bce64634c35754b146846b9d4 Mon Sep 17 00:00:00 2001
+From 2f270219c5d57e051da3b2c85ad0ad2c9b73eb9a Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 9 Nov 2026 06:59:53 -0500
 Subject: [PATCH] WIP: keep schemars 0.8's schema shapes for generated clients

@@ -1,4 +1,4 @@
-From cdaabf9c9c69d4a96e27ef5f481e343c1f299ed7 Mon Sep 17 00:00:00 2001
+From 5a8e2ac99294d2e49a63dcf91e34e823b1971ca6 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 9 Nov 2026 10:55:13 -0500
 Subject: [PATCH] WIP: replace serde_norway with serde-saphyr
