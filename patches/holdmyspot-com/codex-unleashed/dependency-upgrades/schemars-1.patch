@@ -1,4 +1,4 @@
-From 2f0ed2b46c83b802ca1a5d68e6c06fb0fc6eb48f Mon Sep 17 00:00:00 2001
+From 9bf791eff6014f7ba76ef2f6973d7e0b2f55040f Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:20:01 -0500
 Subject: [PATCH] WIP: migrate to schemars 1
@@ -1241,10 +1241,10 @@ index 2e0f215..d674e97 100644
  
      fn json_schema(generator: &mut SchemaGenerator) -> Schema {
 diff --git a/codex-rs/utils/path-uri/src/api_path_string.rs b/codex-rs/utils/path-uri/src/api_path_string.rs
-index b2ecdf0..439ae58 100644
+index 85e577d..e5761c5 100644
 --- a/codex-rs/utils/path-uri/src/api_path_string.rs
 +++ b/codex-rs/utils/path-uri/src/api_path_string.rs
-@@ -305,11 +305,11 @@ impl Serialize for LegacyAppPathString {
+@@ -307,11 +307,11 @@ impl Serialize for LegacyAppPathString {
  }
  
  impl JsonSchema for LegacyAppPathString {
@@ -1260,7 +1260,7 @@ index b2ecdf0..439ae58 100644
      }
  }
 diff --git a/codex-rs/utils/path-uri/src/lib.rs b/codex-rs/utils/path-uri/src/lib.rs
-index 7a42363..6f0b57a 100644
+index 78bec0a..92b328f 100644
 --- a/codex-rs/utils/path-uri/src/lib.rs
 +++ b/codex-rs/utils/path-uri/src/lib.rs
 @@ -696,11 +696,11 @@ impl Serialize for PathUri {

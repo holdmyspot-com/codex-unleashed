@@ -1,0 +1,73 @@
+From 1550aa02f7c385714937bd2525c34c36b376f179 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 8 Nov 2026 22:21:02 -0500
+Subject: [PATCH] WIP: keep sse-stream on the 0.2 series that rmcp requires
+
+rmcp's streamable HTTP client takes sse-stream 0.2 types, and every rmcp
+release through 3.9.0 requires ^0.2.4.
+---
+ codex-rs/Cargo.lock             | 20 ++------------------
+ codex-rs/rmcp-client/Cargo.toml |  2 +-
+ 2 files changed, 3 insertions(+), 19 deletions(-)
+
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+index 73a6df3..c41c3e5 100644
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -4670,7 +4670,7 @@ dependencies = [
+  "serde_json",
+  "serial_test",
+  "sha2 0.11.1",
+- "sse-stream 0.3.0",
++ "sse-stream",
+  "tempfile",
+  "thiserror 2.0.21",
+  "tiny_http",
+@@ -13439,7 +13439,7 @@ dependencies = [
+  "schemars 1.2.3",
+  "serde",
+  "serde_json",
+- "sse-stream 0.2.6",
++ "sse-stream",
+  "thiserror 2.0.21",
+  "tokio",
+  "tokio-stream",
+@@ -15047,22 +15047,6 @@ dependencies = [
+  "pin-project-lite",
+ ]
+ 
+-[[package]]
+-name = "sse-stream"
+-version = "0.3.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d385160fc0fba84f7b9cc8ef3263e410d0e3ca7ab4927f1356df33145ace69a4"
+-dependencies = [
+- "bytes",
+- "futures-util",
+- "http-body",
+- "http-body-util",
+- "memchr",
+- "pin-project-lite",
+- "simdutf8",
+- "thiserror 2.0.21",
+-]
+-
+ [[package]]
+ name = "stable_deref_trait"
+ version = "1.2.1"
+diff --git a/codex-rs/rmcp-client/Cargo.toml b/codex-rs/rmcp-client/Cargo.toml
+index 32e0112..3f9e592 100644
+--- a/codex-rs/rmcp-client/Cargo.toml
++++ b/codex-rs/rmcp-client/Cargo.toml
+@@ -49,7 +49,7 @@ rmcp = { workspace = true, default-features = false, features = [
+ serde = { workspace = true, features = ["derive"] }
+ serde_json = { workspace = true }
+ sha2 = { workspace = true }
+-sse-stream = "0.3.0"
++sse-stream = "0.2.6"
+ tempfile = { workspace = true }
+ thiserror = { workspace = true }
+ tiny_http = { workspace = true }
+-- 
+2.43.0
+

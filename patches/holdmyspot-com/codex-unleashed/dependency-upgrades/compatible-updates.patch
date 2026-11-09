@@ -1,4 +1,4 @@
-From e59cbc767198ce5cb570c20898c3fa13af1f2023 Mon Sep 17 00:00:00 2001
+From c47fd41c47362d591b9582f360753feb8eefd6af Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 20:57:06 -0500
 Subject: [PATCH] Update direct dependencies to their latest semver-compatible
@@ -26,7 +26,7 @@ index 09da54c..8cb8333 100644
  crate.annotation(
      crate = "zstd-sys",
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index 181fbf8..02e6889 100644
+index 06d87cd..cf89f21 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
 @@ -983,10 +983,10 @@

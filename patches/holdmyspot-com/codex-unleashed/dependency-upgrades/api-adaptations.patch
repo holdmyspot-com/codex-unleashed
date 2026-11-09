@@ -1,4 +1,4 @@
-From f3d6412cbab3ab7ecb506d992c5fd055abe7b83c Mon Sep 17 00:00:00 2001
+From f8087c0384dc6a3ff1932b2173213deebbcc1a7b Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:08:34 -0500
 Subject: [PATCH] WIP: adapt to rand 0.10, digest 0.11, p256 0.14, reqwest
