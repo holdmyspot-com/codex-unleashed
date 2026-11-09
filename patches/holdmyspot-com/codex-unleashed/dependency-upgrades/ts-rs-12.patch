@@ -1,4 +1,4 @@
-From 5517714eaf7989e61f3ed902b9f200be09755442 Mon Sep 17 00:00:00 2001
+From 855d63c4ab6be404e64abfa6de80f807dafe65f8 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:14:30 -0500
 Subject: [PATCH] WIP: migrate to ts-rs 12
@@ -108,7 +108,7 @@ index e09e1b5..e8f2baa 100644
  #[path = "lib_tests.rs"]
  mod tests;
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 1afa3c6..cd92927 100644
+index 5e396bf..dff29e7 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
 @@ -423,8 +423,9 @@ macro_rules! client_request_definitions {

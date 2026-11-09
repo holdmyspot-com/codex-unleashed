@@ -1,4 +1,4 @@
-From 9c0da8203ad3d4f5aacedb69cbc6fefb7bae1163 Mon Sep 17 00:00:00 2001
+From 822df3829f57e05503e5db26223ac208132586ad Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 20:57:06 -0500
 Subject: [PATCH] Update direct dependencies to their latest semver-compatible

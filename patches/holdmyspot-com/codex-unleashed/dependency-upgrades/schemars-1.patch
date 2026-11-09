@@ -1,4 +1,4 @@
-From 92bdf9be4995ad6466218891737b44bbafe955a8 Mon Sep 17 00:00:00 2001
+From fdfda2221ab4a122c2709e48f12199cbcb646499 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:20:01 -0500
 Subject: [PATCH] WIP: migrate to schemars 1
@@ -196,7 +196,7 @@ index 1edd7b4..ce14ed1 100644
  
  impl ApprovalsReviewer {
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs
-index dd7c0d8..9b2045b 100644
+index fca5c86..7e3df3e 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs
 @@ -16,9 +16,9 @@ use codex_protocol::protocol::ThreadHistoryMode as CoreThreadHistoryMode;
@@ -680,7 +680,7 @@ index 45fdd9f..0ec19d1 100644
  pub use registry::ExtensionRegistryBuilder;
  pub use registry::empty_extension_registry;
 diff --git a/codex-rs/ext/image-generation/src/tool.rs b/codex-rs/ext/image-generation/src/tool.rs
-index 26f3bad..dacc8b1 100644
+index 8203254..b3120ad 100644
 --- a/codex-rs/ext/image-generation/src/tool.rs
 +++ b/codex-rs/ext/image-generation/src/tool.rs
 @@ -49,7 +49,7 @@ use codex_utils_image::PromptImageMode;
@@ -1047,7 +1047,7 @@ index 0da8e17..eed791c 100644
  
  fn default_continue() -> bool {
 diff --git a/codex-rs/protocol/src/config_types.rs b/codex-rs/protocol/src/config_types.rs
-index 87ffe6d..0b70417 100644
+index 88096f4..cc4ee83 100644
 --- a/codex-rs/protocol/src/config_types.rs
 +++ b/codex-rs/protocol/src/config_types.rs
 @@ -1,14 +1,10 @@
@@ -1106,7 +1106,7 @@ index 87ffe6d..0b70417 100644
  
  #[derive(
 diff --git a/codex-rs/protocol/src/openai_models.rs b/codex-rs/protocol/src/openai_models.rs
-index 3a26169..68b9a6c 100644
+index fc1f8b8..802fce5 100644
 --- a/codex-rs/protocol/src/openai_models.rs
 +++ b/codex-rs/protocol/src/openai_models.rs
 @@ -9,12 +9,8 @@ use std::str::FromStr;

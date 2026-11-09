@@ -1,4 +1,4 @@
-From 29304d0eb9830213458daeadfbe83ba58ba0eef6 Mon Sep 17 00:00:00 2001
+From 64eb227be0c3e8d28bfa085bee7abe1618ffb7b5 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:03:24 -0500
 Subject: [PATCH] WIP: keep secret-service on keyring's release and limit

@@ -1,4 +1,4 @@
-From 5c85b3a8fc9232a88277c41a29f272cffd8893b1 Mon Sep 17 00:00:00 2001
+From 4e0aebc9a651a1bd85fb78174f57535451ae6422 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 20:58:49 -0500
 Subject: [PATCH] WIP: raise direct dependency requirements to their latest
