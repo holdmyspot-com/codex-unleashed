@@ -1,0 +1,222 @@
+From fa9b340b2786836c87553344410535a449cc3341 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 9 Nov 2026 06:59:53 -0500
+Subject: [PATCH] WIP: keep schemars 0.8's schema shapes for generated clients
+
+schemars 1 references newtype-variant payloads and documented transparent
+types as definitions, which 0.8 inlined, and inlines AgentPath, which 0.8
+defined; the Python SDK then lost ResultThreadItem, FileIdThreadItem and
+AgentPath. #[schemars(inline)] and a hand-written AgentPath schema restore
+the 0.8 shapes. schemars 1 also honors the untagged Other variant of
+CodexErrorInfo and writes it as null, so the open-ended error schema lists
+"other" and accepts any string or object again.
+---
+ codex-rs/app-server-protocol/src/export.rs    | 16 +++++++++++++---
+ .../src/protocol/v2/permissions.rs            |  2 ++
+ codex-rs/ext/items/src/image_generation.rs    |  2 ++
+ codex-rs/ext/items/src/sleep.rs               |  2 ++
+ codex-rs/ext/items/src/web_search.rs          |  2 ++
+ codex-rs/protocol/src/agent_path.rs           | 19 +++++++++++++++----
+ codex-rs/protocol/src/approvals.rs            |  2 ++
+ codex-rs/protocol/src/dynamic_tools.rs        |  4 ++++
+ codex-rs/protocol/src/models.rs               |  2 ++
+ codex-rs/protocol/src/response_item_id.rs     |  2 ++
+ codex-rs/utils/redacted-string/src/lib.rs     |  2 ++
+ 11 files changed, 48 insertions(+), 7 deletions(-)
+
+diff --git a/codex-rs/app-server-protocol/src/export.rs b/codex-rs/app-server-protocol/src/export.rs
+index 1d26946..397338d 100644
+--- a/codex-rs/app-server-protocol/src/export.rs
++++ b/codex-rs/app-server-protocol/src/export.rs
+@@ -1409,10 +1409,20 @@ where
+ }
+ 
+ fn keep_enum_open_ended(schema: &mut Map<String, Value>) {
+-    if let Some(Value::Array(mut variants)) = schema.remove("oneOf") {
+-        variants.push(serde_json::json!({ "type": ["string", "object"] }));
+-        schema.insert("anyOf".to_string(), Value::Array(variants));
++    let Some(Value::Array(mut variants)) = schema.remove("anyOf") else {
++        return;
++    };
++    // schemars 1 writes the untagged unit variant `Other` as `null`, but it is sent as "other"
++    // and accepts any error string or object.
++    variants.retain(|variant| *variant != serde_json::json!({ "type": "null" }));
++    if let Some(Value::Array(names)) = variants
++        .iter_mut()
++        .find_map(|variant| variant.get_mut("enum"))
++    {
++        names.push(Value::String("other".to_string()));
+     }
++    variants.push(serde_json::json!({ "type": ["string", "object"] }));
++    schema.insert("anyOf".to_string(), Value::Array(variants));
+ }
+ 
+ fn add_server_notification_emitted_at_to_json_schema(schema: &mut Value) -> Result<()> {
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/permissions.rs b/codex-rs/app-server-protocol/src/protocol/v2/permissions.rs
+index fd13791..96c7a9c 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/permissions.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/permissions.rs
+@@ -717,6 +717,8 @@ impl From<codex_protocol::protocol::SandboxPolicy> for SandboxPolicy {
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+ #[serde(transparent)]
+ #[ts(type = "Array<string>", export_to = "v2/")]
++// schemars 0.8 inlined this schema at each use; keep it inline so generated schemas and SDK classes stay the same.
++#[schemars(inline)]
+ pub struct ExecPolicyAmendment {
+     pub command: Vec<String>,
+ }
+diff --git a/codex-rs/ext/items/src/image_generation.rs b/codex-rs/ext/items/src/image_generation.rs
+index 59d4ece..8748956 100644
+--- a/codex-rs/ext/items/src/image_generation.rs
++++ b/codex-rs/ext/items/src/image_generation.rs
+@@ -35,6 +35,8 @@ pub struct ImageGenerationInputImage {
+ #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq)]
+ #[serde(rename_all = "camelCase")]
+ #[ts(rename_all = "camelCase")]
++// schemars 0.8 inlined this schema at each use; keep it inline so generated schemas and SDK classes stay the same.
++#[schemars(inline)]
+ pub struct ImageGenerationItem {
+     pub id: String,
+     pub status: String,
+diff --git a/codex-rs/ext/items/src/sleep.rs b/codex-rs/ext/items/src/sleep.rs
+index 4cca51e..2fbc972 100644
+--- a/codex-rs/ext/items/src/sleep.rs
++++ b/codex-rs/ext/items/src/sleep.rs
+@@ -7,6 +7,8 @@ use ts_rs::TS;
+ #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq, Eq)]
+ #[serde(rename_all = "camelCase")]
+ #[ts(rename_all = "camelCase")]
++// schemars 0.8 inlined this schema at each use; keep it inline so generated schemas and SDK classes stay the same.
++#[schemars(inline)]
+ pub struct SleepItem {
+     pub id: String,
+     #[ts(type = "number")]
+diff --git a/codex-rs/ext/items/src/web_search.rs b/codex-rs/ext/items/src/web_search.rs
+index 2f8d905..a1b9e8b 100644
+--- a/codex-rs/ext/items/src/web_search.rs
++++ b/codex-rs/ext/items/src/web_search.rs
+@@ -10,6 +10,8 @@ use ts_rs::TS;
+ #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq)]
+ #[serde(rename_all = "camelCase")]
+ #[ts(rename_all = "camelCase")]
++// schemars 0.8 inlined this schema at each use; keep it inline so generated schemas and SDK classes stay the same.
++#[schemars(inline)]
+ pub struct WebSearchItem {
+     pub id: String,
+     pub query: String,
+diff --git a/codex-rs/protocol/src/agent_path.rs b/codex-rs/protocol/src/agent_path.rs
+index c0ad8b7..ffe725e 100644
+--- a/codex-rs/protocol/src/agent_path.rs
++++ b/codex-rs/protocol/src/agent_path.rs
+@@ -1,4 +1,6 @@
+ use schemars::JsonSchema;
++use schemars::Schema;
++use schemars::SchemaGenerator;
+ use serde::Deserialize;
+ use serde::Serialize;
+ use std::fmt;
+@@ -6,14 +8,23 @@ use std::ops::Deref;
+ use std::str::FromStr;
+ use ts_rs::TS;
+ 
+-#[derive(
+-    Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema, TS,
+-)]
++#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, TS)]
+ #[serde(try_from = "String", into = "String")]
+-#[schemars(with = "String")]
+ #[ts(type = "string")]
+ pub struct AgentPath(String);
+ 
++// schemars 1 inlines a derived `with = "String"` schema at each use; keep 0.8's named string
++// definition so generated schemas and SDK classes stay the same.
++impl JsonSchema for AgentPath {
++    fn schema_name() -> std::borrow::Cow<'static, str> {
++        "AgentPath".into()
++    }
++
++    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
++        String::json_schema(generator)
++    }
++}
++
+ impl AgentPath {
+     pub const ROOT: &str = "/root";
+     pub const MORPHEUS: &str = "/morpheus";
+diff --git a/codex-rs/protocol/src/approvals.rs b/codex-rs/protocol/src/approvals.rs
+index f740bef..103a372 100644
+--- a/codex-rs/protocol/src/approvals.rs
++++ b/codex-rs/protocol/src/approvals.rs
+@@ -39,6 +39,8 @@ pub enum EscalationPermissions {
+ #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+ #[serde(transparent)]
+ #[ts(type = "Array<string>")]
++// schemars 0.8 inlined this schema at each use; keep it inline so generated schemas and SDK classes stay the same.
++#[schemars(inline)]
+ pub struct ExecPolicyAmendment {
+     pub command: Vec<String>,
+ }
+diff --git a/codex-rs/protocol/src/dynamic_tools.rs b/codex-rs/protocol/src/dynamic_tools.rs
+index bbe92b8..c136eb9 100644
+--- a/codex-rs/protocol/src/dynamic_tools.rs
++++ b/codex-rs/protocol/src/dynamic_tools.rs
+@@ -18,6 +18,8 @@ pub enum DynamicToolSpec {
+ #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, TS)]
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
++// schemars 0.8 inlined this schema at each use; keep it inline so generated schemas and SDK classes stay the same.
++#[schemars(inline)]
+ pub struct DynamicToolFunctionSpec {
+     pub name: String,
+     pub description: String,
+@@ -29,6 +31,8 @@ pub struct DynamicToolFunctionSpec {
+ #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, TS)]
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
++// schemars 0.8 inlined this schema at each use; keep it inline so generated schemas and SDK classes stay the same.
++#[schemars(inline)]
+ pub struct DynamicToolNamespaceSpec {
+     pub name: String,
+     pub description: String,
+diff --git a/codex-rs/protocol/src/models.rs b/codex-rs/protocol/src/models.rs
+index 351f45c..9fb42c5 100644
+--- a/codex-rs/protocol/src/models.rs
++++ b/codex-rs/protocol/src/models.rs
+@@ -2092,6 +2092,8 @@ pub enum LocalShellAction {
+ }
+ 
+ #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, TS)]
++// schemars 0.8 inlined this schema at each use; keep it inline so generated schemas and SDK classes stay the same.
++#[schemars(inline)]
+ pub struct LocalShellExecAction {
+     pub command: Vec<String>,
+     pub timeout_ms: Option<u64>,
+diff --git a/codex-rs/protocol/src/response_item_id.rs b/codex-rs/protocol/src/response_item_id.rs
+index 9aa66b7..3c7c91c 100644
+--- a/codex-rs/protocol/src/response_item_id.rs
++++ b/codex-rs/protocol/src/response_item_id.rs
+@@ -14,6 +14,8 @@ use ts_rs::TS;
+ #[serde(transparent)]
+ #[schemars(with = "String")]
+ #[ts(type = "string")]
++// schemars 0.8 inlined this schema at each use; keep it inline so generated schemas and SDK classes stay the same.
++#[schemars(inline)]
+ pub struct ResponseItemId(String);
+ 
+ impl ResponseItemId {
+diff --git a/codex-rs/utils/redacted-string/src/lib.rs b/codex-rs/utils/redacted-string/src/lib.rs
+index e0ec95e..ec0ef91 100644
+--- a/codex-rs/utils/redacted-string/src/lib.rs
++++ b/codex-rs/utils/redacted-string/src/lib.rs
+@@ -8,6 +8,8 @@ use std::ops::DerefMut;
+ /// A string whose `Debug` output is redacted.
+ #[derive(Clone, Default, Deserialize, Serialize, PartialEq, Eq, JsonSchema)]
+ #[serde(transparent)]
++// schemars 0.8 inlined this schema at each use; keep it inline so generated schemas and SDK classes stay the same.
++#[schemars(inline)]
+ pub struct RedactedString(String);
+ 
+ impl RedactedString {
+-- 
+2.43.0
+
