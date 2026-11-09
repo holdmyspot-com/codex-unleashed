@@ -112,11 +112,12 @@ class PatchQueueTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.patch_queue("no entries\n")
 
-    def test_real_queue_has_thirty_three_patches_that_exist(self):
-        """The repository's queue lists 33 existing patches."""
+    def test_real_queue_lists_distinct_existing_patches(self):
+        """The repository's queue lists each existing patch once."""
         root = SCRIPT.parents[2]
         queue = load().patch_queue((root / "patches/README.md").read_text())
-        self.assertEqual(len(queue), 33)
+        self.assertTrue(queue)
+        self.assertEqual(len(set(queue)), len(queue))
         for path in queue:
             self.assertTrue((root / path).is_file(), path)
 
@@ -185,7 +186,7 @@ class CommandLineTest(unittest.TestCase):
         result = self.run_cli("patches", "--readme", readme.as_posix())
         self.assertEqual(result.returncode, 0, result.stderr)
         paths = result.stdout.split()
-        self.assertEqual(len(paths), 33)
+        self.assertEqual(paths, load().patch_queue(readme.read_text()))
         self.assertTrue(paths[0].startswith("patches/") and paths[0].endswith("bash-snapshot-replay-startup.patch"))
 
 
