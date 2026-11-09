@@ -242,6 +242,13 @@ Held back, each for a compatibility constraint:
 
 **Owner decision 2026-11-09:** migrate both schemars 0.8→1 and ts-rs 11→12. They change generated schema and TypeScript output, not wire data. schemars keeps draft-07 output; ts-rs 12's map types drop the optional `?` for non-enum keys (the v11 switch is deprecated). The RUSTSEC-2026-0387/0385 audits, cold build timings and cache invalidation are rechecked once the graph is final.
 
+**Audit status on the CP7 graph (2026-11-09):**
+- `RUSTSEC-2026-0385` (`ctutils`): resolved. The lockfile now has `ctutils 0.4.8`, and the advisory lists `>=0.4.4` as patched.
+- `RUSTSEC-2026-0387` (`crypto-bigint 0.5.5`): still open; no direct-dependency update resolves it. Its only path is `elliptic-curve 0.13` → `p256 0.13`, which two direct dependencies reach at their latest releases:
+  - `age 0.12.1` always depends on `p256 0.13` through `hpke`. Codex's secrets store uses only scrypt recipients (`secrets/src/local.rs`), so it never runs P-256 arithmetic.
+  - `aws-config 1.13.0` with the `credentials-login` feature that `codex-aws-auth` enables. That code path does run: it signs AWS login proofs with a P-256 key, so the advisory's timing variability applies to those signatures.
+  - The finding stays open, not suppressed, until `age` or `aws-config` releases a version on `p256 0.14`.
+
 ## Baseline deferrals
 
 These explicit owner exclusions apply through CP3; retain the original failed statuses, diagnostics and source guards. They do not cover unrelated failures or authorize suppression, diagnostic production workarounds or upstream source edits.
