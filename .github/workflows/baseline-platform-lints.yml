@@ -139,7 +139,7 @@ jobs:
         working-directory: codex-rs
         run: |
           set -euo pipefail
-          cargo clippy --target "$TARGET" --tests --profile dev --timings -- -D warnings \
+          cargo clippy --keep-going --target "$TARGET" --tests --profile dev --timings -- -D warnings \
             2>&1 | tee "$RUNNER_TEMP/baseline-evidence/clippy.log"
 
       - name: Document every workspace crate with fatal rustdoc warnings

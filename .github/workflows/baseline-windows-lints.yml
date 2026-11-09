@@ -180,7 +180,7 @@ jobs:
           set -euo pipefail
           rustc -vV > "$RUNNER_TEMP/baseline-evidence/rust-toolchain.txt"
           cargo --version >> "$RUNNER_TEMP/baseline-evidence/rust-toolchain.txt"
-          cargo clippy --target "$TARGET" --tests --profile dev --timings -- -D warnings \
+          cargo clippy --keep-going --target "$TARGET" --tests --profile dev --timings -- -D warnings \
             2>&1 | tee "$RUNNER_TEMP/baseline-evidence/clippy.log"
 
       - name: Verify the patched source and tests remain unmodified
