@@ -236,7 +236,7 @@ Held back, each for a compatibility constraint:
 | keyring | 3.6 | keyring 4 moves the library to keyring-core and per-platform store crates. Its v1 shim drops the Linux keyutils layer of `linux-native-async-persistent` and has no mock credential, which about 50 test uses rely on. Migrating changes where Linux credentials are cached and needs proof that existing credentials stay readable. |
 | secret-service | 4 | `keyring-store` downcasts keyring 3.6's errors to `secret_service::Error`; a second release would silently stop matching. Moves with keyring. |
 
-Open: the schemars 0.8→1 and ts-rs 11→12 migrations await the owner's decision (they change generated schema and TypeScript output, not wire data). The RUSTSEC-2026-0387/0385 audits, cold build timings and cache invalidation are rechecked once the graph is final.
+**Owner decision 2026-11-09:** migrate both schemars 0.8→1 and ts-rs 11→12. They change generated schema and TypeScript output, not wire data. schemars keeps draft-07 output; ts-rs 12's map types drop the optional `?` for non-enum keys (the v11 switch is deprecated). The RUSTSEC-2026-0387/0385 audits, cold build timings and cache invalidation are rechecked once the graph is final.
 
 ## Baseline deferrals
 
