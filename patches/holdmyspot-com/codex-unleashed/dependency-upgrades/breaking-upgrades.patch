@@ -1,6 +1,6 @@
-From a0af0e37e2930c78d6ddf488742f0ff9da470d1a Mon Sep 17 00:00:00 2001
+From 5fbce6075bde439ca028f116bca636038c99107d Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Sun, 8 Nov 2026 20:03:40 -0500
+Date: Sun, 8 Nov 2026 20:05:44 -0500
 Subject: [PATCH] WIP: raise dependency requirements to their latest releases
 
 ---
@@ -23,7 +23,7 @@ Subject: [PATCH] WIP: raise dependency requirements to their latest releases
  16 files changed, 1042 insertions(+), 710 deletions(-)
 
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 7133485..91534a9 100644
+index 4211b67..4c149b2 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -94,7 +94,7 @@ dependencies = [
@@ -2328,7 +2328,7 @@ index 7133485..91534a9 100644
   "bytes",
   "getrandom 0.4.3",
   "lru-slab",
-@@ -12754,11 +12908,11 @@ dependencies = [
+@@ -12752,11 +12906,11 @@ dependencies = [
  
  [[package]]
  name = "rand_regex"
@@ -2343,7 +2343,7 @@ index 7133485..91534a9 100644
   "regex-syntax",
  ]
  
-@@ -12799,10 +12953,10 @@ dependencies = [
+@@ -12797,10 +12951,10 @@ dependencies = [
   "hashbrown 0.17.1",
   "itertools 0.14.0",
   "kasuari",
@@ -2356,7 +2356,7 @@ index 7133485..91534a9 100644
   "thiserror 2.0.21",
   "unicode-segmentation",
   "unicode-truncate",
-@@ -12877,7 +13031,7 @@ dependencies = [
+@@ -12875,7 +13029,7 @@ dependencies = [
   "line-clipping",
   "ratatui-core",
   "serde",
@@ -2365,7 +2365,7 @@ index 7133485..91534a9 100644
   "time",
   "unicode-segmentation",
   "unicode-width 0.2.3",
-@@ -12927,15 +13081,6 @@ dependencies = [
+@@ -12925,15 +13079,6 @@ dependencies = [
   "bitflags 2.13.2",
  ]
  
@@ -2381,7 +2381,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "redox_users"
  version = "0.4.6"
-@@ -13029,45 +13174,32 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
+@@ -13027,45 +13172,32 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
  dependencies = [
   "base64 0.22.1",
   "bytes",
@@ -2427,7 +2427,7 @@ index 7133485..91534a9 100644
   "web-sys",
   "webpki-roots",
  ]
-@@ -13080,21 +13212,37 @@ checksum = "16a1cfa75cc186dd73d5818e510e042e40927bccc9c236b061cea97e1eb08029"
+@@ -13078,21 +13210,37 @@ checksum = "16a1cfa75cc186dd73d5818e510e042e40927bccc9c236b061cea97e1eb08029"
  dependencies = [
   "base64 0.23.1",
   "bytes",
@@ -2465,7 +2465,7 @@ index 7133485..91534a9 100644
   "tokio-util",
   "tower",
   "tower-http",
-@@ -13102,7 +13250,7 @@ dependencies = [
+@@ -13100,7 +13248,7 @@ dependencies = [
   "url",
   "wasm-bindgen",
   "wasm-bindgen-futures",
@@ -2474,7 +2474,7 @@ index 7133485..91534a9 100644
   "web-sys",
  ]
  
-@@ -13132,6 +13280,16 @@ dependencies = [
+@@ -13130,6 +13278,16 @@ dependencies = [
   "subtle",
  ]
  
@@ -2491,7 +2491,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "ring"
  version = "0.17.14"
-@@ -13201,7 +13359,7 @@ dependencies = [
+@@ -13199,7 +13357,7 @@ dependencies = [
   "schemars 1.2.3",
   "serde",
   "serde_json",
@@ -2500,7 +2500,7 @@ index 7133485..91534a9 100644
   "thiserror 2.0.21",
   "tokio",
   "tokio-stream",
-@@ -13226,16 +13384,17 @@ dependencies = [
+@@ -13224,16 +13382,17 @@ dependencies = [
  
  [[package]]
  name = "rtc"
@@ -2521,7 +2521,7 @@ index 7133485..91534a9 100644
   "rtc-datachannel",
   "rtc-dtls",
   "rtc-ice",
-@@ -13254,67 +13413,73 @@ dependencies = [
+@@ -13252,67 +13411,73 @@ dependencies = [
   "sansio",
   "serde",
   "serde_json",
@@ -2631,7 +2631,7 @@ index 7133485..91534a9 100644
   "rtc-mdns",
   "rtc-shared",
   "rtc-stun",
-@@ -13326,35 +13491,23 @@ dependencies = [
+@@ -13324,35 +13489,23 @@ dependencies = [
  
  [[package]]
  name = "rtc-interceptor"
@@ -2671,7 +2671,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "bytes",
   "log",
-@@ -13365,9 +13518,9 @@ dependencies = [
+@@ -13363,9 +13516,9 @@ dependencies = [
  
  [[package]]
  name = "rtc-media"
@@ -2683,7 +2683,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "byteorder",
   "bytes",
-@@ -13379,9 +13532,9 @@ dependencies = [
+@@ -13377,9 +13530,9 @@ dependencies = [
  
  [[package]]
  name = "rtc-rtcp"
@@ -2695,7 +2695,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "bytes",
   "rtc-shared",
-@@ -13389,9 +13542,9 @@ dependencies = [
+@@ -13387,9 +13540,9 @@ dependencies = [
  
  [[package]]
  name = "rtc-rtp"
@@ -2707,7 +2707,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "bytes",
   "memchr",
-@@ -13402,9 +13555,9 @@ dependencies = [
+@@ -13400,9 +13553,9 @@ dependencies = [
  
  [[package]]
  name = "rtc-sctp"
@@ -2719,7 +2719,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "bytes",
   "crc32c",
-@@ -13418,9 +13571,9 @@ dependencies = [
+@@ -13416,9 +13569,9 @@ dependencies = [
  
  [[package]]
  name = "rtc-sdp"
@@ -2731,7 +2731,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "rand 0.10.3",
   "rtc-shared",
-@@ -13429,19 +13582,14 @@ dependencies = [
+@@ -13427,19 +13580,14 @@ dependencies = [
  
  [[package]]
  name = "rtc-shared"
@@ -2753,7 +2753,7 @@ index 7133485..91534a9 100644
   "serde",
   "substring",
   "thiserror 2.0.21",
-@@ -13451,50 +13599,44 @@ dependencies = [
+@@ -13449,50 +13597,44 @@ dependencies = [
  
  [[package]]
  name = "rtc-srtp"
@@ -2813,7 +2813,7 @@ index 7133485..91534a9 100644
   "rtc-shared",
   "rtc-stun",
   "sansio",
-@@ -13806,18 +13948,6 @@ dependencies = [
+@@ -13804,18 +13946,6 @@ dependencies = [
   "syn 1.0.109",
  ]
  
@@ -2832,7 +2832,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "schemars"
  version = "0.9.0"
-@@ -13839,23 +13969,11 @@ dependencies = [
+@@ -13837,23 +13967,11 @@ dependencies = [
   "chrono",
   "dyn-clone",
   "ref-cast",
@@ -2857,7 +2857,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "schemars_derive"
  version = "1.2.3"
-@@ -13864,7 +13982,7 @@ checksum = "e1c3a92094fa7d61aa124645844facb6b554dfc797136d0f5fd1f890e2bffc69"
+@@ -13862,7 +13980,7 @@ checksum = "e1c3a92094fa7d61aa124645844facb6b554dfc797136d0f5fd1f890e2bffc69"
  dependencies = [
   "proc-macro2",
   "quote",
@@ -2866,7 +2866,7 @@ index 7133485..91534a9 100644
   "syn 3.0.9",
  ]
  
-@@ -13897,10 +14015,24 @@ version = "0.7.3"
+@@ -13895,10 +14013,24 @@ version = "0.7.3"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "d3e97a565f76233a6003f9f5c54be1d9c5bdfa3eccfb189469f11ec4901c47dc"
  dependencies = [
@@ -2894,7 +2894,7 @@ index 7133485..91534a9 100644
   "subtle",
   "zeroize",
  ]
-@@ -13939,7 +14071,22 @@ dependencies = [
+@@ -13937,7 +14069,22 @@ dependencies = [
   "rand 0.8.8",
   "serde",
   "sha2 0.10.9",
@@ -2918,7 +2918,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -13996,9 +14143,9 @@ dependencies = [
+@@ -13994,9 +14141,9 @@ dependencies = [
  
  [[package]]
  name = "sentry"
@@ -2930,7 +2930,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "cfg_aliases 0.2.2",
   "sentry-core",
-@@ -14006,11 +14153,11 @@ dependencies = [
+@@ -14004,11 +14151,11 @@ dependencies = [
  
  [[package]]
  name = "sentry-core"
@@ -2945,7 +2945,7 @@ index 7133485..91534a9 100644
   "sentry-types",
   "serde",
   "serde_json",
-@@ -14019,13 +14166,13 @@ dependencies = [
+@@ -14017,13 +14164,13 @@ dependencies = [
  
  [[package]]
  name = "sentry-types"
@@ -2962,7 +2962,7 @@ index 7133485..91534a9 100644
   "serde",
   "serde_json",
   "thiserror 2.0.21",
-@@ -14070,17 +14217,6 @@ dependencies = [
+@@ -14068,17 +14215,6 @@ dependencies = [
   "syn 3.0.9",
  ]
  
@@ -2980,7 +2980,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "serde_derive_internals"
  version = "0.30.0"
-@@ -14219,6 +14355,16 @@ dependencies = [
+@@ -14217,6 +14353,16 @@ dependencies = [
   "unsafe-libyaml",
  ]
  
@@ -2997,7 +2997,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "serial2"
  version = "0.2.39"
-@@ -14232,9 +14378,9 @@ dependencies = [
+@@ -14230,9 +14376,9 @@ dependencies = [
  
  [[package]]
  name = "serial_test"
@@ -3009,7 +3009,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "futures-executor",
   "futures-util",
-@@ -14246,13 +14392,13 @@ dependencies = [
+@@ -14244,13 +14390,13 @@ dependencies = [
  
  [[package]]
  name = "serial_test_derive"
@@ -3026,7 +3026,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -14368,6 +14514,16 @@ dependencies = [
+@@ -14366,6 +14512,16 @@ dependencies = [
   "signal-hook-registry",
  ]
  
@@ -3043,7 +3043,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "signal-hook-mio"
  version = "0.2.5"
-@@ -14376,7 +14532,7 @@ checksum = "b75a19a7a740b25bc7944bdee6172368f988763b744e3d4dfe753f6b4ece40cc"
+@@ -14374,7 +14530,7 @@ checksum = "b75a19a7a740b25bc7944bdee6172368f988763b744e3d4dfe753f6b4ece40cc"
  dependencies = [
   "libc",
   "mio",
@@ -3052,7 +3052,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -14399,6 +14555,16 @@ dependencies = [
+@@ -14397,6 +14553,16 @@ dependencies = [
   "rand_core 0.6.4",
  ]
  
@@ -3069,7 +3069,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "simd-adler32"
  version = "0.3.10"
-@@ -14427,6 +14593,15 @@ version = "2.7.0"
+@@ -14425,6 +14591,15 @@ version = "2.7.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
  
@@ -3085,7 +3085,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "simple_asn1"
  version = "0.6.4"
-@@ -14488,9 +14663,9 @@ dependencies = [
+@@ -14486,9 +14661,9 @@ dependencies = [
  
  [[package]]
  name = "sonora"
@@ -3097,7 +3097,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "sonora-aec3",
   "sonora-agc2",
-@@ -14502,9 +14677,9 @@ dependencies = [
+@@ -14500,9 +14675,9 @@ dependencies = [
  
  [[package]]
  name = "sonora-aec3"
@@ -3109,7 +3109,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "sonora-common-audio",
   "sonora-fft",
-@@ -14513,9 +14688,9 @@ dependencies = [
+@@ -14511,9 +14686,9 @@ dependencies = [
  
  [[package]]
  name = "sonora-agc2"
@@ -3121,7 +3121,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "bytemuck",
   "derive_more 2.1.1",
-@@ -14527,9 +14702,9 @@ dependencies = [
+@@ -14525,9 +14700,9 @@ dependencies = [
  
  [[package]]
  name = "sonora-common-audio"
@@ -3133,7 +3133,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "derive_more 2.1.1",
   "sonora-simd",
-@@ -14537,24 +14712,27 @@ dependencies = [
+@@ -14535,24 +14710,27 @@ dependencies = [
  
  [[package]]
  name = "sonora-fft"
@@ -3167,7 +3167,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "cpufeatures 0.3.1",
  ]
-@@ -14585,7 +14763,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -14583,7 +14761,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
  dependencies = [
   "base64ct",
@@ -3186,7 +3186,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -14742,7 +14930,7 @@ dependencies = [
+@@ -14740,7 +14928,7 @@ dependencies = [
   "time",
   "tracing",
   "uuid",
@@ -3195,7 +3195,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -14785,6 +14973,22 @@ dependencies = [
+@@ -14783,6 +14971,22 @@ dependencies = [
   "pin-project-lite",
  ]
  
@@ -3218,7 +3218,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "stable_deref_trait"
  version = "1.2.1"
-@@ -14992,34 +15196,13 @@ version = "0.11.1"
+@@ -14990,34 +15194,13 @@ version = "0.11.1"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
  
@@ -3254,7 +3254,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -15291,6 +15474,17 @@ dependencies = [
+@@ -15289,6 +15472,17 @@ dependencies = [
   "system-configuration-sys",
  ]
  
@@ -3272,7 +3272,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "system-configuration-sys"
  version = "0.6.0"
-@@ -15407,7 +15601,7 @@ dependencies = [
+@@ -15405,7 +15599,7 @@ dependencies = [
   "bitflags 2.13.2",
   "parking_lot",
   "rustix 1.1.6",
@@ -3281,7 +3281,7 @@ index 7133485..91534a9 100644
   "windows-sys 0.61.2",
  ]
  
-@@ -15484,7 +15678,7 @@ dependencies = [
+@@ -15482,7 +15676,7 @@ dependencies = [
   "pest_derive",
   "phf",
   "sha2 0.10.9",
@@ -3290,7 +3290,7 @@ index 7133485..91534a9 100644
   "siphasher",
   "terminfo",
   "termios",
-@@ -15776,6 +15970,7 @@ dependencies = [
+@@ -15774,6 +15968,7 @@ dependencies = [
   "signal-hook-registry",
   "socket2",
   "tokio-macros",
@@ -3298,7 +3298,7 @@ index 7133485..91534a9 100644
   "windows-sys 0.61.2",
  ]
  
-@@ -15899,21 +16094,6 @@ dependencies = [
+@@ -15897,21 +16092,6 @@ dependencies = [
   "serde",
  ]
  
@@ -3320,7 +3320,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "toml"
  version = "1.2.1+spec-1.1.0"
-@@ -15923,19 +16103,10 @@ dependencies = [
+@@ -15921,19 +16101,10 @@ dependencies = [
   "indexmap 2.14.2",
   "serde_core",
   "serde_spanned",
@@ -3342,7 +3342,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -15947,19 +16118,6 @@ dependencies = [
+@@ -15945,19 +16116,6 @@ dependencies = [
   "serde_core",
  ]
  
@@ -3362,7 +3362,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "toml_edit"
  version = "0.25.19+spec-1.1.0"
-@@ -15967,9 +16125,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -15965,9 +16123,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "dd43688c4858d7264ae1cf9a9f874a67c3feb74a883b1cd7bebd6a4ea8307218"
  dependencies = [
   "indexmap 2.14.2",
@@ -3375,7 +3375,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -15978,7 +16137,7 @@ version = "1.1.5+spec-1.1.0"
+@@ -15976,7 +16135,7 @@ version = "1.1.5+spec-1.1.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
  dependencies = [
@@ -3384,7 +3384,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -16017,7 +16176,7 @@ dependencies = [
+@@ -16015,7 +16174,7 @@ dependencies = [
   "tower-layer",
   "tower-service",
   "tracing",
@@ -3393,7 +3393,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -16059,6 +16218,17 @@ dependencies = [
+@@ -16057,6 +16216,17 @@ dependencies = [
   "tonic-build",
  ]
  
@@ -3411,7 +3411,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "tower"
  version = "0.5.3"
-@@ -16192,9 +16362,9 @@ dependencies = [
+@@ -16190,9 +16360,9 @@ dependencies = [
  
  [[package]]
  name = "tracing-opentelemetry"
@@ -3423,7 +3423,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "js-sys",
   "opentelemetry",
-@@ -16260,13 +16430,12 @@ dependencies = [
+@@ -16258,13 +16428,12 @@ dependencies = [
  
  [[package]]
  name = "tree-sitter"
@@ -3439,7 +3439,7 @@ index 7133485..91534a9 100644
   "serde_json",
   "streaming-iterator",
   "tree-sitter-language",
-@@ -16327,9 +16496,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+@@ -16325,9 +16494,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
  
  [[package]]
  name = "ts-rs"
@@ -3451,7 +3451,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "serde_json",
   "thiserror 2.0.21",
-@@ -16339,9 +16508,9 @@ dependencies = [
+@@ -16337,9 +16506,9 @@ dependencies = [
  
  [[package]]
  name = "ts-rs-macros"
@@ -3463,7 +3463,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "proc-macro2",
   "quote",
-@@ -16693,9 +16862,9 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
+@@ -16691,9 +16860,9 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
  
  [[package]]
  name = "vt100"
@@ -3475,7 +3475,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "itoa",
   "unicode-width 0.2.3",
-@@ -16764,6 +16933,15 @@ version = "0.11.1+wasi-snapshot-preview1"
+@@ -16762,6 +16931,15 @@ version = "0.11.1+wasi-snapshot-preview1"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
  
@@ -3491,7 +3491,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "wasip2"
  version = "1.0.4+wasi-0.2.12"
-@@ -16775,9 +16953,12 @@ dependencies = [
+@@ -16773,9 +16951,12 @@ dependencies = [
  
  [[package]]
  name = "wasite"
@@ -3506,7 +3506,7 @@ index 7133485..91534a9 100644
  
  [[package]]
  name = "wasm-bindgen"
-@@ -16834,19 +17015,6 @@ dependencies = [
+@@ -16832,19 +17013,6 @@ dependencies = [
   "unicode-ident",
  ]
  
@@ -3526,7 +3526,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "wasm-streams"
  version = "0.5.0"
-@@ -16986,9 +17154,9 @@ dependencies = [
+@@ -16984,9 +17152,9 @@ dependencies = [
  
  [[package]]
  name = "webrtc"
@@ -3538,7 +3538,7 @@ index 7133485..91534a9 100644
  dependencies = [
   "async-broadcast",
   "async-channel",
-@@ -17103,21 +17271,17 @@ dependencies = [
+@@ -17101,21 +17269,17 @@ dependencies = [
  
  [[package]]
  name = "whoami"
@@ -3564,7 +3564,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "widestring"
  version = "1.2.1"
-@@ -17588,15 +17752,6 @@ version = "0.53.1"
+@@ -17586,15 +17750,6 @@ version = "0.53.1"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
  
@@ -3580,7 +3580,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "winnow"
  version = "1.0.5"
-@@ -17625,6 +17780,16 @@ dependencies = [
+@@ -17623,6 +17778,16 @@ dependencies = [
   "windows-sys 0.59.0",
  ]
  
@@ -3597,7 +3597,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "winresource"
  version = "0.1.34"
-@@ -17693,6 +17858,18 @@ dependencies = [
+@@ -17691,6 +17856,18 @@ dependencies = [
   "wayland-protocols-wlr",
  ]
  
@@ -3616,7 +3616,7 @@ index 7133485..91534a9 100644
  [[package]]
  name = "writeable"
  version = "0.6.4"
-@@ -17722,7 +17899,7 @@ version = "2.0.1"
+@@ -17720,7 +17897,7 @@ version = "2.0.1"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "c7e468321c81fb07fa7f4c636c3972b9100f0346e5b6a9f2bd0603a52f7ed277"
  dependencies = [
@@ -3625,7 +3625,7 @@ index 7133485..91534a9 100644
   "rand_core 0.6.4",
   "serde",
   "zeroize",
-@@ -17852,9 +18029,67 @@ dependencies = [
+@@ -17850,9 +18027,67 @@ dependencies = [
   "uds_windows",
   "windows-sys 0.52.0",
   "xdg-home",
@@ -3696,7 +3696,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -17867,7 +18102,34 @@ dependencies = [
+@@ -17865,7 +18100,34 @@ dependencies = [
   "proc-macro2",
   "quote",
   "syn 2.0.119",
@@ -3732,7 +3732,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -17878,7 +18140,40 @@ checksum = "4b9b1fef7d021261cc16cba64c351d291b715febe0fa10dc3a443ac5a5022e6c"
+@@ -17876,7 +18138,40 @@ checksum = "4b9b1fef7d021261cc16cba64c351d291b715febe0fa10dc3a443ac5a5022e6c"
  dependencies = [
   "serde",
   "static_assertions",
@@ -3774,7 +3774,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -18004,7 +18299,7 @@ dependencies = [
+@@ -18002,7 +18297,7 @@ dependencies = [
   "windows-sys 0.61.2",
   "zeroize",
   "zopfli",
@@ -3783,7 +3783,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -18045,12 +18340,17 @@ dependencies = [
+@@ -18043,12 +18338,17 @@ dependencies = [
  ]
  
  [[package]]
@@ -3805,7 +3805,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -18059,16 +18359,7 @@ version = "0.14.3"
+@@ -18057,16 +18357,7 @@ version = "0.14.3"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "db3ae9bf90af6e40197bef767eeefc46ad6397420fe873830bd85e5fbbfb3c70"
  dependencies = [
@@ -3823,7 +3823,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -18115,7 +18406,22 @@ dependencies = [
+@@ -18113,7 +18404,22 @@ dependencies = [
   "enumflags2",
   "serde",
   "static_assertions",
@@ -3847,7 +3847,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -18128,7 +18434,20 @@ dependencies = [
+@@ -18126,7 +18432,20 @@ dependencies = [
   "proc-macro2",
   "quote",
   "syn 2.0.119",
@@ -3869,7 +3869,7 @@ index 7133485..91534a9 100644
  ]
  
  [[package]]
-@@ -18141,3 +18460,16 @@ dependencies = [
+@@ -18139,3 +18458,16 @@ dependencies = [
   "quote",
   "syn 2.0.119",
  ]
