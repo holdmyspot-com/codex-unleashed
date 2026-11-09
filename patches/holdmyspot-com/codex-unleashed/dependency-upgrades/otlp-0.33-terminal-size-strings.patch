@@ -1,0 +1,26 @@
+From 34cd88f1d15226828ba92612516efc87d55a96f3 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 9 Nov 2026 15:19:50 -0500
+Subject: [PATCH] WIP: expect the terminal size observations' asInt as a string
+
+opentelemetry-proto 0.33 serializes asInt as a string; the earlier commit missed this assertion.
+---
+ codex-rs/cli/tests/worktree.rs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/codex-rs/cli/tests/worktree.rs b/codex-rs/cli/tests/worktree.rs
+index 5aa1042..950ac78 100644
+--- a/codex-rs/cli/tests/worktree.rs
++++ b/codex-rs/cli/tests/worktree.rs
+@@ -730,7 +730,7 @@ trust_level = "trusted"
+                 .collect::<Vec<_>>();
+             assert_eq!(observations.len(), 2);
+             for observation in observations {
+-                assert_eq!(observation["asInt"], 1);
++                assert_eq!(observation["asInt"], "1");
+                 let observation_tags = observation["attributes"]
+                     .as_array()
+                     .context("observation attributes")?
+-- 
+2.43.0
+

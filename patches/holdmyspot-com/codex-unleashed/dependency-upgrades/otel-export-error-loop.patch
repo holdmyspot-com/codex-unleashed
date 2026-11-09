@@ -1,4 +1,4 @@
-From 3a70876c47403e8135aa6a1b69d0055067f46447 Mon Sep 17 00:00:00 2001
+From 59598e755eeca51243c01e41f5c5d0fd89587e00 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 9 Nov 2026 13:33:00 -0500
 Subject: [PATCH] WIP: keep OpenTelemetry export errors out of the log database
