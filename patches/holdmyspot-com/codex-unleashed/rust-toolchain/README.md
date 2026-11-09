@@ -24,12 +24,14 @@ Since Rust 1.97, `linker_messages` warns by default but ignores `-D warnings`, s
 
 Rust 1.99 also adds lints that fail the workspace under patch 25 (platform lint run `42556216850`). The patch adapts each call site:
 - `Atomic*::fetch_update` is deprecated and renamed `try_update`, with the same arguments and result (four sites).
-- Clippy's `chunks_exact_to_as_chunks`: three byte-pair loops and the compaction-event pairs in `core/tests/suite/scenarios.rs` use `as_chunks::<2>()`. Each already checks for an even length, so the remainder is empty.
+- Clippy's `chunks_exact_to_as_chunks`: three byte-pair loops and the compaction-event pairs in `core/tests/suite/scenarios.rs` use `as_chunks::<2>()`. Each already checks for an even length, so the remainder is empty. Lint run `42628830275` adds the UTF-16 decoder in `exec/src/lib.rs`, the pager's key-hint pairs, the sixel encoder's RGBA pixels and the session-lifecycle test's request triples.
 - Clippy's `map_or_identity`: `map_or(0, identity)` becomes `unwrap_or(0)`.
 - Clippy's `useless_borrows_in_formatting`: 21 `assert!` messages in the OTLP loopback tests (lint run `42558019944`) and one `format!` argument in `core/tests/suite/tools.rs` (lint run `42619458055`) drop a redundant `&`.
 - Clippy's `question_mark`: one `if let … else { return None }` in `shell-command/src/bash.rs` becomes `?`, and so does the URL branch of the external-agent MCP server conversion in `external-agent-migration/src/mcp.rs` (lint run `42619458055`).
-- Clippy's `needless_borrows_for_generic_args`: `and_then(&normalize_temp_path)` in `exec-server-protocol` passes the function by value, and the skills executor passes its copyable `read_error` closure to `map_err` by value (lint run `42570112285`).
+- Clippy's `needless_borrows_for_generic_args`: `and_then(&normalize_temp_path)` in `exec-server-protocol` passes the function by value, and the skills executor passes its copyable `read_error` closure to `map_err` by value (lint run `42570112285`), and the list selection view passes `wrap` to `Option::map` by value (lint run `42628830275`).
 - Clippy's `unneeded_wildcard_pattern`: three `ClientRequest` arms in `app-server/src/message_processor.rs` drop `params: _` before `..` (lint run `42621455703`).
+- Rustc's `semicolon_in_expressions_from_non_local_macros`: two TUI tests end a block with `color_eyre::eyre::bail!(…)`, whose expansion ends in `;`; each call becomes a statement (lint run `42628830275`).
+- Clippy's `needless_late_init`: `notes_height` in `tui/src/bottom_pane/async_questions/layout.rs` is initialized by the `if` that assigned it in both branches (lint run `42628830275`).
 - rustc's `semicolon_in_expressions_from_non_local_macros`: three TUI functions that end in eyre's `bail!` end it with `;`, since the macro expands to a `return` statement (lint run `42559229185`).
 - Clippy's `result_large_err`: codex-mcp's `emit_update` returned the 632-byte `SendError<Event>`, which carries the rejected event, so the error is boxed (lint run `42565453466`).
 - rustc's `unused_imports`: an agent-identity test module re-imported `base64::Engine`, which `use super::*` already brings in (lint run `42565453466`).

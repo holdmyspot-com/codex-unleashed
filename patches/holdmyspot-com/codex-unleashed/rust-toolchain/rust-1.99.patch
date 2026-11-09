@@ -1,4 +1,4 @@
-From b744b02b844aed1ed2f18fa0966fcda1fcf1de03 Mon Sep 17 00:00:00 2001
+From 3ad7ae95029c46d138662be939443a4a49a03e98 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:07:55 -0500
 Subject: [PATCH] Build with Rust 1.99.1 so macOS links pass under fatal linker
@@ -45,6 +45,7 @@ drops that one exact notice and passes every other linker message through.
  codex-rs/core/tests/suite/tools.rs            |   2 +-
  codex-rs/diagnostics/src/lib.rs               |   2 +-
  codex-rs/exec-server-protocol/src/protocol.rs |   2 +-
+ codex-rs/exec/src/lib.rs                      |   6 +-
  codex-rs/ext/skills/src/provider/executor.rs  |   4 +-
  codex-rs/external-agent-migration/src/mcp.rs  |   5 +-
  .../otel/tests/suite/otlp_http_loopback.rs    |  42 ++--
@@ -53,13 +54,20 @@ drops that one exact notice and passes every other linker message through.
  codex-rs/scripts/setup-windows.ps1            |   2 +-
  codex-rs/shell-command/src/bash.rs            |   6 +-
  codex-rs/tui/src/app/reconnect.rs             |   2 +-
+ .../tests/background_task_defaults_tests.rs   |   2 +-
+ .../app/tests/session_lifecycle_requests.rs   |   2 +-
+ .../tui/src/app/user_verification_tests.rs    |   2 +-
  codex-rs/tui/src/app_backtrack.rs             |   2 +-
  codex-rs/tui/src/app_server_connection.rs     |   2 +-
+ .../src/bottom_pane/async_questions/layout.rs |  11 +-
+ .../src/bottom_pane/list_selection_view.rs    |   2 +-
+ codex-rs/tui/src/pager_overlay.rs             |   4 +-
+ codex-rs/tui/src/pets/sixel.rs                |   2 +-
  .../utils/path-uri/src/api_path_string.rs     |   6 +-
  codex-rs/utils/path-uri/src/lib.rs            |   6 +-
  .../stream-parser/src/inline_hidden_tag.rs    |   2 +-
  codex-rs/websocket-auth/src/lib.rs            |   6 +-
- 40 files changed, 310 insertions(+), 277 deletions(-)
+ 48 files changed, 326 insertions(+), 292 deletions(-)
  create mode 100755 codex-rs/scripts/apple-linker.sh
 
 diff --git a/.github/actions/build-bazel-package-binaries/action.yml b/.github/actions/build-bazel-package-binaries/action.yml
@@ -1522,6 +1530,23 @@ index 352a46a..dad1132 100644
                  && !temporary_directories.contains(&path)
              {
                  temporary_directories.push(path);
+diff --git a/codex-rs/exec/src/lib.rs b/codex-rs/exec/src/lib.rs
+index 821c6f1..8e0cc40 100644
+--- a/codex-rs/exec/src/lib.rs
++++ b/codex-rs/exec/src/lib.rs
+@@ -2321,8 +2321,10 @@ fn decode_utf16(
+     }
+ 
+     let units: Vec<u16> = input
+-        .chunks_exact(2)
+-        .map(|chunk| decode_unit([chunk[0], chunk[1]]))
++        .as_chunks::<2>()
++        .0
++        .iter()
++        .map(|chunk| decode_unit(*chunk))
+         .collect();
+ 
+     String::from_utf16(&units).map_err(|_| PromptDecodeError::InvalidUtf16 { encoding })
 diff --git a/codex-rs/ext/skills/src/provider/executor.rs b/codex-rs/ext/skills/src/provider/executor.rs
 index bb16a39..ee1278b 100644
 --- a/codex-rs/ext/skills/src/provider/executor.rs
@@ -1792,6 +1817,45 @@ index 168417e..5556fb7 100644
  }
  
  impl App {
+diff --git a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
+index 9123904..970e55e 100644
+--- a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
++++ b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
+@@ -1207,7 +1207,7 @@ async fn command_center_new_checkout_and_worktree_preserve_source_and_default_br
+                     return Ok::<_, color_eyre::Report>(());
+                 }
+             }
+-            color_eyre::eyre::bail!("permissions menu event stream closed")
++            color_eyre::eyre::bail!("permissions menu event stream closed");
+         })
+         .await??;
+         app.chat_widget.handle_key_event(KeyCode::Up.into());
+diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
+index b4e6acb..284e2e1 100644
+--- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
++++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
+@@ -2118,7 +2118,7 @@ async fn older_external_server_starts_without_unsupported_dynamic_tools_or_histo
+ 
+     let starts = recorded_params(&requests, "thread/start");
+     assert_eq!(starts.len(), 6);
+-    for attempts in starts.chunks_exact(3) {
++    for attempts in starts.as_chunks::<3>().0 {
+         assert_eq!(attempts[0]["dynamicTools"][0]["type"], "namespace");
+         assert_eq!(attempts[0]["historyMode"], "paginated");
+         assert_eq!(attempts[1]["dynamicTools"], serde_json::Value::Null);
+diff --git a/codex-rs/tui/src/app/user_verification_tests.rs b/codex-rs/tui/src/app/user_verification_tests.rs
+index ec21bb9..9bf779f 100644
+--- a/codex-rs/tui/src/app/user_verification_tests.rs
++++ b/codex-rs/tui/src/app/user_verification_tests.rs
+@@ -194,7 +194,7 @@ async fn run_verification_rpc_scenario(scenario: RpcScenario) -> color_eyre::Res
+                 }
+             }
+         }
+-        color_eyre::eyre::bail!("connection closed before the elicitation response")
++        color_eyre::eyre::bail!("connection closed before the elicitation response");
+     });
+     let client = crate::connect_remote_app_server(endpoint).await?;
+     let mode = if scenario == RpcScenario::RemoteWorkspace {
 diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
 index 691136b..227f8f1 100644
 --- a/codex-rs/tui/src/app_backtrack.rs
@@ -1818,6 +1882,84 @@ index ac3ab1c..afa82e0 100644
          }
          #[cfg(windows)]
          AppServerTarget::LocalDaemon {
+diff --git a/codex-rs/tui/src/bottom_pane/async_questions/layout.rs b/codex-rs/tui/src/bottom_pane/async_questions/layout.rs
+index 327d1e9..43da721 100644
+--- a/codex-rs/tui/src/bottom_pane/async_questions/layout.rs
++++ b/codex-rs/tui/src/bottom_pane/async_questions/layout.rs
+@@ -52,9 +52,8 @@ impl AsyncQuestions {
+         let mut spacer_after_input = 0;
+         let progress_height;
+         let footer_lines;
+-        let notes_height;
+ 
+-        if has_options {
++        let notes_height = if has_options {
+             let min_options_height = remaining.min(1);
+             // Reserve hints and spacers while retaining a row for the selected option.
+             let reserved = footer_pref + progress_pref + DESIRED_SPACERS_BETWEEN_SECTIONS;
+@@ -71,7 +70,7 @@ impl AsyncQuestions {
+             spacer_after_question = u16::from(remaining > 0);
+             remaining -= spacer_after_question;
+             options_height += remaining.min(full_options_height.saturating_sub(options_height));
+-            notes_height = 0;
++            0
+         } else {
+             // Freeform answers take their preferred input height before hints and progress.
+             let preferred_notes = self
+@@ -90,10 +89,8 @@ impl AsyncQuestions {
+             // Drop padding before input or prompt content in a constrained viewport.
+             spacer_before_question = u16::from(remaining >= 2 && self.unanswered_count() > 1);
+             spacer_after_question = u16::from(remaining >= 1);
+-            notes_height = min_notes + preferred_notes + remaining
+-                - spacer_before_question
+-                - spacer_after_question;
+-        }
++            min_notes + preferred_notes + remaining - spacer_before_question - spacer_after_question
++        };
+ 
+         let mut y = area.y;
+         let mut take_rows = |height| {
+diff --git a/codex-rs/tui/src/bottom_pane/list_selection_view.rs b/codex-rs/tui/src/bottom_pane/list_selection_view.rs
+index 6dca72b..4397175 100644
+--- a/codex-rs/tui/src/bottom_pane/list_selection_view.rs
++++ b/codex-rs/tui/src/bottom_pane/list_selection_view.rs
+@@ -1119,7 +1119,7 @@ impl ListSelectionView {
+             None
+         }
+         .or_else(|| self.footer_note.clone());
+-        let mut lines = note.map(&wrap).unwrap_or_default();
++        let mut lines = note.map(wrap).unwrap_or_default();
+         if self.reserve_result_rows && show_selected_description {
+             let height = self
+                 .items
+diff --git a/codex-rs/tui/src/pager_overlay.rs b/codex-rs/tui/src/pager_overlay.rs
+index 43fb410..dff8a56 100644
+--- a/codex-rs/tui/src/pager_overlay.rs
++++ b/codex-rs/tui/src/pager_overlay.rs
+@@ -150,7 +150,9 @@ fn render_navigation_hints(area: Rect, buf: &mut Buffer, keymap: &PagerKeymap) {
+         ("jump_bottom", &keymap.jump_bottom),
+     ];
+     let hints = actions
+-        .chunks_exact(2)
++        .as_chunks::<2>()
++        .0
++        .iter()
+         .zip(["to scroll", "to page", "to jump"])
+         .map(|(actions, description)| {
+             (
+diff --git a/codex-rs/tui/src/pets/sixel.rs b/codex-rs/tui/src/pets/sixel.rs
+index 624fd7b..c21ed65 100644
+--- a/codex-rs/tui/src/pets/sixel.rs
++++ b/codex-rs/tui/src/pets/sixel.rs
+@@ -216,7 +216,7 @@ struct Palette {
+ impl Palette {
+     fn from_rgba(rgba: &[u8]) -> Self {
+         let mut used = [false; PALETTE_COLOR_COUNT];
+-        for pixel in rgba.chunks_exact(4) {
++        for pixel in rgba.as_chunks::<4>().0 {
+             if pixel[3] < TRANSPARENT_ALPHA_THRESHOLD {
+                 continue;
+             }
 diff --git a/codex-rs/utils/path-uri/src/api_path_string.rs b/codex-rs/utils/path-uri/src/api_path_string.rs
 index b2ecdf0..85e577d 100644
 --- a/codex-rs/utils/path-uri/src/api_path_string.rs
