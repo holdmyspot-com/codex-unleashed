@@ -1,4 +1,4 @@
-From 53a9280b46be92c7df22e683ecceecb3145fd525 Mon Sep 17 00:00:00 2001
+From 58e438303f5716fe32d67b4e2960171604cf1510 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:14:30 -0500
 Subject: [PATCH] WIP: migrate to ts-rs 12

@@ -1,4 +1,4 @@
-From 59f5a8eb72d44ab1f440c33ee0b7a015e8385758 Mon Sep 17 00:00:00 2001
+From 423f5bab534cca81531596067143d2a6357929b2 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 9 Nov 2026 06:59:53 -0500
 Subject: [PATCH] WIP: keep schemars 0.8's schema shapes for generated clients
@@ -15,6 +15,8 @@ types whose single values 0.8 wrote as enum keep that form.
 ---
  codex-rs/app-server-protocol/src/export.rs    | 16 +++++++++++++---
  .../src/protocol/v2/permissions.rs            |  2 ++
+ codex-rs/config/src/config_toml.rs            |  3 ++-
+ codex-rs/config/src/types.rs                  | 15 ++++++++++-----
  codex-rs/ext/items/src/image_generation.rs    |  2 ++
  codex-rs/ext/items/src/sleep.rs               |  2 ++
  codex-rs/ext/items/src/web_search.rs          |  2 ++
@@ -26,7 +28,7 @@ types whose single values 0.8 wrote as enum keep that form.
  codex-rs/protocol/src/models.rs               |  2 ++
  codex-rs/protocol/src/response_item_id.rs     |  2 ++
  codex-rs/utils/redacted-string/src/lib.rs     |  2 ++
- 13 files changed, 52 insertions(+), 10 deletions(-)
+ 15 files changed, 64 insertions(+), 16 deletions(-)
 
 diff --git a/codex-rs/app-server-protocol/src/export.rs b/codex-rs/app-server-protocol/src/export.rs
 index 1d26946..397338d 100644
@@ -69,6 +71,80 @@ index fd13791..96c7a9c 100644
  pub struct ExecPolicyAmendment {
      pub command: Vec<String>,
  }
+diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
+index 6fd2a44..e661e8c 100644
+--- a/codex-rs/config/src/config_toml.rs
++++ b/codex-rs/config/src/config_toml.rs
+@@ -775,8 +775,9 @@ pub struct GoalsToml {
+     pub max_goal_token_budget: Option<NonZeroU64>,
+ }
+ 
++// schemars 1 lets deny_unknown_fields replace a flattened map's entries with
++// `additionalProperties: false`; leave it off so the schema keeps 0.8's map entries.
+ #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
+-#[schemars(deny_unknown_fields)]
+ pub struct AgentsToml {
+     /// Whether multi-agent tools are enabled. Defaults to true.
+     /// An enabled `features.multi_agent_v2` setting takes precedence.
+diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
+index 0b03e67..7310472 100644
+--- a/codex-rs/config/src/types.rs
++++ b/codex-rs/config/src/types.rs
+@@ -488,8 +488,9 @@ pub struct AppToolConfig {
+ }
+ 
+ /// Tool settings for a single app.
++// schemars 1 lets deny_unknown_fields replace a flattened map's entries with
++// `additionalProperties: false`; leave it off so the schema keeps 0.8's map entries.
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
+-#[schemars(deny_unknown_fields)]
+ pub struct AppToolsConfig {
+     /// Per-tool overrides keyed by tool name (for example `repos/list`).
+     #[serde(default, flatten)]
+@@ -510,8 +511,9 @@ pub struct AppLinkConfig {
+ }
+ 
+ /// Account settings for a single app.
++// schemars 1 lets deny_unknown_fields replace a flattened map's entries with
++// `additionalProperties: false`; leave it off so the schema keeps 0.8's map entries.
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
+-#[schemars(deny_unknown_fields)]
+ pub struct AppLinksConfig {
+     /// Per-account approval settings keyed by link ID.
+     #[serde(default, flatten)]
+@@ -562,8 +564,9 @@ pub struct AppConfig {
+ }
+ 
+ /// App/connector settings loaded from `config.toml`.
++// schemars 1 lets deny_unknown_fields replace a flattened map's entries with
++// `additionalProperties: false`; leave it off so the schema keeps 0.8's map entries.
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
+-#[schemars(deny_unknown_fields)]
+ pub struct AppsConfigToml {
+     /// Default settings for all apps.
+     #[serde(default, rename = "_default", skip_serializing_if = "Option::is_none")]
+@@ -812,8 +815,9 @@ pub struct TuiNotificationSettings {
+     pub condition: NotificationCondition,
+ }
+ 
++// schemars 1 lets deny_unknown_fields replace a flattened map's entries with
++// `additionalProperties: false`; leave it off so the schema keeps 0.8's map entries.
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
+-#[schemars(deny_unknown_fields)]
+ pub struct ModelAvailabilityNuxConfig {
+     /// Number of times a startup availability NUX has been shown per model slug.
+     #[serde(default, flatten)]
+@@ -1082,8 +1086,9 @@ pub struct PluginsDefaultConfig {
+ }
+ 
+ /// Plugin activation and capability settings loaded from configuration layers.
++// schemars 1 lets deny_unknown_fields replace a flattened map's entries with
++// `additionalProperties: false`; leave it off so the schema keeps 0.8's map entries.
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
+-#[schemars(deny_unknown_fields)]
+ pub struct PluginsConfigToml {
+     /// Defaults for installed plugin activation. Omission preserves source enablement.
+     /// Explicit plugin enablement settings override this default, but cannot enable
 diff --git a/codex-rs/ext/items/src/image_generation.rs b/codex-rs/ext/items/src/image_generation.rs
 index 59d4ece..8748956 100644
 --- a/codex-rs/ext/items/src/image_generation.rs
