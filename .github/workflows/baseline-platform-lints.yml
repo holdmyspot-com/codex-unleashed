@@ -296,7 +296,8 @@ jobs:
           for generator in "${generators[@]}"; do
             printf '::group::%s\n' "$generator"
             case "$generator" in
-              app-server-schema) (cd codex-rs && python3 app-server-protocol/scripts/write_schema_fixtures.py) ;;
+              # The experimental precomputed exports are a separate bundle that only --experimental rewrites.
+              app-server-schema) (cd codex-rs && python3 app-server-protocol/scripts/write_schema_fixtures.py && python3 app-server-protocol/scripts/write_schema_fixtures.py --experimental) ;;
               config-schema) (cd codex-rs && cargo run -p codex-config-schema --bin codex-write-config-schema) ;;
               hooks-schema) cargo run --manifest-path codex-rs/Cargo.toml -p codex-hooks --bin write_hooks_schema_fixtures ;;
               bazel-lock) bazel mod deps --lockfile_mode=update ;;
