@@ -50,7 +50,7 @@ Fixes what the new releases change at run time or in test expectations:
 
 ### transitive-updates.patch
 
-Runs `cargo update`, so every transitive dependency moves to the highest release its dependents allow (owner decision, 2026-11-09). This takes the security fixes in openssl 0.10.82, libz-sys 1.1.32, event-listener 5.4.2, quick-xml (through plist 1.10.3 and wayland-scanner 0.31.11) and aws-config 1.13.1, which moves to p256 0.14. `MODULE.bazel.lock` is regenerated to match.
+Runs `cargo update`, so every transitive dependency moves to the highest release its dependents allow (owner decision, 2026-11-09). This takes the security fixes in openssl 0.10.82, libz-sys 1.1.32, event-listener 5.4.2, quick-xml (through plist 1.10.3 and wayland-scanner 0.31.11) and aws-config 1.13.1, which moves to p256 0.14. rama-error, rama-macros and rama-utils stay at `0.3.0-alpha.4`: cargo lets `^0.3.0-alpha.4` select the 0.3.0 releases, but rama-error 0.3.0 removes `OpaqueError`, which rama-core 0.3.0-alpha.4 imports (platform lint run `42712058990`). The rama 0.4 port replaces all of them. `MODULE.bazel.lock` is regenerated to match.
 
 ## Held back
 
