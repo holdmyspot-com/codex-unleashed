@@ -1,4 +1,4 @@
-From ee782b5f25ce178c9c4c068ae8a0d97e8895b840 Mon Sep 17 00:00:00 2001
+From a30a4ed2fd5c609e3d2c944b65c1f182132572a6 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 19:41:52 -0500
 Subject: [PATCH] Write workspace documentation so rustdoc reports no warnings
@@ -55,7 +55,10 @@ schemas copy these doc comments, so they are regenerated with upstream's generat
  codex-rs/app-server/src/in_process.rs         |   2 +-
  codex-rs/apply-patch/src/lib.rs               |   2 +-
  codex-rs/arg0/src/lib.rs                      |   2 +-
+ codex-rs/cli/src/exec_server_command.rs       |   2 +-
  codex-rs/cli/src/lib.rs                       |   6 ++--
+ codex-rs/cli/src/main.rs                      |  20 +++++------
+ codex-rs/cli/src/marketplace_cmd.rs           |   3 +-
  codex-rs/config/src/config_toml.rs            |   2 +-
  codex-rs/config/src/loader/mod.rs             |   2 +-
  codex-rs/config/src/mcp_types.rs              |   4 +--
@@ -86,7 +89,7 @@ schemas copy these doc comments, so they are regenerated with upstream's generat
  codex-rs/utils/cli/src/shared_options.rs      |   2 +-
  .../utils/plugins/src/plugin_namespace.rs     |   2 +-
  .../src/openai_codex/generated/v2_all.py      |  10 +++---
- 79 files changed, 166 insertions(+), 164 deletions(-)
+ 82 files changed, 178 insertions(+), 177 deletions(-)
 
 diff --git a/codex-rs/app-server-protocol/schema/json/ClientRequest.json b/codex-rs/app-server-protocol/schema/json/ClientRequest.json
 index 3319da1..73796d6 100644
@@ -7499,6 +7502,19 @@ index 1abf467..95e12a4 100644
  ///
  /// This function should be used to wrap any `main()` function in binary crates
  /// in this workspace that depends on these helper CLIs.
+diff --git a/codex-rs/cli/src/exec_server_command.rs b/codex-rs/cli/src/exec_server_command.rs
+index 5244087..7a8e9f9 100644
+--- a/codex-rs/cli/src/exec_server_command.rs
++++ b/codex-rs/cli/src/exec_server_command.rs
+@@ -29,7 +29,7 @@ use crate::exec_server_auth;
+ use crate::exec_server_credential::ExecutorCredentialPipe;
+ use crate::exec_server_telemetry;
+ 
+-/// [EXPERIMENTAL] Run the standalone exec-server service.
++#[command(about = "[EXPERIMENTAL] Run the standalone exec-server service", long_about = None)]
+ #[derive(Debug, Parser)]
+ pub(super) struct ExecServerCommand {
+     #[command(subcommand)]
 diff --git a/codex-rs/cli/src/lib.rs b/codex-rs/cli/src/lib.rs
 index cc91f5b..102b6ee 100644
 --- a/codex-rs/cli/src/lib.rs
@@ -7530,6 +7546,99 @@ index cc91f5b..102b6ee 100644
      #[arg(long = "profile", short = 'p')]
      pub config_profile: Option<ProfileV2Name>,
  
+diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
+index 6421762..27cfa46 100644
+--- a/codex-rs/cli/src/main.rs
++++ b/codex-rs/cli/src/main.rs
+@@ -184,10 +184,10 @@ enum Subcommand {
+     /// Manage Codex plugins.
+     Plugin(PluginCli),
+ 
+-    /// [experimental] Run the app server or related tooling.
++    #[command(about = "[experimental] Run the app server or related tooling", long_about = None)]
+     AppServer(AppServerCommand),
+ 
+-    /// [experimental] Manage the app-server daemon with remote control enabled.
++    #[command(about = "[experimental] Manage the app-server daemon with remote control enabled", long_about = None)]
+     RemoteControl(RemoteControlCommand),
+ 
+     /// Launch the Desktop app (opens the app installer if missing).
+@@ -232,7 +232,7 @@ enum Subcommand {
+     /// Inspect or migrate legacy local sessions to paginated thread history.
+     MigrateRollouts(migrate_rollouts::MigrateRolloutsCommand),
+ 
+-    /// [experimental] Migrate configured SQLite databases to DELETE mode in place.
++    #[command(about = "[experimental] Migrate configured SQLite databases to DELETE mode in place", long_about = None)]
+     MigrateNfsDb(migrate_nfs_db::MigrateNfsDbCommand),
+ 
+     /// Unarchive a saved session by id or session name.
+@@ -241,7 +241,7 @@ enum Subcommand {
+     /// Fork a previous interactive session (picker by default; use --last to fork the most recent).
+     Fork(ForkCommand),
+ 
+-    /// [EXPERIMENTAL] Browse tasks from Codex Cloud and apply changes locally.
++    #[command(about = "[EXPERIMENTAL] Browse tasks from Codex Cloud and apply changes locally", long_about = None)]
+     #[clap(name = "cloud", alias = "cloud-tasks")]
+     Cloud(CloudTasksCli),
+ 
+@@ -253,7 +253,7 @@ enum Subcommand {
+     #[clap(hide = true, name = "stdio-to-uds")]
+     StdioToUds(StdioToUdsCommand),
+ 
+-    /// [EXPERIMENTAL] Run the standalone exec-server service.
++    #[command(about = "[EXPERIMENTAL] Run the standalone exec-server service", long_about = None)]
+     ExecServer(ExecServerCommand),
+ 
+     /// Inspect feature flags.
+@@ -638,7 +638,7 @@ struct AppServerCommand {
+     /// enabled = false
+     /// ```
+     ///
+-    /// See https://developers.openai.com/codex/config-advanced/#metrics for more details.
++    /// See <https://developers.openai.com/codex/config-advanced/#metrics> for more details.
+     #[arg(long = "analytics-default-enabled")]
+     analytics_default_enabled: bool,
+ 
+@@ -655,13 +655,13 @@ enum AppServerSubcommand {
+     /// Proxy stdio bytes to the running app-server control socket.
+     Proxy(AppServerProxyCommand),
+ 
+-    /// [experimental] Generate TypeScript bindings for the app server protocol.
++    #[command(about = "[experimental] Generate TypeScript bindings for the app server protocol", long_about = None)]
+     GenerateTs(GenerateTsCommand),
+ 
+-    /// [experimental] Generate JSON Schema for the app server protocol.
++    #[command(about = "[experimental] Generate JSON Schema for the app server protocol", long_about = None)]
+     GenerateJsonSchema(GenerateJsonSchemaCommand),
+ 
+-    /// [internal] Generate internal JSON Schema artifacts for Codex tooling.
++    #[command(about = "[internal] Generate internal JSON Schema artifacts for Codex tooling", long_about = None)]
+     #[clap(hide = true)]
+     GenerateInternalJsonSchema(GenerateInternalJsonSchemaCommand),
+ }
+@@ -705,7 +705,7 @@ enum AppServerDaemonSubcommand {
+     /// Print local CLI and running app-server versions as JSON.
+     Version,
+ 
+-    /// [internal] Run the detached pid-backed standalone updater loop.
++    #[command(about = "[internal] Run the detached pid-backed standalone updater loop", long_about = None)]
+     #[clap(hide = true)]
+     PidUpdateLoop {
+         /// Check support for daemon-owned packages without starting the updater.
+diff --git a/codex-rs/cli/src/marketplace_cmd.rs b/codex-rs/cli/src/marketplace_cmd.rs
+index d942de6..f1e900d 100644
+--- a/codex-rs/cli/src/marketplace_cmd.rs
++++ b/codex-rs/cli/src/marketplace_cmd.rs
+@@ -63,8 +63,7 @@ enum MarketplaceSubcommand {
+     after_help = "Examples:\n  codex plugin marketplace add ./path/to/marketplace\n  codex plugin marketplace add owner/repo --ref main\n  codex plugin marketplace add https://github.com/owner/repo --sparse plugins/foo"
+ )]
+ struct AddMarketplaceArgs {
+-    /// Marketplace source: a local path, owner/repo[@ref], HTTPS Git URL, or SSH Git URL.
+-    #[arg(value_name = "SOURCE")]
++    #[arg(value_name = "SOURCE", help = "Marketplace source: a local path, owner/repo[@ref], HTTPS Git URL, or SSH Git URL", long_help = None)]
+     source: String,
+ 
+     /// Git ref to fetch for Git marketplace sources.
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
 index b2404d6..6fd2a44 100644
 --- a/codex-rs/config/src/config_toml.rs

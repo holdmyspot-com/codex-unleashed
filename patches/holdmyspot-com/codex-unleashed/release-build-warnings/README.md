@@ -86,6 +86,8 @@ With `--keep-going`, `RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps` r
 
 The patch edits only doc comments. URLs become autolinks, literal brackets are escaped, placeholders become code spans, and unresolvable links become code spans.
 
+`codex-cli` reported 12 more of these errors once the run reached it (lint run `42543225907`). clap turns those doc comments into `--help` text, and its default formatting prints a Markdown escape literally. So the bracketed help moves into explicit `about`/`help` attributes with the text clap derived from the comment: the same words without the trailing period, and no long help. `--help` output is unchanged except that the metrics URL in `app-server --help` is now written as `<https://…>`.
+
 The app-server protocol, `config.schema.json` and the Python SDK copy these doc comments into generated files, so the patch includes their output from upstream's own generators (the platform lint workflow's `generators` input, run `42541908776`). Those descriptions now carry the Markdown escape `\[UNSTABLE\]`, which renders as `[UNSTABLE]`. No code parses the marker.
 
 Verification: `RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps --keep-going` passes, and the schema fixture tests pass unchanged.
