@@ -39,6 +39,8 @@ Rust 1.99 also adds lints that fail the workspace under patch 25 (platform lint 
 - Clippy's `redundant_field_names` fires inside thiserror 2.0.18's expansion of `#[from] source` in `core/src/exec_policy.rs`. thiserror 2.0.21 no longer triggers it (the CP7 queue's lint run `42616087745`, which has 2.0.21, does not report it), so the lockfile moves thiserror and thiserror-impl, and only those, to 2.0.21.
 - Clippy's `double_must_use` fires on tonic's generated `ThreadConfigLoader` trait, because async-trait 0.1.89 adds `#[must_use]` to the boxed future it returns. async-trait 0.1.92 no longer adds it, so the lockfile moves that transitive dependency, and only that one, to 0.1.92.
 
+One snapshot changes with the toolchain: Rust 1.99's `Debug` for strings prints the halfwidth sound marks U+FF9E and U+FF9F as themselves, where Rust 1.95 wrote them as `\u{ff9e}` and `\u{ff9f}`. The request-user-input halfwidth truncation snapshot, which formats its spans with `{:?}`, is updated to match; the rendered buffer is unchanged (Linux test run `42692670763`).
+
 ### The `__eh_frame` notice on macOS
 
 With Rust 1.99.1 the release `codex` binary links, but ld prints `ld: warning: __eh_frame section too large (max 16MB) to encode dwarf unwind offsets in compact unwind table, performance of exception handling might be affected`, which `linker_messages` turns into an error (macOS ARM release run `42563009608`). rustc's error shows it as `ld: __eh_frame …` because rustc removes `: warning: ` from linker output; the wrapper's first version matched that displayed form and missed the real line (release run `42619462435`).

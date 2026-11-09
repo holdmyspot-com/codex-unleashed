@@ -1,0 +1,31 @@
+From 5fe87b4076d3e966963aa71dc6d6924464801e3d Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 9 Nov 2026 16:55:21 -0500
+Subject: [PATCH] WIP: read the registry request before stalling its response
+ body
+
+The test registry wrote its response as soon as the connection opened. hyper rejects a response that reaches an idle connection, and reqwest 0.13 reports that as a send failure instead of the body timeout the test checks. The neighbouring interrupted-body test already reads the request first.
+---
+ codex-rs/exec-server/src/remote.rs | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/codex-rs/exec-server/src/remote.rs b/codex-rs/exec-server/src/remote.rs
+index a43f5ac..87ac51d 100644
+--- a/codex-rs/exec-server/src/remote.rs
++++ b/codex-rs/exec-server/src/remote.rs
+@@ -1670,6 +1670,12 @@ mod tests {
+                 .accept()
+                 .await
+                 .expect("registry request should connect");
++            let mut request = [0_u8; 4096];
++            let bytes_read = stream
++                .read(&mut request)
++                .await
++                .expect("registry request should arrive before the response");
++            assert_ne!(bytes_read, 0, "registry request should not be empty");
+             stream
+                 .write_all(
+                     b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 256\r\n\r\n{",
+-- 
+2.43.0
+

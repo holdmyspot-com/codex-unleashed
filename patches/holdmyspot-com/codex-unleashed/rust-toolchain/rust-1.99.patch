@@ -1,4 +1,4 @@
-From a9b02a09e1dbe72a5c9a78be661db3c6cd14d49a Mon Sep 17 00:00:00 2001
+From 171813b3b304767020f965de23f575a9d1cfdf62 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:07:55 -0500
 Subject: [PATCH] Build with Rust 1.99.1 so macOS links pass under fatal linker
@@ -62,6 +62,7 @@ drops that one exact notice and passes every other linker message through.
  codex-rs/tui/src/app_server_connection.rs     |   2 +-
  .../src/bottom_pane/async_questions/layout.rs |  11 +-
  .../src/bottom_pane/list_selection_view.rs    |   2 +-
+ ...nput_halfwidth_sound_marks_truncation.snap |   4 +-
  codex-rs/tui/src/pager_overlay.rs             |   4 +-
  codex-rs/tui/src/pets/sixel.rs                |   2 +-
  .../utils/path-uri/src/api_path_string.rs     |   6 +-
@@ -70,7 +71,7 @@ drops that one exact notice and passes every other linker message through.
  .../voice-host/src/input_channel_tests.rs     |   6 +-
  codex-rs/voice-host/src/playback.rs           |   4 +-
  codex-rs/websocket-auth/src/lib.rs            |   6 +-
- 51 files changed, 340 insertions(+), 301 deletions(-)
+ 52 files changed, 342 insertions(+), 303 deletions(-)
  create mode 100755 codex-rs/scripts/apple-linker.sh
 
 diff --git a/.github/actions/build-bazel-package-binaries/action.yml b/.github/actions/build-bazel-package-binaries/action.yml
@@ -1967,6 +1968,25 @@ index 6dca72b..4397175 100644
          if self.reserve_result_rows && show_selected_description {
              let height = self
                  .items
+diff --git a/codex-rs/tui/src/bottom_pane/request_user_input/snapshots/codex_tui__bottom_pane__request_user_input__render__tests__request_user_input_halfwidth_sound_marks_truncation.snap b/codex-rs/tui/src/bottom_pane/request_user_input/snapshots/codex_tui__bottom_pane__request_user_input__render__tests__request_user_input_halfwidth_sound_marks_truncation.snap
+index 4dc0fc1..1efcc1a 100644
+--- a/codex-rs/tui/src/bottom_pane/request_user_input/snapshots/codex_tui__bottom_pane__request_user_input__render__tests__request_user_input_halfwidth_sound_marks_truncation.snap
++++ b/codex-rs/tui/src/bottom_pane/request_user_input/snapshots/codex_tui__bottom_pane__request_user_input__render__tests__request_user_input_halfwidth_sound_marks_truncation.snap
+@@ -22,12 +22,12 @@ Buffer {
+ [
+     Line::from_iter([
+         Span::from("ab").bold(),
+-        Span::from("ｶ\u{ff9e}").cyan(),
++        Span::from("ｶﾞ").cyan(),
+         Span::from("…").cyan(),
+     ]),
+     Line::from_iter([
+         Span::from("xy").bold(),
+-        Span::from("ﾊ\u{ff9f}").magenta(),
++        Span::from("ﾊﾟ").magenta(),
+         Span::from("…").magenta(),
+     ]),
+ ]
 diff --git a/codex-rs/tui/src/pager_overlay.rs b/codex-rs/tui/src/pager_overlay.rs
 index 43fb410..dff8a56 100644
 --- a/codex-rs/tui/src/pager_overlay.rs
