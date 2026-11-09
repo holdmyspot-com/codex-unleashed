@@ -2,7 +2,7 @@
 
 - Applies to: upstream `openai/codex` main, commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`.
 - Prerequisites: every earlier patch in the queue, through `rust-toolchain/rust-1.99.patch` (patch 28).
-- Patches, in order: `compatible-updates.patch`, `latest-releases.patch`, `regenerated-outputs.patch`, `serde-saphyr.patch`, `release-adaptations.patch`, `transitive-updates.patch`.
+- Patches, in order: `compatible-updates.patch`, `latest-releases.patch`, `regenerated-outputs.patch`, `serde-saphyr.patch`, `release-adaptations.patch`, `transitive-updates.patch`, `sqlx-sqlite-libsqlite3-0.39.patch`.
 
 ## Intent
 
@@ -52,6 +52,10 @@ Fixes what the new releases change at run time or in test expectations:
 
 Runs `cargo update`, so every transitive dependency moves to the highest release its dependents allow (owner decision, 2026-11-09). This takes the security fixes in openssl 0.10.82, libz-sys 1.1.32, event-listener 5.4.2, quick-xml (through plist 1.10.3 and wayland-scanner 0.31.11) and aws-config 1.13.1, which moves to p256 0.14. rama-error, rama-macros and rama-utils stay at `0.3.0-alpha.4`: cargo lets `^0.3.0-alpha.4` select the 0.3.0 releases, but rama-error 0.3.0 removes `OpaqueError`, which rama-core 0.3.0-alpha.4 imports (platform lint run `42712058990`). The rama 0.4 port replaces all of them. `MODULE.bazel.lock` is regenerated to match.
 
+### sqlx-sqlite-libsqlite3-0.39.patch
+
+Moves `libsqlite3-sys` to 0.39.1, which bundles SQLite 3.54.1 and fixes [RUSTSEC-2026-0459](https://rustsec.org/advisories/RUSTSEC-2026-0459) (owner decision, 2026-11-09). `sqlx-sqlite` 0.9.0, the latest release, requires `<0.38.0`. sqlx `main` widens that range in two manifest-only changes ([#4402](https://github.com/transact-rs/sqlx/pull/4402), [#4502](https://github.com/transact-rs/sqlx/pull/4502)) that are not released yet ([#4516](https://github.com/transact-rs/sqlx/issues/4516)). So the patch vendors the published 0.9.0 crate as `codex-rs/vendor/sqlx-sqlite`, widens only its `libsqlite3-sys` range to `<0.40.0`, and uses it through `[patch.crates-io]`; the workspace excludes it, so the workspace lints skip it. Patching sqlx to a git revision instead would bring in 49 unreleased commits, including a rewrite of the SQLite worker. Its [README](../../../../codex-rs/vendor/sqlx-sqlite/README.md) in the patched tree says when to remove it. This is the one dependency-source change in the queue, and it is limited to a version range.
+
 ## Held back
 
 | Dependency | Kept at | Constraint |
@@ -60,7 +64,6 @@ Runs `cargo update`, so every transitive dependency moves to the highest release
 | rama-* (`codex-network-proxy`) | 0.3.0-alpha.4 | 0.4.0 removes `ProxyTarget`, `StreamForwardService` and `PeekStream` and redesigns the SOCKS5 server, URI, DNS, TLS configuration and extension APIs. The port is a separate work item after CP7 (owner decision). |
 | sse-stream (`codex-rmcp-client`) | 0.2.6 | rmcp's streamable HTTP client takes sse-stream 0.2 types; every rmcp release through 3.9.0 requires `^0.2.4`. |
 | tokio-tungstenite, tungstenite | 0.28, 0.27 | Patched to upstream's `openai-oss-forks` releases, which add proxy and deflate support. |
-| libsqlite3-sys | 0.37 | sqlx-sqlite 0.9.0, the latest, requires `<0.38`. |
 | keyring | 3.6 | keyring 4 moves the library to keyring-core and per-platform store crates. Its v1 shim drops the Linux keyutils layer of `linux-native-async-persistent` and has no mock credential, which about 50 test uses rely on. |
 | secret-service | 4 | `keyring-store` downcasts keyring 3.6's errors to `secret_service::Error`; a second release would silently stop matching. Moves with keyring. |
 
@@ -68,7 +71,7 @@ Runs `cargo update`, so every transitive dependency moves to the highest release
 
 - `RUSTSEC-2026-0385` (`ctutils`): resolved by `ctutils 0.4.8`.
 - A later audit against advisory-db `d9cb059f32` (2026-11-09) finds further open advisories in transitive dependencies; "CP8 reconciliation" in [restart-scope.md](../../../../docs/plans/restart-scope.md) lists them with their fixes.
-- After `transitive-updates.patch`, three crates stay open: `hickory-proto 0.25.2` (RUSTSEC-2026-0118 and -0119, through rama 0.3; the rama 0.4 port fixes it), `libsqlite3-sys 0.37` (RUSTSEC-2026-0459; sqlx-sqlite 0.9.0 requires `<0.38`) and crypto-bigint below.
+- After `transitive-updates.patch`, these stay open: `hickory-proto 0.25.2` (RUSTSEC-2026-0118 and -0119, through rama 0.3; the rama 0.4 port fixes it), and crypto-bigint below. `sqlx-sqlite-libsqlite3-0.39.patch` resolves `libsqlite3-sys` (RUSTSEC-2026-0459).
 - `RUSTSEC-2026-0387` (`crypto-bigint 0.5.5`): open. Its only path is `elliptic-curve 0.13` → `p256 0.13`, which `age 0.12.1` (scrypt recipients only, so no P-256 arithmetic runs) and `aws-config 1.13.0` with `credentials-login` (which signs AWS login proofs with P-256) reach at their latest releases. aws-config 1.13.1 moves to `p256 0.14`, so after `transitive-updates.patch` only `age` remains, and through it no P-256 arithmetic runs. It stays open, not suppressed, until `age` moves to `p256 0.14`.
 
 ## Verification

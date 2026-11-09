@@ -114,14 +114,14 @@ RustSec audit of the CP7 lockfile against advisory-db `d9cb059f3217db87aeccd190b
 | Package | Advisory | Patched | Pulled in by | Stable fix |
 |---|---|---|---|---|
 | `crypto-bigint 0.5.5` | RUSTSEC-2026-0387 | ≥ 0.7.6 | `p256 0.13` via `age 0.12.1` (latest) and `aws-config 1.13.0` | aws-config 1.13.1 (released 2026-11-09, after CP7 resolved its versions) moves to p256 0.14 and removes `ecdsa 0.16`, `pkcs8 0.10` and `spki 0.7` from the lock; `age` still requires p256 `^0.13` |
-| `libsqlite3-sys 0.37.0` (direct) | RUSTSEC-2026-0459 | ≥ 0.39.0 | `codex-state`, `sqlx-sqlite` | None: `sqlx-sqlite 0.9.0`, the latest, requires `<0.38` |
+| `libsqlite3-sys 0.37.0` (direct) | RUSTSEC-2026-0459 | ≥ 0.39.0 | `codex-state`, `sqlx-sqlite` | `sqlx-sqlite 0.9.0`, the latest, requires `<0.38`. sqlx `main` widens it without source changes (#4402, #4502; release requested in #4516). The owner approved vendoring 0.9.0 with only that range widened: CP7 patch 35 |
 | `hickory-proto 0.25.2` | RUSTSEC-2026-0118, -0119 | ≥ 0.26.1 (0119); none (0118) | `rama-dns 0.3.0-alpha.4` | rama 0.4 requires `hickory-resolver ^0.26.1` (the rama 0.4 port) |
 | `openssl 0.10.75` | RUSTSEC-2026-0463 | ≥ 0.10.78 | `native-tls` | Semver-compatible: 0.10.82 |
 | `libz-sys 1.1.29` | RUSTSEC-2026-0418 | ≥ 1.1.31 | `curl-sys` (target-specific) | Semver-compatible: 1.1.32 |
 | `quick-xml 0.39.4` | RUSTSEC-2026-0194, -0195 | ≥ 0.41.0 | `plist 1.9.0` (syntect), `wayland-scanner 0.31.10` (build-time proc macro) | Semver-compatible parents: plist 1.10.3 (`^0.42`), wayland-scanner 0.31.11 (`^0.41`) |
 | `event-listener 5.4.1` | RUSTSEC-2026-0221 (unsound) | ≥ 5.4.2 | `async-broadcast`, `async-lock` (webrtc, zbus) | Semver-compatible: 5.4.2 |
 
-Every row except crypto-bigint, libsqlite3-sys and hickory-proto has a semver-compatible transitive update. The owner chose to move every transitive dependency to its newest allowed release (CP7 patch 34, `transitive-updates.patch`); a re-audit of that lockfile leaves only those three crates open. The unmaintained-crate notices (atomic-polyfill, basic-toml, bincode, derivative, fxhash, paste, pin-utils, zbus_names, zvariant, zvariant_derive) have no patched release.
+Every row except crypto-bigint, libsqlite3-sys and hickory-proto has a semver-compatible transitive update. The owner chose to move every transitive dependency to its newest allowed release (CP7 patch 34, `transitive-updates.patch`); a re-audit of that lockfile leaves only those three crates open. Patch 35 then resolves libsqlite3-sys, leaving crypto-bigint (age 0.12.1 needs p256 0.13's API; str4d/rage#649 fixes only age's unreleased `main`) and hickory-proto (the rama 0.4 port). The unmaintained-crate notices (atomic-polyfill, basic-toml, bincode, derivative, fxhash, paste, pin-utils, zbus_names, zvariant, zvariant_derive) have no patched release.
 
 ## Old-main changes not yet migrated
 
