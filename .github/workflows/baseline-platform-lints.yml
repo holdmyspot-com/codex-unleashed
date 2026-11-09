@@ -173,8 +173,9 @@ jobs:
 
       - name: Check direct dependencies with their own lint levels
         # Cargo caps every non-workspace package's lints. This leg lifts the cap for direct dependencies only, in its own
-        # target directory, so their warnings and their build scripts' cargo:warning lines fail it; the release build
-        # keeps Cargo's cap.
+        # target directory; the release build keeps Cargo's cap. A dependency that fails to compile at its own lint
+        # levels fails the leg. Its warnings and its build scripts' cargo:warning lines are third-party code, so the leg
+        # reports them in the job summary and its evidence without failing (owner decision 2026-11-09).
         if: matrix.check == 'dependency-lints'
         working-directory: codex-rs
         run: |
@@ -189,11 +190,19 @@ jobs:
           chmod +x "$RUSTC_WRAPPER"
           cargo check --keep-going --target "$TARGET" --tests --profile dev --timings \
             2>&1 | tee "$evidence/dependency-lints.log"
-          status=0
-          bash "$RUNNER_TEMP/fail-on-cargo-warnings.sh" "$evidence/dependency-lints.log" || status=$?
+          bash "$RUNNER_TEMP/fail-on-cargo-warnings.sh" "$evidence/dependency-lints.log" \
+            > "$evidence/dependency-warnings.txt" 2>&1 || (( $? == 1 ))
           python3 -I "$RUNNER_TEMP/direct-dependency-lints.py" build-warnings "$CODEX_DIRECT_DEPENDENCIES" "$CARGO_TARGET_DIR" \
-            | tee "$evidence/dependency-build-script-warnings.txt" || status=$?
-          exit "$status"
+            > "$evidence/dependency-build-script-warnings.txt" || (( $? == 1 ))
+          # Exit status 1 from either check only means that it found warnings.
+          {
+            printf '### Direct dependency warnings (reported, not fatal)\n\n'
+            grep -E '^warning: `[^`]+` \(' "$evidence/dependency-lints.log" | grep -v duplicate \
+              | sed -E 's/^warning: `([^`]+)` \(([^)]+)\) generated ([0-9]+) warnings?.*/- `\1` (\2): \3/' || true
+            printf '\nBuild-script warnings:\n\n```\n'
+            cat "$evidence/dependency-build-script-warnings.txt"
+            printf '```\n'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Verify the patched source and tests remain unmodified
         if: always()

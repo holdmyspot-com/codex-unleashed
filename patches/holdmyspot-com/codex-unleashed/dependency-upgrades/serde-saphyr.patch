@@ -1,0 +1,545 @@
+From df4a285097a24a62f8e71b38e90eae0e33ed100d Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 9 Nov 2026 10:55:13 -0500
+Subject: [PATCH] WIP: replace serde_norway with serde-saphyr
+
+serde_norway 0.9.42, like the serde_yaml it forks, fails to compile once Cargo's lint cap is lifted: its libyaml
+binding creates nine references through raw pointers (dangerous_implicit_autorefs). serde-saphyr is a pure-Rust
+reader that forbids unsafe code. codex only reads YAML, so codex-skills now provides from_yaml_str and
+from_yaml_slice, configured with the YAML 1.2 rules serde_yaml applied: only true and false are booleans, and
+numbers written with leading zeros or underscores stay strings. Untyped frontmatter becomes a serde_json::Value.
+---
+ codex-rs/Cargo.lock                           | 76 +++++++++++++------
+ codex-rs/Cargo.toml                           |  2 +-
+ codex-rs/core-plugins/Cargo.toml              |  1 -
+ .../core-plugins/src/command_migration.rs     | 13 ++--
+ codex-rs/core-plugins/src/plugin_metrics.rs   |  2 +-
+ codex-rs/external-agent-migration/Cargo.toml  |  2 +-
+ .../external-agent-migration/src/subagents.rs | 16 ++--
+ codex-rs/skills/Cargo.toml                    |  2 +-
+ codex-rs/skills/src/lib.rs                    |  4 +
+ codex-rs/skills/src/metadata.rs               |  6 +-
+ codex-rs/skills/src/parser.rs                 | 12 ++-
+ codex-rs/skills/src/yaml.rs                   | 31 ++++++++
+ codex-rs/skills/src/yaml_tests.rs             | 47 ++++++++++++
+ 13 files changed, 165 insertions(+), 49 deletions(-)
+ create mode 100644 codex-rs/skills/src/yaml.rs
+ create mode 100644 codex-rs/skills/src/yaml_tests.rs
+
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+index 806438d..bc4e934 100644
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -217,6 +217,17 @@ dependencies = [
+  "unicode-width 0.1.14",
+ ]
+ 
++[[package]]
++name = "annotate-snippets"
++version = "0.12.17"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b2a5b0a5ab8561c603f16c3b78c24a386b1f70e7fc1b1b1e8c15738828e4a176"
++dependencies = [
++ "anstyle",
++ "memchr",
++ "unicode-width 0.2.3",
++]
++
+ [[package]]
+ name = "ansi-to-tui"
+ version = "8.0.1"
+@@ -378,6 +389,12 @@ dependencies = [
+  "rustversion",
+ ]
+ 
++[[package]]
++name = "arraydeque"
++version = "0.5.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "7d902e3d592a523def97af8f317b08ce16b7ab854c1985a0c671e6f15cebc236"
++
+ [[package]]
+ name = "arrayref"
+ version = "0.3.9"
+@@ -3225,7 +3242,6 @@ dependencies = [
+  "regex",
+  "serde",
+  "serde_json",
+- "serde_norway",
+  "serde_with",
+  "sha2 0.11.1",
+  "tar",
+@@ -3498,6 +3514,7 @@ dependencies = [
+  "codex-plugin",
+  "codex-protocol",
+  "codex-rollout",
++ "codex-skills",
+  "codex-thread-store",
+  "codex-utils-output-truncation",
+  "hex",
+@@ -3505,7 +3522,6 @@ dependencies = [
+  "pretty_assertions",
+  "serde",
+  "serde_json",
+- "serde_norway",
+  "sha2 0.11.1",
+  "tempfile",
+  "tokio",
+@@ -4848,7 +4864,7 @@ dependencies = [
+  "include_dir",
+  "pretty_assertions",
+  "serde",
+- "serde_norway",
++ "serde-saphyr",
+  "shlex 2.0.1",
+  "thiserror 2.0.21",
+  "tracing",
+@@ -7112,6 +7128,15 @@ dependencies = [
+  "simdutf8",
+ ]
+ 
++[[package]]
++name = "encoding_rs_io"
++version = "0.1.8"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "fba3fe847045ecff794b9c138293a80db914678c453ad63fbf0c6a9eb6e00b22"
++dependencies = [
++ "encoding_rs",
++]
++
+ [[package]]
+ name = "endi"
+ version = "1.1.1"
+@@ -8591,6 +8616,16 @@ dependencies = [
+  "system-deps",
+ ]
+ 
++[[package]]
++name = "granit-parser"
++version = "2.1.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "05f05586d4d4df3d47123207826c40b252728b438a1a07bad3c01ee6bea401df"
++dependencies = [
++ "arraydeque",
++ "smallvec",
++]
++
+ [[package]]
+ name = "group"
+ version = "0.13.0"
+@@ -14261,6 +14296,20 @@ dependencies = [
+  "serde_derive",
+ ]
+ 
++[[package]]
++name = "serde-saphyr"
++version = "2.1.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d43fb82d550b07e6f929a58d7d0935182602f48ddead875f5ee313c41c8f07fe"
++dependencies = [
++ "annotate-snippets 0.12.17",
++ "encoding_rs_io",
++ "granit-parser",
++ "num-traits",
++ "serde_core",
++ "smallvec",
++]
++
+ [[package]]
+ name = "serde_core"
+ version = "1.0.229"
+@@ -14330,19 +14379,6 @@ dependencies = [
+  "zmij",
+ ]
+ 
+-[[package]]
+-name = "serde_norway"
+-version = "0.9.42"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e408f29489b5fd500fab51ff1484fc859bb655f32c671f307dcd733b72e8168c"
+-dependencies = [
+- "indexmap 2.14.2",
+- "itoa",
+- "ryu",
+- "serde",
+- "unsafe-libyaml-norway",
+-]
+-
+ [[package]]
+ name = "serde_path_to_error"
+ version = "0.1.20"
+@@ -15133,7 +15169,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7492c571c531e68099c911cfd909d32659f1cc0910cf3adee9fce66e39d21f14"
+ dependencies = [
+  "allocative",
+- "annotate-snippets",
++ "annotate-snippets 0.9.2",
+  "anyhow",
+  "derivative",
+  "derive_more 1.0.0",
+@@ -16799,12 +16835,6 @@ dependencies = [
+  "subtle",
+ ]
+ 
+-[[package]]
+-name = "unsafe-libyaml-norway"
+-version = "0.2.15"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b39abd59bf32521c7f2301b52d05a6a2c975b6003521cbd0c6dc1582f0a22104"
+-
+ [[package]]
+ name = "untrusted"
+ version = "0.7.1"
+diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
+index 4a28e34..6997c55 100644
+--- a/codex-rs/Cargo.toml
++++ b/codex-rs/Cargo.toml
+@@ -482,7 +482,7 @@ serde_ignored = "0.1.14"
+ serde_json = "1"
+ serde_path_to_error = "0.1.20"
+ serde_with = "3.17"
+-serde_norway = "0.9.42"
++serde-saphyr = { version = "2.1.1", default-features = false, features = ["deserialize"] }
+ serial_test = "4.0.1"
+ sha1 = "0.11.0"
+ scopeguard = "1.2.0"
+diff --git a/codex-rs/core-plugins/Cargo.toml b/codex-rs/core-plugins/Cargo.toml
+index 6a116af..00ef75c 100644
+--- a/codex-rs/core-plugins/Cargo.toml
++++ b/codex-rs/core-plugins/Cargo.toml
+@@ -46,7 +46,6 @@ regex = { workspace = true }
+ serde = { workspace = true, features = ["derive"] }
+ serde_json = { workspace = true }
+ serde_with = { workspace = true }
+-serde_norway = { workspace = true }
+ sha2 = { workspace = true }
+ tar = { workspace = true }
+ tempfile = { workspace = true }
+diff --git a/codex-rs/core-plugins/src/command_migration.rs b/codex-rs/core-plugins/src/command_migration.rs
+index d7417b9..67b05a2 100644
+--- a/codex-rs/core-plugins/src/command_migration.rs
++++ b/codex-rs/core-plugins/src/command_migration.rs
+@@ -1,10 +1,11 @@
+ mod plugin;
+ mod render;
+ 
++use codex_skills::from_yaml_str;
+ use render::rewrite_terms;
+ use render::slugify_name;
+ use render::yaml_string;
+-use serde_norway::Value as YamlValue;
++use serde_json::Value as YamlValue;
+ use std::collections::BTreeMap;
+ use std::fs;
+ use std::io;
+@@ -314,10 +315,10 @@ fn frontmatter_end(rest: &str) -> Option<(usize, usize)> {
+ }
+ 
+ fn parse_command_description(raw_frontmatter: &str) -> Option<String> {
+-    let parsed: YamlValue = serde_norway::from_str(raw_frontmatter).ok()?;
+-    let mapping = parsed.as_mapping()?;
++    let parsed: YamlValue = from_yaml_str(raw_frontmatter).ok()?;
++    let mapping = parsed.as_object()?;
+     mapping.iter().find_map(|(key, value)| {
+-        if key.as_str()?.trim() == "description" {
++        if key.trim() == "description" {
+             yaml_scalar(value)
+         } else {
+             None
+@@ -330,9 +331,7 @@ fn yaml_scalar(value: &YamlValue) -> Option<String> {
+         YamlValue::String(value) => Some(value.trim().to_string()),
+         YamlValue::Bool(value) => Some(value.to_string()),
+         YamlValue::Number(value) => Some(value.to_string()),
+-        YamlValue::Null | YamlValue::Sequence(_) | YamlValue::Mapping(_) | YamlValue::Tagged(_) => {
+-            None
+-        }
++        YamlValue::Null | YamlValue::Array(_) | YamlValue::Object(_) => None,
+     }
+ }
+ 
+diff --git a/codex-rs/core-plugins/src/plugin_metrics.rs b/codex-rs/core-plugins/src/plugin_metrics.rs
+index 2f55771..d2993f2 100644
+--- a/codex-rs/core-plugins/src/plugin_metrics.rs
++++ b/codex-rs/core-plugins/src/plugin_metrics.rs
+@@ -74,7 +74,7 @@ pub(crate) fn load_plugin_metrics_operations(
+     if contents.len() as u64 > MAX_ANALYTICS_MANIFEST_BYTES {
+         return None;
+     }
+-    let manifest: AnalyticsManifest = serde_norway::from_slice(&contents).ok()?;
++    let manifest: AnalyticsManifest = codex_skills::from_yaml_slice(&contents).ok()?;
+     validate_manifest(manifest, plugin_root)
+ }
+ 
+diff --git a/codex-rs/external-agent-migration/Cargo.toml b/codex-rs/external-agent-migration/Cargo.toml
+index 0462ff3..aa55c70 100644
+--- a/codex-rs/external-agent-migration/Cargo.toml
++++ b/codex-rs/external-agent-migration/Cargo.toml
+@@ -25,13 +25,13 @@ codex-otel = { workspace = true }
+ codex-plugin = { workspace = true }
+ codex-protocol = { workspace = true }
+ codex-rollout = { workspace = true }
++codex-skills = { workspace = true }
+ codex-thread-store = { workspace = true }
+ codex-utils-output-truncation = { workspace = true }
+ hex = { workspace = true }
+ linkify = { workspace = true }
+ serde = { workspace = true, features = ["derive"] }
+ serde_json = { workspace = true }
+-serde_norway = { workspace = true }
+ sha2 = { workspace = true }
+ toml = { workspace = true }
+ tokio = { workspace = true, features = ["rt", "sync"] }
+diff --git a/codex-rs/external-agent-migration/src/subagents.rs b/codex-rs/external-agent-migration/src/subagents.rs
+index 6c122a4..47045ee 100644
+--- a/codex-rs/external-agent-migration/src/subagents.rs
++++ b/codex-rs/external-agent-migration/src/subagents.rs
+@@ -1,7 +1,8 @@
+ use crate::RewriteProfile;
+ use crate::invalid_data_error;
+ use crate::scope::is_redirected_destination;
+-use serde_norway::Value as YamlValue;
++use codex_skills::from_yaml_str;
++use serde_json::Value as YamlValue;
+ use std::collections::BTreeMap;
+ use std::fs;
+ use std::io;
+@@ -164,11 +165,11 @@ fn frontmatter_end(rest: &str) -> Option<(usize, usize)> {
+ fn parse_frontmatter(
+     raw_frontmatter: &str,
+ ) -> (BTreeMap<String, FrontmatterValue>, Option<String>) {
+-    let parsed: YamlValue = match serde_norway::from_str(raw_frontmatter) {
++    let parsed: YamlValue = match from_yaml_str(raw_frontmatter) {
+         Ok(parsed) => parsed,
+         Err(err) => return (BTreeMap::new(), Some(err.to_string())),
+     };
+-    let Some(mapping) = parsed.as_mapping() else {
++    let Some(mapping) = parsed.as_object() else {
+         return (
+             BTreeMap::new(),
+             Some("frontmatter is not a YAML mapping".to_string()),
+@@ -177,9 +178,10 @@ fn parse_frontmatter(
+ 
+     let mut frontmatter = BTreeMap::new();
+     for (key, value) in mapping {
+-        let Some(key) = key.as_str().map(str::trim).filter(|key| !key.is_empty()) else {
++        let key = key.trim();
++        if key.is_empty() {
+             continue;
+-        };
++        }
+         frontmatter.insert(key.to_string(), frontmatter_value_from_yaml(value));
+     }
+ 
+@@ -191,9 +193,7 @@ fn frontmatter_value_from_yaml(value: &YamlValue) -> FrontmatterValue {
+         YamlValue::String(value) => FrontmatterValue::Scalar(value.trim().to_string()),
+         YamlValue::Bool(value) => FrontmatterValue::Scalar(value.to_string()),
+         YamlValue::Number(value) => FrontmatterValue::Scalar(value.to_string()),
+-        YamlValue::Null | YamlValue::Sequence(_) | YamlValue::Mapping(_) | YamlValue::Tagged(_) => {
+-            FrontmatterValue::Other
+-        }
++        YamlValue::Null | YamlValue::Array(_) | YamlValue::Object(_) => FrontmatterValue::Other,
+     }
+ }
+ 
+diff --git a/codex-rs/skills/Cargo.toml b/codex-rs/skills/Cargo.toml
+index 6c3f5c5..8fb34b1 100644
+--- a/codex-rs/skills/Cargo.toml
++++ b/codex-rs/skills/Cargo.toml
+@@ -20,7 +20,7 @@ codex-utils-absolute-path = { workspace = true }
+ codex-utils-path-uri = { workspace = true }
+ include_dir = { workspace = true }
+ serde = { workspace = true, features = ["derive"] }
+-serde_norway = { workspace = true }
++serde-saphyr = { workspace = true }
+ shlex = { workspace = true }
+ thiserror = { workspace = true }
+ tracing = { workspace = true }
+diff --git a/codex-rs/skills/src/lib.rs b/codex-rs/skills/src/lib.rs
+index 7ac553c..45f47c2 100644
+--- a/codex-rs/skills/src/lib.rs
++++ b/codex-rs/skills/src/lib.rs
+@@ -7,6 +7,7 @@ mod model;
+ mod name_counts;
+ mod parser;
+ mod selection;
++mod yaml;
+ 
+ pub use interface::SkillInterfaceAssetPolicy;
+ pub use interface::SkillInterfaceFile;
+@@ -45,6 +46,9 @@ pub use parser::SkillParseError;
+ pub use parser::parse_skill_frontmatter_metadata;
+ pub use selection::ExplicitSkillLookup;
+ pub use selection::collect_explicit_skill_mentions;
++pub use yaml::YamlError;
++pub use yaml::from_yaml_slice;
++pub use yaml::from_yaml_str;
+ 
+ use codex_utils_absolute_path::AbsolutePathBuf;
+ use include_dir::Dir;
+diff --git a/codex-rs/skills/src/metadata.rs b/codex-rs/skills/src/metadata.rs
+index d5e8a2d..2eddcde 100644
+--- a/codex-rs/skills/src/metadata.rs
++++ b/codex-rs/skills/src/metadata.rs
+@@ -7,6 +7,8 @@ use crate::SkillDependencies;
+ use crate::SkillInterfaceFile;
+ use crate::SkillPolicy;
+ use crate::SkillToolDependency;
++use crate::yaml::YamlError;
++use crate::yaml::from_yaml_str;
+ 
+ const MAX_DEPENDENCY_TYPE_LEN: usize = 64;
+ const MAX_DEPENDENCY_TRANSPORT_LEN: usize = 64;
+@@ -24,8 +26,8 @@ pub struct ParsedSkillMetadata {
+ }
+ 
+ /// Parses `agents/openai.yaml`, dropping invalid individual dependency declarations.
+-pub fn parse_skill_metadata(contents: &str) -> Result<ParsedSkillMetadata, serde_norway::Error> {
+-    let parsed: SkillMetadataFile = serde_norway::from_str(contents)?;
++pub fn parse_skill_metadata(contents: &str) -> Result<ParsedSkillMetadata, YamlError> {
++    let parsed: SkillMetadataFile = from_yaml_str(contents)?;
+     Ok(ParsedSkillMetadata {
+         interface: parsed.interface,
+         dependencies: resolve_dependencies(parsed.dependencies),
+diff --git a/codex-rs/skills/src/parser.rs b/codex-rs/skills/src/parser.rs
+index 82953db..5d06c8a 100644
+--- a/codex-rs/skills/src/parser.rs
++++ b/codex-rs/skills/src/parser.rs
+@@ -1,6 +1,10 @@
+ use serde::Deserialize;
++use serde::de::IgnoredAny;
+ use thiserror::Error;
+ 
++use crate::yaml::YamlError;
++use crate::yaml::from_yaml_str;
++
+ const MAX_NAME_LEN: usize = 64;
+ 
+ #[derive(Debug, Deserialize)]
+@@ -33,7 +37,7 @@ pub enum SkillParseError {
+     #[error("missing YAML frontmatter delimited by ---")]
+     MissingFrontmatter,
+     #[error("invalid YAML: {0}")]
+-    InvalidYaml(#[source] serde_norway::Error),
++    InvalidYaml(#[source] YamlError),
+     #[error("missing field `{0}`")]
+     MissingField(&'static str),
+     #[error("invalid {field}: {reason}")]
+@@ -47,14 +51,14 @@ pub fn parse_skill_frontmatter_metadata(
+ ) -> Result<ParsedSkillFrontmatter, SkillParseError> {
+     let frontmatter = extract_frontmatter(contents).ok_or(SkillParseError::MissingFrontmatter)?;
+ 
+-    let parsed: SkillFrontmatter = match serde_norway::from_str(&frontmatter) {
++    let parsed: SkillFrontmatter = match from_yaml_str(&frontmatter) {
+         Ok(parsed) => Ok(parsed),
+         Err(original_error) => match repair_frontmatter_scalar_fields(&frontmatter) {
+             // Some third-party skills use prose like `description: Build for AWS: ECS`
+             // or `argument-hint: <duration: e.g. 7d>`. Keep the repair line-oriented
+             // so unrelated invalid YAML still surfaces.
+             Some(repaired_frontmatter) => {
+-                serde_norway::from_str(&repaired_frontmatter).map_err(|_| original_error)
++                from_yaml_str(&repaired_frontmatter).map_err(|_| original_error)
+             }
+             None => Err(original_error),
+         },
+@@ -165,7 +169,7 @@ fn repair_frontmatter_scalar_fields(frontmatter: &str) -> Option<String> {
+             }
+         }
+         let invalid_flow_like_scalar = matches!(first_char, '[' | '{' | '@' | '`')
+-            && serde_norway::from_str::<serde_norway::Value>(scalar).is_err();
++            && from_yaml_str::<IgnoredAny>(scalar).is_err();
+         if !has_colon_separator && !invalid_flow_like_scalar {
+             repaired_lines.push(line.to_string());
+             continue;
+diff --git a/codex-rs/skills/src/yaml.rs b/codex-rs/skills/src/yaml.rs
+new file mode 100644
+index 0000000..2a6128b
+--- /dev/null
++++ b/codex-rs/skills/src/yaml.rs
+@@ -0,0 +1,31 @@
++//! Reads YAML with the YAML 1.2 rules that codex's skill, plugin and agent files were written against.
++
++use serde::Deserialize;
++
++/// Error produced while reading YAML.
++pub type YamlError = serde_saphyr::Error;
++
++/// Accepts only `true` and `false` as booleans and keeps numbers spelled with leading zeros or underscores as
++/// strings, as serde_yaml did, and reports errors without source snippets.
++fn options() -> serde_saphyr::Options {
++    serde_saphyr::options! {
++        strict_booleans: true,
++        leading_zero_numbers_as_strings: true,
++        underscored_numbers_as_strings: true,
++        with_snippet: false,
++    }
++}
++
++/// Deserializes one YAML document from a string.
++pub fn from_yaml_str<'de, T: Deserialize<'de>>(input: &'de str) -> Result<T, YamlError> {
++    serde_saphyr::from_str_with_options(input, options())
++}
++
++/// Deserializes one YAML document from UTF-8 bytes.
++pub fn from_yaml_slice<'de, T: Deserialize<'de>>(input: &'de [u8]) -> Result<T, YamlError> {
++    serde_saphyr::from_slice_with_options(input, options())
++}
++
++#[cfg(test)]
++#[path = "yaml_tests.rs"]
++mod tests;
+diff --git a/codex-rs/skills/src/yaml_tests.rs b/codex-rs/skills/src/yaml_tests.rs
+new file mode 100644
+index 0000000..c7f79cc
+--- /dev/null
++++ b/codex-rs/skills/src/yaml_tests.rs
+@@ -0,0 +1,47 @@
++use std::collections::BTreeMap;
++
++use pretty_assertions::assert_eq;
++use serde::Deserialize;
++
++use super::from_yaml_slice;
++use super::from_yaml_str;
++
++/// A scalar whose type comes from YAML's own inference, as in an untyped frontmatter value.
++#[derive(Debug, Deserialize, PartialEq)]
++#[serde(untagged)]
++enum Scalar {
++    Bool(bool),
++    Integer(i64),
++    String(String),
++}
++
++#[derive(Debug, Deserialize)]
++struct Flag {
++    enabled: bool,
++}
++
++#[test]
++fn untyped_scalars_follow_yaml_1_2() {
++    let parsed: BTreeMap<String, Scalar> =
++        from_yaml_str("on: yes\nflag: true\nmode: 0755\ncount: 1_000\nlimit: 42\n")
++            .expect("valid YAML");
++    let expected = BTreeMap::from([
++        ("count".to_string(), Scalar::String("1_000".to_string())),
++        ("flag".to_string(), Scalar::Bool(true)),
++        ("limit".to_string(), Scalar::Integer(42)),
++        ("mode".to_string(), Scalar::String("0755".to_string())),
++        ("on".to_string(), Scalar::String("yes".to_string())),
++    ]);
++    assert_eq!(parsed, expected);
++}
++
++#[test]
++fn booleans_accept_only_true_and_false() {
++    assert_eq!(
++        from_yaml_slice::<Flag>(b"enabled: true\n")
++            .ok()
++            .map(|flag| flag.enabled),
++        Some(true)
++    );
++    assert!(from_yaml_slice::<Flag>(b"enabled: yes\n").is_err());
++}
+-- 
+2.43.0
+
