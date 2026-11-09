@@ -1,4 +1,4 @@
-From d61b237bdc7322649f54e8d92eb151c0d5cd8773 Mon Sep 17 00:00:00 2001
+From db245f4644d5a1663901fe1cccbf8c6ac6a626e6 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 20:08:26 -0500
 Subject: [PATCH] Replace the deprecated serde_yaml with serde_norway

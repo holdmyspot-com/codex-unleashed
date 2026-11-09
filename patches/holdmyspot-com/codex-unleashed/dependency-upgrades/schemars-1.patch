@@ -1,4 +1,4 @@
-From 880b2dbf6a253b056bfa1175c4c2c1d85f02d5c4 Mon Sep 17 00:00:00 2001
+From e4c0bd44e1e5c3730f2cdf03851a86cee7584e7e Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:20:01 -0500
 Subject: [PATCH] WIP: migrate to schemars 1
@@ -95,10 +95,10 @@ index b0102ec..8b3c67e 100644
              for item in items {
                  filter_json(item);
 diff --git a/codex-rs/app-server-protocol/src/export_user_verification_tests.rs b/codex-rs/app-server-protocol/src/export_user_verification_tests.rs
-index 4a5d2ef..52e6dcf 100644
+index 78e4554..f084e66 100644
 --- a/codex-rs/app-server-protocol/src/export_user_verification_tests.rs
 +++ b/codex-rs/app-server-protocol/src/export_user_verification_tests.rs
-@@ -23,14 +23,18 @@ fn verification_mode_is_removed_from_flattened_typescript_only_for_stable_export
+@@ -24,14 +24,18 @@ fn verification_mode_is_removed_from_flattened_typescript_only_for_stable_export
  
  #[test]
  fn verification_mode_is_removed_from_inline_json_without_changing_other_modes() -> Result<()> {

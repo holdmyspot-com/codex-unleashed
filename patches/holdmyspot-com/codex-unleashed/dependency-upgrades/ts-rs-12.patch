@@ -1,4 +1,4 @@
-From a95f84e5cbf07699408fb14476d34843c1249fa8 Mon Sep 17 00:00:00 2001
+From 89f214705bb16170de0fdbdf51f7159dc15fead8 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:14:30 -0500
 Subject: [PATCH] WIP: migrate to ts-rs 12
@@ -76,10 +76,10 @@ index 441e9eb..a1d52d7 100644
              command_execution_request_approval_ts.contains("additionalPermissions"),
              true
 diff --git a/codex-rs/app-server-protocol/src/export_user_verification_tests.rs b/codex-rs/app-server-protocol/src/export_user_verification_tests.rs
-index 52e6dcf..54c7296 100644
+index f084e66..47f8fba 100644
 --- a/codex-rs/app-server-protocol/src/export_user_verification_tests.rs
 +++ b/codex-rs/app-server-protocol/src/export_user_verification_tests.rs
-@@ -8,7 +8,8 @@ use pretty_assertions::assert_eq;
+@@ -9,7 +9,8 @@ use pretty_assertions::assert_eq;
  
  #[test]
  fn verification_mode_is_removed_from_flattened_typescript_only_for_stable_exports() -> Result<()> {

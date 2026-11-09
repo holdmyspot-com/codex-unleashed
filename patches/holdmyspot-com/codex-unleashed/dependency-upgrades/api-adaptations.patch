@@ -1,4 +1,4 @@
-From 1438c02f41d2105f7e8a73390df161984d87af91 Mon Sep 17 00:00:00 2001
+From b1c320f3b49532c9f65ae70e3a80f0ea567b8381 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:08:34 -0500
 Subject: [PATCH] WIP: adapt to rand 0.10, digest 0.11, p256 0.14, reqwest
@@ -15,6 +15,7 @@ AsyncFd::new for the unsafe AsyncFd::register, and ctor 1 requires every constru
  codex-rs/analytics/Cargo.toml                 |  1 +
  codex-rs/analytics/src/accepted_lines.rs      |  2 +-
  codex-rs/analytics/src/reducer.rs             |  6 +--
+ .../src/export_user_verification_tests.rs     |  1 +
  codex-rs/app-server-transport/Cargo.toml      |  1 +
  .../transport/remote_control/server_api.rs    |  2 +-
  .../src/transport/remote_control/websocket.rs |  2 +-
@@ -61,6 +62,9 @@ AsyncFd::new for the unsafe AsyncFd::register, and ctor 1 requires every constru
  .../src/sessions/records_cla.rs               |  2 +-
  .../src/sessions/records_cla_tests.rs         |  5 +--
  .../src/sessions/records_cur.rs               |  2 +-
+ codex-rs/feedback/src/lib.rs                  |  2 +-
+ codex-rs/feedback/src/metadata_tests.rs       |  2 +-
+ codex-rs/feedback/src/report_upload.rs        |  2 +-
  codex-rs/hooks/Cargo.toml                     |  1 +
  .../hooks/src/engine/plugin_fingerprint.rs    |  2 +-
  codex-rs/hooks/src/engine/plugin_trust.rs     |  2 +-
@@ -69,6 +73,7 @@ AsyncFd::new for the unsafe AsyncFd::register, and ctor 1 requires every constru
  codex-rs/http-client/src/custom_ca.rs         |  4 +-
  codex-rs/http-client/src/outbound_proxy.rs    |  2 +-
  .../src/route_aware_tls_fallback_tests.rs     |  8 ++--
+ codex-rs/linux-sandbox/src/seccomp.rs         |  2 +-
  codex-rs/login/Cargo.toml                     |  1 +
  codex-rs/login/src/auth/storage.rs            |  2 +-
  codex-rs/login/src/oauth/authorization.rs     |  2 +-
@@ -96,19 +101,24 @@ AsyncFd::new for the unsafe AsyncFd::register, and ctor 1 requires every constru
  .../src/oauth/enterprise_generation.rs        |  2 +-
  .../rmcp-client/src/oauth/refresh_lock.rs     |  2 +-
  codex-rs/rollout-trace/Cargo.toml             |  1 +
- .../src/reducer/conversation/normalize.rs     |  2 +-
+ .../src/reducer/conversation/normalize.rs     |  6 +--
  .../runtime-agent-instance/src/runtime.rs     |  6 +--
  codex-rs/secrets/Cargo.toml                   |  1 +
  codex-rs/secrets/src/lib.rs                   |  6 +--
  codex-rs/secrets/src/local.rs                 |  6 +--
  .../command_safety/powershell_tree_sitter.rs  |  5 ++-
  .../src/shell_snapshot_literals.rs            |  8 ++--
+ .../src/local/thread_history/search.rs        | 11 ++++-
  codex-rs/tui/Cargo.toml                       |  1 +
  .../tui/src/bottom_pane/effort_ignition.rs    |  2 +-
  codex-rs/tui/src/inline_visualization.rs      |  2 +-
+ codex-rs/tui/src/markdown.rs                  |  4 +-
+ codex-rs/tui/src/markdown_render.rs           | 19 ++++++--
+ codex-rs/tui/src/markdown_render/math.rs      |  2 +-
  codex-rs/tui/src/pets/model.rs                |  4 +-
  codex-rs/tui/src/status/remote_connection.rs  |  5 ++-
  codex-rs/tui/src/tooltips.rs                  |  2 +-
+ codex-rs/tui/src/transcript_view/copy_mode.rs |  8 ++--
  .../user-verification/src/credential_tests.rs |  2 +-
  codex-rs/utils/pty/src/spawn_helper_tests.rs  |  7 ++-
  codex-rs/utils/pty/src/unix_io.rs             |  8 +++-
@@ -129,7 +139,7 @@ AsyncFd::new for the unsafe AsyncFd::register, and ctor 1 requires every constru
  .../windows-sandbox-rs/src/no_reparse_dir.rs  |  4 +-
  .../src/setup_provisioning/sandbox_users.rs   |  5 +--
  .../src/uninstall_windows/principals_tests.rs |  6 +--
- 120 files changed, 293 insertions(+), 207 deletions(-)
+ 130 files changed, 331 insertions(+), 226 deletions(-)
 
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
 index a5c3f23..71b6546 100644
@@ -408,6 +418,18 @@ index d0707e3..58044ce 100644
  }
  
  /// Returns a normalized path for skill ID construction.
+diff --git a/codex-rs/app-server-protocol/src/export_user_verification_tests.rs b/codex-rs/app-server-protocol/src/export_user_verification_tests.rs
+index 4a5d2ef..78e4554 100644
+--- a/codex-rs/app-server-protocol/src/export_user_verification_tests.rs
++++ b/codex-rs/app-server-protocol/src/export_user_verification_tests.rs
+@@ -3,6 +3,7 @@
+ use super::*;
+ use crate::McpServerElicitationRequestParams;
+ use crate::TS;
++use crate::export::string_literal;
+ use anyhow::Result;
+ use pretty_assertions::assert_eq;
+ 
 diff --git a/codex-rs/app-server-transport/Cargo.toml b/codex-rs/app-server-transport/Cargo.toml
 index 9596758..954ff5c 100644
 --- a/codex-rs/app-server-transport/Cargo.toml
@@ -1074,6 +1096,45 @@ index 04ecf73..2442fc9 100644
          attributed_mcp_server_ids: BTreeSet::new(),
      })
  }
+diff --git a/codex-rs/feedback/src/lib.rs b/codex-rs/feedback/src/lib.rs
+index 57a57c5..185bcd0 100644
+--- a/codex-rs/feedback/src/lib.rs
++++ b/codex-rs/feedback/src/lib.rs
+@@ -712,7 +712,7 @@ impl FeedbackSnapshot {
+             options.session_source.as_ref(),
+         );
+         let mut envelope = Envelope::new();
+-        envelope.add_item(EnvelopeItem::Event(event));
++        envelope.add_item(EnvelopeItem::Event(Box::new(event)));
+         let (event_body, event_bytes) =
+             upload::encode_envelope(&envelope).context("failed to serialize feedback event")?;
+         anyhow::ensure!(
+diff --git a/codex-rs/feedback/src/metadata_tests.rs b/codex-rs/feedback/src/metadata_tests.rs
+index f214cca..8225440 100644
+--- a/codex-rs/feedback/src/metadata_tests.rs
++++ b/codex-rs/feedback/src/metadata_tests.rs
+@@ -70,7 +70,7 @@ fn dynamic_tags_survive_upload_alongside_static_fields() {
+     ]);
+     assert_eq!(event.tags, expected);
+     let mut envelope = Envelope::new();
+-    envelope.add_item(EnvelopeItem::Event(event));
++    envelope.add_item(EnvelopeItem::Event(Box::new(event)));
+     let (_, size) = crate::upload::encode_envelope(&envelope).unwrap();
+     assert!(size < crate::MAX_EVENT_BYTES);
+ }
+diff --git a/codex-rs/feedback/src/report_upload.rs b/codex-rs/feedback/src/report_upload.rs
+index 56f9ee5..bcefd9e 100644
+--- a/codex-rs/feedback/src/report_upload.rs
++++ b/codex-rs/feedback/src/report_upload.rs
+@@ -121,7 +121,7 @@ impl FeedbackSnapshot {
+         event.event_id =
+             Uuid::parse_str(report_id).map_err(|_| anyhow!("invalid feedback report ID"))?;
+         let mut envelope = Envelope::new();
+-        envelope.add_item(EnvelopeItem::Event(event));
++        envelope.add_item(EnvelopeItem::Event(Box::new(event)));
+         prepare_envelope(envelope, MAX_EVENT_BYTES)
+     }
+ }
 diff --git a/codex-rs/hooks/Cargo.toml b/codex-rs/hooks/Cargo.toml
 index d519e3b..a9497fc 100644
 --- a/codex-rs/hooks/Cargo.toml
@@ -1202,6 +1263,19 @@ index 8cdfae6..4bd9ed3 100644
              .no_proxy()
              .redirect(reqwest::redirect::Policy::none())
              .build()
+diff --git a/codex-rs/linux-sandbox/src/seccomp.rs b/codex-rs/linux-sandbox/src/seccomp.rs
+index 67cc724..afe1873 100644
+--- a/codex-rs/linux-sandbox/src/seccomp.rs
++++ b/codex-rs/linux-sandbox/src/seccomp.rs
+@@ -159,7 +159,7 @@ fn install_filesystem_landlock_rules_on_current_thread(
+         .create()?
+         .add_rules(landlock::path_beneath_rules(&["/"], access_ro))?
+         .add_rules(landlock::path_beneath_rules(&["/dev/null"], access_rw))?
+-        .set_no_new_privs(true);
++        .no_new_privs(true);
+ 
+     if !writable_roots.is_empty() {
+         ruleset = ruleset.add_rules(landlock::path_beneath_rules(&writable_roots, access_rw))?;
 diff --git a/codex-rs/login/Cargo.toml b/codex-rs/login/Cargo.toml
 index 50de4dc..dab660e 100644
 --- a/codex-rs/login/Cargo.toml
@@ -1646,15 +1720,22 @@ index 048026f..8302568 100644
  serde = { workspace = true, features = ["derive"] }
  serde_json = { workspace = true }
 diff --git a/codex-rs/rollout-trace/src/reducer/conversation/normalize.rs b/codex-rs/rollout-trace/src/reducer/conversation/normalize.rs
-index 6171dd8..b5c923f 100644
+index 6171dd8..f9c4f0f 100644
 --- a/codex-rs/rollout-trace/src/reducer/conversation/normalize.rs
 +++ b/codex-rs/rollout-trace/src/reducer/conversation/normalize.rs
-@@ -428,7 +428,7 @@ fn content_parts(
+@@ -423,12 +423,12 @@ fn content_parts(
+                 // content without copying large image bodies into the reduced graph.
+                 let mut canonical = part.clone();
+                 canonical.sort_all_objects();
+-                let mut digest = Sha256::new();
+-                serde_json::to_writer(&mut digest, &canonical)?;
++                // digest 0.11 hashers no longer implement `io::Write`.
++                let digest = Sha256::digest(serde_json::to_vec(&canonical)?);
                  parts.push(ConversationPart::PayloadRef {
                      label: other.unwrap_or("content").to_string(),
                      raw_payload_id: raw_payload.raw_payload_id.clone(),
 -                    content_sha256: Some(format!("{:x}", digest.finalize())),
-+                    content_sha256: Some(hex::encode(digest.finalize())),
++                    content_sha256: Some(hex::encode(digest)),
                  });
              }
          }
@@ -1791,6 +1872,41 @@ index 6985a34..1a6ca14 100644
                      );
                  } else if !literal.is_empty() {
                      words.push(String::from_utf8_lossy(&literal).into_owned());
+diff --git a/codex-rs/thread-store/src/local/thread_history/search.rs b/codex-rs/thread-store/src/local/thread_history/search.rs
+index e389644..5783fe7 100644
+--- a/codex-rs/thread-store/src/local/thread_history/search.rs
++++ b/codex-rs/thread-store/src/local/thread_history/search.rs
+@@ -364,13 +364,15 @@ fn markdown_to_search_text(markdown: &str) -> String {
+         match event {
+             Event::Text(value)
+             | Event::Code(value)
++            | Event::InlineMath(value)
++            | Event::DisplayMath(value)
+             | Event::Html(value)
+             | Event::InlineHtml(value) => text.push_str(&value),
+             Event::SoftBreak | Event::HardBreak | Event::Rule => text.push(' '),
+             Event::End(
+                 TagEnd::Paragraph
+                 | TagEnd::Heading(_)
+-                | TagEnd::BlockQuote
++                | TagEnd::BlockQuote(_)
+                 | TagEnd::CodeBlock
+                 | TagEnd::List(_)
+                 | TagEnd::Item
+@@ -388,7 +390,12 @@ fn markdown_to_search_text(markdown: &str) -> String {
+                 | TagEnd::HtmlBlock
+                 | TagEnd::FootnoteDefinition
+                 | TagEnd::Image
+-                | TagEnd::MetadataBlock(_),
++                | TagEnd::MetadataBlock(_)
++                | TagEnd::DefinitionList
++                | TagEnd::DefinitionListTitle
++                | TagEnd::DefinitionListDefinition
++                | TagEnd::Superscript
++                | TagEnd::Subscript,
+             )
+             | Event::FootnoteReference(_)
+             | Event::TaskListMarker(_) => {}
 diff --git a/codex-rs/tui/Cargo.toml b/codex-rs/tui/Cargo.toml
 index 044b395..a0960c1 100644
 --- a/codex-rs/tui/Cargo.toml
@@ -1829,6 +1945,97 @@ index 143ec23..69a5467 100644
  use std::borrow::Cow;
  use std::collections::HashMap;
  use std::fs;
+diff --git a/codex-rs/tui/src/markdown.rs b/codex-rs/tui/src/markdown.rs
+index e5e3582..200247a 100644
+--- a/codex-rs/tui/src/markdown.rs
++++ b/codex-rs/tui/src/markdown.rs
+@@ -209,13 +209,13 @@ pub(crate) fn extract_copy_targets(markdown_source: &str) -> Vec<CopyTarget> {
+ 
+     for (event, range) in pulldown_cmark::Parser::new(markdown_source).into_offset_iter() {
+         match event {
+-            Event::Start(Tag::BlockQuote) => {
++            Event::Start(Tag::BlockQuote(_)) => {
+                 if quote_depth == 0 {
+                     quote = Some((range, targets.len(), false));
+                 }
+                 quote_depth += 1;
+             }
+-            Event::End(TagEnd::BlockQuote) => {
++            Event::End(TagEnd::BlockQuote(_)) => {
+                 quote_depth = quote_depth.saturating_sub(1);
+                 if quote_depth == 0 {
+                     quote = None;
+diff --git a/codex-rs/tui/src/markdown_render.rs b/codex-rs/tui/src/markdown_render.rs
+index 89e2f2e..16b5807 100644
+--- a/codex-rs/tui/src/markdown_render.rs
++++ b/codex-rs/tui/src/markdown_render.rs
+@@ -611,6 +611,7 @@ impl<'a, 'policy> Writer<'a, 'policy> {
+             }
+             Event::Html(html) => self.html(html, /*inline*/ false),
+             Event::InlineHtml(html) => self.html(html, /*inline*/ true),
++            Event::InlineMath(text) | Event::DisplayMath(text) => self.text(text),
+             Event::FootnoteReference(_) => {}
+             Event::TaskListMarker(checked) => {
+                 // The parser can emit a recovered empty item's marker in a later paragraph.
+@@ -652,7 +653,7 @@ impl<'a, 'policy> Writer<'a, 'policy> {
+         match tag {
+             Tag::Paragraph => self.start_paragraph(),
+             Tag::Heading { level, .. } => self.start_heading(level),
+-            Tag::BlockQuote => {
++            Tag::BlockQuote(_) => {
+                 self.start_blockquote();
+                 let source = self.quote_sources.first().cloned().unwrap_or_else(|| {
+                     crate::markdown_copy::quote_content(&self.input[range]).into()
+@@ -726,7 +727,12 @@ impl<'a, 'policy> Writer<'a, 'policy> {
+             Tag::HtmlBlock
+             | Tag::FootnoteDefinition(_)
+             | Tag::Image { .. }
+-            | Tag::MetadataBlock(_) => {}
++            | Tag::MetadataBlock(_)
++            | Tag::DefinitionList
++            | Tag::DefinitionListTitle
++            | Tag::DefinitionListDefinition
++            | Tag::Superscript
++            | Tag::Subscript => {}
+         }
+     }
+ 
+@@ -742,7 +748,7 @@ impl<'a, 'policy> Writer<'a, 'policy> {
+                 self.end_paragraph();
+             }
+             TagEnd::Heading(_) => self.end_heading(),
+-            TagEnd::BlockQuote => {
++            TagEnd::BlockQuote(_) => {
+                 self.flush_current_line();
+                 self.end_blockquote();
+                 self.quote_sources.pop();
+@@ -778,7 +784,12 @@ impl<'a, 'policy> Writer<'a, 'policy> {
+             TagEnd::HtmlBlock
+             | TagEnd::FootnoteDefinition
+             | TagEnd::Image
+-            | TagEnd::MetadataBlock(_) => {}
++            | TagEnd::MetadataBlock(_)
++            | TagEnd::DefinitionList
++            | TagEnd::DefinitionListTitle
++            | TagEnd::DefinitionListDefinition
++            | TagEnd::Superscript
++            | TagEnd::Subscript => {}
+         }
+     }
+ 
+diff --git a/codex-rs/tui/src/markdown_render/math.rs b/codex-rs/tui/src/markdown_render/math.rs
+index d856603..8ec43a5 100644
+--- a/codex-rs/tui/src/markdown_render/math.rs
++++ b/codex-rs/tui/src/markdown_render/math.rs
+@@ -43,7 +43,7 @@ impl<'a> MathMarkdown<'a> {
+             .collect();
+         let mut containers = Vec::new();
+         protected.extend(parser.into_offset_iter().filter_map(|(event, range)| {
+-            if matches!(event, Event::Start(Tag::List(_) | Tag::BlockQuote)) {
++            if matches!(event, Event::Start(Tag::List(_) | Tag::BlockQuote(_))) {
+                 containers.push(range.clone());
+             }
+             matches!(
 diff --git a/codex-rs/tui/src/pets/model.rs b/codex-rs/tui/src/pets/model.rs
 index aa02731..e90c080 100644
 --- a/codex-rs/tui/src/pets/model.rs
@@ -1874,6 +2081,44 @@ index 4319a09..62b6ead 100644
  use rand::seq::IteratorRandom;
  use std::path::Path;
  
+diff --git a/codex-rs/tui/src/transcript_view/copy_mode.rs b/codex-rs/tui/src/transcript_view/copy_mode.rs
+index 6cbc2f1..a6b0c80 100644
+--- a/codex-rs/tui/src/transcript_view/copy_mode.rs
++++ b/codex-rs/tui/src/transcript_view/copy_mode.rs
+@@ -147,13 +147,13 @@ impl TranscriptView {
+                 let mut quotes = Vec::new();
+                 for (event, span) in pulldown_cmark::Parser::new(source).into_offset_iter() {
+                     match event {
+-                        pulldown_cmark::Event::Start(pulldown_cmark::Tag::BlockQuote) => {
++                        pulldown_cmark::Event::Start(pulldown_cmark::Tag::BlockQuote(_)) => {
+                             if depth == 0 {
+                                 quotes.push(crate::markdown_copy::quote_content(&source[span]));
+                             }
+                             depth += 1;
+                         }
+-                        pulldown_cmark::Event::End(pulldown_cmark::TagEnd::BlockQuote) => {
++                        pulldown_cmark::Event::End(pulldown_cmark::TagEnd::BlockQuote(_)) => {
+                             depth -= 1
+                         }
+                         _ => {}
+@@ -343,7 +343,7 @@ fn user_ranges(text: &str, message: &str) -> Vec<(Range<usize>, &'static str, Op
+     let mut code: Option<(Range<usize>, String)> = None;
+     for (event, range) in pulldown_cmark::Parser::new(text).into_offset_iter() {
+         match event {
+-            Event::Start(Tag::BlockQuote) => {
++            Event::Start(Tag::BlockQuote(_)) => {
+                 if depth == 0 {
+                     let source = message
+                         .is_empty()
+@@ -352,7 +352,7 @@ fn user_ranges(text: &str, message: &str) -> Vec<(Range<usize>, &'static str, Op
+                 }
+                 depth += 1;
+             }
+-            Event::End(TagEnd::BlockQuote) => depth -= 1,
++            Event::End(TagEnd::BlockQuote(_)) => depth -= 1,
+             Event::Start(Tag::CodeBlock(_)) => {
+                 code = Some((range.start..range.start, String::new()))
+             }
 diff --git a/codex-rs/user-verification/src/credential_tests.rs b/codex-rs/user-verification/src/credential_tests.rs
 index 4aa3326..2126046 100644
 --- a/codex-rs/user-verification/src/credential_tests.rs
