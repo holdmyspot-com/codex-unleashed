@@ -1,4 +1,4 @@
-From 51c0ff6f3523331135faa6c7c371d3e57e791c66 Mon Sep 17 00:00:00 2001
+From 8eb63714c721ac09df8b1de8d329f411e9ecab45 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:07:55 -0500
 Subject: [PATCH] Build with Rust 1.99.1 so macOS links pass under fatal linker
@@ -28,7 +28,9 @@ Bazel toolchain, setup-windows.ps1 and every workflow's toolchain action.
  MODULE.bazel.lock                             | 203 +++++++++---------
  codex-rs/Cargo.lock                           |   6 +-
  codex-rs/Cargo.toml                           |   2 +-
+ codex-rs/agent-identity/src/lib.rs            |   1 -
  .../src/session_runtime/mod.rs                |   2 +-
+ .../src/connection_manager/startup.rs         |   4 +-
  .../core/src/tools/executed_tool_calls.rs     |   2 +-
  .../core/tests/common/apps_test_server.rs     |   2 +-
  codex-rs/diagnostics/src/lib.rs               |   2 +-
@@ -44,7 +46,7 @@ Bazel toolchain, setup-windows.ps1 and every workflow's toolchain action.
  codex-rs/utils/path-uri/src/lib.rs            |   6 +-
  .../stream-parser/src/inline_hidden_tag.rs    |   2 +-
  codex-rs/websocket-auth/src/lib.rs            |   6 +-
- 30 files changed, 176 insertions(+), 175 deletions(-)
+ 32 files changed, 179 insertions(+), 177 deletions(-)
 
 diff --git a/.github/actions/build-bazel-package-binaries/action.yml b/.github/actions/build-bazel-package-binaries/action.yml
 index dd918ba..ae8660b 100644
@@ -552,6 +554,18 @@ index e37328c..50872ec 100644
  linker_messages = "deny"
  
  [workspace.lints.clippy]
+diff --git a/codex-rs/agent-identity/src/lib.rs b/codex-rs/agent-identity/src/lib.rs
+index 14a9e35..30f2b8a 100644
+--- a/codex-rs/agent-identity/src/lib.rs
++++ b/codex-rs/agent-identity/src/lib.rs
+@@ -564,7 +564,6 @@ fn signing_key_from_private_key_pkcs8_base64(private_key_pkcs8_base64: &str) ->
+ 
+ #[cfg(test)]
+ mod tests {
+-    use base64::Engine as _;
+     use ed25519_dalek::Signature;
+     use ed25519_dalek::Verifier as _;
+     use jsonwebtoken::EncodingKey;
 diff --git a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
 index 7b46c37..c500b81 100644
 --- a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
@@ -565,6 +579,27 @@ index 7b46c37..c500b81 100644
                  next_cell_id.checked_add(1)
              })
              .map(|cell_id| CellId::new(cell_id.to_string()))
+diff --git a/codex-rs/codex-mcp/src/connection_manager/startup.rs b/codex-rs/codex-mcp/src/connection_manager/startup.rs
+index 0f019d2..56be80d 100644
+--- a/codex-rs/codex-mcp/src/connection_manager/startup.rs
++++ b/codex-rs/codex-mcp/src/connection_manager/startup.rs
+@@ -42,13 +42,15 @@ pub(super) async fn emit_update(
+     submit_id: &str,
+     tx_event: &Sender<Event>,
+     update: McpStartupUpdateEvent,
+-) -> Result<(), async_channel::SendError<Event>> {
++) -> Result<(), Box<async_channel::SendError<Event>>> {
++    // The rejected event is returned inside the error, so box it to keep the result small.
+     tx_event
+         .send(Event {
+             id: submit_id.to_string(),
+             msg: EventMsg::McpStartupUpdate(update),
+         })
+         .await
++        .map_err(Box::new)
+ }
+ 
+ pub(super) fn mcp_startup_failure_reason(
 diff --git a/codex-rs/core/src/tools/executed_tool_calls.rs b/codex-rs/core/src/tools/executed_tool_calls.rs
 index 853c88a..26c1eb7 100644
 --- a/codex-rs/core/src/tools/executed_tool_calls.rs

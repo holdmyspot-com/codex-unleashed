@@ -1,4 +1,4 @@
-From e6001c4de4fb802bdc16bf3c2b9f6ad0e66c0a8a Mon Sep 17 00:00:00 2001
+From e90fad7ca000332e9d6f7eef167bc2b3e417024f Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:08:34 -0500
 Subject: [PATCH] WIP: adapt to rand 0.10, digest 0.11, p256 0.14, reqwest
@@ -346,7 +346,7 @@ index 4da4e2c..4a28e34 100644
  http = "1.3.1"
  httpdate = "1.0.3"
 diff --git a/codex-rs/agent-identity/src/lib.rs b/codex-rs/agent-identity/src/lib.rs
-index 14a9e35..9b4cbc3 100644
+index 30f2b8a..46766b8 100644
 --- a/codex-rs/agent-identity/src/lib.rs
 +++ b/codex-rs/agent-identity/src/lib.rs
 @@ -27,8 +27,8 @@ use jsonwebtoken::Validation;

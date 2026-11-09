@@ -30,6 +30,8 @@ Rust 1.99 also adds lints that fail the workspace under patch 25 (platform lint 
 - Clippy's `question_mark`: one `if let … else { return None }` in `shell-command/src/bash.rs` becomes `?`.
 - Clippy's `needless_borrows_for_generic_args`: `and_then(&normalize_temp_path)` in `exec-server-protocol` passes the function by value.
 - rustc's `semicolon_in_expressions_from_non_local_macros`: three TUI functions that end in eyre's `bail!` end it with `;`, since the macro expands to a `return` statement (lint run `42559229185`).
+- Clippy's `result_large_err`: codex-mcp's `emit_update` returned the 632-byte `SendError<Event>`, which carries the rejected event, so the error is boxed (lint run `42565453466`).
+- rustc's `unused_imports`: an agent-identity test module re-imported `base64::Engine`, which `use super::*` already brings in (lint run `42565453466`).
 - Clippy's `double_must_use` fires on tonic's generated `ThreadConfigLoader` trait, because async-trait 0.1.89 adds `#[must_use]` to the boxed future it returns. async-trait 0.1.92 no longer adds it, so the lockfile moves that transitive dependency, and only that one, to 0.1.92.
 
 ### Reproduction

@@ -1,4 +1,4 @@
-From 99d5202ea8f1ad64a506337d6c24eb044fb58aac Mon Sep 17 00:00:00 2001
+From ed10675b6ed801261c8d7f2f5c8c4a304ba47573 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:12:47 -0500
 Subject: [PATCH] WIP: refresh direct dependencies under Rust 1.99.1

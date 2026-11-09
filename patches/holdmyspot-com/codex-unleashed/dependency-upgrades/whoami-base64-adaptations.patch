@@ -1,4 +1,4 @@
-From ccf3ebabfa4fd77e55cbf05ab3d3b3d350a36414 Mon Sep 17 00:00:00 2001
+From 74dea2e0ca3cc2caf2b3bbf64a48d9667784ee2c Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:56:48 -0500
 Subject: [PATCH] WIP: adapt to whoami 2 and base64 0.23
@@ -6,23 +6,10 @@ Subject: [PATCH] WIP: adapt to whoami 2 and base64 0.23
 whoami 2 returns names as Results, and base64 0.23 leaves the test
 module's Engine import unused.
 ---
- codex-rs/agent-identity/src/lib.rs                 | 1 -
  codex-rs/core/src/realtime_prompt.rs               | 2 ++
  codex-rs/core/tests/suite/realtime_conversation.rs | 2 ++
- 3 files changed, 4 insertions(+), 1 deletion(-)
+ 2 files changed, 4 insertions(+)
 
-diff --git a/codex-rs/agent-identity/src/lib.rs b/codex-rs/agent-identity/src/lib.rs
-index 9b4cbc3..46766b8 100644
---- a/codex-rs/agent-identity/src/lib.rs
-+++ b/codex-rs/agent-identity/src/lib.rs
-@@ -564,7 +564,6 @@ fn signing_key_from_private_key_pkcs8_base64(private_key_pkcs8_base64: &str) ->
- 
- #[cfg(test)]
- mod tests {
--    use base64::Engine as _;
-     use ed25519_dalek::Signature;
-     use ed25519_dalek::Verifier as _;
-     use jsonwebtoken::EncodingKey;
 diff --git a/codex-rs/core/src/realtime_prompt.rs b/codex-rs/core/src/realtime_prompt.rs
 index 689c412..4a79980 100644
 --- a/codex-rs/core/src/realtime_prompt.rs
