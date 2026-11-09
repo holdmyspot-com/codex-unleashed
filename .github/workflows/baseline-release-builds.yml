@@ -390,6 +390,13 @@ jobs:
         if: runner.os == 'Windows'
         run: echo 'GIT_REDIRECT_STDIN=NUL' >> "$GITHUB_ENV"
 
+      # Rust links for its default minimum macOS, but C and C++ build scripts compile for the runner's SDK unless told
+      # otherwise, and the linker's warning about the mismatch is fatal under the workspace lints. Upstream's Bazel
+      # release sets the same minimums.
+      - name: Build C dependencies for Rust's minimum macOS version
+        if: runner.os == 'macOS'
+        run: rustc --print deployment-target --target "$TARGET" >> "$GITHUB_ENV"
+
       - name: Set up the cache helper's native JDK
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
@@ -456,7 +463,7 @@ jobs:
             cargo --version
             cat "$evidence/build-command-inputs.sha256"
             printf '%s\n' "$TARGET" "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}" "${ImageVersion:-}"
-            env | LC_ALL=C sort | grep -E '^(RUSTC|RUSTC_WRAPPER|RUSTFLAGS|RUSTDOCFLAGS|RUSTY_V8_[A-Z_]+|CARGO_INCREMENTAL|CARGO_BUILD_TARGET|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CARGO_PROFILE_RELEASE_[A-Z_]+|CARGO_TARGET_[A-Z0-9_]+_LINKER|CC(_[A-Za-z0-9_]+)?|CXX(_[A-Za-z0-9_]+)?|AR(_[A-Za-z0-9_]+)?|TARGET_CC|TARGET_CXX|CFLAGS(_[A-Za-z0-9_]+)?|CXXFLAGS(_[A-Za-z0-9_]+)?|CMAKE_[A-Z_]+|([A-Z0-9_]+_)?OPENSSL_[A-Z_]+|AWS_LC_SYS_NO_JITTER_ENTROPY[A-Za-z0-9_]*|LIBSQLITE3_FLAGS|PKG_CONFIG_[A-Za-z0-9_]+)='
+            env | LC_ALL=C sort | grep -E '^(RUSTC|RUSTC_WRAPPER|RUSTFLAGS|RUSTDOCFLAGS|RUSTY_V8_[A-Z_]+|CARGO_INCREMENTAL|CARGO_BUILD_TARGET|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CARGO_PROFILE_RELEASE_[A-Z_]+|CARGO_TARGET_[A-Z0-9_]+_LINKER|CC(_[A-Za-z0-9_]+)?|CXX(_[A-Za-z0-9_]+)?|AR(_[A-Za-z0-9_]+)?|TARGET_CC|TARGET_CXX|CFLAGS(_[A-Za-z0-9_]+)?|CXXFLAGS(_[A-Za-z0-9_]+)?|CMAKE_[A-Z_]+|([A-Z0-9_]+_)?OPENSSL_[A-Z_]+|AWS_LC_SYS_NO_JITTER_ENTROPY[A-Za-z0-9_]*|LIBSQLITE3_FLAGS|MACOSX_DEPLOYMENT_TARGET|PKG_CONFIG_[A-Za-z0-9_]+)='
             sha256sum codex-rs/Cargo.lock codex-rs/rust-toolchain.toml
           } > "$evidence/compiler-cache-inputs.txt"
           cat "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256" "$evidence/cache-helper-inputs.sha256" "$evidence/compiler-cache-inputs.txt" "$evidence/applied-patches.txt" > "$evidence/compiled-cache-inputs.txt"
