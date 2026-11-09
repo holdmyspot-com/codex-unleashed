@@ -226,12 +226,7 @@ The old `native-and-rust-warning-policy.patch` supplies the `build.warnings`, ru
 
 ## CP7 progress
 
-Provisional patches in `patches/holdmyspot-com/codex-unleashed/dependency-upgrades/` (2026-11-09):
-- `compatible-updates.patch`: the newest semver-compatible release of each direct dependency that supports Rust 1.95 (`cargo update -p` per direct package, which changes 360 lockfile entries where a full `cargo update` changed 614), the tonic annotation version and the regenerated `MODULE.bazel.lock` (run `42548404887`).
-- `breaking-upgrades.patch`: direct requirements raised to their latest major releases (WIP).
-- `serde-norway.patch`: replaces the deprecated `serde_yaml`; removes the RUSTSEC-2024-0449 exception.
-- `dependency-graph-fixes.patch`, `api-adaptations.patch`: WIP adaptations (rand, digest, hmac, p256, reqwest, tokio `AsyncFd::register`, ctor 1).
-- After patch 28, a refresh under Rust 1.99.1 moved rand, reqwest, sentry, serde_with, sha2 and syn to releases that need a newer Rust than 1.95. Further WIP adaptations: tree-sitter 0.27, opentelemetry_sdk 0.33, ed25519-dalek 3, webrtc 0.21, landlock, sentry 0.49, pulldown-cmark 0.13, hmac 0.13. schemars 1 identifies schemas by type, not name, so it exposed two `ImageGenerationItem` types that 0.8 merged in the rollout schema; the hosted one is renamed `HostedImageGenerationItem` in schemas.
+Patches 29–33 in `patches/holdmyspot-com/codex-unleashed/dependency-upgrades/` (2026-11-09; the 30 WIP patches squashed in their original order, final tree unchanged): `compatible-updates.patch`, `latest-releases.patch`, `regenerated-outputs.patch`, `serde-saphyr.patch` and `release-adaptations.patch`. Their [README](patches/holdmyspot-com/codex-unleashed/dependency-upgrades/README.md) gives each patch's content, the held-back dependencies (including the `unicode-width = "=0.2.2"` pin that ratatui-core 0.1.2 needs), schemars 1's cosmetic web.run schema changes and the audit status. Reordering the WIP patches by topic conflicts in `Cargo.lock`, so serde_norway stays in `latest-releases.patch` and `serde-saphyr.patch` replaces it.
 
 Held back, each for a compatibility constraint:
 | Dependency | Kept at | Constraint |

@@ -1,15 +1,9 @@
-From 7f6e9b655dc412c1542ab8dea53ef4f386274b68 Mon Sep 17 00:00:00 2001
+From 0b5068397db8d87dbdcda8560304fa439a24d4e1 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 9 Nov 2026 10:55:13 -0500
-Subject: [PATCH] WIP: replace serde_norway with serde-saphyr
+Subject: [PATCH] Read YAML with serde-saphyr
 
-serde_norway 0.9.42, like the serde_yaml it forks, fails to compile once Cargo's lint cap is lifted: its libyaml
-binding creates nine references through raw pointers (dangerous_implicit_autorefs). serde-saphyr is a pure-Rust
-reader that forbids unsafe code. codex only reads YAML, so codex-skills now provides from_yaml_str and
-from_yaml_slice, configured with the YAML 1.2 rules serde_yaml applied: only true and false are booleans, and
-numbers written with leading zeros or underscores stay strings. Untyped frontmatter becomes a serde_json::Value.
-
-MODULE.bazel.lock is from upstream's bazel-lock generator, platform lint workflow run 42649781450.
+serde_norway, the first serde_yaml replacement, carries the same nine dangerous_implicit_autorefs errors as serde_yaml. serde-saphyr is pure Rust and forbids unsafe code. Skills, core-plugins and external-agent-migration read YAML through one helper that keeps serde_yaml's YAML 1.2 rules: only true and false are booleans, and numbers such as 0755 or 1_000 stay strings.
 ---
  MODULE.bazel.lock                             |  7 +-
  codex-rs/Cargo.lock                           | 76 +++++++++++++------

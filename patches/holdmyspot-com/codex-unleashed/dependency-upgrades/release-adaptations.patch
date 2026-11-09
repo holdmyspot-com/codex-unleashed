@@ -1,0 +1,549 @@
+From b438effdbb0d841ce37f2dc1dc1e0d9acf580b51 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 9 Nov 2026 11:13:20 -0500
+Subject: [PATCH] Adapt tests and runtime behavior to the upgraded releases
+
+Fix what the upgraded releases change at run time or in test expectations: rtc 0.21's interceptor API, tokio-util's Bytes requirement, jsonwebtoken 11's crypto backend, pulldown-cmark 0.13's task list output, opentelemetry-proto 0.33's string-encoded integers, the OpenTelemetry SDK's export error events, schemars 1's web.run schema hashes, and opentelemetry-otlp 0.33's retries, which need the real HTTP status. Two test servers now read the request before answering, which hyper requires under reqwest 0.13. unicode-width stays at 0.2.2, because ratatui-core 0.1.2 compensates for 0.2.2's zero-width halfwidth sound marks and would count them twice under 0.2.3.
+---
+ MODULE.bazel.lock                             |  1 -
+ codex-rs/Cargo.lock                           | 23 ++++----
+ codex-rs/Cargo.toml                           |  6 +-
+ .../remote_control/server_api_tests.rs        | 19 +++++-
+ ...ample__sample_inherits_parent_context.snap | 12 ++--
+ .../tests/suite/v2/turn_cost_otel.rs          |  2 +-
+ codex-rs/cli/tests/worktree.rs                |  6 +-
+ codex-rs/exec-server/src/remote.rs            |  6 ++
+ codex-rs/otel/src/network_policy.rs           |  6 +-
+ .../tests/fixtures/plugin_process.rs          |  8 ++-
+ codex-rs/state/src/log_db.rs                  | 11 ++++
+ codex-rs/state/src/log_db_filter_tests.rs     |  1 +
+ ...ask_list_tests__lists_preserve_layout.snap | 10 ++--
+ .../voice-host/src/capture_worker_tests.rs    | 58 ++++++++++++++-----
+ 14 files changed, 118 insertions(+), 51 deletions(-)
+
+diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
+index d55c3eb..f54d77a 100644
+--- a/MODULE.bazel.lock
++++ b/MODULE.bazel.lock
+@@ -2273,7 +2273,6 @@
+       "unicode-truncate_2.0.1": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.8\"},{\"default_features\":false,\"name\":\"itertools\",\"req\":\"^0.14\"},{\"default_features\":false,\"name\":\"unicode-segmentation\",\"req\":\"^1\"},{\"name\":\"unicode-width\",\"req\":\"^0.2\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
+       "unicode-width_0.1.14": "{\"dependencies\":[{\"name\":\"compiler_builtins\",\"optional\":true,\"req\":\"^0.1\"},{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0\"},{\"name\":\"std\",\"optional\":true,\"package\":\"rustc-std-workspace-std\",\"req\":\"^1.0\"}],\"features\":{\"cjk\":[],\"default\":[\"cjk\"],\"no_std\":[],\"rustc-dep-of-std\":[\"std\",\"core\",\"compiler_builtins\"]}}",
+       "unicode-width_0.2.2": "{\"dependencies\":[{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0\"},{\"name\":\"std\",\"optional\":true,\"package\":\"rustc-std-workspace-std\",\"req\":\"^1.0\"}],\"features\":{\"cjk\":[],\"default\":[\"cjk\"],\"no_std\":[],\"rustc-dep-of-std\":[\"std\",\"core\"]}}",
+-      "unicode-width_0.2.3": "{\"dependencies\":[{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0\"},{\"name\":\"std\",\"optional\":true,\"package\":\"rustc-std-workspace-std\",\"req\":\"^1.0\"}],\"features\":{\"cjk\":[],\"default\":[\"cjk\"],\"no_std\":[],\"rustc-dep-of-std\":[\"std\",\"core\"]}}",
+       "unicode-xid_0.2.6": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.3\"}],\"features\":{\"bench\":[],\"default\":[],\"no_std\":[]}}",
+       "universal-hash_0.5.1": "{\"dependencies\":[{\"name\":\"crypto-common\",\"req\":\"^0.1.6\"},{\"default_features\":false,\"name\":\"subtle\",\"req\":\"^2.4\"}],\"features\":{\"std\":[\"crypto-common/std\"]}}",
+       "untrusted_0.7.1": "{\"dependencies\":[],\"features\":{}}",
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+index bc4e934..a7b4b54 100644
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -225,7 +225,7 @@ checksum = "b2a5b0a5ab8561c603f16c3b78c24a386b1f70e7fc1b1b1e8c15738828e4a176"
+ dependencies = [
+  "anstyle",
+  "memchr",
+- "unicode-width 0.2.3",
++ "unicode-width 0.2.2",
+ ]
+ 
+ [[package]]
+@@ -2787,7 +2787,7 @@ dependencies = [
+  "tracing",
+  "tracing-subscriber",
+  "unicode-segmentation",
+- "unicode-width 0.2.3",
++ "unicode-width 0.2.2",
+ ]
+ 
+ [[package]]
+@@ -4187,7 +4187,7 @@ version = "0.0.0"
+ dependencies = [
+  "insta",
+  "pretty_assertions",
+- "unicode-width 0.2.3",
++ "unicode-width 0.2.2",
+ ]
+ 
+ [[package]]
+@@ -5172,7 +5172,7 @@ dependencies = [
+  "tracing-subscriber",
+  "two-face",
+  "unicode-segmentation",
+- "unicode-width 0.2.3",
++ "unicode-width 0.2.2",
+  "url",
+  "urlencoding",
+  "uuid",
+@@ -10003,6 +10003,7 @@ version = "11.1.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "e75fe14a82d81e5f5af639997db37d8b96045938a7ac6ab18cdbe1c7467e05e1"
+ dependencies = [
++ "aws-lc-rs",
+  "base64 0.22.1",
+  "getrandom 0.2.17",
+  "js-sys",
+@@ -13065,7 +13066,7 @@ dependencies = [
+  "thiserror 2.0.21",
+  "unicode-segmentation",
+  "unicode-truncate",
+- "unicode-width 0.2.3",
++ "unicode-width 0.2.2",
+ ]
+ 
+ [[package]]
+@@ -13139,7 +13140,7 @@ dependencies = [
+  "strum",
+  "time",
+  "unicode-segmentation",
+- "unicode-width 0.2.3",
++ "unicode-width 0.2.2",
+ ]
+ 
+ [[package]]
+@@ -15857,7 +15858,7 @@ checksum = "6ecfad6c3abc80a577f2b91c1e412ee57e7a060d430b553c1b0c940974ebcd49"
+ dependencies = [
+  "icu_segmenter",
+  "smawk",
+- "unicode-width 0.2.3",
++ "unicode-width 0.2.2",
+ ]
+ 
+ [[package]]
+@@ -16804,7 +16805,7 @@ checksum = "16b380a1238663e5f8a691f9039c73e1cdae598a30e9855f541d29b08b53e9a5"
+ dependencies = [
+  "itertools 0.14.0",
+  "unicode-segmentation",
+- "unicode-width 0.2.3",
++ "unicode-width 0.2.2",
+ ]
+ 
+ [[package]]
+@@ -16815,9 +16816,9 @@ checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
+ 
+ [[package]]
+ name = "unicode-width"
+-version = "0.2.3"
++version = "0.2.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ca718471876992059f251e33aafc334346ada08042b7661dd1fe313a9bced557"
++checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
+ 
+ [[package]]
+ name = "unicode-xid"
+@@ -16963,7 +16964,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "eb05cdd19ae8707bf6a0a269972c07e6358103a7079faec749dec318a5b3dc23"
+ dependencies = [
+  "itoa",
+- "unicode-width 0.2.3",
++ "unicode-width 0.2.2",
+  "vte 0.15.0",
+ ]
+ 
+diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
+index 6997c55..1e601b4 100644
+--- a/codex-rs/Cargo.toml
++++ b/codex-rs/Cargo.toml
+@@ -414,7 +414,7 @@ insta = "1.46.3"
+ inventory = "0.3.19"
+ itertools = "0.15.0"
+ jsonptr = { version = "0.8.2", default-features = false }
+-jsonwebtoken = "11.1.0"
++jsonwebtoken = { version = "11.1.0", features = ["aws_lc_rs"] }
+ keyring = { version = "3.6", default-features = false }
+ landlock = "0.4.4"
+ lazy_static = "1"
+@@ -552,7 +552,9 @@ ts-rs = "12"
+ tungstenite = { version = "0.27.0", features = ["deflate", "proxy"] }
+ uds_windows = "1.1.0"
+ unicode-segmentation = "1.12.0"
+-unicode-width = "0.2"
++# ratatui-core 0.1.2 adds one cell for each halfwidth sound mark (U+FF9E, U+FF9F) because unicode-width
++# 0.2.2 counts them as zero; 0.2.3 counts them as one, so ratatui would count each mark twice.
++unicode-width = "=0.2.2"
+ url = "2"
+ urlencoding = "2.1"
+ uuid = "1"
+diff --git a/codex-rs/app-server-transport/src/transport/remote_control/server_api_tests.rs b/codex-rs/app-server-transport/src/transport/remote_control/server_api_tests.rs
+index cc8d93d..64d687e 100644
+--- a/codex-rs/app-server-transport/src/transport/remote_control/server_api_tests.rs
++++ b/codex-rs/app-server-transport/src/transport/remote_control/server_api_tests.rs
+@@ -3,7 +3,9 @@ use crate::transport::remote_control::protocol::normalize_remote_control_url;
+ use pretty_assertions::assert_eq;
+ use serde_json::json;
+ use std::time::SystemTime;
++use tokio::io::AsyncBufReadExt;
+ use tokio::io::AsyncWriteExt;
++use tokio::io::BufReader;
+ use tokio::net::TcpListener;
+ use tokio::sync::oneshot;
+ 
+@@ -44,8 +46,23 @@ async fn timed_out_request(partial_response: Option<&'static [u8]>) -> io::Error
+     );
+     let (request_done_tx, request_done_rx) = oneshot::channel();
+     let server_task = tokio::spawn(async move {
+-        let (mut stream, _) = listener.accept().await.expect("request should connect");
++        let (stream, _) = listener.accept().await.expect("request should connect");
++        let mut stream = BufReader::new(stream);
+         if let Some(partial_response) = partial_response {
++            // Answer only after the whole request head arrives; hyper rejects a response
++            // that reaches an idle connection before the request is written.
++            let mut line = String::new();
++            while line != "\r\n" {
++                line.clear();
++                stream
++                    .read_line(&mut line)
++                    .await
++                    .expect("request head should read");
++                assert!(
++                    !line.is_empty(),
++                    "request should end its head before closing"
++                );
++            }
+             stream
+                 .write_all(partial_response)
+                 .await
+diff --git a/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap b/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap
+index f6d612a..23c9f66 100644
+--- a/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap
++++ b/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap
+@@ -16,7 +16,7 @@ Settings:
+   stream: true
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=bf13940dee826ebd):
++00:additional_tools/developer (3; hash=321bc4cdce4e789f):
+         - namespace/functions; hash=028af59ad835936d
+           - function/exec_command
+           - function/write_stdin
+@@ -33,7 +33,7 @@ Settings:
+           - function/send_input
+           - function/spawn_agent
+           - function/wait_agent
+-        - namespace/web: Tools in the web namespace.; hash=0037b1ed8d50fab5
++        - namespace/web: Tools in the web namespace.; hash=ed1c60da95696abb
+           - function/run
+ 01:message/developer:
+     Retain these base instructions.
+@@ -77,7 +77,7 @@ Settings:
+ ## Window 2 (after request 2: input repeated)
+ Settings: same as window 1
+ -- request 3 (turn) --
+-00:additional_tools/developer (3; hash=bf13940dee826ebd):
++00:additional_tools/developer (3; hash=321bc4cdce4e789f):
+         - namespace/functions; hash=028af59ad835936d
+           - function/exec_command
+           - function/write_stdin
+@@ -94,7 +94,7 @@ Settings: same as window 1
+           - function/send_input
+           - function/spawn_agent
+           - function/wait_agent
+-        - namespace/web: Tools in the web namespace.; hash=0037b1ed8d50fab5
++        - namespace/web: Tools in the web namespace.; hash=ed1c60da95696abb
+           - function/run
+ 01:message/developer:
+     Retain these base instructions.
+@@ -137,7 +137,7 @@ Settings: same as window 1
+ ## Window 3 (after request 3: input repeated)
+ Settings: same as window 1
+ -- request 4 (turn) --
+-00:additional_tools/developer (3; hash=bf13940dee826ebd):
++00:additional_tools/developer (3; hash=321bc4cdce4e789f):
+         - namespace/functions; hash=028af59ad835936d
+           - function/exec_command
+           - function/write_stdin
+@@ -154,7 +154,7 @@ Settings: same as window 1
+           - function/send_input
+           - function/spawn_agent
+           - function/wait_agent
+-        - namespace/web: Tools in the web namespace.; hash=0037b1ed8d50fab5
++        - namespace/web: Tools in the web namespace.; hash=ed1c60da95696abb
+           - function/run
+ 01:message/developer:
+     Retain these base instructions.
+diff --git a/codex-rs/app-server/tests/suite/v2/turn_cost_otel.rs b/codex-rs/app-server/tests/suite/v2/turn_cost_otel.rs
+index f9a06f2..c3f2b4a 100644
+--- a/codex-rs/app-server/tests/suite/v2/turn_cost_otel.rs
++++ b/codex-rs/app-server/tests/suite/v2/turn_cost_otel.rs
+@@ -268,7 +268,7 @@ metrics_exporter = {{ otlp-http = {{ endpoint = "{}/metrics", protocol = "json"
+         }
+     }
+     assert_eq!(points.len(), 1);
+-    assert_eq!(points[0]["asInt"], json!(1250001));
++    assert_eq!(points[0]["asInt"], json!("1250001"));
+     let attrs: std::collections::BTreeMap<_, _> = points[0]["attributes"]
+         .as_array()
+         .expect("attributes")
+diff --git a/codex-rs/cli/tests/worktree.rs b/codex-rs/cli/tests/worktree.rs
+index 13b6914..950ac78 100644
+--- a/codex-rs/cli/tests/worktree.rs
++++ b/codex-rs/cli/tests/worktree.rs
+@@ -669,7 +669,7 @@ trust_level = "trusted"
+                     .find(|metric| metric["name"] == "codex.daemon.update")
+                     .context("handoff metric")?;
+                 let update_point = &update["sum"]["dataPoints"][0];
+-                assert_eq!(update_point["asInt"], 1);
++                assert_eq!(update_point["asInt"], "1");
+             }
+             let point = exported
+                 .iter()
+@@ -677,7 +677,7 @@ trust_level = "trusted"
+                 .flat_map(|metric| metric["sum"]["dataPoints"].as_array().into_iter().flatten())
+                 .next()
+                 .context("codex.tui.start data point")?;
+-            assert_eq!(point["asInt"], 1);
++            assert_eq!(point["asInt"], "1");
+             let tags = point["attributes"]
+                 .as_array()
+                 .context("codex.tui.start attributes")?
+@@ -730,7 +730,7 @@ trust_level = "trusted"
+                 .collect::<Vec<_>>();
+             assert_eq!(observations.len(), 2);
+             for observation in observations {
+-                assert_eq!(observation["asInt"], 1);
++                assert_eq!(observation["asInt"], "1");
+                 let observation_tags = observation["attributes"]
+                     .as_array()
+                     .context("observation attributes")?
+diff --git a/codex-rs/exec-server/src/remote.rs b/codex-rs/exec-server/src/remote.rs
+index a43f5ac..87ac51d 100644
+--- a/codex-rs/exec-server/src/remote.rs
++++ b/codex-rs/exec-server/src/remote.rs
+@@ -1670,6 +1670,12 @@ mod tests {
+                 .accept()
+                 .await
+                 .expect("registry request should connect");
++            let mut request = [0_u8; 4096];
++            let bytes_read = stream
++                .read(&mut request)
++                .await
++                .expect("registry request should arrive before the response");
++            assert_ne!(bytes_read, 0, "registry request should not be empty");
+             stream
+                 .write_all(
+                     b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 256\r\n\r\n{",
+diff --git a/codex-rs/otel/src/network_policy.rs b/codex-rs/otel/src/network_policy.rs
+index e39c800..77d782d 100644
+--- a/codex-rs/otel/src/network_policy.rs
++++ b/codex-rs/otel/src/network_policy.rs
+@@ -107,8 +107,10 @@ impl opentelemetry_http::HttpClient for RuntimeHttpClient {
+                         .body(body)
+                         .timeout(timeout)
+                         .send()
+-                        .await?
+-                        .error_for_status()?;
++                        .await?;
++                    // The OTLP exporter classifies the status itself and retries only
++                    // throttling and gateway responses; an Err here would count as a
++                    // network failure, which it always retries.
+                     let mut builder = http::Response::builder().status(response.status());
+                     if let Some(headers) = builder.headers_mut() {
+                         *headers = response.headers().clone();
+diff --git a/codex-rs/plugin-host/tests/fixtures/plugin_process.rs b/codex-rs/plugin-host/tests/fixtures/plugin_process.rs
+index 25c7b1c..ed8f93a 100644
+--- a/codex-rs/plugin-host/tests/fixtures/plugin_process.rs
++++ b/codex-rs/plugin-host/tests/fixtures/plugin_process.rs
+@@ -6,6 +6,7 @@ use futures::StreamExt;
+ use futures::executor::block_on;
+ use futures::io::AllowStdIo;
+ use std::io::Write;
++use tokio_util::bytes::Bytes;
+ use tokio_util::codec::FramedRead;
+ use tokio_util::codec::FramedWrite;
+ use tokio_util::compat::FuturesAsyncReadCompatExt;
+@@ -34,7 +35,7 @@ fn main() -> std::io::Result<()> {
+         }
+     }
+     if std::env::args().any(|arg| arg == "--descendant") {
+-        block_on(output.send(b"descendant-ready".as_slice().into()))?;
++        block_on(output.send(Bytes::from_static(b"descendant-ready")))?;
+         loop {
+             std::thread::park();
+         }
+@@ -55,12 +56,13 @@ fn main() -> std::io::Result<()> {
+         AllowStdIo::new(std::io::stdin().lock()).compat(),
+         framing::codec(),
+     );
+-    block_on(output.send(codex_plugin_host::READY.into()))?;
++    block_on(output.send(Bytes::from_static(codex_plugin_host::READY)))?;
+     #[cfg(unix)]
+     {
+         // SAFETY: getpgrp reads this process's group identifier.
+         let group = unsafe { libc::getpgrp() };
+-        block_on(output.send(serde_json::to_vec(&(std::process::id(), group))?.into()))?;
++        let identity = serde_json::to_vec(&(std::process::id(), group))?;
++        block_on(output.send(Bytes::from(identity)))?;
+     }
+     let mut descendants = Vec::new();
+     while let Some(message) = block_on(input.next()) {
+diff --git a/codex-rs/state/src/log_db.rs b/codex-rs/state/src/log_db.rs
+index ef03ad8..ca7a631 100644
+--- a/codex-rs/state/src/log_db.rs
++++ b/codex-rs/state/src/log_db.rs
+@@ -317,6 +317,17 @@ where
+             return;
+         }
+ 
++        // The SDK reports every failed export at ERROR (`PeriodicReader.ExportError`,
++        // `BatchLogProcessor.ExportError`, ...). Recording one writes a SQLite batch,
++        // whose write metric is exported and fails again, so an unreachable collector
++        // would feed itself indefinitely.
++        if target == "opentelemetry_sdk"
++            && (metadata.name().ends_with("ExportError")
++                || metadata.name().ends_with("Export.Error"))
++        {
++            return;
++        }
++
+         let mut visitor = MessageVisitor::default();
+         event.record(&mut visitor);
+         // OTLP gRPC connections run on their own task, so an unsolicited PING
+diff --git a/codex-rs/state/src/log_db_filter_tests.rs b/codex-rs/state/src/log_db_filter_tests.rs
+index 3f04e10..6c9bc12 100644
+--- a/codex-rs/state/src/log_db_filter_tests.rs
++++ b/codex-rs/state/src/log_db_filter_tests.rs
+@@ -31,6 +31,7 @@ async fn sqlite_sink_filters_noisy_targets_without_dropping_useful_diagnostics()
+     tracing::trace!(target: "opentelemetry_sdk", "dropped-trace");
+     tracing::debug!(target: "opentelemetry_sdk", "dropped-debug");
+     tracing::info!(target: "opentelemetry_sdk", "retained-info");
++    tracing::error!(name: "PeriodicReader.ExportError", target: "opentelemetry_sdk", "dropped-export-error");
+     tracing::warn!(target: "sqlx::query", "dropped-slow-query-warning");
+     tracing::warn!(target: "sqlx::pool::acquire", "dropped-slow-acquire-warning");
+     tracing::warn!(target: "sqlx::other", "dropped-sqlx-warning");
+diff --git a/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap b/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap
+index 636eba4..8f3113d 100644
+--- a/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap
++++ b/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap
+@@ -32,8 +32,8 @@ expression: "stages.join(\"\\n\\n---\\n\\n\")"
+ 
+ ☑ Next task
+ ---
+-• [ ]
+-• [x]
++☐ 
++☑ 
+ ---
+ ☑ Bold, italic, and code
+ 
+@@ -50,9 +50,7 @@ expression: "stages.join(\"\\n\\n---\\n\\n\")"
+ 
+ ☑ # title
+ ☑ > quote
+-☑ 
+-
+-  ———
++☑ ---
+ ---
+ •     
+       [x] code, not a task
+@@ -63,7 +61,7 @@ expression: "stages.join(\"\\n\\n---\\n\\n\")"
+ 
+   Continued paragraph
+ ---
+-☑  <div>done</div>
++☑ <div>done</div>
+ ---
+ ☑ <div>done</div>
+ ---
+diff --git a/codex-rs/voice-host/src/capture_worker_tests.rs b/codex-rs/voice-host/src/capture_worker_tests.rs
+index 0d85153..e15a7d9 100644
+--- a/codex-rs/voice-host/src/capture_worker_tests.rs
++++ b/codex-rs/voice-host/src/capture_worker_tests.rs
+@@ -7,13 +7,12 @@ use codex_realtime_webrtc::AudioControls;
+ use futures::future::BoxFuture;
+ use pretty_assertions::assert_eq;
+ use rtc::interceptor::Interceptor;
+-use rtc::interceptor::NoopInterceptor;
+ use rtc::interceptor::Packet;
+ use rtc::interceptor::StreamInfo;
+ use rtc::interceptor::TaggedPacket;
+-use rtc::interceptor::interceptor;
+ use rtc::sansio;
+ use rtc::shared::error::Error;
++use std::collections::VecDeque;
+ use std::time::Duration;
+ use tokio::sync::Notify;
+ use tokio::sync::mpsc;
+@@ -26,22 +25,47 @@ use webrtc::peer_connection::RTCSessionDescription;
+ 
+ // Consume remote RTP before the upstream track queue: receipt proves the packet
+ // traversed negotiation, encryption, the loopback socket, and remote decryption.
+-#[derive(Interceptor)]
+ struct RemoteRtp {
+-    #[next]
+-    next: NoopInterceptor,
++    write_queue: VecDeque<TaggedPacket>,
+     sender: mpsc::Sender<rtc::rtp::packet::Packet>,
+ }
+ 
+-#[interceptor]
+-impl RemoteRtp {
+-    #[overrides]
++impl sansio::Protocol<TaggedPacket, TaggedPacket, ()> for RemoteRtp {
++    type Rout = TaggedPacket;
++    type Wout = TaggedPacket;
++    type Eout = ();
++    type Error = Error;
++    type Time = Instant;
++
+     fn handle_read(&mut self, message: TaggedPacket) -> Result<(), Self::Error> {
+-        if let Packet::Rtp(packet) = message.message {
++        if let Packet::Rtp(packet) = message.message.packet {
+             self.sender.try_send(packet).unwrap();
+         }
+         Ok(())
+     }
++
++    fn poll_read(&mut self) -> Option<Self::Rout> {
++        None
++    }
++
++    fn handle_write(&mut self, message: TaggedPacket) -> Result<(), Self::Error> {
++        self.write_queue.push_back(message);
++        Ok(())
++    }
++
++    fn poll_write(&mut self) -> Option<Self::Wout> {
++        self.write_queue.pop_front()
++    }
++}
++
++impl Interceptor for RemoteRtp {
++    fn bind_local_stream(&mut self, _info: &StreamInfo) {}
++
++    fn unbind_local_stream(&mut self, _info: &StreamInfo) {}
++
++    fn bind_remote_stream(&mut self, _info: &StreamInfo) {}
++
++    fn unbind_remote_stream(&mut self, _info: &StreamInfo) {}
+ }
+ 
+ struct Gathered(Arc<Notify>);
+@@ -188,16 +212,20 @@ async fn capture_reaches_remote_rtp_and_mute_discards_queued_and_partial_audio()
+         let (sender, mut received) = mpsc::channel(/*buffer*/ 32);
+         let gathered = Arc::new(Notify::new());
+         let (media, _) = AudioTrack::new().unwrap();
+-        let mut settings = webrtc::peer_connection::SettingEngine::default();
+-        settings.set_lite(/*lite*/ true);
++        let settings = webrtc::peer_connection::SettingEngineBuilder::new()
++            .with_lite(/*lite*/ true)
++            .build();
+         let remote = PeerConnectionBuilder::new()
+             .with_media_engine(media)
+             .with_setting_engine(settings)
+             .with_handler(Arc::new(Gathered(gathered.clone())))
+-            .with_interceptor_registry(rtc::interceptor::Registry::from(RemoteRtp {
+-                next: NoopInterceptor::new(),
+-                sender,
+-            }))
++            .with_interceptor_registry(rtc::interceptor::Registry::new().with(
++                rtc::interceptor::Slot::JitterBuffer,
++                RemoteRtp {
++                    write_queue: VecDeque::new(),
++                    sender,
++                },
++            ))
+             .with_udp_addrs(vec!["0.0.0.0:0"])
+             .build()
+             .await
+-- 
+2.43.0
+

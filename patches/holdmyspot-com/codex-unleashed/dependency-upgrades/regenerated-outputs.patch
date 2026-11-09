@@ -1,14 +1,10 @@
-From 2e8fe7d4c412b478649c72d872e4ee52600fa807 Mon Sep 17 00:00:00 2001
+From 1f83afdfa520eeb3468a12461883eb4d1bbe0e99 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 9 Nov 2026 07:59:31 -0500
-Subject: [PATCH] WIP: regenerate schemas, TypeScript, the Python SDK and the
- Bazel lock
+Subject: [PATCH] Regenerate schemas, TypeScript, the Python SDK and the Bazel
+ lock
 
-Output of upstream's generators (app-server-schema, config-schema,
-hooks-schema, bazel-lock) on the upgraded dependency graph, from platform
-lint workflow run 42619450279. Beyond schemars 1's titles and integer
-bounds, the realtime item notifications' fields are camelCase, as they are
-sent, and named permission profiles are typed in the config schema.
+Regenerate the outputs that the upgraded dependencies change: the app-server JSON schemas and TypeScript bindings, the Python SDK models and MODULE.bazel.lock, each from upstream's own generator.
 ---
  MODULE.bazel.lock                             |  277 +-
  .../schema/json/ApplyPatchApprovalParams.json |   14 +-
