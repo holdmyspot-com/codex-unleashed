@@ -1,4 +1,4 @@
-From 81d2b1e24aa5c9ea7c563b65cbb531276a44c641 Mon Sep 17 00:00:00 2001
+From 88d9bd5382676e8ec0963ad304395cd139c581b9 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 9 Nov 2026 15:23:30 -0500
 Subject: [PATCH] WIP: pin unicode-width 0.2.2 so ratatui counts halfwidth
@@ -9,10 +9,23 @@ Content-Transfer-Encoding: 8bit
 
 ratatui-core 0.1.2, the latest release, adds one cell for each U+FF9E and U+FF9F because unicode-width 0.2.2 and earlier count them as zero. unicode-width 0.2.3 counts them as one, so ratatui's buffer gave "ｶﾞ" three cells while codex's layout gave it two, and eleven TUI tests failed (Linux test run 42675199649). vt100 0.18.1 needs at least 0.2.2.
 ---
+ MODULE.bazel.lock   |  1 -
  codex-rs/Cargo.lock | 22 +++++++++++-----------
  codex-rs/Cargo.toml |  4 +++-
- 2 files changed, 14 insertions(+), 12 deletions(-)
+ 3 files changed, 14 insertions(+), 13 deletions(-)
 
+diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
+index d55c3eb..f54d77a 100644
+--- a/MODULE.bazel.lock
++++ b/MODULE.bazel.lock
+@@ -2273,7 +2273,6 @@
+       "unicode-truncate_2.0.1": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.8\"},{\"default_features\":false,\"name\":\"itertools\",\"req\":\"^0.14\"},{\"default_features\":false,\"name\":\"unicode-segmentation\",\"req\":\"^1\"},{\"name\":\"unicode-width\",\"req\":\"^0.2\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
+       "unicode-width_0.1.14": "{\"dependencies\":[{\"name\":\"compiler_builtins\",\"optional\":true,\"req\":\"^0.1\"},{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0\"},{\"name\":\"std\",\"optional\":true,\"package\":\"rustc-std-workspace-std\",\"req\":\"^1.0\"}],\"features\":{\"cjk\":[],\"default\":[\"cjk\"],\"no_std\":[],\"rustc-dep-of-std\":[\"std\",\"core\",\"compiler_builtins\"]}}",
+       "unicode-width_0.2.2": "{\"dependencies\":[{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0\"},{\"name\":\"std\",\"optional\":true,\"package\":\"rustc-std-workspace-std\",\"req\":\"^1.0\"}],\"features\":{\"cjk\":[],\"default\":[\"cjk\"],\"no_std\":[],\"rustc-dep-of-std\":[\"std\",\"core\"]}}",
+-      "unicode-width_0.2.3": "{\"dependencies\":[{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0\"},{\"name\":\"std\",\"optional\":true,\"package\":\"rustc-std-workspace-std\",\"req\":\"^1.0\"}],\"features\":{\"cjk\":[],\"default\":[\"cjk\"],\"no_std\":[],\"rustc-dep-of-std\":[\"std\",\"core\"]}}",
+       "unicode-xid_0.2.6": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.3\"}],\"features\":{\"bench\":[],\"default\":[],\"no_std\":[]}}",
+       "universal-hash_0.5.1": "{\"dependencies\":[{\"name\":\"crypto-common\",\"req\":\"^0.1.6\"},{\"default_features\":false,\"name\":\"subtle\",\"req\":\"^2.4\"}],\"features\":{\"std\":[\"crypto-common/std\"]}}",
+       "untrusted_0.7.1": "{\"dependencies\":[],\"features\":{}}",
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
 index 867187a..a7b4b54 100644
 --- a/codex-rs/Cargo.lock
