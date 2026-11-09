@@ -1,4 +1,4 @@
-From a6540c4cad5e514f5a32dc59e66788c99d4645e7 Mon Sep 17 00:00:00 2001
+From b744b02b844aed1ed2f18fa0966fcda1fcf1de03 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:07:55 -0500
 Subject: [PATCH] Build with Rust 1.99.1 so macOS links pass under fatal linker
@@ -35,6 +35,7 @@ drops that one exact notice and passes every other linker message through.
  codex-rs/Cargo.lock                           | 180 ++++++++--------
  codex-rs/Cargo.toml                           |   2 +-
  codex-rs/agent-identity/src/lib.rs            |   1 -
+ codex-rs/app-server/src/message_processor.rs  |   6 +-
  .../src/session_runtime/mod.rs                |   2 +-
  .../src/connection_manager/startup.rs         |   4 +-
  codex-rs/core/src/realtime_conversation.rs    |   6 +-
@@ -58,7 +59,7 @@ drops that one exact notice and passes every other linker message through.
  codex-rs/utils/path-uri/src/lib.rs            |   6 +-
  .../stream-parser/src/inline_hidden_tag.rs    |   2 +-
  codex-rs/websocket-auth/src/lib.rs            |   6 +-
- 39 files changed, 307 insertions(+), 274 deletions(-)
+ 40 files changed, 310 insertions(+), 277 deletions(-)
  create mode 100755 codex-rs/scripts/apple-linker.sh
 
 diff --git a/.github/actions/build-bazel-package-binaries/action.yml b/.github/actions/build-bazel-package-binaries/action.yml
@@ -1356,6 +1357,37 @@ index 14a9e35..30f2b8a 100644
      use ed25519_dalek::Signature;
      use ed25519_dalek::Verifier as _;
      use jsonwebtoken::EncodingKey;
+diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
+index c664fac..b48f5dc 100644
+--- a/codex-rs/app-server/src/message_processor.rs
++++ b/codex-rs/app-server/src/message_processor.rs
+@@ -1245,7 +1245,7 @@ impl MessageProcessor {
+                 .clients_revoke(params)
+                 .await
+                 .map(|response| Some(response.into())),
+-            ClientRequest::ConfigRequirementsRead { params: _, .. } => self
++            ClientRequest::ConfigRequirementsRead { .. } => self
+                 .config_processor
+                 .config_requirements_read()
+                 .await
+@@ -1304,7 +1304,7 @@ impl MessageProcessor {
+                 .unwatch(connection_id, params)
+                 .await
+                 .map(|response| Some(response.into())),
+-            ClientRequest::ModelProviderCapabilitiesRead { params: _, .. } => self
++            ClientRequest::ModelProviderCapabilitiesRead { .. } => self
+                 .config_processor
+                 .model_provider_capabilities_read()
+                 .await
+@@ -1742,7 +1742,7 @@ impl MessageProcessor {
+             ClientRequest::ThreadTimelineList { params, .. } => {
+                 self.thread_processor.thread_timeline_list(params).await
+             }
+-            ClientRequest::ThreadRealtimeListVoices { params: _, .. } => {
++            ClientRequest::ThreadRealtimeListVoices { .. } => {
+                 self.turn_processor.thread_realtime_list_voices().await
+             }
+             ClientRequest::ReviewStart { params, .. } => {
 diff --git a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
 index 7b46c37..c500b81 100644
 --- a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
