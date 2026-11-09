@@ -1,0 +1,739 @@
+From fb4ffd109ab2981b0dfcb679bf16fbb90c06195b Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 8 Nov 2026 19:41:52 -0500
+Subject: [PATCH] Write workspace documentation so rustdoc reports no warnings
+
+Wrap bare URLs in angle brackets, escape or backtick literal brackets and HTML-like placeholders, and replace broken intra-doc links with plain backticked text.
+---
+ .../app-server-protocol/src/protocol/common.rs   |  4 ++--
+ .../src/protocol/item_builders.rs                |  4 ++--
+ .../src/protocol/v2/account.rs                   |  6 +++---
+ .../src/protocol/v2/config.rs                    |  2 +-
+ .../app-server-protocol/src/protocol/v2/item.rs  | 16 ++++++++--------
+ .../src/protocol/v2/thread.rs                    |  6 +++---
+ .../src/protocol/v2/thread_data.rs               |  2 +-
+ codex-rs/app-server/src/in_process.rs            |  2 +-
+ codex-rs/apply-patch/src/lib.rs                  |  2 +-
+ codex-rs/arg0/src/lib.rs                         |  2 +-
+ codex-rs/cli/src/lib.rs                          |  6 +++---
+ codex-rs/config/src/config_toml.rs               |  2 +-
+ codex-rs/config/src/loader/mod.rs                |  2 +-
+ codex-rs/config/src/mcp_types.rs                 |  4 ++--
+ codex-rs/config/src/profile_toml.rs              |  2 +-
+ codex-rs/config/src/types.rs                     |  2 +-
+ codex-rs/core/src/config/edit.rs                 |  2 +-
+ codex-rs/core/src/config/mod.rs                  |  2 +-
+ codex-rs/ext/skills/src/host_service.rs          |  2 +-
+ codex-rs/feedback/src/lib.rs                     |  2 +-
+ codex-rs/git-utils/src/fsmonitor.rs              |  8 ++++----
+ codex-rs/login/src/auth/default_client.rs        |  4 ++--
+ codex-rs/login/src/test_support.rs               |  2 +-
+ codex-rs/message-board/src/api.rs                |  2 +-
+ codex-rs/message-history/src/lib.rs              |  2 +-
+ codex-rs/protocol/src/config_types.rs            |  2 +-
+ codex-rs/protocol/src/openai_models.rs           |  2 +-
+ codex-rs/protocol/src/review_format.rs           |  2 +-
+ codex-rs/responses-api-proxy/src/lib.rs          |  2 +-
+ codex-rs/rollout/src/lib.rs                      |  4 ++--
+ codex-rs/state/src/lib.rs                        | 10 +++++-----
+ codex-rs/thread-store/src/live_thread.rs         |  2 +-
+ codex-rs/tools/src/tool_spec.rs                  |  2 +-
+ codex-rs/tui/src/custom_terminal.rs              |  4 ++--
+ codex-rs/tui/src/markdown_render.rs              |  2 +-
+ .../tui/src/public_widgets/composer_input.rs     |  2 +-
+ codex-rs/tui/src/tui/event_stream.rs             |  2 +-
+ codex-rs/utils/cli/src/shared_options.rs         |  2 +-
+ codex-rs/utils/plugins/src/plugin_namespace.rs   |  2 +-
+ 39 files changed, 65 insertions(+), 65 deletions(-)
+
+diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
+index 1afa3c6..5e396bf 100644
+--- a/codex-rs/app-server-protocol/src/protocol/common.rs
++++ b/codex-rs/app-server-protocol/src/protocol/common.rs
+@@ -26,7 +26,7 @@ pub enum AuthMode {
+     ApiKey,
+     /// ChatGPT OAuth managed by Codex (tokens persisted and refreshed by Codex).
+     Chatgpt,
+-    /// [UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE.
++    /// \[UNSTABLE\] FOR OPENAI INTERNAL USE ONLY - DO NOT USE.
+     ///
+     /// ChatGPT auth tokens are supplied by an external host app and are only
+     /// stored in memory. Token refresh must be handled by the external host app.
+@@ -1905,7 +1905,7 @@ pub struct FuzzyFileSearchParams {
+     pub cancellation_token: Option<String>,
+ }
+ 
+-/// Superset of [`codex_file_search::FileMatch`]
++/// Superset of `codex_file_search::FileMatch`
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+ pub struct FuzzyFileSearchResult {
+     pub root: String,
+diff --git a/codex-rs/app-server-protocol/src/protocol/item_builders.rs b/codex-rs/app-server-protocol/src/protocol/item_builders.rs
+index 3f10053..05e2b00 100644
+--- a/codex-rs/app-server-protocol/src/protocol/item_builders.rs
++++ b/codex-rs/app-server-protocol/src/protocol/item_builders.rs
+@@ -185,9 +185,9 @@ fn command_actions_for_path_uri(parsed_cmd: &[ParsedCommand], cwd: &PathUri) ->
+         .collect()
+ }
+ 
+-/// Build a guardian-derived [`ThreadItem`].
++/// Build a guardian-derived `ThreadItem`.
+ ///
+-/// Currently this only synthesizes [`ThreadItem::CommandExecution`] for
++/// Currently this only synthesizes `ThreadItem::CommandExecution` for
+ /// [`GuardianAssessmentAction::Command`] and [`GuardianAssessmentAction::Execve`].
+ /// Stdin reviews are child approvals and must not change the parent item lifecycle.
+ pub fn build_item_from_guardian_event(
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/account.rs b/codex-rs/app-server-protocol/src/protocol/v2/account.rs
+index f745f1f..526883a 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/account.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/account.rs
+@@ -95,7 +95,7 @@ pub enum LoginAccountParams {
+     #[serde(rename = "chatgptDeviceCode")]
+     #[ts(rename = "chatgptDeviceCode")]
+     ChatgptDeviceCode,
+-    /// [UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE.
++    /// \[UNSTABLE\] FOR OPENAI INTERNAL USE ONLY - DO NOT USE.
+     /// The access token must contain the same scopes that Codex-managed ChatGPT auth tokens have.
+     #[experimental("account/login/start.chatgptAuthTokens")]
+     #[serde(rename = "chatgptAuthTokens", rename_all = "camelCase")]
+@@ -113,12 +113,12 @@ pub enum LoginAccountParams {
+         #[ts(optional = nullable)]
+         chatgpt_plan_type: Option<String>,
+     },
+-    /// [UNSTABLE] Managed Amazon Bedrock login is experimental.
++    /// \[UNSTABLE\] Managed Amazon Bedrock login is experimental.
+     #[experimental("account/login/start.amazonBedrock")]
+     #[serde(rename = "amazonBedrock", rename_all = "camelCase")]
+     #[ts(rename = "amazonBedrock", rename_all = "camelCase")]
+     AmazonBedrock { api_key: String, region: String },
+-    /// [UNSTABLE] Managed Amazon Bedrock AWS access key login is experimental.
++    /// \[UNSTABLE\] Managed Amazon Bedrock AWS access key login is experimental.
+     #[experimental("account/login/start.amazonBedrockAccessKeys")]
+     #[serde(rename = "amazonBedrockAccessKeys", rename_all = "camelCase")]
+     #[ts(rename = "amazonBedrockAccessKeys", rename_all = "camelCase")]
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/config.rs b/codex-rs/app-server-protocol/src/protocol/v2/config.rs
+index f88df60..4754d09 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/config.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/config.rs
+@@ -287,7 +287,7 @@ pub struct Config {
+     pub model_provider: Option<String>,
+     #[experimental(nested)]
+     pub approval_policy: Option<AskForApproval>,
+-    /// [UNSTABLE] Optional default for where approval requests are routed for
++    /// \[UNSTABLE\] Optional default for where approval requests are routed for
+     /// review.
+     #[experimental("config/read.approvalsReviewer")]
+     pub approvals_reviewer: Option<ApprovalsReviewer>,
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/item.rs b/codex-rs/app-server-protocol/src/protocol/v2/item.rs
+index f496ef1..06c3ce6 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/item.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/item.rs
+@@ -543,7 +543,7 @@ impl ThreadItemPayload {
+ #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
+-/// [UNSTABLE] Lifecycle state for an approval auto-review.
++/// \[UNSTABLE\] Lifecycle state for an approval auto-review.
+ pub enum GuardianApprovalReviewStatus {
+     InProgress,
+     Approved,
+@@ -555,7 +555,7 @@ pub enum GuardianApprovalReviewStatus {
+ #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
+-/// [UNSTABLE] Source that produced a terminal approval auto-review decision.
++/// \[UNSTABLE\] Source that produced a terminal approval auto-review decision.
+ pub enum AutoReviewDecisionSource {
+     Agent,
+ }
+@@ -571,7 +571,7 @@ impl From<CoreGuardianAssessmentDecisionSource> for AutoReviewDecisionSource {
+ #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+ #[serde(rename_all = "lowercase")]
+ #[ts(export_to = "v2/")]
+-/// [UNSTABLE] Risk level assigned by approval auto-review.
++/// \[UNSTABLE\] Risk level assigned by approval auto-review.
+ pub enum GuardianRiskLevel {
+     Low,
+     Medium,
+@@ -593,7 +593,7 @@ impl From<CoreGuardianRiskLevel> for GuardianRiskLevel {
+ #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+ #[serde(rename_all = "lowercase")]
+ #[ts(export_to = "v2/")]
+-/// [UNSTABLE] Authorization level assigned by approval auto-review.
++/// \[UNSTABLE\] Authorization level assigned by approval auto-review.
+ pub enum GuardianUserAuthorization {
+     Unknown,
+     Low,
+@@ -612,7 +612,7 @@ impl From<CoreGuardianUserAuthorization> for GuardianUserAuthorization {
+     }
+ }
+ 
+-/// [UNSTABLE] Temporary approval auto-review payload used by
++/// \[UNSTABLE\] Temporary approval auto-review payload used by
+ /// `item/autoApprovalReview/*` notifications. This shape is expected to change
+ /// soon.
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+@@ -1435,7 +1435,7 @@ impl ItemStartedNotification {
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
+-/// [UNSTABLE] Temporary notification payload for approval auto-review. This
++/// \[UNSTABLE\] Temporary notification payload for approval auto-review. This
+ /// shape is expected to change soon.
+ pub struct ItemGuardianApprovalReviewStartedNotification {
+     pub thread_id: String,
+@@ -1466,7 +1466,7 @@ pub struct ItemGuardianApprovalReviewStartedNotification {
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
+-/// [UNSTABLE] Temporary notification payload for approval auto-review. This
++/// \[UNSTABLE\] Temporary notification payload for approval auto-review. This
+ /// shape is expected to change soon.
+ pub struct ItemGuardianApprovalReviewCompletedNotification {
+     pub thread_id: String,
+@@ -1744,7 +1744,7 @@ pub struct FileChangeRequestApprovalParams {
+     /// Optional explanatory reason (e.g. request for extra write access).
+     #[ts(optional = nullable)]
+     pub reason: Option<String>,
+-    /// [UNSTABLE] When set, the agent is asking the user to allow writes under this root
++    /// \[UNSTABLE\] When set, the agent is asking the user to allow writes under this root
+     /// for the remainder of the session (unclear if this is honored today).
+     #[ts(optional = nullable)]
+     pub grant_root: Option<PathBuf>,
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+index 1279bb8..c278911 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
+@@ -354,14 +354,14 @@ pub struct ThreadSettingsUpdatedNotification {
+ pub struct ThreadResumeParams {
+     pub thread_id: String,
+ 
+-    /// [UNSTABLE] FOR CODEX CLOUD - DO NOT USE.
++    /// \[UNSTABLE\] FOR CODEX CLOUD - DO NOT USE.
+     /// If specified, the thread will be resumed with the provided history
+     /// instead of loaded from disk.
+     #[experimental("thread/resume.history")]
+     #[ts(optional = nullable)]
+     pub history: Option<Vec<ResponseItem>>,
+ 
+-    /// [UNSTABLE] Specify the rollout path to resume from.
++    /// \[UNSTABLE\] Specify the rollout path to resume from.
+     /// If specified for a non-running thread, the thread_id param will be ignored.
+     /// If thread_id identifies a running thread, the path must match the active
+     /// rollout path.
+@@ -572,7 +572,7 @@ pub struct ThreadForkParams {
+     #[ts(optional = nullable)]
+     pub before_turn_id: Option<String>,
+ 
+-    /// [UNSTABLE] Specify the rollout path to fork from.
++    /// \[UNSTABLE\] Specify the rollout path to fork from.
+     /// If specified, the thread_id param will be ignored.
+     #[experimental("thread/fork.path")]
+     #[serde(
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs
+index dd7c0d8..fca5c86 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs
+@@ -259,7 +259,7 @@ pub struct Thread {
+     pub recency_at: Option<i64>,
+     /// Current runtime status for the thread.
+     pub status: ThreadStatus,
+-    /// [UNSTABLE] Path to the thread on disk.
++    /// \[UNSTABLE\] Path to the thread on disk.
+     pub path: Option<PathBuf>,
+     /// Working directory captured for the thread.
+     pub cwd: AbsolutePathBuf,
+diff --git a/codex-rs/app-server/src/in_process.rs b/codex-rs/app-server/src/in_process.rs
+index ffdc5bc..9d88e31 100644
+--- a/codex-rs/app-server/src/in_process.rs
++++ b/codex-rs/app-server/src/in_process.rs
+@@ -1,6 +1,6 @@
+ //! In-process app-server runtime host for local embedders.
+ //!
+-//! This module runs the existing [`MessageProcessor`] and outbound routing logic
++//! This module runs the existing `MessageProcessor` and outbound routing logic
+ //! on Tokio tasks, but replaces socket/stdio transports with bounded in-memory
+ //! channels. The intent is to preserve app-server semantics while avoiding a
+ //! process boundary for CLI surfaces that run in the same process.
+diff --git a/codex-rs/apply-patch/src/lib.rs b/codex-rs/apply-patch/src/lib.rs
+index 315a642..1b55ddd 100644
+--- a/codex-rs/apply-patch/src/lib.rs
++++ b/codex-rs/apply-patch/src/lib.rs
+@@ -42,7 +42,7 @@ pub use standalone_executable::main;
+ 
+ use crate::invocation::ExtractHeredocError;
+ 
+-/// Special argv[1] flag used when the Codex executable self-invokes to run the
++/// Special `argv[1]` flag used when the Codex executable self-invokes to run the
+ /// internal `apply_patch` path.
+ ///
+ /// Although this constant lives in `codex-apply-patch` (to avoid forcing
+diff --git a/codex-rs/arg0/src/lib.rs b/codex-rs/arg0/src/lib.rs
+index 1abf467..95e12a4 100644
+--- a/codex-rs/arg0/src/lib.rs
++++ b/codex-rs/arg0/src/lib.rs
+@@ -187,7 +187,7 @@ fn prepare_path_env_var_with_aliases(
+ /// 5.  Execute the provided async `main_fn` inside that runtime, forwarding any
+ ///     error. Note that `main_fn` receives [`Arg0DispatchPaths`], which
+ ///     contains the helper executable paths needed to construct
+-///     [`codex_core::config::Config`].
++///     `codex_core::config::Config`.
+ ///
+ /// This function should be used to wrap any `main()` function in binary crates
+ /// in this workspace that depends on these helper CLIs.
+diff --git a/codex-rs/cli/src/lib.rs b/codex-rs/cli/src/lib.rs
+index cc91f5b..102b6ee 100644
+--- a/codex-rs/cli/src/lib.rs
++++ b/codex-rs/cli/src/lib.rs
+@@ -62,7 +62,7 @@ pub struct SeatbeltCommand {
+     )]
+     pub permissions_profile: Option<String>,
+ 
+-    /// Layer $CODEX_HOME/<name>.config.toml on top of the base user config.
++    /// Layer `$CODEX_HOME/<name>.config.toml` on top of the base user config.
+     #[arg(long = "profile", short = 'p')]
+     pub config_profile: Option<ProfileV2Name>,
+ 
+@@ -118,7 +118,7 @@ pub struct LandlockCommand {
+     )]
+     pub permissions_profile: Option<String>,
+ 
+-    /// Layer $CODEX_HOME/<name>.config.toml on top of the base user config.
++    /// Layer `$CODEX_HOME/<name>.config.toml` on top of the base user config.
+     #[arg(long = "profile", short = 'p')]
+     pub config_profile: Option<ProfileV2Name>,
+ 
+@@ -161,7 +161,7 @@ pub struct WindowsCommand {
+     )]
+     pub permissions_profile: Option<String>,
+ 
+-    /// Layer $CODEX_HOME/<name>.config.toml on top of the base user config.
++    /// Layer `$CODEX_HOME/<name>.config.toml` on top of the base user config.
+     #[arg(long = "profile", short = 'p')]
+     pub config_profile: Option<ProfileV2Name>,
+ 
+diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
+index b2404d6..6fd2a44 100644
+--- a/codex-rs/config/src/config_toml.rs
++++ b/codex-rs/config/src/config_toml.rs
+@@ -320,7 +320,7 @@ pub struct ConfigToml {
+ 
+     /// Preferred backend for storing MCP OAuth credentials.
+     /// keyring: Use an OS-specific keyring service.
+-    ///          https://github.com/openai/codex/blob/main/codex-rs/rmcp-client/src/oauth.rs#L2
++    ///          <https://github.com/openai/codex/blob/main/codex-rs/rmcp-client/src/oauth.rs#L2>
+     /// file: Use a file in the Codex home directory.
+     /// auto (default): Use the OS-specific keyring service if available, otherwise use a file.
+     #[serde(default)]
+diff --git a/codex-rs/config/src/loader/mod.rs b/codex-rs/config/src/loader/mod.rs
+index b78dee7..5ef7079 100644
+--- a/codex-rs/config/src/loader/mod.rs
++++ b/codex-rs/config/src/loader/mod.rs
+@@ -136,7 +136,7 @@ async fn first_layer_config_error_from_entries(layers: &[ConfigLayerEntry]) -> O
+ ///
+ /// (*) Only available on macOS via managed device profiles.
+ ///
+-/// See https://developers.openai.com/codex/security for details.
++/// See <https://developers.openai.com/codex/security> for details.
+ ///
+ /// When loading the config stack for a thread, there should be a `cwd`
+ /// associated with it such that `cwd` should be `Some(...)`. Only for
+diff --git a/codex-rs/config/src/mcp_types.rs b/codex-rs/config/src/mcp_types.rs
+index d80899e..ced9290 100644
+--- a/codex-rs/config/src/mcp_types.rs
++++ b/codex-rs/config/src/mcp_types.rs
+@@ -650,7 +650,7 @@ const fn default_enabled() -> bool {
+ #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
+ #[serde(untagged, deny_unknown_fields, rename_all = "snake_case")]
+ pub enum McpServerTransportConfig {
+-    /// https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#stdio
++    /// <https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#stdio>
+     Stdio {
+         command: String,
+         #[serde(default)]
+@@ -662,7 +662,7 @@ pub enum McpServerTransportConfig {
+         #[serde(default, skip_serializing_if = "Option::is_none")]
+         cwd: Option<LegacyAppPathString>,
+     },
+-    /// https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http
++    /// <https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http>
+     StreamableHttp {
+         url: String,
+         /// Name of the environment variable to read for an HTTP bearer token.
+diff --git a/codex-rs/config/src/profile_toml.rs b/codex-rs/config/src/profile_toml.rs
+index 53f32f3..1420323 100644
+--- a/codex-rs/config/src/profile_toml.rs
++++ b/codex-rs/config/src/profile_toml.rs
+@@ -27,7 +27,7 @@ pub struct ConfigProfile {
+     /// `default`, `priority`, or `flex`; legacy `fast` also works).
+     pub service_tier: Option<String>,
+     /// The key in the `model_providers` map identifying the
+-    /// [`ModelProviderInfo`] to use.
++    /// `ModelProviderInfo` to use.
+     pub model_provider: Option<String>,
+     #[schemars(with = "Option<crate::schema::ConfigAskForApproval>")]
+     pub approval_policy: Option<AskForApproval>,
+diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
+index 449b920..0b03e67 100644
+--- a/codex-rs/config/src/types.rs
++++ b/codex-rs/config/src/types.rs
+@@ -975,7 +975,7 @@ pub struct Tui {
+ 
+     /// Pet id to preselect in the terminal pet picker.
+     ///
+-    /// Custom pet ids resolve against CODEX_HOME/pets/<pet-id>/pet.json.
++    /// Custom pet ids resolve against `CODEX_HOME/pets/<pet-id>/pet.json`.
+     #[serde(default)]
+     pub pet: Option<String>,
+ 
+diff --git a/codex-rs/core/src/config/edit.rs b/codex-rs/core/src/config/edit.rs
+index 5318db9..878f02f 100644
+--- a/codex-rs/core/src/config/edit.rs
++++ b/codex-rs/core/src/config/edit.rs
+@@ -90,7 +90,7 @@ pub fn syntax_theme_edit(name: &str) -> ConfigEdit {
+     }
+ }
+ 
+-/// Produces a config edit that sets [tui].pet = "<name>".
++/// Produces a config edit that sets `[tui].pet = "<name>"`.
+ pub fn tui_pet_edit(name: &str) -> ConfigEdit {
+     ConfigEdit::SetPath {
+         segments: vec!["tui".to_string(), "pet".to_string()],
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index 165d3d1..db9a087 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -941,7 +941,7 @@ pub struct Config {
+     /// Preferred store for MCP OAuth credentials.
+     /// keyring: Use an OS-specific keyring service.
+     ///          Credentials stored in the keyring will only be readable by Codex unless the user explicitly grants access via OS-level keyring access.
+-    ///          https://github.com/openai/codex/blob/main/codex-rs/rmcp-client/src/oauth.rs#L2
++    ///          <https://github.com/openai/codex/blob/main/codex-rs/rmcp-client/src/oauth.rs#L2>
+     /// file: CODEX_HOME/.credentials.json
+     ///       This file will be readable to Codex and other applications running as the same user.
+     /// auto (default): keyring if available, otherwise file.
+diff --git a/codex-rs/ext/skills/src/host_service.rs b/codex-rs/ext/skills/src/host_service.rs
+index 3feda36..1c4445c 100644
+--- a/codex-rs/ext/skills/src/host_service.rs
++++ b/codex-rs/ext/skills/src/host_service.rs
+@@ -162,7 +162,7 @@ impl HostSkillsService {
+         self.clear_cache();
+     }
+ 
+-    /// Load skills for an already-constructed [`Config`], avoiding any additional config-layer
++    /// Load skills for an already-constructed `Config`, avoiding any additional config-layer
+     /// loading.
+     ///
+     /// This path uses a cache keyed by the effective skill-relevant config state rather than just
+diff --git a/codex-rs/feedback/src/lib.rs b/codex-rs/feedback/src/lib.rs
+index 5f73501..57a57c5 100644
+--- a/codex-rs/feedback/src/lib.rs
++++ b/codex-rs/feedback/src/lib.rs
+@@ -634,7 +634,7 @@ impl FeedbackSnapshot {
+     /// Submit feedback to Sentry with whole attachments within a shared deadline.
+     /// Success means HTTP acceptance, not durable attachment storage. Callers must
+     /// retain their source files; errors can occur after part of a report is accepted.
+-    /// https://github.com/getsentry/relay/blob/master/relay-server/src/endpoints/common.rs
++    /// <https://github.com/getsentry/relay/blob/master/relay-server/src/endpoints/common.rs>
+     pub async fn upload_feedback(
+         &self,
+         options: FeedbackUploadOptions<'_>,
+diff --git a/codex-rs/git-utils/src/fsmonitor.rs b/codex-rs/git-utils/src/fsmonitor.rs
+index b4902ec..1584d14 100644
+--- a/codex-rs/git-utils/src/fsmonitor.rs
++++ b/codex-rs/git-utils/src/fsmonitor.rs
+@@ -5,8 +5,8 @@
+ //! value is boolean true and Git advertises daemon support.
+ //!
+ //! The daemon avoids scanning every tracked file and untracked directory:
+-//! https://github.com/git/git/blob/94f057755b7941b321fd11fec1b2e3ca5313a4e0/Documentation/git-fsmonitor--daemon.adoc#L49-L57
+-//! https://github.com/git/git/blob/94f057755b7941b321fd11fec1b2e3ca5313a4e0/Documentation/git-update-index.adoc#L545-L550
++//! <https://github.com/git/git/blob/94f057755b7941b321fd11fec1b2e3ca5313a4e0/Documentation/git-fsmonitor--daemon.adoc#L49-L57>
++//! <https://github.com/git/git/blob/94f057755b7941b321fd11fec1b2e3ca5313a4e0/Documentation/git-update-index.adoc#L545-L550>
+ 
+ use std::future::Future;
+ 
+@@ -44,8 +44,8 @@ pub trait FsmonitorProbeRunner: Send {
+ /// This intentionally probes every time. Effective Git configuration is
+ /// layered, may use conditional includes, and can change while Codex is
+ /// running:
+-/// https://git-scm.com/docs/git-config#SCOPES
+-/// https://git-scm.com/docs/git-config#_conditional_includes
++/// <https://git-scm.com/docs/git-config#SCOPES>
++/// <https://git-scm.com/docs/git-config#_conditional_includes>
+ pub async fn detect_fsmonitor_override(
+     runner: &mut impl FsmonitorProbeRunner,
+ ) -> FsmonitorOverride {
+diff --git a/codex-rs/login/src/auth/default_client.rs b/codex-rs/login/src/auth/default_client.rs
+index c8c1d65..f350ce9 100644
+--- a/codex-rs/login/src/auth/default_client.rs
++++ b/codex-rs/login/src/auth/default_client.rs
+@@ -1,7 +1,7 @@
+ //! Default Codex HTTP client: shared `User-Agent`, `originator`, optional residency header, and
+ //! HTTP client and transport construction.
+ //!
+-//! Use [`crate::default_client`] or [`codex_login::default_client`] from other crates in this
++//! Use [`crate::default_client`] or `codex_login::default_client` from other crates in this
+ //! workspace.
+ 
+ use codex_http_client::BuildRouteAwareHttpClientError;
+@@ -31,7 +31,7 @@ use crate::outbound_proxy::AuthRouteConfig;
+ /// However, future users of this should use this with caution as a result.
+ /// In addition, we want to be confident that this value is used for ALL clients and doing that requires a
+ /// lot of wiring and it's easy to miss code paths by doing so.
+-/// See https://github.com/openai/codex/pull/3388/files for an example of what that would look like.
++/// See <https://github.com/openai/codex/pull/3388/files> for an example of what that would look like.
+ /// Finally, we want to make sure this is set for ALL mcp clients without needing to know a special env var
+ /// or having to set data that they already specified in the mcp initialize request somewhere else.
+ ///
+diff --git a/codex-rs/login/src/test_support.rs b/codex-rs/login/src/test_support.rs
+index 09d6964..212aa4c 100644
+--- a/codex-rs/login/src/test_support.rs
++++ b/codex-rs/login/src/test_support.rs
+@@ -1,6 +1,6 @@
+ //! Test-only helpers exposed for cross-crate integration tests.
+ //!
+-//! Production code should receive an [`AuthRouteConfig`](crate::AuthRouteConfig) adapted from the
++//! Production code should receive an [`AuthRouteConfig`] adapted from the
+ //! application's resolved HTTP client factory instead of depending on this module.
+ 
+ use crate::AuthManager;
+diff --git a/codex-rs/message-board/src/api.rs b/codex-rs/message-board/src/api.rs
+index 1b8aa92..935d5d6 100644
+--- a/codex-rs/message-board/src/api.rs
++++ b/codex-rs/message-board/src/api.rs
+@@ -35,7 +35,7 @@ const _: Option<&dyn AgentMessageBoard> = None;
+ /// Notification delivery must neither wake finalized agents nor
+ /// leave notifications for a later turn.
+ ///
+-/// Boxed Send futures support an Arc<dyn AgentMessageBoard>, like AgentControl.
++/// Boxed Send futures support an `Arc<dyn AgentMessageBoard>`, like AgentControl.
+ pub trait AgentMessageBoard: Send + Sync {
+     fn identity(&self) -> SessionId;
+ 
+diff --git a/codex-rs/message-history/src/lib.rs b/codex-rs/message-history/src/lib.rs
+index 1eaece4..71c56a1 100644
+--- a/codex-rs/message-history/src/lib.rs
++++ b/codex-rs/message-history/src/lib.rs
+@@ -100,7 +100,7 @@ fn history_filepath(config: &HistoryConfig) -> PathBuf {
+ ///
+ /// Returns an I/O error if the history file cannot be opened/created, the
+ /// system clock is before the Unix epoch, or the exclusive lock cannot be
+-/// acquired after [`MAX_RETRIES`] attempts.
++/// acquired after `MAX_RETRIES` attempts.
+ pub async fn append_entry(
+     text: &str,
+     conversation_id: impl std::fmt::Display,
+diff --git a/codex-rs/protocol/src/config_types.rs b/codex-rs/protocol/src/config_types.rs
+index 87ffe6d..88096f4 100644
+--- a/codex-rs/protocol/src/config_types.rs
++++ b/codex-rs/protocol/src/config_types.rs
+@@ -56,7 +56,7 @@ pub enum AutoCompactTokenLimitScope {
+ 
+ /// A summary of the reasoning performed by the model. This can be useful for
+ /// debugging and understanding the model's reasoning process.
+-/// See https://platform.openai.com/docs/guides/reasoning?api-mode=responses#reasoning-summaries
++/// See <https://platform.openai.com/docs/guides/reasoning?api-mode=responses#reasoning-summaries>
+ #[derive(
+     Debug, Serialize, Deserialize, Default, Clone, Copy, PartialEq, Eq, Display, JsonSchema, TS,
+ )]
+diff --git a/codex-rs/protocol/src/openai_models.rs b/codex-rs/protocol/src/openai_models.rs
+index 3a26169..fc1f8b8 100644
+--- a/codex-rs/protocol/src/openai_models.rs
++++ b/codex-rs/protocol/src/openai_models.rs
+@@ -61,7 +61,7 @@ pub use guardian_v2::GuardianV2TranscriptModelConfig;
+ pub const MODEL_SPECIALTY_CYBER: &str = "cyber";
+ pub const SPEED_TIER_FAST: &str = "fast";
+ 
+-/// See https://platform.openai.com/docs/guides/reasoning?api-mode=responses#get-started-with-reasoning
++/// See <https://platform.openai.com/docs/guides/reasoning?api-mode=responses#get-started-with-reasoning>
+ #[derive(Debug, Default, Clone, PartialEq, Eq, TS, Hash)]
+ #[ts(type = "string")]
+ pub enum ReasoningEffort {
+diff --git a/codex-rs/protocol/src/review_format.rs b/codex-rs/protocol/src/review_format.rs
+index 6a5d447..454edf3 100644
+--- a/codex-rs/protocol/src/review_format.rs
++++ b/codex-rs/protocol/src/review_format.rs
+@@ -16,7 +16,7 @@ pub const REVIEW_FALLBACK_MESSAGE: &str = "Reviewer failed to output a response.
+ /// Format a full review findings block as plain text lines.
+ ///
+ /// - When `selection` is `Some`, each item line includes a checkbox marker:
+-///   "[x]" for selected items and "[ ]" for unselected. Missing indices
++///   "\[x\]" for selected items and "[ ]" for unselected. Missing indices
+ ///   default to selected.
+ /// - When `selection` is `None`, the marker is omitted and a simple bullet is
+ ///   rendered ("- Title — path:start-end").
+diff --git a/codex-rs/responses-api-proxy/src/lib.rs b/codex-rs/responses-api-proxy/src/lib.rs
+index 8fb7a0c..7f1974e 100644
+--- a/codex-rs/responses-api-proxy/src/lib.rs
++++ b/codex-rs/responses-api-proxy/src/lib.rs
+@@ -47,7 +47,7 @@ pub struct Args {
+     #[arg(long)]
+     pub port: Option<u16>,
+ 
+-    /// Path to a JSON file to write startup info (single line). Includes {"port": <u16>}.
++    /// Path to a JSON file to write startup info (single line). Includes `{"port": <u16>}`.
+     #[arg(long, value_name = "FILE")]
+     pub server_info: Option<PathBuf>,
+ 
+diff --git a/codex-rs/rollout/src/lib.rs b/codex-rs/rollout/src/lib.rs
+index 88feb50..67456f3 100644
+--- a/codex-rs/rollout/src/lib.rs
++++ b/codex-rs/rollout/src/lib.rs
+@@ -43,8 +43,8 @@ pub(crate) use codex_protocol::protocol;
+ ///
+ /// With `serde_json/arbitrary_precision`, Serde's generic buffer cannot replay
+ /// floating-point values nested inside flattened or internally tagged fields:
+-/// https://github.com/serde-rs/json/issues/721
+-/// https://github.com/serde-rs/serde/issues/1183
++/// <https://github.com/serde-rs/json/issues/721>
++/// <https://github.com/serde-rs/serde/issues/1183>
+ ///
+ /// Keep this JSON-specific workaround at the persistence boundary so history
+ /// remains format-neutral and resume and projection use the same item decoder.
+diff --git a/codex-rs/state/src/lib.rs b/codex-rs/state/src/lib.rs
+index 4c99606..d5a85a8 100644
+--- a/codex-rs/state/src/lib.rs
++++ b/codex-rs/state/src/lib.rs
+@@ -144,13 +144,13 @@ pub const PINNED_THREAD_SECTION_NAME: &str = "Pinned";
+ /// Environment variable for overriding the SQLite state database home directory.
+ pub const SQLITE_HOME_ENV: &str = "CODEX_SQLITE_HOME";
+ 
+-/// Errors encountered during DB operations. Tags: [stage]
++/// Errors encountered during DB operations. Tags: \[stage\]
+ pub const DB_ERROR_METRIC: &str = "codex.db.error";
+-/// Metrics on backfill process. Tags: [status]
++/// Metrics on backfill process. Tags: \[status\]
+ pub const DB_METRIC_BACKFILL: &str = "codex.db.backfill";
+-/// Metrics on backfill duration. Tags: [status]
++/// Metrics on backfill duration. Tags: \[status\]
+ pub const DB_METRIC_BACKFILL_DURATION_MS: &str = "codex.db.backfill.duration_ms";
+-/// Confirmed SQLite quick-check corruption findings. Tags: [db]
++/// Confirmed SQLite quick-check corruption findings. Tags: \[db\]
+ pub const DB_CORRUPTION_METRIC: &str = "codex.sqlite.corruption.count";
+ /// SQLite initialization attempts. Tags: [status, phase, db, error]
+ pub const DB_INIT_METRIC: &str = "codex.sqlite.init.count";
+@@ -168,5 +168,5 @@ pub const LOG_WRITE_BYTES_METRIC: &str = "codex.sqlite.logs.write.bytes";
+ pub const LOG_WRITE_ENTRIES_METRIC: &str = "codex.sqlite.logs.write.entries";
+ /// Largest estimated entry size in each SQLite log batch. Tags: [status, error]
+ pub const LOG_WRITE_MAX_ENTRY_BYTES_METRIC: &str = "codex.sqlite.logs.write.max_entry_bytes";
+-/// SQLite log entries discarded before they can be queued. Tags: [reason]
++/// SQLite log entries discarded before they can be queued. Tags: \[reason\]
+ pub const LOG_QUEUE_DROPPED_METRIC: &str = "codex.sqlite.logs.queue.dropped";
+diff --git a/codex-rs/thread-store/src/live_thread.rs b/codex-rs/thread-store/src/live_thread.rs
+index 0c45c2e..b78a560 100644
+--- a/codex-rs/thread-store/src/live_thread.rs
++++ b/codex-rs/thread-store/src/live_thread.rs
+@@ -47,7 +47,7 @@ pub struct LiveThread {
+ /// Owns persistence acquisition and its live thread while initialization is still fallible.
+ ///
+ /// If initialization returns early after persistence has been opened, dropping this guard discards
+-/// the live writer without forcing lazy in-memory state to become durable. Call [`commit`] once the
++/// the live writer without forcing lazy in-memory state to become durable. Call `commit` once the
+ /// session owns the live thread for normal operation. Cancellation leaves an in-flight acquisition
+ /// owned by the guard: cleanup waits for it to finish before discarding any acquired writer.
+ #[derive(Default)]
+diff --git a/codex-rs/tools/src/tool_spec.rs b/codex-rs/tools/src/tool_spec.rs
+index 530da1b..c006b53 100644
+--- a/codex-rs/tools/src/tool_spec.rs
++++ b/codex-rs/tools/src/tool_spec.rs
+@@ -78,7 +78,7 @@ impl From<LoadableToolSpec> for ToolSpec {
+ 
+ /// Returns JSON values that are compatible with Function Calling in the
+ /// Responses API:
+-/// https://platform.openai.com/docs/guides/function-calling?api-mode=responses
++/// <https://platform.openai.com/docs/guides/function-calling?api-mode=responses>
+ pub fn create_tools_json_for_responses_api(
+     tools: &[ToolSpec],
+ ) -> Result<Vec<Value>, serde_json::Error> {
+diff --git a/codex-rs/tui/src/custom_terminal.rs b/codex-rs/tui/src/custom_terminal.rs
+index 0607a8c..5ff07f6 100644
+--- a/codex-rs/tui/src/custom_terminal.rs
++++ b/codex-rs/tui/src/custom_terminal.rs
+@@ -186,7 +186,7 @@ where
+     B: Backend<Error = io::Error>,
+     B: Write,
+ {
+-    /// Creates a new [`Terminal`] with the given [`Backend`] and [`TerminalOptions`].
++    /// Creates a new [`Terminal`] with the given [`Backend`] and `TerminalOptions`.
+     pub fn with_options(mut backend: B) -> io::Result<Self> {
+         let screen_size = backend.size()?;
+         let cursor_pos = backend.get_cursor_position().unwrap_or_else(|err| {
+@@ -336,7 +336,7 @@ where
+     /// This method will:
+     ///
+     /// - autoresize the terminal if necessary
+-    /// - call the render callback, passing it a [`Frame`] reference to render to
++    /// - call the render callback, passing it a `Frame` reference to render to
+     /// - flush the current internal state by copying the current buffer to the backend
+     /// - move the cursor to the last known position if it was set during the rendering closure
+     ///
+diff --git a/codex-rs/tui/src/markdown_render.rs b/codex-rs/tui/src/markdown_render.rs
+index c770a3b..89e2f2e 100644
+--- a/codex-rs/tui/src/markdown_render.rs
++++ b/codex-rs/tui/src/markdown_render.rs
+@@ -363,7 +363,7 @@ struct TableColumnMetrics {
+ ///
+ /// Use this when the caller does not have a concrete render width yet (for
+ /// example, snapshot tests or contexts that intentionally defer wrapping). If
+-/// a viewport width is known, prefer [`render_markdown_text_with_width`] so
++/// a viewport width is known, prefer `render_markdown_text_with_width` so
+ /// table fallback and line wrapping decisions match the visible terminal.
+ pub fn render_markdown_text(input: &str) -> Text<'static> {
+     render_markdown_text_with_width(input, /*width*/ None)
+diff --git a/codex-rs/tui/src/public_widgets/composer_input.rs b/codex-rs/tui/src/public_widgets/composer_input.rs
+index dc443f2..7b7c509 100644
+--- a/codex-rs/tui/src/public_widgets/composer_input.rs
++++ b/codex-rs/tui/src/public_widgets/composer_input.rs
+@@ -84,7 +84,7 @@ impl ComposerInput {
+     }
+ 
+     /// Override the footer hint items displayed under the composer.
+-    /// Each tuple is rendered as "<key> <label>", with keys styled.
++    /// Each tuple is rendered as `"<key> <label>"`, with keys styled.
+     pub fn set_hint_items(&mut self, items: Vec<(impl Into<String>, impl Into<String>)>) {
+         let mapped: Vec<(String, String)> = items
+             .into_iter()
+diff --git a/codex-rs/tui/src/tui/event_stream.rs b/codex-rs/tui/src/tui/event_stream.rs
+index 3ed439e..391ed7b 100644
+--- a/codex-rs/tui/src/tui/event_stream.rs
++++ b/codex-rs/tui/src/tui/event_stream.rs
+@@ -16,7 +16,7 @@
+ //! pause happens before the stream enters a pending state; otherwise the crossterm reader thread may keep reading
+ //! from stdin, so the safer approach is to drop and recreate the event stream when we need to hand off the terminal.
+ //!
+-//! See https://ratatui.rs/recipes/apps/spawn-vim/ and https://www.reddit.com/r/rust/comments/1f3o33u/myterious_crossterm_input_after_running_vim for more details.
++//! See <https://ratatui.rs/recipes/apps/spawn-vim/> and <https://www.reddit.com/r/rust/comments/1f3o33u/myterious_crossterm_input_after_running_vim> for more details.
+ 
+ use std::pin::Pin;
+ use std::sync::Arc;
+diff --git a/codex-rs/utils/cli/src/shared_options.rs b/codex-rs/utils/cli/src/shared_options.rs
+index 5e52566..cc1f3d3 100644
+--- a/codex-rs/utils/cli/src/shared_options.rs
++++ b/codex-rs/utils/cli/src/shared_options.rs
+@@ -31,7 +31,7 @@ pub struct SharedCliOptions {
+     #[arg(long = "local-provider")]
+     pub oss_provider: Option<String>,
+ 
+-    /// Layer $CODEX_HOME/<name>.config.toml on top of the base user config.
++    /// Layer `$CODEX_HOME/<name>.config.toml` on top of the base user config.
+     #[arg(long = "profile", short = 'p')]
+     pub config_profile_v2: Option<ProfileV2Name>,
+ 
+diff --git a/codex-rs/utils/plugins/src/plugin_namespace.rs b/codex-rs/utils/plugins/src/plugin_namespace.rs
+index f64c389..17a152f 100644
+--- a/codex-rs/utils/plugins/src/plugin_namespace.rs
++++ b/codex-rs/utils/plugins/src/plugin_namespace.rs
+@@ -11,7 +11,7 @@ use std::path::PathBuf;
+ 
+ pub const AGENT_PLUGIN_MANIFEST_RELATIVE_PATH: &str = "plugin.json";
+ /// Published Agent Plugins v1 manifest schema:
+-/// https://github.com/agentplugins/agent-plugins-spec/blob/main/schemas/1.0.0/plugin.schema.json
++/// <https://github.com/agentplugins/agent-plugins-spec/blob/main/schemas/1.0.0/plugin.schema.json>
+ pub const AGENT_PLUGIN_SCHEMA_URI: &str =
+     "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
+ pub const SUPPORTED_AGENT_PLUGIN_SCHEMA_URIS: &[&str] = &[AGENT_PLUGIN_SCHEMA_URI];
+-- 
+2.43.0
+

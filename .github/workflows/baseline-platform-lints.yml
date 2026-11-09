@@ -7,6 +7,10 @@ on:
         description: Space-separated repository paths of downstream patches to apply with git am, in order
         type: string
         default: ""
+      generators:
+        description: "Instead of linting, run these upstream generators in order and return their changes as a patch: app-server-schema config-schema hooks-schema bazel-lock"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -14,6 +18,7 @@ permissions:
 jobs:
   clippy:
     name: ${{ matrix.check }} - ${{ matrix.target }}
+    if: inputs.generators == ''
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
@@ -186,5 +191,133 @@ jobs:
           path: |
             ${{ runner.temp }}/baseline-evidence
             ${{ runner.temp }}/baseline-target/**/cargo-timings
+          retention-days: 1
+          if-no-files-found: warn
+
+  regenerate:
+    # Generated files that need cargo or Bazel are completed here, since native builds run only remotely.
+    name: Regenerate
+    if: inputs.generators != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_INCREMENTAL: "0"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Preserve restart inputs outside the source checkout
+        id: inputs
+        env:
+          GENERATORS: ${{ inputs.generators }}
+        run: |
+          set -euo pipefail
+          read -r -a generators <<< "$GENERATORS"
+          for generator in "${generators[@]}"; do
+            case "$generator" in
+              app-server-schema | config-schema | hooks-schema | bazel-lock) ;;
+              *)
+                printf 'Unknown generator: %s\n' "$generator" >&2
+                exit 2
+                ;;
+            esac
+          done
+          evidence="$RUNNER_TEMP/regenerate-evidence"
+          mkdir -p "$evidence"
+          cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          # The upstream checkout below cleans the workspace, removing restart-metadata.
+          cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
+
+      - name: Apply the selected downstream patches
+        id: patched
+        env:
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/regenerate-evidence"
+          test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
+          : > "$evidence/applied-patches.txt"
+          read -r -a patch_paths <<< "$DOWNSTREAM_PATCHES"
+          for patch in "${patch_paths[@]}"; do
+            printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
+            git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
+          done
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Install upstream Linux build prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential binutils pkg-config libcap-dev libasound2-dev
+
+      - name: Set up the upstream Rust toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+
+      - name: Set up uv for the Python SDK generator
+        if: contains(inputs.generators, 'app-server-schema')
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+
+      - name: Install the pinned upstream Bazel version
+        if: contains(inputs.generators, 'bazel-lock')
+        run: |
+          set -euo pipefail
+          test "$(cat .bazelversion)" = 9.2.0
+          tools="$RUNNER_TEMP/regenerate-tools"
+          mkdir -p "$tools"
+          curl --fail --location --retry 3 --output "$tools/bazel" https://github.com/bazelbuild/bazel/releases/download/9.2.0/bazel-9.2.0-linux-x86_64
+          printf '%s  %s\n' 7668a95db1250f12c40407251e4e203b4ec8bf39bc495d2f485b2d8c99048694 "$tools/bazel" | sha256sum -c -
+          chmod +x "$tools/bazel"
+          printf '%s\n' "$tools" >> "$GITHUB_PATH"
+
+      - name: Run the selected generators
+        env:
+          GENERATORS: ${{ inputs.generators }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/regenerate-evidence"
+          read -r -a generators <<< "$GENERATORS"
+          for generator in "${generators[@]}"; do
+            printf '::group::%s\n' "$generator"
+            case "$generator" in
+              app-server-schema) (cd codex-rs && python3 app-server-protocol/scripts/write_schema_fixtures.py) ;;
+              config-schema) (cd codex-rs && cargo run -p codex-config-schema --bin codex-write-config-schema) ;;
+              hooks-schema) cargo run --manifest-path codex-rs/Cargo.toml -p codex-hooks --bin write_hooks_schema_fixtures ;;
+              bazel-lock) bazel mod deps --lockfile_mode=update ;;
+            esac 2>&1 | tee "$evidence/$generator.log"
+            printf '::endgroup::\n'
+          done
+
+      - name: Record the generated changes as a patch
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/regenerate-evidence"
+          test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
+          git add -A
+          git diff --cached --binary > "$evidence/regenerated.diff"
+          git diff --cached --stat | tee "$evidence/regenerated.stat"
+
+      - name: Retain the generated changes for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: regenerated
+          path: ${{ runner.temp }}/regenerate-evidence
           retention-days: 1
           if-no-files-found: warn
