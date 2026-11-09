@@ -8,6 +8,7 @@
   3. `nextest-local-profile.patch`: nextest's unknown `profile.local.inherits` key.
   4. `bazel-module-versions.patch`: Bazel's root-module version mismatch for `platforms` and `rules_cc`.
   5. `rmcp-client-doc-links.patch`: rustdoc's bare-URL warnings in `codex-rmcp-client` (queued after `fatal-warnings`).
+  6. `workspace-rustdoc.patch`: rustdoc's warnings in the other 22 workspace crates (queued after 5).
 
 The inventory these come from, with the warnings left open and why, is [warning-inventory.md](../../../../docs/warning-inventory.md).
 
@@ -74,3 +75,17 @@ Verification: `bazel mod deps --lockfile_mode=error` with Bazel 9.2.0 passes and
 `cargo doc --no-deps` reports eight `rustdoc::bare_urls` warnings in `codex-rmcp-client`: plain URLs in the doc comments of `oauth.rs`, `oauth_callback.rs` and `rmcp_client.rs`, which rustdoc renders as text, not links. Under patch 25 they fail documentation with `error: this URL is not a hyperlink` (platform lint run `42537177622`). The patch wraps each URL in angle brackets, rustdoc's autolink form.
 
 Verification: `RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps` reports nothing for `codex-rmcp-client`.
+
+## workspace-rustdoc.patch
+
+With `--keep-going`, `RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps` reports 68 more errors in 22 crates (platform lint run `42539814186`). The causes are:
+- bare URLs (`rustdoc::bare_urls`);
+- literal brackets such as `[UNSTABLE]` and `argv[1]`, read as intra-doc links (`rustdoc::broken_intra_doc_links`);
+- placeholders such as `<u16>`, read as unclosed HTML tags (`rustdoc::invalid_html_tags`);
+- intra-doc links to items the crate cannot name.
+
+The patch edits only doc comments. URLs become autolinks, literal brackets are escaped, placeholders become code spans, and unresolvable links become code spans.
+
+The app-server protocol, `config.schema.json` and the Python SDK copy these doc comments into generated files, so the patch includes their output from upstream's own generators (the platform lint workflow's `generators` input, run `42541908776`). Those descriptions now carry the Markdown escape `\[UNSTABLE\]`, which renders as `[UNSTABLE]`. No code parses the marker.
+
+Verification: `RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps --keep-going` passes, and the schema fixture tests pass unchanged.

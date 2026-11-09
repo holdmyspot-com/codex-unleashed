@@ -30,3 +30,4 @@ The release applies these patches in this order:
 24. [release-build-warnings/bazel-module-versions.patch](holdmyspot-com/codex-unleashed/release-build-warnings/bazel-module-versions.patch)
 25. [fatal-warnings/deny-workspace-warnings.patch](holdmyspot-com/codex-unleashed/fatal-warnings/deny-workspace-warnings.patch)
 26. [release-build-warnings/rmcp-client-doc-links.patch](holdmyspot-com/codex-unleashed/release-build-warnings/rmcp-client-doc-links.patch)
+27. [release-build-warnings/workspace-rustdoc.patch](holdmyspot-com/codex-unleashed/release-build-warnings/workspace-rustdoc.patch)
