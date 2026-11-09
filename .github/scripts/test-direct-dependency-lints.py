@@ -49,17 +49,22 @@ class DirectDependencyLintsTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "rand 0.9.0\nserde 1.0.0\n")
 
-    def wrap(self, name, version, arguments):
-        """Run the wrapper for one rustc call of package name at version and return the arguments rustc received."""
+    def wrap(self, name, version, arguments, manifest="[package]\nname = \"serde\"\n"):
+        """
+        Run the wrapper for one rustc call of package name at version, whose Cargo.toml has the given text, and return
+        the arguments rustc received.
+        """
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            manifest_path = root / "Cargo.toml"
+            manifest_path.write_text(manifest)
             listing = root / "direct.txt"
             listing.write_text("serde 1.0.0\nrand 0.9.0\n")
             rustc = root / "rustc"
             rustc.write_text("#!/usr/bin/env python3\nimport json, sys\nprint(json.dumps(sys.argv[1:]))\n")
             rustc.chmod(0o755)
             environment = dict(os.environ, CODEX_DIRECT_DEPENDENCIES=listing.as_posix(), CARGO_PKG_NAME=name,
-                               CARGO_PKG_VERSION=version)
+                               CARGO_PKG_VERSION=version, CARGO_MANIFEST_PATH=manifest_path.as_posix())
             result = subprocess.run([sys.executable, "-I", SCRIPT.as_posix(), rustc.as_posix(), *arguments],
                                     env=environment, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -70,6 +75,36 @@ class DirectDependencyLintsTest(unittest.TestCase):
         self.assertEqual(self.wrap("serde", "1.0.0", ["--crate-name", "serde", "--cap-lints", "allow", "src/lib.rs"]),
                          ["--crate-name", "serde", "src/lib.rs"])
         self.assertEqual(self.wrap("rand", "0.9.0", ["--cap-lints=warn", "src/lib.rs"]), ["src/lib.rs"])
+
+    def test_direct_dependency_gets_its_own_lint_table_in_place_of_the_cap(self):
+        """
+        A direct dependency's call gets the rustc flags Cargo derives from the package's [lints] table for workspace
+        packages, where the cap was: each rust and clippy lint ordered by priority and then by reverse name, cargo
+        lints left out, then each declared check-cfg.
+        """
+        manifest = """[package]
+name = "serde"
+
+[lints.rust]
+unsafe_code = "deny"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = ["cfg(tokio_unstable)", "cfg(loom)"]
+
+[lints.clippy]
+all = "allow"
+
+[lints.cargo]
+implicit_features = "warn"
+"""
+        self.assertEqual(
+            self.wrap("serde", "1.0.0", ["--crate-name", "serde", "--cap-lints", "allow", "-Dwarnings", "src/lib.rs"],
+                      manifest),
+            ["--crate-name", "serde", "--warn=rust_2018_idioms", "--deny=unsafe_code", "--warn=unexpected_cfgs",
+             "--allow=clippy::all", "--check-cfg", "cfg(tokio_unstable)", "--check-cfg", "cfg(loom)", "-Dwarnings",
+             "src/lib.rs"])
 
     def test_other_packages_keep_every_argument(self):
         """A transitive dependency, another version of a direct dependency and a probe keep their arguments."""
