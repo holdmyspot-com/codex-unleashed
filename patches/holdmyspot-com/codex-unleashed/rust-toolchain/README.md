@@ -22,6 +22,11 @@ The patch pins 1.99.1 in:
 
 Since Rust 1.97, `linker_messages` warns by default but ignores `-D warnings`, so the workspace comment now gives that as the reason for denying it explicitly.
 
+Rust 1.99 also adds lints that fail the workspace under patch 25 (platform lint run `42556216850`). The patch adapts each call site:
+- `Atomic*::fetch_update` is deprecated and renamed `try_update`, with the same arguments and result (four sites).
+- Clippy's `chunks_exact_to_as_chunks`: three byte-pair loops use `as_chunks::<2>()`. Each already checks for an even length, so the remainder is empty.
+- Clippy's `map_or_identity`: `map_or(0, identity)` becomes `unwrap_or(0)`.
+
 ### Reproduction
 
 At patch 27, the macOS release builds fail while linking `codex-code-mode-host`: `error: linker stderr: ld: ignoring duplicate libraries: '-lSystem'` (macOS release runs `42550713786` and `42550711373`).

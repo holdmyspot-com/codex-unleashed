@@ -1,4 +1,4 @@
-From 146faecb16ba6bf2f6c899d4df736e0c737990e3 Mon Sep 17 00:00:00 2001
+From dcd5aadf7234b79bd71ddc795b52a494376d84b4 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:07:55 -0500
 Subject: [PATCH] Build with Rust 1.99.1 so macOS links pass under fatal linker
@@ -27,9 +27,17 @@ Bazel toolchain, setup-windows.ps1 and every workflow's toolchain action.
  MODULE.bazel                                  |   2 +-
  MODULE.bazel.lock                             | 202 +++++++++---------
  codex-rs/Cargo.toml                           |   2 +-
+ .../src/session_runtime/mod.rs                |   2 +-
+ .../core/src/tools/executed_tool_calls.rs     |   2 +-
+ .../core/tests/common/apps_test_server.rs     |   2 +-
+ codex-rs/diagnostics/src/lib.rs               |   2 +-
  codex-rs/rust-toolchain.toml                  |   2 +-
  codex-rs/scripts/setup-windows.ps1            |   2 +-
- 15 files changed, 130 insertions(+), 130 deletions(-)
+ .../utils/path-uri/src/api_path_string.rs     |   6 +-
+ codex-rs/utils/path-uri/src/lib.rs            |   6 +-
+ .../stream-parser/src/inline_hidden_tag.rs    |   2 +-
+ codex-rs/websocket-auth/src/lib.rs            |   6 +-
+ 23 files changed, 146 insertions(+), 142 deletions(-)
 
 diff --git a/.github/actions/build-bazel-package-binaries/action.yml b/.github/actions/build-bazel-package-binaries/action.yml
 index dd918ba..ae8660b 100644
@@ -508,6 +516,58 @@ index e37328c..50872ec 100644
  linker_messages = "deny"
  
  [workspace.lints.clippy]
+diff --git a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
+index 7b46c37..c500b81 100644
+--- a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
++++ b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
+@@ -153,7 +153,7 @@ impl SessionRuntime {
+     fn allocate_cell_id(&self) -> Result<CellId, Error> {
+         self.inner
+             .next_cell_id
+-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next_cell_id| {
++            .try_update(Ordering::Relaxed, Ordering::Relaxed, |next_cell_id| {
+                 next_cell_id.checked_add(1)
+             })
+             .map(|cell_id| CellId::new(cell_id.to_string()))
+diff --git a/codex-rs/core/src/tools/executed_tool_calls.rs b/codex-rs/core/src/tools/executed_tool_calls.rs
+index 853c88a..26c1eb7 100644
+--- a/codex-rs/core/src/tools/executed_tool_calls.rs
++++ b/codex-rs/core/src/tools/executed_tool_calls.rs
+@@ -369,7 +369,7 @@ impl ExecutedToolCalls {
+     fn reserve_direct_call(&self) -> Option<DirectCallPermit> {
+         let recording = Arc::downgrade(&self.lock_state().as_ref()?.recording);
+         self.pending_direct_calls
+-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |pending| {
++            .try_update(Ordering::Relaxed, Ordering::Relaxed, |pending| {
+                 (pending < MAX_PENDING_EXECUTED_TOOL_CALLS).then_some(pending + 1)
+             })
+             .ok()?;
+diff --git a/codex-rs/core/tests/common/apps_test_server.rs b/codex-rs/core/tests/common/apps_test_server.rs
+index cde2ed7..6771062 100644
+--- a/codex-rs/core/tests/common/apps_test_server.rs
++++ b/codex-rs/core/tests/common/apps_test_server.rs
+@@ -543,7 +543,7 @@ impl Respond for CodexAppsJsonRpcResponder {
+                     .as_ref()
+                     .is_some_and(|remaining| {
+                         remaining
+-                            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |remaining| {
++                            .try_update(Ordering::SeqCst, Ordering::SeqCst, |remaining| {
+                                 remaining.checked_sub(1)
+                             })
+                             .is_ok()
+diff --git a/codex-rs/diagnostics/src/lib.rs b/codex-rs/diagnostics/src/lib.rs
+index a966e4a..91b878b 100644
+--- a/codex-rs/diagnostics/src/lib.rs
++++ b/codex-rs/diagnostics/src/lib.rs
+@@ -32,7 +32,7 @@ impl Gauge {
+     pub fn decrement(&self) {
+         let _ = self
+             .value
+-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
++            .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+                 Some(value.saturating_sub(1))
+             });
+     }
 diff --git a/codex-rs/rust-toolchain.toml b/codex-rs/rust-toolchain.toml
 index 910c651..d73899d 100644
 --- a/codex-rs/rust-toolchain.toml
@@ -530,6 +590,70 @@ index a8fe0c2..9567b29 100644
  & rustup toolchain install $toolchain --profile minimal | Out-Host
  & rustup default $toolchain | Out-Host
  & rustup component add clippy rustfmt rust-src --toolchain $toolchain | Out-Host
+diff --git a/codex-rs/utils/path-uri/src/api_path_string.rs b/codex-rs/utils/path-uri/src/api_path_string.rs
+index b2ecdf0..85e577d 100644
+--- a/codex-rs/utils/path-uri/src/api_path_string.rs
++++ b/codex-rs/utils/path-uri/src/api_path_string.rs
+@@ -263,8 +263,10 @@ fn render_windows_opaque_fallback(path_bytes: &[u8]) -> Option<String> {
+         return None;
+     }
+     let path_wide = path_bytes
+-        .chunks_exact(2)
+-        .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]]))
++        .as_chunks::<2>()
++        .0
++        .iter()
++        .map(|bytes| u16::from_le_bytes(*bytes))
+         .collect::<Vec<_>>();
+ 
+     // Windows absolute paths either have a rooted drive prefix (`C:\\`) or a
+diff --git a/codex-rs/utils/path-uri/src/lib.rs b/codex-rs/utils/path-uri/src/lib.rs
+index 7a42363..78bec0a 100644
+--- a/codex-rs/utils/path-uri/src/lib.rs
++++ b/codex-rs/utils/path-uri/src/lib.rs
+@@ -819,8 +819,10 @@ fn infer_opaque_path_convention(path_bytes: &[u8]) -> Option<PathConvention> {
+     }
+ 
+     let mut path_wide = path_bytes
+-        .chunks_exact(2)
+-        .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]]));
++        .as_chunks::<2>()
++        .0
++        .iter()
++        .map(|bytes| u16::from_le_bytes(*bytes));
+     let first = path_wide.next()?;
+     let second = path_wide.next()?;
+     let has_drive = u8::try_from(first).is_ok_and(|drive| drive.is_ascii_alphabetic())
+diff --git a/codex-rs/utils/stream-parser/src/inline_hidden_tag.rs b/codex-rs/utils/stream-parser/src/inline_hidden_tag.rs
+index 0e0d44b..ccb08d8 100644
+--- a/codex-rs/utils/stream-parser/src/inline_hidden_tag.rs
++++ b/codex-rs/utils/stream-parser/src/inline_hidden_tag.rs
+@@ -92,7 +92,7 @@ where
+             .iter()
+             .map(|spec| longest_suffix_prefix_len(pending, spec.open))
+             .max()
+-            .map_or(0, std::convert::identity)
++            .unwrap_or(0)
+     }
+ 
+     fn push_visible_prefix(out: &mut StreamTextChunk<ExtractedInlineTag<T>>, pending: &str) {
+diff --git a/codex-rs/websocket-auth/src/lib.rs b/codex-rs/websocket-auth/src/lib.rs
+index 5a062ff..810c445 100644
+--- a/codex-rs/websocket-auth/src/lib.rs
++++ b/codex-rs/websocket-auth/src/lib.rs
+@@ -444,9 +444,9 @@ fn sha256_digest_arg(flag_name: &str, value: &str) -> anyhow::Result<[u8; 32]> {
+     }
+ 
+     let mut digest = [0u8; 32];
+-    for (index, pair) in trimmed.as_bytes().chunks_exact(2).enumerate() {
+-        let high = hex_nibble(flag_name, pair[0])?;
+-        let low = hex_nibble(flag_name, pair[1])?;
++    for (index, [high, low]) in trimmed.as_bytes().as_chunks::<2>().0.iter().enumerate() {
++        let high = hex_nibble(flag_name, *high)?;
++        let low = hex_nibble(flag_name, *low)?;
+         digest[index] = (high << 4) | low;
+     }
+     Ok(digest)
 -- 
 2.43.0
 
