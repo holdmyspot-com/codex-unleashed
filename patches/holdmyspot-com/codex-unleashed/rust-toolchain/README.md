@@ -16,7 +16,7 @@ Toolchain upgrades are otherwise deferred (D9 in [restart-scope.md](../../../../
 
 The patch pins 1.99.1 in:
 - `codex-rs/rust-toolchain.toml`;
-- the Bazel toolchain in `MODULE.bazel`;
+- the Bazel toolchain in `MODULE.bazel`, with `MODULE.bazel.lock` from upstream's generator (`bazel-lock`, platform lint workflow run `42555602888`);
 - `codex-rs/scripts/setup-windows.ps1`;
 - every workflow's `dtolnay/rust-toolchain` action (branch `1.99.1`, commit `d124f86f28ff42855784ff3319f48ac182c248f8`), `toolchain:` input, `cargo +1.95.0` call and cargo-deny `rust-version`.
 
@@ -24,7 +24,7 @@ Since Rust 1.97, `linker_messages` warns by default but ignores `-D warnings`, s
 
 ### Reproduction
 
-At patch 27, the macOS release builds fail while linking `codex-code-mode-host`: `error: linker stderr: ld: ignoring duplicate libraries: '-lSystem'`.
+At patch 27, the macOS release builds fail while linking `codex-code-mode-host`: `error: linker stderr: ld: ignoring duplicate libraries: '-lSystem'` (macOS release runs `42550713786` and `42550711373`).
 
 ### Verification
 
