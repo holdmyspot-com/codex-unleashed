@@ -1,4 +1,4 @@
-From eb8f4f9c0c2a89c974f4c9efc9b5ea1804a97ff4 Mon Sep 17 00:00:00 2001
+From a9b02a09e1dbe72a5c9a78be661db3c6cd14d49a Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:07:55 -0500
 Subject: [PATCH] Build with Rust 1.99.1 so macOS links pass under fatal linker
@@ -67,8 +67,10 @@ drops that one exact notice and passes every other linker message through.
  .../utils/path-uri/src/api_path_string.rs     |   6 +-
  codex-rs/utils/path-uri/src/lib.rs            |  12 +-
  .../stream-parser/src/inline_hidden_tag.rs    |   2 +-
+ .../voice-host/src/input_channel_tests.rs     |   6 +-
+ codex-rs/voice-host/src/playback.rs           |   4 +-
  codex-rs/websocket-auth/src/lib.rs            |   6 +-
- 49 files changed, 334 insertions(+), 297 deletions(-)
+ 51 files changed, 340 insertions(+), 301 deletions(-)
  create mode 100755 codex-rs/scripts/apple-linker.sh
 
 diff --git a/.github/actions/build-bazel-package-binaries/action.yml b/.github/actions/build-bazel-package-binaries/action.yml
@@ -2053,6 +2055,38 @@ index 0e0d44b..ccb08d8 100644
      }
  
      fn push_visible_prefix(out: &mut StreamTextChunk<ExtractedInlineTag<T>>, pending: &str) {
+diff --git a/codex-rs/voice-host/src/input_channel_tests.rs b/codex-rs/voice-host/src/input_channel_tests.rs
+index e3c7807..316078d 100644
+--- a/codex-rs/voice-host/src/input_channel_tests.rs
++++ b/codex-rs/voice-host/src/input_channel_tests.rs
+@@ -18,8 +18,10 @@ fn microphone_selection_excludes_playback_channels() {
+     unplugged[0] = 0.0;
+     let interleaved = [plugged_in, unplugged].concat();
+     let captured: Vec<_> = interleaved
+-        .chunks_exact(/*chunk_size*/ 16)
+-        .map(|frame| source.sample(frame))
++        .as_chunks::<16>()
++        .0
++        .iter()
++        .map(|frame| source.sample(frame.as_slice()))
+         .collect();
+     assert_eq!(captured, vec![0.25, 0.0]);
+ }
+diff --git a/codex-rs/voice-host/src/playback.rs b/codex-rs/voice-host/src/playback.rs
+index 199abfa..2f98c3b 100644
+--- a/codex-rs/voice-host/src/playback.rs
++++ b/codex-rs/voice-host/src/playback.rs
+@@ -67,8 +67,8 @@ impl PlaybackWriter {
+             at: Instant::now(),
+             generation: self.epoch,
+         };
+-        for (sample, bytes) in frame.samples.iter_mut().zip(bytes.chunks_exact(4)) {
+-            *sample = f32::from_le_bytes(bytes.try_into().map_err(|_| "invalid speaker buffer")?);
++        for (sample, bytes) in frame.samples.iter_mut().zip(bytes.as_chunks::<4>().0) {
++            *sample = f32::from_le_bytes(*bytes);
+             if !sample.is_finite() {
+                 return Err("invalid speaker sample");
+             }
 diff --git a/codex-rs/websocket-auth/src/lib.rs b/codex-rs/websocket-auth/src/lib.rs
 index 5a062ff..810c445 100644
 --- a/codex-rs/websocket-auth/src/lib.rs
