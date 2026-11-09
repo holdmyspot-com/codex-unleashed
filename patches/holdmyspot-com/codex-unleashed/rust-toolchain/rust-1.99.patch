@@ -1,4 +1,4 @@
-From 8a1be5611f11459f48d9bd251da4c616906de290 Mon Sep 17 00:00:00 2001
+From 89c85d882ef34c60e1792c19580693bbaf459391 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:07:55 -0500
 Subject: [PATCH] Build with Rust 1.99.1 so macOS links pass under fatal linker
@@ -13,6 +13,11 @@ linker_info lint.
 
 Pin Rust 1.99.1, the latest stable release, in rust-toolchain.toml, the
 Bazel toolchain, setup-windows.ps1 and every workflow's toolchain action.
+
+The release codex binary's __eh_frame section exceeds the 16 MB that
+compact unwind's DWARF offsets can reach, and ld says so on stderr, which
+fails the link. Link Apple targets through scripts/apple-linker.sh, which
+drops that one exact notice and passes every other linker message through.
 ---
  .../build-bazel-package-binaries/action.yml   |   2 +-
  .../build-cargo-package-binaries/action.yml   |   2 +-
@@ -26,11 +31,13 @@ Bazel toolchain, setup-windows.ps1 and every workflow's toolchain action.
  .github/workflows/v8-canary.yml               |  10 +-
  MODULE.bazel                                  |   2 +-
  MODULE.bazel.lock                             | 203 +++++++++---------
- codex-rs/Cargo.lock                           |   6 +-
+ codex-rs/.cargo/config.toml                   |   8 +
+ codex-rs/Cargo.lock                           | 180 ++++++++--------
  codex-rs/Cargo.toml                           |   2 +-
  codex-rs/agent-identity/src/lib.rs            |   1 -
  .../src/session_runtime/mod.rs                |   2 +-
  .../src/connection_manager/startup.rs         |   4 +-
+ codex-rs/core/src/realtime_conversation.rs    |   6 +-
  .../core/src/tools/executed_tool_calls.rs     |   2 +-
  .../core/tests/common/apps_test_server.rs     |   2 +-
  codex-rs/diagnostics/src/lib.rs               |   2 +-
@@ -38,6 +45,7 @@ Bazel toolchain, setup-windows.ps1 and every workflow's toolchain action.
  codex-rs/ext/skills/src/provider/executor.rs  |   4 +-
  .../otel/tests/suite/otlp_http_loopback.rs    |  42 ++--
  codex-rs/rust-toolchain.toml                  |   2 +-
+ codex-rs/scripts/apple-linker.sh              |  24 +++
  codex-rs/scripts/setup-windows.ps1            |   2 +-
  codex-rs/shell-command/src/bash.rs            |   6 +-
  codex-rs/tui/src/app/reconnect.rs             |   2 +-
@@ -47,7 +55,8 @@ Bazel toolchain, setup-windows.ps1 and every workflow's toolchain action.
  codex-rs/utils/path-uri/src/lib.rs            |   6 +-
  .../stream-parser/src/inline_hidden_tag.rs    |   2 +-
  codex-rs/websocket-auth/src/lib.rs            |   6 +-
- 33 files changed, 181 insertions(+), 179 deletions(-)
+ 36 files changed, 303 insertions(+), 269 deletions(-)
+ create mode 100755 codex-rs/scripts/apple-linker.sh
 
 diff --git a/.github/actions/build-bazel-package-binaries/action.yml b/.github/actions/build-bazel-package-binaries/action.yml
 index dd918ba..ae8660b 100644
@@ -521,10 +530,44 @@ index 181fbf8..8a32c1b 100644
      },
      "@@windows_support+//windows:extensions.bzl%msvc_runtime": {
        "visual_studio_installer_manifest_v1": {
+diff --git a/codex-rs/.cargo/config.toml b/codex-rs/.cargo/config.toml
+index 652e09e..c900851 100644
+--- a/codex-rs/.cargo/config.toml
++++ b/codex-rs/.cargo/config.toml
+@@ -16,3 +16,11 @@ rustflags = ["-C", "link-arg=/STACK:8388608", "-C", "link-arg=/arm64hazardfree"]
+ 
+ [target.'cfg(all(windows, target_env = "gnu"))']
+ rustflags = ["-C", "link-arg=-Wl,--stack,8388608"]
++
++# ld reports that the codex binary's __eh_frame section exceeds compact unwind's 16 MB reach, which the denied
++# linker_messages lint would turn into a build failure; the wrapper drops only that notice.
++[target.aarch64-apple-darwin]
++linker = "scripts/apple-linker.sh"
++
++[target.x86_64-apple-darwin]
++linker = "scripts/apple-linker.sh"
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 784236e..97afc8e 100644
+index 784236e..73772b6 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
+@@ -226,7 +226,7 @@ dependencies = [
+  "ratatui-core",
+  "simdutf8",
+  "smallvec",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -402,7 +402,7 @@ dependencies = [
+  "nom 7.1.3",
+  "num-traits",
+  "rusticata-macros",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "time",
+ ]
+ 
 @@ -627,13 +627,13 @@ checksum = "8b75356056920673b02621b35afd0f7dda9306d03c79a30f5c56c44cf256e3de"
  
  [[package]]
@@ -542,6 +585,749 @@ index 784236e..97afc8e 100644
  ]
  
  [[package]]
+@@ -1546,7 +1546,7 @@ dependencies = [
+  "cached_proc_macro_types",
+  "hashbrown 0.15.5",
+  "once_cell",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "web-time",
+ ]
+ 
+@@ -1883,7 +1883,7 @@ version = "0.3.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "0fa961b519f0b462e3a3b4a34b64d119eeaca1d59af726fe450bbba07a9fc0a1"
+ dependencies = [
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -1909,7 +1909,7 @@ dependencies = [
+  "serde",
+  "serde_json",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+ ]
+ 
+@@ -2043,7 +2043,7 @@ dependencies = [
+  "serde",
+  "serde_json",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tokio-test",
+  "tokio-tungstenite",
+@@ -2155,7 +2155,7 @@ dependencies = [
+  "tar",
+  "tempfile",
+  "test-case",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tikv-jemallocator",
+  "time",
+  "tokio",
+@@ -2258,7 +2258,7 @@ dependencies = [
+  "similar",
+  "strum_macros 0.28.0",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tracing",
+  "ts-rs",
+  "uuid",
+@@ -2348,7 +2348,7 @@ dependencies = [
+  "pretty_assertions",
+  "similar",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tree-sitter",
+  "tree-sitter-bash",
+@@ -2417,7 +2417,7 @@ dependencies = [
+  "rcgen",
+  "rustls",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tokio-rustls",
+  "url",
+@@ -2629,7 +2629,7 @@ dependencies = [
+  "hyper-util",
+  "pretty_assertions",
+  "prost",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tokio-rustls",
+  "tonic",
+@@ -2660,7 +2660,7 @@ dependencies = [
+  "serde_json",
+  "sha2 0.10.9",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tracing",
+  "wiremock",
+@@ -2711,7 +2711,7 @@ dependencies = [
+  "codex-http-client",
+  "serde",
+  "serde_json",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -2853,7 +2853,7 @@ dependencies = [
+  "serde_path_to_error",
+  "sha2 0.10.9",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tokio-stream",
+  "tokio-util",
+@@ -2910,7 +2910,7 @@ dependencies = [
+  "codex-plugin",
+  "codex-utils-path-uri",
+  "serde_json",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tracing",
+ ]
+ 
+@@ -3053,7 +3053,7 @@ dependencies = [
+  "tempfile",
+  "test-case",
+  "test-log",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tokio-tungstenite",
+  "tokio-util",
+@@ -3106,7 +3106,7 @@ dependencies = [
+  "semver",
+  "serde",
+  "serde_json",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -3154,7 +3154,7 @@ dependencies = [
+  "sha2 0.10.9",
+  "tar",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "toml 0.9.11+spec-1.1.0",
+  "tracing",
+@@ -3295,7 +3295,7 @@ dependencies = [
+  "serial_test",
+  "tempfile",
+  "test-case",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tokio-tungstenite",
+  "tokio-util",
+@@ -3357,7 +3357,7 @@ dependencies = [
+  "shlex",
+  "starlark",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+ ]
+ 
+@@ -3554,7 +3554,7 @@ dependencies = [
+  "serde",
+  "similar",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "ts-rs",
+  "walkdir",
+@@ -3656,7 +3656,7 @@ dependencies = [
+  "pretty_assertions",
+  "serde_json",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tracing",
+  "uuid",
+@@ -3781,7 +3781,7 @@ dependencies = [
+  "socket2 0.6.3",
+  "system-configuration",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tokio-rustls",
+  "tracing",
+@@ -3926,7 +3926,7 @@ dependencies = [
+  "serial_test",
+  "sha2 0.10.9",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tiny_http",
+  "tokio",
+  "tracing",
+@@ -3974,7 +3974,7 @@ dependencies = [
+  "serde_json",
+  "sha1 0.10.6",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tokio-util",
+  "tracing",
+@@ -4007,7 +4007,7 @@ dependencies = [
+  "pretty_assertions",
+  "serde_json",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tokio-util",
+  "tracing",
+@@ -4032,7 +4032,7 @@ dependencies = [
+  "serde",
+  "serde_json",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+ ]
+ 
+@@ -4242,7 +4242,7 @@ dependencies = [
+  "serde",
+  "serde_json",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tracelogging",
+  "windows-sys 0.61.2",
+ ]
+@@ -4289,7 +4289,7 @@ dependencies = [
+  "serde_json",
+  "sha2 0.10.9",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "time",
+  "tokio",
+  "tracing",
+@@ -4347,7 +4347,7 @@ dependencies = [
+  "serde",
+  "serde_json",
+  "strum_macros 0.28.0",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tokio-tungstenite",
+  "tracing",
+@@ -4378,7 +4378,7 @@ dependencies = [
+  "codex-utils-plugins",
+  "pretty_assertions",
+  "serde_json",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -4461,7 +4461,7 @@ dependencies = [
+  "strum_macros 0.28.0",
+  "sys-locale",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tracing",
+  "ts-rs",
+@@ -4491,7 +4491,7 @@ dependencies = [
+  "pretty_assertions",
+  "serde_json",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tracing",
+  "uuid",
+@@ -4587,7 +4587,7 @@ dependencies = [
+  "sha2 0.10.9",
+  "sse-stream",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tiny_http",
+  "tokio",
+  "tokio-util",
+@@ -4670,7 +4670,7 @@ dependencies = [
+  "serde",
+  "serde_json",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "url",
+  "uuid",
+@@ -4763,7 +4763,7 @@ dependencies = [
+  "serde",
+  "serde_yaml",
+  "shlex",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tracing",
+ ]
+ 
+@@ -4920,7 +4920,7 @@ dependencies = [
+  "sqlx",
+  "sqlx-macros",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tracing",
+  "uuid",
+@@ -4948,7 +4948,7 @@ dependencies = [
+  "rmcp",
+  "serde",
+  "serde_json",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tracing",
+  "urlencoding",
+ ]
+@@ -5056,7 +5056,7 @@ dependencies = [
+  "syntect",
+  "tempfile",
+  "textwrap 0.16.2",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tokio-stream",
+  "tokio-tungstenite",
+@@ -5112,7 +5112,7 @@ dependencies = [
+  "security-framework-sys",
+  "sha2 0.10.9",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tracing",
+ ]
+ 
+@@ -5147,7 +5147,7 @@ dependencies = [
+  "codex-utils-string",
+  "pretty_assertions",
+  "symphonia",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tracing",
+ ]
+ 
+@@ -5166,7 +5166,7 @@ version = "0.0.0"
+ dependencies = [
+  "assert_cmd",
+  "runfiles",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -5236,7 +5236,7 @@ dependencies = [
+  "image",
+  "mime_guess",
+  "png",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+ ]
+ 
+@@ -5290,7 +5290,7 @@ dependencies = [
+  "schemars 0.8.22",
+  "serde",
+  "serde_json",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "ts-rs",
+  "url",
+  "urlencoding",
+@@ -5342,7 +5342,7 @@ name = "codex-utils-readiness"
+ version = "0.0.0"
+ dependencies = [
+  "assert_matches",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "time",
+  "tokio",
+ ]
+@@ -5562,7 +5562,7 @@ dependencies = [
+  "serde",
+  "serde_json",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "url",
+  "wiremock",
+@@ -6519,7 +6519,7 @@ version = "1.0.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "10d60334b3b2e7c9d91ef8150abfb6fa4c1c39ebbcf4a81c2e346aad939fee3e"
+ dependencies = [
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -7435,7 +7435,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "54f0d287c53ffd184d04d8677f590f4ac5379785529e5e08b1c8083acdd5c198"
+ dependencies = [
+  "memchr",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -8507,7 +8507,7 @@ dependencies = [
+  "pastey",
+  "pin-project-lite",
+  "smallvec",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -8828,7 +8828,7 @@ dependencies = [
+  "once_cell",
+  "rand 0.9.3",
+  "ring",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tinyvec",
+  "tokio",
+  "tracing",
+@@ -8851,7 +8851,7 @@ dependencies = [
+  "rand 0.9.3",
+  "resolv-conf",
+  "smallvec",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tracing",
+ ]
+@@ -9757,7 +9757,7 @@ dependencies = [
+  "jni-sys 0.4.1",
+  "log",
+  "simd_cesu8",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "walkdir",
+  "windows-link",
+ ]
+@@ -9852,7 +9852,7 @@ checksum = "bde5057d6143cc94e861d90f591b9303d6716c6b9602309150bd068853c10899"
+ dependencies = [
+  "hashbrown 0.16.1",
+  "portable-atomic",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -9935,7 +9935,7 @@ checksum = "49fefd6652c57d68aaa32544a4c0e642929725bdc1fd929367cdeb673ab81088"
+ dependencies = [
+  "enumflags2",
+  "libc",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -10436,7 +10436,7 @@ dependencies = [
+  "serde_path_to_error",
+  "sha2 0.11.0",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tracelogging",
+  "unicode-general-category",
+@@ -11184,7 +11184,7 @@ dependencies = [
+  "futures-sink",
+  "js-sys",
+  "pin-project-lite",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tracing",
+ ]
+ 
+@@ -11227,7 +11227,7 @@ dependencies = [
+  "prost",
+  "reqwest 0.12.28",
+  "serde_json",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tonic",
+  "tracing",
+@@ -11268,7 +11268,7 @@ dependencies = [
+  "opentelemetry",
+  "percent-encoding",
+  "rand 0.9.3",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tokio-stream",
+ ]
+@@ -12232,7 +12232,7 @@ dependencies = [
+  "rustc-hash",
+  "rustls",
+  "socket2 0.6.3",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tracing",
+  "web-time",
+@@ -12254,7 +12254,7 @@ dependencies = [
+  "rustls",
+  "rustls-pki-types",
+  "slab",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tinyvec",
+  "tracing",
+  "web-time",
+@@ -12783,7 +12783,7 @@ dependencies = [
+  "palette",
+  "serde",
+  "strum 0.28.0",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "unicode-segmentation",
+  "unicode-truncate",
+  "unicode-width 0.2.1",
+@@ -12935,7 +12935,7 @@ checksum = "a4e608c6638b9c18977b00b475ac1f28d14e84b27d8d42f70e0bf1e3dec127ac"
+ dependencies = [
+  "getrandom 0.2.17",
+  "libredox",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -13183,7 +13183,7 @@ dependencies = [
+  "serde",
+  "serde_json",
+  "sse-stream",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tokio-stream",
+  "tokio-util",
+@@ -13355,7 +13355,7 @@ dependencies = [
+  "rand 0.10.1",
+  "rtc-rtp",
+  "rtc-shared",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -13394,7 +13394,7 @@ dependencies = [
+  "rtc-shared",
+  "rustc-hash",
+  "slab",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -13425,7 +13425,7 @@ dependencies = [
+  "sec1",
+  "serde",
+  "substring",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "url",
+  "winapi",
+ ]
+@@ -14022,7 +14022,7 @@ dependencies = [
+  "rand 0.9.3",
+  "serde",
+  "serde_json",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "time",
+  "url",
+  "uuid",
+@@ -14410,7 +14410,7 @@ checksum = "0d585997b0ac10be3c5ee635f1bab02d512760d14b7c468801ac8a01d9ae5f1d"
+ dependencies = [
+  "num-bigint",
+  "num-traits",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "time",
+ ]
+ 
+@@ -14615,7 +14615,7 @@ dependencies = [
+  "serde_json",
+  "sha2 0.10.9",
+  "smallvec",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "time",
+  "tokio",
+  "tokio-stream",
+@@ -14686,7 +14686,7 @@ dependencies = [
+  "sha1 0.11.0",
+  "sha2 0.11.0",
+  "sqlx-core",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "time",
+  "tracing",
+  "uuid",
+@@ -14723,7 +14723,7 @@ dependencies = [
+  "smallvec",
+  "sqlx-core",
+  "stringprep",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "time",
+  "tracing",
+  "uuid",
+@@ -14750,7 +14750,7 @@ dependencies = [
+  "percent-encoding",
+  "serde",
+  "sqlx-core",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "time",
+  "tracing",
+  "url",
+@@ -14818,7 +14818,7 @@ dependencies = [
+  "strong_hash",
+  "strsim 0.10.0",
+  "textwrap 0.11.0",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -14869,7 +14869,7 @@ dependencies = [
+  "once_cell",
+  "pagable",
+  "starlark_map",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -15213,7 +15213,7 @@ dependencies = [
+  "serde",
+  "serde_derive",
+  "serde_json",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "walkdir",
+ ]
+ 
+@@ -15532,11 +15532,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "thiserror"
+-version = "2.0.18"
++version = "2.0.21"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
++checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
+ dependencies = [
+- "thiserror-impl 2.0.18",
++ "thiserror-impl 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -15552,13 +15552,13 @@ dependencies = [
+ 
+ [[package]]
+ name = "thiserror-impl"
+-version = "2.0.18"
++version = "2.0.21"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
++checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+- "syn 2.0.117",
++ "syn 3.0.3",
+ ]
+ 
+ [[package]]
+@@ -16074,7 +16074,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "786d480bce6247ab75f005b14ae1624ad978d3029d9113f0a22fa1ac773faeaf"
+ dependencies = [
+  "crossbeam-channel",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "time",
+  "tracing-subscriber",
+ ]
+@@ -16263,7 +16263,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "4994acea2522cd2b3b85c1d9529a55991e3ad5e25cdcd3de9d505972c4379424"
+ dependencies = [
+  "serde_json",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "ts-rs-macros",
+  "uuid",
+ ]
+@@ -16296,7 +16296,7 @@ dependencies = [
+  "rustls",
+  "rustls-pki-types",
+  "sha1 0.10.6",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "utf-8",
+ ]
+ 
+@@ -17082,7 +17082,7 @@ version = "0.3.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "f9b0540e91e49de3817c314da0dd3bc518093ceacc6ea5327cb0e1eb073e5189"
+ dependencies = [
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -17733,7 +17733,7 @@ dependencies = [
+  "log",
+  "os_pipe",
+  "rustix 1.1.4",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tree_magic_mini",
+  "wayland-backend",
+  "wayland-client",
+@@ -17808,7 +17808,7 @@ dependencies = [
+  "oid-registry 0.8.1",
+  "ring",
+  "rusticata-macros",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "time",
+ ]
+ 
 diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
 index e37328c..50872ec 100644
 --- a/codex-rs/Cargo.toml
@@ -601,6 +1387,28 @@ index 0f019d2..56be80d 100644
  }
  
  pub(super) fn mcp_startup_failure_reason(
+diff --git a/codex-rs/core/src/realtime_conversation.rs b/codex-rs/core/src/realtime_conversation.rs
+index d44a19b..926b46d 100644
+--- a/codex-rs/core/src/realtime_conversation.rs
++++ b/codex-rs/core/src/realtime_conversation.rs
+@@ -355,14 +355,14 @@ impl RealtimeStreamedItem {
+             if self.buffered_text.is_empty() {
+                 return None;
+             }
+-            let text = self.buffered_text.drain(..).collect::<String>();
++            let text = std::mem::take(&mut self.buffered_text);
+             let text = format!("{prefix}{text}");
+             self.sent_bytes += text.len();
+             return Some(text);
+         }
+ 
+-        let head = self.buffered_text.drain(..).collect::<String>();
+-        let tail = self.tail_text.drain(..).collect::<String>();
++        let head = std::mem::take(&mut self.buffered_text);
++        let tail = std::mem::take(&mut self.tail_text);
+         let text = format!("{prefix}{head}{HANDOFF_STREAM_TRUNCATION_MARKER}{tail}");
+         self.sent_bytes += text.len();
+         Some(text)
 diff --git a/codex-rs/core/src/tools/executed_tool_calls.rs b/codex-rs/core/src/tools/executed_tool_calls.rs
 index 853c88a..26c1eb7 100644
 --- a/codex-rs/core/src/tools/executed_tool_calls.rs
@@ -827,6 +1635,36 @@ index 910c651..d73899d 100644
 -channel = "1.95.0"
 +channel = "1.99.1"
  components = ["clippy", "rustfmt", "rust-src"]
+diff --git a/codex-rs/scripts/apple-linker.sh b/codex-rs/scripts/apple-linker.sh
+new file mode 100755
+index 0000000..84f0baa
+--- /dev/null
++++ b/codex-rs/scripts/apple-linker.sh
+@@ -0,0 +1,24 @@
++#!/bin/sh
++# Links an Apple target with `cc`, the linker rustc uses by default, and drops one ld notice from its stderr.
++#
++# The workspace denies `linker_messages`, so any linker output fails the build. The codex binary's `__eh_frame` section
++# is larger than the 16 MB that compact unwind's 24-bit DWARF offsets can address, and ld reports that it falls back to
++# a slower `__eh_frame` search for those functions. Unwinding still works; only panics that unwind pay the cost.
++# Keeping compact unwind is the better trade than `-no_compact_unwind`, which would drop the fast path for every
++# function. Only this exact line is removed: every other linker message still reaches rustc and fails the build.
++#
++# Usage: apple-linker.sh ARGUMENT...
++#   Runs `cc ARGUMENT...` with the same standard input and output, forwards its stderr without that line, and exits
++#   with its status.
++set -u
++notice='ld: __eh_frame section too large (max 16MB) to encode dwarf unwind offsets in compact unwind table, performance of exception handling might be affected'
++log=$(mktemp "${TMPDIR:-/tmp}/apple-linker.XXXXXX") || exit 1
++trap 'rm -f "$log"' EXIT
++cc "$@" 2>"$log"
++status=$?
++# grep exits 1 when it prints nothing, which only means that every line was the notice.
++grep -vxF -e "$notice" "$log" >&2
++if [ $? -gt 1 ]; then
++	cat "$log" >&2
++fi
++exit "$status"
 diff --git a/codex-rs/scripts/setup-windows.ps1 b/codex-rs/scripts/setup-windows.ps1
 index a8fe0c2..9567b29 100644
 --- a/codex-rs/scripts/setup-windows.ps1

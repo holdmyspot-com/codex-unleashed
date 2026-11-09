@@ -32,7 +32,17 @@ Rust 1.99 also adds lints that fail the workspace under patch 25 (platform lint 
 - rustc's `semicolon_in_expressions_from_non_local_macros`: three TUI functions that end in eyre's `bail!` end it with `;`, since the macro expands to a `return` statement (lint run `42559229185`).
 - Clippy's `result_large_err`: codex-mcp's `emit_update` returned the 632-byte `SendError<Event>`, which carries the rejected event, so the error is boxed (lint run `42565453466`).
 - rustc's `unused_imports`: an agent-identity test module re-imported `base64::Engine`, which `use super::*` already brings in (lint run `42565453466`).
+- Clippy's `drain_collect`: the realtime handoff stream's final chunk takes its buffered strings with `std::mem::take` instead of draining them into new ones (lint run `42616091080`).
+- Clippy's `redundant_field_names` fires inside thiserror 2.0.18's expansion of `#[from] source` in `core/src/exec_policy.rs`. thiserror 2.0.21 no longer triggers it (the CP7 queue's lint run `42616087745`, which has 2.0.21, does not report it), so the lockfile moves thiserror and thiserror-impl, and only those, to 2.0.21.
 - Clippy's `double_must_use` fires on tonic's generated `ThreadConfigLoader` trait, because async-trait 0.1.89 adds `#[must_use]` to the boxed future it returns. async-trait 0.1.92 no longer adds it, so the lockfile moves that transitive dependency, and only that one, to 0.1.92.
+
+### The `__eh_frame` notice on macOS
+
+With Rust 1.99.1 the release `codex` binary links, but ld prints `ld: __eh_frame section too large (max 16MB) to encode dwarf unwind offsets in compact unwind table, performance of exception handling might be affected`, which `linker_messages` turns into an error (macOS ARM release run `42563009608`).
+
+Compact unwind stores one 32-bit entry per function in `__unwind_info`. Functions that need DWARF unwind information point into `__eh_frame` through a 24-bit offset, so entries past 16 MB can't be encoded, and the unwinder finds those functions by searching `__eh_frame` instead. Unwinding stays correct; only a panic that unwinds through those functions is slower. The alternative, `-Wl,-no_compact_unwind`, drops the compact table for every function, and the owner chose to keep it.
+
+`linker_messages` has no per-message setting, so the patch links both Apple targets through `codex-rs/scripts/apple-linker.sh` (`[target.*-apple-darwin] linker` in `codex-rs/.cargo/config.toml`). The script runs `cc`, rustc's default linker, removes only that exact line from its stderr, and passes every other line and the exit status through, so every other linker message still fails the build. Bazel builds leave `linker_messages` allowed (see the `fatal-warnings` README) and don't use the script.
 
 ### Reproduction
 
@@ -44,4 +54,6 @@ At patch 27, the macOS release builds fail while linking `codex-code-mode-host`:
 cd codex-rs && cargo build --release --target aarch64-apple-darwin
 ```
 
-The macOS builds link without linker diagnostics, and the platform lints pass with Rust 1.99.1.
+The macOS builds link without linker diagnostics other than the `__eh_frame` notice that `apple-linker.sh` removes, and the platform lints pass with Rust 1.99.1.
+
+On the ARM macOS release runner, `.github/scripts/macos-unwind-report.py` (the release workflow's unwind report step) records the `__eh_frame` and `__unwind_info` sizes, the crates that fill `__eh_frame`, and how many FDEs start past 16 MB. It also walks the running `codex --version` stack with `_Unwind_Backtrace`, the unwinder that panics and Rust backtraces use, and fails unless the walk reaches the end of the stack through `main`.

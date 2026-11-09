@@ -219,6 +219,7 @@ jobs:
           fi
           cp restart-metadata/.github/scripts/probe-runner-signals.py "$RUNNER_TEMP/probe-runner-signals.py"
           cp restart-metadata/.github/scripts/watch-quiet-build.py "$RUNNER_TEMP/watch-quiet-build.py"
+          cp restart-metadata/.github/scripts/macos-unwind-report.py "$RUNNER_TEMP/macos-unwind-report.py"
           sha256sum restart-metadata/.github/scripts/build-upstream-release.sh > "$evidence/build-command-inputs.sha256"
           sha256sum restart-metadata/.github/workflows/baseline-release-builds.yml \
             restart-metadata/.github/scripts/{ghcr-cargo-target-cache,checkpoint-upstream-release}.sh \
@@ -771,6 +772,17 @@ jobs:
           set -euo pipefail
           printf 'Saving unverified compilation state after completed preparation and source/dependency verification; this run remains failed.\n'
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" ${CACHE_SEED_TAG:+"$CACHE_SEED_TAG"} 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-save.log"
+
+      - name: Report the macOS binary's unwind tables and walk its stack
+        # The patch queue lets ld's notice that __eh_frame exceeds compact unwind's 16 MB reach through
+        # (rust-toolchain README). This records the section sizes, the crates that fill __eh_frame, and a stack walk
+        # by the unwinder that panics use through the running binary. It runs after the cache save, so a failure here
+        # keeps the verified build outputs.
+        if: success() && runner.os == 'macOS' && matrix.bundle == 'primary' && !matrix.smoke-separately
+        run: |
+          set -euo pipefail
+          python3 -I "$RUNNER_TEMP/macos-unwind-report.py" "$CARGO_TARGET_DIR/$TARGET/release/codex" --version \
+            | tee "$RUNNER_TEMP/baseline-evidence/macos-unwind-report.log"
 
       - name: Request a continuation of a build stopped by its time limit
         id: continuation
