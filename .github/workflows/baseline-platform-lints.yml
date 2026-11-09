@@ -319,6 +319,8 @@ jobs:
           done
 
       - name: Record the generated changes as a patch
+        # A failing generator usually fails after writing its outputs; recording them shows what it produced.
+        if: always() && steps.patched.outcome == 'success'
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/regenerate-evidence"
