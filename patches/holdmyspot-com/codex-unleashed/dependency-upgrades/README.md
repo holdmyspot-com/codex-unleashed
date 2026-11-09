@@ -2,7 +2,7 @@
 
 - Applies to: upstream `openai/codex` main, commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`.
 - Prerequisites: every earlier patch in the queue, through `rust-toolchain/rust-1.99.patch` (patch 28).
-- Patches, in order: `compatible-updates.patch`, `latest-releases.patch`, `regenerated-outputs.patch`, `serde-saphyr.patch`, `release-adaptations.patch`.
+- Patches, in order: `compatible-updates.patch`, `latest-releases.patch`, `regenerated-outputs.patch`, `serde-saphyr.patch`, `release-adaptations.patch`, `transitive-updates.patch`.
 
 ## Intent
 
@@ -48,6 +48,10 @@ Fixes what the new releases change at run time or in test expectations:
 - The thread-sample tests accept schemars 1's web.run schema hashes.
 - unicode-width stays at `=0.2.2` (see below).
 
+### transitive-updates.patch
+
+Runs `cargo update`, so every transitive dependency moves to the highest release its dependents allow (owner decision, 2026-11-09). This takes the security fixes in openssl 0.10.82, libz-sys 1.1.32, event-listener 5.4.2, quick-xml (through plist 1.10.3 and wayland-scanner 0.31.11) and aws-config 1.13.1, which moves to p256 0.14. `MODULE.bazel.lock` is regenerated to match.
+
 ## Held back
 
 | Dependency | Kept at | Constraint |
@@ -64,7 +68,8 @@ Fixes what the new releases change at run time or in test expectations:
 
 - `RUSTSEC-2026-0385` (`ctutils`): resolved by `ctutils 0.4.8`.
 - A later audit against advisory-db `d9cb059f32` (2026-11-09) finds further open advisories in transitive dependencies; "CP8 reconciliation" in [restart-scope.md](../../../../docs/plans/restart-scope.md) lists them with their fixes.
-- `RUSTSEC-2026-0387` (`crypto-bigint 0.5.5`): open. Its only path is `elliptic-curve 0.13` → `p256 0.13`, which `age 0.12.1` (scrypt recipients only, so no P-256 arithmetic runs) and `aws-config 1.13.0` with `credentials-login` (which signs AWS login proofs with P-256) reach at their latest releases. It stays open, not suppressed, until one of them moves to `p256 0.14`.
+- After `transitive-updates.patch`, three crates stay open: `hickory-proto 0.25.2` (RUSTSEC-2026-0118 and -0119, through rama 0.3; the rama 0.4 port fixes it), `libsqlite3-sys 0.37` (RUSTSEC-2026-0459; sqlx-sqlite 0.9.0 requires `<0.38`) and crypto-bigint below.
+- `RUSTSEC-2026-0387` (`crypto-bigint 0.5.5`): open. Its only path is `elliptic-curve 0.13` → `p256 0.13`, which `age 0.12.1` (scrypt recipients only, so no P-256 arithmetic runs) and `aws-config 1.13.0` with `credentials-login` (which signs AWS login proofs with P-256) reach at their latest releases. aws-config 1.13.1 moves to `p256 0.14`, so after `transitive-updates.patch` only `age` remains, and through it no P-256 arithmetic runs. It stays open, not suppressed, until `age` moves to `p256 0.14`.
 
 ## Verification
 

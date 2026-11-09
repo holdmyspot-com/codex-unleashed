@@ -37,3 +37,4 @@ The release applies these patches in this order:
 31. [dependency-upgrades/regenerated-outputs.patch](holdmyspot-com/codex-unleashed/dependency-upgrades/regenerated-outputs.patch)
 32. [dependency-upgrades/serde-saphyr.patch](holdmyspot-com/codex-unleashed/dependency-upgrades/serde-saphyr.patch)
 33. [dependency-upgrades/release-adaptations.patch](holdmyspot-com/codex-unleashed/dependency-upgrades/release-adaptations.patch)
+34. [dependency-upgrades/transitive-updates.patch](holdmyspot-com/codex-unleashed/dependency-upgrades/transitive-updates.patch)

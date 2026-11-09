@@ -121,7 +121,7 @@ RustSec audit of the CP7 lockfile against advisory-db `d9cb059f3217db87aeccd190b
 | `quick-xml 0.39.4` | RUSTSEC-2026-0194, -0195 | ≥ 0.41.0 | `plist 1.9.0` (syntect), `wayland-scanner 0.31.10` (build-time proc macro) | Semver-compatible parents: plist 1.10.3 (`^0.42`), wayland-scanner 0.31.11 (`^0.41`) |
 | `event-listener 5.4.1` | RUSTSEC-2026-0221 (unsound) | ≥ 5.4.2 | `async-broadcast`, `async-lock` (webrtc, zbus) | Semver-compatible: 5.4.2 |
 
-Every row except crypto-bigint, libsqlite3-sys and hickory-proto has a semver-compatible transitive update. CP7's rule moves a transitive dependency only when a direct update requires it, so these updates wait for an owner decision. The unmaintained-crate notices (atomic-polyfill, basic-toml, bincode, derivative, fxhash, paste, pin-utils, zbus_names, zvariant, zvariant_derive) have no patched release.
+Every row except crypto-bigint, libsqlite3-sys and hickory-proto has a semver-compatible transitive update. The owner chose to move every transitive dependency to its newest allowed release (CP7 patch 34, `transitive-updates.patch`); a re-audit of that lockfile leaves only those three crates open. The unmaintained-crate notices (atomic-polyfill, basic-toml, bincode, derivative, fxhash, paste, pin-utils, zbus_names, zvariant, zvariant_derive) have no patched release.
 
 ## Old-main changes not yet migrated
 
