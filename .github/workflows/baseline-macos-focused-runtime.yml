@@ -67,10 +67,15 @@ jobs:
       - name: Own build state through later remote-session cleanup
         uses: ./.github/actions/focused-runtime-storage
 
+      - name: Read upstream's pinned Rust toolchain
+        id: upstream-rust
+        shell: bash
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' upstream/codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
       - name: Set up matching Rust
         uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
         with:
-          toolchain: '1.95.0'
+          toolchain: ${{ steps.upstream-rust.outputs.channel }}
           targets: ${{ env.TARGET }}
 
       - name: Install upstream's nextest version

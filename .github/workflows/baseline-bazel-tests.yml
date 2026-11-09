@@ -138,9 +138,15 @@ jobs:
 
           /bin/zsh --version
 
+      - name: Read upstream's pinned Rust toolchain
+        id: upstream-rust
+        shell: bash
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
       - name: Set up upstream's Rust toolchain for workspace metadata
         uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
         with:
+          toolchain: ${{ steps.upstream-rust.outputs.channel }}
           targets: x86_64-unknown-linux-gnu
 
       - name: Install the requested syscall tracer

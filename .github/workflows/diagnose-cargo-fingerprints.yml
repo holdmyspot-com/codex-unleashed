@@ -71,9 +71,15 @@ jobs:
           sudo apt-get update -y
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils pkg-config libcap-dev
 
+      - name: Read upstream's pinned Rust toolchain
+        id: upstream-rust
+        shell: bash
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
       - name: Set up the upstream Rust toolchain
         uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
         with:
+          toolchain: ${{ steps.upstream-rust.outputs.channel }}
           targets: ${{ matrix.target }}
 
       - name: Cache Cargo dependency downloads
