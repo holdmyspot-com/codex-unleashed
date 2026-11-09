@@ -1,0 +1,340 @@
+From 926a0196d0b9c62ad3be645cb31f68700cf3a46e Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 8 Nov 2026 21:08:34 -0500
+Subject: [PATCH] WIP: adapt to rand 0.10, digest 0.11, p256 0.14, reqwest
+ 0.13, tokio 1.54 and ctor 1
+
+rand moves random_range to RngExt; digest 0.11 output has no LowerHex; hmac 0.13 keys through KeyInit; p256 0.14
+renames to_encoded_point to to_sec1_point. reqwest 0.13 replaces tls_built_in_root_certs and add_root_certificate
+with tls_certs_only and tls_certs_merge, and use_rustls_tls with tls_backend_rustls. tokio 1.54 deprecates
+AsyncFd::new for the unsafe AsyncFd::register, and ctor 1 requires every constructor to be marked unsafe.
+---
+ codex-rs/async-utils/src/backoff.rs                       | 2 +-
+ codex-rs/build-info/src/lib.rs                            | 3 ++-
+ codex-rs/core/tests/common/lib.rs                         | 6 +++---
+ codex-rs/core/tests/suite/mod.rs                          | 2 +-
+ codex-rs/exec-server/src/local_process.rs                 | 2 +-
+ codex-rs/exec-server/tests/common/mod.rs                  | 2 +-
+ codex-rs/http-client/Cargo.toml                           | 2 +-
+ codex-rs/http-client/src/client_builder.rs                | 6 ++----
+ codex-rs/http-client/src/custom_ca.rs                     | 4 ++--
+ codex-rs/http-client/src/outbound_proxy.rs                | 6 +++++-
+ .../http-client/src/route_aware_tls_fallback_tests.rs     | 8 ++++----
+ codex-rs/otel/src/otlp.rs                                 | 4 +---
+ codex-rs/process-hardening/src/lib.rs                     | 2 +-
+ codex-rs/realtime-webrtc/tests/common/mod.rs              | 2 +-
+ codex-rs/responses-api-proxy/src/main.rs                  | 2 +-
+ codex-rs/user-verification/src/credential_tests.rs        | 2 +-
+ codex-rs/utils/pty/src/spawn_helper_tests.rs              | 7 +++++--
+ codex-rs/utils/pty/src/unix_io.rs                         | 8 ++++++--
+ codex-rs/websocket-auth/src/auth_tests.rs                 | 1 +
+ 19 files changed, 40 insertions(+), 31 deletions(-)
+
+diff --git a/codex-rs/async-utils/src/backoff.rs b/codex-rs/async-utils/src/backoff.rs
+index 78d5b3b..433825e 100644
+--- a/codex-rs/async-utils/src/backoff.rs
++++ b/codex-rs/async-utils/src/backoff.rs
+@@ -2,7 +2,7 @@
+ 
+ use std::time::Duration;
+ 
+-use rand::Rng;
++use rand::RngExt;
+ 
+ const INITIAL_DELAY_MS: u64 = 200;
+ const BACKOFF_FACTOR: f64 = 2.0;
+diff --git a/codex-rs/build-info/src/lib.rs b/codex-rs/build-info/src/lib.rs
+index 619918b..a0ac01a 100644
+--- a/codex-rs/build-info/src/lib.rs
++++ b/codex-rs/build-info/src/lib.rs
+@@ -137,7 +137,8 @@ pub fn build_id(build_commit: &str, target: &str) -> Option<String> {
+     }
+     let identity = format!("git:{}:{target}", build_commit.to_ascii_lowercase());
+     let digest = Sha256::digest(identity.as_bytes());
+-    Some(format!("sha256:{digest:x}"))
++    let digest: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
++    Some(format!("sha256:{digest}"))
+ }
+ 
+ impl fmt::Display for BuildInfo {
+diff --git a/codex-rs/core/tests/common/lib.rs b/codex-rs/core/tests/common/lib.rs
+index 77758d0..9a27ad1 100644
+--- a/codex-rs/core/tests/common/lib.rs
++++ b/codex-rs/core/tests/common/lib.rs
+@@ -51,18 +51,18 @@ pub use test_environment::test_target_os;
+ 
+ static TEST_ARG0_PATH_ENTRY: OnceLock<Option<Arg0PathEntryGuard>> = OnceLock::new();
+ 
+-#[ctor]
++#[ctor(unsafe)]
+ fn enable_deterministic_unified_exec_process_ids_for_tests() {
+     codex_core::test_support::set_thread_manager_test_mode(/*enabled*/ true);
+     codex_core::test_support::set_deterministic_process_ids(/*enabled*/ true);
+ }
+ 
+-#[ctor]
++#[ctor(unsafe)]
+ fn configure_arg0_dispatch_for_test_binaries() {
+     let _ = TEST_ARG0_PATH_ENTRY.get_or_init(codex_arg0::arg0_dispatch);
+ }
+ 
+-#[ctor]
++#[ctor(unsafe)]
+ fn configure_insta_workspace_root_for_snapshot_tests() {
+     if std::env::var_os("INSTA_WORKSPACE_ROOT").is_some() {
+         return;
+diff --git a/codex-rs/core/tests/suite/mod.rs b/codex-rs/core/tests/suite/mod.rs
+index 9bb0c27..29f6b63 100644
+--- a/codex-rs/core/tests/suite/mod.rs
++++ b/codex-rs/core/tests/suite/mod.rs
+@@ -13,7 +13,7 @@ use ctor::ctor;
+ // It allows the test binary to behave like codex and dispatch to apply_patch and codex-linux-sandbox
+ // based on the arg0.
+ // NOTE: this doesn't work on ARM
+-#[ctor]
++#[ctor(unsafe)]
+ pub static CODEX_ALIASES_TEMP_DIR: Option<TestBinaryDispatchGuard> = {
+     configure_test_binary_dispatch("codex-core-tests", |exe_name, argv1| {
+         if argv1 == Some(CODEX_CORE_APPLY_PATCH_ARG1) {
+diff --git a/codex-rs/exec-server/src/local_process.rs b/codex-rs/exec-server/src/local_process.rs
+index fced427..854043b 100644
+--- a/codex-rs/exec-server/src/local_process.rs
++++ b/codex-rs/exec-server/src/local_process.rs
+@@ -1277,7 +1277,7 @@ mod tests {
+     use crate::protocol::NetworkPolicyRequestResponse;
+ 
+     #[cfg(target_os = "linux")]
+-    #[ctor::ctor]
++    #[ctor::ctor(unsafe)]
+     fn initialize_spawn_helper() {
+         use std::os::unix::ffi::OsStringExt;
+         let command_line = std::fs::read("/proc/self/cmdline").expect("test command line");
+diff --git a/codex-rs/exec-server/tests/common/mod.rs b/codex-rs/exec-server/tests/common/mod.rs
+index f1b18a1..6f0cedc 100644
+--- a/codex-rs/exec-server/tests/common/mod.rs
++++ b/codex-rs/exec-server/tests/common/mod.rs
+@@ -43,7 +43,7 @@ macro_rules! skip_if_mxc_unavailable {
+     }};
+ }
+ 
+-#[ctor]
++#[ctor(unsafe)]
+ pub static TEST_BINARY_DISPATCH_GUARD: Option<TestBinaryDispatchGuard> = {
+     let guard = configure_test_binary_dispatch("codex-exec-server-tests", |exe_name, argv1| {
+         if argv1 == Some(CODEX_ARG0_EXEC_HELPER_ARG1) {
+diff --git a/codex-rs/http-client/Cargo.toml b/codex-rs/http-client/Cargo.toml
+index de58c99..962fada 100644
+--- a/codex-rs/http-client/Cargo.toml
++++ b/codex-rs/http-client/Cargo.toml
+@@ -13,7 +13,7 @@ http-body = "1.0.1"
+ httpdate = { workspace = true }
+ native-tls = "0.2"
+ opentelemetry = { workspace = true }
+-reqwest = { workspace = true, features = ["json", "rustls", "rustls", "stream"] }
++reqwest = { workspace = true, features = ["json", "rustls", "stream"] }
+ rustls = { workspace = true }
+ rustls-native-certs = { workspace = true }
+ rustls-pki-types = { workspace = true }
+diff --git a/codex-rs/http-client/src/client_builder.rs b/codex-rs/http-client/src/client_builder.rs
+index 86c7cbb..a0ab953 100644
+--- a/codex-rs/http-client/src/client_builder.rs
++++ b/codex-rs/http-client/src/client_builder.rs
+@@ -389,12 +389,10 @@ impl HttpClientBuilder {
+         }
+         if self.tls_backend == TlsBackend::Rustls || self.tls.client_identity.is_some() {
+             ensure_rustls_crypto_provider();
+-            builder = builder.use_rustls_tls();
++            builder = builder.tls_backend_rustls();
+         }
+         if let Some(certificate) = self.tls.root_certificate {
+-            builder = builder
+-                .tls_built_in_root_certs(false)
+-                .add_root_certificate(certificate.reqwest);
++            builder = builder.tls_certs_only([certificate.reqwest]);
+         }
+         if let Some(identity) = self.tls.client_identity {
+             builder = builder.identity(identity.reqwest).https_only(true);
+diff --git a/codex-rs/http-client/src/custom_ca.rs b/codex-rs/http-client/src/custom_ca.rs
+index 6b706b9..86c2a2d 100644
+--- a/codex-rs/http-client/src/custom_ca.rs
++++ b/codex-rs/http-client/src/custom_ca.rs
+@@ -308,7 +308,7 @@ fn build_reqwest_client_with_env(
+             ca_path = %bundle.path.display(),
+             "building HTTP client with rustls backend for custom CA bundle"
+         );
+-        builder = builder.use_rustls_tls();
++        builder = builder.tls_backend_rustls();
+ 
+         let certificates = bundle.load_certificates()?;
+ 
+@@ -331,7 +331,7 @@ fn build_reqwest_client_with_env(
+                     });
+                 }
+             };
+-            builder = builder.add_root_certificate(certificate);
++            builder = builder.tls_certs_merge([certificate]);
+         }
+         return match builder.build() {
+             Ok(client) => Ok(client),
+diff --git a/codex-rs/http-client/src/outbound_proxy.rs b/codex-rs/http-client/src/outbound_proxy.rs
+index c8831f6..d9bdc0e 100644
+--- a/codex-rs/http-client/src/outbound_proxy.rs
++++ b/codex-rs/http-client/src/outbound_proxy.rs
+@@ -671,7 +671,11 @@ fn system_proxy_cache_key(request_url: &str) -> String {
+     let mut hasher = Sha256::new();
+     hasher.update(b"system-proxy-cache-v1\0");
+     hasher.update(request_url.as_bytes());
+-    format!("{:x}", hasher.finalize())
++    hasher
++        .finalize()
++        .iter()
++        .map(|byte| format!("{byte:02x}"))
++        .collect()
+ }
+ 
+ #[cfg(any(test, target_os = "windows"))]
+diff --git a/codex-rs/http-client/src/route_aware_tls_fallback_tests.rs b/codex-rs/http-client/src/route_aware_tls_fallback_tests.rs
+index 8cdfae6..4bd9ed3 100644
+--- a/codex-rs/http-client/src/route_aware_tls_fallback_tests.rs
++++ b/codex-rs/http-client/src/route_aware_tls_fallback_tests.rs
+@@ -355,10 +355,10 @@ fn spawn_successful_tls_fallback_server() -> io::Result<SuccessfulTlsFallbackSer
+     );
+     let trusted_rustls_client = TransportClient::new(
+         reqwest::Client::builder()
+-            .use_rustls_tls()
+-            .add_root_certificate(
+-                reqwest::Certificate::from_der(certificate.as_ref()).map_err(io::Error::other)?,
+-            )
++            .tls_backend_rustls()
++            .tls_certs_merge([
++                reqwest::Certificate::from_der(certificate.as_ref()).map_err(io::Error::other)?
++            ])
+             .no_proxy()
+             .redirect(reqwest::redirect::Policy::none())
+             .build()
+diff --git a/codex-rs/otel/src/otlp.rs b/codex-rs/otel/src/otlp.rs
+index 09b9b01..cc8865b 100644
+--- a/codex-rs/otel/src/otlp.rs
++++ b/codex-rs/otel/src/otlp.rs
+@@ -113,9 +113,7 @@ fn build_http_client_inner(
+                 location.display()
+             ))
+         })?;
+-        builder = builder
+-            .tls_built_in_root_certs(false)
+-            .add_root_certificate(certificate);
++        builder = builder.tls_certs_only([certificate]);
+     }
+ 
+     match (&tls.client_certificate, &tls.client_private_key) {
+diff --git a/codex-rs/process-hardening/src/lib.rs b/codex-rs/process-hardening/src/lib.rs
+index f500e15..187ca3b 100644
+--- a/codex-rs/process-hardening/src/lib.rs
++++ b/codex-rs/process-hardening/src/lib.rs
+@@ -4,7 +4,7 @@ use std::ffi::OsString;
+ #[cfg(unix)]
+ use std::os::unix::ffi::OsStrExt;
+ 
+-/// This is designed to be called pre-main() (using `#[ctor::ctor]`) to perform
++/// This is designed to be called pre-main() (using `#[ctor::ctor(unsafe)]`) to perform
+ /// various process hardening steps, such as
+ /// - disabling core dumps
+ /// - disabling ptrace attach on Linux and macOS.
+diff --git a/codex-rs/realtime-webrtc/tests/common/mod.rs b/codex-rs/realtime-webrtc/tests/common/mod.rs
+index 681b646..321b72e 100644
+--- a/codex-rs/realtime-webrtc/tests/common/mod.rs
++++ b/codex-rs/realtime-webrtc/tests/common/mod.rs
+@@ -108,7 +108,7 @@ pub fn package(test: &str) -> Result<Option<PathBuf>> {
+     Ok(None)
+ }
+ 
+-#[ctor::ctor]
++#[ctor::ctor(unsafe)]
+ fn dispatch_helper() {
+     if std::env::current_exe()
+         .ok()
+diff --git a/codex-rs/responses-api-proxy/src/main.rs b/codex-rs/responses-api-proxy/src/main.rs
+index c4568d7..748e851 100644
+--- a/codex-rs/responses-api-proxy/src/main.rs
++++ b/codex-rs/responses-api-proxy/src/main.rs
+@@ -1,7 +1,7 @@
+ use clap::Parser;
+ use codex_responses_api_proxy::Args as ResponsesApiProxyArgs;
+ 
+-#[ctor::ctor]
++#[ctor::ctor(unsafe)]
+ fn pre_main() {
+     codex_process_hardening::pre_main_hardening();
+ }
+diff --git a/codex-rs/user-verification/src/credential_tests.rs b/codex-rs/user-verification/src/credential_tests.rs
+index 4aa3326..2126046 100644
+--- a/codex-rs/user-verification/src/credential_tests.rs
++++ b/codex-rs/user-verification/src/credential_tests.rs
+@@ -14,7 +14,7 @@ fn exported_spki_verifies_the_exact_challenge_signature() {
+     let key = SigningKey::from_bytes((&[7_u8; 32]).into()).expect("valid signing key");
+     let info = UserVerificationKeyInfo::from_sec1_public_key(
+         key.verifying_key()
+-            .to_encoded_point(/*compress*/ false)
++            .to_sec1_point(/*compress*/ false)
+             .as_bytes(),
+     )
+     .expect("encode public key");
+diff --git a/codex-rs/utils/pty/src/spawn_helper_tests.rs b/codex-rs/utils/pty/src/spawn_helper_tests.rs
+index e858831..b9e7e76 100644
+--- a/codex-rs/utils/pty/src/spawn_helper_tests.rs
++++ b/codex-rs/utils/pty/src/spawn_helper_tests.rs
+@@ -19,7 +19,7 @@ use crate::spawn_pipe_process_no_stdin;
+ const PARENT_FIXTURE: &str = "--codex-spawn-test-parent";
+ const CHILD_FIXTURE: &str = "--codex-spawn-test-child";
+ 
+-#[ctor::ctor]
++#[ctor::ctor(unsafe)]
+ fn initialize_spawn_helper() {
+     if let Ok(arguments) = std::fs::read("/proc/self/cmdline") {
+         let mut arguments = arguments.split(|byte| *byte == 0).skip(1);
+@@ -162,7 +162,10 @@ async fn helper_target_dies_when_parent_is_killed() -> anyhow::Result<()> {
+         .expect("child reports its PID after verifying PDEATHSIG")
+         .parse::<libc::pid_t>()?;
+     // The fixture child waits on the cleanup pipe while its parent is alive.
+-    let child = tokio::io::unix::AsyncFd::new(open_pidfd(pid)?)?;
++    // SAFETY: the AsyncFd owns the pidfd, so the descriptor stays open and unchanged until the
++    // AsyncFd drops it.
++    let child =
++        unsafe { tokio::io::unix::AsyncFd::register(open_pidfd(pid)?) }.map_err(io::Error::from)?;
+     parent.kill().await?;
+     let stopped = tokio::time::timeout(Duration::from_secs(5), child.readable()).await;
+     drop(cleanup);
+diff --git a/codex-rs/utils/pty/src/unix_io.rs b/codex-rs/utils/pty/src/unix_io.rs
+index 315c2b6..536e8a9 100644
+--- a/codex-rs/utils/pty/src/unix_io.rs
++++ b/codex-rs/utils/pty/src/unix_io.rs
+@@ -35,8 +35,12 @@ impl PtyIo {
+         // Async tasks can be aborted even when a detached child keeps the PTY open
+         // or the output channel is full; blocking read/send tasks cannot.
+         // AsyncFd panics if the current runtime has no I/O driver.
+-        let fd = std::panic::catch_unwind(move || AsyncFd::new(File::from(fd)))
+-            .map_err(|_| io::Error::other("PTY I/O requires a Tokio runtime with I/O enabled"))??;
++        let fd = std::panic::catch_unwind(move || {
++            // SAFETY: the AsyncFd owns the File, so its descriptor stays open and unchanged until
++            // the AsyncFd drops it.
++            unsafe { AsyncFd::register(File::from(fd)) }.map_err(io::Error::from)
++        })
++        .map_err(|_| io::Error::other("PTY I/O requires a Tokio runtime with I/O enabled"))??;
+         Ok(Self { fd: Arc::new(fd) })
+     }
+ 
+diff --git a/codex-rs/websocket-auth/src/auth_tests.rs b/codex-rs/websocket-auth/src/auth_tests.rs
+index b78e87f..bd2e5f0 100644
+--- a/codex-rs/websocket-auth/src/auth_tests.rs
++++ b/codex-rs/websocket-auth/src/auth_tests.rs
+@@ -2,6 +2,7 @@ use super::*;
+ use base64::Engine;
+ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+ use hmac::Hmac;
++use hmac::KeyInit;
+ use hmac::Mac;
+ use http::HeaderValue;
+ use pretty_assertions::assert_eq;
+-- 
+2.43.0
+
