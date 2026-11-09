@@ -2,13 +2,13 @@ package com.holdmyspot.codexunleashed.distribution;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.module.ModuleFinder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Stream;
 
 /**
@@ -94,48 +94,40 @@ public final class DistributionMain
 		Files.createFile(output.resolve(".complete"));
 	}
 
-    /**
-     * Adds JDK-generated module descriptors only to the two pinned staged TOML implementation artifacts.
-     * Original classes and resources remain unchanged; dependency source and repository artifacts are untouched.
-     * Checker annotations remain compile-time metadata and are not a required linked runtime module.
-     * @param modules exclusively owned runtime staging directory
-     * @throws IOException if descriptor generation, compilation or publication fails
-     */
-    public static void modularizeToml(Path modules) throws IOException
-    {
-        Path toml = modules.resolve("tomlj-1.1.1.jar");
-        Path antlr = modules.resolve("antlr4-runtime-4.11.1.jar");
-        if (!Files.isRegularFile(toml) || !Files.isRegularFile(antlr))
-            throw new IOException("The staged pinned TOML parser and ANTLR runtime are required");
-        boolean tomlAutomatic = java.lang.module.ModuleFinder.of(toml).findAll().iterator().next().descriptor().isAutomatic();
-        boolean antlrAutomatic = java.lang.module.ModuleFinder.of(antlr).findAll().iterator().next().descriptor().isAutomatic();
-        if (!tomlAutomatic && !antlrAutomatic) return;
-        if (tomlAutomatic != antlrAutomatic) throw new IOException("Incomplete staged TOML module publication");
-        try (PackagingDirectory scratch = new PackagingDirectory(Files.createTempDirectory(modules.getParent(), "toml-modules-")))
-        {
-            Path generated = scratch.path().resolve("source");
-            runPackagingTool(scratch.path(), "jdeps", "--generate-module-info", generated.toString(),
-                "--module-path", modules.resolve("checker-qual-3.21.2.jar").toString(), toml.toString(), antlr.toString());
-            Path compiled = Files.createDirectory(scratch.path().resolve("classes"));
-            runPackagingTool(scratch.path(), "javac", "--release", "27", "-Xlint:all",
-                "--module-source-path", generated.toString(),
-                "--patch-module", "org.tomlj=" + toml, "--patch-module", "org.antlr.antlr4.runtime=" + antlr,
-                "-d", compiled.toString(), generated.resolve("org.tomlj/module-info.java").toString(),
-                generated.resolve("org.antlr.antlr4.runtime/module-info.java").toString());
-            for (var entry : Map.of("org.tomlj", toml, "org.antlr.antlr4.runtime", antlr).entrySet())
-            {
-                Path classes = compiled.resolve(entry.getKey());
-                Path pending = scratch.path().resolve(entry.getValue().getFileName());
-                Files.copy(entry.getValue(), pending);
-                runPackagingTool(scratch.path(), "jar", "--update", "--file", pending.toString(),
-                    "-C", classes.toString(), "module-info.class");
-            }
-            // Publish after both complete JAR copies exist; uncertain partial publication fails closed on a retry.
-            for (Path original : List.of(toml, antlr))
-                Files.move(scratch.path().resolve(original.getFileName()), original,
-                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        }
-    }
+	/**
+	 * Adds a JDK-generated module descriptor to the staged TOML parser, which the build supplies as an automatic module.
+	 * <p>
+	 * tomlj embeds its ANTLR runtime and requires only {@code java.base}. Its original classes and resources remain
+	 * unchanged, and dependency source and repository artifacts are untouched.
+	 *
+	 * @param modules exclusively owned runtime staging directory
+	 * @throws IOException if the parser is not staged, or descriptor generation, compilation or publication fails
+	 */
+	public static void modularizeToml(Path modules) throws IOException
+	{
+		Path toml = modules.resolve("tomlj-2.2.0.jar");
+		if (!Files.isRegularFile(toml))
+			throw new IOException("The staged pinned TOML parser is required");
+		if (!ModuleFinder.of(toml).findAll().iterator().next().descriptor().isAutomatic())
+			return;
+
+		try (PackagingDirectory scratch = new PackagingDirectory(Files.createTempDirectory(modules.getParent(),
+			"toml-modules-")))
+		{
+			Path generated = scratch.path().resolve("source");
+			runPackagingTool(scratch.path(), "jdeps", "--generate-module-info", generated.toString(), toml.toString());
+			Path compiled = Files.createDirectory(scratch.path().resolve("classes"));
+			runPackagingTool(scratch.path(), "javac", "--release", "27", "-Xlint:all",
+				"--module-source-path", generated.toString(), "--patch-module", "org.tomlj=" + toml,
+				"-d", compiled.toString(), generated.resolve("org.tomlj/module-info.java").toString());
+			Path pending = scratch.path().resolve(toml.getFileName());
+			Files.copy(toml, pending);
+			runPackagingTool(scratch.path(), "jar", "--update", "--file", pending.toString(),
+				"-C", compiled.resolve("org.tomlj").toString(), "module-info.class");
+			// Publish only the complete JAR copy; an uncertain publication fails closed on a retry.
+			Files.move(pending, toml, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+		}
+	}
 
     /**
      * Runs an installed JDK packaging operation and retains its actual diagnostic on failure.

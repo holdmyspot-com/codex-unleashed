@@ -14,7 +14,7 @@
     <dependency>
       <groupId>org.tomlj</groupId>
       <artifactId>tomlj</artifactId>
-      <version>1.1.1</version>
+      <version>2.2.0</version>
     </dependency>
     <dependency>
       <groupId>io.github.cowwoc.pouch</groupId>
@@ -24,17 +24,17 @@
     <dependency>
       <groupId>tools.jackson.dataformat</groupId>
       <artifactId>jackson-dataformat-yaml</artifactId>
-      <version>3.2.3</version>
+      <version>3.3.0</version>
     </dependency>
     <dependency>
       <groupId>tools.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
-      <version>3.2.3</version>
+      <version>3.3.0</version>
     </dependency>
     <dependency>
       <groupId>commons-io</groupId>
       <artifactId>commons-io</artifactId>
-      <version>2.20.0</version>
+      <version>2.22.0</version>
     </dependency>
     <dependency>
       <groupId>org.slf4j</groupId>
@@ -67,7 +67,7 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>build-helper-maven-plugin</artifactId>
-        <version>3.6.2</version>
+        <version>3.7.0</version>
         <executions>
           <execution>
             <id>packaging-test-sources</id>
@@ -83,7 +83,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-resources-plugin</artifactId>
-        <version>3.4.0</version>
+        <version>3.5.0</version>
         <executions>
           <execution>
             <id>default-resources</id>
@@ -103,7 +103,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.6.0</version>
+        <version>3.6.1</version>
         <configuration>
           <argLine>"-Djava.io.tmpdir=${java.io.tmpdir}"</argLine>
         </configuration>

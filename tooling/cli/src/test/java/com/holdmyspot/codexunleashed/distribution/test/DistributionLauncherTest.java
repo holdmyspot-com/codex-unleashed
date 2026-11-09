@@ -13,9 +13,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /** Verifies the generated tooling launcher with independent, nonnative Java receiver fixtures. */
 public final class DistributionLauncherTest
 {
-	/** The staged TOML parser and its dependencies, as resolved by the build. */
-	private static final List<String> TOML_JARS = List.of("tomlj-1.1.1.jar", "antlr4-runtime-4.11.1.jar",
-		"checker-qual-3.21.2.jar");
+	/** The staged TOML parser, which embeds its ANTLR runtime and has no dependencies. */
+	private static final List<String> TOML_JARS = List.of("tomlj-2.2.0.jar");
 
 	/** Creates independently owned launcher checks. */
 	public DistributionLauncherTest()
@@ -23,8 +22,8 @@ public final class DistributionLauncherTest
 	}
 
     /**
-     * Turns the staged TOML parser and ANTLR runtime into explicit modules that resolve without checker-qual,
-     * keeping every original JAR entry unchanged.
+     * Turns the staged TOML parser into an explicit module that resolves on its own, keeping every original JAR
+     * entry unchanged.
      * <p>
      * Resolution uses the JDK's module system, which jlink also uses; the JDK's own tools are trusted to work as
      * documented, so the test neither links an image nor runs the parser.
@@ -41,14 +40,13 @@ public final class DistributionLauncherTest
             java.util.Map<String, java.util.Map<String, String>> original = libraryPayloads(modules);
             com.holdmyspot.codexunleashed.distribution.DistributionMain.modularizeToml(modules);
             requireThat(libraryPayloads(modules), "allOriginalLibraryEntries").isEqualTo(original);
-            var finder = java.lang.module.ModuleFinder.of(modules.resolve("tomlj-1.1.1.jar"),
-                modules.resolve("antlr4-runtime-4.11.1.jar"));
+            var finder = java.lang.module.ModuleFinder.of(modules.resolve("tomlj-2.2.0.jar"));
             for (var reference : finder.findAll())
                 requireThat(reference.descriptor().isAutomatic(), reference.descriptor().name() + ".isAutomatic()")
                     .isFalse();
             var configuration = ModuleLayer.boot().configuration().resolve(finder,
                 java.lang.module.ModuleFinder.of(), java.util.Set.of("org.tomlj"));
-            requireThat(configuration.findModule("org.antlr.antlr4.runtime").isPresent(), "antlrResolved").isTrue();
+            requireThat(configuration.modules().size(), "resolvedModuleCount").isEqualTo(1);
         }
     }
 
