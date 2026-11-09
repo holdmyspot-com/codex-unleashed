@@ -1,4 +1,4 @@
-From cb85e056cf530cdedc79dcecc0cd7dbf6b9984fc Mon Sep 17 00:00:00 2001
+From 352bd1fbb24c20ca877c241cba32230a66e363a3 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:20:01 -0500
 Subject: [PATCH] WIP: migrate to schemars 1
@@ -23,13 +23,13 @@ Subject: [PATCH] WIP: migrate to schemars 1
  codex-rs/history/src/tests.rs                 |   8 +-
  codex-rs/hooks/src/events/model_request.rs    |  20 +-
  codex-rs/hooks/src/schema.rs                  | 108 +++++++---
- codex-rs/protocol/src/config_types.rs         |  32 +--
+ codex-rs/protocol/src/config_types.rs         |  34 +--
  codex-rs/protocol/src/openai_models.rs        |  46 ++---
  codex-rs/protocol/src/session_id.rs           |   8 +-
  codex-rs/protocol/src/thread_id.rs            |   8 +-
  .../utils/path-uri/src/api_path_string.rs     |   6 +-
  codex-rs/utils/path-uri/src/lib.rs            |   6 +-
- 25 files changed, 334 insertions(+), 285 deletions(-)
+ 25 files changed, 336 insertions(+), 285 deletions(-)
  create mode 100644 codex-rs/ext/extension-api/src/json_schema.rs
 
 diff --git a/codex-rs/app-server-protocol/src/export.rs b/codex-rs/app-server-protocol/src/export.rs
@@ -1047,7 +1047,7 @@ index 0da8e17..eed791c 100644
  
  fn default_continue() -> bool {
 diff --git a/codex-rs/protocol/src/config_types.rs b/codex-rs/protocol/src/config_types.rs
-index 88096f4..cc4ee83 100644
+index 88096f4..6c7ef52 100644
 --- a/codex-rs/protocol/src/config_types.rs
 +++ b/codex-rs/protocol/src/config_types.rs
 @@ -1,14 +1,10 @@
@@ -1105,6 +1105,15 @@ index 88096f4..cc4ee83 100644
  }
  
  #[derive(
+@@ -339,6 +325,8 @@ pub enum Personality {
+ /// configured mode hint defines the policy instead of a built-in policy.
+ #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Display, JsonSchema, TS, Default)]
+ #[serde(rename_all = "camelCase", from = "MultiAgentModeWire")]
++// The schema keeps describing the serialized form; schemars 1 would otherwise describe the wire enum.
++#[schemars(!from)]
+ #[ts(rename_all = "camelCase")]
+ #[strum(serialize_all = "camelCase")]
+ pub enum MultiAgentMode {
 diff --git a/codex-rs/protocol/src/openai_models.rs b/codex-rs/protocol/src/openai_models.rs
 index fc1f8b8..802fce5 100644
 --- a/codex-rs/protocol/src/openai_models.rs

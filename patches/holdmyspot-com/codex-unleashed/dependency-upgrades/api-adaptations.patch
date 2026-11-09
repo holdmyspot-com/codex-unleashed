@@ -1,4 +1,4 @@
-From 3ce2e7948d31da40ee87d7bf4c4c50ca74b747eb Mon Sep 17 00:00:00 2001
+From 050dda7816841f7824fd3157fcdf966cce8ea874 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:08:34 -0500
 Subject: [PATCH] WIP: adapt to rand 0.10, digest 0.11, p256 0.14, reqwest
@@ -86,6 +86,7 @@ AsyncFd::new for the unsafe AsyncFd::register, and ctor 1 requires every constru
  .../src/mitm_forwarding_tests.rs              | 10 ++---
  codex-rs/otel/src/otlp.rs                     |  4 +-
  codex-rs/process-hardening/src/lib.rs         |  2 +-
+ codex-rs/protocol/src/exec_output.rs          |  6 ++-
  codex-rs/realtime-webrtc/tests/common/mod.rs  |  2 +-
  codex-rs/responses-api-proxy/src/main.rs      |  2 +-
  codex-rs/rmcp-client/Cargo.toml               |  1 +
@@ -125,7 +126,7 @@ AsyncFd::new for the unsafe AsyncFd::register, and ctor 1 requires every constru
  .../windows-sandbox-rs/src/no_reparse_dir.rs  |  4 +-
  .../src/setup_provisioning/sandbox_users.rs   |  5 +--
  .../src/uninstall_windows/principals_tests.rs |  6 +--
- 116 files changed, 274 insertions(+), 197 deletions(-)
+ 117 files changed, 278 insertions(+), 199 deletions(-)
 
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
 index a5c3f23..a3e48c1 100644
@@ -1469,6 +1470,31 @@ index f500e15..187ca3b 100644
  /// various process hardening steps, such as
  /// - disabling core dumps
  /// - disabling ptrace attach on Linux and macOS.
+diff --git a/codex-rs/protocol/src/exec_output.rs b/codex-rs/protocol/src/exec_output.rs
+index 63675fe..a01a9cd 100644
+--- a/codex-rs/protocol/src/exec_output.rs
++++ b/codex-rs/protocol/src/exec_output.rs
+@@ -7,6 +7,8 @@
+ //! lossy UTF-8 decoding.
+ 
+ use chardetng::EncodingDetector;
++use chardetng::Iso2022JpDetection;
++use chardetng::Utf8Detection;
+ use encoding_rs::Encoding;
+ use encoding_rs::IBM866;
+ use encoding_rs::WINDOWS_1252;
+@@ -95,9 +97,9 @@ const WINDOWS_1252_PUNCT_BYTES: [u8; 8] = [
+ ];
+ 
+ fn detect_encoding(bytes: &[u8]) -> &'static Encoding {
+-    let mut detector = EncodingDetector::new();
++    let mut detector = EncodingDetector::new(Iso2022JpDetection::Allow);
+     detector.feed(bytes, true);
+-    let (encoding, _is_confident) = detector.guess_assess(None, true);
++    let encoding = detector.guess(/*tld*/ None, Utf8Detection::Allow);
+ 
+     // chardetng occasionally reports IBM866 for short strings that only contain Windows-1252 “smart
+     // punctuation” bytes (0x80-0x9F) because that range maps to Cyrillic letters in IBM866. When
 diff --git a/codex-rs/realtime-webrtc/tests/common/mod.rs b/codex-rs/realtime-webrtc/tests/common/mod.rs
 index 681b646..321b72e 100644
 --- a/codex-rs/realtime-webrtc/tests/common/mod.rs
