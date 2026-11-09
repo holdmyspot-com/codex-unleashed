@@ -1,0 +1,72 @@
+From cbe5c2472922ea7082f66a425dd0639b8739f23c Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 9 Nov 2026 14:03:27 -0500
+Subject: [PATCH] WIP: update the thread sample hashes for schemars 1's web.run
+ schema
+
+schemars 1 writes integer minimums as 0 instead of 0.0 and lists required properties in declaration order instead of alphabetically. The schema accepts the same arguments, but its bytes change, and so do the hashes of the developer message and the web namespace (Linux test runs 42673538018 and 42673542514 compare the two schemas).
+---
+ ...hread_sample__sample_inherits_parent_context.snap | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap b/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap
+index f6d612a..23c9f66 100644
+--- a/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap
++++ b/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap
+@@ -16,7 +16,7 @@ Settings:
+   stream: true
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=bf13940dee826ebd):
++00:additional_tools/developer (3; hash=321bc4cdce4e789f):
+         - namespace/functions; hash=028af59ad835936d
+           - function/exec_command
+           - function/write_stdin
+@@ -33,7 +33,7 @@ Settings:
+           - function/send_input
+           - function/spawn_agent
+           - function/wait_agent
+-        - namespace/web: Tools in the web namespace.; hash=0037b1ed8d50fab5
++        - namespace/web: Tools in the web namespace.; hash=ed1c60da95696abb
+           - function/run
+ 01:message/developer:
+     Retain these base instructions.
+@@ -77,7 +77,7 @@ Settings:
+ ## Window 2 (after request 2: input repeated)
+ Settings: same as window 1
+ -- request 3 (turn) --
+-00:additional_tools/developer (3; hash=bf13940dee826ebd):
++00:additional_tools/developer (3; hash=321bc4cdce4e789f):
+         - namespace/functions; hash=028af59ad835936d
+           - function/exec_command
+           - function/write_stdin
+@@ -94,7 +94,7 @@ Settings: same as window 1
+           - function/send_input
+           - function/spawn_agent
+           - function/wait_agent
+-        - namespace/web: Tools in the web namespace.; hash=0037b1ed8d50fab5
++        - namespace/web: Tools in the web namespace.; hash=ed1c60da95696abb
+           - function/run
+ 01:message/developer:
+     Retain these base instructions.
+@@ -137,7 +137,7 @@ Settings: same as window 1
+ ## Window 3 (after request 3: input repeated)
+ Settings: same as window 1
+ -- request 4 (turn) --
+-00:additional_tools/developer (3; hash=bf13940dee826ebd):
++00:additional_tools/developer (3; hash=321bc4cdce4e789f):
+         - namespace/functions; hash=028af59ad835936d
+           - function/exec_command
+           - function/write_stdin
+@@ -154,7 +154,7 @@ Settings: same as window 1
+           - function/send_input
+           - function/spawn_agent
+           - function/wait_agent
+-        - namespace/web: Tools in the web namespace.; hash=0037b1ed8d50fab5
++        - namespace/web: Tools in the web namespace.; hash=ed1c60da95696abb
+           - function/run
+ 01:message/developer:
+     Retain these base instructions.
+-- 
+2.43.0
+
