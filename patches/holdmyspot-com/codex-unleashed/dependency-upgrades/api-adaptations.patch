@@ -1,4 +1,4 @@
-From b1c320f3b49532c9f65ae70e3a80f0ea567b8381 Mon Sep 17 00:00:00 2001
+From f3d6412cbab3ab7ecb506d992c5fd055abe7b83c Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:08:34 -0500
 Subject: [PATCH] WIP: adapt to rand 0.10, digest 0.11, p256 0.14, reqwest
@@ -325,7 +325,7 @@ index a5c3f23..71b6546 100644
   "zeroize",
  ]
 diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
-index a1bdf61..89c8810 100644
+index 4da4e2c..4a28e34 100644
 --- a/codex-rs/Cargo.toml
 +++ b/codex-rs/Cargo.toml
 @@ -385,7 +385,7 @@ divan = "0.1.21"
