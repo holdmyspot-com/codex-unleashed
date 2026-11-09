@@ -1,11 +1,6 @@
 name: Stable upstream nested sandbox fixture probe
 
 on:
-  push:
-    branches: [main.new]
-    paths:
-      - .github/workflows/baseline-sandbox-fixture.yml
-      - .github/scripts/probe-nested-bwrap.py
   workflow_dispatch:
 
 permissions:

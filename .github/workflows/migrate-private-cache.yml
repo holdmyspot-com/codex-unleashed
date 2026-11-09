@@ -2,10 +2,6 @@ name: Copy verified caches to the isolated private package
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main.new]
-    paths: [.github/workflows/migrate-private-cache.yml, .github/cache-package-migration.tsv]
-
 permissions:
   contents: read
   packages: write

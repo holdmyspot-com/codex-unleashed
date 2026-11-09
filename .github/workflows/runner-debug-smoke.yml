@@ -2,9 +2,6 @@ name: Runner failure debugging smoke test
 run-name: ${{ inputs.session_id && format('Runner debugging - {0} - {1}', inputs.target, inputs.session_id) || 'Runner failure debugging smoke test' }}
 
 on:
-  push:
-    branches: [main.new]
-    paths: [.github/workflows/runner-debug-smoke.yml]
   workflow_dispatch:
     inputs:
       session_id:

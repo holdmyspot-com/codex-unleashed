@@ -1,12 +1,6 @@
 name: Stable upstream macOS capacity probe
 
 on:
-  push:
-    branches: [main.new]
-    paths:
-      - .github/workflows/baseline-macos-capacity.yml
-      - .github/scripts/reclaim-baseline-macos-xcodes.py
-      - .github/scripts/test_reclaim_baseline_macos_xcodes.py
   workflow_dispatch:
 
 permissions:

@@ -1,7 +1,7 @@
 name: Prune private caches
 
 # Keeps caches only for the newest three stable upstream releases and each owning branch's pinned upstream reference.
-# The release build calls this after its build jobs; the schedule takes effect once this branch is the default branch.
+# The release build calls this after its build jobs, and the schedule runs it daily from the default branch.
 on:
   workflow_dispatch:
     inputs:
@@ -17,10 +17,6 @@ on:
         default: false
   schedule:
     - cron: '41 6 * * *'
-  # A change to the pruner plans without deleting, which also registers the workflow for manual dispatch.
-  push:
-    branches: [main.new]
-    paths: [.github/workflows/cache-retention.yml, .github/cache-retention-packages]
 
 permissions:
   contents: read

@@ -2,7 +2,7 @@ name: Release build checkpoint tests
 
 on:
   push:
-    branches: [main.new]
+    branches: [main]
     paths:
       - .github/workflows/release-checkpoint-tests.yml
       - .github/scripts/build-upstream-release.sh

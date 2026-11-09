@@ -1,11 +1,6 @@
 name: Stable upstream Windows workspace status probe
 
 on:
-  push:
-    branches: [main.new]
-    paths:
-      - .github/workflows/baseline-windows-status-probe.yml
-      - .github/scripts/probe-baseline-windows-status.py
   workflow_dispatch:
 
 permissions:

@@ -2,18 +2,18 @@
 
 ## Design Goals
 
-- Complete the approved Codex restart on `main.new`, preserving its selected product scope and explicit deferrals.
+- Complete the approved Codex restart on `main` (formerly `main.new`), preserving its selected product scope and explicit deferrals.
 - Establish checkpoint acceptance at the required execution boundaries, with failures and unrun gates visible.
 - Advance independent coherent deliverables concurrently, preserving verified work and diagnosing only decisions that affect the remaining implementation.
 - Make resumption possible from recorded inputs, ownership, evidence and the full reconciliation backlog.
 
 ## Resumption handoff
 
-Handoff updated 2026-11-08T23:40Z. The goal `implement plan.md` is incomplete: CP1–5 passed, CP6 is current (its draft design is in "CP6 design" below), CP7 is unrun and CP8 is deferred policy. Prior authorization covers continuation, parallel work and pushing to `main.new`; publishing a release needs a separate instruction. The earlier root, Linux-owner and Windows-module8 live-worker records (sessions `01a18dac…`, `01a197e5…`, `01a198d5…`) describe workers whose runs have long ended; their session directories stay on disk as evidence and must not be deleted, but they are not live assignments.
+Handoff updated 2026-11-08T23:40Z. The goal `implement plan.md` is incomplete: CP1–5 passed, CP6 is current (its draft design is in "CP6 design" below), CP7 is unrun and CP8 is deferred policy. Prior authorization covers continuation, parallel work and pushing to `main` (formerly `main.new`); publishing a release needs a separate instruction. The earlier root, Linux-owner and Windows-module8 live-worker records (sessions `01a18dac…`, `01a197e5…`, `01a198d5…`) describe workers whose runs have long ended; their session directories stay on disk as evidence and must not be deleted, but they are not live assignments.
 
 ### Checkout
 
-- Branch `main.new`. CP3 tag `checkpoint-3-cache-coverage-cold-build` is on `9fe1232ea4`; CP4 tag `checkpoint-4-product-patches` is on `262062698d`.
+- Branch `main`; the owner renamed `main.new` to `main` and the old `main` to `main.old` on 2026-11-09. CP3 tag `checkpoint-3-cache-coverage-cold-build` is on `9fe1232ea4`; CP4 tag `checkpoint-4-product-patches` is on `262062698d`.
 - Patched release builds: `baseline-release-builds.yml` takes a `patches` input. Since `60f2992953` the exact compiled-cache tag includes the applied patches, and only unpatched builds publish the compatible seed. The seed key hashes the whole cache helper, so the first cached patched run after that commit (`42436915786`) missed every lookup; an unpatched cached run must republish the seeds before patched runs can start from them.
 - Local test command, from `tooling/cli`: `mvn -B -ntp -q -s <settings.xml> test`. Expect 0 failures and 0 errors; `SourceInputCargoTest` needs the local `rustc` and `cargo` on PATH (installed at `/home/gili/.cargo/bin`) and fails with 6 errors without them. Release-scale native Rust, Bazel and Go builds run only on remote runners.
 - Tests live in the separate JPMS module `com.holdmyspot.codexunleashed.tooling.test`. The production module exports its tooling package only to the test module; no reflection and no fake executables for tools.
@@ -60,7 +60,7 @@ The remaining CP3 build-speed work chooses standard build options that shorten a
 
 ## Scope and authority
 
-Rebuild Codex Unleashed from upstream main commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4` on `main.new`. Preserve `main` and old-main commit `545479059ac86394049b6efd3bf4297b1ca18d17` for selective migration and final comparison. `.github/upstream-ref` and `.github/upstream-commit` record the selected upstream identity. Keep that source fixed through checkpoint 6 unless the owner changes it. The original orphan commit contained only this plan; that starting condition is not a restriction on the implemented repository.
+Rebuild Codex Unleashed from upstream main commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4` on `main` (formerly `main.new`). Preserve `main.old` (the old `main`) and old-main commit `545479059ac86394049b6efd3bf4297b1ca18d17` for selective migration and final comparison. `.github/upstream-ref` and `.github/upstream-commit` record the selected upstream identity. Keep that source fixed through checkpoint 6 unless the owner changes it. The original orphan commit contained only this plan; that starting condition is not a restriction on the implemented repository.
 
 This file owns the current checkpoint state, assignments and acceptance decisions. [restart-scope.md](docs/plans/restart-scope.md) is its normative appendix: retain all D1–D13 decisions, supporting changes, deferred concerns and individual old-main dispositions. [restart-history.md](docs/plans/restart-history.md) preserves the earlier plan and receipt links. Historical statuses and proposed next diagnostics are not current assignments. Do not silently relabel evidence from an earlier source as evidence from the current source.
 
@@ -75,7 +75,7 @@ The owner explicitly carries forward earlier passing release, native-smoke, cach
 - Maintained tests own independent fixtures and run with method parallelism. Avoid every maintained `@BeforeClass` use. Keep portable behavior cross-platform; guard native acquisition on the actual host. Native matrix checks must confirm that each expected case executes on its designated platform, rather than accepting its skip elsewhere.
 - Use free standard GitHub-hosted runners. Preserve suitable BuildBuddy/GitHub/GHCR integrations, authenticated private GHCR caches, three-stable-release cache retention and one-day Actions artifacts. Keep secrets out of archives and organization package visibility unchanged.
 - Native Rust, Bazel and Go builds run remotely. Do not recreate local native outputs/caches or extract native binaries locally. Local Java compilation and portable checks remain available. Delete retained artifacts only after their last named consumer finishes, preserving rebuild speed and processes launched by this work; process inspection is limited to those processes.
-- Pushing ongoing work to `main.new` is authorized. Publishing releases requires a separate instruction. npm publication and installation tests use local Verdaccio only. No public npm or restricted early-access package families, issue mutations or issue-closing automation; PR-closing automation stays deferred.
+- Pushing ongoing work to `main` (formerly `main.new`) is authorized; `main.old` stays untouched. Publishing releases requires a separate instruction. npm publication and installation tests use local Verdaccio only. No public npm or restricted early-access package families, issue mutations or issue-closing automation; PR-closing automation stays deferred.
 - Preserve the selected account/output-token usage direction and applicable HoldMySpot licensing, upstream rights and notices. Authentication, metering, billing enforcement, token definitions, pricing and detailed customer billing documentation remain deferred. No charges or payment operations are authorized. The appendix retains the exact license and Usage Terms obligations.
 
 ## Checkpoint state
