@@ -1,15 +1,31 @@
-From e07db688f516073a52be09df9eb60bc83547827b Mon Sep 17 00:00:00 2001
+From b81b4313e5c345f991e71c259ccd103494ab6a1c Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 20:05:36 -0500
 Subject: [PATCH] Update dependencies to their latest semver-compatible
  releases
 
 cargo update resolves every dependency to the newest release its manifest allows that supports the pinned
-Rust 1.95, as Cargo's incompatible-rust-versions = "fallback" resolution selects.
+Rust 1.95, as Cargo's incompatible-rust-versions = "fallback" resolution selects. Bazel's tonic
+annotation names the exact version it patches, so it follows tonic to 0.14.9, where the zstd-level patch
+still applies.
 ---
+ MODULE.bazel        |    2 +-
  codex-rs/Cargo.lock | 4232 +++++++++++++++++++++----------------------
- 1 file changed, 2091 insertions(+), 2141 deletions(-)
+ 2 files changed, 2092 insertions(+), 2142 deletions(-)
 
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 3e513f2..b86595b 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -407,7 +407,7 @@ crate.annotation(
+     crate = "tonic",
+     patch_args = ["-p1"],
+     patches = ["//patches:tonic-zstd-level1.patch"],
+-    version = "0.14.3",
++    version = "0.14.9",
+ )
+ crate.annotation(
+     crate = "zstd-sys",
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
 index 784236e..4211b67 100644
 --- a/codex-rs/Cargo.lock
