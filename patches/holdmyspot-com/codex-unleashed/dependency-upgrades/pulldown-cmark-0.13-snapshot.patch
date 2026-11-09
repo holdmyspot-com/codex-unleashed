@@ -1,0 +1,48 @@
+From f29cf95238ba0756dfd06abb6ab1047712903af6 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 9 Nov 2026 13:33:00 -0500
+Subject: [PATCH] WIP: update the task list snapshot for pulldown-cmark 0.13
+
+pulldown-cmark 0.13 parses task list markers inside list items that 0.10 left as text, so the renderer draws checkboxes for them.
+---
+ ...render__task_list_tests__lists_preserve_layout.snap | 10 ++++------
+ 1 file changed, 4 insertions(+), 6 deletions(-)
+
+diff --git a/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap b/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap
+index 636eba4..8f3113d 100644
+--- a/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap
++++ b/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap
+@@ -32,8 +32,8 @@ expression: "stages.join(\"\\n\\n---\\n\\n\")"
+ 
+ ☑ Next task
+ ---
+-• [ ]
+-• [x]
++☐ 
++☑ 
+ ---
+ ☑ Bold, italic, and code
+ 
+@@ -50,9 +50,7 @@ expression: "stages.join(\"\\n\\n---\\n\\n\")"
+ 
+ ☑ # title
+ ☑ > quote
+-☑ 
+-
+-  ———
++☑ ---
+ ---
+ •     
+       [x] code, not a task
+@@ -63,7 +61,7 @@ expression: "stages.join(\"\\n\\n---\\n\\n\")"
+ 
+   Continued paragraph
+ ---
+-☑  <div>done</div>
++☑ <div>done</div>
+ ---
+ ☑ <div>done</div>
+ ---
+-- 
+2.43.0
+

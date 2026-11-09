@@ -1,0 +1,48 @@
+From 3a70876c47403e8135aa6a1b69d0055067f46447 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 9 Nov 2026 13:33:00 -0500
+Subject: [PATCH] WIP: keep OpenTelemetry export errors out of the log database
+
+opentelemetry_sdk 0.33 logs each failed export at ERROR. Storing that event writes a SQLite batch whose metrics are exported and fail again, so an unreachable collector fed the log database indefinitely.
+---
+ codex-rs/state/src/log_db.rs              | 11 +++++++++++
+ codex-rs/state/src/log_db_filter_tests.rs |  1 +
+ 2 files changed, 12 insertions(+)
+
+diff --git a/codex-rs/state/src/log_db.rs b/codex-rs/state/src/log_db.rs
+index ef03ad8..ca7a631 100644
+--- a/codex-rs/state/src/log_db.rs
++++ b/codex-rs/state/src/log_db.rs
+@@ -317,6 +317,17 @@ where
+             return;
+         }
+ 
++        // The SDK reports every failed export at ERROR (`PeriodicReader.ExportError`,
++        // `BatchLogProcessor.ExportError`, ...). Recording one writes a SQLite batch,
++        // whose write metric is exported and fails again, so an unreachable collector
++        // would feed itself indefinitely.
++        if target == "opentelemetry_sdk"
++            && (metadata.name().ends_with("ExportError")
++                || metadata.name().ends_with("Export.Error"))
++        {
++            return;
++        }
++
+         let mut visitor = MessageVisitor::default();
+         event.record(&mut visitor);
+         // OTLP gRPC connections run on their own task, so an unsolicited PING
+diff --git a/codex-rs/state/src/log_db_filter_tests.rs b/codex-rs/state/src/log_db_filter_tests.rs
+index 3f04e10..6c9bc12 100644
+--- a/codex-rs/state/src/log_db_filter_tests.rs
++++ b/codex-rs/state/src/log_db_filter_tests.rs
+@@ -31,6 +31,7 @@ async fn sqlite_sink_filters_noisy_targets_without_dropping_useful_diagnostics()
+     tracing::trace!(target: "opentelemetry_sdk", "dropped-trace");
+     tracing::debug!(target: "opentelemetry_sdk", "dropped-debug");
+     tracing::info!(target: "opentelemetry_sdk", "retained-info");
++    tracing::error!(name: "PeriodicReader.ExportError", target: "opentelemetry_sdk", "dropped-export-error");
+     tracing::warn!(target: "sqlx::query", "dropped-slow-query-warning");
+     tracing::warn!(target: "sqlx::pool::acquire", "dropped-slow-acquire-warning");
+     tracing::warn!(target: "sqlx::other", "dropped-sqlx-warning");
+-- 
+2.43.0
+
