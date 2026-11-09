@@ -1,4 +1,4 @@
-From a30a4ed2fd5c609e3d2c944b65c1f182132572a6 Mon Sep 17 00:00:00 2001
+From 7647bd6988cfea0b99bb6ba3dfc3988b7304db78 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 19:41:52 -0500
 Subject: [PATCH] Write workspace documentation so rustdoc reports no warnings
@@ -7503,18 +7503,19 @@ index 1abf467..95e12a4 100644
  /// This function should be used to wrap any `main()` function in binary crates
  /// in this workspace that depends on these helper CLIs.
 diff --git a/codex-rs/cli/src/exec_server_command.rs b/codex-rs/cli/src/exec_server_command.rs
-index 5244087..7a8e9f9 100644
+index 5244087..adffce2 100644
 --- a/codex-rs/cli/src/exec_server_command.rs
 +++ b/codex-rs/cli/src/exec_server_command.rs
-@@ -29,7 +29,7 @@ use crate::exec_server_auth;
+@@ -29,8 +29,8 @@ use crate::exec_server_auth;
  use crate::exec_server_credential::ExecutorCredentialPipe;
  use crate::exec_server_telemetry;
  
 -/// [EXPERIMENTAL] Run the standalone exec-server service.
-+#[command(about = "[EXPERIMENTAL] Run the standalone exec-server service", long_about = None)]
  #[derive(Debug, Parser)]
++#[command(about = "[EXPERIMENTAL] Run the standalone exec-server service", long_about = None)]
  pub(super) struct ExecServerCommand {
      #[command(subcommand)]
+     pub(super) command: Option<ExecServerSubcommand>,
 diff --git a/codex-rs/cli/src/lib.rs b/codex-rs/cli/src/lib.rs
 index cc91f5b..102b6ee 100644
 --- a/codex-rs/cli/src/lib.rs
