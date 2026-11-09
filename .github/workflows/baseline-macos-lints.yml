@@ -7,6 +7,16 @@ on:
         description: Space-separated repository paths of downstream patches to apply with git am, in order
         type: string
         default: ""
+  workflow_call:
+    inputs:
+      patches:
+        description: Space-separated repository paths of downstream patches to apply with git am, in order
+        type: string
+        default: ""
+      upstream_commit:
+        description: Optional upstream commit to test instead of .github/upstream-commit
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -41,6 +51,8 @@ jobs:
 
       - name: Preserve restart inputs outside the source checkout
         id: inputs
+        env:
+          UPSTREAM_COMMIT: ${{ inputs.upstream_commit }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-evidence"
@@ -49,6 +61,9 @@ jobs:
           mkdir -p "$evidence" "$cargo_home" "$cargo_target_dir"
           printf 'CARGO_HOME=%s\nCARGO_TARGET_DIR=%s\n' "$cargo_home" "$cargo_target_dir" >> "$GITHUB_ENV"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          if [[ -n "$UPSTREAM_COMMIT" ]]; then
+            printf '%s\n' "$UPSTREAM_COMMIT" > "$evidence/upstream-commit"
+          fi
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"

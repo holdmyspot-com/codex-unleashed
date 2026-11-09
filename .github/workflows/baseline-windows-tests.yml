@@ -37,12 +37,30 @@ on:
         default: x86_64-pc-windows-msvc
         options: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
 
+  workflow_call:
+    inputs:
+      patches:
+        description: Space-separated repository paths of downstream patches to apply with git am, in order
+        type: string
+        default: ""
+      upstream_commit:
+        description: Optional upstream commit to test instead of .github/upstream-commit
+        type: string
+        default: ""
+      package:
+        description: Space-separated Cargo packages to test with nextest, or --workspace for every package
+        type: string
+        default: ""
+      target:
+        description: Native Windows target
+        type: string
+        default: x86_64-pc-windows-msvc
+
 permissions:
   contents: read
 
 jobs:
   test:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ${{ (inputs.target == 'aarch64-pc-windows-msvc' && 'windows-11-arm') || 'windows-2025' }}
     timeout-minutes: 240
     env:
@@ -67,6 +85,8 @@ jobs:
 
       - name: Validate the selection and read the pinned upstream commit
         id: source
+        env:
+          UPSTREAM_COMMIT: ${{ inputs.upstream_commit }}
         run: |
           set -euo pipefail
           git config --global core.longpaths true
@@ -82,7 +102,7 @@ jobs:
             printf 'red_patch_count must be a positive integer, not %s.\n' "$RED_PATCH_COUNT" >&2
             exit 1
           fi
-          printf 'commit=%s\n' "$(cat .github/upstream-commit)" >> "$GITHUB_OUTPUT"
+          printf 'commit=%s\n' "${UPSTREAM_COMMIT:-$(cat .github/upstream-commit)}" >> "$GITHUB_OUTPUT"
 
       - name: Retrieve pristine selected upstream
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -148,8 +168,12 @@ jobs:
             else
               printf 'cd "%s/upstream/codex-rs"\n' "$GITHUB_WORKSPACE"
               args=(cargo nextest run --target "$TARGET" --no-fail-fast)
-              read -r -a packages <<< "$TEST_PACKAGE"
-              for package in "${packages[@]}"; do args+=(-p "$package"); done
+              if [[ "$TEST_PACKAGE" == --workspace ]]; then
+                args+=(--workspace)
+              else
+                read -r -a packages <<< "$TEST_PACKAGE"
+                for package in "${packages[@]}"; do args+=(-p "$package"); done
+              fi
               if [[ -n "$TEST_FILTER" ]]; then args+=(-E "$TEST_FILTER"); fi
               printf '%q ' "${args[@]}"
               printf '\n'

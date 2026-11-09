@@ -1,0 +1,540 @@
+name: Automatic upstream release
+
+# Publishes this fork's release for the newest stable upstream openai/codex release (rust-vX.Y.Z, not a draft or
+# prerelease), CP9 in plan.md. The pipeline is: detect, check that the patch queue applies, run every gate against the
+# pinned upstream commit with the queue applied, and only for a live run build the packages, publish the release,
+# verify the one-line installers on six fresh runners and then mark it latest.
+#
+# A dispatch with dry_run=true (the default) stops after the gates and publishes nothing: no package build, tag,
+# release, draft or asset. Enabling the schedule below is the owner's step at acceptance.
+#
+# Gate coverage: there is no patched macOS test workflow yet (baseline-macos-bazel-tests.yml tests pristine upstream
+# only, without a patches input), so no macOS test gate is wired here. Add one before the first live run.
+
+on:
+  # schedule:
+  #   - cron: "17 */3 * * *"  # Owner step: uncomment to enable unattended releases. Scheduled runs are live.
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: Optional stable upstream tag to release, such as rust-v0.167.0; empty selects the newest stable release
+        type: string
+        default: ""
+      dry_run:
+        description: Detect, apply the patch queue and run every gate, but publish nothing
+        type: boolean
+        default: true
+
+# One run at a time per requested release and mode. The publish job adds a per-version group and re-checks the fork's
+# releases, because the version a scheduled run resolves is unknown until detection has run.
+concurrency:
+  group: upstream-auto-release-${{ inputs.upstream_tag || 'latest' }}-${{ (github.event_name == 'schedule' || !inputs.dry_run) && 'live' || 'dry' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Detection unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - run: python3 -I .github/scripts/test-upstream-auto-release.py
+
+  detect:
+    name: Detect the upstream release
+    needs: unit-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      action: ${{ steps.detect.outputs.action }}
+      reason: ${{ steps.detect.outputs.reason }}
+      version: ${{ steps.detect.outputs.version }}
+      build: ${{ steps.detect.outputs.build }}
+      tag: ${{ steps.detect.outputs.tag }}
+      release_name: ${{ steps.detect.outputs.release_name }}
+      upstream_tag: ${{ steps.detect.outputs.upstream_tag }}
+      upstream_commit: ${{ steps.commit.outputs.upstream_commit }}
+      patches: ${{ steps.commit.outputs.patches }}
+      live: ${{ steps.mode.outputs.live }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          live=false
+          if [[ "$EVENT" == schedule || "$DRY_RUN" == false ]]; then
+            live=true
+          fi
+          printf 'live=%s\n' "$live" >> "$GITHUB_OUTPUT"
+
+      - id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.upstream_tag }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/detect"
+          mkdir -p "$work"
+          # The newest releases (alphas included) cover the recent history; /latest names the newest stable one.
+          {
+            for page in 1 2 3; do
+              gh api "repos/openai/codex/releases?per_page=100&page=$page"
+            done
+            gh api repos/openai/codex/releases/latest | jq -c '[.]'
+            if [[ -n "$REQUESTED_TAG" ]]; then
+              tag="$REQUESTED_TAG"
+              [[ "$tag" == rust-v* ]] || tag="rust-v$tag"
+              gh api "repos/openai/codex/releases/tags/$tag" | jq -c '[.]'
+            fi
+          } | jq -s 'add' > "$work/upstream.json"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" | jq -s 'add' > "$work/fork.json"
+          python3 -I .github/scripts/upstream-auto-release.py detect --upstream-releases "$work/upstream.json" \
+            --fork-releases "$work/fork.json" --requested-tag "$REQUESTED_TAG" | tee -a "$GITHUB_OUTPUT"
+
+      - id: commit
+        if: steps.detect.outputs.action == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_TAG: ${{ steps.detect.outputs.upstream_tag }}
+        run: |
+          set -euo pipefail
+          commit="$(gh api "repos/openai/codex/commits/$UPSTREAM_TAG" --jq .sha)"
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
+          printf 'upstream_commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+          printf 'patches=%s\n' "$(python3 -I .github/scripts/upstream-auto-release.py patches --readme patches/README.md)" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize the decision
+        env:
+          ACTION: ${{ steps.detect.outputs.action }}
+          REASON: ${{ steps.detect.outputs.reason }}
+          TAG: ${{ steps.detect.outputs.tag }}
+          UPSTREAM_TAG: ${{ steps.detect.outputs.upstream_tag }}
+          COMMIT: ${{ steps.commit.outputs.upstream_commit }}
+          LIVE: ${{ steps.mode.outputs.live }}
+        run: |
+          {
+            printf '## Detection\n\n- Decision: **%s**: %s\n- Upstream release: `%s`\n' "$ACTION" "$REASON" "$UPSTREAM_TAG"
+            if [[ "$ACTION" == release ]]; then
+              printf -- '- Upstream commit: `%s`\n- Fork release tag: `%s`\n- Publishing: %s\n' "$COMMIT" "$TAG" \
+                "$([[ "$LIVE" == true ]] && echo live || echo 'dry run, nothing is published')"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  patch-check:
+    name: Apply the patch queue
+    needs: detect
+    if: needs.detect.outputs.action == 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ needs.detect.outputs.upstream_commit }}
+          path: upstream
+          persist-credentials: false
+
+      - name: Apply each patch with git am
+        env:
+          PATCHES: ${{ needs.detect.outputs.patches }}
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+          LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          read -r -a patch_paths <<< "$PATCHES"
+          index=0
+          for patch in "${patch_paths[@]}"; do
+            index=$((index + 1))
+            if ! git -C upstream -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$GITHUB_WORKSPACE/$patch"; then
+              git -C upstream am --abort || true
+              python3 -I .github/scripts/upstream-auto-release.py summary --upstream-tag "$UPSTREAM_TAG" \
+                --failing "patch $index of ${#patch_paths[@]} does not apply: \`$patch\`" --log-url "$LOG_URL" >> "$GITHUB_STEP_SUMMARY"
+              printf '::error::Patch %s (%s) does not apply to %s\n' "$index" "$patch" "$UPSTREAM_TAG"
+              exit 1
+            fi
+          done
+          printf 'Applied %s patches to %s.\n' "${#patch_paths[@]}" "$UPSTREAM_TAG"
+
+  platform-lints:
+    name: Platform lints
+    needs: [detect, patch-check]
+    uses: ./.github/workflows/baseline-platform-lints.yml
+    with:
+      patches: ${{ needs.detect.outputs.patches }}
+      upstream_commit: ${{ needs.detect.outputs.upstream_commit }}
+
+  macos-lints:
+    name: macOS lints
+    needs: [detect, patch-check]
+    uses: ./.github/workflows/baseline-macos-lints.yml
+    with:
+      patches: ${{ needs.detect.outputs.patches }}
+      upstream_commit: ${{ needs.detect.outputs.upstream_commit }}
+
+  windows-lints:
+    name: Windows lints
+    needs: [detect, patch-check]
+    uses: ./.github/workflows/baseline-windows-lints.yml
+    with:
+      patches: ${{ needs.detect.outputs.patches }}
+      upstream_commit: ${{ needs.detect.outputs.upstream_commit }}
+
+  linux-tests:
+    name: Linux tests
+    needs: [detect, patch-check]
+    uses: ./.github/workflows/baseline-linux-tests.yml
+    with:
+      patches: ${{ needs.detect.outputs.patches }}
+      upstream_commit: ${{ needs.detect.outputs.upstream_commit }}
+
+  windows-tests:
+    name: Windows tests - ${{ matrix.target }}
+    needs: [detect, patch-check]
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
+    uses: ./.github/workflows/baseline-windows-tests.yml
+    with:
+      patches: ${{ needs.detect.outputs.patches }}
+      upstream_commit: ${{ needs.detect.outputs.upstream_commit }}
+      package: --workspace
+      target: ${{ matrix.target }}
+
+  release-builds:
+    name: Six-target release build and smoke checks
+    needs: [detect, patch-check]
+    # The called workflow's jobs request these permissions; the caller must grant them.
+    permissions:
+      contents: read
+      packages: write
+      actions: write
+    uses: ./.github/workflows/baseline-release-builds.yml
+    with:
+      patches: ${{ needs.detect.outputs.patches }}
+      upstream_commit: ${{ needs.detect.outputs.upstream_commit }}
+      cache: true
+      prune: false
+
+  report:
+    name: Gate report
+    needs: [detect, patch-check, platform-lints, macos-lints, windows-lints, linux-tests, windows-tests, release-builds]
+    if: ${{ !cancelled() && needs.detect.outputs.action == 'release' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      passed: ${{ steps.report.outputs.passed }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - id: report
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+          LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          failing="$(jq -r 'to_entries | map(select(.key != "detect" and .value.result != "success")
+            | "\(.key) (\(.value.result))") | join(", ")' <<< "$NEEDS")"
+          if [[ -n "$failing" ]]; then
+            python3 -I .github/scripts/upstream-auto-release.py summary --upstream-tag "$UPSTREAM_TAG" \
+              --failing "gate $failing" --log-url "$LOG_URL" >> "$GITHUB_STEP_SUMMARY"
+            printf 'passed=false\n' >> "$GITHUB_OUTPUT"
+            printf '::error::Gates did not pass for %s: %s\n' "$UPSTREAM_TAG" "$failing"
+            exit 1
+          fi
+          printf 'passed=true\n' >> "$GITHUB_OUTPUT"
+          printf '## Gates passed\n\nEvery gate passed for `%s`.\n' "$UPSTREAM_TAG" >> "$GITHUB_STEP_SUMMARY"
+
+  # Everything below runs only for a live run (dry_run=false, or a scheduled run) whose gates all passed.
+
+  package:
+    name: Package - ${{ matrix.target }}
+    needs: [detect, report]
+    if: needs.detect.outputs.live == 'true' && needs.report.outputs.passed == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: ubuntu-24.04, target: x86_64-unknown-linux-musl}
+          - {runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl}
+          - {runner: macos-15, target: aarch64-apple-darwin}
+          - {runner: macos-15, target: x86_64-apple-darwin}
+          - {runner: windows-2025, target: x86_64-pc-windows-msvc}
+          - {runner: windows-11-arm, target: aarch64-pc-windows-msvc}
+    env:
+      TARGET: ${{ matrix.target }}
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ contains(matrix.target, 'apple') && 'packed' || 'off' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Keep the patch queue outside the upstream checkout
+        run: cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ needs.detect.outputs.upstream_commit }}
+          persist-credentials: false
+
+      - name: Apply the patch queue
+        env:
+          PATCHES: ${{ needs.detect.outputs.patches }}
+        run: |
+          set -euo pipefail
+          read -r -a patch_paths <<< "$PATCHES"
+          for patch in "${patch_paths[@]}"; do
+            git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
+          done
+
+      - name: Read upstream's pinned Rust toolchain
+        id: upstream-rust
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: ${{ steps.upstream-rust.outputs.channel }}
+          targets: ${{ matrix.target }}
+
+      - name: Install upstream's Zig prerequisite
+        if: runner.os == 'Linux'
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.0
+
+      - name: Install upstream's musl build inputs
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          bash .github/scripts/install-musl-build-tools.sh
+          echo 'AWS_LC_SYS_NO_JITTER_ENTROPY=1' >> "$GITHUB_ENV"
+          target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_$TARGET"
+          printf '%s=1\n' "${target_no_jitter//-/_}" >> "$GITHUB_ENV"
+
+      - name: Verify and configure upstream V8 artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Expose the matching MSVC environment
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/setup-msvc-env
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Select platform build settings
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            echo 'MACOSX_DEPLOYMENT_TARGET=14.0' >> "$GITHUB_ENV"
+          fi
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            echo 'GIT_REDIRECT_STDIN=NUL' >> "$GITHUB_ENV"
+          fi
+          if [[ "$TARGET" == x86_64-pc-windows-msvc ]]; then
+            echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
+          fi
+
+      - name: Build and smoke-test upstream's package archives
+        uses: ./.github/actions/build-codex-packages
+        with:
+          target: ${{ matrix.target }}
+          package-version: ${{ needs.detect.outputs.version }}+${{ needs.detect.outputs.build }}
+          build-mode: release
+
+      - name: Collect the release assets
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/assets"
+          cp "dist/$TARGET/codex-package-$TARGET.tar.gz" "$RUNNER_TEMP/assets/"
+          if [[ "$TARGET" == x86_64-unknown-linux-musl ]]; then
+            # The installers come from the patched tree, which routes them to this repository's releases.
+            cp scripts/install/install.sh scripts/install/install.ps1 "$RUNNER_TEMP/assets/"
+          fi
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: assets-${{ matrix.target }}
+          path: ${{ runner.temp }}/assets/*
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    name: Publish the release
+    needs: [detect, package]
+    if: needs.detect.outputs.live == 'true' && inputs.dry_run != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # One publisher per upstream version. A rerun of this job reuses the artifacts the package jobs built.
+    concurrency:
+      group: upstream-auto-release-publish-${{ needs.detect.outputs.version }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    outputs:
+      action: ${{ steps.recheck.outputs.action }}
+      tag: ${{ steps.recheck.outputs.tag }}
+      build: ${{ steps.recheck.outputs.build }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Re-check that the version is still unreleased
+        id: recheck
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/recheck"
+          mkdir -p "$work"
+          gh api "repos/openai/codex/releases/tags/$UPSTREAM_TAG" | jq -c '[.]' > "$work/upstream.json"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" | jq -s 'add' > "$work/fork.json"
+          python3 -I .github/scripts/upstream-auto-release.py detect --upstream-releases "$work/upstream.json" \
+            --fork-releases "$work/fork.json" --requested-tag "$UPSTREAM_TAG" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Gather the built assets
+        if: steps.recheck.outputs.action == 'release'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: assets-*
+          path: ${{ runner.temp }}/assets
+          merge-multiple: true
+
+      - name: Write checksums and notes
+        if: steps.recheck.outputs.action == 'release'
+        env:
+          VERSION: ${{ needs.detect.outputs.version }}
+          BUILD: ${{ steps.recheck.outputs.build }}
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+          UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
+        run: |
+          set -euo pipefail
+          assets="$RUNNER_TEMP/assets"
+          count="$(ls "$assets"/codex-package-*.tar.gz | wc -l)"
+          test "$count" = 6
+          test -f "$assets/install.sh" -a -f "$assets/install.ps1"
+          (cd "$assets" && sha256sum codex-package-*.tar.gz install.sh install.ps1 > SHA256SUMS && cat SHA256SUMS)
+          python3 -I .github/scripts/upstream-auto-release.py notes --version "$VERSION" --build "$BUILD" \
+            --upstream-tag "$UPSTREAM_TAG" --upstream-commit "$UPSTREAM_COMMIT" --fork-commit "$GITHUB_SHA" \
+            --readme patches/README.md > "$RUNNER_TEMP/notes.md"
+
+      - name: Attest build provenance
+        if: steps.recheck.outputs.action == 'release'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/assets/*
+
+      # The release is created as a draft, filled, then published as a prerelease so "latest" never names an
+      # unverified release. Reruns find the draft for the tag and upload the same assets again.
+      - name: Publish the release as a prerelease
+        if: steps.recheck.outputs.action == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.recheck.outputs.tag }}
+          NAME: ${{ steps.recheck.outputs.release_name }}
+        run: |
+          set -euo pipefail
+          assets="$RUNNER_TEMP/assets"
+          if gh release view "$TAG" --json isDraft --jq .isDraft > "$RUNNER_TEMP/is-draft" 2>/dev/null; then
+            test "$(cat "$RUNNER_TEMP/is-draft")" = true  # A published release for this tag must not be touched.
+          else
+            gh release create "$TAG" --draft --prerelease --target "$GITHUB_SHA" --title "Codex Unleashed $NAME" \
+              --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+          gh release upload "$TAG" "$assets"/* --clobber
+          gh release edit "$TAG" --draft=false --prerelease --notes-file "$RUNNER_TEMP/notes.md"
+
+  verify-install:
+    name: Install check - ${{ matrix.target }}
+    needs: [detect, publish]
+    if: needs.publish.outputs.action == 'release'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: ubuntu-24.04, target: x86_64-unknown-linux-musl}
+          - {runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl}
+          - {runner: macos-15, target: aarch64-apple-darwin}
+          - {runner: macos-15-intel, target: x86_64-apple-darwin}
+          - {runner: windows-2025, target: x86_64-pc-windows-msvc}
+          - {runner: windows-11-arm, target: aarch64-pc-windows-msvc}
+    env:
+      RELEASE_BASE: https://github.com/${{ github.repository }}/releases/download
+      TAG_URL: rust-v${{ needs.detect.outputs.version }}%2B${{ needs.publish.outputs.build }}
+      CODEX_RELEASE: ${{ needs.detect.outputs.version }}+${{ needs.publish.outputs.build }}
+      CODEX_NON_INTERACTIVE: "1"
+    steps:
+      - name: Install with the one-line command on Linux or macOS
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          export CODEX_INSTALL_DIR="$RUNNER_TEMP/codex-bin"
+          curl -fsSL "$RELEASE_BASE/$TAG_URL/install.sh" | bash
+          "$CODEX_INSTALL_DIR/codex" --version | tee "$RUNNER_TEMP/version.txt"
+          grep -F "$CODEX_RELEASE" "$RUNNER_TEMP/version.txt"
+
+      - name: Install with the one-line command on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          powershell -ExecutionPolicy ByPass -c "irm $env:RELEASE_BASE/$env:TAG_URL/install.ps1 | iex"
+          if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit code $LASTEXITCODE" }
+          $codex = Get-ChildItem -Path "$env:LOCALAPPDATA", "$HOME\.codex" -Recurse -Filter codex.exe -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if ($null -eq $codex) { throw 'codex.exe was not installed' }
+          $version = & $codex.FullName --version
+          Write-Output $version
+          if (-not ($version -match [regex]::Escape($env:CODEX_RELEASE))) { throw "Unexpected version: $version" }
+
+  mark-latest:
+    name: Mark the release latest
+    needs: [detect, publish, verify-install]
+    if: needs.publish.outputs.action == 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.publish.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --prerelease=false --latest
+          printf '## Published\n\nRelease `%s` is installed on six targets and marked latest.\n' "$TAG" >> "$GITHUB_STEP_SUMMARY"

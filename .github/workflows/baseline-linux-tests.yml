@@ -39,6 +39,16 @@ on:
         description: Let the patched run overwrite failing insta snapshots and record their diff, for folding into a patch
         type: boolean
         default: false
+  workflow_call:
+    inputs:
+      patches:
+        description: Space-separated repository paths of downstream patches to apply with git am, in order
+        type: string
+        default: ""
+      upstream_commit:
+        description: Optional upstream commit to test instead of .github/upstream-commit
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -65,11 +75,16 @@ jobs:
 
       - name: Preserve restart inputs outside the source checkout
         id: inputs
+        env:
+          UPSTREAM_COMMIT: ${{ inputs.upstream_commit }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-test-evidence"
           mkdir -p "$evidence"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          if [[ -n "$UPSTREAM_COMMIT" ]]; then
+            printf '%s\n' "$UPSTREAM_COMMIT" > "$evidence/upstream-commit"
+          fi
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"

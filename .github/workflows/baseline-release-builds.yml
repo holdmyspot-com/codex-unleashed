@@ -77,6 +77,41 @@ on:
         type: number
         default: 0
 
+  workflow_call:
+    inputs:
+      patches:
+        description: Space-separated repository paths of downstream patches to apply with git am, in order
+        type: string
+        default: ""
+      upstream_commit:
+        description: Optional upstream commit to build instead of .github/upstream-commit
+        type: string
+        default: ""
+      cache:
+        description: Use GHCR compiled outputs and Actions downloads for verified release targets
+        type: boolean
+        default: false
+      prune:
+        description: After a cached build, delete obsolete caches; false only plans the deletions
+        type: boolean
+        default: true
+      quiet_stop_minutes:
+        description: Stop a build whose evidence logs stay quiet and whose processes use no CPU this many minutes
+        type: number
+        default: 75
+      target:
+        description: Release target to run (all preserves the complete selected matrix)
+        type: string
+        default: all
+      bundle:
+        description: Release bundle to build (all, primary or app-server)
+        type: string
+        default: all
+      continuation:
+        description: Always 0 when called; continuations dispatch only from a direct run
+        type: number
+        default: 0
+
 permissions:
   contents: read
 
@@ -200,6 +235,9 @@ jobs:
           package="$(cat restart-metadata/.github/cargo-cache-package)"
           printf 'CARGO_CACHE_REPOSITORY=ghcr.io/%s/%s\n' "$owner" "$package" >> "$GITHUB_ENV"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          if [[ -n "$UPSTREAM_COMMIT" ]]; then
+            printf '%s\n' "$UPSTREAM_COMMIT" > "$evidence/upstream-commit"
+          fi
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
@@ -228,6 +266,7 @@ jobs:
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
         env:
           DEBUG_PUBLIC_KEY: ${{ inputs.public_key }}
+          UPSTREAM_COMMIT: ${{ inputs.upstream_commit }}
 
       - name: Preserve the cache helper before upstream checkout
         run: |
