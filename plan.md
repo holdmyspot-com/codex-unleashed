@@ -219,6 +219,25 @@ The old `native-and-rust-warning-policy.patch` supplies the `build.warnings`, ru
 
 **Owner decision 2026-11-09:** the uncapped direct-dependency check found warnings in at least 22 third-party direct dependencies, and nine `dangerous_implicit_autorefs` errors in the deprecated `serde_yaml` 0.9.34 (platform lint run `42537177622`). The owner chose to do the CP7 dependency upgrades first. CP6 closes its other boundaries now; its direct-dependency boundary closes after the CP7 upgrades, against the upgraded graph.
 
+## CP7 progress
+
+Provisional patches in `patches/holdmyspot-com/codex-unleashed/dependency-upgrades/` (2026-11-09):
+- `compatible-updates.patch`: the newest semver-compatible release of each direct dependency that supports Rust 1.95 (`cargo update -p` per direct package, which changes 360 lockfile entries where a full `cargo update` changed 614), the tonic annotation version and the regenerated `MODULE.bazel.lock` (run `42548404887`).
+- `breaking-upgrades.patch`: direct requirements raised to their latest major releases (WIP).
+- `serde-norway.patch`: replaces the deprecated `serde_yaml`; removes the RUSTSEC-2024-0449 exception.
+- `dependency-graph-fixes.patch`, `api-adaptations.patch`: WIP adaptations (rand, digest, hmac, p256, reqwest, tokio `AsyncFd::register`, ctor 1).
+
+Held back, each for a compatibility constraint:
+| Dependency | Kept at | Constraint |
+|---|---|---|
+| rama-* | 0.3.0 | 0.4.0 requires Rust 1.96; upstream pins 1.95. |
+| tokio-tungstenite, tungstenite | 0.28, 0.27 | Patched to upstream's `openai-oss-forks` releases, which add proxy and deflate support. |
+| libsqlite3-sys | 0.37 | sqlx-sqlite 0.9.0, the latest, requires `<0.38`. |
+| keyring | 3.6 | keyring 4 moves the library to keyring-core and per-platform store crates. Its v1 shim drops the Linux keyutils layer of `linux-native-async-persistent` and has no mock credential, which about 50 test uses rely on. Migrating changes where Linux credentials are cached and needs proof that existing credentials stay readable. |
+| secret-service | 4 | `keyring-store` downcasts keyring 3.6's errors to `secret_service::Error`; a second release would silently stop matching. Moves with keyring. |
+
+Open: the schemars 0.8→1 and ts-rs 11→12 migrations await the owner's decision (they change generated schema and TypeScript output, not wire data). The RUSTSEC-2026-0387/0385 audits, cold build timings and cache invalidation are rechecked once the graph is final.
+
 ## Baseline deferrals
 
 These explicit owner exclusions apply through CP3; retain the original failed statuses, diagnostics and source guards. They do not cover unrelated failures or authorize suppression, diagnostic production workarounds or upstream source edits.
