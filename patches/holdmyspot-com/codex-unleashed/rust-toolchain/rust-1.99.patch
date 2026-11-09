@@ -1,4 +1,4 @@
-From a7429ad2f958e76ec35183edeb6bef48561b8279 Mon Sep 17 00:00:00 2001
+From eb8f4f9c0c2a89c974f4c9efc9b5ea1804a97ff4 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:07:55 -0500
 Subject: [PATCH] Build with Rust 1.99.1 so macOS links pass under fatal linker
@@ -50,6 +50,7 @@ drops that one exact notice and passes every other linker message through.
  codex-rs/external-agent-migration/src/mcp.rs  |   5 +-
  .../otel/tests/suite/otlp_http_loopback.rs    |  42 ++--
  codex-rs/rust-toolchain.toml                  |   2 +-
+ codex-rs/sandboxing/src/seatbelt_tests.rs     |   6 +-
  codex-rs/scripts/apple-linker.sh              |  25 +++
  codex-rs/scripts/setup-windows.ps1            |   2 +-
  codex-rs/shell-command/src/bash.rs            |   6 +-
@@ -67,7 +68,7 @@ drops that one exact notice and passes every other linker message through.
  codex-rs/utils/path-uri/src/lib.rs            |  12 +-
  .../stream-parser/src/inline_hidden_tag.rs    |   2 +-
  codex-rs/websocket-auth/src/lib.rs            |   6 +-
- 48 files changed, 331 insertions(+), 294 deletions(-)
+ 49 files changed, 334 insertions(+), 297 deletions(-)
  create mode 100755 codex-rs/scripts/apple-linker.sh
 
 diff --git a/.github/actions/build-bazel-package-binaries/action.yml b/.github/actions/build-bazel-package-binaries/action.yml
@@ -1744,6 +1745,37 @@ index 910c651..d73899d 100644
 -channel = "1.95.0"
 +channel = "1.99.1"
  components = ["clippy", "rustfmt", "rust-src"]
+diff --git a/codex-rs/sandboxing/src/seatbelt_tests.rs b/codex-rs/sandboxing/src/seatbelt_tests.rs
+index b5034bc..0d69bf9 100644
+--- a/codex-rs/sandboxing/src/seatbelt_tests.rs
++++ b/codex-rs/sandboxing/src/seatbelt_tests.rs
+@@ -2031,7 +2031,7 @@ fn create_seatbelt_args_with_read_only_git_and_codex_subpaths() {
+     assert!(
+         !output.status.success(),
+         "command to write {} should fail under seatbelt",
+-        &config_toml.display()
++        config_toml.display()
+     );
+     assert_seatbelt_denied(&output.stderr, &config_toml);
+ 
+@@ -2069,7 +2069,7 @@ fn create_seatbelt_args_with_read_only_git_and_codex_subpaths() {
+     assert!(
+         !output.status.success(),
+         "command to write {} should fail under seatbelt",
+-        &pre_commit_hook.display()
++        pre_commit_hook.display()
+     );
+     assert_seatbelt_denied(&output.stderr, &pre_commit_hook);
+ 
+@@ -2107,7 +2107,7 @@ fn create_seatbelt_args_with_read_only_git_and_codex_subpaths() {
+     assert!(
+         output.status.success(),
+         "command to write {} should succeed under seatbelt",
+-        &allowed_file.display()
++        allowed_file.display()
+     );
+     assert_eq!(
+         "this is allowed\n",
 diff --git a/codex-rs/scripts/apple-linker.sh b/codex-rs/scripts/apple-linker.sh
 new file mode 100755
 index 0000000..b2360a4

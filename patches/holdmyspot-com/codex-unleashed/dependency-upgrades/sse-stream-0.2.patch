@@ -1,4 +1,4 @@
-From 4a8026d2ae024658ca9d9a447cf66b2224a4e3a1 Mon Sep 17 00:00:00 2001
+From 4bd68b7f96e9ad574d20e15db47d32fce1d74e1d Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:21:02 -0500
 Subject: [PATCH] WIP: keep sse-stream on the 0.2 series that rmcp requires

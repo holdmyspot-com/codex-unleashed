@@ -1,4 +1,4 @@
-From 8d05b71c6ea70a325e9839c5522b1d79d63c7691 Mon Sep 17 00:00:00 2001
+From 077d71bcd2ee040cbd55c70b76f182f303ebb9bb Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 9 Nov 2026 11:30:57 -0500
 Subject: [PATCH] WIP: send Bytes explicitly in the plugin process fixture
