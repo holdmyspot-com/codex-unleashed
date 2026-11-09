@@ -116,7 +116,7 @@ jobs:
 
       - name: Set up matching Rust
         if: inputs.package != ''
-        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
         with:
           toolchain: ${{ steps.upstream-rust.outputs.channel }}
           targets: ${{ env.TARGET }}
