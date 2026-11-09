@@ -99,6 +99,19 @@ jobs:
           targets: ${{ matrix.target }}
           components: clippy
 
+      # Upstream's setup scripts call curl without -q, so they read this configuration through CURL_HOME. curl retries
+      # timeouts and HTTP 408, 429, 500, 502, 503 and 504 responses, such as the 504s that GitHub release downloads and
+      # the kernel.org mirror return at times, with growing delays. curl on Windows also looks for _curlrc.
+      - name: Retry transient download failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          directory="$RUNNER_TEMP/curl-configuration"
+          mkdir -p "$directory"
+          printf '%s\n' 'retry = 8' 'retry-connrefused' 'retry-max-time = 900' > "$directory/.curlrc"
+          cp "$directory/.curlrc" "$directory/_curlrc"
+          printf 'CURL_HOME=%s\n' "$directory" >> "$GITHUB_ENV"
+
       - name: Verify and configure upstream V8 artifacts
         uses: ./.github/actions/setup-rusty-v8
         with:
