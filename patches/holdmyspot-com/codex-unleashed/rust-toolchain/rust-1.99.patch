@@ -1,4 +1,4 @@
-From f63e877125de0b9c892c627f91247ec747b18b3c Mon Sep 17 00:00:00 2001
+From a7429ad2f958e76ec35183edeb6bef48561b8279 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:07:55 -0500
 Subject: [PATCH] Build with Rust 1.99.1 so macOS links pass under fatal linker
@@ -64,10 +64,10 @@ drops that one exact notice and passes every other linker message through.
  codex-rs/tui/src/pager_overlay.rs             |   4 +-
  codex-rs/tui/src/pets/sixel.rs                |   2 +-
  .../utils/path-uri/src/api_path_string.rs     |   6 +-
- codex-rs/utils/path-uri/src/lib.rs            |   6 +-
+ codex-rs/utils/path-uri/src/lib.rs            |  12 +-
  .../stream-parser/src/inline_hidden_tag.rs    |   2 +-
  codex-rs/websocket-auth/src/lib.rs            |   6 +-
- 48 files changed, 327 insertions(+), 292 deletions(-)
+ 48 files changed, 331 insertions(+), 294 deletions(-)
  create mode 100755 codex-rs/scripts/apple-linker.sh
 
 diff --git a/.github/actions/build-bazel-package-binaries/action.yml b/.github/actions/build-bazel-package-binaries/action.yml
@@ -1979,10 +1979,23 @@ index b2ecdf0..85e577d 100644
  
      // Windows absolute paths either have a rooted drive prefix (`C:\\`) or a
 diff --git a/codex-rs/utils/path-uri/src/lib.rs b/codex-rs/utils/path-uri/src/lib.rs
-index 7a42363..78bec0a 100644
+index 7a42363..4e6e0a2 100644
 --- a/codex-rs/utils/path-uri/src/lib.rs
 +++ b/codex-rs/utils/path-uri/src/lib.rs
-@@ -819,8 +819,10 @@ fn infer_opaque_path_convention(path_bytes: &[u8]) -> Option<PathConvention> {
+@@ -587,8 +587,10 @@ impl PathUri {
+                 use std::os::windows::ffi::OsStringExt;
+                 path_bytes.len().is_multiple_of(2).then(|| {
+                     let path_wide = path_bytes
+-                        .chunks_exact(2)
+-                        .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]]))
++                        .as_chunks::<2>()
++                        .0
++                        .iter()
++                        .map(|&pair| u16::from_le_bytes(pair))
+                         .collect::<Vec<_>>();
+                     std::path::PathBuf::from(std::ffi::OsString::from_wide(&path_wide))
+                 })
+@@ -819,8 +821,10 @@ fn infer_opaque_path_convention(path_bytes: &[u8]) -> Option<PathConvention> {
      }
  
      let mut path_wide = path_bytes
