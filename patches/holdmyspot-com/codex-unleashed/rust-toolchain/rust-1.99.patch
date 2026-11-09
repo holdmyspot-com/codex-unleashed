@@ -1,4 +1,4 @@
-From 89c85d882ef34c60e1792c19580693bbaf459391 Mon Sep 17 00:00:00 2001
+From a6540c4cad5e514f5a32dc59e66788c99d4645e7 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:07:55 -0500
 Subject: [PATCH] Build with Rust 1.99.1 so macOS links pass under fatal linker
@@ -40,9 +40,12 @@ drops that one exact notice and passes every other linker message through.
  codex-rs/core/src/realtime_conversation.rs    |   6 +-
  .../core/src/tools/executed_tool_calls.rs     |   2 +-
  .../core/tests/common/apps_test_server.rs     |   2 +-
+ codex-rs/core/tests/suite/scenarios.rs        |   2 +-
+ codex-rs/core/tests/suite/tools.rs            |   2 +-
  codex-rs/diagnostics/src/lib.rs               |   2 +-
  codex-rs/exec-server-protocol/src/protocol.rs |   2 +-
  codex-rs/ext/skills/src/provider/executor.rs  |   4 +-
+ codex-rs/external-agent-migration/src/mcp.rs  |   5 +-
  .../otel/tests/suite/otlp_http_loopback.rs    |  42 ++--
  codex-rs/rust-toolchain.toml                  |   2 +-
  codex-rs/scripts/apple-linker.sh              |  24 +++
@@ -55,7 +58,7 @@ drops that one exact notice and passes every other linker message through.
  codex-rs/utils/path-uri/src/lib.rs            |   6 +-
  .../stream-parser/src/inline_hidden_tag.rs    |   2 +-
  codex-rs/websocket-auth/src/lib.rs            |   6 +-
- 36 files changed, 303 insertions(+), 269 deletions(-)
+ 39 files changed, 307 insertions(+), 274 deletions(-)
  create mode 100755 codex-rs/scripts/apple-linker.sh
 
 diff --git a/.github/actions/build-bazel-package-binaries/action.yml b/.github/actions/build-bazel-package-binaries/action.yml
@@ -1435,6 +1438,32 @@ index cde2ed7..6771062 100644
                                  remaining.checked_sub(1)
                              })
                              .is_ok()
+diff --git a/codex-rs/core/tests/suite/scenarios.rs b/codex-rs/core/tests/suite/scenarios.rs
+index 54ff77e..b62cc4c 100644
+--- a/codex-rs/core/tests/suite/scenarios.rs
++++ b/codex-rs/core/tests/suite/scenarios.rs
+@@ -3132,7 +3132,7 @@ async fn astra_async_compaction_keeps_work_added_after_its_snapshot(
+     )
+     .await?;
+     assert_eq!(compaction_events.len(), if over_budget { 4 } else { 2 });
+-    for pair in compaction_events.chunks_exact(2) {
++    for pair in compaction_events.as_chunks::<2>().0 {
+         assert_eq!((pair[0].0, pair[1].0), ("started", "completed"));
+         assert_eq!(pair[0].1, pair[1].1);
+     }
+diff --git a/codex-rs/core/tests/suite/tools.rs b/codex-rs/core/tests/suite/tools.rs
+index b183492..a53266d 100644
+--- a/codex-rs/core/tests/suite/tools.rs
++++ b/codex-rs/core/tests/suite/tools.rs
+@@ -688,7 +688,7 @@ async fn sandbox_denied_exec_command_returns_original_output() -> Result<()> {
+         "printf {sentinel:?} >&2; printf {content:?} > {path:?}",
+         sentinel = format!("{sentinel}\n"),
+         content = "sandbox denied",
+-        path = &target_path
++        path = target_path
+     );
+     let args = json!({
+         "cmd": command,
 diff --git a/codex-rs/diagnostics/src/lib.rs b/codex-rs/diagnostics/src/lib.rs
 index a966e4a..91b878b 100644
 --- a/codex-rs/diagnostics/src/lib.rs
@@ -1478,6 +1507,29 @@ index bb16a39..ee1278b 100644
          if contents.len().saturating_add(chunk.len()) > MAX_SKILL_RESOURCE_CONTENT_BYTES {
              return Err(SkillProviderError::new(format!(
                  "executor skill resource {resource} exceeds {MAX_SKILL_RESOURCE_CONTENT_BYTES} bytes"
+diff --git a/codex-rs/external-agent-migration/src/mcp.rs b/codex-rs/external-agent-migration/src/mcp.rs
+index eb820ce..46889af 100644
+--- a/codex-rs/external-agent-migration/src/mcp.rs
++++ b/codex-rs/external-agent-migration/src/mcp.rs
+@@ -222,7 +222,8 @@ fn mcp_server_toml_table(
+         if let Some(env) = server_config.get("env").and_then(JsonValue::as_object) {
+             append_env_config(&mut table, env)?;
+         }
+-    } else if let Some(url) = server_config.get("url").and_then(json_string) {
++    } else {
++        let url = server_config.get("url").and_then(json_string)?;
+         if !matches!(
+             transport_type,
+             None | Some("http") | Some("streamable_http")
+@@ -236,8 +237,6 @@ fn mcp_server_toml_table(
+         if let Some(headers) = server_config.get("headers").and_then(JsonValue::as_object) {
+             append_header_config(&mut table, headers)?;
+         }
+-    } else {
+-        return None;
+     }
+ 
+     Some(table)
 diff --git a/codex-rs/otel/tests/suite/otlp_http_loopback.rs b/codex-rs/otel/tests/suite/otlp_http_loopback.rs
 index 3fd9249..bcd2dc8 100644
 --- a/codex-rs/otel/tests/suite/otlp_http_loopback.rs
