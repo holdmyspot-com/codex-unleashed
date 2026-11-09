@@ -1,4 +1,4 @@
-From 74966d2514a436ab35d4fc900961cbd0c694f87c Mon Sep 17 00:00:00 2001
+From 970c7a6f74fd092809d7ec86e47e875075f4600a Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 9 Nov 2026 07:18:17 -0500
 Subject: [PATCH] WIP: keep schemars 0.8's single-value enums

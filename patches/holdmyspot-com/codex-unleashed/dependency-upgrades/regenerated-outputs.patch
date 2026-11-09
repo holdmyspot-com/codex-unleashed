@@ -1,4 +1,4 @@
-From b40565e5963f6e8f9219960dfc450e4e37f45611 Mon Sep 17 00:00:00 2001
+From f884253f8ddbf207d984bd60b73bea08a3941ce7 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 9 Nov 2026 07:59:31 -0500
 Subject: [PATCH] WIP: regenerate schemas, TypeScript, the Python SDK and the

@@ -1,13 +1,14 @@
-From 33b96960ec385fa8d0a9d86d6d5cece33ab2d18d Mon Sep 17 00:00:00 2001
+From 6e93863b85a7c7f783e778107b8112d461aa876e Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 21:08:34 -0500
 Subject: [PATCH] WIP: adapt to rand 0.10, digest 0.11, p256 0.14, reqwest
- 0.13, tokio 1.54 and ctor 1
+ 0.13, tokio 1.54, ctor 1 and vt100 0.18
 
 rand moves random_range to RngExt; digest 0.11 output has no LowerHex; hmac 0.13 keys through KeyInit; p256 0.14
 renames to_encoded_point to to_sec1_point. reqwest 0.13 replaces tls_built_in_root_certs and add_root_certificate
 with tls_certs_only and tls_certs_merge, and use_rustls_tls with tls_backend_rustls. tokio 1.54 deprecates
-AsyncFd::new for the unsafe AsyncFd::register, and ctor 1 requires every constructor to be marked unsafe.
+AsyncFd::new for the unsafe AsyncFd::register, and ctor 1 requires every constructor to be marked unsafe. vt100 0.18
+sizes terminals in NonZeroU16, so the tests build their parsers from nonzero sizes and use Parser::default for 24x80.
 ---
  codex-rs/Cargo.lock                           | 24 +++++++++-
  codex-rs/Cargo.toml                           |  3 +-
@@ -28,6 +29,7 @@ AsyncFd::new for the unsafe AsyncFd::register, and ctor 1 requires every constru
  codex-rs/build-info/src/lib.rs                |  4 +-
  codex-rs/cli/Cargo.toml                       |  1 +
  .../cli/tests/app_server_daemon_windows.rs    |  2 +-
+ codex-rs/cli/tests/daemon_startup.rs          |  4 +-
  .../cli/tests/exec_server_websocket_auth.rs   |  7 +--
  codex-rs/cloud-config/Cargo.toml              |  1 +
  codex-rs/cloud-config/src/config_server.rs    |  2 +-
@@ -111,14 +113,20 @@ AsyncFd::new for the unsafe AsyncFd::register, and ctor 1 requires every constru
  .../src/local/thread_history/search.rs        | 11 ++++-
  codex-rs/tui/Cargo.toml                       |  1 +
  .../tui/src/bottom_pane/effort_ignition.rs    |  2 +-
+ .../src/custom_terminal/tests/cursor_tests.rs | 21 ++++++---
  codex-rs/tui/src/inline_visualization.rs      |  2 +-
  codex-rs/tui/src/markdown.rs                  |  4 +-
  codex-rs/tui/src/markdown_render.rs           | 19 ++++++--
  codex-rs/tui/src/markdown_render/math.rs      |  2 +-
  codex-rs/tui/src/pets/model.rs                |  4 +-
  codex-rs/tui/src/status/remote_connection.rs  |  5 ++-
+ codex-rs/tui/src/test_backend.rs              | 13 ++++--
  codex-rs/tui/src/tooltips.rs                  |  2 +-
  codex-rs/tui/src/transcript_view/copy_mode.rs |  8 ++--
+ .../tui/src/tui/alternate_screen_tests.rs     | 28 ++++++------
+ .../src/tui/alternate_screen_windows_tests.rs |  4 +-
+ codex-rs/tui/src/tui/owned_screen_tests.rs    |  4 +-
+ codex-rs/tui/tests/suite/focus_palette.rs     |  4 +-
  .../user-verification/src/credential_tests.rs |  2 +-
  codex-rs/utils/pty/src/spawn_helper_tests.rs  |  7 ++-
  codex-rs/utils/pty/src/unix_io.rs             |  8 +++-
@@ -139,7 +147,7 @@ AsyncFd::new for the unsafe AsyncFd::register, and ctor 1 requires every constru
  .../windows-sandbox-rs/src/no_reparse_dir.rs  |  4 +-
  .../src/setup_provisioning/sandbox_users.rs   |  5 +--
  .../src/uninstall_windows/principals_tests.rs |  6 +--
- 130 files changed, 331 insertions(+), 226 deletions(-)
+ 137 files changed, 376 insertions(+), 259 deletions(-)
 
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
 index 2fc1443..ee8ffc5 100644
@@ -593,6 +601,21 @@ index 2160856..5b8becc 100644
      let voice_bytes = serde_json::to_vec(&serde_json::json!({
          "sha256": { &entrypoint: checksum, "codex-resources/voice/runtime": "untouched" }
      }))?;
+diff --git a/codex-rs/cli/tests/daemon_startup.rs b/codex-rs/cli/tests/daemon_startup.rs
+index ae2fe3e..30a3438 100644
+--- a/codex-rs/cli/tests/daemon_startup.rs
++++ b/codex-rs/cli/tests/daemon_startup.rs
+@@ -417,7 +417,9 @@ async fn daemon_startup(command: &str) -> Result<()> {
+         let mut output = String::new();
+         let mut initial_agents_screen = String::new();
+         let mut screen = vt100::Parser::new(
+-            /*rows*/ 40, /*cols*/ 120, /*scrollback_len*/ 0,
++            std::num::NonZeroU16::new(40).context("terminal rows must be nonzero")?,
++            std::num::NonZeroU16::new(120).context("terminal cols must be nonzero")?,
++            /*scrollback_len*/ 0,
+         );
+         let mut queries: Vec<(&str, &[u8])> = vec![
+             ("\x1b[6n", b"\x1b[1;1R"),
 diff --git a/codex-rs/cli/tests/exec_server_websocket_auth.rs b/codex-rs/cli/tests/exec_server_websocket_auth.rs
 index d759de2..5dc0436 100644
 --- a/codex-rs/cli/tests/exec_server_websocket_auth.rs
@@ -1932,6 +1955,52 @@ index 56658fc..66536ce 100644
  use ratatui::buffer::Buffer;
  use ratatui::layout::Rect;
  use ratatui::style::Color;
+diff --git a/codex-rs/tui/src/custom_terminal/tests/cursor_tests.rs b/codex-rs/tui/src/custom_terminal/tests/cursor_tests.rs
+index a6fd62b..1354648 100644
+--- a/codex-rs/tui/src/custom_terminal/tests/cursor_tests.rs
++++ b/codex-rs/tui/src/custom_terminal/tests/cursor_tests.rs
+@@ -11,8 +11,11 @@ fn terminal_draw_keeps_intermediate_cursor_positions_hidden() {
+     );
+     let cursor = (1, 4);
+     terminal.set_viewport_area(area);
+-    let mut parser =
+-        vt100::Parser::new(/*rows*/ 2, /*cols*/ 12, /*scrollback_len*/ 0);
++    let mut parser = vt100::Parser::new(
++        std::num::NonZeroU16::new(2).expect("rows"),
++        std::num::NonZeroU16::new(12).expect("cols"),
++        /*scrollback_len*/ 0,
++    );
+ 
+     for (index, (marker, show_cursor)) in [
+         ("x", true),
+@@ -99,8 +102,11 @@ fn terminal_draw_repairs_styled_anchor_on_cursor_only_frames() {
+     );
+     terminal.set_viewport_area(area);
+     let mut frames = Vec::new();
+-    let mut parser =
+-        vt100::Parser::new(/*rows*/ 2, /*cols*/ 12, /*scrollback_len*/ 0);
++    let mut parser = vt100::Parser::new(
++        std::num::NonZeroU16::new(2).expect("rows"),
++        std::num::NonZeroU16::new(12).expect("cols"),
++        /*scrollback_len*/ 0,
++    );
+ 
+     for (x, style) in [
+         (1, SetCursorStyle::DefaultUserShape),
+@@ -172,8 +178,11 @@ fn terminal_draw_repairs_single_column_without_scrolling() {
+     );
+     terminal.set_viewport_area(area);
+     let mut frames = Vec::new();
+-    let mut parser =
+-        vt100::Parser::new(/*rows*/ 1, /*cols*/ 1, /*scrollback_len*/ 1);
++    let mut parser = vt100::Parser::new(
++        std::num::NonZeroU16::new(1).expect("rows"),
++        std::num::NonZeroU16::new(1).expect("cols"),
++        /*scrollback_len*/ 1,
++    );
+     for _ in 0..3 {
+         terminal.backend_mut().output.clear();
+         terminal
 diff --git a/codex-rs/tui/src/inline_visualization.rs b/codex-rs/tui/src/inline_visualization.rs
 index 143ec23..69a5467 100644
 --- a/codex-rs/tui/src/inline_visualization.rs
@@ -2068,6 +2137,52 @@ index 546dcbc..712406f 100644
  }
  
  pub(crate) fn pending_server_version_notice(
+diff --git a/codex-rs/tui/src/test_backend.rs b/codex-rs/tui/src/test_backend.rs
+index a71bc52..6426ddb 100644
+--- a/codex-rs/tui/src/test_backend.rs
++++ b/codex-rs/tui/src/test_backend.rs
+@@ -1,6 +1,7 @@
+ use std::fmt::{self};
+ use std::io::Write;
+ use std::io::{self};
++use std::num::NonZeroU16;
+ 
+ use ratatui::prelude::CrosstermBackend;
+ 
+@@ -28,12 +29,16 @@ impl VT100Backend {
+         Self::with_scrollback(width, height, /*scrollback_len*/ 0)
+     }
+ 
++    /// Panics if `width` or `height` is zero, which vt100 cannot represent.
+     pub fn with_scrollback(width: u16, height: u16, scrollback_len: usize) -> Self {
+         crossterm::style::force_color_output(true);
++        let (Some(rows), Some(cols)) = (NonZeroU16::new(height), NonZeroU16::new(width)) else {
++            panic!("a VT100Backend needs a nonzero size, got {width}x{height}");
++        };
+         Self {
+             crossterm_backend: CrosstermBackend::new(vt100::Parser::new(
+-                height,
+-                width,
++                rows,
++                cols,
+                 scrollback_len,
+             )),
+         }
+@@ -103,12 +108,12 @@ impl Backend for VT100Backend {
+ 
+     fn size(&self) -> io::Result<Size> {
+         let (rows, cols) = self.vt100().screen().size();
+-        Ok(Size::new(cols, rows))
++        Ok(Size::new(cols.get(), rows.get()))
+     }
+ 
+     fn window_size(&mut self) -> io::Result<WindowSize> {
+         Ok(WindowSize {
+-            columns_rows: self.vt100().screen().size().into(),
++            columns_rows: self.size()?,
+             // Arbitrary size, we don't rely on this in testing.
+             pixels: Size {
+                 width: 640,
 diff --git a/codex-rs/tui/src/tooltips.rs b/codex-rs/tui/src/tooltips.rs
 index 4319a09..62b6ead 100644
 --- a/codex-rs/tui/src/tooltips.rs
@@ -2119,6 +2234,132 @@ index 6cbc2f1..a6b0c80 100644
              Event::Start(Tag::CodeBlock(_)) => {
                  code = Some((range.start..range.start, String::new()))
              }
+diff --git a/codex-rs/tui/src/tui/alternate_screen_tests.rs b/codex-rs/tui/src/tui/alternate_screen_tests.rs
+index beeab25..5c28ad8 100644
+--- a/codex-rs/tui/src/tui/alternate_screen_tests.rs
++++ b/codex-rs/tui/src/tui/alternate_screen_tests.rs
+@@ -20,9 +20,7 @@ fn refreshed_mouse_policy_applies_to_fullscreen_and_overlays() {
+     for owned in [false, true] {
+         let screen = AlternateScreen::default();
+         let mut output = Vec::new();
+-        let mut terminal = vt100::Parser::new(
+-            /*rows*/ 24, /*cols*/ 80, /*scrollback_len*/ 0,
+-        );
++        let mut terminal = vt100::Parser::default();
+         let mut input = MouseCapture::Inherit;
+         screen
+             .enter(&mut output, input.captures_mouse(owned))
+@@ -273,9 +271,7 @@ fn owned_overlay_promotion_and_handoff_balance_both_keyboard_stacks() {
+     let screen = AlternateScreen::default();
+     let mut output = Vec::new();
+     let mut keyboard = KeyboardScreens::default();
+-    let mut terminal = vt100::Parser::new(
+-        /*rows*/ 24, /*cols*/ 80, /*scrollback_len*/ 0,
+-    );
++    let mut terminal = vt100::Parser::default();
+     keyboard_modes::enable_keyboard_enhancement(&mut output);
+     enter_with_mouse_enabled(&screen, &mut output, /*capture_mouse*/ false).unwrap();
+     keyboard.process(&output);
+@@ -348,9 +344,7 @@ fn failed_mouse_encoding_setup_is_cleaned_up() {
+     );
+     screen.leave(&mut writer).unwrap();
+ 
+-    let mut terminal = vt100::Parser::new(
+-        /*rows*/ 24, /*cols*/ 80, /*scrollback_len*/ 0,
+-    );
++    let mut terminal = vt100::Parser::default();
+     terminal.process(&writer.output);
+     assert_eq!(
+         (
+@@ -400,9 +394,7 @@ fn failed_mouse_cleanup_still_leaves_owned_screen_and_remains_retryable() {
+     screen
+         .restore(&mut writer, KeyboardRestore::ResetAfterExit)
+         .unwrap();
+-    let mut terminal = vt100::Parser::new(
+-        /*rows*/ 24, /*cols*/ 80, /*scrollback_len*/ 0,
+-    );
++    let mut terminal = vt100::Parser::default();
+     terminal.process(&writer.output);
+     assert_eq!(
+         (
+@@ -421,7 +413,9 @@ fn pager_capture_restores_picker_input_without_a_screen_transition() {
+     let screen = AlternateScreen::default();
+     let mut output = Vec::new();
+     let mut terminal = vt100::Parser::new(
+-        /*rows*/ 12, /*cols*/ 40, /*scrollback_len*/ 0,
++        std::num::NonZeroU16::new(12).expect("rows"),
++        std::num::NonZeroU16::new(40).expect("cols"),
++        /*scrollback_len*/ 0,
+     );
+     enter_with_mouse_enabled(&screen, &mut output, /*capture_mouse*/ false).unwrap();
+     terminal.process(&std::mem::take(&mut output));
+@@ -504,7 +498,9 @@ fn failed_pager_capture_setup_restores_requested_and_actual_picker_policy() {
+     assert!(writer.failed);
+     assert!(!screen.mouse_active.load(Ordering::Relaxed));
+     let mut terminal = vt100::Parser::new(
+-        /*rows*/ 12, /*cols*/ 40, /*scrollback_len*/ 0,
++        std::num::NonZeroU16::new(12).expect("rows"),
++        std::num::NonZeroU16::new(40).expect("cols"),
++        /*scrollback_len*/ 0,
+     );
+     terminal.process(&writer.output);
+     assert_eq!(
+@@ -575,7 +571,9 @@ fn identical_default_request_retries_after_failed_fallback_cleanup() {
+     assert!(!screen.mouse_active.load(Ordering::Relaxed));
+     assert!(screen.input_configured.load(Ordering::Relaxed));
+     let mut terminal = vt100::Parser::new(
+-        /*rows*/ 12, /*cols*/ 40, /*scrollback_len*/ 0,
++        std::num::NonZeroU16::new(12).expect("rows"),
++        std::num::NonZeroU16::new(40).expect("cols"),
++        /*scrollback_len*/ 0,
+     );
+     terminal.process(&writer.output);
+     assert_eq!(
+diff --git a/codex-rs/tui/src/tui/alternate_screen_windows_tests.rs b/codex-rs/tui/src/tui/alternate_screen_windows_tests.rs
+index 6ae454c..b5ecc35 100644
+--- a/codex-rs/tui/src/tui/alternate_screen_windows_tests.rs
++++ b/codex-rs/tui/src/tui/alternate_screen_windows_tests.rs
+@@ -57,9 +57,7 @@ fn mouse_capture_restores_console_mode_and_encoding() {
+     assert_eq!(original_mode & ENABLE_MOUSE_INPUT, 0);
+     let screen = AlternateScreen::default();
+     let mut output = Vec::new();
+-    let mut terminal = vt100::Parser::new(
+-        /*rows*/ 24, /*cols*/ 80, /*scrollback_len*/ 0,
+-    );
++    let mut terminal = vt100::Parser::default();
+ 
+     screen
+         .configure_input(&mut output, /*capture_mouse*/ true)
+diff --git a/codex-rs/tui/src/tui/owned_screen_tests.rs b/codex-rs/tui/src/tui/owned_screen_tests.rs
+index 0833707..9fc5d4b 100644
+--- a/codex-rs/tui/src/tui/owned_screen_tests.rs
++++ b/codex-rs/tui/src/tui/owned_screen_tests.rs
+@@ -33,9 +33,7 @@ fn owned_screen_preserves_inline_viewport_across_overlay_handoff_and_resume() {
+         String::from_utf8_lossy(&output.stdout),
+         String::from_utf8_lossy(&output.stderr),
+     );
+-    let mut terminal = vt100::Parser::new(
+-        /*rows*/ 24, /*cols*/ 80, /*scrollback_len*/ 0,
+-    );
++    let mut terminal = vt100::Parser::default();
+     terminal.process(&output.stdout);
+     assert_eq!(
+         (
+diff --git a/codex-rs/tui/tests/suite/focus_palette.rs b/codex-rs/tui/tests/suite/focus_palette.rs
+index 084599c..e7c01ff 100644
+--- a/codex-rs/tui/tests/suite/focus_palette.rs
++++ b/codex-rs/tui/tests/suite/focus_palette.rs
+@@ -398,7 +398,9 @@ impl PtyCodex {
+             slave,
+             child,
+             parser: vt100::Parser::new(
+-                /*rows*/ 32, /*cols*/ 120, /*scrollback_len*/ 0,
++                std::num::NonZeroU16::new(32).context("terminal rows must be nonzero")?,
++                std::num::NonZeroU16::new(120).context("terminal cols must be nonzero")?,
++                /*scrollback_len*/ 0,
+             ),
+             output: Vec::new(),
+             cursor_answered: false,
 diff --git a/codex-rs/user-verification/src/credential_tests.rs b/codex-rs/user-verification/src/credential_tests.rs
 index 4aa3326..2126046 100644
 --- a/codex-rs/user-verification/src/credential_tests.rs

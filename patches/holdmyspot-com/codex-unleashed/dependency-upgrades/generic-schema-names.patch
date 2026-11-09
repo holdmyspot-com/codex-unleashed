@@ -1,4 +1,4 @@
-From 3f99841bd6e316f99316905e3a8e1d69c091f373 Mon Sep 17 00:00:00 2001
+From 03cee47d1745da9d856aebfdf6c6ff64548b5627 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:58:01 -0500
 Subject: [PATCH] WIP: keep schemars 0.8's names for generic schema types
