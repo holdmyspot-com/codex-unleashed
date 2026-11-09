@@ -1,0 +1,1274 @@
+From 92bdf9be4995ad6466218891737b44bbafe955a8 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 8 Nov 2026 21:20:01 -0500
+Subject: [PATCH] WIP: migrate to schemars 1
+
+---
+ codex-rs/app-server-protocol/src/export.rs    |  18 +-
+ .../src/export_user_verification.rs           |   1 +
+ .../src/export_user_verification_tests.rs     |  10 +-
+ .../src/protocol/serde_helpers.rs             |   4 +-
+ .../src/protocol/v2/shared.rs                 |  34 +--
+ .../src/protocol/v2/thread_data.rs            |   8 +-
+ codex-rs/config/src/schema.rs                 | 195 +++++++++---------
+ codex-rs/config/src/tui_mouse_scroll.rs       |  10 +-
+ codex-rs/ext/extension-api/src/json_schema.rs |  53 +++++
+ codex-rs/ext/extension-api/src/lib.rs         |   2 +
+ codex-rs/ext/image-generation/src/tool.rs     |   2 +-
+ codex-rs/ext/memories/src/schema.rs           |   8 +-
+ codex-rs/ext/skills/src/tools/schema.rs       |   8 +-
+ codex-rs/ext/web-search/src/schema.rs         |   6 +-
+ codex-rs/history/src/guardian_history.rs      |   6 +-
+ codex-rs/history/src/lib.rs                   |  12 +-
+ codex-rs/history/src/tests.rs                 |   8 +-
+ codex-rs/hooks/src/events/model_request.rs    |  20 +-
+ codex-rs/hooks/src/schema.rs                  | 108 +++++++---
+ codex-rs/protocol/src/config_types.rs         |  32 +--
+ codex-rs/protocol/src/openai_models.rs        |  46 ++---
+ codex-rs/protocol/src/session_id.rs           |   8 +-
+ codex-rs/protocol/src/thread_id.rs            |   8 +-
+ .../utils/path-uri/src/api_path_string.rs     |   6 +-
+ codex-rs/utils/path-uri/src/lib.rs            |   6 +-
+ 25 files changed, 334 insertions(+), 285 deletions(-)
+ create mode 100644 codex-rs/ext/extension-api/src/json_schema.rs
+
+diff --git a/codex-rs/app-server-protocol/src/export.rs b/codex-rs/app-server-protocol/src/export.rs
+index 0e0ebe9..441e9eb 100644
+--- a/codex-rs/app-server-protocol/src/export.rs
++++ b/codex-rs/app-server-protocol/src/export.rs
+@@ -24,7 +24,7 @@ use anyhow::Context;
+ use anyhow::Result;
+ use anyhow::anyhow;
+ use codex_history::RolloutLine;
+-use schemars::schema_for;
++use schemars::generate::SchemaSettings;
+ use serde_json::Map;
+ use serde_json::Value;
+ use std::collections::BTreeMap;
+@@ -1357,7 +1357,9 @@ where
+     let (raw_namespace, logical_name) = split_namespace(file_stem);
+     let include_in_json_codegen =
+         raw_namespace != Some("v1") || JSON_V1_ALLOWLIST.contains(&logical_name);
+-    let schema = schema_for!(T);
++    let schema = SchemaSettings::draft07()
++        .into_generator()
++        .into_root_schema_for::<T>();
+     let mut schema_value = serde_json::to_value(schema)?;
+     if include_in_json_codegen {
+         if file_stem == "ClientRequest" {
+@@ -2970,11 +2972,7 @@ permissionProfile?: string | null};
+             .expect("flat v2 ClientRequest should remain a oneOf")
+             .iter()
+             .filter_map(|variant| {
+-                variant["properties"]["method"]["enum"]
+-                    .as_array()
+-                    .and_then(|values| values.first())
+-                    .and_then(Value::as_str)
+-                    .map(str::to_string)
++                string_literal(&variant["properties"]["method"]).map(str::to_string)
+             })
+             .collect();
+         let missing_client_request_methods: Vec<String> = [
+@@ -2996,11 +2994,7 @@ permissionProfile?: string | null};
+                 .expect("flat v2 ServerNotification should remain a oneOf")
+                 .iter()
+                 .filter_map(|variant| {
+-                    variant["properties"]["method"]["enum"]
+-                        .as_array()
+-                        .and_then(|values| values.first())
+-                        .and_then(Value::as_str)
+-                        .map(str::to_string)
++                    string_literal(&variant["properties"]["method"]).map(str::to_string)
+                 })
+                 .collect();
+         let missing_server_notification_methods: Vec<String> = [
+diff --git a/codex-rs/app-server-protocol/src/export_user_verification.rs b/codex-rs/app-server-protocol/src/export_user_verification.rs
+index b0102ec..8b3c67e 100644
+--- a/codex-rs/app-server-protocol/src/export_user_verification.rs
++++ b/codex-rs/app-server-protocol/src/export_user_verification.rs
+@@ -38,6 +38,7 @@ pub(super) fn filter_json(value: &mut Value) {
+         Value::Array(items) => {
+             items.retain(|item| {
+                 item.pointer("/properties/mode/enum") != Some(&serde_json::json!([MODE]))
++                    && item.pointer("/properties/mode/const") != Some(&serde_json::json!(MODE))
+             });
+             for item in items {
+                 filter_json(item);
+diff --git a/codex-rs/app-server-protocol/src/export_user_verification_tests.rs b/codex-rs/app-server-protocol/src/export_user_verification_tests.rs
+index 4a5d2ef..52e6dcf 100644
+--- a/codex-rs/app-server-protocol/src/export_user_verification_tests.rs
++++ b/codex-rs/app-server-protocol/src/export_user_verification_tests.rs
+@@ -23,14 +23,18 @@ fn verification_mode_is_removed_from_flattened_typescript_only_for_stable_export
+ 
+ #[test]
+ fn verification_mode_is_removed_from_inline_json_without_changing_other_modes() -> Result<()> {
+-    let generated = serde_json::to_value(schemars::schema_for!(McpServerElicitationRequestParams))?;
++    let generated = serde_json::to_value(
++        schemars::generate::SchemaSettings::draft07()
++            .into_generator()
++            .into_root_schema_for::<McpServerElicitationRequestParams>(),
++    )?;
+     assert!(generated.to_string().contains(MODE));
+     let mut expected = generated.clone();
+     let modes = expected["oneOf"].as_array_mut().expect("flattened modes");
+     let verification = modes.remove(0);
+     assert_eq!(
+-        verification["properties"]["mode"]["enum"],
+-        serde_json::json!([MODE])
++        string_literal(&verification["properties"]["mode"]),
++        Some(MODE)
+     );
+     let mut filtered = generated;
+     filter_json(&mut filtered);
+diff --git a/codex-rs/app-server-protocol/src/protocol/serde_helpers.rs b/codex-rs/app-server-protocol/src/protocol/serde_helpers.rs
+index 57a2ce1..091b28d 100644
+--- a/codex-rs/app-server-protocol/src/protocol/serde_helpers.rs
++++ b/codex-rs/app-server-protocol/src/protocol/serde_helpers.rs
+@@ -7,8 +7,8 @@ use serde::Serializer;
+ 
+ #[cfg(test)]
+ pub(crate) fn nullable_string_schema(
+-    generator: &mut schemars::r#gen::SchemaGenerator,
+-) -> schemars::schema::Schema {
++    generator: &mut schemars::SchemaGenerator,
++) -> schemars::Schema {
+     generator.subschema_for::<Option<String>>()
+ }
+ 
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/shared.rs b/codex-rs/app-server-protocol/src/protocol/v2/shared.rs
+index 1edd7b4..ce14ed1 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/shared.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/shared.rs
+@@ -8,15 +8,9 @@ use codex_protocol::protocol::CodexErrorInfo as CoreCodexErrorInfo;
+ use codex_protocol::protocol::GranularApprovalConfig as CoreGranularApprovalConfig;
+ use codex_protocol::protocol::NonSteerableTurnKind as CoreNonSteerableTurnKind;
+ #[cfg(test)]
+-use schemars::r#gen::SchemaGenerator;
++use schemars::Schema;
+ #[cfg(test)]
+-use schemars::schema::InstanceType;
+-#[cfg(test)]
+-use schemars::schema::Metadata;
+-#[cfg(test)]
+-use schemars::schema::Schema;
+-#[cfg(test)]
+-use schemars::schema::SchemaObject;
++use schemars::SchemaGenerator;
+ use serde::Deserialize;
+ use serde::Serialize;
+ use serde_json::Value as JsonValue;
+@@ -287,8 +281,8 @@ pub enum ApprovalsReviewer {
+ 
+ #[cfg(test)]
+ impl JsonSchema for ApprovalsReviewer {
+-    fn schema_name() -> String {
+-        "ApprovalsReviewer".to_string()
++    fn schema_name() -> std::borrow::Cow<'static, str> {
++        "ApprovalsReviewer".into()
+     }
+ 
+     fn json_schema(_generator: &mut SchemaGenerator) -> Schema {
+@@ -301,21 +295,11 @@ impl JsonSchema for ApprovalsReviewer {
+ 
+ #[cfg(test)]
+ fn string_enum_schema_with_description(values: &[&str], description: &str) -> Schema {
+-    let mut schema = SchemaObject {
+-        instance_type: Some(InstanceType::String.into()),
+-        metadata: Some(Box::new(Metadata {
+-            description: Some(description.to_string()),
+-            ..Default::default()
+-        })),
+-        ..Default::default()
+-    };
+-    schema.enum_values = Some(
+-        values
+-            .iter()
+-            .map(|value| JsonValue::String((*value).to_string()))
+-            .collect(),
+-    );
+-    Schema::Object(schema)
++    schemars::json_schema!({
++        "type": "string",
++        "description": description,
++        "enum": values,
++    })
+ }
+ 
+ impl ApprovalsReviewer {
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs
+index dd7c0d8..9b2045b 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs
+@@ -16,9 +16,9 @@ use codex_protocol::protocol::ThreadHistoryMode as CoreThreadHistoryMode;
+ use codex_protocol::protocol::ThreadSource as CoreThreadSource;
+ use codex_utils_absolute_path::AbsolutePathBuf;
+ #[cfg(test)]
+-use schemars::r#gen::SchemaGenerator;
++use schemars::Schema;
+ #[cfg(test)]
+-use schemars::schema::Schema;
++use schemars::SchemaGenerator;
+ use serde::Deserialize;
+ use serde::Serialize;
+ use std::fmt;
+@@ -114,8 +114,8 @@ pub enum ThreadSource {
+ 
+ #[cfg(test)]
+ impl JsonSchema for ThreadSource {
+-    fn schema_name() -> String {
+-        "ThreadSource".to_string()
++    fn schema_name() -> std::borrow::Cow<'static, str> {
++        "ThreadSource".into()
+     }
+ 
+     fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+diff --git a/codex-rs/config/src/schema.rs b/codex-rs/config/src/schema.rs
+index fff24a9..2a483b2 100644
+--- a/codex-rs/config/src/schema.rs
++++ b/codex-rs/config/src/schema.rs
+@@ -4,16 +4,15 @@ use codex_features::FEATURES;
+ use codex_features::legacy_feature_keys;
+ use codex_protocol::protocol::GranularApprovalConfig;
+ use schemars::JsonSchema;
+-use schemars::r#gen::SchemaGenerator;
+-use schemars::r#gen::SchemaSettings;
+-use schemars::schema::InstanceType;
+-use schemars::schema::ObjectValidation;
+-use schemars::schema::RootSchema;
+-use schemars::schema::Schema;
+-use schemars::schema::SchemaObject;
+-use schemars::schema::SubschemaValidation;
++use schemars::Schema;
++use schemars::SchemaGenerator;
++use schemars::generate::SchemaSettings;
++use schemars::json_schema;
++use schemars::transform::transform_subschemas;
+ use serde_json::Map;
+ use serde_json::Value;
++use serde_json::json;
++use std::collections::BTreeMap;
+ use std::path::Path;
+ 
+ /// Determines the conditions under which the user is consulted to approve
+@@ -40,18 +39,13 @@ pub(crate) enum ConfigAskForApproval {
+ 
+ /// Schema for the `[features]` map with known + legacy keys only.
+ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+-    let mut object = SchemaObject {
+-        instance_type: Some(InstanceType::Object.into()),
+-        ..Default::default()
+-    };
+-
+-    let mut validation = ObjectValidation::default();
++    let mut properties: BTreeMap<String, Schema> = BTreeMap::new();
+     for feature in FEATURES {
+         if feature.id == codex_features::Feature::Artifact {
+             continue;
+         }
+         if feature.id == codex_features::Feature::CodeMode {
+-            validation.properties.insert(
++            properties.insert(
+                 feature.key.to_string(),
+                 schema_gen.subschema_for::<codex_features::FeatureToml<
+                     codex_features::CodeModeConfigToml,
+@@ -60,7 +54,7 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+             continue;
+         }
+         if feature.id == codex_features::Feature::CodeModeHost {
+-            validation.properties.insert(
++            properties.insert(
+                 feature.key.to_string(),
+                 schema_gen.subschema_for::<codex_features::FeatureToml<
+                     codex_features::CodeModeHostConfigToml,
+@@ -69,7 +63,7 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+             continue;
+         }
+         if feature.id == codex_features::Feature::NonPrefixedMcpToolNames {
+-            validation.properties.insert(
++            properties.insert(
+                 feature.key.to_string(),
+                 schema_gen.subschema_for::<codex_features::FeatureToml<
+                     codex_features::NonPrefixedMcpToolNamesConfigToml,
+@@ -82,7 +76,7 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+             continue;
+         }
+         if feature.id == codex_features::Feature::GuardianV2 {
+-            validation.properties.insert(
++            properties.insert(
+                 feature.key.to_string(),
+                 schema_gen.subschema_for::<codex_features::FeatureToml<
+                     codex_features::GuardianV2ConfigToml,
+@@ -91,7 +85,7 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+             continue;
+         }
+         if feature.id == codex_features::Feature::GuardianV3 {
+-            validation.properties.insert(
++            properties.insert(
+                 feature.key.to_string(),
+                 schema_gen.subschema_for::<codex_features::FeatureToml<
+                     codex_features::GuardianV3ConfigToml,
+@@ -100,7 +94,7 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+             continue;
+         }
+         if feature.id == codex_features::Feature::MultiAgentV2 {
+-            validation.properties.insert(
++            properties.insert(
+                 feature.key.to_string(),
+                 schema_gen.subschema_for::<codex_features::FeatureToml<
+                     codex_features::MultiAgentV2ConfigToml,
+@@ -109,7 +103,7 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+             continue;
+         }
+         if feature.id == codex_features::Feature::AsyncCompaction {
+-            validation.properties.insert(
++            properties.insert(
+                 feature.key.to_string(),
+                 schema_gen.subschema_for::<codex_features::FeatureToml<
+                     codex_features::AsyncCompactionConfigToml,
+@@ -118,7 +112,7 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+             continue;
+         }
+         if feature.id == codex_features::Feature::TokenBudget {
+-            validation.properties.insert(
++            properties.insert(
+                 feature.key.to_string(),
+                 schema_gen.subschema_for::<codex_features::FeatureToml<
+                     codex_features::TokenBudgetConfigToml,
+@@ -127,7 +121,7 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+             continue;
+         }
+         if feature.id == codex_features::Feature::ContextManagement {
+-            validation.properties.insert(
++            properties.insert(
+                 feature.key.to_string(),
+                 schema_gen.subschema_for::<codex_features::FeatureToml<
+                     codex_features::ContextManagementConfigToml,
+@@ -136,7 +130,7 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+             continue;
+         }
+         if feature.id == codex_features::Feature::RolloutBudget {
+-            validation.properties.insert(
++            properties.insert(
+                 feature.key.to_string(),
+                 schema_gen.subschema_for::<codex_features::FeatureToml<
+                     codex_features::RolloutBudgetConfigToml,
+@@ -145,7 +139,7 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+             continue;
+         }
+         if feature.id == codex_features::Feature::CurrentTimeReminder {
+-            validation.properties.insert(
++            properties.insert(
+                 feature.key.to_string(),
+                 schema_gen.subschema_for::<codex_features::FeatureToml<
+                     codex_features::CurrentTimeReminderConfigToml,
+@@ -154,7 +148,7 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+             continue;
+         }
+         if feature.id == codex_features::Feature::SleepTool {
+-            validation.properties.insert(
++            properties.insert(
+                 feature.key.to_string(),
+                 schema_gen.subschema_for::<codex_features::FeatureToml<
+                     codex_features::SleepToolConfigToml,
+@@ -163,7 +157,7 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+             continue;
+         }
+         if feature.id == codex_features::Feature::RuntimeAgentInstances {
+-            validation.properties.insert(
++            properties.insert(
+                 feature.key.to_string(),
+                 schema_gen.subschema_for::<codex_features::FeatureToml<
+                     codex_features::RuntimeAgentInstancesConfigToml,
+@@ -172,14 +166,14 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+             continue;
+         }
+         if feature.id == codex_features::Feature::AppsMcpPathOverride {
+-            validation.properties.insert(
++            properties.insert(
+                 feature.key.to_string(),
+                 removed_apps_mcp_path_override_schema(schema_gen),
+             );
+             continue;
+         }
+         if feature.id == codex_features::Feature::NetworkProxy {
+-            validation.properties.insert(
++            properties.insert(
+                 feature.key.to_string(),
+                 schema_gen.subschema_for::<codex_features::FeatureToml<
+                     codex_features::NetworkProxyConfigToml,
+@@ -187,101 +181,112 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+             );
+             continue;
+         }
+-        validation
+-            .properties
+-            .insert(feature.key.to_string(), schema_gen.subschema_for::<bool>());
++        properties.insert(feature.key.to_string(), schema_gen.subschema_for::<bool>());
+     }
+     for legacy_key in legacy_feature_keys() {
+-        validation
+-            .properties
+-            .insert(legacy_key.to_string(), schema_gen.subschema_for::<bool>());
++        properties.insert(legacy_key.to_string(), schema_gen.subschema_for::<bool>());
+     }
+-    validation.properties.insert(
++    properties.insert(
+         "tool_registry".to_string(),
+         schema_gen.subschema_for::<codex_features::ToolRegistryConfigToml>(),
+     );
+-    validation.additional_properties = Some(Box::new(Schema::Bool(false)));
+-    object.object = Some(Box::new(validation));
+-
+-    Schema::Object(object)
++    json_schema!({
++        "type": "object",
++        "properties": properties,
++        "additionalProperties": false,
++    })
+ }
+ 
+ fn removed_apps_mcp_path_override_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+-    let mut config_validation = ObjectValidation::default();
+-    config_validation
+-        .properties
+-        .insert("enabled".to_string(), schema_gen.subschema_for::<bool>());
+-    config_validation
+-        .properties
+-        .insert("path".to_string(), schema_gen.subschema_for::<String>());
+-    config_validation.additional_properties = Some(Box::new(Schema::Bool(false)));
+-
+-    let config = Schema::Object(SchemaObject {
+-        instance_type: Some(InstanceType::Object.into()),
+-        object: Some(Box::new(config_validation)),
+-        ..Default::default()
++    let enabled = schema_gen.subschema_for::<bool>();
++    let path = schema_gen.subschema_for::<String>();
++    let config = json_schema!({
++        "type": "object",
++        "properties": {
++            "enabled": enabled,
++            "path": path,
++        },
++        "additionalProperties": false,
+     });
+-    Schema::Object(SchemaObject {
+-        subschemas: Some(Box::new(SubschemaValidation {
+-            any_of: Some(vec![schema_gen.subschema_for::<bool>(), config]),
+-            ..Default::default()
+-        })),
+-        ..Default::default()
++    let enabled_or_config = schema_gen.subschema_for::<bool>();
++    json_schema!({
++        "anyOf": [enabled_or_config, config],
+     })
+ }
+ 
+ /// Schema for the `[mcp_servers]` map using the raw input shape.
+ pub fn mcp_servers_schema(schema_gen: &mut SchemaGenerator) -> Schema {
+-    let mut object = SchemaObject {
+-        instance_type: Some(InstanceType::Object.into()),
+-        ..Default::default()
+-    };
+-
+-    let validation = ObjectValidation {
+-        additional_properties: Some(Box::new(schema_gen.subschema_for::<RawMcpServerConfig>())),
+-        ..Default::default()
+-    };
+-    object.object = Some(Box::new(validation));
+-
+-    Schema::Object(object)
++    let server = schema_gen.subschema_for::<RawMcpServerConfig>();
++    json_schema!({
++        "type": "object",
++        "additionalProperties": server,
++    })
+ }
+ 
+ /// Build the config schema for `config.toml`.
+-pub fn config_schema() -> RootSchema {
++pub fn config_schema() -> Schema {
+     let mut schema = SchemaSettings::draft07()
+-        .with(|settings| {
+-            settings.option_add_null_type = false;
+-        })
++        .with_transform(remove_null_variants)
+         .into_generator()
+         .into_root_schema_for::<ConfigToml>();
+     add_shell_environment_policy_constraints(&mut schema);
+     schema
+ }
+ 
+-fn add_shell_environment_policy_constraints(schema: &mut RootSchema) {
+-    let Some(Schema::Object(policy)) = schema.definitions.get_mut("ShellEnvironmentPolicyToml")
++/// Removes the `null` alternative that schemars adds for `Option<T>` so optional config values keep
++/// the plain schema of `T`.
++fn remove_null_variants(schema: &mut Schema) {
++    transform_subschemas(&mut remove_null_variants, schema);
++
++    let Some(object) = schema.as_object_mut() else {
++        return;
++    };
++    if let Some(Value::Array(types)) = object.get_mut("type")
++        && types.len() > 1
++    {
++        types.retain(|value| value != "null");
++        if types.len() == 1 {
++            let only = types.remove(0);
++            object.insert("type".to_string(), only);
++        }
++    }
++    let Some(Value::Array(variants)) = object.get_mut("anyOf") else {
++        return;
++    };
++    let null_schema = json!({ "type": "null" });
++    let original_len = variants.len();
++    variants.retain(|variant| *variant != null_schema);
++    if variants.len() == original_len || variants.len() != 1 {
++        return;
++    }
++    let remaining = variants.remove(0);
++    object.remove("anyOf");
++    match remaining {
++        Value::Object(remaining) if object.is_empty() || !remaining.contains_key("$ref") => {
++            object.extend(remaining);
++        }
++        remaining => {
++            object.insert("allOf".to_string(), Value::Array(vec![remaining]));
++        }
++    }
++}
++
++fn add_shell_environment_policy_constraints(schema: &mut Schema) {
++    let Some(policy) = schema
++        .pointer_mut("/definitions/ShellEnvironmentPolicyToml")
++        .and_then(Value::as_object_mut)
++    else {
++        return;
++    };
++    let Some(all_of) = policy
++        .entry("allOf")
++        .or_insert_with(|| Value::Array(Vec::new()))
++        .as_array_mut()
+     else {
+         return;
+     };
+-    let all_of = policy
+-        .subschemas
+-        .get_or_insert_default()
+-        .all_of
+-        .get_or_insert_default();
+     for fields in [["exclude", "filters"], ["filters", "include_only"]] {
+-        all_of.push(Schema::Object(SchemaObject {
+-            subschemas: Some(Box::new(SubschemaValidation {
+-                not: Some(Box::new(Schema::Object(SchemaObject {
+-                    object: Some(Box::new(ObjectValidation {
+-                        required: fields.into_iter().map(str::to_string).collect(),
+-                        ..Default::default()
+-                    })),
+-                    ..Default::default()
+-                }))),
+-                ..Default::default()
+-            })),
+-            ..Default::default()
+-        }));
++        all_of.push(json!({ "not": { "required": fields } }));
+     }
+ }
+ 
+diff --git a/codex-rs/config/src/tui_mouse_scroll.rs b/codex-rs/config/src/tui_mouse_scroll.rs
+index 345f994..ff2da0a 100644
+--- a/codex-rs/config/src/tui_mouse_scroll.rs
++++ b/codex-rs/config/src/tui_mouse_scroll.rs
+@@ -1,15 +1,15 @@
+ //! Keep transcript mouse-scroll speed validation and its configuration schema in sync.
+ 
+ use schemars::JsonSchema;
+-use schemars::r#gen::SchemaGenerator;
+-use schemars::schema::Schema;
++use schemars::Schema;
++use schemars::SchemaGenerator;
+ use serde::Deserialize;
+ use serde::Deserializer;
+ 
+ pub(crate) fn schema(generator: &mut SchemaGenerator) -> Schema {
+-    let mut schema = Option::<f64>::json_schema(generator).into_object();
+-    schema.number().exclusive_minimum = Some(0.0);
+-    schema.into()
++    let mut schema = Option::<f64>::json_schema(generator);
++    schema.insert("exclusiveMinimum".to_string(), 0.0.into());
++    schema
+ }
+ 
+ pub(crate) fn deserialize<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+diff --git a/codex-rs/ext/extension-api/src/json_schema.rs b/codex-rs/ext/extension-api/src/json_schema.rs
+new file mode 100644
+index 0000000..93fbfff
+--- /dev/null
++++ b/codex-rs/ext/extension-api/src/json_schema.rs
+@@ -0,0 +1,53 @@
++use serde_json::Value;
++use serde_json::json;
++
++/// Removes the `null` alternative that schemars adds for `Option<T>` from a generated JSON Schema.
++///
++/// Tool input schemas describe optional fields by omitting them, so they keep the plain schema of
++/// `T` instead of `T | null`.
++pub fn remove_null_variants(schema: &mut Value) {
++    match schema {
++        Value::Array(items) => items.iter_mut().for_each(remove_null_variants),
++        Value::Object(object) => {
++            object.values_mut().for_each(remove_null_variants);
++            remove_null_variants_from_object(object);
++        }
++        _ => {}
++    }
++}
++
++fn remove_null_variants_from_object(object: &mut serde_json::Map<String, Value>) {
++    if let Some(Value::Array(types)) = object.get_mut("type")
++        && types.len() > 1
++        && types.iter().any(|value| value == "null")
++    {
++        types.retain(|value| value != "null");
++        if types.len() == 1 {
++            let only = types.remove(0);
++            object.insert("type".to_string(), only);
++        }
++        if let Some(Value::Array(values)) = object.get_mut("enum") {
++            values.retain(|value| !value.is_null());
++        }
++    }
++
++    let Some(Value::Array(variants)) = object.get_mut("anyOf") else {
++        return;
++    };
++    let null_schema = json!({ "type": "null" });
++    let original_len = variants.len();
++    variants.retain(|variant| *variant != null_schema);
++    if variants.len() == original_len || variants.len() != 1 {
++        return;
++    }
++    let remaining = variants.remove(0);
++    object.remove("anyOf");
++    match remaining {
++        Value::Object(remaining) if object.is_empty() || !remaining.contains_key("$ref") => {
++            object.extend(remaining);
++        }
++        remaining => {
++            object.insert("allOf".to_string(), Value::Array(vec![remaining]));
++        }
++    }
++}
+diff --git a/codex-rs/ext/extension-api/src/lib.rs b/codex-rs/ext/extension-api/src/lib.rs
+index 45fdd9f..0ec19d1 100644
+--- a/codex-rs/ext/extension-api/src/lib.rs
++++ b/codex-rs/ext/extension-api/src/lib.rs
+@@ -1,6 +1,7 @@
+ mod capabilities;
+ mod catalog_refresh;
+ mod contributors;
++mod json_schema;
+ mod message_lifecycle;
+ mod registry;
+ mod session_isolation;
+@@ -111,6 +112,7 @@ pub use contributors::TurnStartPhase;
+ pub use contributors::TurnStopInput;
+ pub use contributors::WorldStateContributionInput;
+ pub use contributors::WorldStateSectionContribution;
++pub use json_schema::remove_null_variants;
+ pub use registry::ExtensionRegistry;
+ pub use registry::ExtensionRegistryBuilder;
+ pub use registry::empty_extension_registry;
+diff --git a/codex-rs/ext/image-generation/src/tool.rs b/codex-rs/ext/image-generation/src/tool.rs
+index 26f3bad..dacc8b1 100644
+--- a/codex-rs/ext/image-generation/src/tool.rs
++++ b/codex-rs/ext/image-generation/src/tool.rs
+@@ -49,7 +49,7 @@ use codex_utils_image::PromptImageMode;
+ use codex_utils_image::load_for_prompt_bytes;
+ use codex_utils_path_uri::PathUri;
+ use schemars::JsonSchema;
+-use schemars::r#gen::SchemaSettings;
++use schemars::generate::SchemaSettings;
+ use serde::Deserialize;
+ use serde_json::Map;
+ use serde_json::Value;
+diff --git a/codex-rs/ext/memories/src/schema.rs b/codex-rs/ext/memories/src/schema.rs
+index 977cd56..db90efe 100644
+--- a/codex-rs/ext/memories/src/schema.rs
++++ b/codex-rs/ext/memories/src/schema.rs
+@@ -1,5 +1,5 @@
+ use schemars::JsonSchema;
+-use schemars::r#gen::SchemaSettings;
++use schemars::generate::SchemaSettings;
+ use serde_json::Map;
+ use serde_json::Value;
+ 
+@@ -15,12 +15,14 @@ fn schema_for<T: JsonSchema>(option_add_null_type: bool) -> Value {
+     let schema = SchemaSettings::draft2019_09()
+         .with(|settings| {
+             settings.inline_subschemas = true;
+-            settings.option_add_null_type = option_add_null_type;
+         })
+         .into_generator()
+         .into_root_schema_for::<T>();
+-    let schema_value = serde_json::to_value(schema)
++    let mut schema_value = serde_json::to_value(schema)
+         .unwrap_or_else(|err| panic!("generated tool schema should serialize: {err}"));
++    if !option_add_null_type {
++        codex_extension_api::remove_null_variants(&mut schema_value);
++    }
+     let Value::Object(mut schema_object) = schema_value else {
+         unreachable!("root tool schema must be an object");
+     };
+diff --git a/codex-rs/ext/skills/src/tools/schema.rs b/codex-rs/ext/skills/src/tools/schema.rs
+index d0e9425..ad04f13 100644
+--- a/codex-rs/ext/skills/src/tools/schema.rs
++++ b/codex-rs/ext/skills/src/tools/schema.rs
+@@ -1,5 +1,5 @@
+ use schemars::JsonSchema;
+-use schemars::r#gen::SchemaSettings;
++use schemars::generate::SchemaSettings;
+ use serde_json::Map;
+ use serde_json::Value;
+ 
+@@ -15,12 +15,14 @@ fn schema_for<T: JsonSchema>(option_add_null_type: bool) -> Value {
+     let schema = SchemaSettings::draft2019_09()
+         .with(|settings| {
+             settings.inline_subschemas = true;
+-            settings.option_add_null_type = option_add_null_type;
+         })
+         .into_generator()
+         .into_root_schema_for::<T>();
+-    let schema_value = serde_json::to_value(schema)
++    let mut schema_value = serde_json::to_value(schema)
+         .unwrap_or_else(|err| panic!("generated skill tool schema should serialize: {err}"));
++    if !option_add_null_type {
++        codex_extension_api::remove_null_variants(&mut schema_value);
++    }
+     let Value::Object(mut schema_object) = schema_value else {
+         unreachable!("root tool schema must be an object");
+     };
+diff --git a/codex-rs/ext/web-search/src/schema.rs b/codex-rs/ext/web-search/src/schema.rs
+index 2f71f15..0bfe55c 100644
+--- a/codex-rs/ext/web-search/src/schema.rs
++++ b/codex-rs/ext/web-search/src/schema.rs
+@@ -1,5 +1,5 @@
+ use codex_api::SearchCommands;
+-use schemars::r#gen::SchemaSettings;
++use schemars::generate::SchemaSettings;
+ use serde_json::Map;
+ use serde_json::Value;
+ 
+@@ -7,14 +7,14 @@ pub(crate) fn commands_schema() -> Value {
+     let schema = SchemaSettings::draft2019_09()
+         .with(|settings| {
+             settings.inline_subschemas = true;
+-            settings.option_add_null_type = false;
+         })
+         .into_generator()
+         .into_root_schema_for::<SearchCommands>();
+-    let schema = match serde_json::to_value(schema) {
++    let mut schema = match serde_json::to_value(schema) {
+         Ok(schema) => schema,
+         Err(err) => panic!("search commands schema should serialize: {err}"),
+     };
++    codex_extension_api::remove_null_variants(&mut schema);
+     let Value::Object(mut schema) = schema else {
+         unreachable!("search commands schema must be an object");
+     };
+diff --git a/codex-rs/history/src/guardian_history.rs b/codex-rs/history/src/guardian_history.rs
+index e0657a3..f2fa39a 100644
+--- a/codex-rs/history/src/guardian_history.rs
++++ b/codex-rs/history/src/guardian_history.rs
+@@ -56,11 +56,11 @@ impl<'de> Deserialize<'de> for GuardianHistoryCheckpoint {
+ }
+ 
+ impl JsonSchema for GuardianHistoryCheckpoint {
+-    fn schema_name() -> String {
+-        "GuardianHistoryCheckpoint".to_owned()
++    fn schema_name() -> std::borrow::Cow<'static, str> {
++        "GuardianHistoryCheckpoint".into()
+     }
+ 
+-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
++    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+         Vec::<Entry<'_>>::json_schema(generator)
+     }
+ }
+diff --git a/codex-rs/history/src/lib.rs b/codex-rs/history/src/lib.rs
+index 7262a4b..334bd43 100644
+--- a/codex-rs/history/src/lib.rs
++++ b/codex-rs/history/src/lib.rs
+@@ -249,15 +249,15 @@ impl<'de> Deserialize<'de> for RolloutItem {
+ }
+ 
+ impl JsonSchema for RolloutItem {
+-    fn schema_name() -> String {
+-        "RolloutItem".to_string()
++    fn schema_name() -> std::borrow::Cow<'static, str> {
++        "RolloutItem".into()
+     }
+ 
+     fn schema_id() -> std::borrow::Cow<'static, str> {
+         std::borrow::Cow::Borrowed(concat!(module_path!(), "::RolloutItem"))
+     }
+ 
+-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
++    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+         rollout_payload::RolloutItemWire::json_schema(generator)
+     }
+ }
+@@ -330,15 +330,15 @@ impl<'de> Deserialize<'de> for CompactedItem {
+ }
+ 
+ impl JsonSchema for CompactedItem {
+-    fn schema_name() -> String {
+-        "CompactedItem".to_string()
++    fn schema_name() -> std::borrow::Cow<'static, str> {
++        "CompactedItem".into()
+     }
+ 
+     fn schema_id() -> std::borrow::Cow<'static, str> {
+         std::borrow::Cow::Borrowed(concat!(module_path!(), "::CompactedItem"))
+     }
+ 
+-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
++    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+         rollout_payload::CompactedItemWire::json_schema(generator)
+     }
+ }
+diff --git a/codex-rs/history/src/tests.rs b/codex-rs/history/src/tests.rs
+index 2f6424b..7bc54dc 100644
+--- a/codex-rs/history/src/tests.rs
++++ b/codex-rs/history/src/tests.rs
+@@ -846,7 +846,11 @@ fn rollout_item_variants_preserve_existing_payload_shapes() -> Result<()> {
+ #[test]
+ /// Keeps the generated schema aligned with each variant's actual persisted shape.
+ fn rollout_item_schema_matches_tagged_payload_and_sibling_metadata() -> Result<()> {
+-    let schema = serde_json::to_value(schemars::schema_for!(RolloutItem))?;
++    let schema = serde_json::to_value(
++        schemars::generate::SchemaSettings::draft07()
++            .into_generator()
++            .into_root_schema_for::<RolloutItem>(),
++    )?;
+     let variants = schema["oneOf"].as_array().expect("rollout variants");
+     assert_eq!(variants.len(), 12);
+ 
+@@ -858,7 +862,7 @@ fn rollout_item_schema_matches_tagged_payload_and_sibling_metadata() -> Result<(
+ 
+     let response_item = variants
+         .iter()
+-        .find(|variant| variant["properties"]["type"]["enum"] == json!(["response_item"]))
++        .find(|variant| variant["properties"]["type"]["const"] == json!("response_item"))
+         .expect("response item schema");
+     assert!(response_item["properties"].get("metadata").is_some());
+     assert_eq!(
+diff --git a/codex-rs/hooks/src/events/model_request.rs b/codex-rs/hooks/src/events/model_request.rs
+index 058d0b7..34c23ae 100644
+--- a/codex-rs/hooks/src/events/model_request.rs
++++ b/codex-rs/hooks/src/events/model_request.rs
+@@ -30,20 +30,12 @@ pub enum ModelRequestHookEvent {
+ }
+ 
+ // Hook schemas otherwise omit null from Option fields, but usage is always present on post.
+-fn token_usage_schema(
+-    generator: &mut schemars::r#gen::SchemaGenerator,
+-) -> schemars::schema::Schema {
+-    schemars::schema::SchemaObject {
+-        subschemas: Some(Box::new(schemars::schema::SubschemaValidation {
+-            any_of: Some(vec![
+-                generator.subschema_for::<TokenUsage>(),
+-                generator.subschema_for::<()>(),
+-            ]),
+-            ..Default::default()
+-        })),
+-        ..Default::default()
+-    }
+-    .into()
++fn token_usage_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
++    let token_usage = generator.subschema_for::<TokenUsage>();
++    let null = generator.subschema_for::<()>();
++    crate::schema::keep_null(schemars::json_schema!({
++        "anyOf": [token_usage, null],
++    }))
+ }
+ 
+ #[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
+diff --git a/codex-rs/hooks/src/schema.rs b/codex-rs/hooks/src/schema.rs
+index 0da8e17..eed791c 100644
+--- a/codex-rs/hooks/src/schema.rs
++++ b/codex-rs/hooks/src/schema.rs
+@@ -1,14 +1,14 @@
+ use schemars::JsonSchema;
+-use schemars::r#gen::SchemaGenerator;
+-use schemars::r#gen::SchemaSettings;
+-use schemars::schema::InstanceType;
+-use schemars::schema::RootSchema;
+-use schemars::schema::Schema;
+-use schemars::schema::SchemaObject;
++use schemars::Schema;
++use schemars::SchemaGenerator;
++use schemars::generate::SchemaSettings;
++use schemars::json_schema;
++use schemars::transform::transform_subschemas;
+ use serde::Deserialize;
+ use serde::Serialize;
+ use serde_json::Map;
+ use serde_json::Value;
++use serde_json::json;
+ use std::path::Path;
+ use std::path::PathBuf;
+ 
+@@ -55,15 +55,68 @@ impl NullableString {
+ }
+ 
+ impl JsonSchema for NullableString {
+-    fn schema_name() -> String {
+-        "NullableString".to_string()
++    fn schema_name() -> std::borrow::Cow<'static, str> {
++        "NullableString".into()
+     }
+ 
+     fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+-        Schema::Object(SchemaObject {
+-            instance_type: Some(vec![InstanceType::String, InstanceType::Null].into()),
+-            ..Default::default()
+-        })
++        keep_null(json_schema!({
++            "type": ["string", "null"],
++        }))
++    }
++}
++
++/// Temporary marker for schemas whose `null` alternative is intentional.
++const KEEP_NULL_MARKER: &str = "x-keep-null";
++
++/// Marks a schema so `remove_null_variants` leaves its `null` alternative in place.
++pub(crate) fn keep_null(mut schema: Schema) -> Schema {
++    schema.insert(KEEP_NULL_MARKER.to_string(), true.into());
++    schema
++}
++
++/// Removes the `null` alternative that schemars adds for `Option<T>` so optional hook fields keep
++/// the plain schema of `T`. Schemas marked with `keep_null` are left untouched.
++fn remove_null_variants(schema: &mut Schema) {
++    transform_subschemas(&mut remove_null_variants, schema);
++
++    let Some(object) = schema.as_object_mut() else {
++        return;
++    };
++    if object.remove(KEEP_NULL_MARKER).is_some() {
++        return;
++    }
++    if let Some(Value::Array(types)) = object.get_mut("type")
++        && types.len() > 1
++        && types.iter().any(|value| value == "null")
++    {
++        types.retain(|value| value != "null");
++        if types.len() == 1 {
++            let only = types.remove(0);
++            object.insert("type".to_string(), only);
++        }
++        if let Some(Value::Array(values)) = object.get_mut("enum") {
++            values.retain(|value| !value.is_null());
++        }
++    }
++    let Some(Value::Array(variants)) = object.get_mut("anyOf") else {
++        return;
++    };
++    let null_schema = json!({ "type": "null" });
++    let original_len = variants.len();
++    variants.retain(|variant| *variant != null_schema);
++    if variants.len() == original_len || variants.len() != 1 {
++        return;
++    }
++    let remaining = variants.remove(0);
++    object.remove("anyOf");
++    match remaining {
++        Value::Object(remaining) if object.is_empty() || !remaining.contains_key("$ref") => {
++            object.extend(remaining);
++        }
++        remaining => {
++            object.insert("allOf".to_string(), Value::Array(vec![remaining]));
++        }
+     }
+ }
+ 
+@@ -766,14 +819,12 @@ where
+     Ok(serde_json::to_vec_pretty(&value)?)
+ }
+ 
+-fn schema_for_type<T>() -> RootSchema
++fn schema_for_type<T>() -> Schema
+ where
+     T: JsonSchema,
+ {
+     SchemaSettings::draft07()
+-        .with(|settings| {
+-            settings.option_add_null_type = false;
+-        })
++        .with_transform(remove_null_variants)
+         .into_generator()
+         .into_root_schema_for::<T>()
+ }
+@@ -865,26 +916,17 @@ fn compaction_trigger_schema(_gen: &mut SchemaGenerator) -> Schema {
+ }
+ 
+ fn string_const_schema(value: &str) -> Schema {
+-    let mut schema = SchemaObject {
+-        instance_type: Some(InstanceType::String.into()),
+-        ..Default::default()
+-    };
+-    schema.const_value = Some(Value::String(value.to_string()));
+-    Schema::Object(schema)
++    json_schema!({
++        "type": "string",
++        "const": value,
++    })
+ }
+ 
+ fn string_enum_schema(values: &[&str]) -> Schema {
+-    let mut schema = SchemaObject {
+-        instance_type: Some(InstanceType::String.into()),
+-        ..Default::default()
+-    };
+-    schema.enum_values = Some(
+-        values
+-            .iter()
+-            .map(|value| Value::String((*value).to_string()))
+-            .collect(),
+-    );
+-    Schema::Object(schema)
++    json_schema!({
++        "type": "string",
++        "enum": values,
++    })
+ }
+ 
+ fn default_continue() -> bool {
+diff --git a/codex-rs/protocol/src/config_types.rs b/codex-rs/protocol/src/config_types.rs
+index 87ffe6d..0b70417 100644
+--- a/codex-rs/protocol/src/config_types.rs
++++ b/codex-rs/protocol/src/config_types.rs
+@@ -1,14 +1,10 @@
+ use codex_utils_absolute_path::AbsolutePathBuf;
+ use codex_utils_redacted_string::RedactedString;
+ use schemars::JsonSchema;
+-use schemars::r#gen::SchemaGenerator;
+-use schemars::schema::InstanceType;
+-use schemars::schema::Metadata;
+-use schemars::schema::Schema;
+-use schemars::schema::SchemaObject;
++use schemars::Schema;
++use schemars::SchemaGenerator;
+ use serde::Deserialize;
+ use serde::Serialize;
+-use serde_json::Value;
+ use std::collections::HashMap;
+ use std::fmt;
+ use std::num::NonZeroU64;
+@@ -190,8 +186,8 @@ pub enum ApprovalsReviewer {
+ }
+ 
+ impl JsonSchema for ApprovalsReviewer {
+-    fn schema_name() -> String {
+-        "ApprovalsReviewer".to_string()
++    fn schema_name() -> std::borrow::Cow<'static, str> {
++        "ApprovalsReviewer".into()
+     }
+ 
+     fn json_schema(_generator: &mut SchemaGenerator) -> Schema {
+@@ -272,21 +268,11 @@ impl Default for ShellEnvironmentPolicy {
+ }
+ 
+ fn string_enum_schema_with_description(values: &[&str], description: &str) -> Schema {
+-    let mut schema = SchemaObject {
+-        instance_type: Some(InstanceType::String.into()),
+-        metadata: Some(Box::new(Metadata {
+-            description: Some(description.to_string()),
+-            ..Default::default()
+-        })),
+-        ..Default::default()
+-    };
+-    schema.enum_values = Some(
+-        values
+-            .iter()
+-            .map(|value| Value::String((*value).to_string()))
+-            .collect(),
+-    );
+-    Schema::Object(schema)
++    schemars::json_schema!({
++        "type": "string",
++        "description": description,
++        "enum": values,
++    })
+ }
+ 
+ #[derive(
+diff --git a/codex-rs/protocol/src/openai_models.rs b/codex-rs/protocol/src/openai_models.rs
+index 3a26169..68b9a6c 100644
+--- a/codex-rs/protocol/src/openai_models.rs
++++ b/codex-rs/protocol/src/openai_models.rs
+@@ -9,12 +9,8 @@ use std::str::FromStr;
+ use chrono::DateTime;
+ use chrono::Utc;
+ use schemars::JsonSchema;
+-use schemars::r#gen::SchemaGenerator;
+-use schemars::schema::InstanceType;
+-use schemars::schema::Metadata;
+-use schemars::schema::Schema;
+-use schemars::schema::SchemaObject;
+-use schemars::schema::StringValidation;
++use schemars::Schema;
++use schemars::SchemaGenerator;
+ use serde::Deserialize;
+ use serde::Deserializer;
+ use serde::Serialize;
+@@ -104,24 +100,15 @@ impl fmt::Display for ReasoningEffort {
+ }
+ 
+ impl JsonSchema for ReasoningEffort {
+-    fn schema_name() -> String {
+-        "ReasoningEffort".to_string()
++    fn schema_name() -> std::borrow::Cow<'static, str> {
++        "ReasoningEffort".into()
+     }
+ 
+     fn json_schema(_generator: &mut SchemaGenerator) -> Schema {
+-        Schema::Object(SchemaObject {
+-            instance_type: Some(InstanceType::String.into()),
+-            metadata: Some(Box::new(Metadata {
+-                description: Some(
+-                    "A non-empty reasoning effort value advertised by the model.".to_string(),
+-                ),
+-                ..Default::default()
+-            })),
+-            string: Some(Box::new(StringValidation {
+-                min_length: Some(1),
+-                ..Default::default()
+-            })),
+-            ..Default::default()
++        schemars::json_schema!({
++            "type": "string",
++            "description": "A non-empty reasoning effort value advertised by the model.",
++            "minLength": 1,
+         })
+     }
+ }
+@@ -1558,19 +1545,10 @@ mod tests {
+ 
+         assert_eq!(
+             ReasoningEffort::json_schema(&mut effort_generator),
+-            Schema::Object(SchemaObject {
+-                instance_type: Some(InstanceType::String.into()),
+-                metadata: Some(Box::new(Metadata {
+-                    description: Some(
+-                        "A non-empty reasoning effort value advertised by the model.".to_string(),
+-                    ),
+-                    ..Default::default()
+-                })),
+-                string: Some(Box::new(StringValidation {
+-                    min_length: Some(1),
+-                    ..Default::default()
+-                })),
+-                ..Default::default()
++            schemars::json_schema!({
++                "type": "string",
++                "description": "A non-empty reasoning effort value advertised by the model.",
++                "minLength": 1,
+             })
+         );
+     }
+diff --git a/codex-rs/protocol/src/session_id.rs b/codex-rs/protocol/src/session_id.rs
+index ac22103..6051ecf 100644
+--- a/codex-rs/protocol/src/session_id.rs
++++ b/codex-rs/protocol/src/session_id.rs
+@@ -1,8 +1,8 @@
+ use std::fmt::Display;
+ 
+ use schemars::JsonSchema;
+-use schemars::r#gen::SchemaGenerator;
+-use schemars::schema::Schema;
++use schemars::Schema;
++use schemars::SchemaGenerator;
+ use serde::Deserialize;
+ use serde::Serialize;
+ use ts_rs::TS;
+@@ -97,8 +97,8 @@ impl<'de> Deserialize<'de> for SessionId {
+ }
+ 
+ impl JsonSchema for SessionId {
+-    fn schema_name() -> String {
+-        "SessionId".to_string()
++    fn schema_name() -> std::borrow::Cow<'static, str> {
++        "SessionId".into()
+     }
+ 
+     fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+diff --git a/codex-rs/protocol/src/thread_id.rs b/codex-rs/protocol/src/thread_id.rs
+index 2e0f215..d674e97 100644
+--- a/codex-rs/protocol/src/thread_id.rs
++++ b/codex-rs/protocol/src/thread_id.rs
+@@ -1,8 +1,8 @@
+ use std::fmt::Display;
+ 
+ use schemars::JsonSchema;
+-use schemars::r#gen::SchemaGenerator;
+-use schemars::schema::Schema;
++use schemars::Schema;
++use schemars::SchemaGenerator;
+ use serde::Deserialize;
+ use serde::Serialize;
+ use ts_rs::TS;
+@@ -100,8 +100,8 @@ impl<'de> Deserialize<'de> for ThreadId {
+ }
+ 
+ impl JsonSchema for ThreadId {
+-    fn schema_name() -> String {
+-        "ThreadId".to_string()
++    fn schema_name() -> std::borrow::Cow<'static, str> {
++        "ThreadId".into()
+     }
+ 
+     fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+diff --git a/codex-rs/utils/path-uri/src/api_path_string.rs b/codex-rs/utils/path-uri/src/api_path_string.rs
+index b2ecdf0..439ae58 100644
+--- a/codex-rs/utils/path-uri/src/api_path_string.rs
++++ b/codex-rs/utils/path-uri/src/api_path_string.rs
+@@ -305,11 +305,11 @@ impl Serialize for LegacyAppPathString {
+ }
+ 
+ impl JsonSchema for LegacyAppPathString {
+-    fn schema_name() -> String {
+-        "LegacyAppPathString".to_string()
++    fn schema_name() -> std::borrow::Cow<'static, str> {
++        "LegacyAppPathString".into()
+     }
+ 
+-    fn json_schema(generator: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
++    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+         String::json_schema(generator)
+     }
+ }
+diff --git a/codex-rs/utils/path-uri/src/lib.rs b/codex-rs/utils/path-uri/src/lib.rs
+index 7a42363..6f0b57a 100644
+--- a/codex-rs/utils/path-uri/src/lib.rs
++++ b/codex-rs/utils/path-uri/src/lib.rs
+@@ -696,11 +696,11 @@ impl Serialize for PathUri {
+ }
+ 
+ impl JsonSchema for PathUri {
+-    fn schema_name() -> String {
+-        "PathUri".to_string()
++    fn schema_name() -> std::borrow::Cow<'static, str> {
++        "PathUri".into()
+     }
+ 
+-    fn json_schema(generator: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
++    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+         String::json_schema(generator)
+     }
+ }
+-- 
+2.43.0
+

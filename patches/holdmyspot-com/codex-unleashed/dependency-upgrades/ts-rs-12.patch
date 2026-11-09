@@ -1,0 +1,290 @@
+From 5517714eaf7989e61f3ed902b9f200be09755442 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 8 Nov 2026 21:14:30 -0500
+Subject: [PATCH] WIP: migrate to ts-rs 12
+
+---
+ codex-rs/app-server-protocol/src/export.rs    | 25 ++++++++++--------
+ .../src/export_user_verification_tests.rs     |  3 ++-
+ codex-rs/app-server-protocol/src/lib.rs       |  7 +++++
+ .../src/protocol/common.rs                    |  6 +++--
+ .../src/schema_fixtures.rs                    | 26 ++++++++++++-------
+ codex-rs/ext/items/src/tests.rs               | 13 ++++++----
+ codex-rs/protocol/src/protocol.rs             |  2 +-
+ 7 files changed, 53 insertions(+), 29 deletions(-)
+
+diff --git a/codex-rs/app-server-protocol/src/export.rs b/codex-rs/app-server-protocol/src/export.rs
+index 441e9eb..a1d52d7 100644
+--- a/codex-rs/app-server-protocol/src/export.rs
++++ b/codex-rs/app-server-protocol/src/export.rs
+@@ -129,15 +129,16 @@ pub fn generate_ts_with_options(
+     ensure_dir(out_dir)?;
+     ensure_dir(&v2_out_dir)?;
+ 
+-    ClientRequest::export_all_to(out_dir)?;
++    let cfg = crate::typescript_config().with_out_dir(out_dir);
++    ClientRequest::export_all(&cfg)?;
+     export_client_responses(out_dir)?;
+-    ClientNotification::export_all_to(out_dir)?;
+-    crate::UserVerificationRpcError::export_all_to(out_dir)?;
++    ClientNotification::export_all(&cfg)?;
++    crate::UserVerificationRpcError::export_all(&cfg)?;
+ 
+-    ServerRequest::export_all_to(out_dir)?;
++    ServerRequest::export_all(&cfg)?;
+     export_server_responses(out_dir)?;
+-    ServerNotification::export_all_to(out_dir)?;
+-    ServerNotificationEnvelope::export_all_to(out_dir)?;
++    ServerNotification::export_all(&cfg)?;
++    ServerNotificationEnvelope::export_all(&cfg)?;
+ 
+     if !options.experimental_api {
+         filter_experimental_ts(out_dir)?;
+@@ -2471,27 +2472,29 @@ mod tests {
+ 
+     #[test]
+     fn generate_ts_with_experimental_api_retains_experimental_entries() -> Result<()> {
+-        let client_request_ts = ClientRequest::export_to_string()?;
++        let client_request_ts = ClientRequest::export_to_string(&crate::typescript_config())?;
+         assert_eq!(client_request_ts.contains("mock/experimentalMethod"), true);
+         assert_eq!(
+             client_request_ts.contains("MockExperimentalMethodParams"),
+             true
+         );
+         assert_eq!(
+-            v2::MockExperimentalMethodParams::export_to_string()?
++            v2::MockExperimentalMethodParams::export_to_string(&crate::typescript_config())?
+                 .contains("MockExperimentalMethodParams"),
+             true
+         );
+         assert_eq!(
+-            v2::MockExperimentalMethodResponse::export_to_string()?
++            v2::MockExperimentalMethodResponse::export_to_string(&crate::typescript_config())?
+                 .contains("MockExperimentalMethodResponse"),
+             true
+         );
+ 
+-        let thread_start_ts = v2::ThreadStartParams::export_to_string()?;
++        let thread_start_ts = v2::ThreadStartParams::export_to_string(&crate::typescript_config())?;
+         assert_eq!(thread_start_ts.contains("mockExperimentalField"), true);
+         let command_execution_request_approval_ts =
+-            v2::CommandExecutionRequestApprovalParams::export_to_string()?;
++            v2::CommandExecutionRequestApprovalParams::export_to_string(
++                &crate::typescript_config(),
++            )?;
+         assert_eq!(
+             command_execution_request_approval_ts.contains("additionalPermissions"),
+             true
+diff --git a/codex-rs/app-server-protocol/src/export_user_verification_tests.rs b/codex-rs/app-server-protocol/src/export_user_verification_tests.rs
+index 52e6dcf..54c7296 100644
+--- a/codex-rs/app-server-protocol/src/export_user_verification_tests.rs
++++ b/codex-rs/app-server-protocol/src/export_user_verification_tests.rs
+@@ -8,7 +8,8 @@ use pretty_assertions::assert_eq;
+ 
+ #[test]
+ fn verification_mode_is_removed_from_flattened_typescript_only_for_stable_exports() -> Result<()> {
+-    let generated = McpServerElicitationRequestParams::export_to_string()?;
++    let generated =
++        McpServerElicitationRequestParams::export_to_string(&crate::typescript_config())?;
+     assert!(generated.contains(MODE));
+     let filtered = filter_ts(&generated);
+     assert!(!filtered.contains(MODE));
+diff --git a/codex-rs/app-server-protocol/src/lib.rs b/codex-rs/app-server-protocol/src/lib.rs
+index e09e1b5..e8f2baa 100644
+--- a/codex-rs/app-server-protocol/src/lib.rs
++++ b/codex-rs/app-server-protocol/src/lib.rs
+@@ -60,6 +60,13 @@ pub(crate) use schemars::JsonSchema;
+ #[cfg(test)]
+ pub(crate) use ts_rs::TS;
+ 
++/// Configuration for generated TypeScript: `bigint` large integers, no import extension, and the
++/// default export directory (callers override it with `Config::with_out_dir`).
++#[cfg(test)]
++pub(crate) fn typescript_config() -> ts_rs::Config {
++    ts_rs::Config::default()
++}
++
+ #[cfg(test)]
+ #[path = "lib_tests.rs"]
+ mod tests;
+diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
+index 1afa3c6..cd92927 100644
+--- a/codex-rs/app-server-protocol/src/protocol/common.rs
++++ b/codex-rs/app-server-protocol/src/protocol/common.rs
+@@ -423,8 +423,9 @@ macro_rules! client_request_definitions {
+         pub fn export_client_responses(
+             out_dir: &::std::path::Path,
+         ) -> ::std::result::Result<(), ::ts_rs::ExportError> {
++            let cfg = crate::typescript_config().with_out_dir(out_dir);
+             $(
+-                <$response as ::ts_rs::TS>::export_all_to(out_dir)?;
++                <$response as ::ts_rs::TS>::export_all(&cfg)?;
+             )*
+             Ok(())
+         }
+@@ -1682,8 +1683,9 @@ macro_rules! server_request_definitions {
+         pub fn export_server_responses(
+             out_dir: &::std::path::Path,
+         ) -> ::std::result::Result<(), ::ts_rs::ExportError> {
++            let cfg = crate::typescript_config().with_out_dir(out_dir);
+             $(
+-                <$response as ::ts_rs::TS>::export_all_to(out_dir)?;
++                <$response as ::ts_rs::TS>::export_all(&cfg)?;
+             )*
+             Ok(())
+         }
+diff --git a/codex-rs/app-server-protocol/src/schema_fixtures.rs b/codex-rs/app-server-protocol/src/schema_fixtures.rs
+index d0f36db..3827622 100644
+--- a/codex-rs/app-server-protocol/src/schema_fixtures.rs
++++ b/codex-rs/app-server-protocol/src/schema_fixtures.rs
+@@ -11,6 +11,7 @@ use crate::export::trim_trailing_line_whitespace;
+ use crate::precomputed_exports::PrecomputedExports;
+ use crate::protocol::common::visit_client_response_types;
+ use crate::protocol::common::visit_server_response_types;
++use crate::typescript_config;
+ use anyhow::Context;
+ use anyhow::Result;
+ use serde_json::Map;
+@@ -22,6 +23,7 @@ use std::collections::HashSet;
+ use std::io::Cursor;
+ use std::path::Path;
+ use std::path::PathBuf;
++use ts_rs::Config;
+ use ts_rs::TypeVisitor;
+ 
+ #[derive(Clone, Copy, Debug, Default)]
+@@ -56,20 +58,21 @@ pub fn read_schema_fixture_subtree(
+ #[doc(hidden)]
+ pub fn generate_typescript_schema_fixture_subtree_for_tests() -> Result<BTreeMap<PathBuf, Vec<u8>>>
+ {
++    let cfg = typescript_config();
+     let mut files = BTreeMap::new();
+     let mut seen = HashSet::new();
+ 
+-    collect_typescript_fixture_file::<ClientRequest>(&mut files, &mut seen)?;
+-    visit_typescript_fixture_dependencies(&mut files, &mut seen, |visitor| {
++    collect_typescript_fixture_file::<ClientRequest>(&cfg, &mut files, &mut seen)?;
++    visit_typescript_fixture_dependencies(&cfg, &mut files, &mut seen, |visitor| {
+         visit_client_response_types(visitor);
+     })?;
+-    collect_typescript_fixture_file::<ClientNotification>(&mut files, &mut seen)?;
+-    collect_typescript_fixture_file::<ServerRequest>(&mut files, &mut seen)?;
+-    visit_typescript_fixture_dependencies(&mut files, &mut seen, |visitor| {
++    collect_typescript_fixture_file::<ClientNotification>(&cfg, &mut files, &mut seen)?;
++    collect_typescript_fixture_file::<ServerRequest>(&cfg, &mut files, &mut seen)?;
++    visit_typescript_fixture_dependencies(&cfg, &mut files, &mut seen, |visitor| {
+         visit_server_response_types(visitor);
+     })?;
+-    collect_typescript_fixture_file::<ServerNotification>(&mut files, &mut seen)?;
+-    collect_typescript_fixture_file::<ServerNotificationEnvelope>(&mut files, &mut seen)?;
++    collect_typescript_fixture_file::<ServerNotification>(&cfg, &mut files, &mut seen)?;
++    collect_typescript_fixture_file::<ServerNotificationEnvelope>(&cfg, &mut files, &mut seen)?;
+ 
+     filter_experimental_ts_tree(&mut files)?;
+     generate_index_ts_tree(&mut files);
+@@ -348,6 +351,7 @@ fn files_recursive(root: &Path) -> Result<Vec<(PathBuf, PathBuf)>> {
+ }
+ 
+ fn collect_typescript_fixture_file<T: TS + 'static + ?Sized>(
++    cfg: &Config,
+     files: &mut BTreeMap<PathBuf, String>,
+     seen: &mut HashSet<TypeId>,
+ ) -> Result<()> {
+@@ -358,7 +362,7 @@ fn collect_typescript_fixture_file<T: TS + 'static + ?Sized>(
+         return Ok(());
+     }
+ 
+-    let contents = T::export_to_string().context("export TypeScript fixture content")?;
++    let contents = T::export_to_string(cfg).context("export TypeScript fixture content")?;
+     let output_path = normalize_relative_fixture_path(&output_path);
+     files.insert(
+         output_path,
+@@ -366,6 +370,7 @@ fn collect_typescript_fixture_file<T: TS + 'static + ?Sized>(
+     );
+ 
+     let mut visitor = TypeScriptFixtureCollector {
++        cfg,
+         files,
+         seen,
+         error: None,
+@@ -383,11 +388,13 @@ fn normalize_relative_fixture_path(path: &Path) -> PathBuf {
+ }
+ 
+ fn visit_typescript_fixture_dependencies(
++    cfg: &Config,
+     files: &mut BTreeMap<PathBuf, String>,
+     seen: &mut HashSet<TypeId>,
+     visit: impl FnOnce(&mut TypeScriptFixtureCollector<'_>),
+ ) -> Result<()> {
+     let mut visitor = TypeScriptFixtureCollector {
++        cfg,
+         files,
+         seen,
+         error: None,
+@@ -400,6 +407,7 @@ fn visit_typescript_fixture_dependencies(
+ }
+ 
+ struct TypeScriptFixtureCollector<'a> {
++    cfg: &'a Config,
+     files: &'a mut BTreeMap<PathBuf, String>,
+     seen: &'a mut HashSet<TypeId>,
+     error: Option<anyhow::Error>,
+@@ -410,7 +418,7 @@ impl TypeVisitor for TypeScriptFixtureCollector<'_> {
+         if self.error.is_some() {
+             return;
+         }
+-        self.error = collect_typescript_fixture_file::<T>(self.files, self.seen).err();
++        self.error = collect_typescript_fixture_file::<T>(self.cfg, self.files, self.seen).err();
+     }
+ }
+ 
+diff --git a/codex-rs/ext/items/src/tests.rs b/codex-rs/ext/items/src/tests.rs
+index ca26d9a..d0825d0 100644
+--- a/codex-rs/ext/items/src/tests.rs
++++ b/codex-rs/ext/items/src/tests.rs
+@@ -184,12 +184,15 @@ fn image_generation_item_preserves_authoritative_transparency() {
+ #[test]
+ fn image_generation_typescript_fields_preserve_wire_contracts() {
+     assert!(
+-        ImageGenerationItem::inline().contains("{ fileId: string, } | { result: string, }")
+-            || ImageGenerationItem::inline().contains("{ result: string, } | { fileId: string, }"),
++        ImageGenerationItem::inline(&ts_rs::Config::default())
++            .contains("{ fileId: string, } | { result: string, }")
++            || ImageGenerationItem::inline(&ts_rs::Config::default())
++                .contains("{ result: string, } | { fileId: string, }"),
+         "v2 image-generation items must require exactly one image reference"
+     );
+     assert!(
+-        ImageGenerationItem::inline().contains("transparentBackground?: boolean"),
++        ImageGenerationItem::inline(&ts_rs::Config::default())
++            .contains("transparentBackground?: boolean"),
+         "image-generation transparency must remain optional for existing TypeScript clients"
+     );
+ }
+@@ -213,8 +216,8 @@ fn image_generation_request_id_stays_internal() {
+     };
+     assert_eq!(round_tripped.imagegen_request_id, None);
+     assert_eq!(round_tripped.generation_id, None);
+-    assert!(!ImageGenerationItem::inline().contains("imagegenRequestId"));
+-    assert!(!ImageGenerationItem::inline().contains("generationId"));
++    assert!(!ImageGenerationItem::inline(&ts_rs::Config::default()).contains("imagegenRequestId"));
++    assert!(!ImageGenerationItem::inline(&ts_rs::Config::default()).contains("generationId"));
+ }
+ 
+ #[test]
+diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
+index 20a9e72..719f4bb 100644
+--- a/codex-rs/protocol/src/protocol.rs
++++ b/codex-rs/protocol/src/protocol.rs
+@@ -4828,7 +4828,7 @@ mod tests {
+                 .expect("hook properties")
+                 .contains_key("builtin")
+         );
+-        assert!(!HookRunSummary::decl().contains("builtin:"));
++        assert!(!HookRunSummary::decl(&ts_rs::Config::default()).contains("builtin:"));
+         Ok(())
+     }
+ 
+-- 
+2.43.0
+
