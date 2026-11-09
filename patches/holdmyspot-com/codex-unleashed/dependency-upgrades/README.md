@@ -63,6 +63,7 @@ Fixes what the new releases change at run time or in test expectations:
 ## Audits
 
 - `RUSTSEC-2026-0385` (`ctutils`): resolved by `ctutils 0.4.8`.
+- A later audit against advisory-db `d9cb059f32` (2026-11-09) finds further open advisories in transitive dependencies; "CP8 reconciliation" in [restart-scope.md](../../../../docs/plans/restart-scope.md) lists them with their fixes.
 - `RUSTSEC-2026-0387` (`crypto-bigint 0.5.5`): open. Its only path is `elliptic-curve 0.13` → `p256 0.13`, which `age 0.12.1` (scrypt recipients only, so no P-256 arithmetic runs) and `aws-config 1.13.0` with `credentials-login` (which signs AWS login proofs with P-256) reach at their latest releases. It stays open, not suppressed, until one of them moves to `p256 0.14`.
 
 ## Verification

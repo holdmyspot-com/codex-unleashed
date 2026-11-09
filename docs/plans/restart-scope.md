@@ -91,6 +91,38 @@ New baseline audit findings, with unchanged locked dependency versions and RustS
 - `crypto-bigint 0.5.5`: [RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387), timing variability in operations intended to be constant-time. The advisory lists `>=0.7.6` as patched. The dependency graph includes `elliptic-curve` through `p256`/`age`; exploitability in Codex remains unverified. Investigate a supported stable dependency upgrade in step 7, without backporting dependency source.
 - `ctutils 0.4.2`: [RUSTSEC-2026-0385](https://rustsec.org/advisories/RUSTSEC-2026-0385), mask-generation and comparison timing issues. The advisory lists `>=0.4.4` as patched. The graph includes `digest`/`hmac`/`pbkdf2`/`zip`; exploitability in Codex remains unverified. Investigate a supported stable dependency upgrade in step 7. The current audit fails; do not report it as passing or silently suppress the findings.
 
+### CP8 reconciliation (2026-11-09)
+
+Reconciled against the CP7 queue (patches 1–33; `codex-rs/Cargo.lock` from `dependency-upgrades/`, Bazel `llvm 0.8.11`, `rules_cc 0.2.20`, `rules_rs 0.0.96`, `rules_foreign_cc 0.15.1`, `aws-lc 5.1.0.bcr.1`). No dependency source is modified; each row records the decision still owed.
+
+Correction to the bullets above: the gnullvm toolchain is part of the selected tree. `MODULE.bazel` defines gnullvm Rust toolchains for Windows lint (around line 290), `.bazelrc:218` cross-builds `windows_x86_64_gnullvm`, and `.github/workflows/bazel.yml:158` tests that target. Only the shipped Windows release uses MSVC.
+
+| Concern | Selected now | Reached by | Canonical fix | In a stable release? | Decision owed |
+|---|---|---|---|---|---|
+| ICU currency-cache unlock | ICU 78 inside `v8 152.2.0` (latest crate) | Only an allocation failure in `getCacheEntry` (`ucurr.cpp:1487`) while it holds `gCurrencyCacheMutex`, i.e. after V8 has run out of memory | None found. The bug is still on ICU `main`; the ICU Jira was not searchable anonymously | No | Report upstream to ICU if the owner wants it; no backport |
+| AWS-LC MinGW TLS cleanup | Bazel `aws-lc 5.1.0.bcr.1`; Cargo `aws-lc-sys 0.45.0` | The Bazel gnullvm lanes; no release target | [aws/aws-lc#3405](https://github.com/aws/aws-lc/pull/3405) (LLD 22 dropping `_tls_used`) | aws-lc 5.6.0 and later; no BCR release (BCR stops at `5.1.0.bcr.3`, whose `fix_windows_mingw.patch` has not been compared with #3405) | Wait for a BCR aws-lc ≥ 5.6.0 (a D9 Bazel module update) |
+| Prost `grep-includes` | `rules_rs 0.0.96` → hermeticbuild `rules_rust` `f19661ba71f7` | `code-mode-protocol/BUILD.bazel:12` (`rust_prost_library`); fails only if rules_cc drops `grep-includes`, and 0.2.20 does not | [bazelbuild/rules_rust#4261](https://github.com/bazelbuild/rules_rust/pull/4261) (`dd2b107baf21`) | rules_rust 0.75.0; the hermeticbuild fork has diverged and inclusion is unverified | None until a rules_cc update breaks the aspect |
+| GStreamer enum completeness | `gst-plugins-base 1.28.6` | Release voice targets only (`rust-release.yml:341`, `rust-release-windows.yml:279`); runtime use of the two enums is unknown | None found | Unknown | Establish runtime impact before any change |
+| LLVM / rules_cc toolchain series | `llvm 0.8.11` with three local patches | Every Bazel platform; the old LLVM-23 series is not applied | Related open hermetic-llvm issues (#766, #807, #812, #858, #910); none matches the specific changes | No specific fix; latest is `llvm 0.8.26` | Revisit with the D9 toolchain update |
+| Cargo build-script runtime features | `rules_rs 0.0.96`; crt-static set only for MSVC (`MODULE.bazel:316`) | Not established for any selected build script | None found | Unknown | None until a consumer shows wrong `CARGO_CFG_TARGET_FEATURE` |
+| Native-tool bootstrap (Make prototypes) | `rules_foreign_cc 0.15.1` with three Make patches | Voice native tools (`third_party/voice/BUILD.bazel`) | Possibly [rules_foreign_cc#1485](https://github.com/bazel-contrib/rules_foreign_cc/issues/1485), not confirmed | rules_foreign_cc 0.16.0 and 0.17.0 exist; fix inclusion unchecked | Revisit with D9 |
+| Frida shutdown crash | Removed with the scheduler | — | — | — | None (resolved by removal) |
+| YAML, ZIP and Rustls replacements | serde-saphyr 2.1.1, zip 9.5.0, rustls 0.23.46 | — | — | — | None (done in CP7 or already upstream) |
+
+RustSec audit of the CP7 lockfile against advisory-db `d9cb059f3217db87aeccd190b81eaffe8cc29cb9` (2026-11-09T16:13Z). The audit is a local Python match of locked versions against each advisory's patched and unaffected ranges; withdrawn advisories are skipped. CP7 cleared tokio (RUSTSEC-2026-0386), zstd/zstd-safe/zstd-sys (0391, 0395–0406, 0410), scc (0205), unsafe-libyaml (2024-0449) and ctutils (0385). Vulnerability and unsoundness advisories still open:
+
+| Package | Advisory | Patched | Pulled in by | Stable fix |
+|---|---|---|---|---|
+| `crypto-bigint 0.5.5` | RUSTSEC-2026-0387 | ≥ 0.7.6 | `p256 0.13` via `age 0.12.1` (latest) and `aws-config 1.13.0` | aws-config 1.13.1 (released 2026-11-09, after CP7 resolved its versions) moves to p256 0.14 and removes `ecdsa 0.16`, `pkcs8 0.10` and `spki 0.7` from the lock; `age` still requires p256 `^0.13` |
+| `libsqlite3-sys 0.37.0` (direct) | RUSTSEC-2026-0459 | ≥ 0.39.0 | `codex-state`, `sqlx-sqlite` | None: `sqlx-sqlite 0.9.0`, the latest, requires `<0.38` |
+| `hickory-proto 0.25.2` | RUSTSEC-2026-0118, -0119 | ≥ 0.26.1 (0119); none (0118) | `rama-dns 0.3.0-alpha.4` | rama 0.4 requires `hickory-resolver ^0.26.1` (the rama 0.4 port) |
+| `openssl 0.10.75` | RUSTSEC-2026-0463 | ≥ 0.10.78 | `native-tls` | Semver-compatible: 0.10.82 |
+| `libz-sys 1.1.29` | RUSTSEC-2026-0418 | ≥ 1.1.31 | `curl-sys` (target-specific) | Semver-compatible: 1.1.32 |
+| `quick-xml 0.39.4` | RUSTSEC-2026-0194, -0195 | ≥ 0.41.0 | `plist 1.9.0` (syntect), `wayland-scanner 0.31.10` (build-time proc macro) | Semver-compatible parents: plist 1.10.3 (`^0.42`), wayland-scanner 0.31.11 (`^0.41`) |
+| `event-listener 5.4.1` | RUSTSEC-2026-0221 (unsound) | ≥ 5.4.2 | `async-broadcast`, `async-lock` (webrtc, zbus) | Semver-compatible: 5.4.2 |
+
+Every row except crypto-bigint, libsqlite3-sys and hickory-proto has a semver-compatible transitive update. CP7's rule moves a transitive dependency only when a direct update requires it, so these updates wait for an owner decision. The unmaintained-crate notices (atomic-polyfill, basic-toml, bincode, derivative, fxhash, paste, pin-utils, zbus_names, zvariant, zvariant_derive) have no patched release.
+
 ## Old-main changes not yet migrated
 
 The initialization inventory contains 143 old-main `.patch` files and one `.mbox` file. The [old-main-patch-inventory.tsv](../../docs/old-main-patch-inventory.tsv) records all 144 paths, fixed Git blob identities, unfolded mail subjects and affected diff paths from old main `545479059ac86394049b6efd3bf4297b1ca18d17`. It is a file index, not a semantic review or an application-order manifest; a mailbox subject identifies its first message. Mixed patches still require hunk-level review before deciding which checkpoint owns each change.
