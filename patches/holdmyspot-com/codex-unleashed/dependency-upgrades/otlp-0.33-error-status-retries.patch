@@ -1,0 +1,30 @@
+From 7334e9127149d42fe9c227e19d419e21989701d4 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 9 Nov 2026 16:16:51 -0500
+Subject: [PATCH] WIP: let the OTLP exporter see error statuses
+
+opentelemetry-otlp 0.33 retries failed exports, but only for throttling and gateway statuses. The runtime HTTP client turned every error status into an Err, which the exporter treats as a network failure and always retries, so a 500 was exported four times.
+---
+ codex-rs/otel/src/network_policy.rs | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/otel/src/network_policy.rs b/codex-rs/otel/src/network_policy.rs
+index e39c800..77d782d 100644
+--- a/codex-rs/otel/src/network_policy.rs
++++ b/codex-rs/otel/src/network_policy.rs
+@@ -107,8 +107,10 @@ impl opentelemetry_http::HttpClient for RuntimeHttpClient {
+                         .body(body)
+                         .timeout(timeout)
+                         .send()
+-                        .await?
+-                        .error_for_status()?;
++                        .await?;
++                    // The OTLP exporter classifies the status itself and retries only
++                    // throttling and gateway responses; an Err here would count as a
++                    // network failure, which it always retries.
+                     let mut builder = http::Response::builder().status(response.status());
+                     if let Some(headers) = builder.headers_mut() {
+                         *headers = response.headers().clone();
+-- 
+2.43.0
+

@@ -1,0 +1,52 @@
+From dbf49a3402370dfa8d23676dcec72b23d4dd5181 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 9 Nov 2026 16:16:51 -0500
+Subject: [PATCH] WIP: answer the body-timeout test only after the request head
+
+The test server wrote its partial response as soon as the connection opened. hyper rejects a response that reaches an idle connection, and reqwest 0.13 reports that as a send failure instead of the body timeout the test checks.
+---
+ .../remote_control/server_api_tests.rs        | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/app-server-transport/src/transport/remote_control/server_api_tests.rs b/codex-rs/app-server-transport/src/transport/remote_control/server_api_tests.rs
+index cc8d93d..64d687e 100644
+--- a/codex-rs/app-server-transport/src/transport/remote_control/server_api_tests.rs
++++ b/codex-rs/app-server-transport/src/transport/remote_control/server_api_tests.rs
+@@ -3,7 +3,9 @@ use crate::transport::remote_control::protocol::normalize_remote_control_url;
+ use pretty_assertions::assert_eq;
+ use serde_json::json;
+ use std::time::SystemTime;
++use tokio::io::AsyncBufReadExt;
+ use tokio::io::AsyncWriteExt;
++use tokio::io::BufReader;
+ use tokio::net::TcpListener;
+ use tokio::sync::oneshot;
+ 
+@@ -44,8 +46,23 @@ async fn timed_out_request(partial_response: Option<&'static [u8]>) -> io::Error
+     );
+     let (request_done_tx, request_done_rx) = oneshot::channel();
+     let server_task = tokio::spawn(async move {
+-        let (mut stream, _) = listener.accept().await.expect("request should connect");
++        let (stream, _) = listener.accept().await.expect("request should connect");
++        let mut stream = BufReader::new(stream);
+         if let Some(partial_response) = partial_response {
++            // Answer only after the whole request head arrives; hyper rejects a response
++            // that reaches an idle connection before the request is written.
++            let mut line = String::new();
++            while line != "\r\n" {
++                line.clear();
++                stream
++                    .read_line(&mut line)
++                    .await
++                    .expect("request head should read");
++                assert!(
++                    !line.is_empty(),
++                    "request should end its head before closing"
++                );
++            }
+             stream
+                 .write_all(partial_response)
+                 .await
+-- 
+2.43.0
+
