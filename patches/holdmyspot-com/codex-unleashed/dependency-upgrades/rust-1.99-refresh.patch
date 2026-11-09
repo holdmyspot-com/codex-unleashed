@@ -1,16 +1,25 @@
-From e053a32d8b09181e3bb09c3c5530d3dbf62fb24d Mon Sep 17 00:00:00 2001
+From 99d5202ea8f1ad64a506337d6c24eb044fb58aac Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:12:47 -0500
 Subject: [PATCH] WIP: refresh direct dependencies under Rust 1.99.1
 
 ---
- codex-rs/Cargo.lock | 220 ++++++++++++++++++++++----------------------
- 1 file changed, 110 insertions(+), 110 deletions(-)
+ codex-rs/Cargo.lock | 222 ++++++++++++++++++++++----------------------
+ 1 file changed, 111 insertions(+), 111 deletions(-)
 
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index ee8ffc5..bbbcf19 100644
+index ee8ffc5..e3dcdb5 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
+@@ -658,7 +658,7 @@ checksum = "82f6aeea286b8eb4dd3431a1be1b59d290ace00f5bfd8e2a159bc2a05e2c1667"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+- "syn 3.0.3",
++ "syn 3.0.9",
+ ]
+ 
+ [[package]]
 @@ -970,7 +970,7 @@ dependencies = [
   "hmac 0.13.0",
   "http",
