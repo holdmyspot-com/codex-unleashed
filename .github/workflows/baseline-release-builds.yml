@@ -410,9 +410,9 @@ jobs:
         if: runner.os == 'Windows'
         run: echo 'GIT_REDIRECT_STDIN=NUL' >> "$GITHUB_ENV"
 
-      # Every macOS binary requires macOS 14 (owner decision 2026-11-09): upstream's prebuilt V8 archive is built for
-      # 14.0, and the linker's warning about linking it into an older minimum is fatal under the workspace lints. Rust
-      # and the C and C++ build scripts all read this minimum. The macOS lint workflow uses the same value.
+      # Every macOS binary requires macOS 14 (owner decisions 2026-11-09): upstream's prebuilt V8 archive is built for
+      # 14.0, so the binary needs macOS 14 whatever minimum it is linked for, and this minimum states that requirement.
+      # Rust and the C and C++ build scripts all read it. The macOS lint workflow uses the same value.
       - name: Build every macOS binary for macOS 14
         if: runner.os == 'macOS'
         run: echo 'MACOSX_DEPLOYMENT_TARGET=14.0' >> "$GITHUB_ENV"
