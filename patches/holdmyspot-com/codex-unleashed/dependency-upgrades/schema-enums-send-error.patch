@@ -1,4 +1,4 @@
-From 247c4053f52906fea0239beda835c3840edbfe43 Mon Sep 17 00:00:00 2001
+From 41b3b7d60a786b3efdb99259e5ea806954026f23 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 9 Nov 2026 00:07:40 -0500
 Subject: [PATCH] WIP: keep schemars 0.8's single-value enums and box a large
@@ -16,7 +16,7 @@ restores the enum form. Rust 1.99's clippy rejects emit_update's
  4 files changed, 12 insertions(+), 1 deletion(-)
 
 diff --git a/codex-rs/app-server-protocol/src/export.rs b/codex-rs/app-server-protocol/src/export.rs
-index a1d52d7..9002fd3 100644
+index a1d52d7..1d26946 100644
 --- a/codex-rs/app-server-protocol/src/export.rs
 +++ b/codex-rs/app-server-protocol/src/export.rs
 @@ -25,6 +25,7 @@ use anyhow::Result;
@@ -33,7 +33,7 @@ index a1d52d7..9002fd3 100644
          raw_namespace != Some("v1") || JSON_V1_ALLOWLIST.contains(&logical_name);
 +    // schemars 1 writes single-value enums as `const`; keep 0.8's `enum` form for schema consumers.
      let schema = SchemaSettings::draft07()
-+        .with_transform(ReplaceConstValue)
++        .with_transform(ReplaceConstValue::default())
          .into_generator()
          .into_root_schema_for::<T>();
      let mut schema_value = serde_json::to_value(schema)?;
@@ -59,7 +59,7 @@ index 0f019d2..56be80d 100644
  
  pub(super) fn mcp_startup_failure_reason(
 diff --git a/codex-rs/config/src/schema.rs b/codex-rs/config/src/schema.rs
-index 2a483b2..dab0257 100644
+index 2a483b2..d6f4d6e 100644
 --- a/codex-rs/config/src/schema.rs
 +++ b/codex-rs/config/src/schema.rs
 @@ -8,6 +8,7 @@ use schemars::Schema;
@@ -77,12 +77,12 @@ index 2a483b2..dab0257 100644
 +    // schemars 1 writes single-value enums as `const`; keep 0.8's `enum` form for schema consumers.
      let mut schema = SchemaSettings::draft07()
          .with_transform(remove_null_variants)
-+        .with_transform(ReplaceConstValue)
++        .with_transform(ReplaceConstValue::default())
          .into_generator()
          .into_root_schema_for::<ConfigToml>();
      add_shell_environment_policy_constraints(&mut schema);
 diff --git a/codex-rs/hooks/src/schema.rs b/codex-rs/hooks/src/schema.rs
-index eed791c..8476da0 100644
+index eed791c..7f05b54 100644
 --- a/codex-rs/hooks/src/schema.rs
 +++ b/codex-rs/hooks/src/schema.rs
 @@ -3,6 +3,7 @@ use schemars::Schema;
@@ -100,7 +100,7 @@ index eed791c..8476da0 100644
 +    // schemars 1 writes single-value enums as `const`; keep 0.8's `enum` form for schema consumers.
      SchemaSettings::draft07()
          .with_transform(remove_null_variants)
-+        .with_transform(ReplaceConstValue)
++        .with_transform(ReplaceConstValue::default())
          .into_generator()
          .into_root_schema_for::<T>()
  }
