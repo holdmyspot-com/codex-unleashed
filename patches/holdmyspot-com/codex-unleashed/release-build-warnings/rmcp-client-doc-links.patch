@@ -1,0 +1,89 @@
+From c89d18e80e1554ef39a106f8fba74e026c9eec42 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 8 Nov 2026 19:20:42 -0500
+Subject: [PATCH] Write the MCP client's documentation links as rustdoc
+ autolinks
+
+Rustdoc reports each bare URL in a doc comment as rustdoc::bare_urls,
+because it renders them as plain text. Wrap the eight URLs in the MCP
+client's documentation in angle brackets so they render as links.
+---
+ codex-rs/rmcp-client/src/oauth.rs          |  2 +-
+ codex-rs/rmcp-client/src/oauth_callback.rs | 10 +++++-----
+ codex-rs/rmcp-client/src/rmcp_client.rs    |  4 ++--
+ 3 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/codex-rs/rmcp-client/src/oauth.rs b/codex-rs/rmcp-client/src/oauth.rs
+index f80cd6e..8a26eae 100644
+--- a/codex-rs/rmcp-client/src/oauth.rs
++++ b/codex-rs/rmcp-client/src/oauth.rs
+@@ -1,6 +1,6 @@
+ //! This file handles all logic related to managing MCP OAuth credentials.
+ //! All credentials are stored using the keyring crate which uses os-specific keyring services.
+-//! https://crates.io/crates/keyring
++//! <https://crates.io/crates/keyring>
+ //! macOS: macOS keychain.
+ //! Windows: Windows Credential Manager
+ //! Linux: DBus-based Secret Service, the kernel keyutils, and a combo of the two
+diff --git a/codex-rs/rmcp-client/src/oauth_callback.rs b/codex-rs/rmcp-client/src/oauth_callback.rs
+index eb3d7f3..d49c108 100644
+--- a/codex-rs/rmcp-client/src/oauth_callback.rs
++++ b/codex-rs/rmcp-client/src/oauth_callback.rs
+@@ -5,14 +5,14 @@
+ //! server, Codex could associate an authorization code with the wrong server
+ //! and send that code to an attacker-controlled token endpoint. RFC 9700 calls
+ //! this an authorization-server mix-up attack:
+-//! https://www.rfc-editor.org/rfc/rfc9700#section-4.4
++//! <https://www.rfc-editor.org/rfc/rfc9700#section-4.4>
+ //!
+ //! MCP prefers issuer identification: authorization servers SHOULD include
+ //! `iss` in authorization responses; servers that include `iss` MUST advertise
+ //! that support, and clients MUST validate any returned issuer before
+ //! exchanging the code. This also lets a CIMD document advertise one stable
+ //! redirect instead of separate redirects for every authorization server:
+-//! https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization#authorization-response-validation
++//! <https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization#authorization-response-validation>
+ //!
+ //! This module prefers issuer binding when available and otherwise retains a
+ //! callback-specific compatibility fallback:
+@@ -22,12 +22,12 @@
+ //!   its issuer. RMCP validates the response's `iss` against that metadata
+ //!   issuer before exchanging the authorization code, rejecting missing or
+ //!   mismatched issuers:
+-//!   https://www.rfc-editor.org/rfc/rfc9700#section-4.4.2.1
+-//!   https://www.rfc-editor.org/rfc/rfc9207#section-2.4
++//!   <https://www.rfc-editor.org/rfc/rfc9700#section-4.4.2.1>
++//!   <https://www.rfc-editor.org/rfc/rfc9207#section-2.4>
+ //! - `CallbackSpecific`: append an ID derived from the complete MCP server URL.
+ //!   Distinct callback paths bind each response to its intended server. This is
+ //!   the required fallback when issuer identification is not supported:
+-//!   https://www.rfc-editor.org/rfc/rfc9700#section-4.4.2.2
++//!   <https://www.rfc-editor.org/rfc/rfc9700#section-4.4.2.2>
+ 
+ use anyhow::Context;
+ use anyhow::Result;
+diff --git a/codex-rs/rmcp-client/src/rmcp_client.rs b/codex-rs/rmcp-client/src/rmcp_client.rs
+index 46b86ca..d86ea29 100644
+--- a/codex-rs/rmcp-client/src/rmcp_client.rs
++++ b/codex-rs/rmcp-client/src/rmcp_client.rs
+@@ -411,7 +411,7 @@ pub struct CancellableEventStreamRequest {
+ }
+ 
+ /// MCP client implemented on top of the official `rmcp` SDK.
+-/// https://github.com/modelcontextprotocol/rust-sdk
++/// <https://github.com/modelcontextprotocol/rust-sdk>
+ pub struct RmcpClient {
+     // Drop our interest in retrying before the SDK transport uses its ordinary shutdown grace.
+     stdio_process: Option<StdioProcessSlot>,
+@@ -673,7 +673,7 @@ impl RmcpClient {
+     }
+ 
+     /// Perform the initialization handshake with the MCP server.
+-    /// https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle#initialization
++    /// <https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle#initialization>
+     #[instrument(level = "trace", skip_all)]
+     pub async fn initialize(
+         &self,
+-- 
+2.43.0
+

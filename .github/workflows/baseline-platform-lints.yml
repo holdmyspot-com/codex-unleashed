@@ -144,7 +144,7 @@ jobs:
           RUSTDOCFLAGS: -Dwarnings
         run: |
           set -euo pipefail
-          cargo doc --target "$TARGET" --workspace --no-deps --profile dev --timings \
+          cargo doc --keep-going --target "$TARGET" --workspace --no-deps --profile dev --timings \
             2>&1 | tee "$RUNNER_TEMP/baseline-evidence/rustdoc.log"
 
       - name: Check direct dependencies with their own lint levels
@@ -163,7 +163,7 @@ jobs:
           export RUSTC_WRAPPER="$RUNNER_TEMP/direct-dependency-lints.py"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/dependency-lints-target"
           chmod +x "$RUSTC_WRAPPER"
-          cargo check --target "$TARGET" --tests --profile dev --timings \
+          cargo check --keep-going --target "$TARGET" --tests --profile dev --timings \
             2>&1 | tee "$evidence/dependency-lints.log"
           status=0
           bash "$RUNNER_TEMP/fail-on-cargo-warnings.sh" "$evidence/dependency-lints.log" || status=$?

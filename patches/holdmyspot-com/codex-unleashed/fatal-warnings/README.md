@@ -16,7 +16,7 @@ Upstream's `[workspace.lints]` sets no rustc levels (`rust = {}`), and all 169 w
 
 Rust 1.95 reports linker output through the `linker_messages` lint, which is allowed by default, so the output is hidden and `warnings` does not reach it. The patch denies it explicitly. With it denied, `rustc +1.95.0 -C link-arg=-Wl,-z,bogusopt` fails with `error: linker stderr: rust-lld: unknown -z value: bogusopt`; without it the same link succeeds silently.
 
-Bazel does not read Cargo's lint table, so the patch also adds `-Dwarnings` and `-Dlinker-messages` to `.bazelrc` through `extra_rustc_flag` and `extra_exec_rustc_flag`.
+Bazel does not read Cargo's lint table, so the patch also adds `-Dwarnings` to `.bazelrc` through `extra_rustc_flag` and `extra_exec_rustc_flag`. It does not deny linker messages under Bazel: the hermetic LLVM toolchain's own link flags make clang++ report `argument unused during compilation: '--unwindlib=none' [-Wunused-command-line-argument]` on every link, starting with rules_rust's `process_wrapper` tool (Bazel test run `42537265904`). That is toolchain configuration outside Codex, reported separately, like the mingw-w64 CRT warnings in [warning-inventory.md](../../../../docs/warning-inventory.md).
 
 Cargo's `build.warnings = "deny"` (`CARGO_BUILD_WARNINGS`) has the same scope without a source change, but it is stable only from Cargo 1.97, and upstream pins Rust 1.95.0.
 

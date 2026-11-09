@@ -29,3 +29,4 @@ The release applies these patches in this order:
 23. [release-build-warnings/nextest-local-profile.patch](holdmyspot-com/codex-unleashed/release-build-warnings/nextest-local-profile.patch)
 24. [release-build-warnings/bazel-module-versions.patch](holdmyspot-com/codex-unleashed/release-build-warnings/bazel-module-versions.patch)
 25. [fatal-warnings/deny-workspace-warnings.patch](holdmyspot-com/codex-unleashed/fatal-warnings/deny-workspace-warnings.patch)
+26. [release-build-warnings/rmcp-client-doc-links.patch](holdmyspot-com/codex-unleashed/release-build-warnings/rmcp-client-doc-links.patch)

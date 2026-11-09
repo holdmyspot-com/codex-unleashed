@@ -7,6 +7,7 @@
   2. `bubblewrap-netlink-initializers.patch`: `-Wmissing-field-initializers` in the vendored bubblewrap.
   3. `nextest-local-profile.patch`: nextest's unknown `profile.local.inherits` key.
   4. `bazel-module-versions.patch`: Bazel's root-module version mismatch for `platforms` and `rules_cc`.
+  5. `rmcp-client-doc-links.patch`: rustdoc's bare-URL warnings in `codex-rmcp-client` (queued after `fatal-warnings`).
 
 The inventory these come from, with the warnings left open and why, is [warning-inventory.md](../../../../docs/warning-inventory.md).
 
@@ -67,3 +68,9 @@ Verification: `NEXTEST_PROFILE=local cargo nextest run ...` with nextest 0.9.103
 The root `MODULE.bazel` requires `platforms@1.0.0` and `rules_cc@0.2.18`, but other modules require 1.1.0 and 0.2.20, so Bazel resolves those and warns about the mismatch. The patch raises the two requirements. `bazel mod deps --lockfile_mode=update` with the pinned Bazel 9.2.0 removes only the two registry hashes nothing uses any more; every resolved module version stays the same.
 
 Verification: `bazel mod deps --lockfile_mode=error` with Bazel 9.2.0 passes and prints no version warning.
+
+## rmcp-client-doc-links.patch
+
+`cargo doc --no-deps` reports eight `rustdoc::bare_urls` warnings in `codex-rmcp-client`: plain URLs in the doc comments of `oauth.rs`, `oauth_callback.rs` and `rmcp_client.rs`, which rustdoc renders as text, not links. Under patch 25 they fail documentation with `error: this URL is not a hyperlink` (platform lint run `42537177622`). The patch wraps each URL in angle brackets, rustdoc's autolink form.
+
+Verification: `RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps` reports nothing for `codex-rmcp-client`.
