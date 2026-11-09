@@ -6,6 +6,7 @@ module com.holdmyspot.codexunleashed.tooling.test
 	requires io.github.cowwoc.requirements13.java;
 	requires io.github.cowwoc.pouch10.core;
 	requires tools.jackson.databind;
+	requires tools.jackson.dataformat.toml;
 	requires tools.jackson.dataformat.yaml;
 	requires org.apache.commons.io;
 

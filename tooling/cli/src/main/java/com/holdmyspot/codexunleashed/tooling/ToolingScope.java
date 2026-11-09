@@ -4,6 +4,7 @@ import io.github.cowwoc.pouch10.core.Scope;
 import java.lang.foreign.Linker;
 import java.util.regex.Pattern;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.dataformat.toml.TomlMapper;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
@@ -63,6 +64,13 @@ public interface ToolingScope extends Scope
 	 * @throws IllegalStateException if the scope is closed
 	 */
 	YAMLMapper getYamlMapper();
+
+	/**
+	 * Returns this scope's immutable TOML parser.
+	 * @return the same mapper on repeated calls within this scope
+	 * @throws IllegalStateException if the scope is closed
+	 */
+	TomlMapper getTomlMapper();
 
 	/**
 	 * Returns the pattern selecting upstream stable release tags with three decimal version components.

@@ -1,7 +1,7 @@
 /** Tooling services for source caching, retention previews and upstream action extraction. */
 module com.holdmyspot.codexunleashed.tooling
 {
-	requires org.tomlj;
+	requires tools.jackson.dataformat.toml;
 	requires io.github.cowwoc.pouch10.core;
 	requires tools.jackson.databind;
 	requires tools.jackson.dataformat.yaml;

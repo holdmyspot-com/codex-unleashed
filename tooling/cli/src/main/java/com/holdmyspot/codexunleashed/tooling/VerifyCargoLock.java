@@ -8,11 +8,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.TreeMap;
-import org.tomlj.Toml;
-import org.tomlj.TomlTable;
-import org.tomlj.TomlArray;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -86,40 +82,36 @@ final class VerifyCargoLock
 
     /**
      * Parses actual TOML before applying cache acceptance semantics, preserving numeric and temporal types.
-     * @param scope borrowed JSON node factory
+     * @param scope borrowed TOML parser
      * @param source immutable input document
      * @return parsed JSON-compatible value tree
      * @throws IOException if malformed or not serializable under the original JSON comparison contract
      */
     private static JsonNode parse(ToolingScope scope, Path source) throws IOException
     {
-        var parsed = Toml.parse(Files.readString(source));
-        if (parsed.hasErrors()) throw new IOException("Invalid TOML: " + parsed.errors());
-        return scope.getJsonMapper().valueToTree(normalize(parsed));
+        JsonNode parsed;
+        try { parsed = scope.getTomlMapper().readTree(Files.readString(source)); }
+        catch (JacksonException failure) { throw new IOException("Invalid TOML: " + failure.getOriginalMessage(), failure); }
+        validate(parsed);
+        return parsed;
     }
 
     /**
-     * Copies parsed containers while refusing temporal and nonfinite values that the original JSON comparison refused.
+     * Refuses temporal and nonfinite values that the original JSON comparison refused, and zero floats because the
+     * TOML parser reports {@code -0.0} and {@code 0.0} identically, so their distinction cannot be verified.
      * @param value parsed TOML value
-     * @return JSON-compatible value retaining integer, floating, boolean and string distinctions
      * @throws IOException if a value cannot participate in the original comparison
      */
-    private static Object normalize(Object value) throws IOException
+    private static void validate(JsonNode value) throws IOException
     {
-        if (value instanceof TomlTable table)
+        if (value.isObject() || value.isArray())
         {
-            Map<String, Object> result = new LinkedHashMap<>();
-            for (var entry : table.entrySet()) result.put(entry.getKey(), normalize(entry.getValue()));
-            return result;
+            for (JsonNode child : value.values()) validate(child);
+            return;
         }
-        if (value instanceof TomlArray array)
-        {
-            var result = new ArrayList<Object>();
-            for (int i = 0; i < array.size(); ++i) result.add(normalize(array.get(i)));
-            return result;
-        }
-        if (value instanceof Double number && !Double.isFinite(number)) throw new IOException("Nonfinite lockfile number");
-        if (value instanceof String || value instanceof Long || value instanceof Double || value instanceof Boolean) return value;
+        if (value.isFloatingPointNumber() && !Double.isFinite(value.doubleValue())) throw new IOException("Nonfinite lockfile number");
+        if (value.isFloatingPointNumber() && value.decimalValue().signum() == 0) throw new IOException("Unverifiable signed zero lockfile number");
+        if (value.isString() || value.isBoolean() || value.isIntegralNumber() || value.isFloatingPointNumber()) return;
         throw new IOException("Unsupported JSON comparison value: " + value);
     }
 

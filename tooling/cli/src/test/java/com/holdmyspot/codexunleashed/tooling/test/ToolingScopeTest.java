@@ -25,10 +25,12 @@ public final class ToolingScopeTest
 			requireThat(first.getNativeLinker() == first.getNativeLinker(), "sharedNativeLinker").isTrue();
 			requireThat(first.getArtifactJsonMapper() == first.getArtifactJsonMapper(), "sharedArtifactMapper").isTrue();
 			requireThat(first.getYamlMapper() == first.getYamlMapper(), "sharedYamlMapper").isTrue();
+			requireThat(first.getTomlMapper() == first.getTomlMapper(), "sharedTomlMapper").isTrue();
 			requireThat(first.getStableReleaseTagPattern() == first.getStableReleaseTagPattern(), "sharedPattern").isTrue();
 			requireThat(first.getJsonMapper() == second.getJsonMapper(), "crossScopeJsonSharing").isFalse();
 			requireThat(first.getArtifactJsonMapper() == second.getArtifactJsonMapper(), "crossScopeArtifactSharing").isFalse();
 			requireThat(first.getYamlMapper() == second.getYamlMapper(), "crossScopeYamlSharing").isFalse();
+			requireThat(first.getTomlMapper() == second.getTomlMapper(), "crossScopeTomlSharing").isFalse();
 			requireThat(first.getStableReleaseTagPattern() == second.getStableReleaseTagPattern(), "crossScopePatternSharing").isFalse();
 		}
 	}
@@ -50,6 +52,7 @@ public final class ToolingScopeTest
 		requireException(IllegalStateException.class, scope::getWindowsFileTimes);
 		requireException(IllegalStateException.class, scope::getArtifactJsonMapper);
 		requireException(IllegalStateException.class, scope::getYamlMapper);
+		requireException(IllegalStateException.class, scope::getTomlMapper);
 		requireException(IllegalStateException.class, scope::getStableReleaseTagPattern);
 	}
 

@@ -2,14 +2,8 @@ package com.holdmyspot.codexunleashed.distribution;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.module.ModuleFinder;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * Assembles the tooling module and its dependencies into a bundled Java runtime.
@@ -49,7 +43,6 @@ public final class DistributionMain
 		Path output = Path.of(args[1]).toAbsolutePath().normalize();
 		if (Files.exists(output))
 			throw new IllegalArgumentException("Runtime output already exists: " + output);
-		modularizeToml(modules);
 		Path jlink = Path.of(System.getProperty("java.home"), "bin", "jlink");
 		if (!Files.isRegularFile(jlink))
 			jlink = jlink.resolveSibling("jlink.exe");
@@ -92,93 +85,6 @@ public final class DistributionMain
 			""".formatted(normalizeLauncher, TOOLING_MODULE, TOOLING_MODULE, TOOLING_MAIN);
 		Files.writeString(output.resolve("bin/codex-tooling"), launcher);
 		Files.createFile(output.resolve(".complete"));
-	}
-
-	/**
-	 * Adds a JDK-generated module descriptor to the staged TOML parser, which the build supplies as an automatic module.
-	 * <p>
-	 * tomlj embeds its ANTLR runtime and requires only {@code java.base}. Its original classes and resources remain
-	 * unchanged, and dependency source and repository artifacts are untouched.
-	 *
-	 * @param modules exclusively owned runtime staging directory
-	 * @throws IOException if the parser is not staged, or descriptor generation, compilation or publication fails
-	 */
-	public static void modularizeToml(Path modules) throws IOException
-	{
-		Path toml = modules.resolve("tomlj-2.2.0.jar");
-		if (!Files.isRegularFile(toml))
-			throw new IOException("The staged pinned TOML parser is required");
-		if (!ModuleFinder.of(toml).findAll().iterator().next().descriptor().isAutomatic())
-			return;
-
-		try (PackagingDirectory scratch = new PackagingDirectory(Files.createTempDirectory(modules.getParent(),
-			"toml-modules-")))
-		{
-			Path generated = scratch.path().resolve("source");
-			runPackagingTool(scratch.path(), "jdeps", "--generate-module-info", generated.toString(), toml.toString());
-			Path compiled = Files.createDirectory(scratch.path().resolve("classes"));
-			runPackagingTool(scratch.path(), "javac", "--release", "27", "-Xlint:all",
-				"--module-source-path", generated.toString(), "--patch-module", "org.tomlj=" + toml,
-				"-d", compiled.toString(), generated.resolve("org.tomlj/module-info.java").toString());
-			Path pending = scratch.path().resolve(toml.getFileName());
-			Files.copy(toml, pending);
-			runPackagingTool(scratch.path(), "jar", "--update", "--file", pending.toString(),
-				"-C", compiled.resolve("org.tomlj").toString(), "module-info.class");
-			// Publish only the complete JAR copy; an uncertain publication fails closed on a retry.
-			Files.move(pending, toml, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-		}
-	}
-
-    /**
-     * Runs an installed JDK packaging operation and retains its actual diagnostic on failure.
-     * @param directory exclusively owned diagnostic directory
-     * @param tool JDK executable name
-     * @param arguments exact tool arguments
-     * @throws IOException if execution or result collection fails
-     */
-    private static void runPackagingTool(Path directory, String tool, String... arguments) throws IOException
-    {
-        Path executable = Path.of(System.getProperty("java.home"), "bin",
-            tool + (File.separatorChar == 92 ? ".exe" : ""));
-        List<String> command = new ArrayList<>(); command.add(executable.toString()); command.addAll(List.of(arguments));
-        try (JlinkDiagnostics diagnostic = new JlinkDiagnostics(Files.createTempFile(directory, tool + "-", ".log")))
-        {
-            ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(diagnostic.path().toFile());
-            try (Process child = builder.start())
-            {
-                int status = child.waitFor();
-                if (status != 0) throw new IOException(tool + " failed with status " + status + ": " + Files.readString(diagnostic.path()));
-                String output = Files.readString(diagnostic.path());
-                if (!output.isEmpty()) System.err.print(output);
-            }
-        }
-        catch (InterruptedException failure)
-        {
-            Thread.currentThread().interrupt(); throw new IOException("Interrupted " + tool + " packaging", failure);
-        }
-    }
-
-	/**
-	 * Owns a packaging staging tree, including incomplete output after a failed tool invocation.
-	 *
-	 * @param path the exclusively owned staging directory
-	 */
-	private record PackagingDirectory(Path path) implements AutoCloseable
-	{
-		/**
-		 * Removes the staging tree while preserving a primary packaging failure through suppression.
-		 *
-		 * @throws IOException if staging cleanup fails
-		 */
-		@Override
-		public void close() throws IOException
-		{
-			try (Stream<Path> paths = Files.walk(path))
-			{
-				for (Path entry : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(entry);
-			}
-		}
 	}
 
 	/**

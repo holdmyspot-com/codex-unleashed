@@ -13,8 +13,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /** Verifies the generated tooling launcher with independent, nonnative Java receiver fixtures. */
 public final class DistributionLauncherTest
 {
-	/** The staged TOML parser, which embeds its ANTLR runtime and has no dependencies. */
-	private static final List<String> TOML_JARS = List.of("tomlj-2.2.0.jar");
+	/** The TOML parser's JAR, which is already an explicit module and needs the other Jackson modules. */
+	private static final String TOML_JAR = "jackson-dataformat-toml-3.3.0.jar";
+	/** The Jackson JARs that the TOML parser requires, which the distribution stages alongside it. */
+	private static final List<String> TOML_DEPENDENCY_JARS = List.of("jackson-core-3.3.0.jar",
+		"jackson-databind-3.3.0.jar", "jackson-annotations-2.23.jar");
 
 	/** Creates independently owned launcher checks. */
 	public DistributionLauncherTest()
@@ -22,31 +25,31 @@ public final class DistributionLauncherTest
 	}
 
     /**
-     * Turns the staged TOML parser into an explicit module that resolves on its own, keeping every original JAR
-     * entry unchanged.
+     * Verifies that the staged TOML parser is an explicit module that resolves with the Jackson modules the
+     * distribution stages alongside it, so the distribution needs no module descriptor generation.
      * <p>
      * Resolution uses the JDK's module system, which jlink also uses; the JDK's own tools are trusted to work as
      * documented, so the test neither links an image nor runs the parser.
      * @throws Exception if module staging, resolution or independent cleanup fails
      */
     @Test
-    public void stagedTomlBecomesExplicitModules() throws Exception
+    public void stagedTomlIsExplicitModule() throws Exception
     {
         try (Directory directory = new Directory())
         {
             Path modules = Files.createDirectory(directory.path.resolve("modules"));
-            for (String jar : TOML_JARS)
+            Files.copy(dependencyJar(TOML_JAR), modules.resolve(TOML_JAR));
+            for (String jar : TOML_DEPENDENCY_JARS)
                 Files.copy(dependencyJar(jar), modules.resolve(jar));
-            java.util.Map<String, java.util.Map<String, String>> original = libraryPayloads(modules);
-            com.holdmyspot.codexunleashed.distribution.DistributionMain.modularizeToml(modules);
-            requireThat(libraryPayloads(modules), "allOriginalLibraryEntries").isEqualTo(original);
-            var finder = java.lang.module.ModuleFinder.of(modules.resolve("tomlj-2.2.0.jar"));
-            for (var reference : finder.findAll())
+            var finder = java.lang.module.ModuleFinder.of(modules);
+            var references = finder.findAll();
+            requireThat(references.size(), "stagedModuleCount").isEqualTo(1 + TOML_DEPENDENCY_JARS.size());
+            for (var reference : references)
                 requireThat(reference.descriptor().isAutomatic(), reference.descriptor().name() + ".isAutomatic()")
                     .isFalse();
             var configuration = ModuleLayer.boot().configuration().resolve(finder,
-                java.lang.module.ModuleFinder.of(), java.util.Set.of("org.tomlj"));
-            requireThat(configuration.modules().size(), "resolvedModuleCount").isEqualTo(1);
+                java.lang.module.ModuleFinder.of(), java.util.Set.of("tools.jackson.dataformat.toml"));
+            requireThat(configuration.modules().size(), "resolvedModuleCount").isEqualTo(references.size());
         }
     }
 
@@ -67,8 +70,6 @@ public final class DistributionLauncherTest
         {
             Path root = directory.path;
             Path modules = Files.createDirectory(root.resolve("modules"));
-            for (String jar : TOML_JARS)
-                Files.copy(dependencyJar(jar), modules.resolve(jar));
             Path fixture = Files.createDirectory(root.resolve("receiver-source"));
             Path receiver = fixture.resolve("Main.java");
             Files.writeString(receiver, """
@@ -209,35 +210,6 @@ public final class DistributionLauncherTest
             requireThat(status, "packagingStatus").isEqualTo(0);
         }
         return Files.readString(stdout);
-    }
-
-    /**
-     * Records all original ZIP entries, excluding only the newly supplied module descriptor.
-     * @param modules owned staged dependencies
-     * @return exact payload hash indexed by artifact and entry
-     * @throws Exception if enumeration or hashing fails
-     */
-    private static java.util.Map<String, java.util.Map<String, String>> libraryPayloads(Path modules) throws Exception
-    {
-        java.util.Map<String, java.util.Map<String, String>> result = new java.util.TreeMap<>();
-        try (var files = Files.list(modules))
-        {
-            for (Path file : files.toList())
-            {
-                java.util.Map<String, String> entries = new java.util.TreeMap<>();
-                try (var jar = new java.util.jar.JarFile(file.toFile()))
-                {
-                    for (var entry : jar.stream().filter(value -> !value.getName().equals("module-info.class")).toList())
-                        try (var input = jar.getInputStream(entry))
-                        {
-                            entries.put(entry.getName(), java.util.HexFormat.of().formatHex(
-                                java.security.MessageDigest.getInstance("SHA-256").digest(input.readAllBytes())));
-                        }
-                }
-                result.put(file.getFileName().toString(), entries);
-            }
-        }
-        return result;
     }
 
 	/** Owns and removes one test's filesystem independently. */

@@ -10,6 +10,8 @@ import java.util.regex.Pattern;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.core.json.JsonWriteFeature;
+import tools.jackson.dataformat.toml.TomlMapper;
+import tools.jackson.dataformat.toml.TomlReadFeature;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
@@ -39,6 +41,9 @@ public final class DefaultToolingScope extends AbstractScope implements ToolingS
 	/** Immutable upstream YAML parser. */
 	private final ConcurrentLazyFactory<YAMLMapper> yaml = ConcurrentLazyFactory.create(
 		() -> YAMLMapper.builder().build(), value -> {});
+	/** Immutable TOML parser, which reports dates and times as temporal values instead of text. */
+	private final ConcurrentLazyFactory<TomlMapper> toml = ConcurrentLazyFactory.create(
+		() -> TomlMapper.builder().enable(TomlReadFeature.PARSE_JAVA_TIME).build(), value -> {});
 	/** Immutable stable-tag selector shared by all retention records in this invocation. */
 	private final ConcurrentLazyFactory<Pattern> stableReleaseTag = ConcurrentLazyFactory.create(
 		() -> Pattern.compile("rust-v[0-9]+\\.[0-9]+\\.[0-9]+"), value -> {});
@@ -90,6 +95,13 @@ public final class DefaultToolingScope extends AbstractScope implements ToolingS
 	{
 		ensureOpen();
 		return artifactJson.getValue();
+	}
+
+	@Override
+	public TomlMapper getTomlMapper()
+	{
+		ensureOpen();
+		return toml.getValue();
 	}
 
 	@Override
