@@ -1,0 +1,88 @@
+From b6135226040444bef0656bac8fdac494dd1715ec Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 9 Nov 2026 18:28:01 -0500
+Subject: [PATCH] WIP: Fix the plain proxy test calls.
+
+---
+ codex-rs/network-proxy/src/http_proxy.rs | 30 +++++-------------------
+ 1 file changed, 6 insertions(+), 24 deletions(-)
+
+diff --git a/codex-rs/network-proxy/src/http_proxy.rs b/codex-rs/network-proxy/src/http_proxy.rs
+index 7e3e8a4..bceecae 100644
+--- a/codex-rs/network-proxy/src/http_proxy.rs
++++ b/codex-rs/network-proxy/src/http_proxy.rs
+@@ -1635,10 +1635,7 @@ mod tests {
+             req.extensions().insert_arc(state.clone());
+ 
+             let response = http_plain_proxy(
+-                /*policy_decider*/ None,
+-                /*environment_id*/ None,
+-                Executor::default(),
+-                req,
++                /*policy_decider*/ None, /*environment_id*/ None, req,
+             )
+             .await
+             .expect("provider-alias policy should return a response");
+@@ -1891,10 +1888,7 @@ mod tests {
+         req.extensions().insert_arc(state);
+ 
+         let response = http_plain_proxy(
+-            /*policy_decider*/ None,
+-            /*environment_id*/ None,
+-            Executor::default(),
+-            req,
++            /*policy_decider*/ None, /*environment_id*/ None, req,
+         )
+         .await
+         .unwrap();
+@@ -1919,10 +1913,7 @@ mod tests {
+         req.extensions().insert_arc(state);
+ 
+         let response = http_plain_proxy(
+-            /*policy_decider*/ None,
+-            /*environment_id*/ None,
+-            Executor::default(),
+-            req,
++            /*policy_decider*/ None, /*environment_id*/ None, req,
+         )
+         .await
+         .unwrap();
+@@ -1956,10 +1947,7 @@ mod tests {
+         req.extensions().insert_arc(state);
+ 
+         let response = http_plain_proxy(
+-            /*policy_decider*/ None,
+-            /*environment_id*/ None,
+-            Executor::default(),
+-            req,
++            /*policy_decider*/ None, /*environment_id*/ None, req,
+         )
+         .await
+         .unwrap();
+@@ -2037,10 +2025,7 @@ mod tests {
+                     .unwrap_err()
+                 } else {
+                     http_plain_proxy(
+-                        /*policy_decider*/ None,
+-                        /*environment_id*/ None,
+-                        Executor::default(),
+-                        req,
++                        /*policy_decider*/ None, /*environment_id*/ None, req,
+                     )
+                     .await
+                     .unwrap()
+@@ -2066,10 +2051,7 @@ mod tests {
+         req.extensions().insert_arc(state);
+ 
+         let response = http_plain_proxy(
+-            /*policy_decider*/ None,
+-            /*environment_id*/ None,
+-            Executor::default(),
+-            req,
++            /*policy_decider*/ None, /*environment_id*/ None, req,
+         )
+         .await;
+         assert_eq!(response.unwrap().status(), StatusCode::BAD_REQUEST);
+-- 
+2.43.0
+
