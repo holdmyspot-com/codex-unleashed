@@ -1,20 +1,16 @@
-From 0eb458aa711a0fb93c0319c1aa958e282e796ccc Mon Sep 17 00:00:00 2001
+From 18cdae0e564f11fbc1c35f353cf1abd9dc2b7dee Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Mon, 9 Nov 2026 00:07:40 -0500
-Subject: [PATCH] WIP: keep schemars 0.8's single-value enums and pass a
- copyable error closure
+Date: Mon, 9 Nov 2026 07:18:17 -0500
+Subject: [PATCH] WIP: keep schemars 0.8's single-value enums
 
 schemars 1 writes single-value enums as const, which the Python SDK
 generator and other schema consumers do not expect; ReplaceConstValue
-restores the enum form. After the upgrades, Rust 1.99's clippy finds
-that the skills executor's read_error closure is Copy, so borrowing it
-for map_err is needless.
+restores the enum form.
 ---
- codex-rs/app-server-protocol/src/export.rs   | 3 +++
- codex-rs/config/src/schema.rs                | 3 +++
- codex-rs/ext/skills/src/provider/executor.rs | 4 ++--
- codex-rs/hooks/src/schema.rs                 | 3 +++
- 4 files changed, 11 insertions(+), 2 deletions(-)
+ codex-rs/app-server-protocol/src/export.rs | 3 +++
+ codex-rs/config/src/schema.rs              | 3 +++
+ codex-rs/hooks/src/schema.rs               | 3 +++
+ 3 files changed, 9 insertions(+)
 
 diff --git a/codex-rs/app-server-protocol/src/export.rs b/codex-rs/app-server-protocol/src/export.rs
 index a1d52d7..1d26946 100644
@@ -61,23 +57,6 @@ index 2a483b2..d6f4d6e 100644
          .into_generator()
          .into_root_schema_for::<ConfigToml>();
      add_shell_environment_policy_constraints(&mut schema);
-diff --git a/codex-rs/ext/skills/src/provider/executor.rs b/codex-rs/ext/skills/src/provider/executor.rs
-index bb16a39..ee1278b 100644
---- a/codex-rs/ext/skills/src/provider/executor.rs
-+++ b/codex-rs/ext/skills/src/provider/executor.rs
-@@ -330,10 +330,10 @@ async fn read_bounded_text(
-     let mut stream = file_system
-         .read_file_stream(path)
-         .await
--        .map_err(&read_error)?;
-+        .map_err(read_error)?;
-     let mut contents = Vec::new();
-     while let Some(chunk) = stream.next().await {
--        let chunk = chunk.map_err(&read_error)?;
-+        let chunk = chunk.map_err(read_error)?;
-         if contents.len().saturating_add(chunk.len()) > MAX_SKILL_RESOURCE_CONTENT_BYTES {
-             return Err(SkillProviderError::new(format!(
-                 "executor skill resource {resource} exceeds {MAX_SKILL_RESOURCE_CONTENT_BYTES} bytes"
 diff --git a/codex-rs/hooks/src/schema.rs b/codex-rs/hooks/src/schema.rs
 index eed791c..7f05b54 100644
 --- a/codex-rs/hooks/src/schema.rs

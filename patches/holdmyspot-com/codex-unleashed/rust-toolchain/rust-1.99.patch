@@ -1,4 +1,4 @@
-From 8eb63714c721ac09df8b1de8d329f411e9ecab45 Mon Sep 17 00:00:00 2001
+From 8a1be5611f11459f48d9bd251da4c616906de290 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:07:55 -0500
 Subject: [PATCH] Build with Rust 1.99.1 so macOS links pass under fatal linker
@@ -35,6 +35,7 @@ Bazel toolchain, setup-windows.ps1 and every workflow's toolchain action.
  .../core/tests/common/apps_test_server.rs     |   2 +-
  codex-rs/diagnostics/src/lib.rs               |   2 +-
  codex-rs/exec-server-protocol/src/protocol.rs |   2 +-
+ codex-rs/ext/skills/src/provider/executor.rs  |   4 +-
  .../otel/tests/suite/otlp_http_loopback.rs    |  42 ++--
  codex-rs/rust-toolchain.toml                  |   2 +-
  codex-rs/scripts/setup-windows.ps1            |   2 +-
@@ -46,7 +47,7 @@ Bazel toolchain, setup-windows.ps1 and every workflow's toolchain action.
  codex-rs/utils/path-uri/src/lib.rs            |   6 +-
  .../stream-parser/src/inline_hidden_tag.rs    |   2 +-
  codex-rs/websocket-auth/src/lib.rs            |   6 +-
- 32 files changed, 179 insertions(+), 177 deletions(-)
+ 33 files changed, 181 insertions(+), 179 deletions(-)
 
 diff --git a/.github/actions/build-bazel-package-binaries/action.yml b/.github/actions/build-bazel-package-binaries/action.yml
 index dd918ba..ae8660b 100644
@@ -652,6 +653,23 @@ index 352a46a..dad1132 100644
                  && !temporary_directories.contains(&path)
              {
                  temporary_directories.push(path);
+diff --git a/codex-rs/ext/skills/src/provider/executor.rs b/codex-rs/ext/skills/src/provider/executor.rs
+index bb16a39..ee1278b 100644
+--- a/codex-rs/ext/skills/src/provider/executor.rs
++++ b/codex-rs/ext/skills/src/provider/executor.rs
+@@ -330,10 +330,10 @@ async fn read_bounded_text(
+     let mut stream = file_system
+         .read_file_stream(path)
+         .await
+-        .map_err(&read_error)?;
++        .map_err(read_error)?;
+     let mut contents = Vec::new();
+     while let Some(chunk) = stream.next().await {
+-        let chunk = chunk.map_err(&read_error)?;
++        let chunk = chunk.map_err(read_error)?;
+         if contents.len().saturating_add(chunk.len()) > MAX_SKILL_RESOURCE_CONTENT_BYTES {
+             return Err(SkillProviderError::new(format!(
+                 "executor skill resource {resource} exceeds {MAX_SKILL_RESOURCE_CONTENT_BYTES} bytes"
 diff --git a/codex-rs/otel/tests/suite/otlp_http_loopback.rs b/codex-rs/otel/tests/suite/otlp_http_loopback.rs
 index 3fd9249..bcd2dc8 100644
 --- a/codex-rs/otel/tests/suite/otlp_http_loopback.rs
