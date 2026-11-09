@@ -2,6 +2,8 @@
 
 Downstream patches to upstream `openai/codex`, generated with `git format-patch`. Each issue directory has a README that names the patch's upstream base, its prerequisites and its verification commands.
 
+A patch never contains a copy of a dependency, whole or vendored, even one changed by a single line. When a fix needs a dependency changed and no release provides it, the dependency stays at its released version and the finding is recorded as accepted (see "Deferred dependency concerns" in [restart-scope.md](../docs/plans/restart-scope.md)).
+
 The release applies these patches in this order:
 
 1. [issue-47/bash-snapshot-replay-startup.patch](holdmyspot-com/codex-unleashed/issue-47/bash-snapshot-replay-startup.patch)
@@ -38,4 +40,3 @@ The release applies these patches in this order:
 32. [dependency-upgrades/serde-saphyr.patch](holdmyspot-com/codex-unleashed/dependency-upgrades/serde-saphyr.patch)
 33. [dependency-upgrades/release-adaptations.patch](holdmyspot-com/codex-unleashed/dependency-upgrades/release-adaptations.patch)
 34. [dependency-upgrades/transitive-updates.patch](holdmyspot-com/codex-unleashed/dependency-upgrades/transitive-updates.patch)
-35. [dependency-upgrades/sqlx-sqlite-libsqlite3-0.39.patch](holdmyspot-com/codex-unleashed/dependency-upgrades/sqlx-sqlite-libsqlite3-0.39.patch)
