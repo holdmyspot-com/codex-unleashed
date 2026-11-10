@@ -19,8 +19,8 @@ dropped the mock server, whose unmet-expectation panic replaced the real
   one reported.
 ---
  .../tests/common/test_app_server.rs           |  24 +-
- codex-rs/cli/tests/rollout_trace.rs           | 272 ++++++++++--------
- 2 files changed, 173 insertions(+), 123 deletions(-)
+ codex-rs/cli/tests/rollout_trace.rs           | 283 ++++++++++--------
+ 2 files changed, 184 insertions(+), 123 deletions(-)
 
 diff --git a/codex-rs/app-server/tests/common/test_app_server.rs b/codex-rs/app-server/tests/common/test_app_server.rs
 index bec5909..13f542c 100644
@@ -116,10 +116,13 @@ index bec5909..13f542c 100644
          app_server._owned_codex_home = owned_codex_home;
          app_server._delayed_exec_server = delayed_exec_server;
 diff --git a/codex-rs/cli/tests/rollout_trace.rs b/codex-rs/cli/tests/rollout_trace.rs
-index c9bfeb2..cf6b516 100644
+index c9bfeb2..79bc996 100644
 --- a/codex-rs/cli/tests/rollout_trace.rs
 +++ b/codex-rs/cli/tests/rollout_trace.rs
-@@ -3,7 +3,7 @@
+@@ -1,9 +1,10 @@
+ //! Exercise trace acceptance through the CLI app-server and its offline reducer.
+ 
++use anyhow::Context;
  use anyhow::Result;
  use app_test_support::MockResponsesConfig;
  use app_test_support::TestAppServer;
@@ -128,7 +131,7 @@ index c9bfeb2..cf6b516 100644
  use codex_app_server_protocol::AgentMessageDeltaNotification;
  use codex_app_server_protocol::ClientRequest;
  use codex_app_server_protocol::ThreadStartParams;
-@@ -24,134 +24,167 @@ use core_test_support::streaming_sse::StreamingSseChunk;
+@@ -24,134 +25,177 @@ use core_test_support::streaming_sse::StreamingSseChunk;
  use core_test_support::streaming_sse::start_streaming_sse_server;
  use pretty_assertions::assert_eq;
  use serde_json::json;
@@ -321,7 +324,10 @@ index c9bfeb2..cf6b516 100644
 -        );
 +    // Exercise the exported artifact, not just an in-process reducer call.
 +    // There is no following request to prove acceptance of this final item.
-+    let bundle = std::fs::read_dir(traces.path())?.next().unwrap()?.path();
++    let bundle = std::fs::read_dir(traces.path())?
++        .next()
++        .context("trace bundle")??
++        .path();
 +    let reduced = tokio::process::Command::new(&codex)
 +        .env("CODEX_HOME", home.path())
 +        .args(["debug", "trace-reduce"])
@@ -335,7 +341,11 @@ index c9bfeb2..cf6b516 100644
 +    );
 +    let rollout: RolloutTrace =
 +        serde_json::from_reader(std::fs::File::open(bundle.join("state.json"))?)?;
-+    let call = rollout.inference_calls.values().next().unwrap();
++    let call = rollout
++        .inference_calls
++        .values()
++        .next()
++        .context("inference call")?;
 +    let output_id = &call.response_item_ids[0];
 +    let output = &rollout.conversation_items[output_id];
 +    let mut expected = call.request_item_ids.clone();
@@ -358,11 +368,14 @@ index c9bfeb2..cf6b516 100644
 +    if let Some(source_id) = source_id {
 +        assert_eq!(output.responses_item_id.as_deref(), Some(source_id));
      }
-+    let requests = server.received_requests().await.unwrap();
++    let requests = server
++        .received_requests()
++        .await
++        .context("request recording")?;
 +    let mut response_requests = requests
 +        .iter()
 +        .filter(|request| request.url.path().ends_with("/responses"));
-+    let request = response_requests.next().unwrap();
++    let request = response_requests.next().context("responses request")?;
 +    assert!(response_requests.next().is_none());
 +    assert_eq!(
 +        request.headers["x-codex-inference-call-id"].to_str()?,
@@ -414,7 +427,7 @@ index c9bfeb2..cf6b516 100644
  #[tokio::test]
  async fn accepted_output_survives_interruption_and_shutdown() -> Result<()> {
      let codex = codex_utils_cargo_bin::cargo_bin("codex")?;
-@@ -182,6 +215,7 @@ async fn accepted_output_survives_interruption_and_shutdown() -> Result<()> {
+@@ -182,6 +226,7 @@ async fn accepted_output_survives_interruption_and_shutdown() -> Result<()> {
          .with_args(&["app-server"])
          .with_codex_home(home.path())
          .with_env_overrides(&[("CODEX_ROLLOUT_TRACE_ROOT", traces.path().to_str())])
