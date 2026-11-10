@@ -89,6 +89,7 @@ jobs:
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           cp restart-metadata/.github/scripts/fail-on-cargo-warnings.sh "$RUNNER_TEMP/fail-on-cargo-warnings.sh"
+          cp restart-metadata/.github/scripts/check-test-skips.py "$RUNNER_TEMP/check-test-skips.py"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
@@ -164,7 +165,12 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -y
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex strace
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex strace zsh
+          # Tests skip themselves when a shell or interpreter is missing, so assert each one here.
+          zsh --version
+          /bin/zsh --version
+          python3 --version
+          bwrap --version
           mkdir -p "$RUNNER_TEMP/baseline-test-cargo-home"
           printf 'CARGO_HOME=%s\n' "$RUNNER_TEMP/baseline-test-cargo-home" >> "$GITHUB_ENV"
 
@@ -249,6 +255,22 @@ jobs:
           cargo build --target x86_64-unknown-linux-gnu --profile ci-test \
             -p codex-linux-sandbox -p codex-bwrap --bin codex-linux-sandbox --bin bwrap \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/test-helper-build.log"
+
+      # Mirrors upstream's rust-ci-full-nextest-platform.yml: the debug codex binary runs `codex exec-server` in a
+      # privileged ubuntu container, and the one nextest run below executes with the remote environment selected.
+      - name: Set up the remote test environment (Docker)
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo build -p codex-cli --bin codex
+          export CODEX_TEST_REMOTE_ENV_CONTAINER_NAME="codex-remote-test-env-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          source "${GITHUB_WORKSPACE}/scripts/test-remote-env.sh"
+          {
+            echo "CODEX_TEST_ENVIRONMENT=${CODEX_TEST_ENVIRONMENT}"
+            echo "CODEX_TEST_REMOTE_ENV=${CODEX_TEST_REMOTE_ENV}"
+            echo "CODEX_TEST_REMOTE_ENV_CONTAINER_NAME=${CODEX_TEST_REMOTE_ENV_CONTAINER_NAME}"
+            echo "CODEX_TEST_REMOTE_EXEC_SERVER_URL=${CODEX_TEST_REMOTE_EXEC_SERVER_URL}"
+          } >> "$GITHUB_ENV"
 
       - name: Build one unchanged archive for the environment comparison
         id: archive
@@ -386,11 +408,15 @@ jobs:
           disk_monitor=$!
           trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
           cargo-nextest --version | tee "$RUNNER_TEMP/baseline-test-evidence/nextest-version.txt"
+          # Keep passing tests' output in the JUnit report, where the skip check reads it, instead of the log.
+          printf '%s\n' '[profile.default.junit]' 'store-success-output = true' 'store-failure-output = true' \
+            > "$RUNNER_TEMP/nextest-keep-output.toml"
           helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
           if [[ "$BASELINE_ARCHIVE_COMPARE" == true ]]; then
             nextest_args=(run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate)
           else
-            nextest_args=(run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast --timings)
+            nextest_args=(run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast --timings
+              --tool-config-file "keep-output:$RUNNER_TEMP/nextest-keep-output.toml")
             for package in $BASELINE_TEST_PACKAGE; do nextest_args+=(-p "$package"); done
           fi
           if [[ -n "$BASELINE_TEST_FILTER" ]]; then
@@ -400,6 +426,17 @@ jobs:
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
             cargo-nextest nextest "${nextest_args[@]}" \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/nextest.log"
+
+      - name: Fail on skips caused by missing test setup
+        if: ${{ !cancelled() && steps.native_tests.outcome != 'skipped' && !inputs.compare_upstream_image && !inputs.trace_shell_startup }}
+        run: |
+          set -euo pipefail
+          reports=()
+          for directory in "$CARGO_TARGET_DIR/nextest" "$GITHUB_WORKSPACE/codex-rs/target/nextest"; do
+            if [[ -d "$directory" ]]; then reports+=("$directory"); fi
+          done
+          python3 "$RUNNER_TEMP/check-test-skips.py" --platform linux "${reports[@]}" \
+            2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/skip-check.log"
 
       - name: Record the accepted snapshot changes
         if: always() && inputs.accept_snapshots
@@ -574,6 +611,12 @@ jobs:
             fi
           done
           exit "$comparison_result"
+
+      - name: Remove the remote test environment
+        if: always()
+        env:
+          REMOTE_ENV_CONTAINER: codex-remote-test-env-${{ github.run_id }}-${{ github.run_attempt }}
+        run: docker rm -f "$REMOTE_ENV_CONTAINER" || true
 
       - name: Verify the tested source matches its upstream and patch commits
         if: always()
