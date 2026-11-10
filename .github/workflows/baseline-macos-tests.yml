@@ -143,6 +143,14 @@ jobs:
         with:
           target: ${{ matrix.target }}
 
+      # voice-host links GStreamer through pkg-config, which the hosted macOS image does not provide.
+      - name: Install the GStreamer development libraries that voice-host links
+        run: |
+          set -euo pipefail
+          brew install pkgconf gstreamer gst-plugins-base
+          pkg-config --modversion gstreamer-1.0 gstreamer-app-1.0 gstreamer-audio-1.0
+          printf 'PKG_CONFIG_PATH=%s\n' "$(brew --prefix)/lib/pkgconfig:$(brew --prefix)/share/pkgconfig" >> "$GITHUB_ENV"
+
       - name: Read upstream's pinned Rust toolchain
         id: upstream-rust
         run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
