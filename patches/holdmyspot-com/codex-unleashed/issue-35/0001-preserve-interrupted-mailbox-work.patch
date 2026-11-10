@@ -1,4 +1,4 @@
-From 94cb6f611ec3393452c7e9c00e67738d1e17cd12 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:16:27 -0500
 Subject: [PATCH] Preserve mailbox work across interrupted task starts
@@ -745,7 +745,7 @@ index 21d31dd..1d6b8f0 100644
      use super::*;
 diff --git a/codex-rs/core/src/session/mailbox_retention_tests.rs b/codex-rs/core/src/session/mailbox_retention_tests.rs
 new file mode 100644
-index 0000000..9385182
+index 0000000..4de0b1e
 --- /dev/null
 +++ b/codex-rs/core/src/session/mailbox_retention_tests.rs
 @@ -0,0 +1,64 @@
@@ -764,7 +764,7 @@ index 0000000..9385182
 +        codex_protocol::AgentPath::root(),
 +        Vec::new(),
 +        "finished".to_string(),
-+        true,
++        /*trigger_turn*/ true,
 +    );
 +    if !explicit {
 +        mail.wake_policy = codex_protocol::MailboxWakePolicy::UnlessInterrupted;
@@ -850,7 +850,7 @@ index 0fe0fea..21d33b3 100644
      pub(crate) has_memory_citation: bool,
 diff --git a/codex-rs/core/src/tasks/mailbox_wake_tests.rs b/codex-rs/core/src/tasks/mailbox_wake_tests.rs
 new file mode 100644
-index 0000000..3fcc163
+index 0000000..9ec4165
 --- /dev/null
 +++ b/codex-rs/core/src/tasks/mailbox_wake_tests.rs
 @@ -0,0 +1,244 @@
@@ -896,7 +896,7 @@ index 0000000..3fcc163
 +        AgentPath::root(),
 +        Vec::new(),
 +        "finished".to_string(),
-+        true,
++        /*trigger_turn*/ true,
 +    );
 +    mail.wake_policy = MailboxWakePolicy::UnlessInterrupted;
 +    let turn_state = {
@@ -1008,7 +1008,7 @@ index 0000000..3fcc163
 +        AgentPath::root(),
 +        Vec::new(),
 +        "finished".to_string(),
-+        true,
++        /*trigger_turn*/ true,
 +    );
 +    mail.wake_policy = MailboxWakePolicy::UnlessInterrupted;
 +    let unrelated = InterAgentCommunication::new(
@@ -1099,7 +1099,7 @@ index 0000000..3fcc163
 +    );
 +}
 diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
-index 2d2f7e6..40b65a9 100644
+index 2d2f7e6..014e7bd 100644
 --- a/codex-rs/core/src/tasks/mod.rs
 +++ b/codex-rs/core/src/tasks/mod.rs
 @@ -281,16 +281,34 @@ impl Session {
@@ -1112,7 +1112,7 @@ index 2d2f7e6..40b65a9 100644
 +        input: Vec<TurnInput>,
 +        task: T,
 +    ) {
-+        self.start_task_with_reservation(turn_context, input, task, None)
++        self.start_task_with_reservation(turn_context, input, task, /*reservation*/ None)
 +            .await;
 +    }
 +

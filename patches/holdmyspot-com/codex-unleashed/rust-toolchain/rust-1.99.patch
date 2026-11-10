@@ -1,4 +1,4 @@
-From 171813b3b304767020f965de23f575a9d1cfdf62 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:07:55 -0500
 Subject: [PATCH] Build with Rust 1.99.1 so macOS links pass under fatal linker
@@ -1867,10 +1867,10 @@ index 9123904..970e55e 100644
          .await??;
          app.chat_widget.handle_key_event(KeyCode::Up.into());
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index b4e6acb..284e2e1 100644
+index 5845b3e..2d9a3e4 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -2118,7 +2118,7 @@ async fn older_external_server_starts_without_unsupported_dynamic_tools_or_histo
+@@ -2122,7 +2122,7 @@ async fn older_external_server_starts_without_unsupported_dynamic_tools_or_histo
  
      let starts = recorded_params(&requests, "thread/start");
      assert_eq!(starts.len(), 6);

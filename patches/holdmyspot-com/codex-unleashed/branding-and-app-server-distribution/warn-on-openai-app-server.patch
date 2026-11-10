@@ -1,4 +1,4 @@
-From ee930652ff4bf1a168a8efeda7887224ffc36efd Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 11:21:56 -0500
 Subject: [PATCH] Identify server distribution and order Unleashed versions
@@ -86,7 +86,7 @@ index 0000000..b5da90f
 +  Use /daemon to manage the local background server.
 +  Updating may interrupt active or queued work.
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index f459fa3..f761676 100644
+index f459fa3..f3765a9 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
 @@ -100,6 +100,35 @@ fn local_daemon_version_notice_snapshot() {
@@ -111,22 +111,22 @@ index f459fa3..f761676 100644
 +    let (notice, _) = crate::status::remote_connection::pending_server_version_notice(
 +        &settings,
 +        &target,
-+        None,
++        /*server_home*/ None,
 +        "0.160.0+39",
 +        Some("0.160.0"),
-+        None,
++        /*last_shown*/ None,
 +    )
 +    .unwrap();
 +    assert!(notice.message.contains("OpenAI"));
 +    let cell = new_server_version_warning(notice);
-+    insta::assert_snapshot!(render_lines(&cell.transcript_lines(100)).join("\n"));
++    insta::assert_snapshot!(render_lines(&cell.transcript_lines(/*width*/ 100)).join("\n"));
 +}
 +
  async fn test_config() -> Config {
      let codex_home = std::env::temp_dir();
      ConfigBuilder::default()
 diff --git a/codex-rs/tui/src/status/remote_connection.rs b/codex-rs/tui/src/status/remote_connection.rs
-index 2ee0395..546dcbc 100644
+index 2ee0395..9695fd8 100644
 --- a/codex-rs/tui/src/status/remote_connection.rs
 +++ b/codex-rs/tui/src/status/remote_connection.rs
 @@ -52,8 +52,28 @@ pub(crate) fn remote_connection_status_value(
@@ -199,7 +199,7 @@ index 2ee0395..546dcbc 100644
 +            server_version_notice("0.160.0+39", Some("0.160.0+39")),
 +            None
 +        );
-+        assert_eq!(server_version_notice("0.160.0+39", None), None);
++        assert_eq!(server_version_notice("0.160.0+39", /*server*/ None), None);
 +        assert_eq!(server_version_notice("0.160.0+39", Some("unknown")), None);
 +        assert!(
 +            server_version_notice("0.160.0+dev", Some("0.160.0"))

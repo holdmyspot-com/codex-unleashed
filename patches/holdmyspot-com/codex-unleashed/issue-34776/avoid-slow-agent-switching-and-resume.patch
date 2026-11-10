@@ -1,4 +1,4 @@
-From 9f1f757f7787d5bf760211a90f6bfa0d4d6d3f0d Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:04:02 -0500
 Subject: [PATCH] Keep history replay and subagent switches responsive
@@ -10,7 +10,7 @@ Subject: [PATCH] Keep history replay and subagent switches responsive
  codex-rs/tui/src/app/session_lifecycle.rs     |   4 +-
  codex-rs/tui/src/app/tests.rs                 |   2 +-
  .../app/tests/pagination_completion_tests.rs  |  15 ++
- .../app/tests/session_lifecycle_requests.rs   | 209 ++++++++++++++++++
+ .../app/tests/session_lifecycle_requests.rs   | 213 ++++++++++++++++++
  .../src/app/tests/streaming_interleave_e2e.rs |   2 +-
  codex-rs/tui/src/app/thread_events.rs         |  29 ++-
  codex-rs/tui/src/app/thread_routing.rs        |  13 +-
@@ -19,7 +19,7 @@ Subject: [PATCH] Keep history replay and subagent switches responsive
  codex-rs/tui/src/inline_visualization.rs      |  12 +
  .../tui/src/inline_visualization_tests.rs     |  59 +++++
  codex-rs/tui/src/thread_transcript.rs         |  14 +-
- 15 files changed, 480 insertions(+), 10 deletions(-)
+ 15 files changed, 484 insertions(+), 10 deletions(-)
 
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
 index bced3b6..510393e 100644
@@ -141,10 +141,10 @@ index ec7d8b4..f6a2b3f 100644
              Some(thread_id),
              &app.config.cwd,
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index f781208..b4e6acb 100644
+index f781208..5845b3e 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -1203,6 +1203,215 @@ fn spawn_approved_task_tool_call(
+@@ -1203,6 +1203,219 @@ fn spawn_approved_task_tool_call(
      });
  }
  
@@ -248,8 +248,12 @@ index f781208..b4e6acb 100644
 +        )
 +        .map_err(|err| color_eyre::eyre::eyre!("failed to create child rollout: {err}"))?,
 +    )?;
-+    let (mut app_server, _requests, proxy) =
-+        start_recording_app_server(&app.config, None, None).await?;
++    let (mut app_server, _requests, proxy) = start_recording_app_server(
++        &app.config,
++        /*blocked_thread_list*/ None,
++        /*failed_thread_name*/ None,
++    )
++    .await?;
 +    let root = app_server
 +        .resume_thread(
 +            &app.local_settings,

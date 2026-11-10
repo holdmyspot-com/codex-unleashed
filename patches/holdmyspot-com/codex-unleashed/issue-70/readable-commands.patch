@@ -1,4 +1,4 @@
-From 46dc994da76c5782573bf22acb08e84e445635b8 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:41:04 -0500
 Subject: [PATCH] Keep command previews readable and expandable
@@ -10,27 +10,27 @@ Collapsed command previews keep executable names and arguments visible, shorteni
  codex-rs/features/src/tests.rs                |  15 +
  .../tui/src/chatwidget/command_lifecycle.rs   |  27 +-
  codex-rs/tui/src/chatwidget/tests/helpers.rs  |   5 +
- .../chatwidget/tests/history_projection.rs    |  86 +++++
- codex-rs/tui/src/exec_cell/compact.rs         |  40 +++
+ .../chatwidget/tests/history_projection.rs    |  86 ++++
+ codex-rs/tui/src/exec_cell/compact.rs         |  40 ++
  codex-rs/tui/src/exec_cell/mod.rs             |   2 +
  codex-rs/tui/src/exec_cell/model.rs           |  35 +-
- codex-rs/tui/src/exec_cell/preview.rs         | 224 ++++++++++++
- codex-rs/tui/src/exec_cell/readable.rs        |  80 +++++
- codex-rs/tui/src/exec_cell/render.rs          |  21 ++
+ codex-rs/tui/src/exec_cell/preview.rs         | 227 +++++++++++
+ codex-rs/tui/src/exec_cell/readable.rs        |  80 ++++
+ codex-rs/tui/src/exec_cell/render.rs          |  21 +
  codex-rs/tui/src/exec_cell/transcript.rs      |  18 +-
  .../tui/src/terminal_hyperlinks/source.rs     |   4 +
  codex-rs/tui/src/thread_transcript.rs         |  17 +-
  codex-rs/tui/src/thread_transcript/tools.rs   |  20 +-
- .../tui/src/thread_transcript/tools_tests.rs  |  78 ++++-
+ .../tui/src/thread_transcript/tools_tests.rs  |  78 +++-
  codex-rs/tui/src/transcript_view.rs           |  14 +-
  codex-rs/tui/src/transcript_view/commands.rs  |  92 +++++
  .../tui/src/transcript_view/disclosure.rs     |   2 +-
  codex-rs/tui/src/transcript_view/footer.rs    |   7 +
  codex-rs/tui/src/transcript_view/input.rs     |   8 +
- codex-rs/tui/src/transcript_view/layout.rs    |  40 ++-
+ codex-rs/tui/src/transcript_view/layout.rs    |  40 +-
  codex-rs/tui/src/transcript_view/text.rs      |  37 ++
- codex-rs/tui/src/transcript_view_tests.rs     | 327 ++++++++++++++++++
- 25 files changed, 1201 insertions(+), 12 deletions(-)
+ codex-rs/tui/src/transcript_view_tests.rs     | 385 ++++++++++++++++++
+ 25 files changed, 1262 insertions(+), 12 deletions(-)
  create mode 100644 codex-rs/tui/src/exec_cell/preview.rs
  create mode 100644 codex-rs/tui/src/exec_cell/readable.rs
  create mode 100644 codex-rs/tui/src/transcript_view/commands.rs
@@ -196,7 +196,7 @@ index 6b41a66..cd548fe 100644
                      self.request_redraw();
                  } else {
 diff --git a/codex-rs/tui/src/chatwidget/tests/helpers.rs b/codex-rs/tui/src/chatwidget/tests/helpers.rs
-index 8133b91..965ad7b 100644
+index 6d4eb7d..cde6ee0 100644
 --- a/codex-rs/tui/src/chatwidget/tests/helpers.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/helpers.rs
 @@ -26,6 +26,11 @@ pub(super) async fn test_config() -> (tempfile::TempDir, Config) {
@@ -212,7 +212,7 @@ index 8133b91..965ad7b 100644
  }
  
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_projection.rs b/codex-rs/tui/src/chatwidget/tests/history_projection.rs
-index edd451f..9d14cd2 100644
+index edd451f..c187947 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_projection.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_projection.rs
 @@ -387,3 +387,89 @@ fn take_history_cells(
@@ -224,7 +224,7 @@ index edd451f..9d14cd2 100644
 +async fn readable_command_preview_protocol_source_survives_live_and_replay() {
 +    let original = "'/plugins/CAT path/very/long/cache/bin/run-part' <<'EOF'\nprintf '%s\\n' 'a b' > '/reports/long path/result.txt'\nEOF\n";
 +    for enabled in [true, false] {
-+        let (mut chat, mut rx, _ops) = make_chatwidget_manual(None).await;
++        let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
 +        if enabled {
 +            chat.config
 +                .features
@@ -249,7 +249,7 @@ index edd451f..9d14cd2 100644
 +            duration_ms: None,
 +        };
 +        let check = |cell: &dyn HistoryCell| {
-+            let lines = cell.compact_hyperlink_lines(48);
++            let lines = cell.compact_hyperlink_lines(/*width*/ 48);
 +            let sources: Vec<_> = lines
 +                .iter()
 +                .filter_map(|line| line.source.as_ref())
@@ -306,7 +306,7 @@ index edd451f..9d14cd2 100644
 +    }
 +}
 diff --git a/codex-rs/tui/src/exec_cell/compact.rs b/codex-rs/tui/src/exec_cell/compact.rs
-index c4dcf63..0619741 100644
+index c4dcf63..4628298 100644
 --- a/codex-rs/tui/src/exec_cell/compact.rs
 +++ b/codex-rs/tui/src/exec_cell/compact.rs
 @@ -66,6 +66,9 @@ impl ExecCell {
@@ -342,11 +342,11 @@ index c4dcf63..0619741 100644
 +            ],
 +            Vec::new(),
 +            CommandExecutionSource::Agent,
-+            None,
-+            false,
++            /*interaction_input*/ None,
++            /*animations_enabled*/ false,
 +        );
-+        let cell = cell.with_readable_commands(true);
-+        let lines = cell.compact_command_lines(48);
++        let cell = cell.with_readable_commands(/*enabled*/ true);
++        let lines = cell.compact_command_lines(/*width*/ 48);
 +        let text = lines
 +            .iter()
 +            .map(|line| line.line.to_string())
@@ -447,10 +447,10 @@ index 47c0b38..be78de8 100644
  
 diff --git a/codex-rs/tui/src/exec_cell/preview.rs b/codex-rs/tui/src/exec_cell/preview.rs
 new file mode 100644
-index 0000000..8b6b442
+index 0000000..6e91c68
 --- /dev/null
 +++ b/codex-rs/tui/src/exec_cell/preview.rs
-@@ -0,0 +1,224 @@
+@@ -0,0 +1,227 @@
 +//! Shell-source previews that preserve argument boundaries and executable filenames.
 +
 +use codex_shell_command::bash::try_parse_shell;
@@ -629,7 +629,7 @@ index 0000000..8b6b442
 +    #[test]
 +    fn readable_command_preview_fitting_paths_and_invalid_syntax_remain_literal() {
 +        for source in ["/usr/bin/echo 'a b'", "printf '%s\\n' 'unterminated"] {
-+            assert_eq!(text(&command_preview(source, 100)), source);
++            assert_eq!(text(&command_preview(source, /*width*/ 100)), source);
 +        }
 +    }
 +
@@ -637,11 +637,11 @@ index 0000000..8b6b442
 +    fn readable_command_preview_same_basename_keeps_leading_identity() {
 +        let first = text(&command_preview(
 +            "/alpha/really/long/cache/bin/codex --help",
-+            28,
++            /*width*/ 28,
 +        ));
 +        let second = text(&command_preview(
 +            "/bravo/really/long/cache/bin/codex --help",
-+            28,
++            /*width*/ 28,
 +        ));
 +        assert_ne!(first, second);
 +        assert!(first.contains("codex"));
@@ -651,15 +651,18 @@ index 0000000..8b6b442
 +    #[test]
 +    fn readable_command_preview_shell_structure_and_oversized_argument_remain_inspectable() {
 +        let source = "run-part <<'EOF'\nprintf '%s\\n' 'a b'\ngit diff --stat\nEOF";
-+        assert_eq!(text(&command_preview(source, 100)), source);
++        assert_eq!(text(&command_preview(source, /*width*/ 100)), source);
 +        let argument = "abcdefghijklmnopqrstuvwxyz0123456789";
-+        let rendered = text(&command_preview(&format!("echo {argument}"), 12));
++        let rendered = text(&command_preview(
++            &format!("echo {argument}"),
++            /*width*/ 12,
++        ));
 +        assert!(rendered.replace('\n', "").contains(argument));
 +    }
 +
 +    #[test]
 +    fn readable_command_preview_styles_executable_and_directories_without_losing_plain_text() {
-+        let lines = command_preview("/usr/bin/echo --verbose", 80);
++        let lines = command_preview("/usr/bin/echo --verbose", /*width*/ 80);
 +        assert_eq!(text(&lines), "/usr/bin/echo --verbose");
 +        assert!(
 +            lines
@@ -762,7 +765,7 @@ index 0000000..e358f9d
 +    }
 +}
 diff --git a/codex-rs/tui/src/exec_cell/render.rs b/codex-rs/tui/src/exec_cell/render.rs
-index a24f89e..5af166a 100644
+index 76965eb..e82d781 100644
 --- a/codex-rs/tui/src/exec_cell/render.rs
 +++ b/codex-rs/tui/src/exec_cell/render.rs
 @@ -225,6 +225,13 @@ impl HistoryCell for ExecCell {
@@ -910,7 +913,7 @@ index d3d531d..c009314 100644
                          config.is_some_and(Config::collapsed_tool_activity_enabled),
                      );
 diff --git a/codex-rs/tui/src/thread_transcript/tools.rs b/codex-rs/tui/src/thread_transcript/tools.rs
-index 14fe7b1..78c0f5c 100644
+index 14fe7b1..f592238 100644
 --- a/codex-rs/tui/src/thread_transcript/tools.rs
 +++ b/codex-rs/tui/src/thread_transcript/tools.rs
 @@ -118,6 +118,7 @@ fn replay_command_args(command: &str) -> Option<Vec<String>> {
@@ -925,7 +928,7 @@ index 14fe7b1..78c0f5c 100644
  
  impl CommandHistory {
      pub(crate) fn from_item(item: ThreadItemPayload) -> Option<Self> {
-+        Self::from_item_with_readable_commands(item, false)
++        Self::from_item_with_readable_commands(item, /*readable*/ false)
 +    }
 +
 +    /// Retain noncanonical source for presentation only when readable commands are enabled.
@@ -955,14 +958,14 @@ index 14fe7b1..78c0f5c 100644
              /*animations_enabled*/ false,
          );
 +        if let Some(original) = self.original_command {
-+            cell = cell.with_readable_commands(true);
++            cell = cell.with_readable_commands(/*enabled*/ true);
 +            cell.retain_command_source(&self.id, original);
 +        }
          let completed = cell.complete_call(&self.id, output, self.duration);
          debug_assert!(completed, "new exec cell should contain {}", self.id);
          cell
 diff --git a/codex-rs/tui/src/thread_transcript/tools_tests.rs b/codex-rs/tui/src/thread_transcript/tools_tests.rs
-index 0d7a4ff..10f8050 100644
+index 13149cb..bc9ce57 100644
 --- a/codex-rs/tui/src/thread_transcript/tools_tests.rs
 +++ b/codex-rs/tui/src/thread_transcript/tools_tests.rs
 @@ -351,7 +351,7 @@ async fn unleashed_collapsed_tool_activity_resume_retains_commands_output_and_fa
@@ -1029,7 +1032,7 @@ index 0d7a4ff..10f8050 100644
 +                .expect("fixture permits legacy summary rendering");
 +        }
 +        let cells = thread_items_to_transcript_cells(
-+            None,
++            /*thread_id*/ None,
 +            &test_path_buf("/workspace").abs(),
 +            items.clone(),
 +            RawReasoningVisibility::Hidden,
@@ -1038,7 +1041,7 @@ index 0d7a4ff..10f8050 100644
 +        assert_eq!(cells.len(), 1);
 +        assert_eq!(cells[0].activity_ids().len(), 3);
 +        let compact = cells[0]
-+            .display_lines(80)
++            .display_lines(/*width*/ 80)
 +            .iter()
 +            .map(ToString::to_string)
 +            .collect::<Vec<_>>()
@@ -1052,7 +1055,7 @@ index 0d7a4ff..10f8050 100644
 +            assert!(!compact.contains("output line"));
 +        }
 +        let expanded = cells[0]
-+            .transcript_lines(80)
++            .transcript_lines(/*width*/ 80)
 +            .iter()
 +            .map(ToString::to_string)
 +            .collect::<Vec<_>>()
@@ -1110,7 +1113,7 @@ index 80b5958..02084ad 100644
              && self
 diff --git a/codex-rs/tui/src/transcript_view/commands.rs b/codex-rs/tui/src/transcript_view/commands.rs
 new file mode 100644
-index 0000000..5cc1a72
+index 0000000..b342ac4
 --- /dev/null
 +++ b/codex-rs/tui/src/transcript_view/commands.rs
 @@ -0,0 +1,92 @@
@@ -1131,7 +1134,7 @@ index 0000000..5cc1a72
 +        let visible = self.visible.get(usize::from(point.y - self.area.y))?;
 +        let end = visible.layout.command_source_end?;
 +        if (visible.layout.separated && visible.row == 0)
-+            || visible.layout.position_at(visible.row, 0) > end
++            || visible.layout.position_at(visible.row, /*column*/ 0) > end
 +            || visible.activity_ids.is_empty()
 +        {
 +            return None;
@@ -1207,7 +1210,7 @@ index 0000000..5cc1a72
 +    }
 +}
 diff --git a/codex-rs/tui/src/transcript_view/disclosure.rs b/codex-rs/tui/src/transcript_view/disclosure.rs
-index ba49496..4f80890 100644
+index c0ce70b..40858fd 100644
 --- a/codex-rs/tui/src/transcript_view/disclosure.rs
 +++ b/codex-rs/tui/src/transcript_view/disclosure.rs
 @@ -329,7 +329,7 @@ impl TranscriptView {
@@ -1438,10 +1441,10 @@ index 1164f1c..3c857d5 100644
              leading_blank_hidden: false,
              disclosure_control: None,
 diff --git a/codex-rs/tui/src/transcript_view_tests.rs b/codex-rs/tui/src/transcript_view_tests.rs
-index 1b127cb..4d4a3ea 100644
+index e8510a7..46cd92d 100644
 --- a/codex-rs/tui/src/transcript_view_tests.rs
 +++ b/codex-rs/tui/src/transcript_view_tests.rs
-@@ -182,6 +182,245 @@ fn detailed_only_reasoning_separates_user_prompts() {
+@@ -182,6 +182,275 @@ fn detailed_only_reasoning_separates_user_prompts() {
      );
  }
  
@@ -1452,21 +1455,21 @@ index 1b127cb..4d4a3ea 100644
 +        vec!["echo".into(), "retained command".into()],
 +        Vec::new(),
 +        codex_app_server_protocol::CommandExecutionSource::Agent,
-+        None,
-+        false,
++        /*interaction_input*/ None,
++        /*animations_enabled*/ false,
 +    );
-+    command = command.with_readable_commands(true);
++    command = command.with_readable_commands(/*enabled*/ true);
 +    assert!(command.complete_call(
 +        "readable-click",
 +        crate::exec_cell::CommandOutput::new(
-+            0,
++            /*exit_code*/ 0,
 +            "first output\nsecond output\nthird output\nfourth output\nlast output\n".into()
 +        ),
 +        std::time::Duration::from_secs(1),
 +    ));
 +    let cells: Vec<Arc<dyn HistoryCell>> = vec![Arc::new(command)];
 +    let mut view = TranscriptView::default();
-+    let collapsed = render(&mut view, &cells, 80, 20);
++    let collapsed = render(&mut view, &cells, /*width*/ 80, /*height*/ 20);
 +    assert!(!text(&collapsed).contains("first output"));
 +    let mouse = |kind| MouseEvent {
 +        kind,
@@ -1476,10 +1479,10 @@ index 1b127cb..4d4a3ea 100644
 +    };
 +
 +    view.handle_mouse(mouse(MouseEventKind::Down(MouseButton::Left)), &cells);
-+    let pressed = render(&mut view, &cells, 80, 20);
++    let pressed = render(&mut view, &cells, /*width*/ 80, /*height*/ 20);
 +    assert!(!text(&pressed).contains("first output"));
 +    view.handle_mouse(mouse(MouseEventKind::Up(MouseButton::Left)), &cells);
-+    let expanded = render(&mut view, &cells, 80, 20);
++    let expanded = render(&mut view, &cells, /*width*/ 80, /*height*/ 20);
 +
 +    assert!(
 +        text(&expanded).contains("first output"),
@@ -1495,13 +1498,13 @@ index 1b127cb..4d4a3ea 100644
 +        vec!["echo".into(), "hello".into()],
 +        Vec::new(),
 +        codex_app_server_protocol::CommandExecutionSource::Agent,
-+        None,
-+        false,
++        /*interaction_input*/ None,
++        /*animations_enabled*/ false,
 +    );
-+    let command = command.with_readable_commands(true);
++    let command = command.with_readable_commands(/*enabled*/ true);
 +    let cells: Vec<Arc<dyn HistoryCell>> = vec![Arc::new(command)];
 +    let mut view = TranscriptView::default();
-+    let collapsed = render(&mut view, &cells, 80, 20);
++    let collapsed = render(&mut view, &cells, /*width*/ 80, /*height*/ 20);
 +
 +    assert!(text(&collapsed).contains("Click to expand command and output"));
 +}
@@ -1513,15 +1516,15 @@ index 1b127cb..4d4a3ea 100644
 +        vec!["bash".into(), "-lc".into(), original.into()],
 +        Vec::new(),
 +        codex_app_server_protocol::CommandExecutionSource::Agent,
-+        None,
-+        false,
++        /*interaction_input*/ None,
++        /*animations_enabled*/ false,
 +    )
-+    .with_readable_commands(true);
++    .with_readable_commands(/*enabled*/ true);
 +    command.retain_command_source(id, original.into());
 +    assert!(command.complete_call(
 +        id,
 +        crate::exec_cell::CommandOutput::new(
-+            0,
++            /*exit_code*/ 0,
 +            "first output\nsecond output\nthird output\nfourth output\nlast output\n".into()
 +        ),
 +        std::time::Duration::ZERO,
@@ -1535,8 +1538,8 @@ index 1b127cb..4d4a3ea 100644
 +    let cells: Vec<Arc<dyn HistoryCell>> = vec![Arc::new(readable_test_command("copy", original))];
 +    let mut view = TranscriptView::default();
 +    for expanded in [false, true] {
-+        render(&mut view, &cells, 48, 30);
-+        let layout = view.base_layout(&cells, 0).unwrap();
++        render(&mut view, &cells, /*width*/ 48, /*height*/ 30);
++        let layout = view.base_layout(&cells, /*index*/ 0).unwrap();
 +        let commands: Vec<_> = layout
 +            .copy_block_ranges()
 +            .into_iter()
@@ -1556,16 +1559,26 @@ index 1b127cb..4d4a3ea 100644
 +    let cells: Vec<Arc<dyn HistoryCell>> =
 +        vec![Arc::new(readable_test_command("keys", "echo 'a b'"))];
 +    let mut view = TranscriptView::default();
-+    render(&mut view, &cells, 80, 25);
++    render(&mut view, &cells, /*width*/ 80, /*height*/ 25);
 +    view.handle_key(KeyCode::F(4).into(), &cells);
 +    assert!(view.is_activity_focused());
 +    view.handle_key(KeyCode::Right.into(), &cells);
-+    assert!(text(&render(&mut view, &cells, 48, 25)).contains("first output"));
++    assert!(
++        text(&render(
++            &mut view, &cells, /*width*/ 48, /*height*/ 25
++        ))
++        .contains("first output")
++    );
 +    assert!(view.is_activity_focused());
 +    view.handle_key(KeyCode::Left.into(), &cells);
-+    assert!(!text(&render(&mut view, &cells, 80, 25)).contains("first output"));
++    assert!(
++        !text(&render(
++            &mut view, &cells, /*width*/ 80, /*height*/ 25
++        ))
++        .contains("first output")
++    );
 +    view.handle_key(KeyCode::Enter.into(), &cells);
-+    let expanded = render(&mut view, &cells, 80, 25);
++    let expanded = render(&mut view, &cells, /*width*/ 80, /*height*/ 25);
 +    assert!(text(&expanded).contains("first output"));
 +    view.handle_key(KeyCode::Esc.into(), &cells);
 +    assert!(!view.is_activity_focused());
@@ -1592,7 +1605,12 @@ index 1b127cb..4d4a3ea 100644
 +            &cells,
 +        );
 +    }
-+    assert!(!text(&render(&mut view, &cells, 80, 25)).contains("first output"));
++    assert!(
++        !text(&render(
++            &mut view, &cells, /*width*/ 80, /*height*/ 25
++        ))
++        .contains("first output")
++    );
 +}
 +
 +#[test]
@@ -1600,7 +1618,7 @@ index 1b127cb..4d4a3ea 100644
 +    let cells: Vec<Arc<dyn HistoryCell>> =
 +        vec![Arc::new(readable_test_command("drag", "echo hello"))];
 +    let mut view = TranscriptView::default();
-+    render(&mut view, &cells, 80, 25);
++    render(&mut view, &cells, /*width*/ 80, /*height*/ 25);
 +    for (kind, column) in [
 +        (MouseEventKind::Down(MouseButton::Left), 10),
 +        (MouseEventKind::Drag(MouseButton::Left), 20),
@@ -1616,7 +1634,12 @@ index 1b127cb..4d4a3ea 100644
 +            &cells,
 +        );
 +    }
-+    assert!(!text(&render(&mut view, &cells, 80, 25)).contains("first output"));
++    assert!(
++        !text(&render(
++            &mut view, &cells, /*width*/ 80, /*height*/ 25
++        ))
++        .contains("first output")
++    );
 +    assert!(
 +        view.selection
 +            .as_ref()
@@ -1629,10 +1652,10 @@ index 1b127cb..4d4a3ea 100644
 +    let cells: Vec<Arc<dyn HistoryCell>> =
 +        vec![Arc::new(readable_test_command("hover", "echo hello"))];
 +    let mut view = TranscriptView::default();
-+    render(&mut view, &cells, 80, 25);
++    render(&mut view, &cells, /*width*/ 80, /*height*/ 25);
 +    view.handle_key(KeyCode::F(4).into(), &cells);
 +    view.handle_key(KeyCode::Right.into(), &cells);
-+    render(&mut view, &cells, 80, 25);
++    render(&mut view, &cells, /*width*/ 80, /*height*/ 25);
 +    view.handle_mouse(
 +        MouseEvent {
 +            kind: MouseEventKind::Moved,
@@ -1644,8 +1667,8 @@ index 1b127cb..4d4a3ea 100644
 +    );
 +    let footer = view
 +        .footer(
-+            80,
-+            crate::motion::MotionMode::from_animations_enabled(false),
++            /*width*/ 80,
++            crate::motion::MotionMode::from_animations_enabled(/*animations_enabled*/ false),
 +        )
 +        .unwrap();
 +    assert!(
@@ -1665,21 +1688,31 @@ index 1b127cb..4d4a3ea 100644
 +    let keymap = crate::keymap::RuntimeKeymap::from_config(&config).unwrap();
 +    let mut view = TranscriptView::default();
 +    view.set_keymap_bindings(&keymap);
-+    let collapsed = text(&render(&mut view, &cells, 100, 25));
++    let collapsed = text(&render(
++        &mut view, &cells, /*width*/ 100, /*height*/ 25,
++    ));
 +    assert!(collapsed.contains("f12 to select"), "{collapsed}");
 +    assert!(!collapsed.contains("f4"));
 +    view.handle_key(KeyCode::F(12).into(), &cells);
 +    assert!(view.is_activity_focused());
 +    view.handle_key(KeyCode::Right.into(), &cells);
-+    assert!(text(&render(&mut view, &cells, 100, 25)).contains("first output"));
++    assert!(
++        text(&render(
++            &mut view, &cells, /*width*/ 100, /*height*/ 25
++        ))
++        .contains("first output")
++    );
 +}
 +
 +#[test]
 +fn readable_command_preview_disabled_preserves_legacy_disclosure() {
-+    let command = readable_test_command("disabled", "echo hello").with_readable_commands(false);
++    let command = readable_test_command("disabled", "echo hello")
++        .with_readable_commands(/*enabled*/ false);
 +    let cells: Vec<Arc<dyn HistoryCell>> = vec![Arc::new(command)];
 +    let mut view = TranscriptView::default();
-+    let collapsed = text(&render(&mut view, &cells, 80, 25));
++    let collapsed = text(&render(
++        &mut view, &cells, /*width*/ 80, /*height*/ 25,
++    ));
 +    assert!(!collapsed.contains("Click to expand"));
 +    assert!(collapsed.contains("+ 2 lines"));
 +}
@@ -1687,7 +1720,7 @@ index 1b127cb..4d4a3ea 100644
  #[test]
  fn page_keys_follow_pager_scroll_bindings() {
      let cells = [cell(
-@@ -1474,3 +1713,91 @@ fn unleashed_collapsed_tool_activity_live_output_count_and_narrow_failure_stay_v
+@@ -1479,3 +1748,119 @@ fn unleashed_collapsed_tool_activity_live_output_count_and_narrow_failure_stay_v
      );
      assert!(raw.contains("failure details"));
  }
@@ -1699,10 +1732,10 @@ index 1b127cb..4d4a3ea 100644
 +        vec!["echo".into(), "hello".into()],
 +        Vec::new(),
 +        codex_app_server_protocol::CommandExecutionSource::Agent,
-+        None,
-+        false,
++        /*interaction_input*/ None,
++        /*animations_enabled*/ false,
 +    )
-+    .with_readable_commands(true);
++    .with_readable_commands(/*enabled*/ true);
 +    command.retain_command_source("stream", "echo 'hello'".into());
 +    assert!(command.append_output(
 +        "stream",
@@ -1711,7 +1744,7 @@ index 1b127cb..4d4a3ea 100644
 +    let mut view = TranscriptView::default();
 +    let sync = |view: &mut TranscriptView, command: &crate::exec_cell::ExecCell, width| {
 +        let expanded = view.sync_live_activity(&[], command.activity_ids());
-+        view.sync_live_activity_tail(width, None, expanded, |width| {
++        view.sync_live_activity_tail(width, /*key*/ None, expanded, |width| {
 +            Some(ActivityTranscriptLines {
 +                activity: if expanded {
 +                    command.expanded_hyperlink_lines(width)
@@ -1724,34 +1757,62 @@ index 1b127cb..4d4a3ea 100644
 +        });
 +    };
 +    sync(&mut view, &command, 80);
-+    assert!(!text(&render(&mut view, &[], 80, 25)).contains("first output"));
++    assert!(
++        !text(&render(
++            &mut view,
++            &[],
++            /*width*/ 80,
++            /*height*/ 25
++        ))
++        .contains("first output")
++    );
 +    view.handle_key(KeyCode::F(4).into(), &[]);
 +    view.handle_key(KeyCode::Right.into(), &[]);
 +    sync(&mut view, &command, 80);
-+    assert!(text(&render(&mut view, &[], 80, 25)).contains("first output"));
++    assert!(
++        text(&render(
++            &mut view,
++            &[],
++            /*width*/ 80,
++            /*height*/ 25
++        ))
++        .contains("first output")
++    );
 +    assert!(command.append_output("stream", "arriving output\n"));
 +    sync(&mut view, &command, 48);
-+    let streamed = text(&render(&mut view, &[], 48, 25));
++    let streamed = text(&render(
++        &mut view,
++        &[],
++        /*width*/ 48,
++        /*height*/ 25,
++    ));
 +    assert!(streamed.contains("first output"));
 +    assert!(streamed.contains("arriving output"));
 +    assert!(view.is_activity_focused());
 +    assert!(command.complete_call(
 +        "stream",
 +        crate::exec_cell::CommandOutput::new(
-+            0,
++            /*exit_code*/ 0,
 +            "first output\nsecond output\nthird output\nfourth output\narriving output\n".into(),
 +        ),
 +        std::time::Duration::ZERO
 +    ));
 +    let cells: Vec<Arc<dyn HistoryCell>> = vec![Arc::new(command)];
 +    view.sync_live_activity(&cells, Vec::new());
-+    view.sync_live_tail(48, None, |_| None);
-+    let completed = text(&render(&mut view, &cells, 48, 25));
++    view.sync_live_tail(/*width*/ 48, /*key*/ None, |_| None);
++    let completed = text(&render(
++        &mut view, &cells, /*width*/ 48, /*height*/ 25,
++    ));
 +    assert!(completed.contains("first output"));
 +    assert!(completed.contains("arriving output"));
 +    assert!(view.is_activity_focused());
 +    view.handle_key(KeyCode::Left.into(), &cells);
-+    assert!(!text(&render(&mut view, &cells, 48, 25)).contains("first output"));
++    assert!(
++        !text(&render(
++            &mut view, &cells, /*width*/ 48, /*height*/ 25
++        ))
++        .contains("first output")
++    );
 +}
 +
 +#[test]
@@ -1761,7 +1822,7 @@ index 1b127cb..4d4a3ea 100644
 +        Arc::new(readable_test_command("second", "echo second")),
 +    ];
 +    let mut view = TranscriptView::default();
-+    render(&mut view, &cells, 80, 30);
++    render(&mut view, &cells, /*width*/ 80, /*height*/ 30);
 +    view.handle_key(KeyCode::F(4).into(), &cells);
 +    assert_eq!(view.disclosure.focused, Some(cells[1].activity_ids()));
 +    view.handle_key(KeyCode::Up.into(), &cells);

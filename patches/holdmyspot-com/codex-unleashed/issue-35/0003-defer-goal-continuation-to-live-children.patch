@@ -1,4 +1,4 @@
-From 63ab13c0d4c8f579899ea1eb65770b077981ad16 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:35:08 -0500
 Subject: [PATCH] Keep active-goal parents available while children run
@@ -7,10 +7,10 @@ Automatic goal continuation no longer starts a parent turn while a V2 child is s
 ---
  .../suite/v2/background_subagent_tests.rs     | 294 ++++++++++++++++++
  .../app-server/tests/suite/v2/turn_start.rs   |   3 +
- codex-rs/core/src/codex_thread.rs             |  34 ++
+ codex-rs/core/src/codex_thread.rs             |  39 +++
  .../tests/suite/background_subagent_tests.rs  |   6 +
  codex-rs/ext/goal/src/runtime.rs              |   8 +
- 5 files changed, 345 insertions(+)
+ 5 files changed, 350 insertions(+)
  create mode 100644 codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs
 
 diff --git a/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs b/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs
@@ -328,10 +328,10 @@ index eae342d..1bd1d41 100644
  const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(25);
  #[cfg(not(windows))]
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 0b5ea87..f240d5b 100644
+index 0b5ea87..3d0042f 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -1067,6 +1067,40 @@ impl CodexThread {
+@@ -1067,6 +1067,45 @@ impl CodexThread {
          self.session.multi_agent_version()
      }
  
@@ -356,7 +356,12 @@ index 0b5ea87..f240d5b 100644
 +            return Ok(false);
 +        }
 +        let agents = control
-+            .list(self.session.thread_id, None, &self.session_source, None)
++            .list(
++                self.session.thread_id,
++                /*parent*/ None,
++                &self.session_source,
++                /*path_prefix*/ None,
++            )
 +            .await?;
 +        Ok(agents.into_iter().any(|agent| {
 +            matches!(

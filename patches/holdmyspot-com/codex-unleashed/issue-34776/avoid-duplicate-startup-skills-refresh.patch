@@ -1,4 +1,4 @@
-From 1677a1bc20cc8c0b36a94d02764dd69bbe8cde1a Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:04:02 -0500
 Subject: [PATCH] Avoid blocking startup on a duplicate skills refresh
@@ -48,7 +48,7 @@ index 3d56ce5..0be5d51 100644
          // already has data and available reset credits can be surfaced, without
          // delaying the initial frame render.
 diff --git a/codex-rs/tui/src/app/tests/startup_frame_tests.rs b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
-index 9fe4a76..1161c12 100644
+index 9fe4a76..9b94028 100644
 --- a/codex-rs/tui/src/app/tests/startup_frame_tests.rs
 +++ b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
 @@ -211,3 +211,152 @@ async fn inline_startup_still_renders_with_pending_history() -> Result<()> {
@@ -111,7 +111,7 @@ index 9fe4a76..1161c12 100644
 +            let errors = std::iter::from_fn(|| events.try_recv().ok())
 +                .filter_map(|event| match event {
 +                    AppEvent::InsertHistoryCell(cell) => {
-+                        Some(lines_to_single_string(&cell.transcript_lines(80)))
++                        Some(lines_to_single_string(&cell.transcript_lines(/*width*/ 80)))
 +                    }
 +                    _ => None,
 +                })
@@ -199,7 +199,7 @@ index 9fe4a76..1161c12 100644
 +            }
 +        }
 +        app.chat_widget.open_skills_list();
-+        assert!(render_bottom_popup(&app.chat_widget, 80).contains("startup-skill"));
++        assert!(render_bottom_popup(&app.chat_widget, /*width*/ 80).contains("startup-skill"));
 +        server.shutdown().await?;
 +    }
 +    Ok(())

@@ -1,4 +1,4 @@
-From 159773988b86de693772d9f809aed145e8f4ad11 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:13:06 -0500
 Subject: [PATCH] Show background terminal transcript hints
@@ -38,7 +38,7 @@ index 85259b0..3b64049 100644
  Active:
  • Exploring
 diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-index 48449f4..b30c8d0 100644
+index 2ae3ab3..6238d3e 100644
 --- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 @@ -48,7 +48,7 @@ async fn external_writer_snapshot_freezes_active_command_and_mcp_rows() {
@@ -79,7 +79,7 @@ index d4e4fe5..5fdea50 100644
  • Explored
    └ Read later.txt
 diff --git a/codex-rs/tui/src/exec_cell/render.rs b/codex-rs/tui/src/exec_cell/render.rs
-index 4af80d4..a24f89e 100644
+index 4af80d4..76965eb 100644
 --- a/codex-rs/tui/src/exec_cell/render.rs
 +++ b/codex-rs/tui/src/exec_cell/render.rs
 @@ -467,7 +467,14 @@ impl ExecCell {
@@ -109,7 +109,7 @@ index 4af80d4..a24f89e 100644
 +                call_id: "call-id".to_string(),
 +                command: vec!["echo".into(), "done".into()],
 +                parsed: Vec::new(),
-+                output: Some(CommandOutput::new(0, String::new())),
++                output: Some(CommandOutput::new(/*exit_code*/ 0, String::new())),
 +                source: ExecCommandSource::UnifiedExecStartup,
 +                start_time: None,
 +                duration: Some(std::time::Duration::from_millis(1)),
