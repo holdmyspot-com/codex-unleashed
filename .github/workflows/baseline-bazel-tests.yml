@@ -105,7 +105,7 @@ jobs:
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-evidence"
-          read -r -a patch_paths <<< "$DOWNSTREAM_PATCHES"
+          read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
           for patch in "${patch_paths[@]}"; do
             printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
             git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \

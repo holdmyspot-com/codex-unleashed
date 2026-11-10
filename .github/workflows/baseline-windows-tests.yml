@@ -117,7 +117,7 @@ jobs:
           DOWNSTREAM_PATCHES: ${{ inputs.patches }}
         run: |
           set -euo pipefail
-          read -r -a patch_paths <<< "$DOWNSTREAM_PATCHES"
+          read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
           for patch in "${patch_paths[@]}"; do
             sha256sum "$patch"
             git -C upstream -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \

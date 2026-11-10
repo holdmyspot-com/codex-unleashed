@@ -96,7 +96,7 @@ jobs:
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
           : > "$evidence/applied-patches.txt"
-          read -r -a patch_paths <<< "$DOWNSTREAM_PATCHES"
+          read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
           for patch in "${patch_paths[@]}"; do
             printf '%s  %s\n' "$(shasum -a 256 < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
             git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \

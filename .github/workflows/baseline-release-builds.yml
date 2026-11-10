@@ -306,7 +306,7 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-evidence"
           # The exact cache tag hashes this record; an empty record keeps the pristine tag.
           : > "$evidence/applied-patches.txt"
-          read -r -a patch_paths <<< "$DOWNSTREAM_PATCHES"
+          read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
           # The guarded expansion keeps an empty list valid under set -u in macOS's Bash 3.2.
           for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
             printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
