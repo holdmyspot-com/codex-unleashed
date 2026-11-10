@@ -228,6 +228,8 @@ The old `native-and-rust-warning-policy.patch` supplies the `build.warnings`, ru
 
 Patches 29–33 in `patches/holdmyspot-com/codex-unleashed/dependency-upgrades/` (2026-11-09; the 30 WIP patches squashed in their original order, final tree unchanged): `compatible-updates.patch`, `latest-releases.patch`, `regenerated-outputs.patch`, `serde-saphyr.patch` and `release-adaptations.patch`. Patch 34, `transitive-updates.patch`, moves every transitive dependency to its newest allowed release (owner decision below). Their [README](patches/holdmyspot-com/codex-unleashed/dependency-upgrades/README.md) gives each patch's content, the held-back dependencies (including the `unicode-width = "=0.2.2"` pin that ratatui-core 0.1.2 needs), schemars 1's cosmetic web.run schema changes and the audit status. Reordering the WIP patches by topic conflicts in `Cargo.lock`, so serde_norway stays in `latest-releases.patch` and `serde-saphyr.patch` replaces it.
 
+Verification of the 34-patch queue (2026-11-09): platform lints `42722042431` (dependency lints, rustdoc, x64 and ARM64 clippy), Windows lints `42722033353` (x64 and ARM64; the first run `42712979197` found that serial2 0.2.39 no longer enables winapi's `std` feature, now requested by `codex-utils-pty`), macOS lints `42712973167` and regeneration `42722037388` (no changes) pass. Linux tests `42712983966` run 23,184 tests; the four failures and two timeouts all fail on unpatched upstream too ([upstream-failure-comparison.md](docs/upstream-failure-comparison.md)). The six-target cold release build is `42722075898`.
+
 Held back, each for a compatibility constraint:
 | Dependency | Kept at | Constraint |
 |---|---|---|
