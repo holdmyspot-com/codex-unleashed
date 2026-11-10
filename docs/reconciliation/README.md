@@ -9,7 +9,7 @@ dispositions: migrated, upstream-equivalent, omitted, deferred and needs-owner-d
 | --- | --- | --- |
 | [old-main-file-inventory.tsv](../old-main-file-inventory.tsv) | All 648 old-main paths, with the state recomputed against one `main` commit and an `evidence` column | 143 migrated, 71 upstream-equivalent, 45 omitted, 388 deferred, 1 needs-owner-decision |
 | [old-main-patches-1-72.md](old-main-patches-1-72.md), [old-main-patches-73-144.md](old-main-patches-73-144.md) | The 144 old-main patch and mailbox rows | 34 rows changed since the `restart-scope.md` appendix was written; the appendix is stale where these tables disagree |
-| [archived-worktree-refs.md](archived-worktree-refs.md) | The 38 refs under `refs/archive/restart-worktrees` | 18 HEAD refs are points on one 279-commit chain; the T9 product and fixture patches need an owner decision |
+| [archived-worktree-refs.md](archived-worktree-refs.md) | The 38 refs under `refs/archive/restart-worktrees` | 18 HEAD refs are points on one 279-commit chain; the T9 product and fixture patches were re-tested; the confirmed ones are queue entries 40–55 |
 | [legacy-checkouts.md](legacy-checkouts.md) | The 33 archived independent checkouts and the two named stashes | 29 migrated, 3 omitted, 1 needs-owner-decision; the archive checksum verifies |
 | [artifacts-and-caches.md](artifacts-and-caches.md) | Actions caches, GHCR packages, workflow artifacts, remote branches and local caches | The gaps are listed at the end of the register |
 | [d7-d8-census.md](d7-d8-census.md) | D7 (V8 and patched zsh consumers) and D8 (retention) | Only prebuilt upstream V8 has a consumer; retention is implemented except one 7-day artifact |
@@ -22,10 +22,10 @@ which.
 
 - Old tests are carried over only when they cover a patch that was moved over. `ArtifactJsonApiTest.java` tests Java tooling, not a patch, so it is omitted. The red test `replayed_compacted_history_keeps_all_turns_when_fast_switching_is_disabled` belongs to the migrated `issue-34776/avoid-slow-agent-switching-and-resume.patch`, but that patch's `switching_back_replays_only_latest_compacted_conversation` already asserts that disabling fast switching replays the full conversation, so it is omitted as covered.
 - The D11 license and policy content is retained.
+- T9 (owner decision 2026-11-10): every old-queue product and fixture patch was re-tested on the restart baseline; the ones that failed red and passed green are queue entries 40–55 ([old-main-test-fixes](../../patches/holdmyspot-com/codex-unleashed/old-main-test-fixes/README.md)). 0090 and 0092 were inconclusive and are to be rerun.
 
 ## Open owner decisions
 
-1. T9 in [archived-worktree-refs.md](archived-worktree-refs.md): the old-queue product and fixture patches (`issue-61/zzzz-0075..0098` and `issue-71/*`, such as the Windows mouse restore and close-remote-client-owner fixes). None of them is in `main` or upstream. Re-test each on the restart baseline, or omit them.
-2. `workflow-review.gEypD6` in [legacy-checkouts.md](legacy-checkouts.md): the recommendation is to omit this pre-squash workflow redesign.
-3. `upstream-auto-release.yml` keeps its build-to-publish `assets-*` artifact for 7 days instead of 1. Accept this as an exception or shorten it.
-4. The 25 non-main remote branches, the 110 90-day artifacts from 2026-10-04 to 2026-10-07 (about 4.2 GB), the stale `main.new` cache entries and the stale `cargo-cache-main-new` package name in [artifacts-and-caches.md](artifacts-and-caches.md). Deleting any of them needs approval.
+1. `workflow-review.gEypD6` in [legacy-checkouts.md](legacy-checkouts.md): the recommendation is to omit this pre-squash workflow redesign.
+2. `upstream-auto-release.yml` keeps its build-to-publish `assets-*` artifact for 7 days instead of 1. Accept this as an exception or shorten it.
+3. The 25 non-main remote branches, the 110 90-day artifacts from 2026-10-04 to 2026-10-07 (about 4.2 GB), the stale `main.new` cache entries and the stale `cargo-cache-main-new` package name in [artifacts-and-caches.md](artifacts-and-caches.md). Deleting any of them needs approval.
