@@ -49,6 +49,7 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
           mkdir -p "$evidence"
           cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
+          cp restart-metadata/.github/scripts/check-test-skips.py "$RUNNER_TEMP/check-test-skips.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
@@ -150,6 +151,7 @@ jobs:
           git diff --binary > "$evidence/source-before.diff"
 
       - name: Run the maintained Windows Bazel test selection
+        id: bazel_tests
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
@@ -260,6 +262,13 @@ jobs:
           }, indent=2) + "\n")
           print(f"Recorded {len(records)} installed Opus headers")
           PYTHON
+
+      - name: Fail on skips caused by missing test setup
+        if: ${{ !cancelled() && steps.bazel_tests.outcome != 'skipped' }}
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/check-test-skips.py" --platform windows --runner bazel "$(realpath bazel-testlogs)" \
+            2>&1 | tee "$RUNNER_TEMP/baseline-windows-bazel-evidence/skip-check.log"
 
       - name: Verify upstream source and tests remain unmodified
         if: always()

@@ -285,3 +285,13 @@ jobs:
           set -euo pipefail
           git -C upstream diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
           bash "$RUNNER_TEMP/selected-test.sh"
+
+      - name: Fail on tests that skipped themselves for missing setup
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          reports=()
+          for directory in "$(cygpath -u "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/upstream/codex-rs/target}")/nextest" "$GITHUB_WORKSPACE/upstream/codex-rs/target/nextest"; do
+            if [[ -d "$directory" ]]; then reports+=("$directory"); fi
+          done
+          python .github/scripts/check-test-skips.py --platform windows "${reports[@]}"

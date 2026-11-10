@@ -58,7 +58,7 @@ jobs:
           - runner: macos-15-intel
             target: x86_64-apple-darwin
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 240
+    timeout-minutes: 360
     env:
       TARGET: ${{ matrix.target }}
       TEST_PACKAGE: ${{ inputs.package }}
@@ -97,6 +97,7 @@ jobs:
           mkdir -p "$evidence"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
+          cp restart-metadata/.github/scripts/check-test-skips.py "$RUNNER_TEMP/check-test-skips.py"
           cp restart-metadata/.github/scripts/reclaim-baseline-macos-xcodes.py "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           commit="${UPSTREAM_COMMIT:-$(cat restart-metadata/.github/upstream-commit)}"
@@ -228,6 +229,17 @@ jobs:
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
           bash "$RUNNER_TEMP/selected-test.sh" 2>&1 | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/nextest.log"
           exit "${PIPESTATUS[0]}"
+
+      - name: Fail on tests that skipped themselves for missing setup
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          reports=()
+          for directory in "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/codex-rs/target}/nextest" "$GITHUB_WORKSPACE/codex-rs/target/nextest"; do
+            if [[ -d "$directory" ]]; then reports+=("$directory"); fi
+          done
+          python3 "$RUNNER_TEMP/check-test-skips.py" --platform macos "${reports[@]}" \
+            2>&1 | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/skip-check.log"
 
       - name: Retain test evidence for one day
         if: always()
