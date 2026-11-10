@@ -1,0 +1,269 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 10 Nov 2026 10:25:51 -0500
+Subject: [PATCH] Make OTLP exports wait for the application network policy
+
+The periodic metrics reader starts exporting before the configuration owner has
+published the application network policy. PolicyExporter::export failed at once with
+"application network policy is unavailable", and because the metrics use delta
+temporality the counts in that export were lost. A test that waited for those counts
+then failed after its 60 second deadline.
+
+An export now waits, for at most 10 seconds, for the policy to be published. It
+subscribes to policy changes before it checks, so a publication in between is not
+missed. Any other denial, such as a restricting policy, still fails at once. SDK
+worker threads drive export futures outside a Tokio runtime, so a timer thread bounds
+the wait instead of a Tokio timer.
+
+The unit tests start an export before the policy exists and publish while it waits:
+an unrestricted policy lets the export through and a restricting one denies it
+without exporting. A third test checks that the wait ends when no policy arrives.
+---
+ codex-rs/otel/src/lib.rs                      |  4 +
+ codex-rs/otel/src/network_policy.rs           | 87 ++++++++++++++++++-
+ codex-rs/otel/src/network_policy_tests.rs     | 60 +++++++++++++
+ .../otel/src/network_policy_wait_tests.rs     | 16 ++++
+ 4 files changed, 163 insertions(+), 4 deletions(-)
+ create mode 100644 codex-rs/otel/src/network_policy_tests.rs
+ create mode 100644 codex-rs/otel/src/network_policy_wait_tests.rs
+
+diff --git a/codex-rs/otel/src/lib.rs b/codex-rs/otel/src/lib.rs
+index b719515..769ffd7 100644
+--- a/codex-rs/otel/src/lib.rs
++++ b/codex-rs/otel/src/lib.rs
+@@ -101,3 +101,7 @@ pub fn start_global_timer(name: &str, tags: &[(&str, &str)]) -> MetricsResult<Ti
+ pub fn global_statsig_metrics_settings() -> Option<StatsigMetricsSettings> {
+     crate::metrics::global_statsig_settings()
+ }
++
++#[cfg(test)]
++#[path = "network_policy_tests.rs"]
++mod network_policy_tests;
+diff --git a/codex-rs/otel/src/network_policy.rs b/codex-rs/otel/src/network_policy.rs
+index 77d782d..5c45780 100644
+--- a/codex-rs/otel/src/network_policy.rs
++++ b/codex-rs/otel/src/network_policy.rs
+@@ -2,7 +2,9 @@
+ //! Export futures are revocable, including HTTP exporters driven from SDK worker threads.
+ 
+ use bytes::Bytes;
++use codex_http_client::NetworkPermit;
+ use codex_http_client::NetworkPolicy;
++use codex_http_client::NetworkPolicyDenied;
+ use opentelemetry_http::HttpError;
+ use opentelemetry_sdk::Resource;
+ use opentelemetry_sdk::error::OTelSdkError;
+@@ -16,7 +18,17 @@ use opentelemetry_sdk::trace::SpanData;
+ use opentelemetry_sdk::trace::SpanExporter;
+ use std::future::Future;
+ use std::pin::Pin;
++use std::pin::pin;
++use std::task::Poll;
+ use std::time::Duration;
++use tokio::sync::oneshot;
++use tokio::sync::watch;
++
++/// How long an export waits for the application network policy to be published before it fails.
++///
++/// Telemetry readers start exporting before the configuration owner has published the policy. Failing
++/// such an export drops its data, because the metrics use delta temporality.
++const POLICY_PUBLICATION_WAIT: Duration = Duration::from_secs(/*secs*/ 10);
+ 
+ #[derive(Debug)]
+ pub(crate) struct PolicyExporter<E> {
+@@ -24,13 +36,72 @@ pub(crate) struct PolicyExporter<E> {
+     pub(crate) policy: NetworkPolicy,
+ }
+ 
+-fn denied(error: codex_http_client::NetworkPolicyDenied) -> OTelSdkError {
++fn denied(error: NetworkPolicyDenied) -> OTelSdkError {
+     OTelSdkError::InternalFailure(error.to_string())
+ }
+ 
++/// Acquires an SDK permit, waiting up to `wait` for a policy that has not been published yet.
++///
++/// Every other denial is final and returns at once. SDK worker threads drive export futures outside a Tokio
++/// runtime, so the bound comes from a timer thread instead of a Tokio timer.
++async fn acquire(
++    policy: &NetworkPolicy,
++    wait: Duration,
++) -> Result<NetworkPermit, NetworkPolicyDenied> {
++    // Subscribe before the first check so a publication between the check and the wait is not missed.
++    let mut changes = policy.changes();
++    let mut timer = None;
++    loop {
++        match policy.acquire_for_unsupported_sdk() {
++            Err(NetworkPolicyDenied::Unavailable) => {}
++            result => return result,
++        }
++        let Some(changes) = changes.as_mut() else {
++            return Err(NetworkPolicyDenied::Unavailable);
++        };
++        let timer = timer.get_or_insert_with(|| start_timer(wait));
++        if !wait_for_change(changes, timer).await {
++            return Err(NetworkPolicyDenied::Unavailable);
++        }
++    }
++}
++
++/// Resolves once `wait` has elapsed. It resolves at once if the timer thread cannot start.
++fn start_timer(wait: Duration) -> oneshot::Receiver<()> {
++    let (elapsed, timer) = oneshot::channel();
++    let _ = std::thread::Builder::new()
++        .name("otel-policy-wait".to_string())
++        .spawn(move || {
++            std::thread::sleep(wait);
++            let _ = elapsed.send(());
++        });
++    timer
++}
++
++/// Returns true when the policy changed and false when the timer ended first or the policy owner is gone.
++async fn wait_for_change(
++    changes: &mut watch::Receiver<()>,
++    timer: &mut oneshot::Receiver<()>,
++) -> bool {
++    let mut changed = pin!(changes.changed());
++    let mut timer = pin!(timer);
++    std::future::poll_fn(|context| {
++        if let Poll::Ready(result) = changed.as_mut().poll(context) {
++            return Poll::Ready(result.is_ok());
++        }
++        if timer.as_mut().poll(context).is_ready() {
++            return Poll::Ready(false);
++        }
++        Poll::Pending
++    })
++    .await
++}
++
+ impl<E: SpanExporter> SpanExporter for PolicyExporter<E> {
+     async fn export(&self, batch: Vec<SpanData>) -> OTelSdkResult {
+-        let permit = self.policy.acquire_for_unsupported_sdk().map_err(denied)?;
++        let permit = acquire(&self.policy, POLICY_PUBLICATION_WAIT)
++            .await
++            .map_err(denied)?;
+         let export = self.exporter.export(batch);
+         permit.run(export).await.map_err(denied)?
+     }
+@@ -47,7 +118,9 @@ impl<E: SpanExporter> SpanExporter for PolicyExporter<E> {
+ 
+ impl<E: LogExporter> LogExporter for PolicyExporter<E> {
+     async fn export(&self, batch: LogBatch<'_>) -> OTelSdkResult {
+-        let permit = self.policy.acquire_for_unsupported_sdk().map_err(denied)?;
++        let permit = acquire(&self.policy, POLICY_PUBLICATION_WAIT)
++            .await
++            .map_err(denied)?;
+         let export = self.exporter.export(batch);
+         permit.run(export).await.map_err(denied)?
+     }
+@@ -61,7 +134,9 @@ impl<E: LogExporter> LogExporter for PolicyExporter<E> {
+ 
+ impl<E: PushMetricExporter> PushMetricExporter for PolicyExporter<E> {
+     async fn export(&self, metrics: &ResourceMetrics) -> OTelSdkResult {
+-        let permit = self.policy.acquire_for_unsupported_sdk().map_err(denied)?;
++        let permit = acquire(&self.policy, POLICY_PUBLICATION_WAIT)
++            .await
++            .map_err(denied)?;
+         let export = self.exporter.export(metrics);
+         permit.run(export).await.map_err(denied)?
+     }
+@@ -127,3 +202,7 @@ impl opentelemetry_http::HttpClient for RuntimeHttpClient {
+         })
+     }
+ }
++
++#[cfg(test)]
++#[path = "network_policy_wait_tests.rs"]
++mod wait_tests;
+diff --git a/codex-rs/otel/src/network_policy_tests.rs b/codex-rs/otel/src/network_policy_tests.rs
+new file mode 100644
+index 0000000..606fd73
+--- /dev/null
++++ b/codex-rs/otel/src/network_policy_tests.rs
+@@ -0,0 +1,60 @@
++//! An export that starts before the application network policy is published must wait for it.
++
++use crate::network_policy::PolicyExporter;
++use codex_http_client::DestinationPolicy;
++use codex_http_client::NetworkPolicyController;
++use opentelemetry_sdk::error::OTelSdkResult;
++use opentelemetry_sdk::trace::SpanData;
++use opentelemetry_sdk::trace::SpanExporter;
++use pretty_assertions::assert_eq;
++use std::collections::BTreeSet;
++use std::sync::Arc;
++use std::sync::atomic::AtomicUsize;
++use std::sync::atomic::Ordering;
++
++#[derive(Debug)]
++struct CountingExporter(Arc<AtomicUsize>);
++
++impl SpanExporter for CountingExporter {
++    async fn export(&self, _batch: Vec<SpanData>) -> OTelSdkResult {
++        self.0.fetch_add(1, Ordering::SeqCst);
++        Ok(())
++    }
++}
++
++/// Runs one export that is polled before the policy is published, then publishes `policy`. `join!` polls
++/// its futures in order, so the export always starts first and the outcome does not depend on timing.
++async fn export_then_publish(policy: DestinationPolicy) -> (OTelSdkResult, usize) {
++    let controller = NetworkPolicyController::default();
++    let network_policy = controller.policy();
++    let revision = network_policy.revision();
++    let exports = Arc::new(AtomicUsize::new(0));
++    let exporter = PolicyExporter {
++        exporter: CountingExporter(Arc::clone(&exports)),
++        policy: network_policy,
++    };
++    let (result, published) = tokio::join!(SpanExporter::export(&exporter, Vec::new()), async {
++        controller.publish(revision, policy)
++    },);
++    assert!(published);
++    (result, exports.load(Ordering::SeqCst))
++}
++
++#[tokio::test]
++async fn export_started_before_publication_waits_and_then_exports() {
++    let (result, exports) = export_then_publish(DestinationPolicy::Unrestricted).await;
++
++    assert!(result.is_ok(), "{result:?}");
++    assert_eq!(exports, 1);
++}
++
++#[tokio::test]
++async fn export_started_before_a_restricting_publication_is_denied_without_exporting() {
++    let (result, exports) = export_then_publish(DestinationPolicy::Restricted {
++        allowed_hosts: BTreeSet::new(),
++    })
++    .await;
++
++    assert!(result.is_err(), "{result:?}");
++    assert_eq!(exports, 0);
++}
+diff --git a/codex-rs/otel/src/network_policy_wait_tests.rs b/codex-rs/otel/src/network_policy_wait_tests.rs
+new file mode 100644
+index 0000000..b7a9131
+--- /dev/null
++++ b/codex-rs/otel/src/network_policy_wait_tests.rs
+@@ -0,0 +1,16 @@
++//! The wait for policy publication is bounded.
++
++use super::acquire;
++use codex_http_client::NetworkPolicyController;
++use codex_http_client::NetworkPolicyDenied;
++use pretty_assertions::assert_eq;
++use std::time::Duration;
++
++#[tokio::test]
++async fn acquire_gives_up_when_the_policy_is_never_published() {
++    let controller = NetworkPolicyController::default();
++
++    let result = acquire(&controller.policy(), Duration::from_millis(/*millis*/ 20)).await;
++
++    assert_eq!(result.err(), Some(NetworkPolicyDenied::Unavailable));
++}
+-- 
+2.43.0
+

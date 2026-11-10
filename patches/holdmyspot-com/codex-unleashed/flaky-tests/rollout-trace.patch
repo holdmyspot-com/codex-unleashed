@@ -1,0 +1,427 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 10 Nov 2026 10:23:26 -0500
+Subject: [PATCH] Stop the rollout trace tests from failing on a slow
+ app-server start
+
+The success and stream-failure test started a new `codex app-server` four times in
+one test, each limited to the 10 second request wait, so one slow start under runner
+load failed the whole test. When initialization hit that wait, the early error return
+dropped the mock server, whose unmet-expectation panic replaced the real
+"deadline has elapsed" error.
+
+- The four cases are separate tests that share one helper.
+- TestAppServerBuilder::with_request_timeout replaces the response wait for one
+  server; the default stays 10 seconds (25 on Windows). Both rollout trace tests use
+  it with 60 seconds, so the wait only catches a hang.
+- The helper uses the mock server without an expectation and checks that exactly one
+  responses request arrived after the other assertions, so an earlier error is the
+  one reported.
+---
+ .../tests/common/test_app_server.rs           |  24 +-
+ codex-rs/cli/tests/rollout_trace.rs           | 272 ++++++++++--------
+ 2 files changed, 173 insertions(+), 123 deletions(-)
+
+diff --git a/codex-rs/app-server/tests/common/test_app_server.rs b/codex-rs/app-server/tests/common/test_app_server.rs
+index bec5909..13f542c 100644
+--- a/codex-rs/app-server/tests/common/test_app_server.rs
++++ b/codex-rs/app-server/tests/common/test_app_server.rs
+@@ -148,6 +148,8 @@ use crate::rpc_delay::WebsocketDelayInterposer;
+ 
+ pub struct TestAppServer {
+     next_request_id: AtomicI64,
++    /// How long typed requests and thread starts wait for a response.
++    request_timeout: Duration,
+     /// Retain this child process until the client is dropped. The Tokio runtime
+     /// will make a "best effort" to reap the process after it exits, but it is
+     /// not a guarantee. See the `kill_on_drop` documentation for details.
+@@ -186,6 +188,7 @@ impl TestAppServer {
+             args: vec![DISABLE_PLUGIN_STARTUP_TASKS_ARG.to_string()],
+             exec_server_delay: None,
+             mock_chatgpt_backend: false,
++            request_timeout: DEFAULT_REQUEST_TIMEOUT,
+         }
+     }
+ 
+@@ -342,6 +345,7 @@ impl TestAppServer {
+         }
+         Ok(Self {
+             next_request_id: AtomicI64::new(0),
++            request_timeout: DEFAULT_REQUEST_TIMEOUT,
+             process,
+             stdin: Some(stdin),
+             stdout,
+@@ -567,7 +571,7 @@ impl TestAppServer {
+         params: ThreadStartParams,
+     ) -> anyhow::Result<ThreadStartResponse> {
+         let request_id = self.send_thread_start_request_with_auto_env(params).await?;
+-        tokio::time::timeout(DEFAULT_REQUEST_TIMEOUT, self.read_response(request_id)).await?
++        tokio::time::timeout(self.request_timeout, self.read_response(request_id)).await?
+     }
+ 
+     /// Send a `thread/resume` JSON-RPC request.
+@@ -1597,7 +1601,7 @@ impl TestAppServer {
+         let request = serde_json::from_value::<JSONRPCRequest>(serde_json::to_value(request)?)?;
+         self.send_jsonrpc_message(JSONRPCMessage::Request(request))
+             .await?;
+-        tokio::time::timeout(DEFAULT_REQUEST_TIMEOUT, self.read_response(request_id)).await?
++        tokio::time::timeout(self.request_timeout, self.read_response(request_id)).await?
+     }
+ 
+     pub async fn send_request(
+@@ -1886,6 +1890,7 @@ pub struct TestAppServerBuilder {
+     args: Vec<String>,
+     exec_server_delay: Option<Duration>,
+     mock_chatgpt_backend: bool,
++    request_timeout: Duration,
+ }
+ 
+ enum TestAppServerEnvironment {
+@@ -1967,10 +1972,19 @@ impl TestAppServerBuilder {
+         self
+     }
+ 
++    /// Replaces the default response wait for initialization, typed requests and thread starts.
++    ///
++    /// Use this for a test whose server does slow startup work, such as plugin startup tasks, so
++    /// that the wait is a hang backstop instead of a load-dependent limit.
++    pub fn with_request_timeout(mut self, request_timeout: Duration) -> Self {
++        self.request_timeout = request_timeout;
++        self
++    }
++
+     /// Builds a server and completes its standard initialization handshake.
+     pub async fn build_initialized(self) -> anyhow::Result<TestAppServer> {
+-        self.build_initialized_with_timeout(DEFAULT_REQUEST_TIMEOUT)
+-            .await
++        let request_timeout = self.request_timeout;
++        self.build_initialized_with_timeout(request_timeout).await
+     }
+ 
+     /// Builds and initializes a server while preserving a suite-specific timeout.
+@@ -1994,6 +2008,7 @@ impl TestAppServerBuilder {
+             args,
+             exec_server_delay,
+             mock_chatgpt_backend,
++            request_timeout,
+         } = self;
+         let (codex_home, owned_codex_home) = match codex_home {
+             Some(codex_home) => (codex_home, None),
+@@ -2168,6 +2183,7 @@ impl TestAppServerBuilder {
+         )
+         .await?;
+         app_server.auto_env = auto_env;
++        app_server.request_timeout = request_timeout;
+         app_server._owned_install_dir = owned_install_dir;
+         app_server._owned_codex_home = owned_codex_home;
+         app_server._delayed_exec_server = delayed_exec_server;
+diff --git a/codex-rs/cli/tests/rollout_trace.rs b/codex-rs/cli/tests/rollout_trace.rs
+index c9bfeb2..cf6b516 100644
+--- a/codex-rs/cli/tests/rollout_trace.rs
++++ b/codex-rs/cli/tests/rollout_trace.rs
+@@ -3,7 +3,7 @@
+ use anyhow::Result;
+ use app_test_support::MockResponsesConfig;
+ use app_test_support::TestAppServer;
+-use app_test_support::create_mock_responses_server_sequence;
++use app_test_support::create_mock_responses_server_sequence_unchecked;
+ use codex_app_server_protocol::AgentMessageDeltaNotification;
+ use codex_app_server_protocol::ClientRequest;
+ use codex_app_server_protocol::ThreadStartParams;
+@@ -24,134 +24,167 @@ use core_test_support::streaming_sse::StreamingSseChunk;
+ use core_test_support::streaming_sse::start_streaming_sse_server;
+ use pretty_assertions::assert_eq;
+ use serde_json::json;
++use std::time::Duration;
+ use tempfile::TempDir;
+ use tokio::sync::oneshot;
+ 
+-#[tokio::test]
+-async fn accepted_output_survives_success_and_stream_failure() -> Result<()> {
++/// Each test starts a real `codex app-server` with plugin startup tasks, which takes longer under load than the
++/// default request wait allows. The wait only has to catch a hang, so it is generous.
++const REQUEST_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 60);
++
++async fn check_accepted_output(
++    source_id: Option<&str>,
++    terminal: &str,
++    status: ExecutionStatus,
++) -> Result<()> {
+     let codex = codex_utils_cargo_bin::cargo_bin("codex")?;
+-    for (source_id, terminal, status) in [
+-        (
+-            Some("msg-original"),
+-            "response.completed",
+-            ExecutionStatus::Completed,
+-        ),
+-        (None, "response.completed", ExecutionStatus::Completed),
+-        (
+-            Some("msg-original"),
+-            "response.failed",
+-            ExecutionStatus::Failed,
+-        ),
+-        (None, "response.failed", ExecutionStatus::Failed),
+-    ] {
+-        let home = TempDir::new()?;
+-        let traces = TempDir::new()?;
+-        let item = json!({
+-            "type": "message", "id": source_id, "role": "assistant",
+-            "content": [{"type": "output_text", "text": "accepted answer"}]
+-        });
+-        let mut terminal_response = json!({"id": "resp-1"});
+-        if status == ExecutionStatus::Failed {
+-            terminal_response["error"] =
+-                json!({"code": "server_error", "message": "stream failed"});
++    let home = TempDir::new()?;
++    let traces = TempDir::new()?;
++    let item = json!({
++        "type": "message", "id": source_id, "role": "assistant",
++        "content": [{"type": "output_text", "text": "accepted answer"}]
++    });
++    let mut terminal_response = json!({"id": "resp-1"});
++    if status == ExecutionStatus::Failed {
++        terminal_response["error"] = json!({"code": "server_error", "message": "stream failed"});
++    }
++    let response = [
++        json!({"type": "response.created", "response": {"id": "resp-1"}}),
++        json!({"type": "response.output_item.added", "item": item}),
++        json!({"type": "response.output_item.done", "item": item}),
++        json!({"type": terminal, "response": terminal_response}),
++    ]
++    .into_iter()
++    .map(|event| format!("data: {event}\n\n"))
++    .collect();
++    let server = create_mock_responses_server_sequence_unchecked(vec![response]).await;
++    MockResponsesConfig::new(&server.uri()).write(home.path())?;
++    let mut app = TestAppServer::builder()
++        .with_program(&codex)
++        .with_plugin_startup_tasks()
++        .with_args(&["app-server"])
++        .with_codex_home(home.path())
++        .with_env_overrides(&[("CODEX_ROLLOUT_TRACE_ROOT", traces.path().to_str())])
++        .with_request_timeout(REQUEST_TIMEOUT)
++        .build_initialized()
++        .await?;
++    let ThreadStartResponse { thread, .. } = app.start_thread(ThreadStartParams::default()).await?;
++    let TurnStartResponse { turn } = app
++        .request(|request_id| ClientRequest::TurnStart {
++            request_id,
++            params: TurnStartParams {
++                thread_id: thread.id.clone(),
++                input: vec![UserInput::Text {
++                    text: "answer once".into(),
++                    text_elements: Vec::new(),
++                }],
++                ..Default::default()
++            },
++        })
++        .await?;
++    let completed: TurnCompletedNotification = app.read_notification("turn/completed").await?;
++    assert_eq!(
++        completed.turn.status,
++        if status == ExecutionStatus::Completed {
++            TurnStatus::Completed
++        } else {
++            TurnStatus::Failed
+         }
+-        let response = [
+-            json!({"type": "response.created", "response": {"id": "resp-1"}}),
+-            json!({"type": "response.output_item.added", "item": item}),
+-            json!({"type": "response.output_item.done", "item": item}),
+-            json!({"type": terminal, "response": terminal_response}),
+-        ]
+-        .into_iter()
+-        .map(|event| format!("data: {event}\n\n"))
+-        .collect();
+-        let server = create_mock_responses_server_sequence(vec![response]).await;
+-        MockResponsesConfig::new(&server.uri()).write(home.path())?;
+-        let mut app = TestAppServer::builder()
+-            .with_program(&codex)
+-            .with_plugin_startup_tasks()
+-            .with_args(&["app-server"])
+-            .with_codex_home(home.path())
+-            .with_env_overrides(&[("CODEX_ROLLOUT_TRACE_ROOT", traces.path().to_str())])
+-            .build_initialized()
+-            .await?;
+-        let ThreadStartResponse { thread, .. } =
+-            app.start_thread(ThreadStartParams::default()).await?;
+-        let TurnStartResponse { turn } = app
+-            .request(|request_id| ClientRequest::TurnStart {
+-                request_id,
+-                params: TurnStartParams {
+-                    thread_id: thread.id.clone(),
+-                    input: vec![UserInput::Text {
+-                        text: "answer once".into(),
+-                        text_elements: Vec::new(),
+-                    }],
+-                    ..Default::default()
+-                },
+-            })
+-            .await?;
+-        let completed: TurnCompletedNotification = app.read_notification("turn/completed").await?;
+-        assert_eq!(
+-            completed.turn.status,
+-            if status == ExecutionStatus::Completed {
+-                TurnStatus::Completed
+-            } else {
+-                TurnStatus::Failed
+-            }
+-        );
+-        assert!(app.shutdown_gracefully().await?.success());
++    );
++    assert!(app.shutdown_gracefully().await?.success());
+ 
+-        // Exercise the exported artifact, not just an in-process reducer call.
+-        // There is no following request to prove acceptance of this final item.
+-        let bundle = std::fs::read_dir(traces.path())?.next().unwrap()?.path();
+-        let reduced = tokio::process::Command::new(&codex)
+-            .env("CODEX_HOME", home.path())
+-            .args(["debug", "trace-reduce"])
+-            .arg(&bundle)
+-            .output()
+-            .await?;
+-        assert!(
+-            reduced.status.success(),
+-            "{}",
+-            String::from_utf8_lossy(&reduced.stderr)
+-        );
+-        let rollout: RolloutTrace =
+-            serde_json::from_reader(std::fs::File::open(bundle.join("state.json"))?)?;
+-        let call = rollout.inference_calls.values().next().unwrap();
+-        let output_id = &call.response_item_ids[0];
+-        let output = &rollout.conversation_items[output_id];
+-        let mut expected = call.request_item_ids.clone();
+-        expected.push(output_id.clone());
+-        assert_eq!(rollout.threads[&thread.id].conversation_item_ids, expected);
+-        assert_eq!(rollout.codex_turns[&turn.id].execution.status, status);
+-        assert_eq!(call.execution.status, status);
+-        assert_eq!(
+-            output.produced_by,
+-            vec![ProducerRef::Inference {
+-                inference_call_id: call.inference_call_id.clone()
+-            }]
+-        );
+-        assert!(
+-            output
+-                .responses_item_id
+-                .as_ref()
+-                .is_some_and(|id| !id.is_empty())
+-        );
+-        if let Some(source_id) = source_id {
+-            assert_eq!(output.responses_item_id.as_deref(), Some(source_id));
+-        }
+-        let requests = server.received_requests().await.unwrap();
+-        let request = requests
+-            .iter()
+-            .find(|request| request.url.path().ends_with("/responses"))
+-            .unwrap();
+-        assert_eq!(
+-            request.headers["x-codex-inference-call-id"].to_str()?,
+-            call.inference_call_id
+-        );
++    // Exercise the exported artifact, not just an in-process reducer call.
++    // There is no following request to prove acceptance of this final item.
++    let bundle = std::fs::read_dir(traces.path())?.next().unwrap()?.path();
++    let reduced = tokio::process::Command::new(&codex)
++        .env("CODEX_HOME", home.path())
++        .args(["debug", "trace-reduce"])
++        .arg(&bundle)
++        .output()
++        .await?;
++    assert!(
++        reduced.status.success(),
++        "{}",
++        String::from_utf8_lossy(&reduced.stderr)
++    );
++    let rollout: RolloutTrace =
++        serde_json::from_reader(std::fs::File::open(bundle.join("state.json"))?)?;
++    let call = rollout.inference_calls.values().next().unwrap();
++    let output_id = &call.response_item_ids[0];
++    let output = &rollout.conversation_items[output_id];
++    let mut expected = call.request_item_ids.clone();
++    expected.push(output_id.clone());
++    assert_eq!(rollout.threads[&thread.id].conversation_item_ids, expected);
++    assert_eq!(rollout.codex_turns[&turn.id].execution.status, status);
++    assert_eq!(call.execution.status, status);
++    assert_eq!(
++        output.produced_by,
++        vec![ProducerRef::Inference {
++            inference_call_id: call.inference_call_id.clone()
++        }]
++    );
++    assert!(
++        output
++            .responses_item_id
++            .as_ref()
++            .is_some_and(|id| !id.is_empty())
++    );
++    if let Some(source_id) = source_id {
++        assert_eq!(output.responses_item_id.as_deref(), Some(source_id));
+     }
++    let requests = server.received_requests().await.unwrap();
++    let mut response_requests = requests
++        .iter()
++        .filter(|request| request.url.path().ends_with("/responses"));
++    let request = response_requests.next().unwrap();
++    assert!(response_requests.next().is_none());
++    assert_eq!(
++        request.headers["x-codex-inference-call-id"].to_str()?,
++        call.inference_call_id
++    );
+     Ok(())
+ }
+ 
++#[tokio::test]
++async fn accepted_output_survives_success_with_source_id() -> Result<()> {
++    check_accepted_output(
++        Some("msg-original"),
++        "response.completed",
++        ExecutionStatus::Completed,
++    )
++    .await
++}
++
++#[tokio::test]
++async fn accepted_output_survives_success_without_source_id() -> Result<()> {
++    check_accepted_output(
++        /*source_id*/ None,
++        "response.completed",
++        ExecutionStatus::Completed,
++    )
++    .await
++}
++
++#[tokio::test]
++async fn accepted_output_survives_stream_failure_with_source_id() -> Result<()> {
++    check_accepted_output(
++        Some("msg-original"),
++        "response.failed",
++        ExecutionStatus::Failed,
++    )
++    .await
++}
++
++#[tokio::test]
++async fn accepted_output_survives_stream_failure_without_source_id() -> Result<()> {
++    check_accepted_output(
++        /*source_id*/ None,
++        "response.failed",
++        ExecutionStatus::Failed,
++    )
++    .await
++}
++
+ #[tokio::test]
+ async fn accepted_output_survives_interruption_and_shutdown() -> Result<()> {
+     let codex = codex_utils_cargo_bin::cargo_bin("codex")?;
+@@ -182,6 +215,7 @@ async fn accepted_output_survives_interruption_and_shutdown() -> Result<()> {
+         .with_args(&["app-server"])
+         .with_codex_home(home.path())
+         .with_env_overrides(&[("CODEX_ROLLOUT_TRACE_ROOT", traces.path().to_str())])
++        .with_request_timeout(REQUEST_TIMEOUT)
+         .build_initialized()
+         .await?;
+     let ThreadStartResponse { thread, .. } = app.start_thread(ThreadStartParams::default()).await?;
+-- 
+2.43.0
+

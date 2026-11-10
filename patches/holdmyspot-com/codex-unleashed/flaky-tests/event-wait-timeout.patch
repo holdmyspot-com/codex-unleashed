@@ -1,0 +1,114 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 10 Nov 2026 10:21:06 -0500
+Subject: [PATCH] Remove the 10 second floor from the core test event wait
+
+wait_for_event_with_timeout raised every per-event bound to at least 10 seconds, and
+wait_for_event passed one second, so every wait in the core integration tests had a
+fixed 10 second budget. A cold PowerShell start, a large image decode in an
+unoptimized binary or a stalled runner exceeds that, and the tests failed with
+"timeout waiting for event".
+
+wait_for_event now has no per-event bound, so the runner's timeout is the backstop
+for a hang. wait_for_event_with_timeout uses exactly the bound its caller passes.
+Every caller already passes 15 seconds or more, or a deadline-derived remainder,
+except two approval waits in the subagent test that passed 2 seconds and relied on
+the floor; they now use wait_for_event.
+---
+ codex-rs/core/tests/common/lib.rs      | 16 ++++++++-----
+ codex-rs/core/tests/suite/approvals.rs | 32 ++++++++++----------------
+ 2 files changed, 22 insertions(+), 26 deletions(-)
+
+diff --git a/codex-rs/core/tests/common/lib.rs b/codex-rs/core/tests/common/lib.rs
+index 9a27ad1..542afe7 100644
+--- a/codex-rs/core/tests/common/lib.rs
++++ b/codex-rs/core/tests/common/lib.rs
+@@ -264,13 +264,19 @@ pub fn find_codex_linux_sandbox_exe() -> Result<PathBuf, CargoBinError> {
+ 
+ pub async fn wait_for_event<F>(
+     codex: &CodexThread,
+-    predicate: F,
++    mut predicate: F,
+ ) -> codex_protocol::protocol::EventMsg
+ where
+     F: FnMut(&codex_protocol::protocol::EventMsg) -> bool,
+ {
+-    use tokio::time::Duration;
+-    wait_for_event_with_timeout(codex, predicate, Duration::from_secs(1)).await
++    // No per-event bound: how long an event takes depends on runner load, so the test runner's own timeout is the
++    // backstop for a hang. A caller that needs a bound uses `wait_for_event_with_timeout`.
++    loop {
++        let ev = codex.next_event().await.expect("stream ended unexpectedly");
++        if predicate(&ev.msg) {
++            return ev.msg;
++        }
++    }
+ }
+ 
+ /// Waits for a configured MCP server to finish startup and requires it to be ready.
+@@ -386,11 +392,9 @@ pub async fn wait_for_event_with_timeout<F>(
+ where
+     F: FnMut(&codex_protocol::protocol::EventMsg) -> bool,
+ {
+-    use tokio::time::Duration;
+     use tokio::time::timeout;
+     loop {
+-        // Allow a bit more time to accommodate async startup work (e.g. config IO, tool discovery)
+-        let ev = timeout(wait_time.max(Duration::from_secs(10)), codex.next_event())
++        let ev = timeout(wait_time, codex.next_event())
+             .await
+             .expect("timeout waiting for event")
+             .expect("stream ended unexpectedly");
+diff --git a/codex-rs/core/tests/suite/approvals.rs b/codex-rs/core/tests/suite/approvals.rs
+index 091a039..3bdc8ff 100644
+--- a/codex-rs/core/tests/suite/approvals.rs
++++ b/codex-rs/core/tests/suite/approvals.rs
+@@ -2666,16 +2666,12 @@ async fn spawned_subagent_execpolicy_amendment_propagates_to_parent_session() ->
+     .await?;
+ 
+     let child = wait_for_spawned_thread(&test).await?;
+-    let approval_event = wait_for_event_with_timeout(
+-        &child,
+-        |event| {
+-            matches!(
+-                event,
+-                EventMsg::ExecApprovalRequest(_) | EventMsg::TurnComplete(_)
+-            )
+-        },
+-        Duration::from_secs(2),
+-    )
++    let approval_event = wait_for_event(&child, |event| {
++        matches!(
++            event,
++            EventMsg::ExecApprovalRequest(_) | EventMsg::TurnComplete(_)
++        )
++    })
+     .await;
+ 
+     let EventMsg::ExecApprovalRequest(approval) = approval_event else {
+@@ -2700,16 +2696,12 @@ async fn spawned_subagent_execpolicy_amendment_propagates_to_parent_session() ->
+         })
+         .await?;
+ 
+-    let child_event = wait_for_event_with_timeout(
+-        &child,
+-        |event| {
+-            matches!(
+-                event,
+-                EventMsg::ExecApprovalRequest(_) | EventMsg::TurnComplete(_)
+-            )
+-        },
+-        Duration::from_secs(2),
+-    )
++    let child_event = wait_for_event(&child, |event| {
++        matches!(
++            event,
++            EventMsg::ExecApprovalRequest(_) | EventMsg::TurnComplete(_)
++        )
++    })
+     .await;
+     match child_event {
+         EventMsg::TurnComplete(_) => {}
+-- 
+2.43.0
+

@@ -1,0 +1,76 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 10 Nov 2026 10:23:49 -0500
+Subject: [PATCH] Let the daemon telemetry test wait for its export
+
+record_command skips telemetry when loading configuration takes more than two
+seconds and gives the exporter two seconds to flush. Under load either budget leaves
+the mock collector with no request, and the test failed with no way to wait for the
+export.
+
+CODEX_DAEMON_TELEMETRY_BUDGET_MS now replaces both budgets, in milliseconds. The
+default stays two seconds, so production behavior is unchanged. The test sets it to
+60 seconds, which only bounds a hang.
+---
+ codex-rs/cli/src/daemon_telemetry.rs   | 19 +++++++++++++++----
+ codex-rs/cli/tests/daemon_telemetry.rs |  2 ++
+ 2 files changed, 17 insertions(+), 4 deletions(-)
+
+diff --git a/codex-rs/cli/src/daemon_telemetry.rs b/codex-rs/cli/src/daemon_telemetry.rs
+index 0bc3fed..a474200 100644
+--- a/codex-rs/cli/src/daemon_telemetry.rs
++++ b/codex-rs/cli/src/daemon_telemetry.rs
+@@ -5,6 +5,19 @@ use codex_utils_cli::CliConfigOverrides;
+ use std::time::Duration;
+ use tokio::time::timeout;
+ 
++/// Overrides, in milliseconds, both time budgets below. Tests set it so that a slow machine delays the observation
++/// instead of dropping it.
++const BUDGET_ENV: &str = "CODEX_DAEMON_TELEMETRY_BUDGET_MS";
++const DEFAULT_BUDGET: Duration = Duration::from_secs(/*secs*/ 2);
++
++/// The time allowed for loading consent-aware configuration and, separately, for flushing the exporter.
++fn budget() -> Duration {
++    std::env::var(BUDGET_ENV)
++        .ok()
++        .and_then(|milliseconds| milliseconds.parse::<u64>().ok())
++        .map_or(DEFAULT_BUDGET, Duration::from_millis)
++}
++
+ pub(crate) async fn record_command(
+     overrides: &CliConfigOverrides,
+     analytics_default_enabled: bool,
+@@ -16,7 +29,7 @@ pub(crate) async fn record_command(
+     }
+     // Skip telemetry if consent-aware configuration cannot be loaded promptly.
+     let Ok(Ok(config)) = timeout(
+-        Duration::from_secs(/*secs*/ 2),
++        budget(),
+         crate::cloud_config::load_config(overrides, codex_config::LoaderOverrides::default()),
+     )
+     .await
+@@ -54,7 +67,5 @@ pub(crate) async fn record_command(
+         ]);
+         let _ = metrics.counter("codex.daemon.update", /*inc*/ 1, &tags);
+     }
+-    let _ = otel
+-        .shutdown_with_timeout(std::time::Duration::from_secs(/*secs*/ 2))
+-        .await;
++    let _ = otel.shutdown_with_timeout(budget()).await;
+ }
+diff --git a/codex-rs/cli/tests/daemon_telemetry.rs b/codex-rs/cli/tests/daemon_telemetry.rs
+index 1d34cef..0819d9a 100644
+--- a/codex-rs/cli/tests/daemon_telemetry.rs
++++ b/codex-rs/cli/tests/daemon_telemetry.rs
+@@ -36,6 +36,8 @@ async fn foreground_update_honors_metrics_exporter_and_reports_unconfirmed() ->
+             .current_dir(home.path())
+             .env("CODEX_HOME", home.path())
+             .env_remove(codex_app_server_daemon::telemetry::HANDOFF_ENV)
++            // Wait for the export however long a loaded machine takes; the test runner's timeout catches a hang.
++            .env("CODEX_DAEMON_TELEMETRY_BUDGET_MS", "60000")
+             .arg("app-server");
+         if analytics_default_enabled {
+             command.arg("--analytics-default-enabled");
+-- 
+2.43.0
+

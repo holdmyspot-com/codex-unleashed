@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 10 Nov 2026 10:27:07 -0500
+Subject: [PATCH] Wait for the startup probe replies before the focus palette
+ test exits
+
+The test wrote the exit key right after the first frame, then waited for the exit
+DA1 query. The startup probe reads terminal input until every reply has arrived and
+records there whether the terminal answers DA1, which decides whether the TUI sends
+the exit query at all. A key that reaches the TUI before the probe has all its
+replies can be handled while that decision is still open.
+
+The test now waits until it has answered the cursor-position, keyboard and palette
+queries before it sends the exit key.
+---
+ codex-rs/tui/tests/suite/focus_palette.rs | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/codex-rs/tui/tests/suite/focus_palette.rs b/codex-rs/tui/tests/suite/focus_palette.rs
+index e7c01ff..69840ba 100644
+--- a/codex-rs/tui/tests/suite/focus_palette.rs
++++ b/codex-rs/tui/tests/suite/focus_palette.rs
+@@ -227,6 +227,9 @@ fn default_owned_screen_entry_paints_before_sync_ends_and_exit_clears_inline_dra
+         (1, (u16::try_from(composer_row)?, 2), false),
+         "first owned-screen frame must contain one composer with its visible cursor"
+     );
++    // The exit key must not reach the startup probe: it reads terminal input until every reply arrives and
++    // decides then whether the terminal answers the exit DA1 query.
++    terminal.wait_for_startup_replies()?;
+     let exit_start = terminal.output.len();
+     terminal.write_input(b"\x1b[99;5u")?;
+     let deadline = Instant::now() + STARTUP_TIMEOUT;
+@@ -435,6 +438,24 @@ impl PtyCodex {
+         );
+     }
+ 
++    /// Waits until the cursor-position, keyboard and palette queries of the startup probe have been answered.
++    fn wait_for_startup_replies(&mut self) -> Result<()> {
++        let deadline = Instant::now() + STARTUP_TIMEOUT;
++        while !(self.cursor_answered && self.keyboard_answered && self.palette_answered) {
++            ensure!(
++                Instant::now() < deadline,
++                "startup probe replies were not all sent (cursor {}, keyboard {}, palette {})",
++                self.cursor_answered,
++                self.keyboard_answered,
++                self.palette_answered,
++            );
++            self.read_output(Duration::from_millis(/*millis*/ 50))?;
++            self.answer_startup_queries()?;
++            self.ensure_running()?;
++        }
++        Ok(())
++    }
++
+     fn wait_for_focus_input(
+         &mut self,
+         input: &str,
+-- 
+2.43.0
+

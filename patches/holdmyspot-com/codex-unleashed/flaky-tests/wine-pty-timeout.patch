@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 10 Nov 2026 10:21:28 -0500
+Subject: [PATCH] Give the Wine PowerShell PTY test one timeout budget
+
+The wine-test-support unit-test target had a 60 second Bazel timeout. Its PowerShell
+PTY test copies a runtime into a fresh Wine prefix, boots Wine, cold-starts pwsh,
+then waits up to 30 seconds more before a 10 second wineserver teardown. On a loaded
+runner the sum exceeds 60 seconds and Bazel kills the target.
+
+The target now uses the moderate (300 second) timeout and the inner 30 second
+deadline is gone, so the Bazel timeout is the only bound on a hang.
+---
+ bazel/rules/testing/wine/BUILD.bazel      | 2 +-
+ bazel/rules/testing/wine/src/lib_tests.rs | 9 ++++-----
+ 2 files changed, 5 insertions(+), 6 deletions(-)
+
+diff --git a/bazel/rules/testing/wine/BUILD.bazel b/bazel/rules/testing/wine/BUILD.bazel
+index 4bd9acf..9854d56 100644
+--- a/bazel/rules/testing/wine/BUILD.bazel
++++ b/bazel/rules/testing/wine/BUILD.bazel
+@@ -42,7 +42,7 @@ rust_binary(
+ 
+ wine_rust_test(
+     name = "wine-test-support-unit-tests",
+-    timeout = "short",
++    timeout = "moderate",
+     crate = ":wine_test_support",
+     windows_binaries = {
+         "wine-smoke": ":windows-smoke",
+diff --git a/bazel/rules/testing/wine/src/lib_tests.rs b/bazel/rules/testing/wine/src/lib_tests.rs
+index 4dc0431..fa813f7 100644
+--- a/bazel/rules/testing/wine/src/lib_tests.rs
++++ b/bazel/rules/testing/wine/src/lib_tests.rs
+@@ -370,7 +370,8 @@ async fn pinned_powershell_runs_under_wine_with_a_pty() -> Result<()> {
+         codex_utils_pty::ChildFds::Inherited(&[]),
+     )
+     .await?;
+-    let command_result = timeout(Duration::from_secs(30), async {
++    // No inner deadline: Bazel's test timeout bounds a hang, and a fixed budget here fails when the runner is slow.
++    let command_result = async {
+         let stdout = async {
+             let mut output = Vec::new();
+             while let Some(chunk) = stdout_rx.recv().await {
+@@ -387,10 +388,8 @@ async fn pinned_powershell_runs_under_wine_with_a_pty() -> Result<()> {
+         };
+         let (stdout, stderr, exit_code) = tokio::join!(stdout, stderr, exit_rx);
+         Ok::<_, anyhow::Error>((stdout, stderr, exit_code.context("wait for PowerShell")?))
+-    })
+-    .await
+-    .context("PowerShell smoke test timed out")
+-    .and_then(std::convert::identity);
++    }
++    .await;
+     drop(session);
+     let shutdown_result = timeout(Duration::from_secs(10), async {
+         let mut command = TokioCommand::new(&runtime.wineserver);
+-- 
+2.43.0
+
