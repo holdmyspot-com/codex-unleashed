@@ -283,6 +283,10 @@ jobs:
         if: always() && !cancelled()
         run: just fmt-check
 
+      - name: Show the Bazel formatting differences
+        if: failure()
+        run: dotslash tools/buildifier -mode=diff -lint=off MODULE.bazel || true
+
       - name: Prettier (run `pnpm run format:fix` to fix)
         if: always() && !cancelled()
         run: pnpm run format
