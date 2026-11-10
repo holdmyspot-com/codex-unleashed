@@ -230,6 +230,8 @@ Patches 29–33 in `patches/holdmyspot-com/codex-unleashed/dependency-upgrades/`
 
 Verification of the 34-patch queue (2026-11-09): platform lints `42722042431` (dependency lints, rustdoc, x64 and ARM64 clippy), Windows lints `42722033353` (x64 and ARM64; the first run `42712979197` found that serial2 0.2.39 no longer enables winapi's `std` feature, now requested by `codex-utils-pty`), macOS lints `42712973167` and regeneration `42722037388` (no changes) pass. Linux tests `42712983966` run 23,184 tests; the four failures and two timeouts all fail on unpatched upstream too ([upstream-failure-comparison.md](docs/upstream-failure-comparison.md)). The six-target cold release build is `42722075898`.
 
+Cold release builds of the 33-patch queue (2026-11-09, `cache=false`) pass on all six targets with no compiler warnings. Primary-bundle wall times: Linux x64 40 min (`42707724560`), Linux ARM64 50 min (`42707737676`), macOS ARM64 2 h 25 min (`42707753358`), macOS x64 2 h 21 min (`42707767617`), Windows x64 1 h 20 min (`42707782680`), Windows ARM64 1 h 14 min (`42707797041`). The cached Linux x64 build `42708881874` passes; its invalidation check is `42724961867`.
+
 Held back, each for a compatibility constraint:
 | Dependency | Kept at | Constraint |
 |---|---|---|
