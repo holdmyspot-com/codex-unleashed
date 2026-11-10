@@ -5,11 +5,13 @@ name: Automatic upstream release
 # pinned upstream commit with the queue applied, and only for a live run build the packages, publish the release,
 # verify the one-line installers on six fresh runners and then mark it latest.
 #
-# A dispatch with dry_run=true (the default) stops after the gates and publishes nothing: no package build, tag,
-# release, draft or asset. Enabling the schedule below is the owner's step at acceptance.
+# A dispatch with dry_run=true (the default) stops after the gates and publishes nothing: no tag, release, draft or
+# release asset. It builds no packages unless package_dry_run is set, which builds the selected targets' package archives
+# and installers into 7-day workflow artifacts only. skip_gates (dry runs only) skips the gate workflows so the package
+# build can be rehearsed alone on cheaper runners. Enabling the schedule below is the owner's step at acceptance.
 #
-# Gate coverage: there is no patched macOS test workflow yet (baseline-macos-bazel-tests.yml tests pristine upstream
-# only, without a patches input), so no macOS test gate is wired here. Add one before the first live run.
+# Gate coverage: Linux, Windows and macOS tests (the macOS one is the Bazel suite), lints on three platforms and the
+# six-target release build.
 
 on:
   # schedule:
@@ -24,6 +26,18 @@ on:
         description: Detect, apply the patch queue and run every gate, but publish nothing
         type: boolean
         default: true
+      package_dry_run:
+        description: In a dry run, also build the package archives and installers (uploaded as workflow artifacts only)
+        type: boolean
+        default: false
+      package_targets:
+        description: Optional space-separated targets for a dry-run package build, such as x86_64-unknown-linux-musl; empty builds all six
+        type: string
+        default: ""
+      skip_gates:
+        description: Dry runs only; skip the gate workflows, for rehearsing the package build alone
+        type: boolean
+        default: false
 
 # One run at a time per requested release and mode. The publish job adds a per-version group and re-checks the fork's
 # releases, because the version a scheduled run resolves is unknown until detection has run.
@@ -61,6 +75,7 @@ jobs:
       upstream_commit: ${{ steps.commit.outputs.upstream_commit }}
       patches: ${{ steps.commit.outputs.patches }}
       live: ${{ steps.mode.outputs.live }}
+      package_matrix: ${{ steps.mode.outputs.package_matrix }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -70,13 +85,33 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           DRY_RUN: ${{ inputs.dry_run }}
+          SKIP_GATES: ${{ inputs.skip_gates }}
+          PACKAGE_TARGETS: ${{ inputs.package_targets }}
         run: |
           set -euo pipefail
           live=false
           if [[ "$EVENT" == schedule || "$DRY_RUN" == false ]]; then
             live=true
           fi
-          printf 'live=%s\n' "$live" >> "$GITHUB_OUTPUT"
+          if [[ "$live" == true && "$SKIP_GATES" == true ]]; then
+            printf '::error::skip_gates is allowed only with dry_run=true\n'
+            exit 1
+          fi
+          all='[{"runner":"ubuntu-24.04","target":"x86_64-unknown-linux-musl"},
+            {"runner":"ubuntu-24.04-arm","target":"aarch64-unknown-linux-musl"},
+            {"runner":"macos-15","target":"aarch64-apple-darwin"},
+            {"runner":"macos-15","target":"x86_64-apple-darwin"},
+            {"runner":"windows-2025","target":"x86_64-pc-windows-msvc"},
+            {"runner":"windows-11-arm","target":"aarch64-pc-windows-msvc"}]'
+          # Only a dry run may narrow the targets; a live release always builds all six.
+          if [[ "$live" == false && -n "$PACKAGE_TARGETS" ]]; then
+            matrix="$(jq -c --arg targets "$PACKAGE_TARGETS" '($targets | split(" ") | map(select(. != ""))) as $wanted
+              | map(select(.target as $t | $wanted | index($t)))' <<< "$all")"
+            test "$(jq 'length' <<< "$matrix")" = "$(jq -n --arg targets "$PACKAGE_TARGETS" '$targets | split(" ") | map(select(. != "")) | length')"
+          else
+            matrix="$(jq -c . <<< "$all")"
+          fi
+          printf 'live=%s\npackage_matrix=%s\n' "$live" "$matrix" >> "$GITHUB_OUTPUT"
 
       - id: detect
         env:
@@ -192,6 +227,7 @@ jobs:
   platform-lints:
     name: Platform lints
     needs: [detect, patch-check]
+    if: ${{ !inputs.skip_gates }}
     uses: ./.github/workflows/baseline-platform-lints.yml
     with:
       patches: ${{ needs.detect.outputs.patches }}
@@ -200,6 +236,7 @@ jobs:
   macos-lints:
     name: macOS lints
     needs: [detect, patch-check]
+    if: ${{ !inputs.skip_gates }}
     uses: ./.github/workflows/baseline-macos-lints.yml
     with:
       patches: ${{ needs.detect.outputs.patches }}
@@ -208,6 +245,7 @@ jobs:
   windows-lints:
     name: Windows lints
     needs: [detect, patch-check]
+    if: ${{ !inputs.skip_gates }}
     uses: ./.github/workflows/baseline-windows-lints.yml
     with:
       patches: ${{ needs.detect.outputs.patches }}
@@ -216,6 +254,7 @@ jobs:
   linux-tests:
     name: Linux tests
     needs: [detect, patch-check]
+    if: ${{ !inputs.skip_gates }}
     uses: ./.github/workflows/baseline-linux-tests.yml
     with:
       patches: ${{ needs.detect.outputs.patches }}
@@ -224,6 +263,7 @@ jobs:
   windows-tests:
     name: Windows tests - ${{ matrix.target }}
     needs: [detect, patch-check]
+    if: ${{ !inputs.skip_gates }}
     strategy:
       fail-fast: false
       matrix:
@@ -235,9 +275,19 @@ jobs:
       package: --workspace
       target: ${{ matrix.target }}
 
+  macos-tests:
+    name: macOS Bazel tests
+    needs: [detect, patch-check]
+    if: ${{ !inputs.skip_gates }}
+    uses: ./.github/workflows/baseline-macos-bazel-tests.yml
+    with:
+      patches: ${{ needs.detect.outputs.patches }}
+      upstream_commit: ${{ needs.detect.outputs.upstream_commit }}
+
   release-builds:
     name: Six-target release build and smoke checks
     needs: [detect, patch-check]
+    if: ${{ !inputs.skip_gates }}
     # The called workflow's jobs request these permissions; the caller must grant them.
     permissions:
       contents: read
@@ -252,7 +302,7 @@ jobs:
 
   report:
     name: Gate report
-    needs: [detect, patch-check, platform-lints, macos-lints, windows-lints, linux-tests, windows-tests, release-builds]
+    needs: [detect, patch-check, platform-lints, macos-lints, windows-lints, linux-tests, windows-tests, macos-tests, release-builds]
     if: ${{ !cancelled() && needs.detect.outputs.action == 'release' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -266,12 +316,14 @@ jobs:
       - id: report
         env:
           NEEDS: ${{ toJSON(needs) }}
+          SKIP_GATES: ${{ inputs.skip_gates }}
           UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
           LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          failing="$(jq -r 'to_entries | map(select(.key != "detect" and .value.result != "success")
-            | "\(.key) (\(.value.result))") | join(", ")' <<< "$NEEDS")"
+          # skip_gates (dry runs only, enforced in detect) deliberately skips the gate workflows.
+          failing="$(jq -r --arg skip "$SKIP_GATES" 'to_entries | map(select(.key != "detect" and .value.result != "success"
+            and not($skip == "true" and .value.result == "skipped")) | "\(.key) (\(.value.result))") | join(", ")' <<< "$NEEDS")"
           if [[ -n "$failing" ]]; then
             python3 -I .github/scripts/upstream-auto-release.py summary --upstream-tag "$UPSTREAM_TAG" \
               --failing "gate $failing" --log-url "$LOG_URL" >> "$GITHUB_STEP_SUMMARY"
@@ -287,19 +339,15 @@ jobs:
   package:
     name: Package - ${{ matrix.target }}
     needs: [detect, report]
-    if: needs.detect.outputs.live == 'true' && needs.report.outputs.passed == 'true'
+    # A live run builds the packages to publish; a dry run builds them only when package_dry_run asks, and uploads them as
+    # workflow artifacts without publishing.
+    if: (needs.detect.outputs.live == 'true' || inputs.package_dry_run == true) && needs.report.outputs.passed == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - {runner: ubuntu-24.04, target: x86_64-unknown-linux-musl}
-          - {runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl}
-          - {runner: macos-15, target: aarch64-apple-darwin}
-          - {runner: macos-15, target: x86_64-apple-darwin}
-          - {runner: windows-2025, target: x86_64-pc-windows-msvc}
-          - {runner: windows-11-arm, target: aarch64-pc-windows-msvc}
+        include: ${{ fromJSON(needs.detect.outputs.package_matrix) }}
     env:
       TARGET: ${{ matrix.target }}
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
