@@ -442,6 +442,9 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/assets"
           cp "dist/$TARGET/codex-package-$TARGET.tar.gz" "$RUNNER_TEMP/assets/"
+          # Debug symbols (dSYM, PDB or debuginfo) that the package action strips from the binaries, so crashes in
+          # released binaries can be symbolicated.
+          cp "symbols-dist/$TARGET/codex-symbols-$TARGET.tar.gz" "$RUNNER_TEMP/assets/"
           if [[ "$TARGET" == x86_64-unknown-linux-musl ]]; then
             # The installers come from the patched tree, which routes them to this repository's releases.
             cp scripts/install/install.sh scripts/install/install.ps1 "$RUNNER_TEMP/assets/"
@@ -520,8 +523,10 @@ jobs:
           assets="$RUNNER_TEMP/assets"
           count="$(ls "$assets"/codex-package-*.tar.gz | wc -l)"
           test "$count" = 6
+          count="$(ls "$assets"/codex-symbols-*.tar.gz | wc -l)"
+          test "$count" = 6
           test -f "$assets/install.sh" -a -f "$assets/install.ps1"
-          (cd "$assets" && sha256sum codex-package-*.tar.gz install.sh install.ps1 > SHA256SUMS && cat SHA256SUMS)
+          (cd "$assets" && sha256sum codex-package-*.tar.gz codex-symbols-*.tar.gz install.sh install.ps1 > SHA256SUMS && cat SHA256SUMS)
           python3 -I .github/scripts/upstream-auto-release.py notes --version "$VERSION" --build "$BUILD" \
             --upstream-tag "$UPSTREAM_TAG" --upstream-commit "$UPSTREAM_COMMIT" --fork-commit "$GITHUB_SHA" \
             --readme patches/README.md > "$RUNNER_TEMP/notes.md"

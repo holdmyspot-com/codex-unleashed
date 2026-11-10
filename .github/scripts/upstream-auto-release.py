@@ -130,6 +130,9 @@ To install exactly this release, replace `latest/download` with `download/{tag}`
 Each `codex-package-<target>.tar.gz` asset is listed in `SHA256SUMS`, and GitHub shows the same SHA-256 digest on \
 the asset. The installers verify the digest before installing.
 
+`codex-symbols-<target>.tar.gz` holds the debug symbols stripped from that target's binaries, for symbolicating \
+crash reports. It is listed in `SHA256SUMS` too.
+
 ## Patches applied
 
 The patch queue at [`{fork_commit[:12]}`](https://github.com/{FORK}/tree/{fork_commit}/patches), in order:
