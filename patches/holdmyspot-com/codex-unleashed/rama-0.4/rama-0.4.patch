@@ -5,7 +5,7 @@ Subject: [PATCH] Port the network proxy to rama 0.4
 
 Rama 0.4 removed ProxyTarget, StreamForwardService and PeekStream and changed the SOCKS5 acceptor to take an executor, so the network proxy forwards streams, replays peeked prefixes and relays SOCKS5 through the new APIs.
 ---
- MODULE.bazel                                  |   8 +
+ MODULE.bazel                                  |   7 +
  MODULE.bazel.lock                             |  49 +-
  codex-rs/Cargo.lock                           | 417 ++++++++++--------
  codex-rs/deny.toml                            |   2 -
@@ -44,18 +44,18 @@ Rama 0.4 removed ProxyTarget, StreamForwardService and PeekStream and changed th
  .../src/windows_proxy_ingress.rs              |  15 +-
  patches/BUILD.bazel                           |   1 +
  .../rama-dns_windows_dnsapi_link_name.patch   |  12 +
- 39 files changed, 1148 insertions(+), 884 deletions(-)
+ 39 files changed, 1147 insertions(+), 884 deletions(-)
  create mode 100644 codex-rs/network-proxy/src/request_context.rs
  create mode 100644 patches/rama-dns_windows_dnsapi_link_name.patch
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 41595db39..aaffec8da 100644
+index 41595db39..f361ecc94 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -453,6 +453,14 @@ crate.annotation(
+@@ -452,6 +452,13 @@ crate.annotation(
+         ],
      },
  )
- 
 +crate.annotation(
 +    # rama-dns links `Dnsapi`, but the MinGW import library is `libdnsapi.a`, so linking from a
 +    # case-sensitive file system fails. Windows resolves either spelling to the same DLL.
@@ -63,10 +63,9 @@ index 41595db39..aaffec8da 100644
 +    patch_args = ["-p1"],
 +    patches = ["//patches:rama-dns_windows_dnsapi_link_name.patch"],
 +)
-+
+ 
  # Match the CodeModeHost response-compression benchmark's zstd level.
  crate.annotation(
-     crate = "tonic",
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
 index 736ef8912..528a75ac3 100644
 --- a/MODULE.bazel.lock
