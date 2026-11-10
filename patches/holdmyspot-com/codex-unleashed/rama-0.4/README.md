@@ -46,4 +46,8 @@ cargo clippy -p codex-network-proxy --tests -- -D warnings
 ```
 
 Remote runs on the 34-patch queue plus `rama-0.4.patch`:
-RUNS_PLACEHOLDER
+- Platform lints (clippy on x86_64 and aarch64 musl, dependency-lints, rustdoc): `42733377684`, success.
+- Linux tests, `package(codex-network-proxy)`: `42733382014`, 345 of 345 passed.
+- Bazel lock regeneration: `42737222851`, empty diff, so `MODULE.bazel.lock` in the patch is current.
+
+Earlier rounds on the pre-transitive queue (lints `42727337993`, tests `42727341558`) also passed. The first transitive-base lint round (`42732311440`) failed on bindgen and syn 3, fixed above.
