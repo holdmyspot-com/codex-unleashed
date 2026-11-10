@@ -17,6 +17,7 @@
 - SOCKS5: `Socks5Acceptor::new(executor).with_connector(Connector::new(policy_connector, bridge_service))`. The policy connector produces a `Socks5TcpConnection` (direct, MITM or protocol detection) that carries the shared proxy state; `proxy_socks5_tcp` bridges it. UDP uses `DefaultUdpRelay` with an async inspector that applies the same policy.
 - Listeners: `Executor::graceful(guard)`, `TcpListener::build(executor)`, and `CancelOnShutdown` (which now takes an executor). The MITM TLS acceptor uses `TlsAcceptorLayer` with a dynamic server config; `certs.rs` returns an `Arc<rustls::ServerConfig>`.
 - Request handling: `request_context.rs` replaces rama's removed request context. Header values are built with `HeaderValue::from_bytes`, because 0.4's `from_str` is ASCII-only and the credential broker must still mask opaque bytes. The MITM hook matcher reads the path as it appeared on the wire (`raw_path`), because 0.4 percent-encodes `[` and `]` in its path accessor.
+- `ConnectMitmMode` implements `Extension` by hand. rama's derive finds `rama-core` by reading the crate's `Cargo.toml`, which the Bazel compile sandbox does not contain, so under Bazel it expanded to a `compile_error!` block (Bazel Clippy run `42749913658`).
 - GitHub host hints are parsed by hand, because 0.4's authority parser rejects IPv6 zone ids such as `[fe80::1%en0]:8443`.
 - `Cargo.toml`: `rama-*` `=0.4.0`, plus the new `rama-tls`. `Cargo.lock` moves the rama crates and adds rama-crypto, rama-json, rama-tls, aws-lc-fips-sys and bindgen 0.73. `MODULE.bazel.lock` is regenerated.
 

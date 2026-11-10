@@ -5,19 +5,38 @@ Subject: [PATCH] WIP: Update every transitive dependency to the newest release
  its dependents allow
 
 ---
- MODULE.bazel                                  |    2 +-
+ MODULE.bazel                                  |   40 +-
  MODULE.bazel.lock                             |  500 +++--
  bazel/toolchains/prost/BUILD.bazel            |    2 +-
  codex-rs/Cargo.lock                           | 1977 +++++++----------
  codex-rs/utils/pty/Cargo.toml                 |    2 +
  .../zstd-sys_windows_msvc_include_dirs.patch  |   26 +-
- 6 files changed, 1105 insertions(+), 1404 deletions(-)
+ 6 files changed, 1121 insertions(+), 1426 deletions(-)
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 8cb8333ae..f4992fbe5 100644
+index 8cb8333ae..8b1ef5cf5 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -524,7 +524,7 @@ crate.annotation(
+@@ -402,6 +402,18 @@ crate.annotation(
+     rustc_flags = ["-Copt-level=3"],
+ )
+ 
++crate.annotation(
++    # zbus 6 turns these on through its default `default-rt` and `comms` features, but the Bazel
++    # feature resolution builds zruntime without them, so zbus fails to import its event types.
++    crate = "zruntime",
++    crate_features_select = {
++        "aarch64-unknown-linux-gnu": ["broadcast", "event", "helper", "lock", "process", "runtime", "tcp", "unblock", "unix"],
++        "aarch64-unknown-linux-musl": ["broadcast", "event", "helper", "lock", "process", "runtime", "tcp", "unblock", "unix"],
++        "x86_64-unknown-linux-gnu": ["broadcast", "event", "helper", "lock", "process", "runtime", "tcp", "unblock", "unix"],
++        "x86_64-unknown-linux-musl": ["broadcast", "event", "helper", "lock", "process", "runtime", "tcp", "unblock", "unix"],
++    },
++)
++
+ # Match the CodeModeHost response-compression benchmark's zstd level.
+ crate.annotation(
+     crate = "tonic",
+@@ -524,7 +536,7 @@ crate.annotation(
  # MXC's resource compiler lookup needs an explicit path for Windows GNU targets.
  crate.annotation(
      build_script_deps = [
@@ -26,6 +45,53 @@ index 8cb8333ae..f4992fbe5 100644
          "@crates//:winresource-0.1.34",
      ],
      build_script_env = {
+@@ -764,42 +776,24 @@ inject_repo(crate, "alsa_lib")
+         deps = ["//third_party/voice:native_link"],
+     )
+     for name, version, keys in [
+-        (
+-            "glib-sys",
+-            "0.22.8",
+-            [
+-                "GLIB_2_0",
+-                "GOBJECT_2_0",
+-            ],
+-        ),
+-        (
+-            "gobject-sys",
+-            "0.22.6",
+-            ["GOBJECT_2_0"],
+-        ),
+-        (
+-            "gio-sys",
+-            "0.22.8",
+-            ["GIO_2_0"],
+-        ),
+         (
+             "gstreamer-sys",
+-            "0.25.2",
++            "0.25.4",
+             ["GSTREAMER_1_0"],
+         ),
+         (
+             "gstreamer-base-sys",
+-            "0.25.3",
++            "0.25.4",
+             ["GSTREAMER_BASE_1_0"],
+         ),
+         (
+             "gstreamer-app-sys",
+-            "0.25.0",
++            "0.25.4",
+             ["GSTREAMER_APP_1_0"],
+         ),
+         (
+             "gstreamer-audio-sys",
+-            "0.25.3",
++            "0.25.4",
+             ["GSTREAMER_AUDIO_1_0"],
+         ),
+         (
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
 index f54d77a33..736ef8912 100644
 --- a/MODULE.bazel.lock

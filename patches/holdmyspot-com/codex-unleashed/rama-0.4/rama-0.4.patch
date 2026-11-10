@@ -22,7 +22,7 @@ Rama 0.4 removed ProxyTarget, StreamForwardService and PeekStream and changed th
  .../src/credential_broker/providers/github.rs |  20 +-
  .../src/credential_broker/providers/openai.rs |   2 +-
  .../src/credential_broker/registry.rs         |   6 +-
- codex-rs/network-proxy/src/http_proxy.rs      | 414 +++++++++--------
+ codex-rs/network-proxy/src/http_proxy.rs      | 416 +++++++++--------
  .../src/http_proxy/host_header_tests.rs       |   6 +-
  codex-rs/network-proxy/src/lib.rs             |   1 +
  codex-rs/network-proxy/src/mitm.rs            | 158 +++----
@@ -40,7 +40,7 @@ Rama 0.4 removed ProxyTarget, StreamForwardService and PeekStream and changed th
  codex-rs/network-proxy/src/upstream.rs        |  98 ++--
  codex-rs/network-proxy/src/upstream_tests.rs  |  26 +-
  .../src/windows_proxy_ingress.rs              |  15 +-
- 35 files changed, 1122 insertions(+), 882 deletions(-)
+ 35 files changed, 1125 insertions(+), 881 deletions(-)
  create mode 100644 codex-rs/network-proxy/src/request_context.rs
 
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
@@ -1882,7 +1882,7 @@ index 2f740a0a8..f7f99f27c 100644
              return Vec::new();
          }
 diff --git a/codex-rs/network-proxy/src/http_proxy.rs b/codex-rs/network-proxy/src/http_proxy.rs
-index 541c4e8f0..bceecae73 100644
+index 541c4e8f0..3a52763c5 100644
 --- a/codex-rs/network-proxy/src/http_proxy.rs
 +++ b/codex-rs/network-proxy/src/http_proxy.rs
 @@ -22,6 +22,7 @@ use crate::reasons::REASON_MITM_REQUIRED;
@@ -1948,16 +1948,18 @@ index 541c4e8f0..bceecae73 100644
  use serde::Serialize;
  use std::convert::Infallible;
  use std::net::SocketAddr;
-@@ -87,7 +90,7 @@ use tracing::error;
- use tracing::info;
- use tracing::warn;
+@@ -94,6 +97,10 @@ enum ConnectMitmMode {
+     DetectProtocol(crate::brokered_tunnel::BrokeredProtocols),
+ }
  
--#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-+#[derive(Clone, Copy, Debug, PartialEq, Eq, Extension)]
- enum ConnectMitmMode {
-     Disabled,
-     Enabled,
-@@ -101,18 +104,19 @@ pub async fn run_http_proxy(
++// Implemented by hand: rama's `Extension` derive finds `rama-core` by reading `Cargo.toml`, which the
++// Bazel compile sandbox does not provide.
++impl Extension for ConnectMitmMode {}
++
+ pub async fn run_http_proxy(
+     state: Arc<NetworkProxyState>,
+     addr: SocketAddr,
+@@ -101,18 +108,19 @@ pub async fn run_http_proxy(
      environment_id: Option<String>,
      guard: ShutdownGuard,
  ) -> Result<()> {
@@ -1981,7 +1983,7 @@ index 541c4e8f0..bceecae73 100644
  }
  
  pub async fn run_http_proxy_with_std_listener(
-@@ -122,9 +126,12 @@ pub async fn run_http_proxy_with_std_listener(
+@@ -122,9 +130,12 @@ pub async fn run_http_proxy_with_std_listener(
      environment_id: Option<String>,
      guard: ShutdownGuard,
  ) -> Result<()> {
@@ -1997,7 +1999,7 @@ index 541c4e8f0..bceecae73 100644
  }
  
  async fn run_http_proxy_with_listener(
-@@ -132,7 +139,7 @@ async fn run_http_proxy_with_listener(
+@@ -132,7 +143,7 @@ async fn run_http_proxy_with_listener(
      listener: TcpListener,
      policy_decider: Option<Arc<dyn NetworkPolicyDecider>>,
      environment_id: Option<String>,
@@ -2006,7 +2008,7 @@ index 541c4e8f0..bceecae73 100644
  ) -> Result<()> {
      let addr = listener
          .local_addr()
-@@ -141,10 +148,10 @@ async fn run_http_proxy_with_listener(
+@@ -141,10 +152,10 @@ async fn run_http_proxy_with_listener(
      info!("HTTP proxy listening on {addr}");
  
      listener
@@ -2021,7 +2023,7 @@ index 541c4e8f0..bceecae73 100644
          .await;
      Ok(())
  }
-@@ -153,25 +160,31 @@ pub(crate) fn http_proxy_service(
+@@ -153,25 +164,31 @@ pub(crate) fn http_proxy_service(
      state: Arc<NetworkProxyState>,
      policy_decider: Option<Arc<dyn NetworkPolicyDecider>>,
      environment_id: Option<String>,
@@ -2057,7 +2059,7 @@ index 541c4e8f0..bceecae73 100644
              ),
              RemoveResponseHeaderLayer::hop_by_hop(),
          )
-@@ -185,11 +198,22 @@ pub(crate) fn http_proxy_service(
+@@ -185,11 +202,22 @@ pub(crate) fn http_proxy_service(
      BindConnectionAttribution::new(http_service, state, environment_id).boxed()
  }
  
@@ -2082,7 +2084,7 @@ index 541c4e8f0..bceecae73 100644
      if req.headers().get_all(header::HOST).iter().nth(1).is_some() {
          return Err(text_response(
              StatusCode::BAD_REQUEST,
-@@ -199,8 +223,7 @@ async fn http_connect_accept(
+@@ -199,8 +227,7 @@ async fn http_connect_accept(
      let started_at = Instant::now();
      let app_state = req
          .extensions()
@@ -2092,7 +2094,7 @@ index 541c4e8f0..bceecae73 100644
          .ok_or_else(|| text_response(StatusCode::INTERNAL_SERVER_ERROR, "missing state"))?;
  
      let authority = match RequestContext::try_from(&req).map(|ctx| ctx.host_with_port()) {
-@@ -371,113 +394,113 @@ async fn http_connect_accept(
+@@ -371,113 +398,113 @@ async fn http_connect_accept(
          return Err(blocked_text_with_details(REASON_MITM_REQUIRED, &details));
      }
  
@@ -2280,7 +2282,7 @@ index 541c4e8f0..bceecae73 100644
      let allow_upstream_proxy = match app_state.allow_upstream_proxy().await {
          Ok(allowed) => allowed,
          Err(err) => {
-@@ -501,23 +524,16 @@ where
+@@ -501,23 +528,16 @@ where
          ),
      }
  
@@ -2309,7 +2311,7 @@ index 541c4e8f0..bceecae73 100644
          Ok(connection) => {
              info!(
                  "CONNECT upstream dial established (target={authority}, elapsed_ms={})",
-@@ -530,19 +546,16 @@ where
+@@ -530,19 +550,16 @@ where
                  "CONNECT upstream dial failed (target={authority}, elapsed_ms={})",
                  connect_started_at.elapsed().as_millis()
              );
@@ -2334,7 +2336,7 @@ index 541c4e8f0..bceecae73 100644
          .await
          .map(|_| {
              info!(
-@@ -555,8 +568,7 @@ where
+@@ -555,8 +572,7 @@ where
                  "CONNECT tunnel forwarding failed (target={authority}, elapsed_ms={})",
                  forward_started_at.elapsed().as_millis()
              );
@@ -2344,7 +2346,7 @@ index 541c4e8f0..bceecae73 100644
          })
  }
  
-@@ -573,7 +585,7 @@ async fn http_plain_proxy(
+@@ -573,7 +589,7 @@ async fn http_plain_proxy(
          ));
      }
      let started_at = Instant::now();
@@ -2353,7 +2355,7 @@ index 541c4e8f0..bceecae73 100644
          Some(state) => state,
          None => {
              error!("missing app state");
-@@ -937,11 +949,7 @@ async fn http_plain_proxy(
+@@ -937,11 +953,7 @@ async fn http_plain_proxy(
      // Evaluate the original Authorization header before replacing brokered dummy credentials.
      // Otherwise an unhooked provider alias can receive the real credential without hook policy.
      let origin = crate::mitm_hook::MitmHookOrigin {
@@ -2366,7 +2368,7 @@ index 541c4e8f0..bceecae73 100644
          port,
      };
      match app_state
-@@ -1034,12 +1042,12 @@ async fn forward_request_credential_destinations(
+@@ -1034,12 +1046,12 @@ async fn forward_request_credential_destinations(
      let authority = context.host_with_port();
      let scheme = req.uri().scheme_str().unwrap_or("http");
      // Server-wide OPTIONS may use root-scoped credentials without changing its wire target.
@@ -2385,7 +2387,7 @@ index 541c4e8f0..bceecae73 100644
      let mut destinations = vec![format!("{scheme}://{authority}{request_path}")];
      if app_state.plaintext_credential_injection_enabled().await? {
          destinations.push(normalize_host(&authority.host.to_string()));
-@@ -1053,13 +1061,9 @@ async fn proxy_via_unix_socket(req: Request, socket_path: &str) -> Result<Respon
+@@ -1053,13 +1065,9 @@ async fn proxy_via_unix_socket(req: Request, socket_path: &str) -> Result<Respon
          let client = UpstreamClient::unix_socket(socket_path);
  
          let (mut parts, body) = req.into_parts();
@@ -2402,7 +2404,7 @@ index 541c4e8f0..bceecae73 100644
              .with_context(|| format!("invalid unix socket request path: {path}"))?;
          parts.headers.remove("x-unix-socket");
          remove_hop_by_hop_request_headers(&mut parts.headers);
-@@ -1078,7 +1082,7 @@ async fn proxy_via_unix_socket(req: Request, socket_path: &str) -> Result<Respon
+@@ -1078,7 +1086,7 @@ async fn proxy_via_unix_socket(req: Request, socket_path: &str) -> Result<Respon
  fn client_addr<T: ExtensionsRef>(input: &T) -> Option<String> {
      input
          .extensions()
@@ -2411,7 +2413,7 @@ index 541c4e8f0..bceecae73 100644
          .map(|info| info.peer_addr().to_string())
  }
  
-@@ -1102,8 +1106,8 @@ fn validate_absolute_form_host_header(
+@@ -1102,8 +1110,8 @@ fn validate_absolute_form_host_header(
          return Err("Host header does not match request target");
      }
  
@@ -2422,7 +2424,7 @@ index 541c4e8f0..bceecae73 100644
              return Err("Host header does not match request target");
          }
          return Ok(());
-@@ -1319,16 +1323,19 @@ mod tests {
+@@ -1319,16 +1327,19 @@ mod tests {
          let state = Arc::new(network_proxy_state_for_policy(policy));
          state.set_network_mode(NetworkMode::Limited).await.unwrap();
  
@@ -2445,7 +2447,7 @@ index 541c4e8f0..bceecae73 100644
          )
          .await
          .unwrap_err();
-@@ -1351,19 +1358,23 @@ mod tests {
+@@ -1351,19 +1362,23 @@ mod tests {
          };
          let state = Arc::new(network_proxy_state_for_policy(policy));
  
@@ -2474,7 +2476,7 @@ index 541c4e8f0..bceecae73 100644
          assert_eq!(response.status(), StatusCode::OK);
      }
  
-@@ -1381,18 +1392,23 @@ mod tests {
+@@ -1381,18 +1396,23 @@ mod tests {
              }
          });
  
@@ -2504,7 +2506,7 @@ index 541c4e8f0..bceecae73 100644
  
          assert_eq!(response.status(), StatusCode::OK);
          assert_eq!(
-@@ -1416,22 +1432,25 @@ mod tests {
+@@ -1416,22 +1436,25 @@ mod tests {
          let mut env = HashMap::from([("GH_TOKEN".to_string(), "ghp-real".to_string())]);
          state.virtualize_child_credentials(&mut env);
  
@@ -2536,7 +2538,7 @@ index 541c4e8f0..bceecae73 100644
              Some(ConnectMitmMode::DetectProtocol(
                  crate::brokered_tunnel::BrokeredProtocols {
                      tls: true,
-@@ -1546,10 +1565,10 @@ mod tests {
+@@ -1546,10 +1569,10 @@ mod tests {
                  ),
                  ("*".to_string(), prefix.is_empty() && scope == "/"),
              ] {
@@ -2549,7 +2551,7 @@ index 541c4e8f0..bceecae73 100644
                      .unwrap_or_else(|| format!("{host}:{port}"));
                  let mut req = Request::builder()
                      .method(if uri == "*" {
-@@ -1606,14 +1625,14 @@ mod tests {
+@@ -1606,14 +1629,14 @@ mod tests {
          state.virtualize_child_credentials(&mut env);
  
          for scheme in ["http", "https"] {
@@ -2566,7 +2568,7 @@ index 541c4e8f0..bceecae73 100644
  
              let response = http_plain_proxy(
                  /*policy_decider*/ None, /*environment_id*/ None, req,
-@@ -1658,16 +1677,19 @@ mod tests {
+@@ -1658,16 +1681,19 @@ mod tests {
          policy.set_allowed_domains(vec!["api.github.com".to_string()]);
          let state = Arc::new(network_proxy_state_for_policy(policy));
  
@@ -2589,7 +2591,7 @@ index 541c4e8f0..bceecae73 100644
          )
          .await
          .unwrap_err();
-@@ -1857,13 +1879,13 @@ mod tests {
+@@ -1857,13 +1883,13 @@ mod tests {
              .await
              .expect("network mode should update");
  
@@ -2605,7 +2607,7 @@ index 541c4e8f0..bceecae73 100644
  
          let response = http_plain_proxy(
              /*policy_decider*/ None, /*environment_id*/ None, req,
-@@ -1882,13 +1904,13 @@ mod tests {
+@@ -1882,13 +1908,13 @@ mod tests {
      async fn http_plain_proxy_rejects_unix_socket_when_not_allowlisted() {
          let state = Arc::new(network_proxy_state_for_policy(NetworkProxyConfig::default()));
  
@@ -2621,7 +2623,7 @@ index 541c4e8f0..bceecae73 100644
  
          let response = http_plain_proxy(
              /*policy_decider*/ None, /*environment_id*/ None, req,
-@@ -1916,13 +1938,13 @@ mod tests {
+@@ -1916,13 +1942,13 @@ mod tests {
              network
          }));
  
@@ -2637,7 +2639,7 @@ index 541c4e8f0..bceecae73 100644
  
          let response = http_plain_proxy(
              /*policy_decider*/ None, /*environment_id*/ None, req,
-@@ -1942,16 +1964,19 @@ mod tests {
+@@ -1942,16 +1968,19 @@ mod tests {
          };
          let state = Arc::new(network_proxy_state_for_policy(policy));
  
@@ -2660,7 +2662,7 @@ index 541c4e8f0..bceecae73 100644
          )
          .await
          .unwrap_err();
-@@ -1982,16 +2007,19 @@ mod tests {
+@@ -1982,16 +2011,19 @@ mod tests {
              state.set_proxy_private_ips_via_upstream(/*enabled*/ true);
              let state = Arc::new(state);
              for method in [Method::GET, Method::CONNECT] {
@@ -2683,7 +2685,7 @@ index 541c4e8f0..bceecae73 100644
                      )
                      .await
                      .unwrap_err()
-@@ -2014,13 +2042,13 @@ mod tests {
+@@ -2014,13 +2046,13 @@ mod tests {
      #[tokio::test]
      async fn http_plain_proxy_rejects_absolute_uri_host_header_mismatch() {
          let state = Arc::new(network_proxy_state_for_policy(NetworkProxyConfig::default()));
