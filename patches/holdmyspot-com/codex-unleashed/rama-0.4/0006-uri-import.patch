@@ -1,0 +1,25 @@
+From 3bd8e6e2f7644cdb0cba71910721e0a1900dbc18 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 9 Nov 2026 19:07:57 -0500
+Subject: [PATCH] WIP: Fix the Uri import in the raw path helper
+
+---
+ codex-rs/network-proxy/src/mitm_hook.rs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/codex-rs/network-proxy/src/mitm_hook.rs b/codex-rs/network-proxy/src/mitm_hook.rs
+index 7e8860f..4d2f014 100644
+--- a/codex-rs/network-proxy/src/mitm_hook.rs
++++ b/codex-rs/network-proxy/src/mitm_hook.rs
+@@ -286,7 +286,7 @@ pub(crate) fn compile_mitm_hooks(config: &NetworkProxyConfig) -> Result<MitmHook
+ 
+ /// Returns the request path exactly as it appeared on the wire, without
+ /// percent-encoding normalization, so literal characters such as `[` stay literal.
+-fn raw_path(uri: &rama_http::Uri) -> String {
++fn raw_path(uri: &rama_net::uri::Uri) -> String {
+     let text = uri.as_str();
+     let rest = match text.split_once("://") {
+         Some((_, after_scheme)) => after_scheme
+-- 
+2.43.0
+
