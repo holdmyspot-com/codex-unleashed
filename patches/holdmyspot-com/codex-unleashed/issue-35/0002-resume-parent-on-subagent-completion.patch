@@ -5,6 +5,7 @@ Subject: [PATCH] Resume available parents when V2 subagents finish
 
 A child's completion or failure now starts a turn on an idle parent, unless the parent was interrupted, and the spawn guidance tells the model it may finish its turn while delegated work keeps running. The stable unleashed_background_subagents feature, enabled by default, controls both; disabling it keeps queue-only completion mail.
 ---
+ .../app-server/tests/suite/v2/guardian_goal_tests.rs |   1 +
  .../app-server/tests/suite/v2/guardian_v2.rs  |   3 +-
  .../tests/suite/v2/thread_unsubscribe.rs      |  45 +-
  codex-rs/core/config.schema.json              |   6 +
@@ -59,7 +60,7 @@ A child's completion or failure now starts a turn on an idle parent, unless the 
  .../tests/suite/subagent_notifications.rs     |   7 +
  .../core/tests/suite/subagent_service_tier.rs |   4 +
  codex-rs/features/src/lib.rs                  |   8 +
- 54 files changed, 955 insertions(+), 127 deletions(-)
+ 55 files changed, 956 insertions(+), 127 deletions(-)
  create mode 100644 codex-rs/core/tests/suite/background_subagent_tests.rs
 
 diff --git a/codex-rs/app-server/tests/suite/v2/guardian_v2.rs b/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
@@ -76,6 +77,18 @@ index c15253a..7314e8e 100644
      }
      if matches!(lifecycle, ThreadLifecycle::RootUserInputCompaction) {
          mock_config = mock_config
+diff --git a/codex-rs/app-server/tests/suite/v2/guardian_goal_tests.rs b/codex-rs/app-server/tests/suite/v2/guardian_goal_tests.rs
+index fb6e707..e11167c 100644
+--- a/codex-rs/app-server/tests/suite/v2/guardian_goal_tests.rs
++++ b/codex-rs/app-server/tests/suite/v2/guardian_goal_tests.rs
+@@ -34,6 +34,7 @@ async fn worker_guardian_sees_goal_set_after_spawn(origin: &str) -> Result<()> {
+         .enable_feature(Feature::GuardianApproval)
+         .enable_feature(Feature::Collab)
+         .enable_feature(Feature::MultiAgentV2)
++        .disable_feature(Feature::UnleashedBackgroundSubagents)
+         .enable_feature(Feature::Goals)
+         .disable_feature(Feature::GuardianV2)
+         .disable_feature(Feature::EnableRequestCompression)
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs b/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs
 index 16273cf..cb03e26 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs
