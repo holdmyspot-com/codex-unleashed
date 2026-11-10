@@ -1,4 +1,4 @@
-From 87a32c99b94c5387e82469970201e2cdc74fe026 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 9 Nov 2026 19:54:32 -0500
 Subject: [PATCH] Port the network proxy to rama 0.4
@@ -36,15 +36,15 @@ Rama 0.4 removed ProxyTarget, StreamForwardService and PeekStream and changed th
  .../network-proxy/src/secret_substitution.rs  |   9 +-
  codex-rs/network-proxy/src/socks5.rs          | 228 +++++-----
  codex-rs/network-proxy/src/system_dns.rs      |  63 +--
- .../network-proxy/src/system_dns_tests.rs     |  39 +-
+ .../network-proxy/src/system_dns_tests.rs     |  41 +-
  codex-rs/network-proxy/src/upstream.rs        |  98 ++--
  codex-rs/network-proxy/src/upstream_tests.rs  |  26 +-
  .../src/windows_proxy_ingress.rs              |  15 +-
- 35 files changed, 1121 insertions(+), 881 deletions(-)
+ 35 files changed, 1122 insertions(+), 882 deletions(-)
  create mode 100644 codex-rs/network-proxy/src/request_context.rs
 
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index 736ef89..528a75a 100644
+index 736ef8912..528a75ac3 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
 @@ -1032,6 +1032,7 @@
@@ -168,7 +168,7 @@ index 736ef89..528a75a 100644
        "tiny_http_0.12.0": "{\"dependencies\":[{\"name\":\"ascii\",\"req\":\"^1.0\"},{\"name\":\"chunked_transfer\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"fdlimit\",\"req\":\"^0.1\"},{\"name\":\"httpdate\",\"req\":\"^1.0.2\"},{\"name\":\"log\",\"req\":\"^0.4.4\"},{\"name\":\"openssl\",\"optional\":true,\"req\":\"^0.10\"},{\"kind\":\"dev\",\"name\":\"rustc-serialize\",\"req\":\"^0.3\"},{\"name\":\"rustls\",\"optional\":true,\"req\":\"^0.20\"},{\"name\":\"rustls-pemfile\",\"optional\":true,\"req\":\"^0.2.1\"},{\"kind\":\"dev\",\"name\":\"sha1\",\"req\":\"^0.6.0\"},{\"name\":\"zeroize\",\"optional\":true,\"req\":\"^1\"}],\"features\":{\"default\":[],\"ssl\":[\"ssl-openssl\"],\"ssl-openssl\":[\"openssl\",\"zeroize\"],\"ssl-rustls\":[\"rustls\",\"rustls-pemfile\",\"zeroize\"]}}",
        "tinystr_0.8.3": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"bincode\",\"req\":\"^1.3.1\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5.0\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"name\":\"databake\",\"optional\":true,\"req\":\"^0.2.0\"},{\"default_features\":false,\"name\":\"displaydoc\",\"req\":\"^0.2.3\"},{\"default_features\":false,\"features\":[\"use-std\"],\"kind\":\"dev\",\"name\":\"postcard\",\"req\":\"^1.0.3\"},{\"features\":[\"small_rng\"],\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.9\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.220\"},{\"features\":[\"alloc\"],\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.45\"},{\"default_features\":false,\"name\":\"zerovec\",\"optional\":true,\"req\":\"^0.11.6\"}],\"features\":{\"alloc\":[\"serde_core?/alloc\",\"zerovec?/alloc\"],\"databake\":[\"dep:databake\"],\"default\":[\"alloc\"],\"serde\":[\"dep:serde_core\"],\"std\":[],\"zerovec\":[\"dep:zerovec\"]}}",
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 6e46647..99d6c7d 100644
+index 6e466470f..99d6c7d40 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -277,7 +277,7 @@ version = "1.1.5"
@@ -1084,7 +1084,7 @@ index 6e46647..99d6c7d 100644
  
  [[package]]
 diff --git a/codex-rs/network-proxy/Cargo.toml b/codex-rs/network-proxy/Cargo.toml
-index e3dc247..8b1881b 100644
+index e3dc24757..8b1881bf3 100644
 --- a/codex-rs/network-proxy/Cargo.toml
 +++ b/codex-rs/network-proxy/Cargo.toml
 @@ -32,9 +32,11 @@ hex = { workspace = true }
@@ -1135,7 +1135,7 @@ index e3dc247..8b1881b 100644
  
  [target.'cfg(windows)'.dependencies]
 diff --git a/codex-rs/network-proxy/src/attribution.rs b/codex-rs/network-proxy/src/attribution.rs
-index 85affff..fb501dd 100644
+index 85affff15..fb501dd2b 100644
 --- a/codex-rs/network-proxy/src/attribution.rs
 +++ b/codex-rs/network-proxy/src/attribution.rs
 @@ -1,7 +1,6 @@
@@ -1156,7 +1156,7 @@ index 85affff..fb501dd 100644
      }
  }
 diff --git a/codex-rs/network-proxy/src/attribution_tests.rs b/codex-rs/network-proxy/src/attribution_tests.rs
-index fcb3c37..8d83c2a 100644
+index fcb3c3771..8d83c2a88 100644
 --- a/codex-rs/network-proxy/src/attribution_tests.rs
 +++ b/codex-rs/network-proxy/src/attribution_tests.rs
 @@ -43,7 +43,7 @@ async fn framed_connection_receives_registered_execution_state() -> Result<(), B
@@ -1169,7 +1169,7 @@ index fcb3c37..8d83c2a 100644
          }),
          state,
 diff --git a/codex-rs/network-proxy/src/aws_sigv4.rs b/codex-rs/network-proxy/src/aws_sigv4.rs
-index f535389..c4a80c3 100644
+index f53538985..c4a80c3a2 100644
 --- a/codex-rs/network-proxy/src/aws_sigv4.rs
 +++ b/codex-rs/network-proxy/src/aws_sigv4.rs
 @@ -18,7 +18,6 @@ use aws_sigv4::http_request::sign;
@@ -1241,7 +1241,7 @@ index f535389..c4a80c3 100644
              value.set_sensitive(
                  header.sensitive()
 diff --git a/codex-rs/network-proxy/src/aws_sigv4_tests.rs b/codex-rs/network-proxy/src/aws_sigv4_tests.rs
-index d927f4f..768c584 100644
+index d927f4f18..768c58405 100644
 --- a/codex-rs/network-proxy/src/aws_sigv4_tests.rs
 +++ b/codex-rs/network-proxy/src/aws_sigv4_tests.rs
 @@ -218,7 +218,7 @@ async fn canonicalizes_query_order_without_changing_encoded_s3_path() {
@@ -1254,7 +1254,7 @@ index d927f4f..768c584 100644
                  .body(Body::empty())
                  .unwrap();
 diff --git a/codex-rs/network-proxy/src/body_budget.rs b/codex-rs/network-proxy/src/body_budget.rs
-index f00e148..cdba891 100644
+index f00e148ac..cdba89162 100644
 --- a/codex-rs/network-proxy/src/body_budget.rs
 +++ b/codex-rs/network-proxy/src/body_budget.rs
 @@ -4,7 +4,6 @@
@@ -1302,7 +1302,7 @@ index f00e148..cdba891 100644
      // Keep exact sizing, and retain the lease in data frames queued after the body is dropped.
      let body = Body::new(RetainedBody { body, lease });
 diff --git a/codex-rs/network-proxy/src/brokered_tunnel.rs b/codex-rs/network-proxy/src/brokered_tunnel.rs
-index 1ef4566..e55e566 100644
+index 1ef4566c9..e55e56618 100644
 --- a/codex-rs/network-proxy/src/brokered_tunnel.rs
 +++ b/codex-rs/network-proxy/src/brokered_tunnel.rs
 @@ -4,20 +4,19 @@
@@ -1389,7 +1389,7 @@ index 1ef4566..e55e566 100644
                  anyhow::Ok(())
              }
 diff --git a/codex-rs/network-proxy/src/brokered_tunnel_tests.rs b/codex-rs/network-proxy/src/brokered_tunnel_tests.rs
-index 7ffd36c..0940ce4 100644
+index 7ffd36c6e..0940ce498 100644
 --- a/codex-rs/network-proxy/src/brokered_tunnel_tests.rs
 +++ b/codex-rs/network-proxy/src/brokered_tunnel_tests.rs
 @@ -12,7 +12,6 @@ use crate::runtime::ConfigReloaderFuture;
@@ -1442,7 +1442,7 @@ index 7ffd36c..0940ce4 100644
              .version(Version::HTTP_2)
              .uri(format!("http://{addr}/v1/models"))
 diff --git a/codex-rs/network-proxy/src/certs.rs b/codex-rs/network-proxy/src/certs.rs
-index 67de7bd..49382d3 100644
+index 67de7bd29..49382d301 100644
 --- a/codex-rs/network-proxy/src/certs.rs
 +++ b/codex-rs/network-proxy/src/certs.rs
 @@ -4,23 +4,22 @@ use anyhow::Result;
@@ -1515,7 +1515,7 @@ index 67de7bd..49382d3 100644
              .unwrap()
              .map(|entry| entry.unwrap().path())
 diff --git a/codex-rs/network-proxy/src/connect_policy.rs b/codex-rs/network-proxy/src/connect_policy.rs
-index abb6a67..f3a7719 100644
+index abb6a67d9..f3a7719ac 100644
 --- a/codex-rs/network-proxy/src/connect_policy.rs
 +++ b/codex-rs/network-proxy/src/connect_policy.rs
 @@ -4,16 +4,23 @@ use crate::runtime::HostBlockDecision;
@@ -1732,7 +1732,7 @@ index abb6a67..f3a7719 100644
  
          assert!(
 diff --git a/codex-rs/network-proxy/src/connection_lifecycle/service.rs b/codex-rs/network-proxy/src/connection_lifecycle/service.rs
-index 2444b9c..539b720 100644
+index 2444b9cb6..539b720da 100644
 --- a/codex-rs/network-proxy/src/connection_lifecycle/service.rs
 +++ b/codex-rs/network-proxy/src/connection_lifecycle/service.rs
 @@ -1,35 +1,30 @@
@@ -1777,7 +1777,7 @@ index 2444b9c..539b720 100644
                  tokio::select! {
                      biased;
 diff --git a/codex-rs/network-proxy/src/credential_broker/configured.rs b/codex-rs/network-proxy/src/credential_broker/configured.rs
-index ddf9215..b9a949d 100644
+index ddf921585..b9a949df8 100644
 --- a/codex-rs/network-proxy/src/credential_broker/configured.rs
 +++ b/codex-rs/network-proxy/src/credential_broker/configured.rs
 @@ -422,7 +422,7 @@ impl ConfiguredCredentialProvider {
@@ -1799,7 +1799,7 @@ index ddf9215..b9a949d 100644
                          translated.push((header.clone(), value));
                      }
 diff --git a/codex-rs/network-proxy/src/credential_broker/providers/github.rs b/codex-rs/network-proxy/src/credential_broker/providers/github.rs
-index e79dc56..3b61c41 100644
+index e79dc56d7..3b61c41bb 100644
 --- a/codex-rs/network-proxy/src/credential_broker/providers/github.rs
 +++ b/codex-rs/network-proxy/src/credential_broker/providers/github.rs
 @@ -58,7 +58,7 @@ fn dummy_value(real_value: &str) -> String {
@@ -1849,7 +1849,7 @@ index e79dc56..3b61c41 100644
      }
      Some(host)
 diff --git a/codex-rs/network-proxy/src/credential_broker/providers/openai.rs b/codex-rs/network-proxy/src/credential_broker/providers/openai.rs
-index 3b6808a..6bca19c 100644
+index 3b6808aaf..6bca19c54 100644
 --- a/codex-rs/network-proxy/src/credential_broker/providers/openai.rs
 +++ b/codex-rs/network-proxy/src/credential_broker/providers/openai.rs
 @@ -58,7 +58,7 @@ fn translate_request_header(
@@ -1862,7 +1862,7 @@ index 3b6808a..6bca19c 100644
  
  fn insert_request_header(headers: &mut HeaderMap, value: HeaderValue) {
 diff --git a/codex-rs/network-proxy/src/credential_broker/registry.rs b/codex-rs/network-proxy/src/credential_broker/registry.rs
-index 2f740a0..f7f99f2 100644
+index 2f740a0a8..f7f99f27c 100644
 --- a/codex-rs/network-proxy/src/credential_broker/registry.rs
 +++ b/codex-rs/network-proxy/src/credential_broker/registry.rs
 @@ -287,12 +287,12 @@ pub(super) fn select_credentials<'a>(
@@ -1882,7 +1882,7 @@ index 2f740a0..f7f99f2 100644
              return Vec::new();
          }
 diff --git a/codex-rs/network-proxy/src/http_proxy.rs b/codex-rs/network-proxy/src/http_proxy.rs
-index 541c4e8..bceecae 100644
+index 541c4e8f0..bceecae73 100644
 --- a/codex-rs/network-proxy/src/http_proxy.rs
 +++ b/codex-rs/network-proxy/src/http_proxy.rs
 @@ -22,6 +22,7 @@ use crate::reasons::REASON_MITM_REQUIRED;
@@ -2700,7 +2700,7 @@ index 541c4e8..bceecae 100644
          let response = http_plain_proxy(
              /*policy_decider*/ None, /*environment_id*/ None, req,
 diff --git a/codex-rs/network-proxy/src/http_proxy/host_header_tests.rs b/codex-rs/network-proxy/src/http_proxy/host_header_tests.rs
-index 26ff6f9..ca326e3 100644
+index 26ff6f969..ca326e30c 100644
 --- a/codex-rs/network-proxy/src/http_proxy/host_header_tests.rs
 +++ b/codex-rs/network-proxy/src/http_proxy/host_header_tests.rs
 @@ -5,7 +5,7 @@ use crate::NetworkProxy;
@@ -2730,7 +2730,7 @@ index 26ff6f9..ca326e3 100644
          /*policy_decider*/ None, /*environment_id*/ None, request,
      )
 diff --git a/codex-rs/network-proxy/src/lib.rs b/codex-rs/network-proxy/src/lib.rs
-index 7e12ae9..ce7043e 100644
+index 7e12ae9b9..ce7043e97 100644
 --- a/codex-rs/network-proxy/src/lib.rs
 +++ b/codex-rs/network-proxy/src/lib.rs
 @@ -23,6 +23,7 @@ mod proxy;
@@ -2742,7 +2742,7 @@ index 7e12ae9..ce7043e 100644
  mod responses;
  mod runtime;
 diff --git a/codex-rs/network-proxy/src/mitm.rs b/codex-rs/network-proxy/src/mitm.rs
-index 01784c7..b4233db 100644
+index 01784c7be..b4233db28 100644
 --- a/codex-rs/network-proxy/src/mitm.rs
 +++ b/codex-rs/network-proxy/src/mitm.rs
 @@ -15,7 +15,6 @@ use crate::state::BlockedRequest;
@@ -3077,7 +3077,7 @@ index 01784c7..b4233db 100644
  
  #[cfg(test)]
 diff --git a/codex-rs/network-proxy/src/mitm_forwarding_tests.rs b/codex-rs/network-proxy/src/mitm_forwarding_tests.rs
-index fec8e80..905866e 100644
+index fec8e80dc..905866e43 100644
 --- a/codex-rs/network-proxy/src/mitm_forwarding_tests.rs
 +++ b/codex-rs/network-proxy/src/mitm_forwarding_tests.rs
 @@ -10,11 +10,11 @@ use crate::mitm_hook::MitmHookConfig;
@@ -3181,7 +3181,7 @@ index fec8e80..905866e 100644
  }
  
 diff --git a/codex-rs/network-proxy/src/mitm_hook.rs b/codex-rs/network-proxy/src/mitm_hook.rs
-index ca1cde1..8096c41 100644
+index ca1cde1b8..8096c4171 100644
 --- a/codex-rs/network-proxy/src/mitm_hook.rs
 +++ b/codex-rs/network-proxy/src/mitm_hook.rs
 @@ -181,7 +181,7 @@ pub type MitmHooksByHost = BTreeMap<String, Vec<MitmHook>>;
@@ -3291,7 +3291,7 @@ index ca1cde1..8096c41 100644
              let origin = MitmHookOrigin { scheme, port };
              let HookEvaluation::Matched { actions } =
 diff --git a/codex-rs/network-proxy/src/mitm_tests.rs b/codex-rs/network-proxy/src/mitm_tests.rs
-index d4fcd34..69ba460 100644
+index d4fcd34ce..69ba46045 100644
 --- a/codex-rs/network-proxy/src/mitm_tests.rs
 +++ b/codex-rs/network-proxy/src/mitm_tests.rs
 @@ -52,7 +52,7 @@ fn policy_ctx(
@@ -3323,7 +3323,7 @@ index d4fcd34..69ba460 100644
          let mut ctx = policy_ctx(app_state.clone(), NetworkMode::Full, "api.github.com", port);
          ctx.scheme = scheme;
 diff --git a/codex-rs/network-proxy/src/native_certs.rs b/codex-rs/network-proxy/src/native_certs.rs
-index 6c8d450..dc353b6 100644
+index 6c8d45005..dc353b69e 100644
 --- a/codex-rs/network-proxy/src/native_certs.rs
 +++ b/codex-rs/network-proxy/src/native_certs.rs
 @@ -1,10 +1,10 @@
@@ -3340,7 +3340,7 @@ index 6c8d450..dc353b6 100644
  // `rustls_native_certs::load_native_certs()` first consults SSL_CERT_FILE and
  // SSL_CERT_DIR. Load platform roots directly so a startup custom CA can be
 diff --git a/codex-rs/network-proxy/src/proxy.rs b/codex-rs/network-proxy/src/proxy.rs
-index 5b1240a..5c506f6 100644
+index 5b1240ae1..5c506f612 100644
 --- a/codex-rs/network-proxy/src/proxy.rs
 +++ b/codex-rs/network-proxy/src/proxy.rs
 @@ -294,6 +294,7 @@ impl NetworkProxyBuilder {
@@ -3377,7 +3377,7 @@ index 5b1240a..5c506f6 100644
              let route = Arc::new(windows_runtime.ingress.register_route(http, socks));
 diff --git a/codex-rs/network-proxy/src/request_context.rs b/codex-rs/network-proxy/src/request_context.rs
 new file mode 100644
-index 0000000..4c21ccf
+index 000000000..4c21ccf9a
 --- /dev/null
 +++ b/codex-rs/network-proxy/src/request_context.rs
 @@ -0,0 +1,51 @@
@@ -3433,7 +3433,7 @@ index 0000000..4c21ccf
 +    }
 +}
 diff --git a/codex-rs/network-proxy/src/runtime.rs b/codex-rs/network-proxy/src/runtime.rs
-index 2c826c4..7aa642f 100644
+index 2c826c4eb..7aa642fc5 100644
 --- a/codex-rs/network-proxy/src/runtime.rs
 +++ b/codex-rs/network-proxy/src/runtime.rs
 @@ -282,6 +282,9 @@ impl LocalBindingPolicy {
@@ -3447,7 +3447,7 @@ index 2c826c4..7aa642f 100644
      state: Arc<RwLock<ConfigState>>,
      /// Belongs to this proxy; config retains omission for launches on other executors.
 diff --git a/codex-rs/network-proxy/src/secret_substitution.rs b/codex-rs/network-proxy/src/secret_substitution.rs
-index ff80820..0559f98 100644
+index ff8082095..0559f988e 100644
 --- a/codex-rs/network-proxy/src/secret_substitution.rs
 +++ b/codex-rs/network-proxy/src/secret_substitution.rs
 @@ -5,7 +5,6 @@ use crate::aws_sigv4::ProxySecretSource;
@@ -3487,7 +3487,7 @@ index ff80820..0559f98 100644
              || !body_substitution_headers_supported(req.headers())
          {
 diff --git a/codex-rs/network-proxy/src/socks5.rs b/codex-rs/network-proxy/src/socks5.rs
-index c8e7120..abb1b23 100644
+index c8e7120c8..abb1b23fb 100644
 --- a/codex-rs/network-proxy/src/socks5.rs
 +++ b/codex-rs/network-proxy/src/socks5.rs
 @@ -28,25 +28,24 @@ use anyhow::Result;
@@ -3958,7 +3958,7 @@ index c8e7120..abb1b23 100644
          let err = handle_socks5_tcp(
              request,
 diff --git a/codex-rs/network-proxy/src/system_dns.rs b/codex-rs/network-proxy/src/system_dns.rs
-index 5149bcc..6713516 100644
+index 5149bccb4..671351628 100644
 --- a/codex-rs/network-proxy/src/system_dns.rs
 +++ b/codex-rs/network-proxy/src/system_dns.rs
 @@ -5,7 +5,9 @@
@@ -4043,7 +4043,7 @@ index 5149bcc..6713516 100644
  }
  
 diff --git a/codex-rs/network-proxy/src/system_dns_tests.rs b/codex-rs/network-proxy/src/system_dns_tests.rs
-index 9d74646..88c1443 100644
+index 9d74646bc..36938ba41 100644
 --- a/codex-rs/network-proxy/src/system_dns_tests.rs
 +++ b/codex-rs/network-proxy/src/system_dns_tests.rs
 @@ -4,12 +4,15 @@ use crate::connect_policy::TargetCheckedTcpConnector;
@@ -4100,15 +4100,18 @@ index 9d74646..88c1443 100644
  
          let connection = connector
              .serve(request)
-@@ -65,7 +74,7 @@ async fn native_resolution_preserves_local_network_rejection() {
+@@ -65,9 +74,9 @@ async fn native_resolution_preserves_local_network_rejection() {
      let connector = TargetCheckedTcpConnector::new(Arc::new(network_proxy_state_for_policy(
          NetworkProxyConfig::default(),
      )));
 -    let request = Request::new(HostWithPort::new(Host::LOCALHOST_NAME, target.port()));
 +    let request = ConnectRequest::new(HostWithPort::new(Host::LOCALHOST_NAME, target.port()));
  
-     connector
+-    connector
++    let _rejection = connector
          .serve(request)
+         .await
+         .expect_err("resolved loopback addresses must still be checked against policy");
 @@ -82,12 +91,16 @@ async fn connector_resolves_upstream_proxy_instead_of_destination() {
      let connector = TargetCheckedTcpConnector::new(Arc::new(network_proxy_state_for_policy(
          NetworkProxyConfig::default(),
@@ -4132,7 +4135,7 @@ index 9d74646..88c1443 100644
      let connection = connector.serve(request).await.expect("connect to proxy");
  
 diff --git a/codex-rs/network-proxy/src/upstream.rs b/codex-rs/network-proxy/src/upstream.rs
-index 2ad98e8..e8f9da2 100644
+index 2ad98e8cd..e8f9da2ff 100644
 --- a/codex-rs/network-proxy/src/upstream.rs
 +++ b/codex-rs/network-proxy/src/upstream.rs
 @@ -1,33 +1,39 @@
@@ -4319,7 +4322,7 @@ index 2ad98e8..e8f9da2 100644
      connector.boxed()
  }
 diff --git a/codex-rs/network-proxy/src/upstream_tests.rs b/codex-rs/network-proxy/src/upstream_tests.rs
-index f2c8ea2..9bc1487 100644
+index f2c8ea20c..9bc148759 100644
 --- a/codex-rs/network-proxy/src/upstream_tests.rs
 +++ b/codex-rs/network-proxy/src/upstream_tests.rs
 @@ -6,20 +6,20 @@ use rama_http::StatusCode;
@@ -4357,7 +4360,7 @@ index f2c8ea2..9bc1487 100644
  use std::fs;
  use std::sync::Arc;
 diff --git a/codex-rs/network-proxy/src/windows_proxy_ingress.rs b/codex-rs/network-proxy/src/windows_proxy_ingress.rs
-index a1b7891..3d07533 100644
+index a1b7891c6..3d0753368 100644
 --- a/codex-rs/network-proxy/src/windows_proxy_ingress.rs
 +++ b/codex-rs/network-proxy/src/windows_proxy_ingress.rs
 @@ -6,6 +6,7 @@ use anyhow::Context;
