@@ -296,7 +296,7 @@ jobs:
           if [[ -n "$BASELINE_TEST_FILTER" ]]; then
             package_args+=(-E "$BASELINE_TEST_FILTER")
           fi
-          read -r -a patch_paths <<< "$PATCH_LIST"
+          read -r -d '' -a patch_paths <<< "$PATCH_LIST" || true
           if [[ ! "$RED_PATCH_COUNT" =~ ^[1-9][0-9]*$ ]] || (( RED_PATCH_COUNT > ${#patch_paths[@]} )); then
             printf 'red_patch_count must be between 1 and the number of patches (%s).\n' "${#patch_paths[@]}" >&2
             exit 1
