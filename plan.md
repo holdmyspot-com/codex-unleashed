@@ -230,12 +230,20 @@ Patches 29–33 in `patches/holdmyspot-com/codex-unleashed/dependency-upgrades/`
 
 Verification of the 34-patch queue (2026-11-09): platform lints `42722042431` (dependency lints, rustdoc, x64 and ARM64 clippy), Windows lints `42722033353` (x64 and ARM64; the first run `42712979197` found that serial2 0.2.39 no longer enables winapi's `std` feature, now requested by `codex-utils-pty`), macOS lints `42712973167` and regeneration `42722037388` (no changes) pass. Linux tests `42712983966` run 23,184 tests; the four failures and the compaction timeout also fail on unpatched upstream, and the loopback sandbox timeout came from the workflow's job-wide curl retry configuration, removed from the test steps in `2eb1ac8d69` ([upstream-failure-comparison.md](docs/upstream-failure-comparison.md)). The six-target cold release build `42722075898` passes all 17 jobs (2026-11-09T23:38Z to 2026-11-10T03:15Z). Bazel Clippy `42737946018` and native Bazel tests `42745094672` then found two Bazel-only breaks in patch 34, fixed in `c769f20f93` (version-named crate labels) and `632804d34c` (upstream's zstd-sys crate patch rebased onto 2.1.2).
 
+**rama 0.4 port and final queue (2026-11-10):** patch 35, [`rama-0.4/rama-0.4.patch`](patches/holdmyspot-com/codex-unleashed/rama-0.4/README.md), moves `codex-network-proxy` to the released rama 0.4.0 and is entry 35 of [patches/README.md](patches/README.md). Also on the final queue:
+- Upstream's argument-comment lint, newly gated in `baseline-argument-comment-lint.yml`, required 169 parameter comments in eight earlier patches (`4f453a0981`).
+- assert_cmd 2.2 panics where 2.1 returned an error for a missing test binary, so `release-adaptations.patch` gives `codex-utils-cargo-bin` its own lookup (`44d8ebcfac`).
+
+On main `44d8ebcfac`:
+- Repository checks `42771456091`, platform lints `42771467867`, argument-comment lint `42765971438` and lock regeneration `42771460150` (empty diff) pass.
+- Linux tests `42781922596` fail only three tests, all upstream-equivalent.
+- Native Bazel tests `42771464472` and Bazel Clippy `42782037300` fail only known upstream-equivalent or flaky targets, recorded in [upstream-failure-comparison.md](docs/upstream-failure-comparison.md).
+
 Cold release builds of the 33-patch queue (2026-11-09, `cache=false`) pass on all six targets with no compiler warnings. Primary-bundle wall times: Linux x64 40 min (`42707724560`), Linux ARM64 50 min (`42707737676`), macOS ARM64 2 h 25 min (`42707753358`), macOS x64 2 h 21 min (`42707767617`), Windows x64 1 h 20 min (`42707782680`), Windows ARM64 1 h 14 min (`42707797041`). The cached Linux x64 build `42708881874` passes. The cached rebuild with `verify_invalidation=true` (`42724961867`) passes: the primary bundle takes 28 min (cold 40 min), the app-server bundle 5 min (cold 29 min), and the invalidation script's cases reuse the cache parts whose inputs did not change.
 
 Held back, each for a compatibility constraint:
 | Dependency | Kept at | Constraint |
 |---|---|---|
-| rama-* (`codex-network-proxy`) | 0.3.0-alpha.4 | 0.4.0 removes `ProxyTarget`, `StreamForwardService` and `PeekStream` and redesigns the SOCKS5 server, URI, DNS, TLS configuration and extension APIs. The port rewrites about 40 files of proxy code. Owner decision 2026-11-09: a separate work item after CP7 (see Remaining sequence). |
 | sse-stream (`codex-rmcp-client`) | 0.2.6 | rmcp's streamable HTTP client takes sse-stream 0.2 types; every rmcp release through 3.9.0 requires `^0.2.4`. |
 | tokio-tungstenite, tungstenite | 0.28, 0.27 | Patched to upstream's `openai-oss-forks` releases, which add proxy and deflate support. |
 | libsqlite3-sys | 0.37 | sqlx-sqlite 0.9.0, the latest, requires `<0.38`; RUSTSEC-2026-0459 is accepted until a sqlx release allows 0.39. |

@@ -53,4 +53,11 @@ Remote runs on the 34-patch queue plus `rama-0.4.patch`:
 - Linux tests, `package(codex-network-proxy)`: `42733382014`, 345 of 345 passed.
 - Bazel lock regeneration: `42737222851`, empty diff, so `MODULE.bazel.lock` in the patch is current.
 
+Runs on the final 35-patch queue (main `44d8ebcfac`, 2026-11-10):
+- Repository checks `42771456091` and platform lints `42771467867` pass; Bazel lock regeneration `42771460150` has an empty diff.
+- Linux tests `42781922596`: 23,184 tests, 3 failures (`sandbox_feature_matches_linked_v8`, `repo_ancestry_without_project_marker_does_not_walk_parents` and `root_metadata_symlinks_cannot_reopen_approved_denials`), all of which also fail on unpatched upstream.
+- Native Bazel tests `42771464472`: the known `linux-sandbox` failures, plus one flaky `cli-rollout_trace-test` case that focused run `42781918338` passes ([upstream-failure-comparison.md](../../../../docs/upstream-failure-comparison.md)).
+- Bazel Clippy `42782037300`: Linux and macOS pass; the gnullvm leg fails on the opusic-sys `opus_types.h` link, which also fails with only the first patch applied.
+- Argument-comment lint `42765971438` passes.
+
 Earlier rounds on the pre-transitive queue (lints `42727337993`, tests `42727341558`) also passed. The first transitive-base lint round (`42732311440`) failed on bindgen and syn 3, fixed above.
