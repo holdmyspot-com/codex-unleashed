@@ -84,7 +84,8 @@ The platform, macOS and Windows lint workflows and the Linux test workflow run o
 - `host_roots::tests::repo_ancestry_without_project_marker_does_not_walk_parents`;
 - `root_metadata_symlinks_cannot_reopen_approved_denials`;
 - `sandbox_blocks_curl`;
-- `sandbox_feature_matches_linked_v8`;
-- `sandbox_with_network_proxy_blocks_direct_loopback_access`, which times out at 60 seconds since 2026-11-09 with no patches too (focused run `42726284816`).
+- `sandbox_feature_matches_linked_v8`.
+
+`sandbox_with_network_proxy_blocks_direct_loopback_access` timed out because the workflow's job-wide curl retry configuration retried the refused connection the test expects; the Linux test workflow no longer applies that configuration to the test steps, and focused run `42746049933` passes it.
 
 `local_compaction_retries_preserve_instructions_and_tool_metadata::metadata_enabled` runs close to its 60-second limit on unpatched upstream as well and times out on loaded runners (34-patch run `42712983966`). See [upstream-failure-comparison.md](../../../../docs/upstream-failure-comparison.md).
