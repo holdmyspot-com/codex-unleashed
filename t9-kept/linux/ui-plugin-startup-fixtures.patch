@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 10 Nov 2026 09:50:54 -0500
+Subject: [PATCH] test: keep generic UI fixtures from starting plugin
+ marketplace sync
+
+Generic TUI fixtures use a fresh Codex home and started the real plugin
+repository synchronization through the default-enabled plugins feature, which
+depends on the network and the host. Disable the feature in the shared
+fixture configuration; plugin-specific tests already enable it explicitly.
+Production defaults are unchanged.
+
+The regression expects the generic fixture to leave plugin startup disabled.
+---
+ codex-rs/tui/src/chatwidget/tests/helpers.rs           |  5 +++++
+ .../tui/src/chatwidget/tests/plugin_catalog_tests.rs   | 10 ++++++++++
+ 2 files changed, 15 insertions(+)
+
+diff --git a/codex-rs/tui/src/chatwidget/tests/helpers.rs b/codex-rs/tui/src/chatwidget/tests/helpers.rs
+index cde6ee0..a294a5e 100644
+--- a/codex-rs/tui/src/chatwidget/tests/helpers.rs
++++ b/codex-rs/tui/src/chatwidget/tests/helpers.rs
+@@ -18,6 +18,11 @@ pub(super) async fn test_config() -> (tempfile::TempDir, Config) {
+     )
+     .await
+     .expect("config");
++    // Plugin-specific tests opt in; generic UI fixtures avoid background marketplace downloads.
++    config
++        .features
++        .disable(codex_features::Feature::Plugins)
++        .expect("generic UI fixture permits plugin opt-out");
+     // Keep generic UI snapshots stable when the bundled catalog default changes.
+     config.model = Some("gpt-5.6-sol".to_string());
+     config.codex_home = codex_home.path().abs();
+diff --git a/codex-rs/tui/src/chatwidget/tests/plugin_catalog_tests.rs b/codex-rs/tui/src/chatwidget/tests/plugin_catalog_tests.rs
+index 26c59d5..7269dbf 100644
+--- a/codex-rs/tui/src/chatwidget/tests/plugin_catalog_tests.rs
++++ b/codex-rs/tui/src/chatwidget/tests/plugin_catalog_tests.rs
+@@ -286,3 +286,13 @@ async fn plugin_detail_not_installable_plugin_disables_install_action() {
+         "expected navigation to skip the disabled install row"
+     );
+ }
++
++#[tokio::test]
++async fn generic_fixture_keeps_plugin_startup_opt_in() {
++    let (_home, config) = test_config().await;
++
++    assert!(
++        !config.features.enabled(Feature::Plugins),
++        "generic UI fixtures must opt into plugin startup explicitly"
++    );
++}
+-- 
+2.43.0
+

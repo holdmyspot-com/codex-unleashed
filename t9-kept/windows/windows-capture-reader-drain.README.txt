@@ -1,0 +1,3 @@
+Intent: legacy Windows capture finishes after the root process exits even when a surviving descendant holds the output pipe.
+Failure: regression legacy_capture_emits_output_and_preserves_descendant_after_normal_exit fails (descendant did not survive normal capture exit, ~45 s) without src/lib.rs.
+Red/green: one run 42837979896 (red step fails, green passes in 1.3 s), x64, package codex-windows-sandbox.

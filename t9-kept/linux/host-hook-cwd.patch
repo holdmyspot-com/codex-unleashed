@@ -1,0 +1,161 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 10 Nov 2026 09:49:51 -0500
+Subject: [PATCH] bugfix: run host hooks in the host working directory for
+ remote sessions
+
+Selecting only a remote environment makes the turn's executor working
+directory a path that does not exist on the host, so host command hooks
+failed to spawn. Fall back to the per-turn host working directory for every
+hook request, as already done for tool hooks, while a selected local
+environment keeps priority.
+
+The regression selects a remote-only environment and expects the hook
+working directory to be the host working directory.
+---
+ codex-rs/core/src/hook_runtime.rs  | 39 +++++++++++++++---------------
+ codex-rs/core/src/session/tests.rs | 20 +++++++++++++++
+ 2 files changed, 40 insertions(+), 19 deletions(-)
+
+diff --git a/codex-rs/core/src/hook_runtime.rs b/codex-rs/core/src/hook_runtime.rs
+index 603a6e4..6f4d176 100644
+--- a/codex-rs/core/src/hook_runtime.rs
++++ b/codex-rs/core/src/hook_runtime.rs
+@@ -156,8 +156,7 @@ pub(crate) async fn run_pending_session_start_hooks(
+         };
+         let request = codex_hooks::SessionStartRequest {
+             session_id: sess.session_id().into(),
+-            #[allow(deprecated)]
+-            cwd: turn_context.cwd.clone(),
++            cwd: tool_hook_cwd(&turn_context.initial_environments, turn_context),
+             transcript_path: sess.hook_transcript_path().await,
+             model: turn_context.model_info().slug.clone(),
+             permission_mode: hook_permission_mode(turn_context.approval_policy()),
+@@ -258,12 +257,14 @@ pub(crate) async fn run_pre_tool_use_hooks(
+     }
+ }
+ 
+-#[allow(deprecated)]
+-fn tool_hook_cwd(environments: &TurnEnvironmentSnapshot, turn: &TurnContext) -> AbsolutePathBuf {
++pub(crate) fn tool_hook_cwd(
++    environments: &TurnEnvironmentSnapshot,
++    turn: &TurnContext,
++) -> AbsolutePathBuf {
+     // Hooks run on the host, so a remote workspace cannot replace the local fallback.
+     environments
+         .local_environment_cwd()
+-        .unwrap_or_else(|| turn.cwd.clone())
++        .unwrap_or_else(|| turn.config.cwd.clone())
+ }
+ 
+ // PermissionRequest hooks share the same preview/start/completed event flow as
+@@ -429,8 +430,7 @@ pub(crate) async fn run_turn_stop_hooks(
+     let request = codex_hooks::StopRequest {
+         session_id: sess.session_id().into(),
+         turn_id: turn_context.sub_id.clone(),
+-        #[allow(deprecated)]
+-        cwd: turn_context.cwd.clone(),
++        cwd: tool_hook_cwd(&step_context.environments, turn_context),
+         transcript_path,
+         model: turn_context.model_info().slug.clone(),
+         permission_mode: hook_permission_mode(turn_context.approval_policy()),
+@@ -481,8 +481,7 @@ pub(crate) async fn run_session_end_hooks(sess: &Arc<Session>) {
+     let request = codex_hooks::SessionEndRequest {
+         session_id: sess.session_id().into(),
+         turn_id: turn_context.sub_id.clone(),
+-        #[allow(deprecated)]
+-        cwd: turn_context.cwd.clone(),
++        cwd: tool_hook_cwd(&environments, &turn_context),
+         transcript_path: sess.hook_transcript_path().await,
+     };
+     if let Err(err) = sess.flush_rollout().await {
+@@ -526,8 +525,14 @@ pub(crate) async fn run_turn_interrupt_hooks(
+     let request = InterruptRequest {
+         session_id: sess.session_id().into(),
+         turn_id: turn_context.sub_id.clone(),
+-        #[allow(deprecated)]
+-        cwd: turn_context.cwd.clone(),
++        cwd: tool_hook_cwd(
++            last_known_step_context
++                .as_deref()
++                .map_or(&turn_context.initial_environments, |step| {
++                    &step.environments
++                }),
++            turn_context,
++        ),
+         transcript_path: sess.hook_transcript_path().await,
+         model: turn_context.model_info().slug.clone(),
+         permission_mode: hook_permission_mode(turn_context.approval_policy()),
+@@ -551,8 +556,7 @@ pub(crate) async fn run_pre_compact_hooks(
+         session_id: sess.session_id().into(),
+         turn_id: turn_context.sub_id.clone(),
+         subagent: thread_spawn_subagent_hook_context(sess, turn_context),
+-        #[allow(deprecated)]
+-        cwd: turn_context.cwd.clone(),
++        cwd: tool_hook_cwd(&turn_context.initial_environments, turn_context),
+         transcript_path: sess.hook_transcript_path().await,
+         model: turn_context.model_info().slug.clone(),
+         trigger: compaction_trigger_label(trigger).to_string(),
+@@ -593,8 +597,7 @@ pub(crate) async fn run_post_compact_hooks(
+         session_id: sess.session_id().into(),
+         turn_id: turn_context.sub_id.clone(),
+         subagent: thread_spawn_subagent_hook_context(sess, turn_context),
+-        #[allow(deprecated)]
+-        cwd: turn_context.cwd.clone(),
++        cwd: tool_hook_cwd(&turn_context.initial_environments, turn_context),
+         transcript_path: sess.hook_transcript_path().await,
+         model: turn_context.model_info().slug.clone(),
+         trigger: compaction_trigger_label(trigger).to_string(),
+@@ -635,8 +638,7 @@ pub(crate) async fn run_legacy_after_agent_hook(
+     for hook_outcome in hooks
+         .dispatch(codex_hooks::HookPayload {
+             session_id: sess.session_id().into(),
+-            #[allow(deprecated)]
+-            cwd: turn_context.cwd.clone(),
++            cwd: tool_hook_cwd(&turn_context.initial_environments, turn_context),
+             client: turn_context.app_server_client_name.clone(),
+             triggered_at: chrono::Utc::now(),
+             hook_event: codex_hooks::HookEvent::AfterAgent {
+@@ -696,8 +698,7 @@ pub(crate) async fn inspect_pending_input(
+                 session_id: sess.session_id().into(),
+                 turn_id: turn_context.sub_id.clone(),
+                 subagent: thread_spawn_subagent_hook_context(sess, turn_context),
+-                #[allow(deprecated)]
+-                cwd: turn_context.cwd.clone(),
++                cwd: tool_hook_cwd(&turn_context.initial_environments, turn_context),
+                 transcript_path: sess.hook_transcript_path().await,
+                 model: turn_context.model_info().slug.clone(),
+                 permission_mode: hook_permission_mode(turn_context.approval_policy()),
+diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
+index ae6a29f..6295fb3 100644
+--- a/codex-rs/core/src/session/tests.rs
++++ b/codex-rs/core/src/session/tests.rs
+@@ -13653,5 +13653,25 @@ async fn rejected_mcp_refresh_then_corrected_user_config_blocks_ordinary_replace
+         "rejection must not permit same-name ordinary-auth replacement in this session"
+     );
+ }
++#[tokio::test]
++async fn hook_cwd_stays_on_host_when_only_a_remote_environment_is_selected() {
++    let (_session, mut turn) = make_session_and_context().await;
++    let host_cwd = turn.config.cwd.join("host-workspace");
++    Arc::make_mut(&mut turn.config).cwd = host_cwd.clone();
++    let mut remote_only = turn.initial_environments.clone();
++    let TurnEnvironmentState::Ready(environment) = &mut remote_only.environments[0] else {
++        panic!("fixture should have a ready environment");
++    };
++    environment.environment = Arc::new(
++        codex_exec_server::Environment::create_for_tests(Some("ws://127.0.0.1:8765".to_string()))
++            .expect("remote environment"),
++    );
++
++    assert_eq!(
++        crate::hook_runtime::tool_hook_cwd(&remote_only, &turn),
++        host_cwd
++    );
++}
++
+ #[path = "resume_warmup_tests.rs"]
+ mod resume_warmup_tests;
+-- 
+2.43.0
+

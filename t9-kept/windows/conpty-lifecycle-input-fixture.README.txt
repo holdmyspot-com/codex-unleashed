@@ -1,0 +1,3 @@
+Intent: keep ConPTY input open (stdin_open true) in the descendant lifecycle fixture. Apply after windows-capture-reader-drain and legacy-powershell-environment.
+Failure: legacy_tty_job_terminates_and_preserves_descendants fails with 'Terminate descendant did not start' with stdin closed.
+Red/green: run 42840911796 (x64). Unstacked run 42837997853 failed red and green because the 0093 environment fixes were missing.

@@ -1,0 +1,234 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 24 Oct 2026 02:23:14 -0400
+Subject: [PATCH] test: Provide the local runtime capabilities required by MCP
+ fixtures
+
+Host Python stdio servers require an explicitly registered local environment
+and an existing host cwd when the primary executor lives in a container.
+Keep the remote primary, route each fixture through existing mixed-environment
+support, and use the test-owned Codex home for local stdio startup. Enable the
+upstream code-mode host for the yielded-cell fixture rather than silently
+falling back to direct tools.
+
+Base: rust-v0.163.0 (83086188ae0614bd882818ff1aa23f3194962012).
+Integrated local verification: 49 focused tests pass without retries.
+The prior yielded-cell fixture returned unsupported custom tool call: exec.
+Standalone and remote Docker verification are recorded separately.
+---
+ .../tests/suite/guardian_mcp_elicitation.rs   | 65 +++++++++++--------
+ .../tests/suite/mcp_subagent_elicitation.rs   |  5 +-
+ .../core/tests/suite/mcp_user_verification.rs |  5 +-
+ 3 files changed, 47 insertions(+), 28 deletions(-)
+
+diff --git a/codex-rs/core/tests/suite/guardian_mcp_elicitation.rs b/codex-rs/core/tests/suite/guardian_mcp_elicitation.rs
+index 1193fe6..b9692fd 100644
+--- a/codex-rs/core/tests/suite/guardian_mcp_elicitation.rs
++++ b/codex-rs/core/tests/suite/guardian_mcp_elicitation.rs
+@@ -1,5 +1,7 @@
+ use anyhow::Context;
+ use anyhow::Result;
++use codex_config::McpServerConfig;
++use codex_config::McpServerTransportConfig;
+ use codex_core::TurnInputRequest;
+ use codex_core::config::Config;
+ use codex_core::config::Constrained;
+@@ -21,6 +23,7 @@ use codex_protocol::protocol::GuardianAssessmentStatus;
+ use codex_protocol::protocol::Op;
+ use codex_protocol::protocol::ThreadSettingsOverrides;
+ use codex_protocol::user_input::UserInput;
++use codex_utils_path_uri::LegacyAppPathString;
+ use core_test_support::apps_test_server::apps_enabled_builder;
+ use core_test_support::responses;
+ use core_test_support::skip_if_no_network;
+@@ -35,6 +38,7 @@ use pretty_assertions::assert_eq;
+ use serde_json::Value;
+ use serde_json::json;
+ use std::collections::BTreeMap;
++use std::collections::HashMap;
+ use std::sync::Arc;
+ use std::time::Duration;
+ use test_case::test_case;
+@@ -134,12 +138,9 @@ async fn interrupt_aborts_server_initiated_mcp_guardian_review() -> Result<()> {
+     let mut builder = test_codex().with_config(move |config| {
+         config.permissions.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
+         config.approvals_reviewer = ApprovalsReviewer::AutoReview;
+-        config
+-            .mcp_servers
+-            .set(mcp_servers)
+-            .expect("set MCP fixture");
++        set_host_stdio_servers(config, mcp_servers);
+     });
+-    let test = builder.build_with_auto_env(&server).await?;
++    let test = builder.build(&server).await?;
+     wait_for_mcp_server(&test.codex, "elicitation").await?;
+     responses::mount_sse_once(
+         &server,
+@@ -300,12 +301,9 @@ async fn server_initiated_mcp_elicitation_can_require_synchronous_auto_review(
+             } else {
+                 ApprovalsReviewer::AutoReview
+             };
+-            config
+-                .mcp_servers
+-                .set(mcp_servers)
+-                .expect("set MCP fixture");
++            set_host_stdio_servers(config, mcp_servers);
+         });
+-    let test = builder.build_with_auto_env(&server).await?;
++    let test = builder.build_with_remote_and_local_env(&server).await?;
+     wait_for_mcp_server(&test.codex, "elicitation").await?;
+     responses::mount_sse_once(
+         &server,
+@@ -388,6 +386,21 @@ async fn server_initiated_mcp_elicitation_can_require_synchronous_auto_review(
+     Ok(())
+ }
+ 
++// These inline Python servers belong to the host even when tools use a remote executor.
++fn set_host_stdio_cwd(config: &Config, server: &mut McpServerConfig) {
++    let McpServerTransportConfig::Stdio { cwd, .. } = &mut server.transport else {
++        panic!("expected a stdio MCP fixture");
++    };
++    *cwd = Some(LegacyAppPathString::from_path(&config.codex_home));
++}
++
++fn set_host_stdio_servers(config: &mut Config, mut servers: HashMap<String, McpServerConfig>) {
++    for server in servers.values_mut() {
++        set_host_stdio_cwd(config, server);
++    }
++    config.mcp_servers.set(servers).expect("set MCP fixture");
++}
++
+ struct BrowserMcpServer(codex_config::McpServerConfig);
+ 
+ impl McpServerContributor<Config> for BrowserMcpServer {
+@@ -397,11 +410,13 @@ impl McpServerContributor<Config> for BrowserMcpServer {
+ 
+     fn contribute<'a>(
+         &'a self,
+-        _context: McpServerContributionContext<'a, Config>,
++        context: McpServerContributionContext<'a, Config>,
+     ) -> ExtensionFuture<'a, Vec<McpServerContribution>> {
+         Box::pin(async move {
++            let mut config = self.0.clone();
++            set_host_stdio_cwd(context.config(), &mut config);
+             vec![McpServerContribution::HostedApps {
+-                config: Box::new(self.0.clone()),
++                config: Box::new(config),
+                 protocol_mode: None,
+             }]
+         })
+@@ -514,12 +529,9 @@ async fn node_elicitations_attribute_independent_reviews_without_changing_action
+         } else {
+             ApprovalsReviewer::AutoReview
+         };
+-        config
+-            .mcp_servers
+-            .set(mcp_servers)
+-            .expect("set MCP fixture");
++        set_host_stdio_servers(config, mcp_servers);
+     });
+-    let test = builder.build_with_auto_env(&server).await?;
++    let test = builder.build_with_remote_and_local_env(&server).await?;
+     wait_for_mcp_server(&test.codex, server_name).await?;
+     if matches!(
+         call_id_source,
+@@ -772,7 +784,7 @@ async fn strict_browser_nested_review_requires_live_browser_identity(
+             config.permissions.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
+             config.approvals_reviewer = ApprovalsReviewer::User;
+         });
+-    let test = builder.build_with_auto_env(&server).await?;
++    let test = builder.build_with_remote_and_local_env(&server).await?;
+     wait_for_mcp_server(&test.codex, "codex_apps").await?;
+     responses::mount_sse_once(
+         &server,
+@@ -860,12 +872,9 @@ async fn user_review_preserves_unsupported_guardian_elicitations(mode: &str) ->
+                     mcp_elicitations: true,
+                 },
+             ));
+-            config
+-                .mcp_servers
+-                .set(mcp_servers)
+-                .expect("set MCP fixture");
++            set_host_stdio_servers(config, mcp_servers);
+         })
+-        .build_with_auto_env(&server)
++        .build_with_remote_and_local_env(&server)
+         .await?;
+     wait_for_mcp_server(&test.codex, "elicitation").await?;
+     responses::mount_sse_once(
+@@ -973,11 +982,15 @@ async fn yielded_code_mode_elicitation_keeps_live_invocation_metadata() -> Resul
+                 .features
+                 .enable(codex_features::Feature::CodeMode)
+                 .unwrap();
++            config
++                .features
++                .enable(codex_features::Feature::CodeModeHost)
++                .unwrap();
+             config.permissions.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
+             config.approvals_reviewer = ApprovalsReviewer::User;
+-            config.mcp_servers.set(mcp_servers).unwrap();
++            set_host_stdio_servers(config, mcp_servers);
+         });
+-    let mut test = builder.build_with_auto_env(&server).await?;
++    let mut test = builder.build_with_remote_and_local_env(&server).await?;
+     let metrics = MetricsClient::new(
+         MetricsConfig::in_memory("test", "test", "1", Default::default()).with_runtime_reader(),
+     )?;
+@@ -1013,7 +1026,7 @@ async fn yielded_code_mode_elicitation_keeps_live_invocation_metadata() -> Resul
+     let cell_id = text
+         .strip_prefix("Script running with cell ID ")
+         .and_then(|text| text.lines().next())
+-        .context("A should yield a running cell")?
++        .with_context(|| format!("A should yield a running cell; received: {text}"))?
+         .to_string();
+ 
+     responses::mount_sse_once(
+diff --git a/codex-rs/core/tests/suite/mcp_subagent_elicitation.rs b/codex-rs/core/tests/suite/mcp_subagent_elicitation.rs
+index 51ac8aa..f7102c5 100644
+--- a/codex-rs/core/tests/suite/mcp_subagent_elicitation.rs
++++ b/codex-rs/core/tests/suite/mcp_subagent_elicitation.rs
+@@ -103,7 +103,9 @@ pub(super) async fn mcp_server_elicitation_scenario(
+     request_kind: RequestKind,
+ ) -> Result<Vec<ResponsesRequest>> {
+     let server = responses::start_mock_server().await;
+-    let test = test_codex().build_with_auto_env(&server).await?;
++    let test = test_codex()
++        .build_with_remote_and_local_env(&server)
++        .await?;
+     let mut elicitation = json!({
+         "mode": "form",
+         "message": "Provide the requested input.",
+@@ -139,6 +141,7 @@ pub(super) async fn mcp_server_elicitation_scenario(
+     config.mcp_servers.set(serde_json::from_value(json!({
+         "elicitation": {
+             "command": if cfg!(windows) { "python" } else { "python3" },
++            "cwd": config.codex_home,
+             "args": ["-u", "-c", SERVER, elicitation.to_string()],
+             "default_tools_approval_mode": "approve"
+         }
+diff --git a/codex-rs/core/tests/suite/mcp_user_verification.rs b/codex-rs/core/tests/suite/mcp_user_verification.rs
+index 9fbb641..c4558ff 100644
+--- a/codex-rs/core/tests/suite/mcp_user_verification.rs
++++ b/codex-rs/core/tests/suite/mcp_user_verification.rs
+@@ -72,7 +72,9 @@ async fn mcp_user_verification_rejects_configured_servers(source: CapabilitySour
+     skip_if_no_network!(Ok(()));
+     skip_if_wine_exec!(Ok(()), "the MCP fixture requires a host Python interpreter");
+     let server = responses::start_mock_server().await;
+-    let test = test_codex().build_with_auto_env(&server).await?;
++    let test = test_codex()
++        .build_with_remote_and_local_env(&server)
++        .await?;
+     let declarations = HashMap::from([(
+         OPENAI_ELICITATION_EXTENSION_ID.to_string(),
+         json!({"userVerification": {}}),
+@@ -89,6 +91,7 @@ async fn mcp_user_verification_rejects_configured_servers(source: CapabilitySour
+     config.mcp_servers.set(serde_json::from_value(json!({
+         "verification": {
+             "command": if cfg!(windows) { "python" } else { "python3" },
++            "cwd": config.codex_home,
+             "args": ["-u", "-c", SERVER], "default_tools_approval_mode": "approve"
+         }
+     }))?)?;
+-- 
+2.43.0
+

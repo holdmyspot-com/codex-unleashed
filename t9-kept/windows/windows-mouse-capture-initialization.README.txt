@@ -1,0 +1,3 @@
+Intent: arm native mouse-capture cleanup only after Crossterm saves the console mode.
+Failure: releasing input during the scroll write errors 'Initial console modes not set'.
+Red/green: run 42838035115 (x64; red fails with that error, green passes).

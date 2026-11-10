@@ -1,0 +1,3 @@
+Intent: retain SystemRoot in the installed Windows shell policy fixture.
+Failure: ARM64 only: PowerShell GetSaferPolicy Win32Exception 126 in exec_command_uses_installed_environment_shell_policy_with_explicit_overrides.
+Red/green: ARM64 run 42838009679 (red fails, green passes). x64 run 42838003635: red passes, so x64 is not affected.

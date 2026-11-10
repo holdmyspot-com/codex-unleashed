@@ -1,0 +1,3 @@
+Intent: isolate Ctrl+C state and wait for PowerShell resumption instead of a fixed delay in the ConPTY interrupt fixture.
+Failure: old conpty_ctrl_c_interrupts_powershell_foreground_child times out waiting for 'Microsoft Windows' (~11 s).
+Red/green: run 42838014729 (x64; red fails twice, green passes in 1 s).
