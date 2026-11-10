@@ -1,4 +1,4 @@
-From b438effdbb0d841ce37f2dc1dc1e0d9acf580b51 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 9 Nov 2026 11:13:20 -0500
 Subject: [PATCH] Adapt tests and runtime behavior to the upgraded releases
@@ -6,7 +6,7 @@ Subject: [PATCH] Adapt tests and runtime behavior to the upgraded releases
 Fix what the upgraded releases change at run time or in test expectations: rtc 0.21's interceptor API, tokio-util's Bytes requirement, jsonwebtoken 11's crypto backend, pulldown-cmark 0.13's task list output, opentelemetry-proto 0.33's string-encoded integers, the OpenTelemetry SDK's export error events, schemars 1's web.run schema hashes, and opentelemetry-otlp 0.33's retries, which need the real HTTP status. Two test servers now read the request before answering, which hyper requires under reqwest 0.13. unicode-width stays at 0.2.2, because ratatui-core 0.1.2 compensates for 0.2.2's zero-width halfwidth sound marks and would count them twice under 0.2.3.
 ---
  MODULE.bazel.lock                             |  1 -
- codex-rs/Cargo.lock                           | 23 ++++----
+ codex-rs/Cargo.lock                           | 24 ++++----
  codex-rs/Cargo.toml                           |  6 +-
  .../remote_control/server_api_tests.rs        | 19 +++++-
  ...ample__sample_inherits_parent_context.snap | 12 ++--
@@ -18,8 +18,10 @@ Fix what the upgraded releases change at run time or in test expectations: rtc 0
  codex-rs/state/src/log_db.rs                  | 11 ++++
  codex-rs/state/src/log_db_filter_tests.rs     |  1 +
  ...ask_list_tests__lists_preserve_layout.snap | 10 ++--
+ codex-rs/utils/cargo-bin/Cargo.toml           |  1 -
+ codex-rs/utils/cargo-bin/src/lib.rs           | 41 +++++++------
  .../voice-host/src/capture_worker_tests.rs    | 58 ++++++++++++++-----
- 14 files changed, 118 insertions(+), 51 deletions(-)
+ 16 files changed, 138 insertions(+), 74 deletions(-)
 
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
 index d55c3eb..f54d77a 100644
@@ -34,7 +36,7 @@ index d55c3eb..f54d77a 100644
        "universal-hash_0.5.1": "{\"dependencies\":[{\"name\":\"crypto-common\",\"req\":\"^0.1.6\"},{\"default_features\":false,\"name\":\"subtle\",\"req\":\"^2.4\"}],\"features\":{\"std\":[\"crypto-common/std\"]}}",
        "untrusted_0.7.1": "{\"dependencies\":[],\"features\":{}}",
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index bc4e934..a7b4b54 100644
+index bc4e934..c6a666a 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -225,7 +225,7 @@ checksum = "b2a5b0a5ab8561c603f16c3b78c24a386b1f70e7fc1b1b1e8c15738828e4a176"
@@ -73,7 +75,15 @@ index bc4e934..a7b4b54 100644
   "url",
   "urlencoding",
   "uuid",
-@@ -10003,6 +10003,7 @@ version = "11.1.0"
+@@ -5268,7 +5268,6 @@ dependencies = [
+ name = "codex-utils-cargo-bin"
+ version = "0.0.0"
+ dependencies = [
+- "assert_cmd",
+  "runfiles",
+  "thiserror 2.0.21",
+ ]
+@@ -10003,6 +10002,7 @@ version = "11.1.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "e75fe14a82d81e5f5af639997db37d8b96045938a7ac6ab18cdbe1c7467e05e1"
  dependencies = [
@@ -81,7 +91,7 @@ index bc4e934..a7b4b54 100644
   "base64 0.22.1",
   "getrandom 0.2.17",
   "js-sys",
-@@ -13065,7 +13066,7 @@ dependencies = [
+@@ -13065,7 +13065,7 @@ dependencies = [
   "thiserror 2.0.21",
   "unicode-segmentation",
   "unicode-truncate",
@@ -90,7 +100,7 @@ index bc4e934..a7b4b54 100644
  ]
  
  [[package]]
-@@ -13139,7 +13140,7 @@ dependencies = [
+@@ -13139,7 +13139,7 @@ dependencies = [
   "strum",
   "time",
   "unicode-segmentation",
@@ -99,7 +109,7 @@ index bc4e934..a7b4b54 100644
  ]
  
  [[package]]
-@@ -15857,7 +15858,7 @@ checksum = "6ecfad6c3abc80a577f2b91c1e412ee57e7a060d430b553c1b0c940974ebcd49"
+@@ -15857,7 +15857,7 @@ checksum = "6ecfad6c3abc80a577f2b91c1e412ee57e7a060d430b553c1b0c940974ebcd49"
  dependencies = [
   "icu_segmenter",
   "smawk",
@@ -108,7 +118,7 @@ index bc4e934..a7b4b54 100644
  ]
  
  [[package]]
-@@ -16804,7 +16805,7 @@ checksum = "16b380a1238663e5f8a691f9039c73e1cdae598a30e9855f541d29b08b53e9a5"
+@@ -16804,7 +16804,7 @@ checksum = "16b380a1238663e5f8a691f9039c73e1cdae598a30e9855f541d29b08b53e9a5"
  dependencies = [
   "itertools 0.14.0",
   "unicode-segmentation",
@@ -117,7 +127,7 @@ index bc4e934..a7b4b54 100644
  ]
  
  [[package]]
-@@ -16815,9 +16816,9 @@ checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
+@@ -16815,9 +16815,9 @@ checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
  
  [[package]]
  name = "unicode-width"
@@ -129,7 +139,7 @@ index bc4e934..a7b4b54 100644
  
  [[package]]
  name = "unicode-xid"
-@@ -16963,7 +16964,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -16963,7 +16963,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "eb05cdd19ae8707bf6a0a269972c07e6358103a7079faec749dec318a5b3dc23"
  dependencies = [
   "itoa",
@@ -443,6 +453,79 @@ index 636eba4..8f3113d 100644
  ---
  ☑ <div>done</div>
  ---
+diff --git a/codex-rs/utils/cargo-bin/Cargo.toml b/codex-rs/utils/cargo-bin/Cargo.toml
+index a56e575..d7788d7 100644
+--- a/codex-rs/utils/cargo-bin/Cargo.toml
++++ b/codex-rs/utils/cargo-bin/Cargo.toml
+@@ -8,7 +8,6 @@ license.workspace = true
+ workspace = true
+ 
+ [dependencies]
+-assert_cmd = { workspace = true }
+ runfiles = { workspace = true }
+ thiserror = { workspace = true }
+ 
+diff --git a/codex-rs/utils/cargo-bin/src/lib.rs b/codex-rs/utils/cargo-bin/src/lib.rs
+index 6ef7080..cc61644 100644
+--- a/codex-rs/utils/cargo-bin/src/lib.rs
++++ b/codex-rs/utils/cargo-bin/src/lib.rs
+@@ -40,7 +40,6 @@ pub enum CargoBinError {
+ /// In `cargo test`, `CARGO_BIN_EXE_*` env vars are absolute.
+ /// In `bazel test`, `CARGO_BIN_EXE_*` env vars are rlocationpaths, intended to be consumed by `rlocation`.
+ /// This helper allows callers to transparently support both.
+-#[allow(deprecated)]
+ pub fn cargo_bin(name: &str) -> Result<PathBuf, CargoBinError> {
+     let env_keys = cargo_bin_env_keys(name);
+     for key in &env_keys {
+@@ -48,28 +47,28 @@ pub fn cargo_bin(name: &str) -> Result<PathBuf, CargoBinError> {
+             return resolve_bin_from_env(key, value);
+         }
+     }
+-    match assert_cmd::Command::cargo_bin(name) {
+-        Ok(cmd) => {
+-            let mut path = PathBuf::from(cmd.get_program());
+-            if !path.is_absolute() {
+-                path = std::env::current_dir()
+-                    .map_err(|source| CargoBinError::CurrentDir { source })?
+-                    .join(path);
+-            }
+-            if path.exists() {
+-                Ok(path)
+-            } else {
+-                Err(CargoBinError::ResolvedPathDoesNotExist {
+-                    key: "assert_cmd::Command::cargo_bin".to_owned(),
+-                    path,
+-                })
+-            }
+-        }
+-        Err(err) => Err(CargoBinError::NotFound {
++    target_dir_bin(name, env_keys)
++}
++
++/// Looks for `name` next to the running test binary, in Cargo's target directory.
++///
++/// assert_cmd 2.2 panics when this lookup fails, but callers rely on an error so they can fall back
++/// to another binary.
++fn target_dir_bin(name: &str, env_keys: Vec<String>) -> Result<PathBuf, CargoBinError> {
++    let mut dir = std::env::current_exe().map_err(|source| CargoBinError::CurrentExe { source })?;
++    dir.pop();
++    if dir.ends_with("deps") {
++        dir.pop();
++    }
++    let path = dir.join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
++    if path.exists() {
++        Ok(path)
++    } else {
++        Err(CargoBinError::NotFound {
+             name: name.to_owned(),
+             env_keys,
+-            fallback: format!("assert_cmd fallback failed: {err}"),
+-        }),
++            fallback: format!("{} does not exist", path.display()),
++        })
+     }
+ }
+ 
 diff --git a/codex-rs/voice-host/src/capture_worker_tests.rs b/codex-rs/voice-host/src/capture_worker_tests.rs
 index 0d85153..e15a7d9 100644
 --- a/codex-rs/voice-host/src/capture_worker_tests.rs

@@ -46,6 +46,7 @@ Fixes what the new releases change at run time or in test expectations:
 - opentelemetry-otlp 0.33 retries failed exports, but only for HTTP 429, 502, 503 and 504, and always for network failures. The runtime OTLP HTTP client turned every error status into an error, which the exporter counts as a network failure, so a 500 was sent four times. The client now returns the response and leaves the status to the exporter.
 - Two test servers, in app-server-transport and exec-server, wrote their response before the request arrived. hyper rejects a response on an idle connection, and reqwest 0.13 reports it as a send failure instead of the body timeout the tests check, so both now read the request first.
 - The thread-sample tests accept schemars 1's web.run schema hashes.
+- assert_cmd 2.2 panics when its deprecated `Command::cargo_bin` cannot find a binary; 2.1 returned an error. `codex_utils_cargo_bin::cargo_bin` callers use that error to fall back to another binary, so test suites run without a `CARGO_BIN_EXE_*` variable (Bazel, `cargo nextest -p codex-core`) panicked: Linux test run `42765976756` failed 2547 tests, and native Bazel test run `42759554553` failed three. The helper now looks for the binary next to the test executable itself, as assert_cmd did, and returns `NotFound`, so it no longer depends on assert_cmd.
 - unicode-width stays at `=0.2.2` (see below).
 
 ### transitive-updates.patch
