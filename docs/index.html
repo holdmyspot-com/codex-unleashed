@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Tested patched builds of Codex CLI." />
+    <title>Codex Unleashed — Ship the workaround. Skip the wait.</title>
+    <style>
+      :root { color-scheme: dark; --ink: #f5f3ed; --muted: #aaa79e; --bg: #111310; --panel: #1a1d18; --line: #343930; --lime: #d9f99d; --orange: #ff9b71; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      a { color: inherit; }
+      .wrap { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+      nav { display: flex; justify-content: space-between; align-items: center; padding: 28px 0; border-bottom: 1px solid var(--line); }
+      .brand { color: var(--lime); font-weight: 700; letter-spacing: -.04em; }
+      nav a { color: var(--muted); text-decoration: none; margin-left: 24px; font-size: 13px; }
+      nav a:hover { color: var(--ink); }
+      .hero { display: grid; grid-template-columns: 1.3fr .7fr; gap: 64px; padding: 104px 0 90px; align-items: end; }
+      .eyebrow { color: var(--orange); font-size: 13px; text-transform: uppercase; letter-spacing: .12em; }
+      h1 { max-width: 760px; margin: 16px 0 24px; font: 700 clamp(44px, 8vw, 90px)/.98 Georgia, serif; letter-spacing: -.06em; }
+      .lead { max-width: 650px; color: var(--muted); font-size: 19px; }
+      .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
+      .button { display: inline-block; padding: 13px 18px; border: 1px solid var(--lime); background: var(--lime); color: #17200f; text-decoration: none; font-weight: 700; }
+      .button.alt { background: transparent; color: var(--ink); border-color: var(--line); }
+      .terminal { border: 1px solid var(--line); background: #0b0d0a; box-shadow: 12px 12px 0 #252a21; }
+      .terminal-bar { padding: 10px 14px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+      pre { margin: 0; padding: 22px; overflow: auto; color: #c8d5bd; font: 13px/1.7 inherit; }
+      .bad { color: var(--orange); } .good { color: var(--lime); }
+      section { padding: 78px 0; border-top: 1px solid var(--line); }
+      h2 { margin: 0 0 14px; font: 700 clamp(30px, 5vw, 54px)/1.05 Georgia, serif; letter-spacing: -.04em; }
+      .section-lead { max-width: 680px; color: var(--muted); }
+      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 38px; }
+      .card { min-height: 220px; padding: 24px; border: 1px solid var(--line); background: var(--panel); }
+      .card .num { color: var(--orange); } h3 { margin: 30px 0 10px; font-size: 18px; } .card p { margin: 0; color: var(--muted); }
+      .promise { display: grid; grid-template-columns: .8fr 1.2fr; gap: 48px; align-items: start; }
+      .checks { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+      .checks li { padding: 18px 20px; border-left: 3px solid var(--lime); background: var(--panel); }
+      .checks strong { display: block; margin-bottom: 4px; } .checks span { color: var(--muted); }
+      .cta { display: flex; justify-content: space-between; gap: 28px; align-items: center; padding: 34px; background: var(--lime); color: #17200f; }
+      .cta h2 { max-width: 650px; } .cta p { max-width: 600px; } .cta .button { border-color: #17200f; background: #17200f; color: var(--lime); white-space: nowrap; }
+      .waitlist { max-width: 680px; padding: 24px; border: 1px solid var(--line); background: var(--panel); }
+      .waitlist form { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
+      .waitlist input[type=email] { flex: 1 1 280px; min-width: 0; padding: 13px 14px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; }
+      .waitlist button { padding: 13px 18px; border: 1px solid var(--lime); background: var(--lime); color: #17200f; font: 700 16px inherit; cursor: pointer; }
+      .privacy-note { margin: 14px 0 0; color: var(--muted); font-size: 12px; }
+      .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+      footer { padding: 32px 0 60px; color: var(--muted); font-size: 12px; } footer a { color: var(--ink); }
+      @media (max-width: 760px) { nav a { margin-left: 10px; } .hero, .promise { grid-template-columns: 1fr; gap: 36px; padding-top: 70px; } .grid { grid-template-columns: 1fr; } .cta { display: block; } .cta .button { margin-top: 15px; display: inline-block; } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <nav><a class="brand" href=".">Codex Unleashed</a><div><a href="#fixes">the annoyances</a><a href="https://github.com/holdmyspot-com/codex-unleashed">GitHub ↗</a></div></nav>
+      <main>
+        <header class="hero">
+          <div>
+            <div class="eyebrow">for Codex CLI users</div>
+            <h1>Get unstuck sooner.</h1>
+            <p class="lead">Codex Unleashed is a patched build of Codex CLI that carries tested, auditable fixes for the bugs that slow your work down.</p>
+            <div class="actions"><a class="button" href="https://github.com/holdmyspot-com/codex-unleashed#install">Install ↗</a><a class="button alt" href="#fixes">See what gets fixed ↓</a></div>
+          </div>
+          <div class="terminal"><div class="terminal-bar">~/project · codex</div><pre>$ codex resume --session yesterday
+<span class="bad">⠋ loading 26,203 transcript records...</span>
+<span class="bad">⠋ still loading...</span>
+<span class="bad">⠋ still loading...</span>
+
+<span class="good">✓ patched build available</span>
+<span class="good">✓ resume in seconds</span></pre></div>
+        </header>
+        <section id="fixes"><div class="eyebrow">the developer experience</div><h2>Your terminal has opinions.</h2><p class="section-lead">You have deadlines. It has a 765 MiB rollout, a mystery spinner, and a strong preference for making you wait.</p><div class="grid">
+          <article class="card"><span class="num">01 / latency</span><h3>“Switching agents…”</h3><p>You switch back to the main agent. The UI decides to reread a long session before acknowledging the keystroke.</p></article>
+          <article class="card"><span class="num">02 / suspense</span><h3>“Resuming session…”</h3><p>No progress indicator. No bounded first page. Just a blank terminal and time to reconsider your career choices.</p></article>
+          <article class="card"><span class="num">03 / drift</span><h3>“Fixed upstream.”</h3><p>Great. Now wait for the next release, then the next package build, then your organization’s upgrade window.</p></article>
+        </div></section>
+        <section class="promise"><div><div class="eyebrow">the approach</div><h2>Small fixes. Clear receipts.</h2><p class="section-lead">Every fix is public, scoped to an issue, and removable when upstream catches up. Codex Unleashed is intended to require an account and to bill usage by output tokens; pricing and allowances are not yet published.</p></div><ul class="checks"><li><strong>Auditable patches</strong><span>Every fix is public, scoped to an issue, and removable when upstream catches up.</span></li><li><strong>Tracks upstream</strong><span>Each release applies the patch queue to one stable upstream release.</span></li><li><strong>Source-available</strong><span>Company-owned additions are licensed under the HoldMySpot Source-Available License; upstream and third-party materials keep their own licenses.</span></li></ul></section>
+      </main>
+        <footer>Unofficial and independent. <a href="LICENSE.html">License</a> · <a href="terms.html">Terms of Service</a> · <a href="privacy.html">Privacy Notice</a> · <a href="refunds.html">Refund Policy</a> · <a href="https://github.com/holdmyspot-com/codex-unleashed/blob/main/SECURITY.md">Security</a></footer>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,62 @@
+name: Update badges
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "patches/**"
+      - ".github/workflows/update-badges.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}::${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  update-badges:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Generate badge JSON
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p docs/badges
+
+          roots=()
+          for root in patches/holdmyspot-com patches/openai; do
+            if [ -d "$root" ]; then
+              roots+=("$root")
+            fi
+          done
+          public_patches="$(find "${roots[@]}" -type f -name '*.patch' -printf '%h\n' | sort -u | wc -l | tr -d ' ')"
+
+          cat > docs/badges/public-patches.json <<EOF
+          {
+            "schemaVersion": 1,
+            "label": "public patches",
+            "message": "${public_patches}",
+            "color": "2ea44f"
+          }
+          EOF
+
+      - name: Commit badge updates
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- docs/badges/public-patches.json; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/badges/public-patches.json
+          git commit -m "Update README badges"
+          git push
