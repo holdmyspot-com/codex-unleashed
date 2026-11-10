@@ -161,6 +161,15 @@ jobs:
           if [[ "$TARGET" == x86_64-pc-windows-gnullvm ]]; then
             wrapper_args+=(--windows-cross-compile --remote-download-toplevel)
             test_args+=(--skip_incompatible_explicit_targets --build_metadata="TAG_windows_test_shard=$BAZEL_TEST_SHARD")
+            # Without a BuildBuddy key the wrapper cannot apply upstream's --config=ci-windows-cross, which needs remote
+            # execution. Pass by hand its settings that work locally (.bazelrc ci-windows-cross): the test-runner thread
+            # and job limits, and the skip list that replaces the Windows one (it adds the PowerShell parser tests, which
+            # hang in cross-built gnullvm binaries and are covered by the native MSVC job).
+            test_args+=(
+              --local_test_jobs=8
+              --test_env=RUST_TEST_THREADS=1
+              "--test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::,suite::code_mode::code_mode_can_call_hidden_dynamic_tools,tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child"
+            )
             query='tests(//...) except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...))'
             .github/scripts/run-bazel-query-ci.sh --output=label -- "$query" \
               | LC_ALL=C sort > "$evidence/candidate-targets.txt"
