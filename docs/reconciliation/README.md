@@ -18,12 +18,14 @@ Most `deferred` rows wait on D1, D3 to D8 or D10 in [restart-scope.md](../plans/
 calls were made from file and commit names rather than a line-by-line comparison, and each register says
 which.
 
+## Decided 2026-11-10
+
+- Old tests are carried over only when they cover a patch that was moved over. `ArtifactJsonApiTest.java` tests Java tooling, not a patch, so it is omitted. The red test `replayed_compacted_history_keeps_all_turns_when_fast_switching_is_disabled` belongs to the migrated `issue-34776/avoid-slow-agent-switching-and-resume.patch`, but that patch's `switching_back_replays_only_latest_compacted_conversation` already asserts that disabling fast switching replays the full conversation, so it is omitted as covered.
+- The D11 license and policy content is retained.
+
 ## Open owner decisions
 
-1. `ArtifactJsonApiTest.java`: `ArtifactJson` is kept, but `main` has no counterpart to the old test. Restore it or omit it.
 2. T9 in [archived-worktree-refs.md](archived-worktree-refs.md): the old-queue product and fixture patches (`issue-61/zzzz-0075..0098` and `issue-71/*`, such as the Windows mouse restore and close-remote-client-owner fixes). None of them is in `main` or upstream. Re-test each on the restart baseline, or omit them.
 3. `workflow-review.gEypD6` in [legacy-checkouts.md](legacy-checkouts.md): the recommendation is to omit this pre-squash workflow redesign.
-4. The red test `replayed_compacted_history_keeps_all_turns_when_fast_switching_is_disabled` from `codex-rust-v0.157.1-34776-red`, which is in no patch.
 5. `upstream-auto-release.yml` keeps its build-to-publish `assets-*` artifact for 7 days instead of 1. Accept this as an exception or shorten it.
 6. The 25 non-main remote branches, the 110 90-day artifacts from 2026-10-04 to 2026-10-07 (about 4.2 GB), the stale `main.new` cache entries and the stale `cargo-cache-main-new` package name in [artifacts-and-caches.md](artifacts-and-caches.md). Deleting any of them needs approval.
-7. `docs/COMMERCIAL_TERMS.md` and the other D11 license and policy files, which need owner content.
