@@ -207,6 +207,32 @@ jobs:
             printf 'CARGO_BIN_EXE_codex_command_runner=%s\n' "$(cygpath -w "$target_dir/codex-command-runner.exe")"
           } >> "$GITHUB_ENV"
 
+      # Mirrors upstream's setup-rusty-v8 action, whose paths assume the upstream checkout is the workspace root.
+      - name: Verify and configure upstream V8 artifacts
+        if: inputs.package != ''
+        run: |
+          set -euo pipefail
+          version="$(awk '/^name = "v8"$/ {getline; gsub(/[^0-9.]/, "", $0); print; exit}' upstream/codex-rs/Cargo.lock)"
+          base_url="https://github.com/openai/codex/releases/download/rusty-v8-v${version}"
+          directory="$RUNNER_TEMP/rusty_v8"
+          mkdir -p "$directory"
+          profile=ptrcomp_sandbox_release
+          archive="rusty_v8_${profile}_${TARGET}.lib.gz"
+          binding="src_binding_${profile}_${TARGET}.rs"
+          checksums="rusty_v8_${profile}_${TARGET}.sha256"
+          curl -fsSL "$base_url/$checksums" -o "$directory/$checksums"
+          trusted="upstream/third_party/v8/rusty_v8_${version//./_}_release_manifests.sha256"
+          expected="$(grep -F "  $checksums" "$trusted" | cut -d ' ' -f 1)"
+          actual="$(sha256sum "$directory/$checksums" | cut -d ' ' -f 1)"
+          test "$expected" = "$actual"
+          curl -fsSL "$base_url/$archive" -o "$directory/$archive"
+          curl -fsSL "$base_url/$binding" -o "$directory/$binding"
+          (cd "$directory" && tr -d '\r' < "$checksums" | sha256sum --check -)
+          {
+            printf 'RUSTY_V8_ARCHIVE=%s\n' "$(cygpath -w "$directory/$archive")"
+            printf 'RUSTY_V8_SRC_BINDING_PATH=%s\n' "$(cygpath -w "$directory/$binding")"
+          } >> "$GITHUB_ENV"
+
       - name: Preserve the accepted x86-64 SQLite build configuration
         if: inputs.package != '' && inputs.target == 'x86_64-pc-windows-msvc'
         run: echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
@@ -223,7 +249,9 @@ jobs:
               printf 'cd "%s/upstream/codex-rs"\n' "$GITHUB_WORKSPACE"
               args=(cargo nextest run --target "$TARGET" --cargo-profile ci-test --test-threads 8 --no-fail-fast)
               if [[ "$TEST_PACKAGE" == --workspace ]]; then
-                args+=(--workspace)
+                # voice-host links GStreamer through pkg-config, which hosted Windows runners cannot provide; the
+                # native voice runtime is covered by the Bazel and release builds.
+                args+=(--workspace --exclude codex-voice-host)
               else
                 read -r -a packages <<< "$TEST_PACKAGE"
                 for package in "${packages[@]}"; do args+=(-p "$package"); done
