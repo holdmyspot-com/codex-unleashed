@@ -1,0 +1,196 @@
+name: Stable upstream argument-comment lint
+
+# Mirrors upstream's separate argument-comment lint jobs (rust-ci-full.yml): the
+# lint package tests and the Bazel-based lint of codex-rs. Upstream's Bazel test
+# suites exclude the argument-comment-lint tag because these jobs cover it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      patches:
+        description: Space-separated repository paths of downstream patches to apply with git am, in order
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_DYLINT_VERSION: 6.1.0
+      DYLINT_LINK_VERSION: 6.1.0
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Preserve restart inputs outside the source checkout
+        id: inputs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-argument-lint-evidence"
+          mkdir -p "$evidence"
+          cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          # The upstream checkout below cleans the workspace, removing restart-metadata.
+          cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
+
+      - name: Verify pristine upstream source identity
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-argument-lint-evidence"
+          test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
+          test -z "$(git status --porcelain)"
+          git diff --check
+          git diff --binary > "$evidence/pristine-source.diff"
+
+      - name: Apply the selected downstream patches
+        id: patched
+        env:
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-argument-lint-evidence"
+          : > "$evidence/applied-patches.txt"
+          read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
+          for patch in "${patch_paths[@]}"; do
+            printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
+            git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
+          done
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+      - name: Install nightly argument-comment-lint toolchain
+        run: |
+          nightly="$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' tools/argument-comment-lint/rust-toolchain)"
+          test -n "$nightly"
+          rustup toolchain install "$nightly" \
+            --profile minimal \
+            --component llvm-tools-preview \
+            --component rustc-dev \
+            --component rust-src \
+            --no-self-update
+          rustup default "$nightly"
+      - name: Install cargo-dylint tooling
+        run: |
+          cargo install --locked cargo-dylint --version "$CARGO_DYLINT_VERSION"
+          cargo install --locked dylint-link --version "$DYLINT_LINK_VERSION"
+      - name: Check Python wrapper syntax
+        run: python3 -m py_compile tools/argument-comment-lint/wrapper_common.py tools/argument-comment-lint/run.py tools/argument-comment-lint/run-prebuilt-linter.py tools/argument-comment-lint/test_wrapper_common.py
+      - name: Test Python wrapper helpers
+        run: python3 -m unittest discover -s tools/argument-comment-lint -p 'test_*.py'
+      - name: Test argument comment lint package
+        working-directory: tools/argument-comment-lint
+        run: cargo test
+        env:
+          RUST_MIN_STACK: "8388608" # 8 MiB
+
+  bazel:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Preserve restart inputs outside the source checkout
+        id: inputs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-argument-lint-evidence"
+          mkdir -p "$evidence"
+          cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          # The upstream checkout below cleans the workspace, removing restart-metadata.
+          cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
+
+      - name: Verify pristine upstream source identity
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-argument-lint-evidence"
+          test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
+          test -z "$(git status --porcelain)"
+          git diff --check
+          git diff --binary > "$evidence/pristine-source.diff"
+
+      - name: Apply the selected downstream patches
+        id: patched
+        env:
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-argument-lint-evidence"
+          : > "$evidence/applied-patches.txt"
+          read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
+          for patch in "${patch_paths[@]}"; do
+            printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
+            git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
+          done
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Reclaim unused hosted-image toolchains
+        run: |
+          for unused in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup; do
+            if [[ -d "$unused" ]]; then
+              sudo rm -rf -- "$unused"
+            fi
+          done
+
+      - name: Read upstream's pinned Rust toolchain
+        id: upstream-rust
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up upstream's Rust toolchain for workspace metadata
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: ${{ steps.upstream-rust.outputs.channel }}
+
+      - name: Synchronize release workspace versions without dependency upgrades
+        run: |
+          set -euo pipefail
+          cargo metadata --format-version 1 --manifest-path codex-rs/Cargo.toml > /dev/null
+          git diff --stat
+
+      - name: Run upstream's Bazel argument-comment lint on codex-rs
+        uses: ./.github/actions/run-argument-comment-lint
+        with:
+          target: Linux
+
+      - name: Verify the patched source remains unmodified
+        if: always()
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
+          git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
