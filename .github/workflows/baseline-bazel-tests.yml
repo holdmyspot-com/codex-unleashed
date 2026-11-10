@@ -139,7 +139,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -y
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex zsh
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex zsh ripgrep
           # Tests skip themselves when a shell or interpreter is missing, so assert each one here.
           zsh --version
           /bin/zsh --version
@@ -394,7 +394,7 @@ jobs:
         if: ${{ !cancelled() && steps.bazel_tests.outcome != 'skipped' && !inputs.exec_server_shells }}
         run: |
           set -euo pipefail
-          python3 "$RUNNER_TEMP/check-test-skips.py" --platform linux "$(realpath bazel-testlogs)" \
+          python3 "$RUNNER_TEMP/check-test-skips.py" --platform linux --runner bazel "$(realpath bazel-testlogs)" \
             2>&1 | tee "$RUNNER_TEMP/baseline-bazel-evidence/skip-check.log"
 
       - name: Verify upstream source and tests remain unmodified

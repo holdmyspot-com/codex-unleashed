@@ -9,7 +9,7 @@ A skip passes only if an explicit allowlist rule matches it; each rule names the
 skip that matches a rule for a known missing setup, or that matches no rule, fails the check. Run it in a step
 that follows the tests so the test results are still reported.
 
-Usage: check-test-skips.py --platform {linux,macos,windows} PATH...
+Usage: check-test-skips.py --platform {linux,macos,windows} [--runner {nextest,bazel}] PATH...
 Each PATH is a JUnit XML file, a Bazel test.xml or test.log file, or a directory searched for junit.xml,
 test.xml and test.log files.
 """
@@ -27,11 +27,12 @@ ALLOW = "allowed"
 MISSING = "missing setup"
 UNKNOWN = "unclassified"
 
-ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# Bazel logs can hold the escape character as a replacement character or a question mark.
+ANSI_ESCAPE = re.compile(r"[\x1b\ufffd?]\[[0-9;]*[A-Za-z]")
 # A skip message starts the line, follows "; " or ", " ("python not found; skipping ...") or is one of the
 # macro-produced messages. Log lines from product code (tracing output) also say "skipping" and are not test skips.
 SKIP_LINE = re.compile(r"^\s*skipp(?:ing|ed)\b|[;,]\s+skipping\b", re.IGNORECASE)
-TRACING_LINE = re.compile(r"^\s*(?:\S+\s+)?(?:ERROR|WARN|INFO|DEBUG|TRACE)\b")
+TRACING_LINE = re.compile(r"\s(?:ERROR|WARN|INFO|DEBUG|TRACE)\s|^\s*(?:ERROR|WARN|INFO|DEBUG|TRACE)\b")
 LIBTEST_LINE = re.compile(r"^test \S+ \.\.\. ")
 
 
@@ -43,13 +44,15 @@ class Rule:
     verdict: str
     reason: str
     platforms: tuple = None
+    runners: tuple = None
 
-    def applies(self, platform):
-        return self.platforms is None or platform in self.platforms
+    def applies(self, platform, runner):
+        return (self.platforms is None or platform in self.platforms) and (
+            self.runners is None or runner in self.runners)
 
 
-def rule(pattern, verdict, reason, platforms=None):
-    return Rule(re.compile(pattern, re.IGNORECASE), verdict, reason, platforms)
+def rule(pattern, verdict, reason, platforms=None, runners=None):
+    return Rule(re.compile(pattern, re.IGNORECASE), verdict, reason, platforms, runners)
 
 
 # Order matters: the first matching applicable rule decides. Missing-setup rules precede allowlist rules that
@@ -58,15 +61,19 @@ RULES = [
     # WSL tests mention bwrap, so this rule must precede the missing-setup rules.
     rule(r"WSL|WSLg", ALLOW, "WSL-only test; the runner is not WSL"),
     # Missing setup: these must never fire on a correctly prepared runner.
+    rule(r"requires a remote test environment", ALLOW,
+         "upstream's Bazel jobs run no remote test environment either; only its x64 nextest job does",
+         runners=("bazel",)),
     rule(r"requires a remote test environment", MISSING,
          "remote test environment (Docker exec-server) was not set up"),
+    rule(r"no protected rg is available", MISSING, "ripgrep is not installed"),
     rule(r"zsh", MISSING, "zsh is not installed"),
     rule(r"Bash or Zsh executor", MISSING, "zsh is not installed"),
     rule(r"python3? (?:not found|is unavailable)|python not found", MISSING, "python is not installed",
          ("linux", "macos")),
     rule(r"git or python3 is unavailable", MISSING, "git or python3 is not installed"),
     rule(r"bwrap|bubblewrap|user/mount namespaces|unprivileged user namespaces|/dev/shm|unshare is unavailable"
-         r"|namespaced proc mount|sandbox proc is unavailable|skipping sandbox test|Landlock", MISSING,
+         r"|namespaced proc mount|sandbox proc is unavailable|skipping sandbox test", MISSING,
          "bubblewrap, user namespaces or another Linux sandbox prerequisite is missing", ("linux",)),
     rule(r"managed proxy", MISSING, "managed-proxy prerequisite (bubblewrap, python3 or a socket) is missing",
          ("linux",)),
@@ -93,6 +100,8 @@ RULES = [
          "the test covers the system-bwrap fallback, which a build with a bundled bwrap does not take"),
     rule(r"already in use|failed to bind unix socket|no alternate supplementary group", ALLOW,
          "host-dependent resource (fixed port, socket path or group) is unavailable"),
+    rule(r"Landlock is not enforceable", ALLOW,
+         "the runner kernel does not enforce Landlock; no installable package changes that"),
     rule(r"procfs is unavailable|pidfd_open is unavailable", ALLOW,
          "host kernel feature is unavailable; the skip is logged for review"),
     # By design on one platform.
@@ -114,9 +123,9 @@ class Skip:
     line: str
 
 
-def classify(line, platform):
+def classify(line, platform, runner="nextest"):
     for candidate in RULES:
-        if candidate.applies(platform) and candidate.pattern.search(line):
+        if candidate.applies(platform, runner) and candidate.pattern.search(line):
             return candidate.verdict, candidate.reason
     return UNKNOWN, "no allowlist or missing-setup rule matches this skip"
 
@@ -124,7 +133,7 @@ def classify(line, platform):
 def skip_lines(text):
     for raw in text.splitlines():
         line = ANSI_ESCAPE.sub("", raw).strip()
-        if not line or LIBTEST_LINE.match(line) or TRACING_LINE.match(line):
+        if not line or LIBTEST_LINE.match(line) or TRACING_LINE.search(line):
             continue
         if SKIP_LINE.search(line):
             yield line
@@ -184,10 +193,10 @@ def collect(paths):
     return files, list(found.values())
 
 
-def summarize(skips, platform):
+def summarize(skips, platform, runner):
     groups = collections.OrderedDict()
     for skip in skips:
-        verdict, reason = classify(skip.line, platform)
+        verdict, reason = classify(skip.line, platform, runner)
         key = (verdict, re.sub(r"\d+", "N", skip.line), reason)
         groups.setdefault(key, []).append(skip)
     return groups
@@ -210,6 +219,7 @@ def render(groups, files, skips):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--platform", required=True, choices=("linux", "macos", "windows"))
+    parser.add_argument("--runner", choices=("nextest", "bazel"), default="nextest")
     parser.add_argument("paths", nargs="+")
     arguments = parser.parse_args(argv)
 
@@ -217,7 +227,7 @@ def main(argv=None):
     if not files:
         print("No test output was found to scan; the tests must keep their output.", file=sys.stderr)
         return 1
-    groups = summarize(skips, arguments.platform)
+    groups = summarize(skips, arguments.platform, arguments.runner)
     lines = render(groups, files, skips)
     failing = sum(len(m) for (verdict, _, _), m in groups.items() if verdict != ALLOW)
     lines.append(f"{failing} skip message(s) point to missing setup or are unclassified.")

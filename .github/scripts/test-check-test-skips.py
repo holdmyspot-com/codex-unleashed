@@ -72,6 +72,15 @@ class ClassifyTest(unittest.TestCase):
                      "Skipping Linux symlink grant regression on another host OS"):
             self.assertEqual(checker.ALLOW, self.verdict(line), line)
 
+    def test_remote_environment_skip_is_allowed_only_under_bazel(self):
+        line = "Skipping test because it requires a remote test environment."
+        self.assertEqual(checker.ALLOW, checker.classify(line, "linux", "bazel")[0])
+        self.assertEqual(checker.MISSING, checker.classify(line, "linux", "nextest")[0])
+
+    def test_missing_ripgrep_and_kernel_landlock(self):
+        self.assertEqual(checker.MISSING, self.verdict("skipping ripgrep config test: no protected rg is available"))
+        self.assertEqual(checker.ALLOW, self.verdict("Skipping test: Landlock is not enforceable on this host."))
+
     def test_seatbelt_only_allowed_on_macos(self):
         line = "skipping DNS regression: nested Seatbelt unavailable"
         self.assertEqual(checker.ALLOW, self.verdict(line, "macos"))
@@ -93,6 +102,11 @@ class DetectionTest(unittest.TestCase):
         ])
         self.assertEqual(["skipping bwrap test: bubblewrap is unavailable",
                           "python not found; skipping PTY test"], list(checker.skip_lines(text)))
+
+    def test_ignores_tracing_lines_with_prefixes_and_replaced_escapes(self):
+        text = "[mcp stderr] 2026-01-01T00:00:00Z  WARN codex_app_server: failed to reload, skipping x\n" \
+               "[mcp stderr] ?[2m2026-01-01?[0m ?[33m WARN?[0m codex: doctor report did not produce JSON; skipping a"
+        self.assertEqual([], list(checker.skip_lines(text)))
 
     def test_strips_color_codes(self):
         self.assertEqual(["Skipping test: x"], list(checker.skip_lines("\x1b[31mSkipping test: x\x1b[0m")))
