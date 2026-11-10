@@ -104,8 +104,8 @@ jobs:
         working-directory: tools/argument-comment-lint
         run: |
           set -euo pipefail
-          cargo update --precise 6.3.2 dylint_testing
-          cargo update --precise 6.3.2 dylint_linting
+          cargo update dylint_testing dylint_linting
+          cargo tree --locked -i dylint_internal | head -3
           git diff --stat -- Cargo.lock
       - name: Test argument comment lint package
         working-directory: tools/argument-comment-lint
