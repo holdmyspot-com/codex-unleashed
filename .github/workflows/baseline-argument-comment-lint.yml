@@ -97,6 +97,16 @@ jobs:
         run: python3 -m py_compile tools/argument-comment-lint/wrapper_common.py tools/argument-comment-lint/run.py tools/argument-comment-lint/run-prebuilt-linter.py tools/argument-comment-lint/test_wrapper_common.py
       - name: Test Python wrapper helpers
         run: python3 -m unittest discover -s tools/argument-comment-lint -p 'test_*.py'
+      - name: Move the Dylint crates past the rust-clippy default-branch rename
+        # Dylint 6.1.0 clones rust-clippy and resolves its `master` branch, which
+        # rust-lang renamed to `main`, so the pinned lockfile cannot build the UI
+        # fixtures. Dylint 6.3.x resolves `main`. This changes only the CI checkout.
+        working-directory: tools/argument-comment-lint
+        run: |
+          set -euo pipefail
+          cargo update --precise 6.3.2 dylint_testing
+          cargo update --precise 6.3.2 dylint_linting
+          git diff --stat -- Cargo.lock
       - name: Test argument comment lint package
         working-directory: tools/argument-comment-lint
         run: cargo test
