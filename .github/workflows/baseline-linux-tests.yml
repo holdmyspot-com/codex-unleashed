@@ -230,6 +230,18 @@ jobs:
             printf 'CODEX_TEST_VOICE_RUNTIME=%s\n' "$native/build/prefix"
           } >> "$GITHUB_ENV"
 
+      # Tests run curl and expect a refused or timed-out connection to fail at once. The retry configuration above
+      # would make curl retry those attempts for up to 900 seconds, which exceeds nextest's timeout, so the build and
+      # test steps point CURL_HOME at an empty configuration instead.
+      - name: Stop retrying curl for the build and test steps
+        shell: bash
+        run: |
+          set -euo pipefail
+          directory="$RUNNER_TEMP/curl-test-configuration"
+          mkdir -p "$directory"
+          : > "$directory/.curlrc"
+          printf 'CURL_HOME=%s\n' "$directory" >> "$GITHUB_ENV"
+
       - name: Build the maintained Linux test helper and bundled executable
         working-directory: codex-rs
         run: |
