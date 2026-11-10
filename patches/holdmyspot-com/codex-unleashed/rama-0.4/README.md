@@ -34,7 +34,7 @@
 ## Dependency effects
 
 - `rama-crypto 0.4.0` requires `time =0.3.47`, so `Cargo.lock` takes `time` from 0.3.55 to 0.3.47, `time-core` from 0.1.9 to 0.1.8 and `time-macros` from 0.2.32 to 0.2.27. `Cargo.toml` does not pin them.
-- hickory-proto 0.25.2, hickory-resolver, enum-as-inner, resolv-conf, ipconfig and matchit 0.9.2 leave `Cargo.lock` entirely: rama-dns 0.4 pulls hickory only through a feature Codex does not enable. This clears RUSTSEC-2026-0118 and RUSTSEC-2026-0119.
+- hickory-proto 0.25.2, hickory-resolver, enum-as-inner, resolv-conf, ipconfig and matchit 0.9.2 leave `Cargo.lock` entirely: rama-dns 0.4 pulls hickory only through a feature Codex does not enable. This clears RUSTSEC-2026-0118 and RUSTSEC-2026-0119. `deny.toml` drops their two exceptions, which cargo-deny would otherwise report as not encountered.
 - `rama-crypto 0.4.0` enables aws-lc-rs's `bindgen` feature, so `aws-lc-sys` now generates its bindings with bindgen 0.73.2 and libclang at build time on every target instead of using its pregenerated ones. `aws-lc-fips-sys` is recorded in `Cargo.lock` but no target builds it (`cargo tree -i aws-lc-fips-sys --target all` prints nothing).
 - bindgen 0.73.2 accepts `syn >=2, <4` but only compiles against syn 2, so `Cargo.lock` records its `syn` as 2.0.119 (the transitive update had picked 3.0.10, which fails with a `ParseQuote` error; platform lint run `42732311440`).
 - ipnet 2.12.2, proc-macro-crate 3.5.0 and serde_html_form 0.4.1 move with rama; rama-error, rama-macros and rama-utils 0.3.0-alpha.4 leave the lock.

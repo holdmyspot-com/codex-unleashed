@@ -8,6 +8,7 @@ Rama 0.4 removed ProxyTarget, StreamForwardService and PeekStream and changed th
  MODULE.bazel                                  |   8 +
  MODULE.bazel.lock                             |  49 +-
  codex-rs/Cargo.lock                           | 417 ++++++++++--------
+ codex-rs/deny.toml                            |   2 -
  codex-rs/network-proxy/Cargo.toml             |  21 +-
  codex-rs/network-proxy/src/attribution.rs     |   3 +-
  .../network-proxy/src/attribution_tests.rs    |   2 +-
@@ -19,7 +20,7 @@ Rama 0.4 removed ProxyTarget, StreamForwardService and PeekStream and changed th
  codex-rs/network-proxy/src/certs.rs           |  40 +-
  codex-rs/network-proxy/src/connect_policy.rs  | 107 +++--
  .../src/connection_lifecycle/service.rs       |  15 +-
- .../src/credential_broker/configured.rs       |   4 +-
+ .../src/credential_broker/configured.rs       |   7 +-
  .../src/credential_broker/providers/github.rs |  20 +-
  .../src/credential_broker/providers/openai.rs |   2 +-
  .../src/credential_broker/registry.rs         |   6 +-
@@ -43,15 +44,15 @@ Rama 0.4 removed ProxyTarget, StreamForwardService and PeekStream and changed th
  .../src/windows_proxy_ingress.rs              |  15 +-
  patches/BUILD.bazel                           |   1 +
  .../rama-dns_windows_dnsapi_link_name.patch   |  12 +
- 38 files changed, 1146 insertions(+), 881 deletions(-)
+ 39 files changed, 1148 insertions(+), 884 deletions(-)
  create mode 100644 codex-rs/network-proxy/src/request_context.rs
  create mode 100644 patches/rama-dns_windows_dnsapi_link_name.patch
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 8b1ef5cf5..0a1f0501c 100644
+index 41595db39..aaffec8da 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -414,6 +414,14 @@ crate.annotation(
+@@ -453,6 +453,14 @@ crate.annotation(
      },
  )
  
@@ -1106,6 +1107,19 @@ index 6e466470f..99d6c7d40 100644
  ]
  
  [[package]]
+diff --git a/codex-rs/deny.toml b/codex-rs/deny.toml
+index 17912fdc2..d55c491bb 100644
+--- a/codex-rs/deny.toml
++++ b/codex-rs/deny.toml
+@@ -78,8 +78,6 @@ ignore = [
+     { id = "RUSTSEC-2023-0089", reason = "atomic-polyfill is unmaintained; pulled in via postcard/heapless/pagable under starlark v0.14.2 used by execpolicy/cli/core; no fixed starlark release yet" },
+     # TODO(fcoury): remove this exception when syntect drops bincode, or updates to a version that has fixed the vulnerability.
+     { id = "RUSTSEC-2025-0141", reason = "bincode is unmaintained; pulled in via syntect v5.3.0 used by codex-tui for syntax highlighting; no fixed release yet" },
+-    { id = "RUSTSEC-2026-0118", reason = "hickory-proto v0.25.2 is pulled in via rama-dns/rama-tcp used by codex-network-proxy; DNSSEC features are not enabled; remove when rama updates to hickory 0.26.1 or hickory-net" },
+-    { id = "RUSTSEC-2026-0119", reason = "hickory-proto v0.25.2 is pulled in via rama-dns/rama-tcp used by codex-network-proxy; no fixed rama release is available yet; remove when rama updates to hickory 0.26.1 or hickory-net" },
+     { id = "RUSTSEC-2026-0370", reason = "zvariant 4.2.0 is unmaintained; pulled in via zbus 4.4.0 by Linux TUI accessibility integration and keyring/secret-service; remove when those paths migrate off the retired standalone crates" },
+     { id = "RUSTSEC-2026-0371", reason = "zbus_names 3.0.0 is unmaintained; pulled in via zbus 4.4.0 by Linux TUI accessibility integration and keyring/secret-service; remove when those paths migrate off the retired standalone crates" },
+     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive 4.2.0 is unmaintained; pulled in via zbus 4.4.0 by Linux TUI accessibility integration and keyring/secret-service; remove when those paths migrate off the retired standalone crates" },
 diff --git a/codex-rs/network-proxy/Cargo.toml b/codex-rs/network-proxy/Cargo.toml
 index e3dc24757..8b1881bf3 100644
 --- a/codex-rs/network-proxy/Cargo.toml
@@ -1800,7 +1814,7 @@ index 2444b9cb6..539b720da 100644
                  tokio::select! {
                      biased;
 diff --git a/codex-rs/network-proxy/src/credential_broker/configured.rs b/codex-rs/network-proxy/src/credential_broker/configured.rs
-index ddf921585..b9a949df8 100644
+index ddf921585..6f965e986 100644
 --- a/codex-rs/network-proxy/src/credential_broker/configured.rs
 +++ b/codex-rs/network-proxy/src/credential_broker/configured.rs
 @@ -422,7 +422,7 @@ impl ConfiguredCredentialProvider {
@@ -1812,12 +1826,15 @@ index ddf921585..b9a949df8 100644
              .ok()
              .filter(|header| header.to_str().is_ok())
      }
-@@ -478,7 +478,7 @@ impl ConfiguredCredentialProvider {
+@@ -477,8 +477,9 @@ impl ConfiguredCredentialProvider {
+                     let prefix = self.config.prefix.as_deref().unwrap_or_default();
                      if value == format!("{prefix}{expected_value}")
                          && !translated.iter().any(|(name, _)| name == header)
-                         && let Ok(value) =
+-                        && let Ok(value) =
 -                            HeaderValue::from_str(&format!("{prefix}{replacement_value}"))
-+                            HeaderValue::from_bytes(format!("{prefix}{replacement_value}").as_bytes())
++                        && let Ok(value) = HeaderValue::from_bytes(
++                            format!("{prefix}{replacement_value}").as_bytes(),
++                        )
                      {
                          translated.push((header.clone(), value));
                      }

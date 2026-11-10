@@ -5,38 +5,78 @@ Subject: [PATCH] WIP: Update every transitive dependency to the newest release
  its dependents allow
 
 ---
- MODULE.bazel                                  |   40 +-
+ MODULE.bazel                                  |   79 +-
  MODULE.bazel.lock                             |  500 +++--
  bazel/toolchains/prost/BUILD.bazel            |    2 +-
  codex-rs/Cargo.lock                           | 1977 +++++++----------
+ codex-rs/deny.toml                            |    8 +-
  codex-rs/utils/pty/Cargo.toml                 |    2 +
  .../zstd-sys_windows_msvc_include_dirs.patch  |   26 +-
- 6 files changed, 1121 insertions(+), 1426 deletions(-)
+ 7 files changed, 1162 insertions(+), 1432 deletions(-)
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 8cb8333ae..8b1ef5cf5 100644
+index 8cb8333ae..41595db39 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -402,6 +402,18 @@ crate.annotation(
+@@ -401,6 +401,57 @@ crate.annotation(
+     },
      rustc_flags = ["-Copt-level=3"],
  )
- 
 +crate.annotation(
 +    # zbus 6 turns these on through its default `default-rt` and `comms` features, but the Bazel
 +    # feature resolution builds zruntime without them, so zbus fails to import its event types.
 +    crate = "zruntime",
 +    crate_features_select = {
-+        "aarch64-unknown-linux-gnu": ["broadcast", "event", "helper", "lock", "process", "runtime", "tcp", "unblock", "unix"],
-+        "aarch64-unknown-linux-musl": ["broadcast", "event", "helper", "lock", "process", "runtime", "tcp", "unblock", "unix"],
-+        "x86_64-unknown-linux-gnu": ["broadcast", "event", "helper", "lock", "process", "runtime", "tcp", "unblock", "unix"],
-+        "x86_64-unknown-linux-musl": ["broadcast", "event", "helper", "lock", "process", "runtime", "tcp", "unblock", "unix"],
++        "aarch64-unknown-linux-gnu": [
++            "broadcast",
++            "event",
++            "helper",
++            "lock",
++            "process",
++            "runtime",
++            "tcp",
++            "unblock",
++            "unix",
++        ],
++        "aarch64-unknown-linux-musl": [
++            "broadcast",
++            "event",
++            "helper",
++            "lock",
++            "process",
++            "runtime",
++            "tcp",
++            "unblock",
++            "unix",
++        ],
++        "x86_64-unknown-linux-gnu": [
++            "broadcast",
++            "event",
++            "helper",
++            "lock",
++            "process",
++            "runtime",
++            "tcp",
++            "unblock",
++            "unix",
++        ],
++        "x86_64-unknown-linux-musl": [
++            "broadcast",
++            "event",
++            "helper",
++            "lock",
++            "process",
++            "runtime",
++            "tcp",
++            "unblock",
++            "unix",
++        ],
 +    },
 +)
-+
+ 
  # Match the CodeModeHost response-compression benchmark's zstd level.
  crate.annotation(
-     crate = "tonic",
-@@ -524,7 +536,7 @@ crate.annotation(
+@@ -524,7 +575,7 @@ crate.annotation(
  # MXC's resource compiler lookup needs an explicit path for Windows GNU targets.
  crate.annotation(
      build_script_deps = [
@@ -45,7 +85,7 @@ index 8cb8333ae..8b1ef5cf5 100644
          "@crates//:winresource-0.1.34",
      ],
      build_script_env = {
-@@ -764,42 +776,24 @@ inject_repo(crate, "alsa_lib")
+@@ -764,42 +815,24 @@ inject_repo(crate, "alsa_lib")
          deps = ["//third_party/voice:native_link"],
      )
      for name, version, keys in [
@@ -6468,6 +6508,35 @@ index a7b4b5448..6e466470f 100644
 +checksum = "27bc9d5b815bc103f142aa054f561d9187d191692ec7c2d1e2b4737f8dbd7296"
  dependencies = [
   "zune-core",
+ ]
+diff --git a/codex-rs/deny.toml b/codex-rs/deny.toml
+index bf1de0264..17912fdc2 100644
+--- a/codex-rs/deny.toml
++++ b/codex-rs/deny.toml
+@@ -76,13 +76,10 @@ ignore = [
+     { id = "RUSTSEC-2025-0057", reason = "fxhash is unmaintained; pulled in via starlark_map under starlark v0.14.2 used by execpolicy/cli/core and bm25 used by core; remove when upstream dependencies drop fxhash" },
+     { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained; pulled in via starlark/v8 used by execpolicy/code-mode; no fixed release yet" },
+     { id = "RUSTSEC-2023-0089", reason = "atomic-polyfill is unmaintained; pulled in via postcard/heapless/pagable under starlark v0.14.2 used by execpolicy/cli/core; no fixed starlark release yet" },
+-    # TODO(fcoury): remove this exception when syntect drops yaml-rust and bincode, or updates to versions that have fixed the vulnerabilities.
+-    { id = "RUSTSEC-2024-0320", reason = "yaml-rust is unmaintained; pulled in via syntect v5.3.0 used by codex-tui for syntax highlighting; no fixed release yet" },
++    # TODO(fcoury): remove this exception when syntect drops bincode, or updates to a version that has fixed the vulnerability.
+     { id = "RUSTSEC-2025-0141", reason = "bincode is unmaintained; pulled in via syntect v5.3.0 used by codex-tui for syntax highlighting; no fixed release yet" },
+     { id = "RUSTSEC-2026-0118", reason = "hickory-proto v0.25.2 is pulled in via rama-dns/rama-tcp used by codex-network-proxy; DNSSEC features are not enabled; remove when rama updates to hickory 0.26.1 or hickory-net" },
+     { id = "RUSTSEC-2026-0119", reason = "hickory-proto v0.25.2 is pulled in via rama-dns/rama-tcp used by codex-network-proxy; no fixed rama release is available yet; remove when rama updates to hickory 0.26.1 or hickory-net" },
+-    { id = "RUSTSEC-2026-0194", reason = "quick-xml v0.39.4 remains via plist/syntect and wayland-scanner; plist does not exercise the affected APIs and wayland-scanner parses trusted build-time XML; remove when rust-plist#191 and wayland-rs#938 are released" },
+-    { id = "RUSTSEC-2026-0195", reason = "quick-xml v0.39.4 remains via plist/syntect and wayland-scanner; plist does not exercise the affected APIs and wayland-scanner parses trusted build-time XML; remove when rust-plist#191 and wayland-rs#938 are released" },
+     { id = "RUSTSEC-2026-0370", reason = "zvariant 4.2.0 is unmaintained; pulled in via zbus 4.4.0 by Linux TUI accessibility integration and keyring/secret-service; remove when those paths migrate off the retired standalone crates" },
+     { id = "RUSTSEC-2026-0371", reason = "zbus_names 3.0.0 is unmaintained; pulled in via zbus 4.4.0 by Linux TUI accessibility integration and keyring/secret-service; remove when those paths migrate off the retired standalone crates" },
+     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive 4.2.0 is unmaintained; pulled in via zbus 4.4.0 by Linux TUI accessibility integration and keyring/secret-service; remove when those paths migrate off the retired standalone crates" },
+@@ -90,8 +87,7 @@ ignore = [
+     { id = "RUSTSEC-2026-0374", reason = "basic-toml 0.1.10 is unmaintained; pulled in via i18n-config/i18n-embed-fl under age 0.12.1 used by codex-secrets; no patched release; remove when age's localization dependencies migrate off basic-toml" },
+     { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5.5 via elliptic-curve 0.13.8 is used by age, AWS login, user verification, and WebRTC; timing leakage can affect private-key or session-secret operations; remove when these dependency paths use crypto-bigint >=0.7.6" },
+     # Reviewed 2026-10-26.
+-    { id = "RUSTSEC-2026-0391", reason = "Codex, tonic and zip use zstd 0.13.3 without reusing borrowed contexts across streams. Remove when all paths use zstd >=0.14.3." },
+-    { id = "RUSTSEC-2026-0398", reason = "zstd 0.13.3 pulls in zstd-safe 7.2.4 with the affected seekable feature disabled. Remove when all paths use zstd-safe >=8.2.0." },
++    { id = "RUSTSEC-2026-0459", reason = "C SQLite in libsqlite3-sys 0.37.0; sqlx-sqlite 0.9.0, the latest release, requires libsqlite3-sys <0.38. Accepted by the owner; remove when an sqlx release allows a fixed libsqlite3-sys." },
+     { id = "RUSTSEC-2026-0403", reason = "zstd 0.13.3 pulls in zstd-safe 7.2.4. Codex, tonic and zip use read decoders or initialized output buffers and discard output on error. Remove when all paths use zstd-safe >=8.2.0." },
+     { id = "RUSTSEC-2026-0410", reason = "zstd-safe 7.2.4 pulls in zstd-sys 2.0.16. Its allocator bug only affects wasm32, and Codex ships native binaries. Remove when the lockfile uses zstd-sys >=2.1.2." },
  ]
 diff --git a/codex-rs/utils/pty/Cargo.toml b/codex-rs/utils/pty/Cargo.toml
 index f7cabb697..115c94236 100644
