@@ -70,7 +70,8 @@ RULES = [
          "bubblewrap, user namespaces or another Linux sandbox prerequisite is missing", ("linux",)),
     rule(r"managed proxy", MISSING, "managed-proxy prerequisite (bubblewrap, python3 or a socket) is missing",
          ("linux",)),
-    rule(r"binary not available", MISSING, "a helper binary was not built or exported"),
+    rule(r"(?:binary|server|helper)[^,;]* (?:not available|not found|unavailable)|could not locate binary", MISSING,
+         "a helper binary or test server was not built or exported"),
     rule(r"native spawning is unavailable", MISSING, "native process spawning is unavailable"),
     rule(r"setsid not available", MISSING, "setsid is not installed"),
     # By design on every platform.

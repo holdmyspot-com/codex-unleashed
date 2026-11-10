@@ -256,9 +256,14 @@ jobs:
         working-directory: codex-rs
         run: |
           set -euo pipefail
+          # codex-rmcp-client's test servers (test_stdio_server, which also serves the node_repl tests, and the HTTP and
+          # MCP 2026 servers) are found next to the test binaries. Upstream's full-workspace nextest archive carries
+          # them; a run limited to other packages would not build them, so the tests that start them would fail.
           cargo build --target x86_64-unknown-linux-gnu --profile ci-test \
             -p codex-linux-sandbox -p codex-bwrap --bin codex-linux-sandbox --bin bwrap \
+            -p codex-rmcp-client --bins \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/test-helper-build.log"
+          test -x "$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/test_stdio_server"
 
       # Mirrors upstream's rust-ci-full-nextest-platform.yml: the debug codex binary runs `codex exec-server` in a
       # privileged ubuntu container, and the one nextest run below executes with the remote environment selected.

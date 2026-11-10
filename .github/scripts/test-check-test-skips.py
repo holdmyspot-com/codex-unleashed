@@ -57,6 +57,12 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(checker.ALLOW, self.verdict("python not found; skipping ConPTY input test", "windows"))
         self.assertEqual(checker.MISSING, self.verdict("python not found; skipping PTY output backpressure test"))
 
+    def test_missing_helper_is_not_a_skip(self):
+        for line in ("test_streamable_http_server binary not available, skipping test: x",
+                     "codex-linux-sandbox binary not available, skipping test: x",
+                     "skipping test: could not locate binary \"test_stdio_server\""):
+            self.assertEqual(checker.MISSING, self.verdict(line), line)
+
     def test_allowed_by_design(self):
         for line in ("Skipping test in a remote test environment: uses the local filesystem",
                      "Skipping test in the Wine-exec test environment: no Linux",
