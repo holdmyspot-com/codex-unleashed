@@ -5,6 +5,7 @@ Subject: [PATCH] Port the network proxy to rama 0.4
 
 Rama 0.4 removed ProxyTarget, StreamForwardService and PeekStream and changed the SOCKS5 acceptor to take an executor, so the network proxy forwards streams, replays peeked prefixes and relays SOCKS5 through the new APIs.
 ---
+ MODULE.bazel                                  |   8 +
  MODULE.bazel.lock                             |  49 +-
  codex-rs/Cargo.lock                           | 417 ++++++++++--------
  codex-rs/network-proxy/Cargo.toml             |  21 +-
@@ -40,9 +41,31 @@ Rama 0.4 removed ProxyTarget, StreamForwardService and PeekStream and changed th
  codex-rs/network-proxy/src/upstream.rs        |  98 ++--
  codex-rs/network-proxy/src/upstream_tests.rs  |  26 +-
  .../src/windows_proxy_ingress.rs              |  15 +-
- 35 files changed, 1125 insertions(+), 881 deletions(-)
+ patches/BUILD.bazel                           |   1 +
+ .../rama-dns_windows_dnsapi_link_name.patch   |  12 +
+ 38 files changed, 1146 insertions(+), 881 deletions(-)
  create mode 100644 codex-rs/network-proxy/src/request_context.rs
+ create mode 100644 patches/rama-dns_windows_dnsapi_link_name.patch
 
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 8b1ef5cf5..0a1f0501c 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -414,6 +414,14 @@ crate.annotation(
+     },
+ )
+ 
++crate.annotation(
++    # rama-dns links `Dnsapi`, but the MinGW import library is `libdnsapi.a`, so linking from a
++    # case-sensitive file system fails. Windows resolves either spelling to the same DLL.
++    crate = "rama-dns",
++    patch_args = ["-p1"],
++    patches = ["//patches:rama-dns_windows_dnsapi_link_name.patch"],
++)
++
+ # Match the CodeModeHost response-compression benchmark's zstd level.
+ crate.annotation(
+     crate = "tonic",
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
 index 736ef8912..528a75ac3 100644
 --- a/MODULE.bazel.lock
@@ -4411,6 +4434,36 @@ index a1b7891c6..3d0753368 100644
          .context("convert shared SOCKS5 ingress listener")?;
          let task = spawn_socks_listener(&self.runtime, &self.routes, listener, addr);
          socks.addr = addr;
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index e402c47ad..e0dc7056d 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -22,6 +22,7 @@ exports_files([
+     "rules_rs_workspace_package_version.patch",
+     "rules_rs_zlib_snapshot_urls.patch",
+     "rusty_v8_prebuilt_out_dir.patch",
++    "rama-dns_windows_dnsapi_link_name.patch",
+     "ring_windows_msvc_include_dirs.patch",
+     "tikv-jemalloc-sys_make_env.patch",
+     "tikv-jemalloc-sys_dependency_flags.patch",
+diff --git a/patches/rama-dns_windows_dnsapi_link_name.patch b/patches/rama-dns_windows_dnsapi_link_name.patch
+new file mode 100644
+index 000000000..cefa2fed2
+--- /dev/null
++++ b/patches/rama-dns_windows_dnsapi_link_name.patch
+@@ -0,0 +1,12 @@
++diff --git a/src/client/windows.rs b/src/client/windows.rs
++--- a/src/client/windows.rs
+++++ b/src/client/windows.rs
++@@ -957,7 +957,7 @@
++         pub(super) strings: [*const u16; 1],
++     }
++ 
++-    #[link(name = "Dnsapi")]
+++    #[link(name = "dnsapi")]
++     unsafe extern "system" {
++         /// DnsQueryEx:
++         /// Official docs:
 -- 
 2.43.0
 
