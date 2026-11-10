@@ -35,6 +35,10 @@ on:
         description: Regenerate the precomputed stable app-server exports after applying the patches and record the binary diff
         type: boolean
         default: false
+      stress_count:
+        description: Optional repeat count; the run executes each selected test this many times under CPU load, with no retries, to measure flakiness
+        type: string
+        default: ""
       accept_snapshots:
         description: Let the patched run overwrite failing insta snapshots and record their diff, for folding into a patch
         type: boolean
@@ -308,6 +312,7 @@ jobs:
           RED_RESTORE: ${{ inputs.red_restore }}
           RED_PATCH_COUNT: ${{ inputs.red_patch_count }}
           PATCH_LIST: ${{ inputs.patches }}
+          STRESS_COUNT: ${{ inputs.stress_count }}
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -336,9 +341,15 @@ jobs:
           done
           git -C .. diff --stat HEAD | tee "$RUNNER_TEMP/baseline-test-evidence/red-withheld.txt"
           helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
+          stress_args=()
+          if [[ -n "$STRESS_COUNT" ]]; then
+            stress_args=(--stress-count "$STRESS_COUNT" --retries 0)
+            for _ in $(seq "$(nproc)"); do yes > /dev/null & done
+            trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
+          fi
           if env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
             cargo-nextest nextest run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast \
-            "${package_args[@]}" \
+            "${stress_args[@]}" "${package_args[@]}" \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/red-nextest.log"; then
             red_status=0
           else
@@ -381,6 +392,7 @@ jobs:
           BASELINE_TEST_FILTER: ${{ inputs.filter }}
           BASELINE_ARCHIVE_COMPARE: ${{ inputs.compare_upstream_image || inputs.trace_shell_startup }}
           BASELINE_ACCEPT_SNAPSHOTS: ${{ inputs.accept_snapshots }}
+          STRESS_COUNT: ${{ inputs.stress_count }}
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -406,7 +418,7 @@ jobs:
             done
           ) >> "$RUNNER_TEMP/baseline-test-evidence/test-disk-usage.log" 2>&1 &
           disk_monitor=$!
-          trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
+          trap 'kill "$disk_monitor" $(jobs -p) 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
           cargo-nextest --version | tee "$RUNNER_TEMP/baseline-test-evidence/nextest-version.txt"
           # Keep passing tests' output in the JUnit report, where the skip check reads it, instead of the log.
           printf '%s\n' '[profile.default.junit]' 'store-success-output = true' 'store-failure-output = true' \
@@ -421,6 +433,10 @@ jobs:
           fi
           if [[ -n "$BASELINE_TEST_FILTER" ]]; then
             nextest_args+=(-E "$BASELINE_TEST_FILTER")
+          fi
+          if [[ -n "$STRESS_COUNT" ]]; then
+            nextest_args+=(--stress-count "$STRESS_COUNT" --retries 0)
+            for _ in $(seq "$(nproc)"); do yes > /dev/null & done
           fi
           printf '%s\n' "${nextest_args[@]}" > "$RUNNER_TEMP/baseline-test-evidence/nextest-arguments.txt"
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \

@@ -27,6 +27,10 @@ on:
         description: Space-separated Bazel test labels to run on one runner instead of partitioning every package
         type: string
         default: ""
+      stress_count:
+        description: Optional repeat count; each selected test runs this many times under CPU load, with no retries, to measure flakiness
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -277,6 +281,7 @@ jobs:
           BASELINE_EXEC_SERVER_FILTER: ${{ inputs.exec_server_filter }}
           BUNDLE_BWRAP: ${{ inputs.bundle_empty_workspace_bwrap }}
           TRACE_SELECTED: ${{ inputs.trace_empty_workspace_roots }}
+          STRESS_COUNT: ${{ inputs.stress_count }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-evidence"
@@ -301,9 +306,13 @@ jobs:
             done
           ) >> "$evidence/disk-usage.log" 2>&1 &
           disk_monitor=$!
-          trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
+          trap 'kill "$disk_monitor" $(jobs -p) 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
           mapfile -t ci_args < "$evidence/ci-flags.txt"
           comparison_args=()
+          if [[ -n "$STRESS_COUNT" ]]; then
+            comparison_args+=(--runs_per_test="$STRESS_COUNT" --flaky_test_attempts=1)
+            for _ in $(seq "$(nproc)"); do yes > /dev/null & done
+          fi
           if [[ "$BASELINE_EXEC_SERVER_SHELLS" == true ]]; then
             case "$BASELINE_EXEC_SERVER_FILTER" in
               '*') ;;
