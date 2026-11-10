@@ -323,7 +323,7 @@ jobs:
           set -euo pipefail
           # skip_gates (dry runs only, enforced in detect) deliberately skips the gate workflows.
           failing="$(jq -r --arg skip "$SKIP_GATES" 'to_entries | map(select(.key != "detect" and .value.result != "success"
-            and not($skip == "true" and .value.result == "skipped")) | "\(.key) (\(.value.result))") | join(", ")' <<< "$NEEDS")"
+            and (($skip == "true" and .value.result == "skipped") | not)) | "\(.key) (\(.value.result))") | join(", ")' <<< "$NEEDS")"
           if [[ -n "$failing" ]]; then
             python3 -I .github/scripts/upstream-auto-release.py summary --upstream-tag "$UPSTREAM_TAG" \
               --failing "gate $failing" --log-url "$LOG_URL" >> "$GITHUB_STEP_SUMMARY"
