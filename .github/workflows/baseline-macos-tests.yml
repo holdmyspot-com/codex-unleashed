@@ -1,0 +1,217 @@
+name: Stable upstream macOS tests
+
+# Runs upstream's Cargo nextest suite on native macOS (aarch64 and x86_64) against the pinned upstream with downstream
+# patches applied, the way upstream's macOS nextest job does. One job per architecture: hosted macOS runner capacity is
+# capped, so the suite is not sharded. A red phase can first restore production files to their state before the patches
+# under test and require the same selection to fail, so the patched pass proves the patches fix it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      patches:
+        description: Space-separated repository paths of downstream patches to apply with git am, in order; empty tests pristine upstream
+        type: string
+        default: ""
+      package:
+        description: Space-separated Cargo packages to test with nextest, or --workspace (the default when empty) for every package
+        type: string
+        default: ""
+      filter:
+        description: Optional nextest expression
+        type: string
+        default: ""
+      red_restore:
+        description: Space-separated upstream paths to withhold for a red phase that must fail before the patched run
+        type: string
+        default: ""
+      red_patch_count:
+        description: Number of trailing patches under test; the red phase restores red_restore paths to their state before them
+        type: string
+        default: "1"
+  workflow_call:
+    inputs:
+      patches:
+        description: Space-separated repository paths of downstream patches to apply with git am, in order
+        type: string
+        default: ""
+      upstream_commit:
+        description: Optional upstream commit to test instead of .github/upstream-commit
+        type: string
+        default: ""
+      package:
+        description: Space-separated Cargo packages to test with nextest, or --workspace (the default when empty) for every package
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: nextest - ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    env:
+      TARGET: ${{ matrix.target }}
+      TEST_PACKAGE: ${{ inputs.package }}
+      TEST_FILTER: ${{ inputs.filter }}
+      RED_RESTORE: ${{ inputs.red_restore }}
+      RED_PATCH_COUNT: ${{ inputs.red_patch_count }}
+      CARGO_INCREMENTAL: '0'
+      RUST_BACKTRACE: '1'
+      RUST_MIN_STACK: '8388608'
+      NEXTEST_STATUS_LEVEL: leak
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Validate the selection and preserve restart inputs outside the source checkout
+        id: inputs
+        env:
+          UPSTREAM_COMMIT: ${{ inputs.upstream_commit }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${RED_PATCH_COUNT:-1}" =~ ^[1-9][0-9]*$ ]]; then
+            printf 'red_patch_count must be a positive integer, not %s.\n' "$RED_PATCH_COUNT" >&2
+            exit 1
+          fi
+          if [[ "$TEST_PACKAGE" == *--workspace* && "$TEST_PACKAGE" != --workspace ]]; then
+            printf 'Use --workspace alone, not with other packages.\n' >&2
+            exit 1
+          fi
+          evidence="$RUNNER_TEMP/baseline-macos-nextest-evidence"
+          mkdir -p "$evidence"
+          # The upstream checkout below cleans the workspace, removing restart-metadata.
+          cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          commit="${UPSTREAM_COMMIT:-$(cat restart-metadata/.github/upstream-commit)}"
+          printf '%s\n' "$commit" > "$evidence/upstream-commit"
+          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
+
+      - name: Verify pristine upstream source identity
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(cat "$RUNNER_TEMP/baseline-macos-nextest-evidence/upstream-commit")"
+          test -z "$(git status --porcelain)"
+
+      - name: Apply the selected downstream patches
+        id: patched
+        env:
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-nextest-evidence"
+          : > "$evidence/applied-patches.txt"
+          read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
+          if [[ -n "$RED_RESTORE" ]] && (( ${#patch_paths[@]} < ${RED_PATCH_COUNT:-1} )); then
+            printf 'red_patch_count %s exceeds the %s applied patches.\n' "${RED_PATCH_COUNT:-1}" "${#patch_paths[@]}" >&2
+            exit 1
+          fi
+          for patch in "${patch_paths[@]}"; do
+            printf '%s  %s\n' "$(shasum -a 256 < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
+            git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
+          done
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare upstream's native test host
+        uses: ./.github/actions/setup-ci
+
+      - name: Read upstream's pinned Rust toolchain
+        id: upstream-rust
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up matching Rust
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: ${{ steps.upstream-rust.outputs.channel }}
+          targets: ${{ matrix.target }}
+
+      - name: Install upstream's nextest version
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: nextest@0.9.103
+
+      - name: Record the native host and capacity
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          {
+            uname -a
+            sw_vers
+            sysctl -n hw.memsize hw.logicalcpu
+            df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP"
+          } | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/host.txt"
+
+      - name: Write the selected test command
+        run: |
+          set -euo pipefail
+          {
+            printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+            printf 'cd "%s/codex-rs"\n' "$GITHUB_WORKSPACE"
+            args=(cargo nextest run --target "$TARGET" --cargo-profile ci-test --no-fail-fast)
+            if [[ -z "$TEST_PACKAGE" || "$TEST_PACKAGE" == --workspace ]]; then
+              args+=(--workspace)
+            else
+              read -r -a packages <<< "$TEST_PACKAGE"
+              for package in "${packages[@]}"; do args+=(-p "$package"); done
+            fi
+            if [[ -n "$TEST_FILTER" ]]; then args+=(-E "$TEST_FILTER"); fi
+            printf '%q ' "${args[@]}"
+            printf '\n'
+          } > "$RUNNER_TEMP/selected-test.sh"
+          cat "$RUNNER_TEMP/selected-test.sh"
+
+      - name: Require the selection to fail without the production changes
+        if: inputs.red_restore != ''
+        run: |
+          set -euo pipefail
+          read -r -a red_paths <<< "$RED_RESTORE"
+          git checkout "HEAD~$RED_PATCH_COUNT" -- "${red_paths[@]}"
+          set +e
+          bash "$RUNNER_TEMP/selected-test.sh"
+          result=$?
+          set -e
+          git checkout HEAD -- "${red_paths[@]}"
+          if (( result == 0 )); then
+            printf 'The selection passed with the production changes withheld, so it does not prove the patches.\n' >&2
+            exit 1
+          fi
+          printf 'The selection failed with exit %s without the production changes.\n' "$result"
+
+      - name: Run the selection with the patches applied
+        run: |
+          set -euo pipefail
+          git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+          bash "$RUNNER_TEMP/selected-test.sh" 2>&1 | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/nextest.log"
+          exit "${PIPESTATUS[0]}"
+
+      - name: Retain test evidence for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-macos-nextest-${{ matrix.target }}
+          path: ${{ runner.temp }}/baseline-macos-nextest-evidence
+          retention-days: 1
+          if-no-files-found: warn

@@ -275,6 +275,16 @@ jobs:
       package: --workspace
       target: ${{ matrix.target }}
 
+  macos-nextest:
+    name: macOS nextest
+    needs: [detect, patch-check]
+    if: ${{ !inputs.skip_gates }}
+    uses: ./.github/workflows/baseline-macos-tests.yml
+    with:
+      patches: ${{ needs.detect.outputs.patches }}
+      upstream_commit: ${{ needs.detect.outputs.upstream_commit }}
+      package: --workspace
+
   macos-tests:
     name: macOS Bazel tests
     needs: [detect, patch-check]
@@ -302,7 +312,7 @@ jobs:
 
   report:
     name: Gate report
-    needs: [detect, patch-check, platform-lints, macos-lints, windows-lints, linux-tests, windows-tests, macos-tests, release-builds]
+    needs: [detect, patch-check, platform-lints, macos-lints, windows-lints, linux-tests, windows-tests, macos-nextest, macos-tests, release-builds]
     if: ${{ !cancelled() && needs.detect.outputs.action == 'release' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
