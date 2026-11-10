@@ -341,7 +341,9 @@ jobs:
     needs: [detect, report]
     # A live run builds the packages to publish; a dry run builds them only when package_dry_run asks, and uploads them as
     # workflow artifacts without publishing.
-    if: (needs.detect.outputs.live == 'true' || inputs.package_dry_run == true) && needs.report.outputs.passed == 'true'
+    # Without a status function, `if` implies success(), which also requires every gate behind `report` to have
+    # succeeded; skip_gates skips them, so the gate verdict is read from `report` instead.
+    if: ${{ !cancelled() && needs.report.result == 'success' && needs.report.outputs.passed == 'true' && (needs.detect.outputs.live == 'true' || inputs.package_dry_run == true) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     strategy:
