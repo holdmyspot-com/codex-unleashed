@@ -138,6 +138,11 @@ jobs:
       - name: Prepare upstream's native test host
         uses: ./.github/actions/setup-ci
 
+      - name: Verify and configure upstream V8 artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
+
       - name: Read upstream's pinned Rust toolchain
         id: upstream-rust
         run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
