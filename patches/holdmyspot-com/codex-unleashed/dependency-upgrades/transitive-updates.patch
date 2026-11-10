@@ -5,12 +5,13 @@ Subject: [PATCH] WIP: Update every transitive dependency to the newest release
  its dependents allow
 
 ---
- MODULE.bazel                       |    2 +-
- MODULE.bazel.lock                  |  500 +++----
- bazel/toolchains/prost/BUILD.bazel |    2 +-
- codex-rs/Cargo.lock                | 1977 ++++++++++++----------------
- codex-rs/utils/pty/Cargo.toml      |    2 +
- 5 files changed, 1103 insertions(+), 1380 deletions(-)
+ MODULE.bazel                                  |    2 +-
+ MODULE.bazel.lock                             |  500 +++--
+ bazel/toolchains/prost/BUILD.bazel            |    2 +-
+ codex-rs/Cargo.lock                           | 1977 +++++++----------
+ codex-rs/utils/pty/Cargo.toml                 |    2 +
+ .../zstd-sys_windows_msvc_include_dirs.patch  |   26 +-
+ 6 files changed, 1105 insertions(+), 1404 deletions(-)
 
 diff --git a/MODULE.bazel b/MODULE.bazel
 index 8cb8333ae..f4992fbe5 100644
@@ -6415,6 +6416,49 @@ index f7cabb697..115c94236 100644
      "synchapi",
      "winbase",
      "wincon",
+diff --git a/patches/zstd-sys_windows_msvc_include_dirs.patch b/patches/zstd-sys_windows_msvc_include_dirs.patch
+index c45a360a4..41ccb2b16 100644
+--- a/patches/zstd-sys_windows_msvc_include_dirs.patch
++++ b/patches/zstd-sys_windows_msvc_include_dirs.patch
+@@ -1,20 +1,10 @@
+-diff --git a/build.rs b/build.rs
+-index 912a3bf..e078f0e 100644
+ --- a/build.rs
+ +++ b/build.rs
+-@@ -85,6 +85,7 @@ fn flag_if_supported_with_fallbacks(config: &mut cc::Build, flags: &[&str]) {
+- }
+- 
+- fn compile_zstd() {
+-+    let target = env::var("TARGET").unwrap_or_default();
+-     let mut config = cc::Build::new();
+- 
+-     // Search the following directories for C files to add to the compilation.
+-@@ -164,6 +165,16 @@ fn compile_zstd() {
++@@ -350,6 +350,16 @@
+      // Some extra parameters
+      config.include("zstd/lib/");
+      config.include("zstd/lib/common");
+-+    if target.contains("msvc") {
+++    if target_is_msvc() {
+ +        config.include("zstd/lib/compress");
+ +        config.include("zstd/lib/decompress");
+ +        #[cfg(feature = "zdict_builder")]
+@@ -27,15 +17,3 @@ index 912a3bf..e078f0e 100644
+      config.warnings(false);
+  
+      config.define("ZSTD_LIB_DEPRECATED", Some("0"));
+-@@ -210,7 +221,9 @@ fn compile_zstd() {
+- 
+-     // Hide symbols from resulting library,
+-     // so we can be used with another zstd-linking lib.
+--    // See https://github.com/gyscos/zstd-rs/issues/58
+--    config.flag("-fvisibility=hidden");
+-+    // See https://github.com/gyscos/zstd-rs/issues/58.
+-+    if !target.contains("msvc") {
+-+        config.flag("-fvisibility=hidden");
+-+    }
+-     config.define("XXH_PRIVATE_API", Some(""));
+-     config.define("ZSTDLIB_VISIBILITY", Some(""));
 -- 
 2.43.0
 
