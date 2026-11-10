@@ -125,12 +125,13 @@ jobs:
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-macos-nextest-evidence"
           : > "$evidence/applied-patches.txt"
+          patch_paths=()
           read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
           if [[ -n "$RED_RESTORE" ]] && (( ${#patch_paths[@]} < ${RED_PATCH_COUNT:-1} )); then
             printf 'red_patch_count %s exceeds the %s applied patches.\n' "${RED_PATCH_COUNT:-1}" "${#patch_paths[@]}" >&2
             exit 1
           fi
-          for patch in "${patch_paths[@]}"; do
+          for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
             printf '%s  %s\n' "$(shasum -a 256 < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
             git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
@@ -238,6 +239,7 @@ jobs:
           for directory in "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/codex-rs/target}/nextest" "$GITHUB_WORKSPACE/codex-rs/target/nextest"; do
             if [[ -d "$directory" ]]; then reports+=("$directory"); fi
           done
+          if (( ${#reports[@]} == 0 )); then printf 'No nextest reports to check.\n'; exit 0; fi
           python3 "$RUNNER_TEMP/check-test-skips.py" --platform macos "${reports[@]}" \
             2>&1 | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/skip-check.log"
 
