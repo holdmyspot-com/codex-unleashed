@@ -217,12 +217,12 @@ jobs:
           set -euo pipefail
           native="$RUNNER_TEMP/baseline-test-native"
           mkdir -p "$native/archives" "$native/tools"
-          curl --fail --location --retry 3 --output "$native/cmake.tar.gz" https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-x86_64.tar.gz
+          curl --fail --location --retry 3 --retry-all-errors --output "$native/cmake.tar.gz" https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-x86_64.tar.gz
           printf '%s  %s\n' 630615d8e98ac33eba7fbe472626dff5c899c85af3c024585ae109166a6909d0 "$native/cmake.tar.gz" | sha256sum -c -
           tar -xzf "$native/cmake.tar.gz" -C "$native/tools" --strip-components=1
           jq -r '.sources[] | [.url, .archive, .sha256] | @tsv' third_party/voice/sources.json > "$native/sources.tsv"
           while IFS=$'\t' read -r url archive digest; do
-            curl --fail --location --retry 3 --output "$native/archives/$archive" "$url"
+            curl --fail --location --retry 3 --retry-all-errors --output "$native/archives/$archive" "$url"
             printf '%s  %s\n' "$digest" "$native/archives/$archive" | sha256sum -c -
           done < "$native/sources.tsv"
           python3 third_party/voice/build_native.py \
