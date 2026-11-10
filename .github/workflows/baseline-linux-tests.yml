@@ -157,7 +157,7 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           evidence="$RUNNER_TEMP/baseline-test-evidence"
           df -h / "$RUNNER_TEMP" | tee "$evidence/disk-before.txt"
-          for unused in /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup; do
+          for unused in /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift /opt/ghc; do
             if [[ -d "$unused" ]]; then
               sudo du -sh "$unused" | tee -a "$evidence/reclaimed-toolchains.txt"
               sudo rm -rf -- "$unused"
@@ -280,6 +280,10 @@ jobs:
             echo "CODEX_TEST_REMOTE_ENV_CONTAINER_NAME=${CODEX_TEST_REMOTE_ENV_CONTAINER_NAME}"
             echo "CODEX_TEST_REMOTE_EXEC_SERVER_URL=${CODEX_TEST_REMOTE_EXEC_SERVER_URL}"
           } >> "$GITHUB_ENV"
+          # Only the codex binary inside the container is needed. The debug build of its dependency graph filled the
+          # runner's disk before the ci-test build of the test binaries, so drop it now.
+          rm -rf "$CARGO_TARGET_DIR/debug"
+          df -h / | tee -a "$RUNNER_TEMP/baseline-test-evidence/disk-after-remote-env.txt"
 
       - name: Build one unchanged archive for the environment comparison
         id: archive
