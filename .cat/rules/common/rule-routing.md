@@ -39,3 +39,9 @@ When writing, parsing, or displaying a date or time, including in a name or iden
 
 When writing code, a command, a hook, or a skill or rule instruction that passes an argument to a launcher, lazy
 load `${CAT_PROJECT_ROOT}/.cat/rules/include/jlink-launchers/launcher-arguments.md`.
+
+When defining, serializing, or documenting Codex-Unleashed-owned `config.toml` values, lazy load
+`${CAT_PROJECT_ROOT}/.cat/rules/include/codex-configuration-values.md`.
+
+When running local builds, tests, formatting, or packaging for this project, or creating, reusing, or cleaning build
+caches and outputs, lazy load `${CAT_PROJECT_ROOT}/.cat/rules/common/build-caches.md`.

@@ -1,2 +1,8 @@
-patches/upstream-baseline/*.patch text eol=lf whitespace=-blank-at-eol
-patches/upstream-check-policy/*.patch text eol=lf whitespace=-blank-at-eol
+# Patch files are consumed by git apply and must remain byte-stable.
+*.patch text eol=lf
+
+# Keep build and patching scripts portable across hosted runners.
+*.sh text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
