@@ -5,11 +5,26 @@ Subject: [PATCH] WIP: Update every transitive dependency to the newest release
  its dependents allow
 
 ---
- MODULE.bazel.lock             |  500 +++++----
- codex-rs/Cargo.lock           | 1977 ++++++++++++++-------------------
- codex-rs/utils/pty/Cargo.toml |    2 +
- 3 files changed, 1101 insertions(+), 1378 deletions(-)
+ MODULE.bazel                       |    2 +-
+ MODULE.bazel.lock                  |  500 +++----
+ bazel/toolchains/prost/BUILD.bazel |    2 +-
+ codex-rs/Cargo.lock                | 1977 ++++++++++++----------------
+ codex-rs/utils/pty/Cargo.toml      |    2 +
+ 5 files changed, 1103 insertions(+), 1380 deletions(-)
 
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 8cb8333ae..f4992fbe5 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -524,7 +524,7 @@ crate.annotation(
+ # MXC's resource compiler lookup needs an explicit path for Windows GNU targets.
+ crate.annotation(
+     build_script_deps = [
+-        "@crates//:cc-1.2.55",
++        "@crates//:cc-1.11.1",
+         "@crates//:winresource-0.1.34",
+     ],
+     build_script_env = {
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
 index f54d77a33..736ef8912 100644
 --- a/MODULE.bazel.lock
@@ -1327,6 +1342,19 @@ index f54d77a33..736ef8912 100644
        "zvariant_4.2.0": "{\"dependencies\":[{\"features\":[\"serde\"],\"name\":\"arrayvec\",\"optional\":true,\"req\":\"^0.7.4\"},{\"default_features\":false,\"features\":[\"serde\"],\"name\":\"chrono\",\"optional\":true,\"req\":\"^0.4.38\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5.1\"},{\"name\":\"endi\",\"req\":\"^1.1.0\"},{\"features\":[\"serde\"],\"name\":\"enumflags2\",\"optional\":true,\"req\":\"^0.7.9\"},{\"kind\":\"dev\",\"name\":\"glib\",\"req\":\"^0.20.0\"},{\"features\":[\"serde\"],\"name\":\"heapless\",\"optional\":true,\"req\":\"^0.8.0\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.8.5\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"req\":\"^1.0.200\"},{\"name\":\"serde_bytes\",\"optional\":true,\"req\":\"^0.11.14\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.116\"},{\"kind\":\"dev\",\"name\":\"serde_repr\",\"req\":\"^0.1.19\"},{\"name\":\"static_assertions\",\"req\":\"^1.1.0\"},{\"features\":[\"serde\"],\"name\":\"time\",\"optional\":true,\"req\":\"^0.3.36\"},{\"features\":[\"serde\"],\"name\":\"url\",\"optional\":true,\"req\":\"^2.5.0\"},{\"features\":[\"serde\"],\"name\":\"uuid\",\"optional\":true,\"req\":\"^1.8.0\"},{\"name\":\"zvariant_derive\",\"req\":\"=4.2.0\"}],\"features\":{\"default\":[],\"gvariant\":[],\"option-as-array\":[],\"ostree-tests\":[\"gvariant\"]}}",
        "zvariant_derive_4.2.0": "{\"dependencies\":[{\"features\":[\"serde\"],\"kind\":\"dev\",\"name\":\"enumflags2\",\"req\":\"^0.7.9\"},{\"name\":\"proc-macro-crate\",\"req\":\"^3.1.0\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.81\"},{\"name\":\"quote\",\"req\":\"^1.0.36\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.200\"},{\"kind\":\"dev\",\"name\":\"serde_repr\",\"req\":\"^0.1.19\"},{\"features\":[\"extra-traits\",\"full\"],\"name\":\"syn\",\"req\":\"^2.0.64\"},{\"name\":\"zvariant_utils\",\"req\":\"=2.1.0\"}],\"features\":{}}",
        "zvariant_utils_2.1.0": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.81\"},{\"name\":\"quote\",\"req\":\"^1.0.36\"},{\"features\":[\"extra-traits\",\"full\"],\"name\":\"syn\",\"req\":\"^2.0.64\"}],\"features\":{}}"
+diff --git a/bazel/toolchains/prost/BUILD.bazel b/bazel/toolchains/prost/BUILD.bazel
+index 2b87000bb..e67d8490e 100644
+--- a/bazel/toolchains/prost/BUILD.bazel
++++ b/bazel/toolchains/prost/BUILD.bazel
+@@ -22,7 +22,7 @@ rust_prost_toolchain(
+     compile_well_known_types = False,
+     prost_plugin = "@rules_rs//rs/private/prost:protoc-gen-prost__protoc-gen-prost",
+     prost_runtime = ":prost_runtime",
+-    prost_types = "@crates//:prost-types-0.14.3",
++    prost_types = "@crates//:prost-types-0.14.4",
+     tonic_plugin = "@rules_rs//rs/private/prost:protoc-gen-tonic__protoc-gen-tonic",
+     tonic_plugin_flag = "--plugin=protoc-gen-tonic=%s",
+     tonic_runtime = ":tonic_runtime",
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
 index a7b4b5448..6e466470f 100644
 --- a/codex-rs/Cargo.lock
