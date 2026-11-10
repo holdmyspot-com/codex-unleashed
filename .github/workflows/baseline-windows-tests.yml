@@ -211,7 +211,7 @@ jobs:
       - name: Verify and configure upstream V8 artifacts
         if: inputs.package != ''
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           version="$(awk '/^name = "v8"$/ {getline; gsub(/[^0-9.]/, "", $0); print; exit}' upstream/codex-rs/Cargo.lock)"
           base_url="https://github.com/openai/codex/releases/download/rusty-v8-v${version}"
           directory="$RUNNER_TEMP/rusty_v8"
