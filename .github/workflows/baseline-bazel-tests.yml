@@ -204,16 +204,16 @@ jobs:
 
       # Upstream's `--config=ci-linux` (.bazelrc) is applied only with a BuildBuddy key, which this repository lacks.
       # These are the flags that configuration and its `ci` parents add, except the ones that need a remote cache or
-      # executor (`--remote_download_minimal`, `--strategy=remote`, `--extra_execution_platforms=//:rbe`).
-      # `--platforms=//:rbe` selects upstream's target platform (libc and toolchain constraints) while actions run
-      # on this host. RUST_TEST_NOCAPTURE keeps passing tests' output in test.log so the skip check can read it.
+      # executor (`--remote_download_minimal`, `--strategy=remote`, `--platforms=//:rbe`). The last one fails toolchain
+      # resolution on this host ("No matching toolchains found") because //:rbe is a target platform meant to be paired
+      # with the remote execution platform. RUST_TEST_NOCAPTURE keeps passing tests' output in test.log so the skip
+      # check can read it.
       - name: Record the Bazel flags that upstream's CI configuration adds without remote execution
         run: |
           set -euo pipefail
           printf '%s\n' \
             --keep_going \
             --verbose_failures \
-            --platforms=//:rbe \
             --build_metadata=REPO_URL=https://github.com/openai/codex.git \
             --build_metadata=ROLE=CI \
             --build_metadata=VISIBILITY=PUBLIC \
