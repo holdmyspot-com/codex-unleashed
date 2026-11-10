@@ -153,6 +153,60 @@ jobs:
         with:
           target: ${{ env.TARGET }}
 
+      # The next three steps reproduce upstream's setup-ci effects for Windows. The composite action itself resolves
+      # ./.github/scripts relative to the workspace root, which here holds the restart checkout rather than upstream.
+      - name: Configure a Dev Drive for the build and temporary directories
+        if: inputs.package != ''
+        id: dev-drive
+        continue-on-error: true
+        shell: pwsh
+        run: ./upstream/.github/scripts/setup-dev-drive.ps1
+
+      - name: Point Cargo's target directory and the temporary directory at the Dev Drive
+        if: inputs.package != '' && steps.dev-drive.outcome == 'success'
+        run: |
+          set -euo pipefail
+          build_root="$CI_BUILD_ROOT"
+          mkdir -p "$build_root/cargo-target" "$build_root/tmp"
+          {
+            printf 'CARGO_TARGET_DIR=%s\n' "$build_root/cargo-target"
+            printf 'TEMP=%s\n' "$build_root/tmp"
+            printf 'TMP=%s\n' "$build_root/tmp"
+          } >> "$GITHUB_ENV"
+
+      - name: Warn when no Dev Drive is available
+        if: inputs.package != '' && steps.dev-drive.outcome != 'success'
+        run: printf '::warning::Dev Drive setup failed on this runner; building and testing on the default volume.\n'
+
+      - name: Configure curl retries for DotSlash
+        if: inputs.package != ''
+        run: mkdir -p "$RUNNER_TEMP/dotslash-curl" && echo retry-all-errors > "$RUNNER_TEMP/dotslash-curl/.curlrc"
+
+      - name: Install DotSlash
+        if: inputs.package != ''
+        uses: facebook/install-dotslash@1e4e7b3e07eaca387acb98f1d4720e0bee8dbb6a # v2
+        env:
+          CURL_HOME: ${{ runner.temp }}/dotslash-curl
+
+      # Some integration tests spawn DotSlash from a stable system path rather than the action-local PATH entry.
+      - name: Make DotSlash available at a stable system path
+        if: inputs.package != ''
+        shell: pwsh
+        run: Copy-Item (Get-Command dotslash).Source -Destination "$env:LOCALAPPDATA\Microsoft\WindowsApps\dotslash.exe"
+
+      - name: Build the Windows sandbox helper binaries and export their paths
+        if: inputs.package != ''
+        run: |
+          set -euo pipefail
+          cd upstream/codex-rs
+          cargo build --target "$TARGET" --profile ci-test -p codex-windows-sandbox \
+            --bin codex-windows-sandbox-setup --bin codex-command-runner
+          target_dir="${CARGO_TARGET_DIR:-$PWD/target}/$TARGET/ci-test"
+          {
+            printf 'CARGO_BIN_EXE_codex_windows_sandbox_setup=%s\n' "$(cygpath -w "$target_dir/codex-windows-sandbox-setup.exe")"
+            printf 'CARGO_BIN_EXE_codex_command_runner=%s\n' "$(cygpath -w "$target_dir/codex-command-runner.exe")"
+          } >> "$GITHUB_ENV"
+
       - name: Preserve the accepted x86-64 SQLite build configuration
         if: inputs.package != '' && inputs.target == 'x86_64-pc-windows-msvc'
         run: echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
@@ -167,7 +221,7 @@ jobs:
               printf 'pwsh -NoProfile -NonInteractive -File %q\n' "$TEST_SCRIPT"
             else
               printf 'cd "%s/upstream/codex-rs"\n' "$GITHUB_WORKSPACE"
-              args=(cargo nextest run --target "$TARGET" --no-fail-fast)
+              args=(cargo nextest run --target "$TARGET" --cargo-profile ci-test --test-threads 8 --no-fail-fast)
               if [[ "$TEST_PACKAGE" == --workspace ]]; then
                 args+=(--workspace)
               else
