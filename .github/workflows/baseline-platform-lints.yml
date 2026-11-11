@@ -368,7 +368,7 @@ jobs:
           test "$(cat .bazelversion)" = 9.2.0
           tools="$RUNNER_TEMP/regenerate-tools"
           mkdir -p "$tools"
-          curl --fail --location --retry 3 --output "$tools/bazel" https://github.com/bazelbuild/bazel/releases/download/9.2.0/bazel-9.2.0-linux-x86_64
+          curl --fail --location --retry 3 --retry-all-errors --output "$tools/bazel" https://github.com/bazelbuild/bazel/releases/download/9.2.0/bazel-9.2.0-linux-x86_64
           printf '%s  %s\n' 7668a95db1250f12c40407251e4e203b4ec8bf39bc495d2f485b2d8c99048694 "$tools/bazel" | sha256sum -c -
           chmod +x "$tools/bazel"
           printf '%s\n' "$tools" >> "$GITHUB_PATH"

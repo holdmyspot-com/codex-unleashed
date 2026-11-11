@@ -151,12 +151,12 @@ jobs:
           if ! command -v pkg-config; then
             brew install pkgconf
           fi
-          curl --fail --location --retry 3 --output "$native/cmake.tar.gz" https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-macos-universal.tar.gz
+          curl --fail --location --retry 3 --retry-all-errors --output "$native/cmake.tar.gz" https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-macos-universal.tar.gz
           printf '%s  %s\n' d1449f969c54d5c00886d5b643340d493dfb3c81cb39ee29b35453395c11ebf7 "$native/cmake.tar.gz" | shasum -a 256 -c -
           tar -xzf "$native/cmake.tar.gz" -C "$native/tools" --strip-components=1
           jq -r '.sources[] | [.url, .archive, .sha256] | @tsv' third_party/voice/sources.json > "$native/sources.tsv"
           while IFS=$'\t' read -r url archive digest; do
-            curl --fail --location --retry 3 --output "$native/archives/$archive" "$url"
+            curl --fail --location --retry 3 --retry-all-errors --output "$native/archives/$archive" "$url"
             printf '%s  %s\n' "$digest" "$native/archives/$archive" | shasum -a 256 -c -
           done < "$native/sources.tsv"
           compiler="$(xcrun --find clang)"

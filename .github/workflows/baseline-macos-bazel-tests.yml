@@ -171,7 +171,7 @@ jobs:
           test "$(cat .bazelversion)" = 9.2.0
           tools="$RUNNER_TEMP/baseline-bazel-tools"
           mkdir -p "$tools"
-          curl --fail --location --retry 3 --output "$tools/bazel" "https://github.com/bazelbuild/bazel/releases/download/9.2.0/bazel-9.2.0-darwin-$BAZEL_ARCH"
+          curl --fail --location --retry 3 --retry-all-errors --output "$tools/bazel" "https://github.com/bazelbuild/bazel/releases/download/9.2.0/bazel-9.2.0-darwin-$BAZEL_ARCH"
           printf '%s  %s\n' "$BAZEL_SHA256" "$tools/bazel" | shasum -a 256 -c -
           chmod +x "$tools/bazel"
           "$tools/bazel" --version | tee "$RUNNER_TEMP/baseline-macos-bazel-evidence/bazel-version.txt"
