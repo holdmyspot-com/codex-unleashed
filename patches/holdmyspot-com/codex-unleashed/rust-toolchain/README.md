@@ -1,6 +1,6 @@
 # Rust toolchain
 
-- Applies to: upstream `openai/codex` main, commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`.
+- Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 - Prerequisites: the `fatal-warnings` and `release-build-warnings` patches (queued after `workspace-rustdoc.patch`).
 - Patches: `rust-1.99.patch`.
 

@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:13 -0500
-Subject: [PATCH] bugfix: run host hooks in the host working directory for
- remote sessions
+Subject: [PATCH 46/54] bugfix: run host hooks in the host working directory
+ for remote sessions
 
 Selecting only a remote environment makes the turn's executor working
 directory a path that does not exist on the host, so host command hooks
@@ -18,10 +18,10 @@ working directory to be the host working directory.
  2 files changed, 40 insertions(+), 19 deletions(-)
 
 diff --git a/codex-rs/core/src/hook_runtime.rs b/codex-rs/core/src/hook_runtime.rs
-index 603a6e4..6f4d176 100644
+index 02d7104..d27af23 100644
 --- a/codex-rs/core/src/hook_runtime.rs
 +++ b/codex-rs/core/src/hook_runtime.rs
-@@ -156,8 +156,7 @@ pub(crate) async fn run_pending_session_start_hooks(
+@@ -158,8 +158,7 @@ pub(crate) async fn run_pending_session_start_hooks(
          };
          let request = codex_hooks::SessionStartRequest {
              session_id: sess.session_id().into(),
@@ -31,7 +31,7 @@ index 603a6e4..6f4d176 100644
              transcript_path: sess.hook_transcript_path().await,
              model: turn_context.model_info().slug.clone(),
              permission_mode: hook_permission_mode(turn_context.approval_policy()),
-@@ -258,12 +257,14 @@ pub(crate) async fn run_pre_tool_use_hooks(
+@@ -260,12 +259,14 @@ pub(crate) async fn run_pre_tool_use_hooks(
      }
  }
  
@@ -49,7 +49,7 @@ index 603a6e4..6f4d176 100644
  }
  
  // PermissionRequest hooks share the same preview/start/completed event flow as
-@@ -429,8 +430,7 @@ pub(crate) async fn run_turn_stop_hooks(
+@@ -431,8 +432,7 @@ pub(crate) async fn run_turn_stop_hooks(
      let request = codex_hooks::StopRequest {
          session_id: sess.session_id().into(),
          turn_id: turn_context.sub_id.clone(),
@@ -59,7 +59,7 @@ index 603a6e4..6f4d176 100644
          transcript_path,
          model: turn_context.model_info().slug.clone(),
          permission_mode: hook_permission_mode(turn_context.approval_policy()),
-@@ -481,8 +481,7 @@ pub(crate) async fn run_session_end_hooks(sess: &Arc<Session>) {
+@@ -483,8 +483,7 @@ pub(crate) async fn run_session_end_hooks(sess: &Arc<Session>) {
      let request = codex_hooks::SessionEndRequest {
          session_id: sess.session_id().into(),
          turn_id: turn_context.sub_id.clone(),
@@ -69,7 +69,7 @@ index 603a6e4..6f4d176 100644
          transcript_path: sess.hook_transcript_path().await,
      };
      if let Err(err) = sess.flush_rollout().await {
-@@ -526,8 +525,14 @@ pub(crate) async fn run_turn_interrupt_hooks(
+@@ -528,8 +527,14 @@ pub(crate) async fn run_turn_interrupt_hooks(
      let request = InterruptRequest {
          session_id: sess.session_id().into(),
          turn_id: turn_context.sub_id.clone(),
@@ -86,7 +86,7 @@ index 603a6e4..6f4d176 100644
          transcript_path: sess.hook_transcript_path().await,
          model: turn_context.model_info().slug.clone(),
          permission_mode: hook_permission_mode(turn_context.approval_policy()),
-@@ -551,8 +556,7 @@ pub(crate) async fn run_pre_compact_hooks(
+@@ -553,8 +558,7 @@ pub(crate) async fn run_pre_compact_hooks(
          session_id: sess.session_id().into(),
          turn_id: turn_context.sub_id.clone(),
          subagent: thread_spawn_subagent_hook_context(sess, turn_context),
@@ -96,7 +96,7 @@ index 603a6e4..6f4d176 100644
          transcript_path: sess.hook_transcript_path().await,
          model: turn_context.model_info().slug.clone(),
          trigger: compaction_trigger_label(trigger).to_string(),
-@@ -593,8 +597,7 @@ pub(crate) async fn run_post_compact_hooks(
+@@ -595,8 +599,7 @@ pub(crate) async fn run_post_compact_hooks(
          session_id: sess.session_id().into(),
          turn_id: turn_context.sub_id.clone(),
          subagent: thread_spawn_subagent_hook_context(sess, turn_context),
@@ -106,7 +106,7 @@ index 603a6e4..6f4d176 100644
          transcript_path: sess.hook_transcript_path().await,
          model: turn_context.model_info().slug.clone(),
          trigger: compaction_trigger_label(trigger).to_string(),
-@@ -635,8 +638,7 @@ pub(crate) async fn run_legacy_after_agent_hook(
+@@ -654,8 +657,7 @@ pub(crate) async fn run_legacy_after_agent_hook(
      for hook_outcome in hooks
          .dispatch(codex_hooks::HookPayload {
              session_id: sess.session_id().into(),
@@ -116,7 +116,7 @@ index 603a6e4..6f4d176 100644
              client: turn_context.app_server_client_name.clone(),
              triggered_at: chrono::Utc::now(),
              hook_event: codex_hooks::HookEvent::AfterAgent {
-@@ -696,8 +698,7 @@ pub(crate) async fn inspect_pending_input(
+@@ -715,8 +717,7 @@ pub(crate) async fn inspect_pending_input(
                  session_id: sess.session_id().into(),
                  turn_id: turn_context.sub_id.clone(),
                  subagent: thread_spawn_subagent_hook_context(sess, turn_context),
@@ -127,10 +127,10 @@ index 603a6e4..6f4d176 100644
                  model: turn_context.model_info().slug.clone(),
                  permission_mode: hook_permission_mode(turn_context.approval_policy()),
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index ae6a29f..6295fb3 100644
+index bb4311d..903916e 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -13653,5 +13653,25 @@ async fn rejected_mcp_refresh_then_corrected_user_config_blocks_ordinary_replace
+@@ -13821,5 +13821,25 @@ async fn rejected_mcp_refresh_then_corrected_user_config_blocks_ordinary_replace
          "rejection must not permit same-name ordinary-auth replacement in this session"
      );
  }

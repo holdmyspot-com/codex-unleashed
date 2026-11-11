@@ -1,6 +1,6 @@
 # Build warnings in Codex sources and build configuration
 
-- Applies to: upstream `openai/codex` main, commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`.
+- Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 - Prerequisites: none. Each patch applies alone and after the rest of the queue.
 - Patches, in queue order:
   1. `debug-only-release-items.patch`: release-build warnings from debug-only test hooks.

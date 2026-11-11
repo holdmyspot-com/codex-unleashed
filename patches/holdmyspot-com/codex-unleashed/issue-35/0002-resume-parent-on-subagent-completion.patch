@@ -1,7 +1,7 @@
-From bffa61c772d7bd1d31e46f84070408553265ead2 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:34:55 -0500
-Subject: [PATCH] Resume available parents when V2 subagents finish
+Subject: [PATCH 13/54] Resume available parents when V2 subagents finish
 
 A child's completion or failure now starts a turn on an idle parent, unless the parent was interrupted, and the spawn guidance tells the model it may finish its turn while delegated work keeps running. The stable unleashed_background_subagents feature, enabled by default, controls both; disabling it keeps queue-only completion mail.
 ---
@@ -77,18 +77,18 @@ index c15253a..7314e8e 100644
      if matches!(lifecycle, ThreadLifecycle::RootUserInputCompaction) {
          mock_config = mock_config
 diff --git a/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs b/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs
-index 16273cf..cb03e26 100644
+index f12de00..485c6d5 100644
 --- a/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs
 +++ b/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs
-@@ -625,6 +625,7 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
-     MockResponsesConfig::new(&server.uri())
-         .with_model("gpt-5.5")
+@@ -631,6 +631,7 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
          .enable_feature(Feature::MultiAgentV2)
+         .enable_feature(Feature::CodeMode)
+         .enable_feature(Feature::CodeModeHost)
 +        .disable_feature(Feature::EnableRequestCompression)
          .with_root_config("thread_unload_delay_secs = 0")
-         .write(codex_home.path())?;
-     write_models_cache(codex_home.path()).await?;
-@@ -634,6 +635,16 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+         .with_extra_config(&format!(
+             r#"[mcp_servers.fails_once]
+@@ -651,6 +652,16 @@ enabled_tools = []
          .await?;
      let parent = mcp.start_thread(ThreadStartParams::default()).await?.thread;
      let mut child_id = None;
@@ -105,7 +105,7 @@ index 16273cf..cb03e26 100644
  
      for (tool, args) in [
          (
-@@ -652,9 +663,27 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+@@ -669,9 +680,27 @@ enabled_tools = []
          ),
      ] {
          let call_id = format!("idle-eviction-{tool}");
@@ -134,7 +134,7 @@ index 16273cf..cb03e26 100644
              responses::sse(vec![
                  responses::ev_function_call_with_namespace(
                      &call_id,
-@@ -666,14 +695,6 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+@@ -683,14 +712,6 @@ enabled_tools = []
              ]),
          )
          .await;
@@ -147,9 +147,9 @@ index 16273cf..cb03e26 100644
 -        )
 -        .await;
          if tool != "send_message" {
+             let exec_call_id = format!("child-exec-{tool}");
              let parent_id = parent.id.clone();
-             let _child = responses::mount_sse_once_match(
-@@ -694,7 +715,7 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+@@ -725,7 +746,7 @@ enabled_tools = []
              )
              .await;
          }
@@ -158,7 +158,7 @@ index 16273cf..cb03e26 100644
              DEFAULT_READ_TIMEOUT,
              mcp.start_turn_and_wait_for_completion(TurnStartParams {
                  thread_id: parent.id.clone(),
-@@ -706,6 +727,10 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+@@ -737,6 +758,10 @@ enabled_tools = []
              }),
          )
          .await??;
@@ -170,10 +170,10 @@ index 16273cf..cb03e26 100644
          if tool != "send_message" {
              let completed = timeout(
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 510393e..e3434f9 100644
+index e1d201a..f5a0445 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1431,6 +1431,9 @@
+@@ -1455,6 +1455,9 @@
              "unleashed_agent_fast_switching": {
                "type": "boolean"
              },
@@ -183,7 +183,7 @@ index 510393e..e3434f9 100644
              "unleashed_collapsed_tool_activity": {
                "type": "boolean"
              },
-@@ -8093,6 +8096,9 @@
+@@ -8183,6 +8186,9 @@
          "unleashed_agent_fast_switching": {
            "type": "boolean"
          },
@@ -251,10 +251,10 @@ index 587f4cd..05552de 100644
              AgentCommunicationContext::new(AgentCommunicationKind::Result, outcome.thread_id);
          let delivery = self
 diff --git a/codex-rs/core/src/tools/handlers/multi_agents_tests.rs b/codex-rs/core/src/tools/handlers/multi_agents_tests.rs
-index 9582a97..4e2d48b 100644
+index 0a9d78c..45f7c1f 100644
 --- a/codex-rs/core/src/tools/handlers/multi_agents_tests.rs
 +++ b/codex-rs/core/src/tools/handlers/multi_agents_tests.rs
-@@ -1894,12 +1894,20 @@ async fn multi_agent_v2_send_message_rejects_interrupt_parameter() {
+@@ -1897,12 +1897,20 @@ async fn multi_agent_v2_send_message_rejects_interrupt_parameter() {
      )));
  }
  
@@ -276,7 +276,7 @@ index 9582a97..4e2d48b 100644
      set_turn_config(&mut turn, config);
      let root = manager
          .start_thread(StartThreadOptions::new((*turn.config).clone()))
-@@ -2024,7 +2032,7 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
+@@ -2027,7 +2035,7 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
                                  if communication.author == worker_path
                                      && communication.recipient == AgentPath::root()
                                      && communication.other_recipients.is_empty()
@@ -286,10 +286,10 @@ index 9582a97..4e2d48b 100644
                                  Some(communication.content)
                              }
 diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
-index 192deff..c3e4e25 100644
+index 80ffe7b..097c52a 100644
 --- a/codex-rs/core/src/tools/spec_plan.rs
 +++ b/codex-rs/core/src/tools/spec_plan.rs
-@@ -1469,6 +1469,18 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut Too
+@@ -1480,6 +1480,18 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut Too
                  agent_type_description(turn_context, context.default_agent_type_description);
              let hide_spawn_agent_metadata =
                  turn_context.config.multi_agent_v2.hide_spawn_agent_metadata;
@@ -305,10 +305,10 @@ index 192deff..c3e4e25 100644
 +                    None => background_guidance.to_string(),
 +                });
 +            }
-             registry.register_trusted_with_exposure(
+             registry.register_trusted_with_native_review(
                  multi_agent_v2_handler(
                      SpawnAgentHandlerV2::new(
-@@ -1486,11 +1498,7 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut Too
+@@ -1497,11 +1509,7 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut Too
                                  .config
                                  .multi_agent_v2
                                  .expose_spawn_agent_model_overrides,
@@ -1056,10 +1056,10 @@ index 0000000..9cdc27d
 +    Ok(())
 +}
 diff --git a/codex-rs/core/tests/suite/cyber_access_program.rs b/codex-rs/core/tests/suite/cyber_access_program.rs
-index 829ec85..8e21d8c 100644
+index 0529a77..1ba9cf7 100644
 --- a/codex-rs/core/tests/suite/cyber_access_program.rs
 +++ b/codex-rs/core/tests/suite/cyber_access_program.rs
-@@ -305,6 +305,10 @@ async fn cyber_access_program_is_inherited_by_child_turns() -> Result<()> {
+@@ -382,6 +382,10 @@ async fn cyber_access_program_is_inherited_by_child_turns() -> Result<()> {
              .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
              .with_model(if is_v2 { "gpt-5.6-sol" } else { "gpt-5.1" })
              .with_config(move |config| {
@@ -1087,10 +1087,10 @@ index c39ed11..2f2f6f7 100644
                  Feature::Collab,
                  Feature::MultiAgentV2,
 diff --git a/codex-rs/core/tests/suite/guardian_subagent_authorization.rs b/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
-index a11d977..67a81a4 100644
+index 74c876f..2783145 100644
 --- a/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
 +++ b/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
-@@ -734,6 +734,10 @@ async fn run_guardian_subagent_review(
+@@ -736,6 +736,10 @@ async fn run_guardian_subagent_review(
                  .expect("write messaging rewrite hook");
          })
          .with_config(move |config| {
@@ -1117,10 +1117,10 @@ index 09c317d..750059f 100644
          .features
          .enable(Feature::Collab)
 diff --git a/codex-rs/core/tests/suite/scenarios.rs b/codex-rs/core/tests/suite/scenarios.rs
-index a31a92e..54ff77e 100644
+index 768c5aa..63ac88a 100644
 --- a/codex-rs/core/tests/suite/scenarios.rs
 +++ b/codex-rs/core/tests/suite/scenarios.rs
-@@ -3175,6 +3175,7 @@ async fn astra_async_compaction_keeps_work_added_after_its_snapshot(
+@@ -3549,6 +3549,7 @@ async fn astra_async_compaction_keeps_work_added_after_its_snapshot(
          let positions = input
              .iter()
              .enumerate()
@@ -1263,10 +1263,10 @@ index db1dc03..edb5f03 100644
            - function/interrupt_agent
            - function/list_agents
 diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_code_mode_call_timing.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_code_mode_call_timing.snap
-index 061450d..dd0b803 100644
+index 5fdeedb..0daeda4 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_code_mode_call_timing.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_code_mode_call_timing.snap
-@@ -6,7 +6,7 @@ Scenario: Astra receives host and handler timings on completed and failed code-m
+@@ -6,7 +6,7 @@ Scenario: Astra reads code-mode timings and the collector notice even at zero to
  
  ## Window 1
  -- request 1 (turn) --
@@ -1275,7 +1275,7 @@ index 061450d..dd0b803 100644
          - namespace/functions; hash=fada4a476a3754dd
            - custom/exec
            - function/wait
-@@ -14,7 +14,7 @@ Scenario: Astra receives host and handler timings on completed and failed code-m
+@@ -14,7 +14,7 @@ Scenario: Astra reads code-mode timings and the collector notice even at zero to
            - function/request_user_input_async
          - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
            - function/sleep
@@ -1435,7 +1435,7 @@ index f44283d..e5a50cc 100644
            - function/interrupt_agent
            - function/list_agents
 diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_off.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_off.snap
-index ab2bdb9..a47f68e 100644
+index e5fd89c..d21ee19 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_off.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_off.snap
 @@ -16,7 +16,7 @@ Settings:
@@ -1457,7 +1457,7 @@ index ab2bdb9..a47f68e 100644
            - function/interrupt_agent
            - function/list_agents
 diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_on.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_on.snap
-index 8d422f3..2fa9c0d 100644
+index 0d9ca37..0eebb7b 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_on.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_on.snap
 @@ -16,7 +16,7 @@ Settings:
@@ -1479,7 +1479,7 @@ index 8d422f3..2fa9c0d 100644
            - function/interrupt_agent
            - function/list_agents
 diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_settings_release_check_tool_shapes.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_settings_release_check_tool_shapes.snap
-index 9e6a039..7eaf617 100644
+index 82fc3fd..50c2554 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_settings_release_check_tool_shapes.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_settings_release_check_tool_shapes.snap
 @@ -16,7 +16,7 @@ Settings:
@@ -1540,7 +1540,7 @@ index d1bead8..3b751fc 100644
            - function/interrupt_agent
            - function/list_agents
 diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages.snap
-index 91450cc..0afcd8d 100644
+index 0fbd4c3..a7235e3 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages.snap
 @@ -15,14 +15,14 @@ Settings:
@@ -1561,7 +1561,7 @@ index 91450cc..0afcd8d 100644
        - function/interrupt_agent
        - function/list_agents
 diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages_ranked_search.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages_ranked_search.snap
-index 0cc6f34..9a78ed9 100644
+index 6b4a463..b87fd74 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages_ranked_search.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages_ranked_search.snap
 @@ -15,14 +15,14 @@ Settings:
@@ -1763,7 +1763,7 @@ index 6dc7a4a..4b447d9 100644
  -- request 3 (turn) --
  00:message/developer:
 diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_resource_messages__mcp_resource_messages.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_resource_messages__mcp_resource_messages.snap
-index 984bfdd..79ba84e 100644
+index 1963087..fa59420 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_resource_messages__mcp_resource_messages.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_resource_messages__mcp_resource_messages.snap
 @@ -15,14 +15,14 @@ Settings:
@@ -2099,7 +2099,7 @@ index 18eb321..1db80b2 100644
            - function/interrupt_agent
            - function/list_agents
 diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__strict_3p_cache__strict_3p_mcp_catalog_cache.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__strict_3p_cache__strict_3p_mcp_catalog_cache.snap
-index 52e6b85..d142131 100644
+index 6119981..cc1ac14 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__strict_3p_cache__strict_3p_mcp_catalog_cache.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__strict_3p_cache__strict_3p_mcp_catalog_cache.snap
 @@ -24,7 +24,7 @@ Settings:
@@ -2228,10 +2228,10 @@ index 5c750ea..225b909 100644
            - function/interrupt_agent
            - function/list_agents
 diff --git a/codex-rs/core/tests/suite/step_settings.rs b/codex-rs/core/tests/suite/step_settings.rs
-index a6303fd..771c2f4 100644
+index 1539481..fef673a 100644
 --- a/codex-rs/core/tests/suite/step_settings.rs
 +++ b/codex-rs/core/tests/suite/step_settings.rs
-@@ -2293,6 +2293,10 @@ async fn tool_messages_follow_mid_turn_model_changes() -> Result<()> {
+@@ -2294,6 +2294,10 @@ async fn tool_messages_follow_mid_turn_model_changes() -> Result<()> {
      .await;
      let test = step_settings_test()
          .with_config(move |config| {
@@ -2243,10 +2243,10 @@ index a6303fd..771c2f4 100644
                  .features
                  .enable(Feature::MultiAgentV2)
 diff --git a/codex-rs/core/tests/suite/subagent_notifications.rs b/codex-rs/core/tests/suite/subagent_notifications.rs
-index 47629f5..fa43013 100644
+index ec628fd..cac3553 100644
 --- a/codex-rs/core/tests/suite/subagent_notifications.rs
 +++ b/codex-rs/core/tests/suite/subagent_notifications.rs
-@@ -89,6 +89,8 @@ use super::direct_tool_metadata::tool_call_metadata;
+@@ -98,6 +98,8 @@ use super::direct_tool_metadata::tool_call_metadata;
  #[path = "spawn_settings_tests.rs"]
  mod spawn_settings_tests;
  
@@ -2255,7 +2255,7 @@ index 47629f5..fa43013 100644
  #[path = "guardian_subagent_notification_tests.rs"]
  mod guardian_subagent_notification_tests;
  
-@@ -2976,6 +2978,11 @@ async fn multi_agent_v2_peer_followup_completion_notifies_initiating_turn(
+@@ -2985,6 +2987,11 @@ async fn multi_agent_v2_peer_followup_completion_notifies_initiating_turn(
      let mut builder = test_codex()
          .with_model("gpt-5.6-sol")
          .with_config(|config| {
@@ -2283,10 +2283,10 @@ index 74d5592..4da8c11 100644
          config
              .features
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 669d116..e01860a 100644
+index 0280e17..029f2f8 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -252,6 +252,8 @@ pub enum Feature {
+@@ -256,6 +256,8 @@ pub enum Feature {
      SubagentThreadEnvironments,
      /// Use each subagent model's default context window and auto-compaction threshold.
      SubagentDefaultContextLimits,
@@ -2295,7 +2295,7 @@ index 669d116..e01860a 100644
      /// Keep sampling through reasoning and commentary boundaries when agent mail arrives.
      /// Pending mail is delivered at the next normal input boundary instead.
      DeferMailboxPreemption,
-@@ -1623,6 +1625,12 @@ pub const FEATURES: &[FeatureSpec] = &[
+@@ -1661,6 +1663,12 @@ pub const FEATURES: &[FeatureSpec] = &[
          stage: Stage::UnderDevelopment,
          default_enabled: false,
      },

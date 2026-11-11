@@ -1,7 +1,7 @@
 # Responsive startup, resume and agent switching
 
 - Issue: [openai/codex#34776](https://github.com/openai/codex/issues/34776)
-- Applies to: upstream `openai/codex` main, commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`.
+- Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 - Prerequisites: the three skill patches have none and apply independently. [avoid-slow-agent-switching-and-resume.patch](avoid-slow-agent-switching-and-resume.patch) applies after [base-configuration](../base-configuration/README.md), [issue-47390](../issue-47390/README.md) and [collapsed-tool-activity](../collapsed-tool-activity/README.md), whose feature and schema entries surround its own.
 
 ## Deferred implicit skill index

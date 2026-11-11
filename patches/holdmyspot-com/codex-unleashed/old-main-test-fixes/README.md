@@ -1,6 +1,6 @@
 # Old-main test fixes (T9)
 
-- Applies to: the queue through `flaky-tests/focus-palette.patch` (patch 39), which sits on upstream `openai/codex` main, commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`.
+- Applies to: the queue through `flaky-tests/focus-palette.patch` (patch 38), which sits on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 - Prerequisites: every earlier patch in the queue. The patches below apply in the order listed. `conpty-lifecycle-input-fixture.patch` needs `windows-capture-reader-drain.patch` and `legacy-powershell-environment.patch`, and `legacy-powershell-environment.patch` needs `windows-capture-reader-drain.patch`; the others do not depend on each other.
 - Patches: the 16 files listed under "What changed", in that order.
 
@@ -40,5 +40,9 @@ Linux:
 
 ## Verification
 
-- All 55 patches of the queue apply with `git am` onto `dddc3c0a79`.
+- All 55 patches of the queue applied with `git am` onto `dddc3c0a79`; the rebased 54-patch queue applies onto `rust-v0.167.0` (see "Rebase onto rust-v0.167.0").
 - Rerun `host-loopback-mcp-fixtures.patch` and `guardian-local-capability-fixtures.patch` red/green with the MCP test servers built, then rerun the full queue's checks.
+
+## Rebase onto rust-v0.167.0
+
+Eighteen of the twenty patches apply with `git am -3` unchanged. `interrupt-host-cwd-fixtures.patch` conflicted in `codex-rs/core/tests/common/test_codex.rs`: upstream added `with_apps_tools_cache` where the patch adds `with_separate_host_cwd`, and the merged file keeps both. None of the patches is upstream at `rust-v0.167.0`: each reverse-applies nowhere and applies to a non-empty change. Upstream already contains the old-main patches 53897, 55693 and 0079, which stay omitted, and 0077 is obsolete.

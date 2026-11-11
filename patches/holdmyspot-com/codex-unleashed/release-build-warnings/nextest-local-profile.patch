@@ -1,7 +1,8 @@
-From ebb617423ff7a3e989cb86ef8676f491d99892af Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 23:22:21 -0500
-Subject: [PATCH] Rely on nextest's implicit inheritance for the local profile
+Subject: [PATCH 23/54] Rely on nextest's implicit inheritance for the local
+ profile
 
 Every custom nextest profile already inherits from default. The explicit
 inherits key needs nextest 0.9.115, so the pinned 0.9.103 warns that it is

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:14 -0500
-Subject: [PATCH] test: keep host MCP fixtures reachable with the remote
+Subject: [PATCH 52/54] test: keep host MCP fixtures reachable with the remote
  executor primary
 
 Register host loopback MCP cleanup fixtures locally and retain remote RPC
@@ -23,7 +23,7 @@ and emitted-queue runtime acceptance remain unrun.
  2 files changed, 37 insertions(+), 3 deletions(-)
 
 diff --git a/codex-rs/core/tests/suite/hooks.rs b/codex-rs/core/tests/suite/hooks.rs
-index 175b689..d6067b7 100644
+index 1adc786..12e7736 100644
 --- a/codex-rs/core/tests/suite/hooks.rs
 +++ b/codex-rs/core/tests/suite/hooks.rs
 @@ -4612,7 +4612,8 @@ async fn local_bundled_cleanup_hook_runs_without_saved_trust(

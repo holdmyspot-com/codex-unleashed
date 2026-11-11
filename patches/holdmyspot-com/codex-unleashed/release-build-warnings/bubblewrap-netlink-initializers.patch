@@ -1,7 +1,7 @@
-From 0b82a5f5f2ec3276e22e1105b1a4b671505512e2 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 23:21:53 -0500
-Subject: [PATCH] Initialize bubblewrap's netlink addresses by field name
+Subject: [PATCH 22/54] Initialize bubblewrap's netlink addresses by field name
 
 The vendored network.c initializes struct sockaddr_nl positionally with two
 of its four fields, so the cc crate's -Wextra reports nl_pid as missing.

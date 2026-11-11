@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 10:27:07 -0500
-Subject: [PATCH] Wait for the startup probe replies before the focus palette
- test exits
+Subject: [PATCH 38/54] Wait for the startup probe replies before the focus
+ palette test exits
 
 The test wrote the exit key right after the first frame, then waited for the exit
 DA1 query. The startup probe reads terminal input until every reply has arrived and

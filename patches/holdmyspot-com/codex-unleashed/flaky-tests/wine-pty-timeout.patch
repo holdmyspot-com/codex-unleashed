@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 10:21:28 -0500
-Subject: [PATCH] Give the Wine PowerShell PTY test one timeout budget
+Subject: [PATCH 35/54] Give the Wine PowerShell PTY test one timeout budget
 
 The wine-test-support unit-test target had a 60 second Bazel timeout. Its PowerShell
 PTY test copies a runtime into a fresh Wine prefix, boots Wine, cold-starts pwsh,

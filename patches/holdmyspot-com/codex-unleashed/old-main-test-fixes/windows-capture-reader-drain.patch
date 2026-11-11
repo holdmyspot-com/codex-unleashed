@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:12 -0500
-Subject: [PATCH] bugfix: finish legacy Windows capture after the root process
- exits
+Subject: [PATCH 39/54] bugfix: finish legacy Windows capture after the root
+ process exits
 
 Drain the output already buffered when capture finishes instead of waiting for inherited pipe handles held by surviving descendants. Own and close both read handles. The regression checks complete stdout and stderr beyond one read buffer, plus descendant survival.
 

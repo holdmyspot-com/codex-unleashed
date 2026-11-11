@@ -1,7 +1,8 @@
-From c9e0d24d4d7226860a1f2bc349f89abf83f7346d Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 11:27:19 -0500
-Subject: [PATCH] Replace stale updater workers before manual daemon updates
+Subject: [PATCH 20/54] Replace stale updater workers before manual daemon
+ updates
 
 Manual updates compare the running updater's executable identity with the requesting CLI before connecting to its socket. Unknown legacy identities and different executables launch the requesting CLI's updater. Matching workers remain running. Publish updater launch identities and preserve the complete ownership record during Windows successor handoff, keeping stderr pruning paused throughout.
 ---
@@ -33,10 +34,10 @@ index 6eca5d8..decdfd9 100644
          let stderr_log = match self.open_stderr_log().await {
              Ok(stderr_log) => stderr_log,
 diff --git a/codex-rs/app-server-daemon/src/backend/pid_tests.rs b/codex-rs/app-server-daemon/src/backend/pid_tests.rs
-index e04b230..8089598 100644
+index 3c47d12..77e11f5 100644
 --- a/codex-rs/app-server-daemon/src/backend/pid_tests.rs
 +++ b/codex-rs/app-server-daemon/src/backend/pid_tests.rs
-@@ -788,7 +788,13 @@ async fn failed_updater_handoff_preserves_predecessor_record() {
+@@ -908,7 +908,13 @@ async fn failed_updater_handoff_preserves_predecessor_record() {
              .await
              .unwrap();
          let error = backend.replace_current_updater().await.unwrap_err();

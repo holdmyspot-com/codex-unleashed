@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:13 -0500
-Subject: [PATCH] test: isolate Ctrl+C state and await PowerShell resumption
+Subject: [PATCH 43/54] test: isolate Ctrl+C state and await PowerShell
+ resumption
 
 Re-execute the ConPTY interrupt fixture alone before enabling its inherited Ctrl+C disposition. Wait for the complete returning prompt before sending ver, sharing the original resumption deadline and retaining the exit assertion.
 ---

@@ -1,8 +1,8 @@
-From 002157f0b084499081a730b125df3e3e3873f3c6 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 23:20:12 -0500
-Subject: [PATCH] Compile release builds of the app server and cloud tasks
- without warnings
+Subject: [PATCH 21/54] Compile release builds of the app server and cloud
+ tasks without warnings
 
 Release builds compile out the debug-only test hooks, which left their
 imports and constants unused and one parameter needlessly mutable. Gate
@@ -15,10 +15,10 @@ settings by value instead of mutating them.
  3 files changed, 10 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
-index 819048a..85a2075 100644
+index b3aa3b9..4b29e51 100644
 --- a/codex-rs/app-server/src/lib.rs
 +++ b/codex-rs/app-server/src/lib.rs
-@@ -1542,7 +1542,7 @@ fn test_user_config_file_from_env() -> Option<std::path::PathBuf> {
+@@ -1543,7 +1543,7 @@ fn test_user_config_file_from_env() -> Option<std::path::PathBuf> {
  }
  
  fn loader_overrides_with_test_user_config_file(
@@ -27,7 +27,7 @@ index 819048a..85a2075 100644
      test_user_config_file: Option<std::path::PathBuf>,
  ) -> IoResult<LoaderOverrides> {
      #[cfg(debug_assertions)]
-@@ -1557,7 +1557,10 @@ fn loader_overrides_with_test_user_config_file(
+@@ -1558,7 +1558,10 @@ fn loader_overrides_with_test_user_config_file(
              path = %path.as_path().display(),
              "using debug-only app-server test user config file"
          );

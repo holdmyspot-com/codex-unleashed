@@ -1,13 +1,14 @@
-From 682589a4c40f560732e5e8c4497954cab85d2e8c Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:04:02 -0500
-Subject: [PATCH] Make resumed conversations available during skill discovery
+Subject: [PATCH 09/54] Make resumed conversations available during skill
+ discovery
 
 Preserve the existing background skill discovery and watch-registration behavior. Keep a second tracing dispatch alive in the five observer tests so concurrent untraced calls cannot disable their shared span callsites. Assertions and deadlines remain unchanged.
 
 The original independent patch tree differs only by the 15 tracing-guard lines. The authoring queue and a fresh candidate checkout pass maintained just fmt-check. Native validation and emitted queue acceptance are tracked separately by the CI repair task.
 ---
- .../request_processors/thread_lifecycle.rs    |  73 +++++-
+ .../request_processors/thread_lifecycle.rs    |  78 +++++-
  .../request_processors/thread_processor.rs    |  11 +-
  .../src/request_processors/turn_processor.rs  |   1 +
  codex-rs/app-server/src/thread_state.rs       |  54 ++++
@@ -18,27 +19,30 @@ The original independent patch tree differs only by the 15 tracing-guard lines. 
  codex-rs/core/src/session/tests.rs            |   4 +
  codex-rs/core/src/session/turn_context.rs     |  60 ++++-
  codex-rs/core/tests/suite/skills_extension.rs |  24 ++
- 11 files changed, 566 insertions(+), 48 deletions(-)
+ 11 files changed, 571 insertions(+), 48 deletions(-)
  create mode 100644 codex-rs/core/src/session/resume_warmup_tests.rs
 
 diff --git a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
-index fe7602c..0aa6219 100644
+index b9062d6..cd39851 100644
 --- a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
-@@ -1,8 +1,11 @@
+@@ -3,11 +3,14 @@ use super::thread_processor::thread_turns_page_size;
  use super::*;
  use crate::extensions::send_thread_warning;
+ use crate::thread_state::ListenerStateCandidate;
 +use codex_app_server_protocol::ServerNotification;
 +use codex_app_server_protocol::SkillsChangedNotification;
+ use codex_app_server_protocol::ThreadItem;
  use codex_app_server_protocol::ThreadQueueChangedNotification;
  use codex_core::ThreadEvictionOutcome;
+ use codex_core::ThreadRegistration;
  use codex_extension_api::ThreadIdleCause;
 +use codex_file_watcher::WatchRegistration;
  use codex_protocol::config_types::MultiAgentMode;
  use codex_protocol::protocol::MultiAgentVersion;
  use codex_protocol::protocol::SessionSource;
-@@ -135,6 +138,13 @@ pub(super) enum EnsureConversationListenerResult {
-     ConnectionClosed,
+@@ -182,6 +185,13 @@ impl ListenerStartOutcome {
+     }
  }
  
 +/// Determines when skill watches become ready relative to session publication.
@@ -50,8 +54,16 @@ index fe7602c..0aa6219 100644
 +
  #[expect(
      clippy::await_holding_invalid_type,
-     reason = "listener subscription must be serialized against pending unloads"
-@@ -144,6 +154,7 @@ pub(super) async fn ensure_conversation_listener(
+     reason = "listener state creation must be serialized against pending unloads"
+@@ -233,6 +243,7 @@ pub(super) async fn attach_created_thread_listener(
+                 connection_ids: &connection_ids,
+                 raw_events_enabled,
+             },
++            SkillWatchStartup::BeforeAvailability,
+         )
+         .await
+         {
+@@ -247,6 +258,7 @@ pub(super) async fn ensure_conversation_listener(
      conversation_id: ThreadId,
      connection_id: ConnectionId,
      raw_events_enabled: bool,
@@ -59,25 +71,40 @@ index fe7602c..0aa6219 100644
  ) -> Result<EnsureConversationListenerResult, JSONRPCErrorError> {
      let conversation = match listener_task_context
          .thread_manager
-@@ -189,6 +200,7 @@ pub(super) async fn ensure_conversation_listener(
-         conversation_id,
-         conversation,
-         thread_state,
+@@ -276,6 +288,7 @@ pub(super) async fn ensure_conversation_listener(
+             connection_id,
+             raw_events_enabled,
+         },
 +        skill_watch_startup,
      )
      .await
-     {
-@@ -234,6 +246,7 @@ pub(super) async fn ensure_listener_task_running(
+     .into_subscription(conversation_id)
+@@ -310,6 +323,7 @@ pub(super) async fn ensure_listener_task_running(
      conversation_id: ThreadId,
      conversation: Arc<CodexThread>,
      thread_state: Arc<Mutex<ThreadState>>,
 +    skill_watch_startup: SkillWatchStartup,
  ) -> Result<(), JSONRPCErrorError> {
+     start_listener(
+         listener_task_context,
+@@ -317,6 +331,7 @@ pub(super) async fn ensure_listener_task_running(
+         conversation,
+         ListenerStateCandidate::Existing(thread_state),
+         ListenerStartup::Active,
++        skill_watch_startup,
+     )
+     .await
+     .into_subscription(conversation_id)
+@@ -333,20 +348,27 @@ async fn start_listener(
+     conversation: Arc<CodexThread>,
+     listener_state: ListenerStateCandidate,
+     startup: ListenerStartup<'_>,
++    skill_watch_startup: SkillWatchStartup,
+ ) -> ListenerStartOutcome {
      let (cancel_tx, mut cancel_rx) = oneshot::channel();
+     let (drained_tx, drained_rx) = watch::channel(false);
      let config_snapshot = conversation.config_snapshot().await;
-@@ -250,14 +263,20 @@ pub(super) async fn ensure_listener_task_running(
-         )));
-     };
+     let config = conversation.config().await;
      let environments = conversation.environment_selections().await;
 -    let watch_registration = listener_task_context
 -        .skills_watcher
@@ -104,7 +131,7 @@ index fe7602c..0aa6219 100644
      let is_v2_child = conversation.multi_agent_version() == Some(MultiAgentVersion::V2)
          && matches!(config_snapshot.session_source, SessionSource::SubAgent(_));
      let thread_settings_baseline = thread_settings_from_config_snapshot(&config_snapshot);
-@@ -292,10 +311,22 @@ pub(super) async fn ensure_listener_task_running(
+@@ -501,10 +523,22 @@ async fn start_listener(
          thread_watch_manager,
          codex_home,
          turn_cost_worker,
@@ -124,12 +151,12 @@ index fe7602c..0aa6219 100644
 +            };
 +            (registration, published)
 +        });
-         loop {
+         let shutdown_complete = loop {
              tokio::select! {
                  biased;
-@@ -303,6 +334,32 @@ pub(super) async fn ensure_listener_task_running(
+@@ -512,6 +546,32 @@ async fn start_listener(
                      // Listener was superseded or the thread is being torn down.
-                     break;
+                     break false;
                  }
 +                (registration, published) = &mut watch_registration, if watch_registration_pending => {
 +                    watch_registration_pending = false;
@@ -159,12 +186,21 @@ index fe7602c..0aa6219 100644
 +                }
                  listener_command = listener_command_rx.recv() => {
                      let Some(listener_command) = listener_command else {
-                         break;
+                         break false;
+@@ -748,6 +808,8 @@ async fn start_listener(
+         };
+         // The thread owns its event sender, so waiting for channel closure retains
+         // the runtime. Keep only the notification relay after ShutdownComplete.
++        // The pending skill watch registration borrows the configuration and thread manager.
++        drop(watch_registration);
+         drop(conversation);
+         drop(config);
+         drop(thread_manager);
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 64f8bd3..a90292e 100644
+index 36d9f43..e43a970 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -1185,6 +1185,7 @@ impl ThreadRequestProcessor {
+@@ -1222,6 +1222,7 @@ impl ThreadRequestProcessor {
              conversation_id,
              connection_id,
              raw_events_enabled,
@@ -172,7 +208,7 @@ index 64f8bd3..a90292e 100644
          )
          .await
      }
-@@ -1200,6 +1201,7 @@ impl ThreadRequestProcessor {
+@@ -1237,6 +1238,7 @@ impl ThreadRequestProcessor {
              conversation_id,
              conversation,
              thread_state,
@@ -180,7 +216,7 @@ index 64f8bd3..a90292e 100644
          )
          .await
      }
-@@ -1659,6 +1661,7 @@ impl ThreadRequestProcessor {
+@@ -1696,6 +1698,7 @@ impl ThreadRequestProcessor {
                  thread_id,
                  request_id.connection_id,
                  experimental_raw_events,
@@ -188,7 +224,7 @@ index 64f8bd3..a90292e 100644
              )
              .instrument(tracing::info_span!(
                  "app_server.thread_start.attach_listener",
-@@ -4406,11 +4409,16 @@ impl ThreadRequestProcessor {
+@@ -4414,11 +4417,16 @@ impl ThreadRequestProcessor {
                      None
                  };
                  // Auto-attach a thread listener when resuming a thread.
@@ -206,7 +242,7 @@ index 64f8bd3..a90292e 100644
                      )
                      .await,
                      thread_id,
-@@ -4570,6 +4578,7 @@ impl ThreadRequestProcessor {
+@@ -4578,6 +4586,7 @@ impl ThreadRequestProcessor {
                  codex_thread
                      .emit_thread_idle_lifecycle_if_idle(ThreadIdleCause::Completed)
                      .await;
@@ -215,10 +251,10 @@ index 64f8bd3..a90292e 100644
              Err(err) => {
                  let error = match err.details() {
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index c78613c..4e530f7 100644
+index eeed287..753ce19 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -1717,6 +1717,7 @@ impl TurnRequestProcessor {
+@@ -1555,6 +1555,7 @@ impl TurnRequestProcessor {
              conversation_id,
              connection_id,
              raw_events_enabled,
@@ -227,10 +263,10 @@ index c78613c..4e530f7 100644
          .await
      }
 diff --git a/codex-rs/app-server/src/thread_state.rs b/codex-rs/app-server/src/thread_state.rs
-index 5f0bbe5..a4ffee7 100644
+index a712ee2..c9bd9c5 100644
 --- a/codex-rs/app-server/src/thread_state.rs
 +++ b/codex-rs/app-server/src/thread_state.rs
-@@ -163,6 +163,20 @@ impl ThreadState {
+@@ -191,6 +191,20 @@ impl ThreadState {
          (listener_command_rx, self.listener_generation)
      }
  
@@ -251,7 +287,7 @@ index 5f0bbe5..a4ffee7 100644
      pub(crate) fn clear_listener(&mut self) {
          if let Some(cancel_tx) = self.cancel_tx.take() {
              let _ = cancel_tx.send(());
-@@ -289,6 +303,46 @@ mod tests {
+@@ -311,6 +325,46 @@ mod tests {
      use codex_utils_absolute_path::AbsolutePathBuf;
      use pretty_assertions::assert_eq;
  
@@ -388,10 +424,10 @@ index a72104a..d59d1f0 100644
      let skill_dir = root.path().join("skills").join(name);
      std::fs::create_dir_all(&skill_dir)?;
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index d156184..1b43479 100644
+index f365c4e..63d5bee 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -1688,7 +1688,7 @@ impl Session {
+@@ -1708,7 +1708,7 @@ impl Session {
                  None
              }
              InitialHistory::Resumed(resumed_history) => {
@@ -400,7 +436,7 @@ index d156184..1b43479 100644
                  let rollout_items = resumed_history.history;
                  if matches!(
                      rollout_items.iter().rev().find_map(|item| match item {
-@@ -1761,7 +1761,7 @@ impl Session {
+@@ -1781,7 +1781,7 @@ impl Session {
                  None
              }
              InitialHistory::Forked(mut rollout_items) => {
@@ -659,10 +695,10 @@ index 0000000..0a25f48
 +    assert!(!context.model_info().slug.is_empty());
 +}
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index 59c926b..dfc4a41 100644
+index 52325c5..c476098 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
-@@ -48,8 +48,15 @@ use codex_sandboxing::SandboxType;
+@@ -49,8 +49,15 @@ use codex_sandboxing::SandboxType;
  use codex_skills::SkillError;
  use codex_utils_git_discovery::GitRootDiscovery;
  use codex_utils_path::replace_path_and_deduplicate;
@@ -678,7 +714,7 @@ index 59c926b..dfc4a41 100644
  
  type McpToolApprovalMetadataMap =
      HashMap<(String, String), std::sync::Weak<McpToolApprovalContext>>;
-@@ -90,6 +97,8 @@ pub(crate) struct Session {
+@@ -91,6 +98,8 @@ pub(crate) struct Session {
      pub(super) mcp_prewarm_tx: async_channel::Sender<()>,
      pub(super) mcp_prewarm_shutdown: CancellationToken,
      pub(super) mcp_prewarm_task: std::sync::Mutex<Option<JoinHandle<()>>>,
@@ -687,7 +723,7 @@ index 59c926b..dfc4a41 100644
      pub(crate) conversation: Arc<RealtimeConversationManager>,
      pub(crate) realtime_history: Option<Mutex<crate::realtime_history::RealtimeHistoryState>>,
      pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
-@@ -637,6 +646,11 @@ pub(crate) struct AppServerClientMetadata {
+@@ -638,6 +647,11 @@ pub(crate) struct AppServerClientMetadata {
      pub(crate) client_version: Option<String>,
  }
  
@@ -744,7 +780,7 @@ index 59c926b..dfc4a41 100644
              session_configuration.thread_name = thread_name.clone();
              let mut state = SessionState::new_with_auto_compact_window_ids(
                  session_configuration.clone(),
-@@ -1864,6 +1857,37 @@ impl Session {
+@@ -1894,6 +1887,37 @@ impl Session {
                  turn_environments: Arc::clone(&turn_environments),
              };
              let (mcp_prewarm_tx, mcp_prewarm_rx) = async_channel::bounded(1);
@@ -782,7 +818,7 @@ index 59c926b..dfc4a41 100644
              let sess = Arc::new(Session {
                  thread_id,
                  installation_id,
-@@ -1884,8 +1908,9 @@ impl Session {
+@@ -1914,8 +1938,9 @@ impl Session {
                  mcp_elicitation_reviewer_handle: OnceLock::new(),
                  mcp_elicitation_lifecycle_handle: OnceLock::new(),
                  mcp_prewarm_tx,
@@ -794,10 +830,10 @@ index 59c926b..dfc4a41 100644
                  realtime_history: (session_configuration.history_mode
                      == ThreadHistoryMode::Paginated
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index a8525d2..ae6a29f 100644
+index 9bb8aa2..bb4311d 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -7073,6 +7073,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+@@ -7165,6 +7165,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
          mcp_prewarm_tx: async_channel::bounded(1).0,
          mcp_prewarm_shutdown: CancellationToken::new(),
          mcp_prewarm_task: std::sync::Mutex::new(None),
@@ -805,7 +841,7 @@ index a8525d2..ae6a29f 100644
          conversation: Arc::new(RealtimeConversationManager::new()),
          realtime_history: None,
          active_turn: Mutex::new(None),
-@@ -9367,6 +9368,7 @@ where
+@@ -9488,6 +9489,7 @@ where
          mcp_prewarm_tx: async_channel::bounded(1).0,
          mcp_prewarm_shutdown: CancellationToken::new(),
          mcp_prewarm_task: std::sync::Mutex::new(None),
@@ -813,14 +849,14 @@ index a8525d2..ae6a29f 100644
          conversation: Arc::new(RealtimeConversationManager::new()),
          realtime_history: None,
          active_turn: Mutex::new(None),
-@@ -13651,3 +13653,5 @@ async fn rejected_mcp_refresh_then_corrected_user_config_blocks_ordinary_replace
+@@ -13819,3 +13821,5 @@ async fn rejected_mcp_refresh_then_corrected_user_config_blocks_ordinary_replace
          "rejection must not permit same-name ordinary-auth replacement in this session"
      );
  }
 +#[path = "resume_warmup_tests.rs"]
 +mod resume_warmup_tests;
 diff --git a/codex-rs/core/src/session/turn_context.rs b/codex-rs/core/src/session/turn_context.rs
-index b31eeca..b0f0b14 100644
+index c08333d..6109ab9 100644
 --- a/codex-rs/core/src/session/turn_context.rs
 +++ b/codex-rs/core/src/session/turn_context.rs
 @@ -394,6 +394,10 @@ enum TurnContextBuildMode {
@@ -834,7 +870,7 @@ index b31eeca..b0f0b14 100644
      /// Captures recording settings without updating shared model/multi-agent metadata
      /// or discovering skills. Must not initialize context or capture an execution step.
      InjectItems,
-@@ -1276,6 +1280,21 @@ impl Session {
+@@ -1273,6 +1277,21 @@ impl Session {
          build_mode: TurnContextBuildMode,
          git_enrichment_policy: GitEnrichmentPolicy,
      ) -> Arc<TurnContext> {
@@ -856,7 +892,7 @@ index b31eeca..b0f0b14 100644
          let primary_turn_environment = turn_environments.primary();
          let per_turn_config =
              self.build_per_turn_config(&session_configuration, turn_environments.local_selection());
-@@ -1295,8 +1314,8 @@ impl Session {
+@@ -1292,8 +1311,8 @@ impl Session {
              )
              .await;
          let multi_agent_version = match build_mode {
@@ -866,8 +902,8 @@ index b31eeca..b0f0b14 100644
 +                // Execution and history restoration publish model metadata.
                  self.services
                      .thread_extension_data
-                     .insert(model_info.clone());
-@@ -1310,22 +1329,28 @@ impl Session {
+                     .insert_arc(Arc::clone(&model_info.model));
+@@ -1307,22 +1326,28 @@ impl Session {
              }
          };
          let plugins_input = per_turn_config.plugins_config_input();
@@ -908,7 +944,7 @@ index b31eeca..b0f0b14 100644
          {
              // Executor and orchestrator catalogs are supplied independently of host skills.
              HostSkillsSnapshot::new(Arc::new(SkillLoadOutcome::default()))
-@@ -1454,6 +1479,13 @@ impl Session {
+@@ -1449,6 +1474,13 @@ impl Session {
          self.new_default_turn_for(TurnContextBuildMode::Full).await
      }
  
@@ -923,7 +959,7 @@ index b31eeca..b0f0b14 100644
      /// This context must not be used to capture or execute a step.
      pub(crate) async fn new_inject_items_context(&self) -> Arc<TurnContext> {
 diff --git a/codex-rs/core/tests/suite/skills_extension.rs b/codex-rs/core/tests/suite/skills_extension.rs
-index 7ac7a57..d16c2f7 100644
+index d941aae..ac3e797 100644
 --- a/codex-rs/core/tests/suite/skills_extension.rs
 +++ b/codex-rs/core/tests/suite/skills_extension.rs
 @@ -68,6 +68,7 @@ use codex_protocol::request_permissions::RequestPermissionsResponse;
@@ -934,7 +970,7 @@ index 7ac7a57..d16c2f7 100644
  use codex_skills_extension::SkillProvider;
  use codex_skills_extension::SkillProviderSource;
  use codex_skills_extension::SkillProviders;
-@@ -2886,6 +2887,29 @@ async fn production_turn_warns_and_omits_unreadable_host_skill() -> Result<()> {
+@@ -2887,6 +2888,29 @@ async fn production_turn_warns_and_omits_unreadable_host_skill() -> Result<()> {
          .with_config(configure_catalog_test);
      let test = builder.build_with_auto_env(&server).await?;
  

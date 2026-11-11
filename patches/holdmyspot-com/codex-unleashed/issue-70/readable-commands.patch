@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:41:04 -0500
-Subject: [PATCH] Keep command previews readable and expandable
+Subject: [PATCH 16/54] Keep command previews readable and expandable
 
 Collapsed command previews keep executable names and arguments visible, shortening directory prefixes only when a path exceeds the available width. Clicking a command or its preview expands the full command and retained output, keyboard disclosure applies too, and block copy uses the original command. The stable unleashed_readable_commands feature, enabled by default, controls the presentation.
 ---
@@ -36,10 +36,10 @@ Collapsed command previews keep executable names and arguments visible, shorteni
  create mode 100644 codex-rs/tui/src/transcript_view/commands.rs
 
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index e3434f9..3759ee7 100644
+index f5a0445..52578da 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1440,6 +1440,9 @@
+@@ -1464,6 +1464,9 @@
              "unleashed_expanded_diff_previews": {
                "type": "boolean"
              },
@@ -49,7 +49,7 @@ index e3434f9..3759ee7 100644
              "untrusted_as_tool_output": {
                "type": "boolean"
              },
-@@ -8105,6 +8108,9 @@
+@@ -8195,6 +8198,9 @@
          "unleashed_expanded_diff_previews": {
            "type": "boolean"
          },
@@ -60,7 +60,7 @@ index e3434f9..3759ee7 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index e01860a..5d7a36d 100644
+index 029f2f8..2a2a882 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
 @@ -97,6 +97,8 @@ impl Stage {
@@ -72,7 +72,7 @@ index e01860a..5d7a36d 100644
      /// Expand patch diffs in the owned fullscreen transcript.
      UnleashedExpandedDiffPreviews,
      /// Preview consumer five-hour and weekly allowance history.
-@@ -1078,6 +1080,12 @@ pub struct FeatureSpec {
+@@ -1094,6 +1096,12 @@ pub struct FeatureSpec {
  }
  
  pub const FEATURES: &[FeatureSpec] = &[
@@ -86,10 +86,10 @@ index e01860a..5d7a36d 100644
          id: Feature::UnleashedExpandedDiffPreviews,
          key: "unleashed_expanded_diff_previews",
 diff --git a/codex-rs/features/src/tests.rs b/codex-rs/features/src/tests.rs
-index 8368240..f38c5b0 100644
+index fe85d34..244c85f 100644
 --- a/codex-rs/features/src/tests.rs
 +++ b/codex-rs/features/src/tests.rs
-@@ -992,3 +992,18 @@ fn unleashed_collapsed_tool_activity_is_enabled_by_default_and_can_be_disabled()
+@@ -1010,3 +1010,18 @@ fn unleashed_collapsed_tool_activity_is_enabled_by_default_and_can_be_disabled()
      )]));
      assert!(!features.enabled(feature));
  }
@@ -871,10 +871,10 @@ index b4142a3..9536616 100644
              styles: Arc::clone(&self.styles),
              line_style: self.line_style,
 diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
-index d3d531d..c009314 100644
+index 51f7092..fede4b8 100644
 --- a/codex-rs/tui/src/thread_transcript.rs
 +++ b/codex-rs/tui/src/thread_transcript.rs
-@@ -142,6 +142,11 @@ pub(crate) fn thread_items_to_transcript_cells(
+@@ -148,6 +148,11 @@ pub(crate) fn thread_items_to_transcript_cells(
              });
      let mut cells: TranscriptCells = Vec::new();
      let mut pending = None;
@@ -886,7 +886,7 @@ index d3d531d..c009314 100644
      for item in items {
          if matches!(item, ThreadItemPayload::Reasoning { .. })
              && let Some(group) = &mut pending
-@@ -159,7 +164,13 @@ pub(crate) fn thread_items_to_transcript_cells(
+@@ -165,7 +170,13 @@ pub(crate) fn thread_items_to_transcript_cells(
              }
              continue;
          }
@@ -901,7 +901,7 @@ index d3d531d..c009314 100644
              PendingActivity::flush(&mut pending, &mut cells);
              cells.push(Arc::new(cell));
              continue;
-@@ -192,7 +203,9 @@ pub(crate) fn thread_items_to_transcript_cells(
+@@ -198,7 +209,9 @@ pub(crate) fn thread_items_to_transcript_cells(
                  if matches!(pending, Some(PendingActivity::Computer(_))) {
                      PendingActivity::flush(&mut pending, &mut cells);
                  }
@@ -1065,7 +1065,7 @@ index 13149cb..bc9ce57 100644
 +    }
 +}
 diff --git a/codex-rs/tui/src/transcript_view.rs b/codex-rs/tui/src/transcript_view.rs
-index 80b5958..02084ad 100644
+index 6bb78bb..8b8be5b 100644
 --- a/codex-rs/tui/src/transcript_view.rs
 +++ b/codex-rs/tui/src/transcript_view.rs
 @@ -7,6 +7,7 @@
@@ -1095,7 +1095,7 @@ index 80b5958..02084ad 100644
              composer_tip: None,
              turn_tip_key: None,
              cache: LayoutCache::default(),
-@@ -364,8 +370,14 @@ impl TranscriptView {
+@@ -368,8 +374,14 @@ impl TranscriptView {
              .disclosure
              .keymap
              .primary_hint(crate::keymap::KeymapContext::Global, "open_transcript");
@@ -1210,10 +1210,10 @@ index 0000000..b342ac4
 +    }
 +}
 diff --git a/codex-rs/tui/src/transcript_view/disclosure.rs b/codex-rs/tui/src/transcript_view/disclosure.rs
-index c0ce70b..40858fd 100644
+index 04622b2..623ea32 100644
 --- a/codex-rs/tui/src/transcript_view/disclosure.rs
 +++ b/codex-rs/tui/src/transcript_view/disclosure.rs
-@@ -329,7 +329,7 @@ impl TranscriptView {
+@@ -340,7 +340,7 @@ impl TranscriptView {
          true
      }
  
@@ -1241,12 +1241,12 @@ index addb462..6cdd15e 100644
              return self.disclosure_footer(width);
          }
 diff --git a/codex-rs/tui/src/transcript_view/input.rs b/codex-rs/tui/src/transcript_view/input.rs
-index d8ba4cf..a7487ac 100644
+index d496c37..ed92b47 100644
 --- a/codex-rs/tui/src/transcript_view/input.rs
 +++ b/codex-rs/tui/src/transcript_view/input.rs
-@@ -289,6 +289,11 @@ impl TranscriptView {
+@@ -295,6 +295,11 @@ impl TranscriptView {
          cells: &[Arc<dyn HistoryCell>],
-         mode: MouseMode,
+         mode: MouseMode<'_>,
      ) -> Option<ViewAction> {
 +        if let Some(action) =
 +            self.handle_command_mouse(event, cells, mode == MouseMode::Interactive)
@@ -1256,16 +1256,16 @@ index d8ba4cf..a7487ac 100644
          let pointer_changed =
              if mode == MouseMode::Interactive && event.kind == MouseEventKind::Moved {
                  let point = (event.column, event.row);
-@@ -519,6 +524,9 @@ impl TranscriptView {
-     ) -> Option<ViewAction> {
-         if mode == MouseMode::Interactive
+@@ -526,6 +531,9 @@ impl TranscriptView {
+         let was_following = self.is_following();
+         if !self.is_select_mode()
              && event.modifiers.is_empty()
 +            && self
 +                .command_at(ScreenPosition::new(event.column, event.row))
 +                .is_none()
              && self.toggle_disclosure_at(cells, event.column, event.row)
          {
-             return Some(ViewAction::Changed);
+             // Keep the patch anchored for inspection, then follow again when the prompt closes.
 diff --git a/codex-rs/tui/src/transcript_view/layout.rs b/codex-rs/tui/src/transcript_view/layout.rs
 index 268b2f9..4d3a06a 100644
 --- a/codex-rs/tui/src/transcript_view/layout.rs
@@ -1441,7 +1441,7 @@ index 1164f1c..3c857d5 100644
              leading_blank_hidden: false,
              disclosure_control: None,
 diff --git a/codex-rs/tui/src/transcript_view_tests.rs b/codex-rs/tui/src/transcript_view_tests.rs
-index e8510a7..46cd92d 100644
+index 5295878..8362408 100644
 --- a/codex-rs/tui/src/transcript_view_tests.rs
 +++ b/codex-rs/tui/src/transcript_view_tests.rs
 @@ -182,6 +182,275 @@ fn detailed_only_reasoning_separates_user_prompts() {
@@ -1720,7 +1720,7 @@ index e8510a7..46cd92d 100644
  #[test]
  fn page_keys_follow_pager_scroll_bindings() {
      let cells = [cell(
-@@ -1479,3 +1748,119 @@ fn unleashed_collapsed_tool_activity_live_output_count_and_narrow_failure_stay_v
+@@ -1556,3 +1825,119 @@ fn unleashed_collapsed_tool_activity_live_output_count_and_narrow_failure_stay_v
      );
      assert!(raw.contains("failure details"));
  }

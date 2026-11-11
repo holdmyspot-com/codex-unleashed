@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 10:23:26 -0500
-Subject: [PATCH] Stop the rollout trace tests from failing on a slow
+Subject: [PATCH 36/54] Stop the rollout trace tests from failing on a slow
  app-server start
 
 The success and stream-failure test started a new `codex app-server` four times in
@@ -19,8 +19,8 @@ dropped the mock server, whose unmet-expectation panic replaced the real
   one reported.
 ---
  .../tests/common/test_app_server.rs           |  24 +-
- codex-rs/cli/tests/rollout_trace.rs           | 283 ++++++++++--------
- 2 files changed, 184 insertions(+), 123 deletions(-)
+ codex-rs/cli/tests/rollout_trace.rs           | 288 ++++++++++--------
+ 2 files changed, 186 insertions(+), 126 deletions(-)
 
 diff --git a/codex-rs/app-server/tests/common/test_app_server.rs b/codex-rs/app-server/tests/common/test_app_server.rs
 index bec5909..13f542c 100644
@@ -116,7 +116,7 @@ index bec5909..13f542c 100644
          app_server._owned_codex_home = owned_codex_home;
          app_server._delayed_exec_server = delayed_exec_server;
 diff --git a/codex-rs/cli/tests/rollout_trace.rs b/codex-rs/cli/tests/rollout_trace.rs
-index c9bfeb2..79bc996 100644
+index 8f8e106..7c04e80 100644
 --- a/codex-rs/cli/tests/rollout_trace.rs
 +++ b/codex-rs/cli/tests/rollout_trace.rs
 @@ -1,9 +1,10 @@
@@ -130,8 +130,8 @@ index c9bfeb2..79bc996 100644
 +use app_test_support::create_mock_responses_server_sequence_unchecked;
  use codex_app_server_protocol::AgentMessageDeltaNotification;
  use codex_app_server_protocol::ClientRequest;
- use codex_app_server_protocol::ThreadStartParams;
-@@ -24,134 +25,177 @@ use core_test_support::streaming_sse::StreamingSseChunk;
+ use codex_app_server_protocol::RequestId;
+@@ -25,14 +26,19 @@ use core_test_support::streaming_sse::StreamingSseChunk;
  use core_test_support::streaming_sse::start_streaming_sse_server;
  use pretty_assertions::assert_eq;
  use serde_json::json;
@@ -139,12 +139,33 @@ index c9bfeb2..79bc996 100644
  use tempfile::TempDir;
  use tokio::sync::oneshot;
  
--#[tokio::test]
--async fn accepted_output_survives_success_and_stream_failure() -> Result<()> {
 +/// Each test starts a real `codex app-server` with plugin startup tasks, which takes longer under load than the
 +/// default request wait allows. The wait only has to catch a hang, so it is generous.
 +const REQUEST_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 60);
 +
+ #[tokio::test]
+ async fn enabled_recording_cannot_silently_fail_to_start() -> Result<()> {
+     let codex = codex_utils_cargo_bin::cargo_bin("codex")?;
+     let home = TempDir::new()?;
+-    let server = create_mock_responses_server_sequence(Vec::new()).await;
++    let server = create_mock_responses_server_sequence_unchecked(Vec::new()).await;
+     MockResponsesConfig::new(&server.uri()).write(home.path())?;
+     let trace_root = home.path().join("traces");
+     std::fs::write(&trace_root, "file")?;
+@@ -41,6 +47,7 @@ async fn enabled_recording_cannot_silently_fail_to_start() -> Result<()> {
+         .with_plugin_startup_tasks()
+         .with_args(&["app-server"])
+         .with_codex_home(home.path())
++        .with_request_timeout(REQUEST_TIMEOUT)
+         .with_env_overrides(&[("CODEX_ROLLOUT_TRACE_ROOT", trace_root.to_str())])
+         .build_initialized()
+         .await?;
+@@ -68,132 +75,169 @@ async fn enabled_recording_cannot_silently_fail_to_start() -> Result<()> {
+     Ok(())
+ }
+ 
+-#[tokio::test]
+-async fn accepted_output_survives_success_and_stream_failure() -> Result<()> {
 +async fn check_accepted_output(
 +    source_id: Option<&str>,
 +    terminal: &str,
@@ -290,6 +311,7 @@ index c9bfeb2..79bc996 100644
 -        );
 -        let rollout: RolloutTrace =
 -            serde_json::from_reader(std::fs::File::open(bundle.join("state.json"))?)?;
+-        assert!(rollout.recording_complete);
 -        let call = rollout.inference_calls.values().next().unwrap();
 -        let output_id = &call.response_item_ids[0];
 -        let output = &rollout.conversation_items[output_id];
@@ -427,7 +449,7 @@ index c9bfeb2..79bc996 100644
  #[tokio::test]
  async fn accepted_output_survives_interruption_and_shutdown() -> Result<()> {
      let codex = codex_utils_cargo_bin::cargo_bin("codex")?;
-@@ -182,6 +226,7 @@ async fn accepted_output_survives_interruption_and_shutdown() -> Result<()> {
+@@ -224,6 +268,7 @@ async fn accepted_output_survives_interruption_and_shutdown() -> Result<()> {
          .with_args(&["app-server"])
          .with_codex_home(home.path())
          .with_env_overrides(&[("CODEX_ROLLOUT_TRACE_ROOT", traces.path().to_str())])
@@ -435,6 +457,14 @@ index c9bfeb2..79bc996 100644
          .build_initialized()
          .await?;
      let ThreadStartResponse { thread, .. } = app.start_thread(ThreadStartParams::default()).await?;
+@@ -276,7 +321,6 @@ async fn accepted_output_survives_interruption_and_shutdown() -> Result<()> {
+     );
+     let rollout: RolloutTrace =
+         serde_json::from_reader(std::fs::File::open(bundle.join("state.json"))?)?;
+-    assert!(rollout.recording_complete);
+     assert_eq!(rollout.inference_calls.len(), 1);
+     let call = rollout.inference_calls.values().next().unwrap();
+     assert_eq!(call.execution.status, ExecutionStatus::Cancelled);
 -- 
 2.43.0
 

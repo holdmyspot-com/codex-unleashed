@@ -1,8 +1,8 @@
-From bd6114e55bac9d82bb3b2687acd2b52ab3f52bf4 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 23:26:22 -0500
-Subject: [PATCH] Require the platforms and rules_cc versions Bazel already
- resolves
+Subject: [PATCH 24/54] Require the platforms and rules_cc versions Bazel
+ already resolves
 
 Other modules require platforms 1.1.0 and rules_cc 0.2.20, so Bazel warns
 that the root module asks for older versions than it gets. Raise the root
@@ -13,7 +13,7 @@ requirements to match; the resolved graph is unchanged.
  2 files changed, 2 insertions(+), 4 deletions(-)
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 73eed67..3e513f2 100644
+index 1d00dc3..22e185c 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -2,7 +2,7 @@ module(name = "codex")
@@ -35,7 +35,7 @@ index 73eed67..3e513f2 100644
  # Windows voice jobs explicitly select the installed MSVC C toolchains.
  cc_configure = use_extension("@rules_cc//cc:extensions.bzl", "cc_configure_extension")
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index f52fcb2..181fbf8 100644
+index 223f3dc..8fde4a2 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
 @@ -48,7 +48,6 @@

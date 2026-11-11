@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:35:08 -0500
-Subject: [PATCH] Keep active-goal parents available while children run
+Subject: [PATCH 14/54] Keep active-goal parents available while children run
 
 Automatic goal continuation no longer starts a parent turn while a V2 child is still running. The goal stays active, the parent can answer unrelated prompts, and the child's completion resumes the parent to finish the goal.
 ---
@@ -314,7 +314,7 @@ index 0000000..77f5fe0
 +    Ok(())
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/turn_start.rs b/codex-rs/app-server/tests/suite/v2/turn_start.rs
-index eae342d..1bd1d41 100644
+index 154f152..592cc80 100644
 --- a/codex-rs/app-server/tests/suite/v2/turn_start.rs
 +++ b/codex-rs/app-server/tests/suite/v2/turn_start.rs
 @@ -120,6 +120,9 @@ use super::analytics::mount_analytics_capture;
@@ -328,10 +328,10 @@ index eae342d..1bd1d41 100644
  const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(25);
  #[cfg(not(windows))]
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 0b5ea87..3d0042f 100644
+index a8d5865..32ad753 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -1067,6 +1067,45 @@ impl CodexThread {
+@@ -1179,6 +1179,45 @@ impl CodexThread {
          self.session.multi_agent_version()
      }
  

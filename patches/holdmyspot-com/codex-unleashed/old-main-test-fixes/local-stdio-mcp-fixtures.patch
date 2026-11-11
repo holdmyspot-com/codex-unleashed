@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:13 -0500
-Subject: [PATCH] test: provide the local runtime capabilities required by MCP
- fixtures
+Subject: [PATCH 48/54] test: provide the local runtime capabilities required
+ by MCP fixtures
 
 Host Python stdio servers require an explicitly registered local environment
 and an existing host cwd when the primary executor lives in a container.

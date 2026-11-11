@@ -1,7 +1,7 @@
 # Readable command previews
 
 - Issue: [holdmyspot-com/codex-unleashed#70](https://github.com/holdmyspot-com/codex-unleashed/issues/70)
-- Applies to: upstream `openai/codex` main, commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`.
+- Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 - Prerequisites: the release queue through `issue-35/0003-defer-goal-continuation-to-live-children.patch`. Its rendering hunks share entry points with `collapsed-tool-activity`, and its schema entry sits next to the other `unleashed_*` features.
 - Upstream status: absent upstream.
 

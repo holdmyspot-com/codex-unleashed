@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:13 -0500
-Subject: [PATCH] test: keep generic UI fixtures from starting plugin
+Subject: [PATCH 47/54] test: keep generic UI fixtures from starting plugin
  marketplace sync
 
 Generic TUI fixtures use a fresh Codex home and started the real plugin

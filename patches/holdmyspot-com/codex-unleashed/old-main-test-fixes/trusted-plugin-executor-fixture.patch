@@ -1,14 +1,15 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:13 -0500
-Subject: [PATCH] test: arrange trusted plugin scripts on the selected executor
+Subject: [PATCH 50/54] test: arrange trusted plugin scripts on the selected
+ executor
 
 ---
  .../app-server/tests/suite/v2/turn_start.rs   | 86 +++++++++++++++----
  1 file changed, 71 insertions(+), 15 deletions(-)
 
 diff --git a/codex-rs/app-server/tests/suite/v2/turn_start.rs b/codex-rs/app-server/tests/suite/v2/turn_start.rs
-index 1bd1d41..cc8f5e6 100644
+index 592cc80..1d6ccb2 100644
 --- a/codex-rs/app-server/tests/suite/v2/turn_start.rs
 +++ b/codex-rs/app-server/tests/suite/v2/turn_start.rs
 @@ -75,6 +75,7 @@ use codex_app_server_protocol::TurnSteerParams;
@@ -19,7 +20,7 @@ index 1bd1d41..cc8f5e6 100644
  use codex_exec_server::LOCAL_ENVIRONMENT_ID;
  use codex_features::Feature;
  use codex_login::AuthCredentialsStoreMode;
-@@ -5723,7 +5724,6 @@ async fn command_execution_notifications_include_trusted_plugin_id(
+@@ -5721,7 +5722,6 @@ async fn command_execution_notifications_include_trusted_plugin_id(
      skip_if_wine_exec!(Ok(()), "plugin attribution fixture is Unix-only");
  
      let codex_home = TempDir::new()?;
@@ -27,7 +28,7 @@ index 1bd1d41..cc8f5e6 100644
      let launch_failed = expected_status == CommandExecutionStatus::Failed;
      let curated_sha = "0123456789abcdef0123456789abcdef01234567";
      let plugin_root = codex_home
-@@ -5760,19 +5760,7 @@ async fn command_execution_notifications_include_trusted_plugin_id(
+@@ -5758,19 +5758,7 @@ async fn command_execution_notifications_include_trusted_plugin_id(
    }]
  }"#,
      )?;
@@ -48,7 +49,7 @@ index 1bd1d41..cc8f5e6 100644
      MockResponsesConfig::new(&server.uri())
          .with_approval_policy("on-request")
          .with_sandbox_mode("danger-full-access")
-@@ -5787,6 +5775,73 @@ async fn command_execution_notifications_include_trusted_plugin_id(
+@@ -5785,6 +5773,73 @@ async fn command_execution_notifications_include_trusted_plugin_id(
          .with_codex_home(codex_home.path())
          .build_initialized()
          .await?;
@@ -122,7 +123,7 @@ index 1bd1d41..cc8f5e6 100644
      let ThreadStartResponse { thread, .. } = mcp
          .start_thread(ThreadStartParams {
              model: Some("mock-model".to_string()),
-@@ -5825,7 +5880,8 @@ async fn command_execution_notifications_include_trusted_plugin_id(
+@@ -5823,7 +5878,8 @@ async fn command_execution_notifications_include_trusted_plugin_id(
                          (Some("google-calendar@openai-api-curated"), "scripts/run.sh")
                      );
                      assert!(

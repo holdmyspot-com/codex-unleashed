@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:12 -0500
-Subject: [PATCH] test: retain SystemRoot in the Windows shell policy fixture
+Subject: [PATCH 42/54] test: retain SystemRoot in the Windows shell policy
+ fixture
 
 Keep the Windows PowerShell initialization prerequisite while verifying that the explicit shell policy preserves KEEP and removes unrelated variables. Require a successful exit before checking output. The existing Wine guard excludes nonnative Windows and this fixture does not support an arbitrary remote Windows executor.
 

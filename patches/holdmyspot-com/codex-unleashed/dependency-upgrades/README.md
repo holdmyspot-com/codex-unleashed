@@ -1,8 +1,8 @@
 # Dependency upgrades (CP7)
 
-- Applies to: upstream `openai/codex` main, commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`.
+- Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 - Prerequisites: every earlier patch in the queue, through `rust-toolchain/rust-1.99.patch` (patch 28).
-- Patches, in order: `compatible-updates.patch`, `latest-releases.patch`, `regenerated-outputs.patch`, `serde-saphyr.patch`, `release-adaptations.patch`, `transitive-updates.patch`.
+- Patches, in order: `compatible-updates.patch`, `latest-releases.patch`, `serde-saphyr.patch`, `release-adaptations.patch`, `transitive-updates.patch`.
 
 ## Intent
 
@@ -25,9 +25,9 @@ Raises the direct requirements to their latest stable major releases under Rust 
 
 The upgrade moves 148 direct dependencies, which forces 177 transitive packages to new versions, adds 24 and removes 14. None of the 177 can return to its old version: each reverted alone fails cargo's resolver with a "required by package" constraint from an upgraded package.
 
-### regenerated-outputs.patch
+### Regenerated outputs
 
-Regenerates what the upgrades change, each with upstream's own generator: the app-server JSON schemas and TypeScript bindings, the Python SDK models and `MODULE.bazel.lock`.
+There is no separate regenerated-outputs patch. Each patch carries the files its own change regenerates, produced with upstream's generators on the queue up to that patch (`baseline-platform-lints.yml` with `generators="app-server-schema config-schema hooks-schema bazel-lock"`, runs `42934098328` to `42934201124` and `42935939271`). `latest-releases.patch` holds the app-server JSON schemas and TypeScript bindings, the Python SDK models and the `config.schema.json` changes that schemars 1 and ts-rs 12 cause, and `MODULE.bazel.lock` follows in whichever patch changes the lockfile: `compatible-updates.patch`, `latest-releases.patch`, `serde-saphyr.patch`, `release-adaptations.patch` and `transitive-updates.patch`.
 
 The web.run tool schema changes only in form under schemars 1: `minimum` is written `0` instead of `0.0`, and `required` lists fields in declaration order instead of alphabetical order (schema dump runs `42673538018` against `42673542514`). `release-adaptations.patch` accepts the new thread-sample hashes.
 
@@ -90,3 +90,7 @@ The platform, macOS and Windows lint workflows and the Linux test workflow run o
 `sandbox_with_network_proxy_blocks_direct_loopback_access` timed out because the workflow's job-wide curl retry configuration retried the refused connection the test expects; the Linux test workflow no longer applies that configuration to the test steps, and focused run `42746049933` passes it.
 
 `local_compaction_retries_preserve_instructions_and_tool_metadata::metadata_enabled` runs close to its 60-second limit on unpatched upstream as well and times out on loaded runners (34-patch run `42712983966`). See [upstream-failure-comparison.md](../../../../docs/upstream-failure-comparison.md).
+
+## Rebase onto rust-v0.167.0
+
+`latest-releases.patch`, `serde-saphyr.patch`, `transitive-updates.patch` and the regenerated-outputs patch (now folded into the patches above) needed conflict resolution; `compatible-updates.patch` applied after its lockfile was regenerated. Beyond the conflicts, the rebase needed these source changes: `latest-releases.patch` adds `register_with_interest` in `exec-server/src/server/missing_watch.rs` for tokio 1.54's `AsyncFd`, and `release-adaptations.patch` adapts tokio-util's `Bytes::from` and the OpenTelemetry data in the exec-server harness tests. `AsyncFd::new` is deprecated at this base, so the queue does not compile between `compatible-updates.patch` and `latest-releases.patch`.

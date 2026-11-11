@@ -1,7 +1,7 @@
-From d1d92d16438f7ba8cdaf8d8d9486b678d83b8c16 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 18:35:59 -0500
-Subject: [PATCH] Deny rustc lint warnings and linker messages in every
+Subject: [PATCH 25/54] Deny rustc lint warnings and linker messages in every
  workspace crate
 
 The workspace lint table set no rustc levels, so a new warning in Codex
@@ -21,7 +21,7 @@ hermetic LLVM toolchain's own link flags make clang++ warn that
  2 files changed, 12 insertions(+), 2 deletions(-)
 
 diff --git a/.bazelrc b/.bazelrc
-index 14b941c..7e53f24 100644
+index b62d2d0..b504262 100644
 --- a/.bazelrc
 +++ b/.bazelrc
 @@ -19,6 +19,12 @@ common --experimental_platform_in_output_dir
@@ -38,10 +38,10 @@ index 14b941c..7e53f24 100644
  build:windows --workspace_status_command=./scripts/workspace-status.cmd
  
 diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
-index 830308f..e37328c 100644
+index 0107584..f1b9ccf 100644
 --- a/codex-rs/Cargo.toml
 +++ b/codex-rs/Cargo.toml
-@@ -582,8 +582,12 @@ zstd = "0.13"
+@@ -587,8 +587,12 @@ zstd = "0.13"
  wiremock = "0.6"
  zeroize = "1.8.2"
  

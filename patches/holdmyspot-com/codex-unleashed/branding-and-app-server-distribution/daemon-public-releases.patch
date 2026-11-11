@@ -1,7 +1,7 @@
-From 1e1b8cbab02f722296154bc8d20f24b93a464e52 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 11:25:56 -0500
-Subject: [PATCH] Route public daemon updates to Codex Unleashed releases
+Subject: [PATCH 19/54] Route public daemon updates to Codex Unleashed releases
 
 Keep the public stable menu text and update lifecycle. Fetch installers and packages exclusively from holdmyspot-com/codex-unleashed, validate numbered vendor versions, and preserve pins and failure recovery.
 ---
@@ -121,7 +121,7 @@ index ef09b6d..1e0350f 100644
      let code_mode_host = Path::new(entrypoint).with_file_name(if cfg!(windows) {
          "codex-code-mode-host.exe"
 diff --git a/codex-rs/app-server-daemon/src/prepare_install_tests.rs b/codex-rs/app-server-daemon/src/prepare_install_tests.rs
-index ee33ca8..3753b29 100644
+index 48f389a..75f8d1e 100644
 --- a/codex-rs/app-server-daemon/src/prepare_install_tests.rs
 +++ b/codex-rs/app-server-daemon/src/prepare_install_tests.rs
 @@ -473,3 +473,30 @@ async fn broken_selection_is_not_a_missing_installation() {
@@ -194,7 +194,7 @@ index 3eaf610..2a5a240 100644
  
  #[tokio::test]
 diff --git a/scripts/install/install.ps1 b/scripts/install/install.ps1
-index e9d0bc8..cbe7a90 100644
+index 6ae0840..280d84c 100644
 --- a/scripts/install/install.ps1
 +++ b/scripts/install/install.ps1
 @@ -12,13 +12,7 @@ if ([string]::IsNullOrWhiteSpace($Release)) {
@@ -324,7 +324,7 @@ index e9d0bc8..cbe7a90 100644
      return Resolve-ReleaseFromGitHub -NormalizedVersion $normalizedVersion
  }
  
-@@ -901,9 +849,9 @@ function Maybe-HandleConflictingInstall {
+@@ -911,9 +859,9 @@ function Maybe-HandleConflictingInstall {
      $manager = $Conflict.Manager
  
      $uninstallArgs = if ($manager -eq "bun") {
@@ -336,7 +336,7 @@ index e9d0bc8..cbe7a90 100644
      }
      $uninstallCommand = if ($manager -eq "bun") { "bun" } else { "npm" }
  
-@@ -1006,7 +954,7 @@ Write-Step "Resolved version: $resolvedVersion"
+@@ -1016,7 +964,7 @@ Write-Step "Resolved version: $resolvedVersion"
  $conflictingInstall = if ($daemonOnly) { $null } else { Get-ConflictingInstall -VisibleBinDir $visibleBinDir }
  $oldStandaloneBackup = $null
  
@@ -346,7 +346,7 @@ index e9d0bc8..cbe7a90 100644
  $packageAsset = $assetSelection.PackageAsset
  $packageMetadata = $assetSelection.PackageMetadata
 diff --git a/scripts/install/install.sh b/scripts/install/install.sh
-index e40cb02..f1a60ac 100755
+index b79970f..2e232bb 100755
 --- a/scripts/install/install.sh
 +++ b/scripts/install/install.sh
 @@ -5,13 +5,10 @@ set -eu
@@ -510,7 +510,7 @@ index e40cb02..f1a60ac 100755
      return 1
    fi
  
-@@ -1079,10 +1020,10 @@ handle_conflicting_install() {
+@@ -1092,10 +1033,10 @@ handle_conflicting_install() {
        uninstall_cmd="brew uninstall --cask codex"
        ;;
      bun)
@@ -570,7 +570,7 @@ index 0000000..e7e98b9
 +if ($selection.PackageMetadata.Url -cne $resolved.Metadata.assets[0].browser_download_url) { throw 'Wrong package download URL.' }
 +Write-Output 'PowerShell release selection and version validation passed.'
 diff --git a/scripts/install/test_install_sh.py b/scripts/install/test_install_sh.py
-index ad69ac4..9b7f5ab 100644
+index bac85ed..beec4fe 100644
 --- a/scripts/install/test_install_sh.py
 +++ b/scripts/install/test_install_sh.py
 @@ -21,6 +21,68 @@ MISMATCH_VERSION = "0.145.0"
@@ -746,7 +746,7 @@ index ad69ac4..9b7f5ab 100644
      def test_daemon_install_preserves_visible_cli_and_profile(self) -> None:
          with tempfile.TemporaryDirectory() as temp_dir:
              root = Path(temp_dir).resolve()
-@@ -573,354 +610,6 @@ class InstallShTest(unittest.TestCase):
+@@ -625,354 +662,6 @@ class InstallShTest(unittest.TestCase):
                  (root / "codex-home/packages/standalone/auto-update-version").exists()
              )
  
@@ -1101,7 +1101,7 @@ index ad69ac4..9b7f5ab 100644
  
  def run_installer(
      release: str,
-@@ -995,7 +684,7 @@ def run_installer_in(
+@@ -1048,7 +737,7 @@ def run_installer_in(
                  fi
                  printf '%s\n' "$CODEX_TEST_RELEASES_METADATA_JSON"
                  ;;
@@ -1110,7 +1110,7 @@ index ad69ac4..9b7f5ab 100644
                  if [ "$CODEX_TEST_RELEASES_MODE" = "asset_fallback" ]; then
                    exit 22
                  fi
-@@ -1024,7 +713,7 @@ def run_installer_in(
+@@ -1077,7 +766,7 @@ def run_installer_in(
                    exit 22
                  fi
                  ;;
@@ -1119,7 +1119,7 @@ index ad69ac4..9b7f5ab 100644
                  if [ "$CODEX_TEST_RELEASES_MODE" = "corrupt_checksum_and_github" ]; then
                    printf '<html>proxy error</html>\n' >"$output"
                    exit 0
-@@ -1035,14 +724,14 @@ def run_installer_in(
+@@ -1088,14 +777,14 @@ def run_installer_in(
                    exit 22
                  fi
                  ;;
@@ -1136,7 +1136,7 @@ index ad69ac4..9b7f5ab 100644
                  if [ -n "$CODEX_TEST_LEGACY_ARCHIVE_PATH" ]; then
                    cp "$CODEX_TEST_LEGACY_ARCHIVE_PATH" "$output"
                  else
-@@ -1191,7 +880,7 @@ def create_package_release(
+@@ -1247,7 +936,7 @@ def create_package_release(
              archive.add(path, arcname=path.name)
  
      archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
@@ -1145,7 +1145,7 @@ index ad69ac4..9b7f5ab 100644
      checksum_path.write_text(f"{archive_digest}  {asset}\n", encoding="utf-8")
      checksum_digest = hashlib.sha256(checksum_path.read_bytes()).hexdigest()
      metadata_json = json.dumps(
-@@ -1199,7 +888,7 @@ def create_package_release(
+@@ -1255,7 +944,7 @@ def create_package_release(
              "assets": [
                  {"name": asset, "digest": f"sha256:{archive_digest}"},
                  {
@@ -1154,7 +1154,7 @@ index ad69ac4..9b7f5ab 100644
                      "digest": f"sha256:{checksum_digest}",
                  },
              ],
-@@ -1210,33 +899,6 @@ def create_package_release(
+@@ -1266,33 +955,6 @@ def create_package_release(
      return archive_path, checksum_path, metadata_json
  
  
@@ -1188,7 +1188,7 @@ index ad69ac4..9b7f5ab 100644
  def write_executable(path: Path, contents: str) -> None:
      path.write_text(contents, encoding="utf-8")
      path.chmod(0o755)
-@@ -1258,7 +920,7 @@ def release_metadata(*, compact: bool = False, reorder: bool = False) -> str:
+@@ -1314,7 +976,7 @@ def release_metadata(*, compact: bool = False, reorder: bool = False) -> str:
      ]
      assets.append(
          asset_metadata(
@@ -1197,7 +1197,7 @@ index ad69ac4..9b7f5ab 100644
              f"sha256:{'b' * 64}",
              reorder=reorder,
          )
-@@ -1292,9 +954,7 @@ def legacy_release_metadata_with_decoys() -> str:
+@@ -1348,9 +1010,7 @@ def legacy_release_metadata_with_decoys() -> str:
      ]
      return json.dumps(
          {

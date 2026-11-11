@@ -1,7 +1,7 @@
-From c89d18e80e1554ef39a106f8fba74e026c9eec42 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 19:20:42 -0500
-Subject: [PATCH] Write the MCP client's documentation links as rustdoc
+Subject: [PATCH 26/54] Write the MCP client's documentation links as rustdoc
  autolinks
 
 Rustdoc reports each bare URL in a doc comment as rustdoc::bare_urls,

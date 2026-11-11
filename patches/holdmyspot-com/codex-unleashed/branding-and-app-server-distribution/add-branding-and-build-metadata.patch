@@ -1,7 +1,7 @@
-From 100bf1e0861c1d78897f43e0994ef39e57a7f975 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 11:19:42 -0500
-Subject: [PATCH] Add Codex Unleashed branding and build metadata
+Subject: [PATCH 17/54] Add Codex Unleashed branding and build metadata
 
 Users need to tell a Codex Unleashed build from OpenAI Codex and see which build they run: the version carries the build number, --build-info names upstream and provider, and the session and /status headers identify the unofficial fork and its URL. The server's user agent carries the same build version, so a daemon started from this CLI does not report a version mismatch.
 ---
@@ -73,12 +73,13 @@ Users need to tell a Codex Unleashed build from OpenAI Codex and see which build
  ...ipt_overlay_status_rate_limit_refresh.snap |  12 +-
  codex-rs/tui/src/status/tests.rs              |  27 +++-
  codex-rs/tui/src/version.rs                   |   8 +-
- 68 files changed, 608 insertions(+), 249 deletions(-)
+ .../smoke_tests/test_codex_package.py         |   8 +-
+ 69 files changed, 614 insertions(+), 251 deletions(-)
  create mode 100644 codex-rs/cli/tests/build_info.rs
  create mode 100644 codex-rs/tui/build.rs
 
 diff --git a/codex-rs/app-server/tests/suite/v2/initialize.rs b/codex-rs/app-server/tests/suite/v2/initialize.rs
-index 1ba0f26..e345c23 100644
+index 2d181de..10ee0a9 100644
 --- a/codex-rs/app-server/tests/suite/v2/initialize.rs
 +++ b/codex-rs/app-server/tests/suite/v2/initialize.rs
 @@ -62,6 +62,21 @@ async fn initialize_uses_client_info_name_as_originator() -> Result<()> {
@@ -118,10 +119,10 @@ index abccc48..567262e 100644
          println!("cargo:rustc-link-arg=-ObjC");
      }
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 7b16774..6421762 100644
+index 1c3fe17..0b3d9af 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
-@@ -117,10 +117,17 @@ use codex_terminal_detection::TerminalName;
+@@ -112,10 +112,17 @@ use codex_terminal_detection::TerminalName;
  /// Codex CLI
  ///
  /// If no subcommand is specified, options will be forwarded to the interactive CLI.
@@ -140,7 +141,7 @@ index 7b16774..6421762 100644
      // If a sub‑command is given, ignore requirements of the default args.
      subcommand_negates_reqs = true,
      // The executable is sometimes invoked via a platform‑specific name like
-@@ -130,6 +137,10 @@ use codex_terminal_detection::TerminalName;
+@@ -125,6 +132,10 @@ use codex_terminal_detection::TerminalName;
      override_usage = "codex [OPTIONS] [PROMPT]\n       codex [OPTIONS] <COMMAND> [ARGS]"
  )]
  struct MultitoolCli {
@@ -151,28 +152,28 @@ index 7b16774..6421762 100644
      #[clap(flatten)]
      pub config_overrides: CliConfigOverrides,
  
-@@ -1055,6 +1066,7 @@ async fn cli_main(
+@@ -1051,6 +1062,7 @@ async fn dispatch_cli(
      remote_control_disabled: bool,
- ) -> anyhow::Result<()> {
+ ) -> anyhow::Result<Option<impl Future<Output = anyhow::Result<()>>>> {
      let MultitoolCli {
 +        build_info,
          config_overrides: mut root_config_overrides,
          feature_toggles,
          remote,
-@@ -1062,6 +1074,11 @@ async fn cli_main(
+@@ -1058,6 +1070,11 @@ async fn dispatch_cli(
          subcommand,
      } = config_override_args::try_parse_from(std::env::args_os())
          .unwrap_or_else(|error| error.exit());
 +    if build_info {
 +        print_build_info();
-+        return Ok(());
++        return Ok(None);
 +    }
 +
      // Retain the launch target through TUI exit, even if a launcher changes selection.
      let daemon_cli_executable = arg0_paths
          .codex_self_exe
-@@ -1974,6 +1991,24 @@ async fn cli_main(
-     Ok(())
+@@ -1953,6 +1970,24 @@ async fn dispatch_cli(
+     Ok(None)
  }
  
 +fn print_build_info() {
@@ -196,7 +197,7 @@ index 7b16774..6421762 100644
  fn profile_v2_for_subcommand<'a>(
      interactive: &'a TuiCli,
      subcommand: &Subcommand,
-@@ -3028,6 +3063,7 @@ enabled = true
+@@ -2931,6 +2966,7 @@ enabled = true
              mut interactive,
              config_overrides: mut root_overrides,
              subcommand,
@@ -204,7 +205,7 @@ index 7b16774..6421762 100644
              feature_toggles: _,
              remote: _,
          } = cli;
-@@ -3065,6 +3101,7 @@ enabled = true
+@@ -2968,6 +3004,7 @@ enabled = true
              mut interactive,
              config_overrides: mut root_overrides,
              subcommand,
@@ -212,7 +213,7 @@ index 7b16774..6421762 100644
              feature_toggles: _,
              remote: _,
          } = cli;
-@@ -3109,6 +3146,7 @@ enabled = true
+@@ -3012,6 +3049,7 @@ enabled = true
              interactive,
              config_overrides: root_overrides,
              subcommand,
@@ -312,7 +313,7 @@ index 0000000..ffc0726
 +    );
 +}
 diff --git a/codex-rs/login/src/auth/default_client.rs b/codex-rs/login/src/auth/default_client.rs
-index 28a952e..c8c1d65 100644
+index 7d524a0..e190418 100644
 --- a/codex-rs/login/src/auth/default_client.rs
 +++ b/codex-rs/login/src/auth/default_client.rs
 @@ -149,11 +149,14 @@ pub fn is_first_party_chat_originator(originator_value: &str) -> bool {
@@ -630,7 +631,7 @@ index d45000e..1663f34 100644
  
    GPT-5.6-Sol default · /tmp/pr…
 diff --git a/codex-rs/tui/src/chatwidget/rendering_tests.rs b/codex-rs/tui/src/chatwidget/rendering_tests.rs
-index 317a17d..67e4eae 100644
+index 28108e8..05f6d3d 100644
 --- a/codex-rs/tui/src/chatwidget/rendering_tests.rs
 +++ b/codex-rs/tui/src/chatwidget/rendering_tests.rs
 @@ -386,7 +386,7 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
@@ -672,10 +673,10 @@ index 915041d..e54e441 100644
  model: GPT-5.6 Luna high
  directory: /tmp/thread-settings
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
-index 65f9035..e2a93e8 100644
+index 915041d..e54e441 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
-@@ -1,9 +1,10 @@
+@@ -1,8 +1,9 @@
  ---
  source: tui/src/chatwidget/tests/app_server.rs
 -assertion_line: 99
@@ -687,7 +688,6 @@ index 65f9035..e2a93e8 100644
 +     https://holdmyspot.com/codex-unleashed/
  model: GPT-5.6 Luna high
  directory: /tmp/thread-settings
- 
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
 index 147a544..d9e4662 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
@@ -736,7 +736,7 @@ index 5e78664..1a6dac3 100644
  
  • Daybreak is on for new turns.
 diff --git a/codex-rs/tui/src/history_cell/session.rs b/codex-rs/tui/src/history_cell/session.rs
-index 237ef9e..bf86cea 100644
+index 120454d..2507ce0 100644
 --- a/codex-rs/tui/src/history_cell/session.rs
 +++ b/codex-rs/tui/src/history_cell/session.rs
 @@ -4,6 +4,7 @@ use super::*;
@@ -809,7 +809,7 @@ index 237ef9e..bf86cea 100644
  #[derive(Debug)]
  struct TooltipHistoryCell {
      tip: String,
-@@ -359,16 +404,14 @@ impl HistoryCell for SessionHeaderHistoryCell {
+@@ -382,16 +427,14 @@ impl HistoryCell for SessionHeaderHistoryCell {
      fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
          let width = usize::from(width);
          let mut title = vec!["  ".into()];
@@ -834,7 +834,7 @@ index 237ef9e..bf86cea 100644
          if self.yolo_mode {
              lines.push(Line::from(vec![
                  "  permissions: ".dim(),
-@@ -383,7 +426,9 @@ impl HistoryCell for SessionHeaderHistoryCell {
+@@ -406,7 +449,9 @@ impl HistoryCell for SessionHeaderHistoryCell {
  
      fn raw_lines(&self) -> Vec<Line<'static>> {
          let mut lines = vec![
@@ -1031,10 +1031,10 @@ index fb15a05..52a497e 100644
  │ https://chatgpt.com/codex/install.ps1 | iex' to update.                                                    │
  │                                                                                                            │
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index fd3b515..f459fa3 100644
+index 9a265c3..71604ef 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
-@@ -1873,6 +1873,74 @@ fn session_header_clamps_to_narrow_width() {
+@@ -1878,6 +1878,74 @@ fn session_header_clamps_to_narrow_width() {
      insta::assert_snapshot!(render_lines(&lines).join("\n"));
  }
  
@@ -1993,6 +1993,32 @@ index 8c8d108..a7f907b 100644
 +);
 +
 +pub const CODEX_UNLEASHED_URL: &str = "https://holdmyspot.com/codex-unleashed/";
+diff --git a/scripts/codex_package/smoke_tests/test_codex_package.py b/scripts/codex_package/smoke_tests/test_codex_package.py
+index 0abd78c..5ea12bd 100644
+--- a/scripts/codex_package/smoke_tests/test_codex_package.py
++++ b/scripts/codex_package/smoke_tests/test_codex_package.py
+@@ -67,7 +67,10 @@ def test_cli_version_matches_release_sources(package: SmokePackage) -> None:
+     )
+     manifest = tomllib.loads((root / "codex-rs/Cargo.toml").read_text())
+     version = manifest["workspace"]["package"]["version"]
+-    assert package.run("--version").stdout == f"codex-cli {version}\n"
++    # Codex Unleashed appends the build number as semver build metadata and a
++    # --build-info hint on following lines.
++    banner = package.run("--version").stdout.splitlines()[0]
++    assert banner.split("+")[0] == f"codex-cli {version}"
+ 
+ 
+ @pytest.mark.parametrize("variant", ["cli_root", "app_server_root"])
+@@ -120,7 +123,8 @@ def test_packaged_executor_initializes_and_enforces_sandbox(
+         .strip()
+         .split()[-1]
+     )
+-    assert version == package.run("--version").stdout.strip().split()[-1]
++    cli_version = package.run("--version").stdout.splitlines()[0].split()[-1]
++    assert version == cli_version.split("+")[0]
+     with (
+         ThreadPoolExecutor(max_workers=1) as reader,
+         subprocess.Popen(
 -- 
 2.43.0
 

@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:14 -0500
-Subject: [PATCH] test: compare feedback cwd with the selected thread workspace
+Subject: [PATCH 53/54] test: compare feedback cwd with the selected thread
+ workspace
 
 The remote fixture owns a separate host temporary directory. Verify the configured thread cwd and reject the daemon fallback while keeping automatic remote environment selection. Historical remote failure compares these unrelated directories; corrected runtime remains to be verified.
 ---
@@ -9,10 +10,10 @@ The remote fixture owns a separate host temporary directory. Verify the configur
  1 file changed, 2 insertions(+), 1 deletion(-)
 
 diff --git a/codex-rs/app-server/src/request_processors/feedback_processor.rs b/codex-rs/app-server/src/request_processors/feedback_processor.rs
-index 6714059..c85f998 100644
+index d34fcf9..f4873da 100644
 --- a/codex-rs/app-server/src/request_processors/feedback_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/feedback_processor.rs
-@@ -636,7 +636,8 @@ mod tests {
+@@ -643,7 +643,8 @@ mod tests {
          )
          .await;
  

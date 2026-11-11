@@ -1,7 +1,8 @@
-From 8736f598f441ebe2fc89d77f3ef1d9cd28f9cbe6 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 08:53:50 -0500
-Subject: [PATCH] Avoid repeating Bash startup when replaying shell snapshots
+Subject: [PATCH 01/54] Avoid repeating Bash startup when replaying shell
+ snapshots
 
 Tracks https://github.com/holdmyspot-com/codex-unleashed/issues/47.
 

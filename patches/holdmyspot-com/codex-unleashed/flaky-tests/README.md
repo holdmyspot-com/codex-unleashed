@@ -1,6 +1,6 @@
 # Flaky test fixes
 
-- Applies to: the queue through `rama-0.4/rama-0.4.patch` (patch 35), which sits on upstream `openai/codex` main, commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`.
+- Applies to: the queue through `rama-0.4/rama-0.4.patch` (patch 34), which sits on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 - Prerequisites: every earlier patch in the queue, through `rama-0.4/rama-0.4.patch`. The patches below apply in this order and do not depend on each other.
 - Patches: `wine-pty-timeout.patch`, `rollout-trace.patch`, `otel-policy-export.patch`, `focus-palette.patch`.
 
@@ -26,7 +26,7 @@ Every test here is upstream's and fails only when the runner is slow: a fixed ti
 
 All runs are on `holdmyspot-com/codex-unleashed`. Stress runs use `stress_count=20` with one CPU-burning `yes` process per core (`baseline-linux-tests.yml`, `baseline-bazel-tests.yml`), nextest `--retries 0` or Bazel `--flaky_test_attempts=1`. "Before" applies the first 35 patches, "after" all 41, including the two dropped ones.
 
-- The 39 patches apply with `git am` onto `dddc3c0a79`.
+- The 39 patches applied with `git am` onto `dddc3c0a79`; the rebased queue applies onto `rust-v0.167.0` (see "Rebase onto rust-v0.167.0").
 - Linux nextest, `codex-core codex-cli codex-app-server codex-tui`, nine test filters: before `42844736948`, after `42844742955`.
   - `auth_storage_originator::concurrent_connections_export_their_own_storage_originator`: 6 timeouts in 20 iterations before, 0 after.
   - `focus_palette::default_owned_screen_entry_paints_before_sync_ends_and_exit_clears_inline_draft`: 1 failure (a 30 s probe wait) before, 0 after.
@@ -36,3 +36,7 @@ All runs are on `holdmyspot-com/codex-unleashed`. Stress runs use `stress_count=
 - Bazel `//bazel/rules/testing/wine:wine-test-support-unit-tests`, 20 runs each: before `42850502873`, TIMEOUT in 20 of 20 at 60.4 s; after `42850528725`, passed.
 - Rows not patched: focused run `42845848861`.
 - Repository checks `42844896018`, platform lints `42848707830` and argument-comment lint `42844909597` passed. Bazel Clippy `42848713820`: the Linux lanes passed. The macOS lane failed on a 500 from a `rules_platform` download and the Windows gnullvm lane on a dangling `opusic-sys` symlink; neither involves these patches.
+
+## Rebase onto rust-v0.167.0
+
+All four patches apply with `git am -3`; only `rollout-trace.patch` conflicted. `rust-v0.167.0` adds `enabled_recording_cannot_silently_fail_to_start` in `codex-rs/cli/tests/rollout_trace.rs`. The patch keeps its `check_accepted_output` helper layout and `REQUEST_TIMEOUT`, and the merged file keeps upstream's new test, which uses `create_mock_responses_server_sequence_unchecked` and `.with_request_timeout(REQUEST_TIMEOUT)` and needs `use codex_app_server_protocol::RequestId;`. None of the four patches is upstream at `rust-v0.167.0`. The verification runs above are on the old base; the platform lint run for the rebased queue is `42929845717`.

@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:13 -0500
-Subject: [PATCH] bugfix: close remote connections when their owning client is
- dropped
+Subject: [PATCH 45/54] bugfix: close remote connections when their owning
+ client is dropped
 
 A retained request handle keeps the command channel open after the event
 consumer disappears. Observe the event receiver closing so idle remote
@@ -17,10 +17,10 @@ within the existing two-second deadline while a request handle stays alive.
  2 files changed, 35 insertions(+)
 
 diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
-index 99ff6b0..03f4ddf 100644
+index 518dfd0..9839de4 100644
 --- a/codex-rs/app-server-client/src/lib.rs
 +++ b/codex-rs/app-server-client/src/lib.rs
-@@ -1776,6 +1776,33 @@ mod tests {
+@@ -1784,6 +1784,33 @@ mod tests {
          client.shutdown().await.expect("shutdown should complete");
      }
  
@@ -55,10 +55,10 @@ index 99ff6b0..03f4ddf 100644
      async fn remote_notifications_arrive_over_websocket() {
          let (close_tx, close_rx) = tokio::sync::oneshot::channel();
 diff --git a/codex-rs/app-server-client/src/remote.rs b/codex-rs/app-server-client/src/remote.rs
-index ad8d28b..cb9e7fb 100644
+index c6ac801..9f610b3 100644
 --- a/codex-rs/app-server-client/src/remote.rs
 +++ b/codex-rs/app-server-client/src/remote.rs
-@@ -160,6 +160,9 @@ struct RemoteServerMetadata {
+@@ -163,6 +163,9 @@ struct RemoteServerMetadata {
      platform_os: Option<String>,
  }
  
@@ -68,7 +68,7 @@ index ad8d28b..cb9e7fb 100644
  pub struct RemoteAppServerClient {
      command_tx: mpsc::Sender<RemoteClientCommand>,
      event_rx: mpsc::UnboundedReceiver<AppServerEvent>,
-@@ -168,6 +171,7 @@ pub struct RemoteAppServerClient {
+@@ -171,6 +174,7 @@ pub struct RemoteAppServerClient {
      worker_handle: tokio::task::JoinHandle<()>,
  }
  
@@ -76,7 +76,7 @@ index ad8d28b..cb9e7fb 100644
  #[derive(Clone)]
  pub struct RemoteAppServerRequestHandle {
      command_tx: mpsc::Sender<RemoteClientCommand>,
-@@ -265,6 +269,10 @@ impl RemoteAppServerClient {
+@@ -268,6 +272,10 @@ impl RemoteAppServerClient {
              let mut worker_exit_error: Option<(ErrorKind, String)> = None;
              loop {
                  tokio::select! {

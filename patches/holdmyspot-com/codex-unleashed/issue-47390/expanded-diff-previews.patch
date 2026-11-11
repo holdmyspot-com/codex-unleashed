@@ -1,8 +1,8 @@
-From 2c2f32557c07aec4ef769e5d5cb8bf9e9a2959b6 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 08:53:59 -0500
-Subject: [PATCH] Expand patch diff previews in the fullscreen transcript when
- configured
+Subject: [PATCH 05/54] Expand patch diff previews in the fullscreen transcript
+ when configured
 
 Tracks https://github.com/openai/codex/issues/47390.
 
@@ -29,7 +29,7 @@ existing disclosure, and detailed and raw modes are unchanged.
  13 files changed, 228 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 4f8bee1..8ae3ff1 100644
+index 43b9cde..a1199f6 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
 @@ -167,6 +167,8 @@ pub struct FeatureToggleToml {
@@ -62,7 +62,7 @@ index e844413..2864d44 100644
 +    );
 +}
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 8fca819..1be8c0c 100644
+index ed55b72..a45e739 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
 @@ -744,6 +744,12 @@
@@ -78,7 +78,7 @@ index 8fca819..1be8c0c 100644
        "type": "object"
      },
      "ComputerUseConfigToml": {
-@@ -1418,6 +1424,9 @@
+@@ -1442,6 +1448,9 @@
              "unified_image_budget": {
                "type": "boolean"
              },
@@ -88,7 +88,7 @@ index 8fca819..1be8c0c 100644
              "untrusted_as_tool_output": {
                "type": "boolean"
              },
-@@ -8071,6 +8080,9 @@
+@@ -8161,6 +8170,9 @@
          "unified_image_budget": {
            "type": "boolean"
          },
@@ -99,10 +99,10 @@ index 8fca819..1be8c0c 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
-index 0c27148..d6e406e 100644
+index b7fc813..a4d0a67 100644
 --- a/codex-rs/core/src/config/config_loader_tests.rs
 +++ b/codex-rs/core/src/config/config_loader_tests.rs
-@@ -4159,6 +4159,66 @@ wire_api = "responses"
+@@ -4163,6 +4163,66 @@ wire_api = "responses"
      Ok(())
  }
  
@@ -170,10 +170,10 @@ index 0c27148..d6e406e 100644
  async fn strict_config_rejects_unknown_codex_unleashed_settings() {
      for (contents, expected) in [
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 52d6889..c7cc6d1 100644
+index 8b2548f..862b92b 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -1494,6 +1494,29 @@ fn test_tui_vim_mode_default_true() {
+@@ -1497,6 +1497,29 @@ fn test_tui_vim_mode_default_true() {
      );
  }
  
@@ -204,7 +204,7 @@ index 52d6889..c7cc6d1 100644
  async fn runtime_config_uses_tui_raw_output_mode() {
      let toml = r#"
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index c2f12e6..4c76929 100644
+index 8d93436..4b62a55 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
 @@ -836,6 +836,9 @@ pub struct Config {
@@ -217,7 +217,7 @@ index c2f12e6..4c76929 100644
      /// Override the terminal default for copying transcript, footer, and composer selections.
      pub tui_copy_on_select: codex_config::types::CopyOnSelect,
  
-@@ -4770,6 +4773,12 @@ impl Config {
+@@ -4792,6 +4795,12 @@ impl Config {
                  .as_ref()
                  .is_none_or(|tui| tui.fullscreen_transcript),
              tui_mouse_scroll_speed: cfg.tui.as_ref().and_then(|tui| tui.mouse_scroll_speed),
@@ -231,7 +231,7 @@ index c2f12e6..4c76929 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 88b77b7..5505fb1 100644
+index 8a9a097..7ab0444 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
 @@ -97,6 +97,8 @@ impl Stage {
@@ -243,7 +243,7 @@ index 88b77b7..5505fb1 100644
      /// Preview consumer five-hour and weekly allowance history.
      AnalyticsPlanHistory,
      /// Discover model catalogs for OpenAI API-key authentication.
-@@ -1070,6 +1072,12 @@ pub struct FeatureSpec {
+@@ -1086,6 +1088,12 @@ pub struct FeatureSpec {
  }
  
  pub const FEATURES: &[FeatureSpec] = &[
@@ -257,7 +257,7 @@ index 88b77b7..5505fb1 100644
          id: Feature::AnalyticsPlanHistory,
          key: "analytics_plan_history",
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index 56deb71..ad3cf5c 100644
+index 1ced86e..227717e 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
 @@ -288,6 +288,7 @@ async fn new_config(
@@ -269,13 +269,13 @@ index 56deb71..ad3cf5c 100644
          tui_rendering: Default::default(),
          show_tooltips: true,
 diff --git a/codex-rs/tui/src/app/owned_transcript.rs b/codex-rs/tui/src/app/owned_transcript.rs
-index 312185e..d61e5ae 100644
+index da20829..5a242ad 100644
 --- a/codex-rs/tui/src/app/owned_transcript.rs
 +++ b/codex-rs/tui/src/app/owned_transcript.rs
-@@ -77,6 +77,11 @@ impl App {
-     }
+@@ -156,6 +156,11 @@ impl App {
  
      fn sync_owned_transcript(&mut self, width: u16) -> bool {
+         self.transcript_view.image_protocol = self.prepare_frame_images();
 +        let expanded_diff_previews = self
 +            .config
 +            .features
@@ -284,7 +284,7 @@ index 312185e..d61e5ae 100644
          let chat_widget = &self.chat_widget;
          let transcript_width = chat_widget.history_wrap_width(width);
          let view = &mut self.transcript_view;
-@@ -91,6 +96,7 @@ impl App {
+@@ -166,6 +171,7 @@ impl App {
              .copy_on_select(&codex_terminal_detection::terminal_info());
          view.copy_on_select_clear_selection =
              self.local_settings.tui.copy_on_select_clear_selection;
@@ -293,7 +293,7 @@ index 312185e..d61e5ae 100644
          view.set_presentation(view.is_detailed(), chat_widget.history_render_mode());
          let active_key = chat_widget.active_cell_transcript_key();
 diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
-index c3ec487..bd9440c 100644
+index 422d53f..fc6024d 100644
 --- a/codex-rs/tui/src/app/owned_transcript_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
 @@ -74,6 +74,71 @@ pub(in crate::app) fn buffer_text(buffer: &Buffer) -> String {
@@ -369,7 +369,7 @@ index c3ec487..bd9440c 100644
  async fn external_writer_escape_returns_to_command_center_without_editing() -> Result<()> {
      for (detailed, scrolled, offline) in [
 diff --git a/codex-rs/tui/src/transcript_view.rs b/codex-rs/tui/src/transcript_view.rs
-index ff7b669..7bc3e74 100644
+index 9911b8c..001187a 100644
 --- a/codex-rs/tui/src/transcript_view.rs
 +++ b/codex-rs/tui/src/transcript_view.rs
 @@ -116,6 +116,7 @@ pub(crate) struct TranscriptView {
@@ -388,7 +388,7 @@ index ff7b669..7bc3e74 100644
              history: TranscriptHistoryState::Idle,
              highlight: None,
              saved_position: None,
-@@ -416,6 +418,18 @@ impl TranscriptView {
+@@ -420,6 +422,18 @@ impl TranscriptView {
          self.mode = mode;
      }
  

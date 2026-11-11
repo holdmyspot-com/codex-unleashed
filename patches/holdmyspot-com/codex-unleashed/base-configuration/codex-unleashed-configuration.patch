@@ -1,7 +1,8 @@
-From ddd7befd93f8a0e36071e57879c9a9fb47acd673 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 08:53:58 -0500
-Subject: [PATCH] Add a shared configuration table for Codex Unleashed settings
+Subject: [PATCH 04/54] Add a shared configuration table for Codex Unleashed
+ settings
 
 Codex Unleashed features need project settings, and each feature should
 own its typed fields instead of adding top-level keys. The new optional
@@ -16,7 +17,7 @@ table so the schema fixture test keeps matching.
  4 files changed, 62 insertions(+)
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index dedf0ae..4f8bee1 100644
+index cd1c400..43b9cde 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
 @@ -162,10 +162,20 @@ pub struct FeatureToggleToml {
@@ -65,7 +66,7 @@ index 5a78075..e844413 100644
  fn deserialize_skill_config_with_name_selector() {
      let cfg: SkillConfig = toml::from_str(
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index ae31c7e..8fca819 100644
+index f5149c6..ed55b72 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
 @@ -741,6 +741,11 @@
@@ -80,7 +81,7 @@ index ae31c7e..8fca819 100644
      "ComputerUseConfigToml": {
        "additionalProperties": false,
        "properties": {
-@@ -7408,6 +7413,14 @@
+@@ -7474,6 +7479,14 @@
        ],
        "description": "Cloud-owned feature settings."
      },
@@ -96,10 +97,10 @@ index ae31c7e..8fca819 100644
        "description": "Compact prompt used for history compaction.",
        "type": "string"
 diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
-index 3552bf3..0c27148 100644
+index 16811b4..b7fc813 100644
 --- a/codex-rs/core/src/config/config_loader_tests.rs
 +++ b/codex-rs/core/src/config/config_loader_tests.rs
-@@ -4159,6 +4159,32 @@ wire_api = "responses"
+@@ -4163,6 +4163,32 @@ wire_api = "responses"
      Ok(())
  }
  

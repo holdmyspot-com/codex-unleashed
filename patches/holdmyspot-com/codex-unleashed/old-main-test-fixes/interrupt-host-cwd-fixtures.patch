@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:14 -0500
-Subject: [PATCH] test: keep interrupt-hook host cwd independent of tool
+Subject: [PATCH 51/54] test: keep interrupt-hook host cwd independent of tool
  execution
 
 Keep an owned host configuration directory while preserving explicit executor selection and workspace callbacks. Default fixture behavior remains unchanged. Reject unsupported legacy resume and shell overrides before startup.
@@ -13,10 +13,10 @@ Fixture checks reproduce three boundary failures before the change and pass all 
  2 files changed, 161 insertions(+), 16 deletions(-)
 
 diff --git a/codex-rs/core/tests/common/test_codex.rs b/codex-rs/core/tests/common/test_codex.rs
-index 5b16177..267d11d 100644
+index 89081ae..f9a9b85 100644
 --- a/codex-rs/core/tests/common/test_codex.rs
 +++ b/codex-rs/core/tests/common/test_codex.rs
-@@ -415,6 +415,7 @@ pub struct TestCodexBuilder {
+@@ -417,6 +417,7 @@ pub struct TestCodexBuilder {
      cloud_config_bundle: Option<CloudConfigBundleLoader>,
      user_shell_override: Option<Shell>,
      exec_server_url: Option<String>,
@@ -24,10 +24,10 @@ index 5b16177..267d11d 100644
      extensions: Arc<ExtensionRegistry<Config>>,
      user_instructions_provider: Option<Arc<dyn UserInstructionsProvider>>,
      supports_openai_form_elicitation: bool,
-@@ -427,6 +428,16 @@ pub struct TestCodexBuilder {
- }
+@@ -435,6 +436,16 @@ impl TestCodexBuilder {
+         self
+     }
  
- impl TestCodexBuilder {
 +    /// Keeps an owned host directory in `Config.cwd`, independently of the selected executor.
 +    ///
 +    /// Configuration mutators affect the host directory; workspace setup callbacks retain the
@@ -41,7 +41,7 @@ index 5b16177..267d11d 100644
      pub fn with_thread_store(mut self, thread_store: Arc<dyn ThreadStore>) -> Self {
          self.thread_store = Some(thread_store);
          self
-@@ -772,6 +783,12 @@ impl TestCodexBuilder {
+@@ -785,6 +796,12 @@ impl TestCodexBuilder {
          test_env: TestEnv,
          include_local_environment: bool,
      ) -> anyhow::Result<TestCodex> {
@@ -54,7 +54,7 @@ index 5b16177..267d11d 100644
          let (config, fallback_cwd) = self
              .prepare_config(base_url, &home, test_env.cwd().clone())
              .await?;
-@@ -807,9 +824,18 @@ impl TestCodexBuilder {
+@@ -820,9 +837,18 @@ impl TestCodexBuilder {
          let mut workspace_setups = vec![];
          swap(&mut self.workspace_setups, &mut workspace_setups);
          for setup in workspace_setups {
@@ -75,7 +75,7 @@ index 5b16177..267d11d 100644
          Box::pin(self.build_from_config(
              config,
              cwd,
-@@ -938,19 +964,8 @@ impl TestCodexBuilder {
+@@ -953,19 +979,8 @@ impl TestCodexBuilder {
                  .await?
              }
              (None, None) => {
@@ -97,7 +97,7 @@ index 5b16177..267d11d 100644
                  Box::pin(thread_manager.start_thread(StartThreadOptions {
                      history_mode: self.history_mode,
                      client_mcp_extensions: client_mcp_extensions(),
-@@ -973,6 +988,30 @@ impl TestCodexBuilder {
+@@ -988,6 +1003,30 @@ impl TestCodexBuilder {
          })
      }
  
@@ -128,7 +128,7 @@ index 5b16177..267d11d 100644
      async fn prepare_config(
          &mut self,
          base_url: String,
-@@ -998,7 +1037,11 @@ impl TestCodexBuilder {
+@@ -1013,7 +1052,11 @@ impl TestCodexBuilder {
          // Keep generic tests stable when the bundled catalog default changes. Tests that need a
          // specific model can still override this with a config mutator.
          config.model = Some("gpt-5.5".to_string());
@@ -141,7 +141,7 @@ index 5b16177..267d11d 100644
          config.model_provider = model_provider;
          if let Ok(path) = codex_utils_cargo_bin::cargo_bin("codex") {
              config.codex_self_exe = Some(path);
-@@ -1542,6 +1585,7 @@ pub fn test_codex() -> TestCodexBuilder {
+@@ -1558,6 +1601,7 @@ pub fn test_codex() -> TestCodexBuilder {
          cloud_config_bundle: None,
          user_shell_override: None,
          exec_server_url: None,
@@ -149,7 +149,7 @@ index 5b16177..267d11d 100644
          extensions: empty_extension_registry(),
          user_instructions_provider: None,
          supports_openai_form_elicitation: false,
-@@ -1586,6 +1630,104 @@ mod tests {
+@@ -1603,6 +1647,104 @@ mod tests {
      use pretty_assertions::assert_eq;
      use serde_json::json;
  

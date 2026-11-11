@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:13 -0500
-Subject: [PATCH] bugfix: avoid restoring mouse input before Windows capture
- initializes
+Subject: [PATCH 44/54] bugfix: avoid restoring mouse input before Windows
+ capture initializes
 
 Only arm native mouse-capture cleanup after Crossterm saves the console mode.
 Releasing input while the preceding scroll command is written must not try to

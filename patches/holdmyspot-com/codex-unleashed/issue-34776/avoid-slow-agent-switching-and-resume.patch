@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:04:02 -0500
-Subject: [PATCH] Keep history replay and subagent switches responsive
+Subject: [PATCH 10/54] Keep history replay and subagent switches responsive
 
 ---
  codex-rs/core/config.schema.json              |   6 +
@@ -22,10 +22,10 @@ Subject: [PATCH] Keep history replay and subagent switches responsive
  15 files changed, 484 insertions(+), 10 deletions(-)
 
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index bced3b6..510393e 100644
+index 1b7edb9..e1d201a 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1428,6 +1428,9 @@
+@@ -1452,6 +1452,9 @@
              "unified_image_budget": {
                "type": "boolean"
              },
@@ -35,7 +35,7 @@ index bced3b6..510393e 100644
              "unleashed_collapsed_tool_activity": {
                "type": "boolean"
              },
-@@ -8087,6 +8090,9 @@
+@@ -8177,6 +8180,9 @@
          "unified_image_budget": {
            "type": "boolean"
          },
@@ -46,11 +46,11 @@ index bced3b6..510393e 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index adcd586..669d116 100644
+index 53ff54e..0280e17 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -129,6 +129,8 @@ pub enum Feature {
-     TuiMultiBackend,
+@@ -131,6 +131,8 @@ pub enum Feature {
+     TuiExtensionsStatusLine,
      /// Enable negotiated zstd compression for app-server WebSocket and UDS connections.
      AppServerWebSocketCompression,
 +    /// Replay only the latest compacted conversation when switching back to a thread.
@@ -58,7 +58,7 @@ index adcd586..669d116 100644
  
      // Experimental
      /// Advertise enabled environment-backed tools and their shell parameters before the
-@@ -1108,6 +1110,12 @@ pub const FEATURES: &[FeatureSpec] = &[
+@@ -1130,6 +1132,12 @@ pub const FEATURES: &[FeatureSpec] = &[
          stage: Stage::UnderDevelopment,
          default_enabled: false,
      },
@@ -72,10 +72,10 @@ index adcd586..669d116 100644
          id: Feature::TranscriptV2,
          key: "transcript_v2",
 diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index 4d13abf..168417e 100644
+index a998f6c..a0730e3 100644
 --- a/codex-rs/tui/src/app/reconnect.rs
 +++ b/codex-rs/tui/src/app/reconnect.rs
-@@ -498,7 +498,9 @@ impl App {
+@@ -512,7 +512,9 @@ impl App {
              self.thread_event_channels.insert(id, channel);
          }
          if let Some(id) = displayed
@@ -87,10 +87,10 @@ index 4d13abf..168417e 100644
              self.active_thread_id = Some(id);
              self.active_thread_rx = Some(receiver);
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index c7dc18d..7283fca 100644
+index 9203adf..07df4f1 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
-@@ -624,7 +624,9 @@ impl App {
+@@ -631,7 +631,9 @@ impl App {
          }
          self.store_active_thread_receiver().await;
          self.active_thread_id = None;
@@ -102,7 +102,7 @@ index c7dc18d..7283fca 100644
              self.add_agents_overview_error(format!("Agent thread {thread_id} is already active."));
              if let Some(previous_thread_id) = previous_thread_id {
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index cbad3bf..df729b0 100644
+index f8d8f9a..8377f62 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
 @@ -1360,7 +1360,7 @@ async fn replay_thread_snapshot_renders_only_retained_agent_message_deltas() {
@@ -141,10 +141,10 @@ index ec7d8b4..f6a2b3f 100644
              Some(thread_id),
              &app.config.cwd,
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index f781208..5845b3e 100644
+index 53563c3..e803fce 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -1203,6 +1203,219 @@ fn spawn_approved_task_tool_call(
+@@ -1164,6 +1164,219 @@ fn spawn_approved_task_tool_call(
      });
  }
  
@@ -378,7 +378,7 @@ index 63d9de8..4b07fad 100644
                  .expect("thread should retain its buffered notifications");
              app.active_thread_rx = Some(receiver);
 diff --git a/codex-rs/tui/src/app/thread_events.rs b/codex-rs/tui/src/app/thread_events.rs
-index f810d38..273d493 100644
+index bddbd77..1d433a3 100644
 --- a/codex-rs/tui/src/app/thread_events.rs
 +++ b/codex-rs/tui/src/app/thread_events.rs
 @@ -18,6 +18,12 @@ pub(super) struct ThreadEventSnapshot {
@@ -428,10 +428,10 @@ index f810d38..273d493 100644
              // interactive prompts that are still pending, or answered approvals/input will reappear.
              events: self
 diff --git a/codex-rs/tui/src/app/thread_routing.rs b/codex-rs/tui/src/app/thread_routing.rs
-index e4ecae0..9a21bc3 100644
+index b824a9f..175b393 100644
 --- a/codex-rs/tui/src/app/thread_routing.rs
 +++ b/codex-rs/tui/src/app/thread_routing.rs
-@@ -145,12 +145,23 @@ impl App {
+@@ -156,12 +156,23 @@ impl App {
      pub(super) async fn activate_thread_for_replay(
          &mut self,
          thread_id: ThreadId,
@@ -626,7 +626,7 @@ index 5f5c9cd..143ec23 100644
          config: &crate::legacy_core::config::Config,
          thread_id: ThreadId,
 diff --git a/codex-rs/tui/src/inline_visualization_tests.rs b/codex-rs/tui/src/inline_visualization_tests.rs
-index 75c9c52..649042e 100644
+index 43e562f..3c1240f 100644
 --- a/codex-rs/tui/src/inline_visualization_tests.rs
 +++ b/codex-rs/tui/src/inline_visualization_tests.rs
 @@ -22,6 +22,65 @@ fn context_with_fragment(fragment: &str) -> (TempDir, InlineVisualizationContext
@@ -696,10 +696,10 @@ index 75c9c52..649042e 100644
  fn unterminated_visualization_preview_uses_the_stream_context() {
      let (codex_home, context) = context_with_fragment("<div>chart</div>");
 diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
-index 170575b..d3d531d 100644
+index f618015..51f7092 100644
 --- a/codex-rs/tui/src/thread_transcript.rs
 +++ b/codex-rs/tui/src/thread_transcript.rs
-@@ -127,9 +127,19 @@ pub(crate) fn thread_items_to_transcript_cells(
+@@ -133,9 +133,19 @@ pub(crate) fn thread_items_to_transcript_cells(
      raw_reasoning_visibility: RawReasoningVisibility,
      config: Option<&Config>,
  ) -> TranscriptCells {

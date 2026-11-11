@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:14 -0500
-Subject: [PATCH] test: register local Guardian execution alongside remote
- fixtures
+Subject: [PATCH 54/54] test: register local Guardian execution alongside
+ remote fixtures
 
 Guardian fixtures explicitly select the local executor and inspect host-owned files. Register both capabilities and retain an owned host cwd so remote test selection does not remove or misplace the local execution contract. Materialize the reuse fixture secret in that same host directory; preserve every review, denial, cancellation and lifecycle assertion.
 
@@ -35,10 +35,10 @@ index 91f93d8..212aecd 100644
      if review_mode == GuardianContextMode::Legacy {
          test.codex.ensure_rollout_materialized().await;
 diff --git a/codex-rs/core/tests/suite/guardian_review.rs b/codex-rs/core/tests/suite/guardian_review.rs
-index 0324907..c2009ff 100644
+index 6c593c9..6f50552 100644
 --- a/codex-rs/core/tests/suite/guardian_review.rs
 +++ b/codex-rs/core/tests/suite/guardian_review.rs
-@@ -1597,6 +1597,7 @@ async fn guardian_session_is_reused_for_consecutive_tool_reviews_without_prewarm
+@@ -1908,6 +1908,7 @@ async fn guardian_session_is_reused_for_consecutive_tool_reviews_without_prewarm
      let mut extensions = ExtensionRegistryBuilder::<Config>::new();
      extensions.tool_lifecycle_contributor(lifecycle_recorder.clone());
      let mut builder = test_codex()
@@ -46,7 +46,7 @@ index 0324907..c2009ff 100644
          .with_model_info_override("gpt-5.4", |_| {})
          .with_extensions(Arc::new(extensions.build()))
          .with_config(move |config| {
-@@ -1625,20 +1626,11 @@ async fn guardian_session_is_reused_for_consecutive_tool_reviews_without_prewarm
+@@ -1936,20 +1937,11 @@ async fn guardian_session_is_reused_for_consecutive_tool_reviews_without_prewarm
                      NetworkSandboxPolicy::Restricted,
                  ))
                  .expect("set parent permission profile");

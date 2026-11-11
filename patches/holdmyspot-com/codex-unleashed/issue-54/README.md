@@ -1,7 +1,7 @@
 # Manual updater handoff
 
 - Issue: [holdmyspot-com/codex-unleashed#54](https://github.com/holdmyspot-com/codex-unleashed/issues/54)
-- Applies to: upstream `openai/codex` main, commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`.
+- Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 - Prerequisites: the release queue through `branding-and-app-server-distribution/daemon-public-releases.patch`, which routes the requesting CLI's updater to Codex Unleashed releases.
 - Upstream status: downstream fix; the issue tracks upstream applicability.
 

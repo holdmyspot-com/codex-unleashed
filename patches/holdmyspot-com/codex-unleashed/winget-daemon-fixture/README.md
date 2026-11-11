@@ -1,7 +1,7 @@
 # Create the WinGet daemon fixture's CODEX_HOME directory
 
 - Issue: none filed; this repairs the deferred CP1 Windows fixture failure recorded in [windows-native-runtime-results.json](../../../../docs/evidence/windows-native-runtime-results.json).
-- Applies to: upstream `openai/codex` main, commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`. No downstream prerequisites.
+- Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`. No downstream prerequisites.
 
 ## Intent
 

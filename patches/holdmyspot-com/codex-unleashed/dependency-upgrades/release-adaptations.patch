@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 9 Nov 2026 11:13:20 -0500
-Subject: [PATCH] Adapt tests and runtime behavior to the upgraded releases
+Subject: [PATCH 32/54] Adapt tests and runtime behavior to the upgraded
+ releases
 
 Fix what the upgraded releases change at run time or in test expectations: rtc 0.21's interceptor API, tokio-util's Bytes requirement, jsonwebtoken 11's crypto backend, pulldown-cmark 0.13's task list output, opentelemetry-proto 0.33's string-encoded integers, the OpenTelemetry SDK's export error events, schemars 1's web.run schema hashes, and opentelemetry-otlp 0.33's retries, which need the real HTTP status. Two test servers now read the request before answering, which hyper requires under reqwest 0.13. unicode-width stays at 0.2.2, because ratatui-core 0.1.2 compensates for 0.2.2's zero-width halfwidth sound marks and would count them twice under 0.2.3.
 ---
@@ -12,6 +13,9 @@ Fix what the upgraded releases change at run time or in test expectations: rtc 0
  ...ample__sample_inherits_parent_context.snap | 12 ++--
  .../tests/suite/v2/turn_cost_otel.rs          |  2 +-
  codex-rs/cli/tests/worktree.rs                |  6 +-
+ .../src/ui/transport_tests.rs                 |  2 +-
+ codex-rs/code-mode-runtime/src/ui/workers.rs  |  4 +-
+ .../src/noise_relay/harness_tests.rs          | 14 +++--
  codex-rs/exec-server/src/remote.rs            |  6 ++
  codex-rs/otel/src/network_policy.rs           |  6 +-
  .../tests/fixtures/plugin_process.rs          |  8 ++-
@@ -21,13 +25,13 @@ Fix what the upgraded releases change at run time or in test expectations: rtc 0
  codex-rs/utils/cargo-bin/Cargo.toml           |  1 -
  codex-rs/utils/cargo-bin/src/lib.rs           | 41 +++++++------
  .../voice-host/src/capture_worker_tests.rs    | 58 ++++++++++++++-----
- 16 files changed, 138 insertions(+), 74 deletions(-)
+ 19 files changed, 150 insertions(+), 82 deletions(-)
 
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index d55c3eb..f54d77a 100644
+index 0ea2b06..c80c548 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
-@@ -2273,7 +2273,6 @@
+@@ -2265,7 +2265,6 @@
        "unicode-truncate_2.0.1": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.8\"},{\"default_features\":false,\"name\":\"itertools\",\"req\":\"^0.14\"},{\"default_features\":false,\"name\":\"unicode-segmentation\",\"req\":\"^1\"},{\"name\":\"unicode-width\",\"req\":\"^0.2\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
        "unicode-width_0.1.14": "{\"dependencies\":[{\"name\":\"compiler_builtins\",\"optional\":true,\"req\":\"^0.1\"},{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0\"},{\"name\":\"std\",\"optional\":true,\"package\":\"rustc-std-workspace-std\",\"req\":\"^1.0\"}],\"features\":{\"cjk\":[],\"default\":[\"cjk\"],\"no_std\":[],\"rustc-dep-of-std\":[\"std\",\"core\",\"compiler_builtins\"]}}",
        "unicode-width_0.2.2": "{\"dependencies\":[{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0\"},{\"name\":\"std\",\"optional\":true,\"package\":\"rustc-std-workspace-std\",\"req\":\"^1.0\"}],\"features\":{\"cjk\":[],\"default\":[\"cjk\"],\"no_std\":[],\"rustc-dep-of-std\":[\"std\",\"core\"]}}",
@@ -36,7 +40,7 @@ index d55c3eb..f54d77a 100644
        "universal-hash_0.5.1": "{\"dependencies\":[{\"name\":\"crypto-common\",\"req\":\"^0.1.6\"},{\"default_features\":false,\"name\":\"subtle\",\"req\":\"^2.4\"}],\"features\":{\"std\":[\"crypto-common/std\"]}}",
        "untrusted_0.7.1": "{\"dependencies\":[],\"features\":{}}",
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index bc4e934..c6a666a 100644
+index fed4f6c..c9d0e21 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -225,7 +225,7 @@ checksum = "b2a5b0a5ab8561c603f16c3b78c24a386b1f70e7fc1b1b1e8c15738828e4a176"
@@ -48,7 +52,7 @@ index bc4e934..c6a666a 100644
  ]
  
  [[package]]
-@@ -2787,7 +2787,7 @@ dependencies = [
+@@ -2784,7 +2784,7 @@ dependencies = [
   "tracing",
   "tracing-subscriber",
   "unicode-segmentation",
@@ -57,7 +61,7 @@ index bc4e934..c6a666a 100644
  ]
  
  [[package]]
-@@ -4187,7 +4187,7 @@ version = "0.0.0"
+@@ -4251,7 +4251,7 @@ version = "0.167.0"
  dependencies = [
   "insta",
   "pretty_assertions",
@@ -66,7 +70,7 @@ index bc4e934..c6a666a 100644
  ]
  
  [[package]]
-@@ -5172,7 +5172,7 @@ dependencies = [
+@@ -5260,7 +5260,7 @@ dependencies = [
   "tracing-subscriber",
   "two-face",
   "unicode-segmentation",
@@ -75,15 +79,15 @@ index bc4e934..c6a666a 100644
   "url",
   "urlencoding",
   "uuid",
-@@ -5268,7 +5268,6 @@ dependencies = [
+@@ -5356,7 +5356,6 @@ dependencies = [
  name = "codex-utils-cargo-bin"
- version = "0.0.0"
+ version = "0.167.0"
  dependencies = [
 - "assert_cmd",
   "runfiles",
   "thiserror 2.0.21",
  ]
-@@ -10003,6 +10002,7 @@ version = "11.1.0"
+@@ -10073,6 +10072,7 @@ version = "11.1.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "e75fe14a82d81e5f5af639997db37d8b96045938a7ac6ab18cdbe1c7467e05e1"
  dependencies = [
@@ -91,7 +95,7 @@ index bc4e934..c6a666a 100644
   "base64 0.22.1",
   "getrandom 0.2.17",
   "js-sys",
-@@ -13065,7 +13065,7 @@ dependencies = [
+@@ -13114,7 +13114,7 @@ dependencies = [
   "thiserror 2.0.21",
   "unicode-segmentation",
   "unicode-truncate",
@@ -100,7 +104,7 @@ index bc4e934..c6a666a 100644
  ]
  
  [[package]]
-@@ -13139,7 +13139,7 @@ dependencies = [
+@@ -13188,7 +13188,7 @@ dependencies = [
   "strum",
   "time",
   "unicode-segmentation",
@@ -109,16 +113,16 @@ index bc4e934..c6a666a 100644
  ]
  
  [[package]]
-@@ -15857,7 +15857,7 @@ checksum = "6ecfad6c3abc80a577f2b91c1e412ee57e7a060d430b553c1b0c940974ebcd49"
+@@ -15884,7 +15884,7 @@ checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
  dependencies = [
-  "icu_segmenter",
   "smawk",
+  "unicode-linebreak",
 - "unicode-width 0.2.3",
 + "unicode-width 0.2.2",
  ]
  
  [[package]]
-@@ -16804,7 +16804,7 @@ checksum = "16b380a1238663e5f8a691f9039c73e1cdae598a30e9855f541d29b08b53e9a5"
+@@ -16837,7 +16837,7 @@ checksum = "16b380a1238663e5f8a691f9039c73e1cdae598a30e9855f541d29b08b53e9a5"
  dependencies = [
   "itertools 0.14.0",
   "unicode-segmentation",
@@ -127,7 +131,7 @@ index bc4e934..c6a666a 100644
  ]
  
  [[package]]
-@@ -16815,9 +16815,9 @@ checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
+@@ -16848,9 +16848,9 @@ checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
  
  [[package]]
  name = "unicode-width"
@@ -139,7 +143,7 @@ index bc4e934..c6a666a 100644
  
  [[package]]
  name = "unicode-xid"
-@@ -16963,7 +16963,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -16995,7 +16995,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "eb05cdd19ae8707bf6a0a269972c07e6358103a7079faec749dec318a5b3dc23"
  dependencies = [
   "itoa",
@@ -149,10 +153,10 @@ index bc4e934..c6a666a 100644
  ]
  
 diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
-index 6997c55..1e601b4 100644
+index 8d40d19..e07e817 100644
 --- a/codex-rs/Cargo.toml
 +++ b/codex-rs/Cargo.toml
-@@ -414,7 +414,7 @@ insta = "1.46.3"
+@@ -418,7 +418,7 @@ insta = "1.46.3"
  inventory = "0.3.19"
  itertools = "0.15.0"
  jsonptr = { version = "0.8.2", default-features = false }
@@ -161,9 +165,9 @@ index 6997c55..1e601b4 100644
  keyring = { version = "3.6", default-features = false }
  landlock = "0.4.4"
  lazy_static = "1"
-@@ -552,7 +552,9 @@ ts-rs = "12"
- tungstenite = { version = "0.27.0", features = ["deflate", "proxy"] }
+@@ -557,7 +557,9 @@ tungstenite = { version = "0.27.0", features = ["deflate", "proxy"] }
  uds_windows = "1.1.0"
+ unicode-normalization = "0.1.25"
  unicode-segmentation = "1.12.0"
 -unicode-width = "0.2"
 +# ratatui-core 0.1.2 adds one cell for each halfwidth sound mark (U+FF9E, U+FF9F) because unicode-width
@@ -313,11 +317,73 @@ index 13b6914..950ac78 100644
                  let observation_tags = observation["attributes"]
                      .as_array()
                      .context("observation attributes")?
+diff --git a/codex-rs/code-mode-runtime/src/ui/transport_tests.rs b/codex-rs/code-mode-runtime/src/ui/transport_tests.rs
+index c2e9f19..431c67e 100644
+--- a/codex-rs/code-mode-runtime/src/ui/transport_tests.rs
++++ b/codex-rs/code-mode-runtime/src/ui/transport_tests.rs
+@@ -59,7 +59,7 @@ fn blocking_transport_preserves_wire_format_and_buffered_frames() -> io::Result<
+     {
+         let mut output = blocking_writer(&mut bytes);
+         for payload in payloads {
+-            block_on(output.send(payload.to_vec().into()))?;
++            block_on(output.send(tokio_util::bytes::Bytes::from(payload.to_vec())))?;
+         }
+     }
+     assert_eq!(bytes, b"\x03\0\0\0abc\0\0\0\0\x03\0\0\0hi\0");
+diff --git a/codex-rs/code-mode-runtime/src/ui/workers.rs b/codex-rs/code-mode-runtime/src/ui/workers.rs
+index d2636e0..cf16a6d 100644
+--- a/codex-rs/code-mode-runtime/src/ui/workers.rs
++++ b/codex-rs/code-mode-runtime/src/ui/workers.rs
+@@ -51,7 +51,7 @@ pub(super) fn run() -> io::Result<()> {
+         .name("ui-plugin-output".into())
+         .spawn(move || {
+             let mut writer = blocking_writer(io::stdout().lock());
+-            if let Err(error) = block_on(writer.send(codex_plugin_host::READY.to_vec().into())) {
++            if let Err(error) = block_on(writer.send(tokio_util::bytes::Bytes::from(codex_plugin_host::READY.to_vec()))) {
+                 fatal(error);
+             }
+             for output in outgoing_rx {
+@@ -62,7 +62,7 @@ pub(super) fn run() -> io::Result<()> {
+                 for packet in &output.packets {
+                     let bytes =
+                         serde_json::to_vec(packet).unwrap_or_else(|error| fatal(error.into()));
+-                    if let Err(error) = block_on(writer.send(bytes.into())) {
++                    if let Err(error) = block_on(writer.send(tokio_util::bytes::Bytes::from(bytes))) {
+                         fatal(error);
+                     }
+                 }
+diff --git a/codex-rs/exec-server/src/noise_relay/harness_tests.rs b/codex-rs/exec-server/src/noise_relay/harness_tests.rs
+index 4c2d77d..d98263a 100644
+--- a/codex-rs/exec-server/src/noise_relay/harness_tests.rs
++++ b/codex-rs/exec-server/src/noise_relay/harness_tests.rs
+@@ -660,13 +660,17 @@ where
+         }
+         let mut fields = Fields::default();
+         event.record(&mut fields);
+-        // Match CCA's live JSON lookup: inspecting OtelData must not materialize
+-        // the context and accidentally hide a missing producer initialization.
++        // tracing-opentelemetry 0.34 no longer exposes its per-span data, so read the span's
++        // trace ID through the crate's public context lookup.
+         if let Some(trace_id) = context.event_scope(event).and_then(|mut scope| {
+             scope.find_map(|span| {
+-                span.extensions()
+-                    .get::<tracing_opentelemetry::OtelData>()?
+-                    .trace_id()
++                let otel_context = tracing::dispatcher::get_default(|dispatch| {
++                    tracing_opentelemetry::get_otel_context(&span.id(), dispatch)
++                })?;
++                let span_context = opentelemetry::trace::TraceContextExt::span(&otel_context)
++                    .span_context()
++                    .clone();
++                span_context.is_valid().then(|| span_context.trace_id())
+             })
+         }) {
+             fields.0.insert("trace_id".to_owned(), trace_id.to_string());
 diff --git a/codex-rs/exec-server/src/remote.rs b/codex-rs/exec-server/src/remote.rs
-index a43f5ac..87ac51d 100644
+index cf88006..84739cc 100644
 --- a/codex-rs/exec-server/src/remote.rs
 +++ b/codex-rs/exec-server/src/remote.rs
-@@ -1670,6 +1670,12 @@ mod tests {
+@@ -1668,6 +1668,12 @@ mod tests {
                  .accept()
                  .await
                  .expect("registry request should connect");

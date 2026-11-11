@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 08:53:59 -0500
-Subject: [PATCH] Group tool activity with expandable retained output
+Subject: [PATCH 06/54] Group tool activity with expandable retained output
 
 Adjacent file reads and shell commands each take their own transcript
 rows, so a turn that runs many short commands pushes its messages out of
@@ -48,7 +48,7 @@ and the feature to enabled, so both must allow it.
  create mode 100644 codex-rs/tui/src/transcript_view/tool_activity.rs
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 8ae3ff1..b2404d6 100644
+index a1199f6..3da74c1 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
 @@ -167,6 +167,8 @@ pub struct FeatureToggleToml {
@@ -61,7 +61,7 @@ index 8ae3ff1..b2404d6 100644
      pub expanded_diff_previews: Option<bool>,
  }
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 1be8c0c..bced3b6 100644
+index a45e739..1b7edb9 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
 @@ -745,6 +745,10 @@
@@ -75,7 +75,7 @@ index 1be8c0c..bced3b6 100644
          "expanded_diff_previews": {
            "description": "Expand patch diffs in the owned fullscreen transcript when the matching feature is enabled.",
            "type": "boolean"
-@@ -1424,6 +1428,9 @@
+@@ -1448,6 +1452,9 @@
              "unified_image_budget": {
                "type": "boolean"
              },
@@ -85,7 +85,7 @@ index 1be8c0c..bced3b6 100644
              "unleashed_expanded_diff_previews": {
                "type": "boolean"
              },
-@@ -8080,6 +8087,9 @@
+@@ -8170,6 +8177,9 @@
          "unified_image_budget": {
            "type": "boolean"
          },
@@ -96,7 +96,7 @@ index 1be8c0c..bced3b6 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
-index d6e406e..f4e6f59 100644
+index a4d0a67..7514871 100644
 --- a/codex-rs/core/src/config/config_loader_tests.rs
 +++ b/codex-rs/core/src/config/config_loader_tests.rs
 @@ -146,6 +146,66 @@ command = "{command}"
@@ -167,7 +167,7 @@ index d6e406e..f4e6f59 100644
  async fn cli_overrides_resolve_relative_paths_against_cwd() -> std::io::Result<()> {
      let codex_home = tempdir().expect("tempdir");
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 4c76929..165d3d1 100644
+index 4b62a55..b50fa09 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
 @@ -845,6 +845,9 @@ pub struct Config {
@@ -180,7 +180,7 @@ index 4c76929..165d3d1 100644
      /// Right-click text paste fallback for the fullscreen TUI.
      pub tui_right_click_paste: codex_config::types::RightClickPaste,
  
-@@ -1640,6 +1643,12 @@ async fn config_toml_from_layers(layers: &ConfigLayerStack) -> std::io::Result<C
+@@ -1658,6 +1661,12 @@ async fn config_toml_from_layers(layers: &ConfigLayerStack) -> std::io::Result<C
  }
  
  impl Config {
@@ -193,7 +193,7 @@ index 4c76929..165d3d1 100644
      pub fn sqlite_config(&self) -> &codex_state::SqliteConfig {
          &self.sqlite
      }
-@@ -4788,6 +4797,11 @@ impl Config {
+@@ -4810,6 +4819,11 @@ impl Config {
                  .tui
                  .as_ref()
                  .is_some_and(|tui| tui.copy_on_select_clear_selection),
@@ -206,7 +206,7 @@ index 4c76929..165d3d1 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 5505fb1..adcd586 100644
+index 7ab0444..53ff54e 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
 @@ -116,6 +116,8 @@ pub enum Feature {
@@ -218,7 +218,7 @@ index 5505fb1..adcd586 100644
      /// Enable Claude-style lifecycle hooks loaded from hooks.json files.
      CodexHooks,
      /// Store CLI auth in the encrypted local secrets backend when keyring storage is selected.
-@@ -1429,6 +1431,12 @@ pub const FEATURES: &[FeatureSpec] = &[
+@@ -1463,6 +1465,12 @@ pub const FEATURES: &[FeatureSpec] = &[
          stage: Stage::UnderDevelopment,
          default_enabled: false,
      },
@@ -232,11 +232,11 @@ index 5505fb1..adcd586 100644
          id: Feature::WriteStdinApproval,
          key: "write_stdin_approval",
 diff --git a/codex-rs/features/src/tests.rs b/codex-rs/features/src/tests.rs
-index c791fb4..8368240 100644
+index 4ccb686..fe85d34 100644
 --- a/codex-rs/features/src/tests.rs
 +++ b/codex-rs/features/src/tests.rs
-@@ -979,3 +979,16 @@ fn retired_worktree_and_voice_config_overrides_are_ignored() {
-         assert_eq!(features, Features::with_defaults());
+@@ -997,3 +997,16 @@ fn model_change_suppression_config_preserves_omission_and_explicit_values() {
+         );
      }
  }
 +
@@ -253,7 +253,7 @@ index c791fb4..8368240 100644
 +    assert!(!features.enabled(feature));
 +}
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index ad3cf5c..67a90b6 100644
+index 227717e..6ee5447 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
 @@ -288,6 +288,7 @@ async fn new_config(
@@ -265,10 +265,10 @@ index ad3cf5c..67a90b6 100644
          tui_effects: Default::default(),
          tui_rendering: Default::default(),
 diff --git a/codex-rs/tui/src/app/history_ui.rs b/codex-rs/tui/src/app/history_ui.rs
-index ca29929..959196c 100644
+index ac38f11..5b94e9f 100644
 --- a/codex-rs/tui/src/app/history_ui.rs
 +++ b/codex-rs/tui/src/app/history_ui.rs
-@@ -50,6 +50,9 @@ impl App {
+@@ -67,6 +67,9 @@ impl App {
              self.merge_startup_warnings(tui, warnings);
              return;
          }
@@ -279,10 +279,10 @@ index ca29929..959196c 100644
          let cell: Arc<dyn HistoryCell> = cell.into();
          if let Some(Overlay::Transcript(t)) = &mut self.overlay {
 diff --git a/codex-rs/tui/src/app/owned_transcript.rs b/codex-rs/tui/src/app/owned_transcript.rs
-index d61e5ae..e978c6a 100644
+index 5a242ad..24e3558 100644
 --- a/codex-rs/tui/src/app/owned_transcript.rs
 +++ b/codex-rs/tui/src/app/owned_transcript.rs
-@@ -100,6 +100,7 @@ impl App {
+@@ -175,6 +175,7 @@ impl App {
          view.set_keymap_bindings(&self.keymap);
          view.set_presentation(view.is_detailed(), chat_widget.history_render_mode());
          let active_key = chat_widget.active_cell_transcript_key();
@@ -291,10 +291,10 @@ index d61e5ae..e978c6a 100644
          let active_ids = chat_widget.active_activity_ids();
          let expanded = view.sync_live_activity(&self.transcript_cells, active_ids)
 diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
-index bd9440c..7f3ab05 100644
+index fc6024d..cfb9fc8 100644
 --- a/codex-rs/tui/src/app/owned_transcript_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
-@@ -2069,3 +2069,110 @@ async fn footer_selection_defers_warning_clicks_and_preserves_the_draft() -> Res
+@@ -2320,3 +2320,110 @@ async fn footer_selection_defers_warning_clicks_and_preserves_the_draft() -> Res
      tui.set_owned_screen(/*owned*/ false)?;
      Ok(())
  }
@@ -406,10 +406,10 @@ index bd9440c..7f3ab05 100644
 +    assert!(buffer_text(&buffer).contains("completion output"));
 +}
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 68868be..7dc4873 100644
+index d2962e8..2451776 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -1766,9 +1766,13 @@ impl ChatWidget {
+@@ -1769,9 +1769,13 @@ impl ChatWidget {
          self.bottom_pane.composer_is_vim_enabled()
      }
  
@@ -1036,10 +1036,10 @@ index 0a8ade1..8cadf54 100644
      /// Retained output lines not fully visible in the preview, excluding storage omissions.
      OutputLines(usize),
 diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
-index b2322a5..170575b 100644
+index 807d7ac..f618015 100644
 --- a/codex-rs/tui/src/thread_transcript.rs
 +++ b/codex-rs/tui/src/thread_transcript.rs
-@@ -183,7 +183,9 @@ pub(crate) fn thread_items_to_transcript_cells(
+@@ -189,7 +189,9 @@ pub(crate) fn thread_items_to_transcript_cells(
                      PendingActivity::flush(&mut pending, &mut cells);
                  }
                  if let Some(command) = tools::CommandHistory::from_item(item) {
@@ -1209,7 +1209,7 @@ index c3249b1..13149cb 100644
 +    }
 +}
 diff --git a/codex-rs/tui/src/transcript_view.rs b/codex-rs/tui/src/transcript_view.rs
-index 7bc3e74..80b5958 100644
+index 001187a..6bb78bb 100644
 --- a/codex-rs/tui/src/transcript_view.rs
 +++ b/codex-rs/tui/src/transcript_view.rs
 @@ -21,6 +21,7 @@ mod select_mode;
@@ -1220,7 +1220,7 @@ index 7bc3e74..80b5958 100644
  mod turn_tip;
  
  use std::sync::Arc;
-@@ -301,6 +302,7 @@ impl TranscriptView {
+@@ -305,6 +306,7 @@ impl TranscriptView {
          if self.tail_visible {
              self.unseen_activity = false;
          }
@@ -1228,7 +1228,7 @@ index 7bc3e74..80b5958 100644
          self.render_selection(buf);
          self.render_select_cursor(buf);
          if self.history == TranscriptHistoryState::LoadingBeginning && self.is_following() {
-@@ -362,9 +364,20 @@ impl TranscriptView {
+@@ -366,9 +368,20 @@ impl TranscriptView {
              .disclosure
              .keymap
              .primary_hint(crate::keymap::KeymapContext::Global, "open_transcript");
@@ -1252,10 +1252,10 @@ index 7bc3e74..80b5958 100644
  
      pub(crate) fn sync_live_layout(
 diff --git a/codex-rs/tui/src/transcript_view/disclosure.rs b/codex-rs/tui/src/transcript_view/disclosure.rs
-index d221387..c0ce70b 100644
+index 5429eaa..04622b2 100644
 --- a/codex-rs/tui/src/transcript_view/disclosure.rs
 +++ b/codex-rs/tui/src/transcript_view/disclosure.rs
-@@ -16,6 +16,9 @@ use super::*;
+@@ -17,6 +17,9 @@ use super::*;
  
  pub(super) struct Disclosure {
      pub(super) expanded: HashSet<String>,
@@ -1263,9 +1263,9 @@ index d221387..c0ce70b 100644
 +    pub(super) turn_running: bool,
 +    pub(super) turn_tool_ids: HashSet<String>,
      pub(super) focused: Option<Vec<String>>,
+     pub(super) resume_after_approval: Option<(ThreadId, String)>,
      pub(super) live_ids: Vec<String>,
-     pub(super) keymap: RuntimeKeymap,
-@@ -25,6 +28,9 @@ impl Default for Disclosure {
+@@ -27,6 +30,9 @@ impl Default for Disclosure {
      fn default() -> Self {
          Self {
              expanded: HashSet::new(),
@@ -1273,9 +1273,9 @@ index d221387..c0ce70b 100644
 +            turn_running: false,
 +            turn_tool_ids: HashSet::new(),
              focused: None,
+             resume_after_approval: None,
              live_ids: Vec::new(),
-             keymap: RuntimeKeymap::defaults(),
-@@ -106,6 +112,9 @@ impl TranscriptView {
+@@ -117,6 +123,9 @@ impl TranscriptView {
          area: Rect,
          buf: &mut Buffer,
      ) {
@@ -1285,7 +1285,7 @@ index d221387..c0ce70b 100644
          let focused = self
              .disclosure
              .focused
-@@ -148,10 +157,18 @@ impl TranscriptView {
+@@ -159,10 +168,18 @@ impl TranscriptView {
          else {
              return false;
          };
@@ -1309,12 +1309,12 @@ index d221387..c0ce70b 100644
              return false;
          }
 diff --git a/codex-rs/tui/src/transcript_view/input.rs b/codex-rs/tui/src/transcript_view/input.rs
-index 1ce29ba..d8ba4cf 100644
+index 59183c4..d496c37 100644
 --- a/codex-rs/tui/src/transcript_view/input.rs
 +++ b/codex-rs/tui/src/transcript_view/input.rs
-@@ -289,6 +289,20 @@ impl TranscriptView {
+@@ -295,6 +295,20 @@ impl TranscriptView {
          cells: &[Arc<dyn HistoryCell>],
-         mode: MouseMode,
+         mode: MouseMode<'_>,
      ) -> Option<ViewAction> {
 +        let pointer_changed =
 +            if mode == MouseMode::Interactive && event.kind == MouseEventKind::Moved {
@@ -1333,7 +1333,7 @@ index 1ce29ba..d8ba4cf 100644
          if mode == MouseMode::Interactive
              && let Some(action) = self.handle_follow_control_mouse(event)
          {
-@@ -310,6 +324,9 @@ impl TranscriptView {
+@@ -316,6 +330,9 @@ impl TranscriptView {
              }
              return Some(ViewAction::Changed);
          }
@@ -1535,12 +1535,12 @@ index 0000000..703861e
 +    }
 +}
 diff --git a/codex-rs/tui/src/transcript_view_tests.rs b/codex-rs/tui/src/transcript_view_tests.rs
-index eaaa366..e8510a7 100644
+index 9be9775..5295878 100644
 --- a/codex-rs/tui/src/transcript_view_tests.rs
 +++ b/codex-rs/tui/src/transcript_view_tests.rs
-@@ -1284,3 +1284,198 @@ fn history_prefetch_counts_rows_in_preceding_entries() {
-         assert!(view.near_start(&cells));
-     }
+@@ -1361,3 +1361,198 @@ fn spoken_prompt_selection_keeps_its_fallback_contrast() {
+         },
+     );
  }
 +
 +#[test]

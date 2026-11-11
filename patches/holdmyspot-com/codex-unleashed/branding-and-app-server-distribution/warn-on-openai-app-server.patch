@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 11:21:56 -0500
-Subject: [PATCH] Identify server distribution and order Unleashed versions
+Subject: [PATCH 18/54] Identify server distribution and order Unleashed
+ versions
 
 Warn when the connected server identifies itself as OpenAI Codex. Compare numeric Unleashed versions by release precedence, then build number, so a bare equal release is older and a higher release stays newer.
 ---
@@ -16,10 +17,10 @@ Warn when the connected server identifies itself as OpenAI Codex. Compare numeri
  create mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap
 
 diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
-index e7df794..99ff6b0 100644
+index c4b9011..518dfd0 100644
 --- a/codex-rs/app-server-client/src/lib.rs
 +++ b/codex-rs/app-server-client/src/lib.rs
-@@ -1458,7 +1458,14 @@ mod tests {
+@@ -1463,7 +1463,14 @@ mod tests {
      #[tokio::test]
      async fn remote_typed_request_roundtrip_works() {
          let websocket_url = start_test_remote_server(|mut websocket| async move {
@@ -35,7 +36,7 @@ index e7df794..99ff6b0 100644
              let JSONRPCMessage::Request(request) = read_websocket_message(&mut websocket).await
              else {
                  panic!("expected account/read request");
-@@ -1484,7 +1491,7 @@ mod tests {
+@@ -1489,7 +1496,7 @@ mod tests {
              .await
              .expect("remote client should connect");
  
@@ -86,7 +87,7 @@ index 0000000..b5da90f
 +  Use /daemon to manage the local background server.
 +  Updating may interrupt active or queued work.
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index f459fa3..f3765a9 100644
+index 71604ef..d89d01d 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
 @@ -100,6 +100,35 @@ fn local_daemon_version_notice_snapshot() {
