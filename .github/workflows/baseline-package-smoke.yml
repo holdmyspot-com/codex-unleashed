@@ -113,9 +113,38 @@ jobs:
             echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
           fi
 
+      # Upstream builds these packages on a larger repository-owned runner (`<repo>-linux-arm64`) with Cargo's default
+      # job count and no swap. The hosted ubuntu-24.04-arm runner has 4 CPUs and 16 GB; four concurrent rustc and
+      # thin-LTO processes exhausted its memory and the runner was lost mid-build ("shutdown signal", exit 143) in
+      # package dry run 42860267858 and smoke run 42940948378, both while compiling codex-exec. The release-build
+      # workflow measured the same limit on this runner type: three Cargo jobs finish fastest, four run out of memory.
+      # The release profile (LTO, codegen units, optimization level) is unchanged. Swap absorbs the link-time peaks.
+      - name: Fit the build into the hosted Linux runner's memory
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          free -h
+          swapon --show || true
+          df -h / /mnt 2>/dev/null || df -h /
+          swapfile=/mnt/codex-build-swap
+          if [[ ! -d /mnt ]] || [[ "$(df --output=avail -BG /mnt | tail -1 | tr -dc 0-9)" -lt 20 ]]; then swapfile=/codex-build-swap; fi
+          sudo fallocate -l 12G "$swapfile"
+          sudo chmod 600 "$swapfile"
+          sudo mkswap "$swapfile"
+          sudo swapon "$swapfile"
+          free -h
+          echo 'CARGO_BUILD_JOBS=3' >> "$GITHUB_ENV"
+          # A background sampler writes memory use to a file; the last step prints it, so an out-of-memory run leaves evidence.
+          nohup setsid bash -c 'while true; do date -u +%H:%M:%S; free -m | sed -n "1,3p"; ps -eo rss,comm --sort=-rss | sed -n "1,4p"; sleep 20; done' \
+            > "$RUNNER_TEMP/memory-samples.log" 2>&1 < /dev/null &
+
       - name: Build and smoke-test upstream's package archives
         uses: ./.github/actions/build-codex-packages
         with:
           target: ${{ inputs.target }}
           package-version: ${{ steps.source.outputs.version }}+smoke
           build-mode: release
+
+      - name: Show the memory samples
+        if: always() && runner.os == 'Linux'
+        run: tail -n 120 "$RUNNER_TEMP/memory-samples.log" || true
