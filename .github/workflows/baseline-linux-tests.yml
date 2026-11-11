@@ -494,6 +494,19 @@ jobs:
             done
           ) >> "$RUNNER_TEMP/baseline-test-evidence/test-disk-usage.log" 2>&1 &
           disk_monitor=$!
+          # The sample file is lost when the runner dies of a full disk, so the job log carries a compact copy.
+          (
+            sample=0
+            while true; do
+              printf 'disk-sample %s %s\n' "$(date -u +%H:%M:%S)" "$(df -k --output=used,avail / | tail -n 1)"
+              if (( sample % 5 == 0 )); then
+                sudo du -xk --max-depth=3 /home/runner /var/lib/docker /tmp 2>/dev/null | sort -nr | sed -n '1,14p' | sed 's/^/disk-top /'
+              fi
+              sample=$((sample + 1))
+              sleep 60
+            done
+          ) &
+          ls -l "$RUNNER_TEMP/baseline-test-archive.tar.zst" | sed 's/^/archive-size /'
           trap 'kill "$disk_monitor" $(jobs -p) 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
           cargo-nextest --version | tee "$RUNNER_TEMP/baseline-test-evidence/nextest-version.txt"
           # Keep passing tests' output in the JUnit report, where the skip check reads it, instead of the log.
