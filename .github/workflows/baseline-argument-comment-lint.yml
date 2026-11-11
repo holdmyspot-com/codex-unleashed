@@ -75,6 +75,8 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-argument-lint-evidence"
           : > "$evidence/applied-patches.txt"
           read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
+          # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
+          printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"
           for patch in "${patch_paths[@]}"; do
             printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
             git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
@@ -224,6 +226,8 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-argument-lint-evidence"
           : > "$evidence/applied-patches.txt"
           read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
+          # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
+          printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"
           for patch in "${patch_paths[@]}"; do
             printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
             git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
