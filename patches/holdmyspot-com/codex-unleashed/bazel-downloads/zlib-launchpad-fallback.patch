@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 11 Nov 2026 14:38:47 -0500
+Subject: [PATCH] bugfix: fall back to Launchpad when the Ubuntu snapshot
+ server fails
+
+The Linux rustc toolchain repository downloads a pinned zlib package from
+snapshot.ubuntu.com only, so a 503 from that server failed the Bazel Clippy
+run 43003234610. Launchpad serves the same package files; each download now
+lists the Launchpad URL after the snapshot URL, and Bazel compares the
+unchanged sha256 whichever server answers.
+---
+ patches/rules_rs_zlib_snapshot_urls.patch | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/patches/rules_rs_zlib_snapshot_urls.patch b/patches/rules_rs_zlib_snapshot_urls.patch
+index fffbca8fc..4b0eecd2e 100644
+--- a/patches/rules_rs_zlib_snapshot_urls.patch
++++ b/patches/rules_rs_zlib_snapshot_urls.patch
+@@ -1,21 +1,30 @@
+ # What: fetch the pinned Linux zlib packages from dated Ubuntu snapshots.
+ # Scope: download URLs only; package versions and checksums are unchanged.
++# Each package also lists its Launchpad URL, which Bazel tries only when the snapshot download fails.
+ # Backport of https://github.com/hermeticbuild/rules_rs/commit/81336041f1c092b94ba0d35384c4dfc03ce45a07
+ 
+ diff --git a/rs/private/rustc_repository.bzl b/rs/private/rustc_repository.bzl
+ --- a/rs/private/rustc_repository.bzl
+ +++ b/rs/private/rustc_repository.bzl
+-@@ -11,11 +11,11 @@ _LINUX_ZLIB = {
++@@ -11,11 +11,19 @@ _LINUX_ZLIB = {
+      "aarch64": struct(
+          libdir = "usr/lib/aarch64-linux-gnu",
+          sha256 = "cbe3d39ec32d3cc27c021ae4af11e7c67bdf9d700d573207e0941d4038056278",
+ -        url = "https://ports.ubuntu.com/ubuntu-ports/pool/main/z/zlib/zlib1g_1.3.dfsg-3.1ubuntu2.1_arm64.deb",
+-+        url = "https://snapshot.ubuntu.com/ubuntu/20260801T000000Z/pool/main/z/zlib/zlib1g_1.3.dfsg-3.1ubuntu2.1_arm64.deb",
+++        # Launchpad serves the same package; Bazel tries it only after the snapshot fails and checks sha256.
+++        url = [
+++            "https://snapshot.ubuntu.com/ubuntu/20260801T000000Z/pool/main/z/zlib/zlib1g_1.3.dfsg-3.1ubuntu2.1_arm64.deb",
+++            "https://launchpad.net/ubuntu/+archive/primary/+files/zlib1g_1.3.dfsg-3.1ubuntu2.1_arm64.deb",
+++        ],
+      ),
+      "x86_64": struct(
+          libdir = "usr/lib/x86_64-linux-gnu",
+          sha256 = "7074b6a2f6367a10d280c00a1cb02e74277709180bab4f2491a2f355ab2d6c20",
+ -        url = "https://archive.ubuntu.com/ubuntu/pool/main/z/zlib/zlib1g_1.3.dfsg-3.1ubuntu2.1_amd64.deb",
+-+        url = "https://snapshot.ubuntu.com/ubuntu/20260801T000000Z/pool/main/z/zlib/zlib1g_1.3.dfsg-3.1ubuntu2.1_amd64.deb",
+++        # Launchpad serves the same package; Bazel tries it only after the snapshot fails and checks sha256.
+++        url = [
+++            "https://snapshot.ubuntu.com/ubuntu/20260801T000000Z/pool/main/z/zlib/zlib1g_1.3.dfsg-3.1ubuntu2.1_amd64.deb",
+++            "https://launchpad.net/ubuntu/+archive/primary/+files/zlib1g_1.3.dfsg-3.1ubuntu2.1_amd64.deb",
+++        ],
+      ),
+  }
+-- 
+2.43.0
+
