@@ -59,7 +59,9 @@ jobs:
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-evidence"
-          cargo_home="$RUNNER_TEMP/baseline-cargo-home"
+          # Cargo's git checkout of the rusty_v8 submodules exceeds MAX_PATH under a long CARGO_HOME.
+          cargo_home="$(dirname "$RUNNER_TEMP")/cg"
+          git config --global core.longpaths true
           cargo_target_dir="$RUNNER_TEMP/baseline-target"
           mkdir -p "$evidence" "$cargo_home" "$cargo_target_dir"
           printf 'CARGO_HOME=%s\nCARGO_TARGET_DIR=%s\n' "$cargo_home" "$cargo_target_dir" >> "$GITHUB_ENV"
