@@ -55,8 +55,9 @@ jobs:
             exit 0
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Badge commits use the repository owner's identity, like every other commit.
+          git config user.name "Gili Tzabari"
+          git config user.email "cowwoc2020@gmail.com"
           git add docs/badges/public-patches.json
           git commit -m "Update README badges"
           git push
