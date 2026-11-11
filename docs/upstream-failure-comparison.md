@@ -459,6 +459,12 @@ execution root presents the source headers as symlinks because the repository se
 the inputs are regular files. No fix that is neither a suppression nor a dependency patch has been found or verified; a candidate
 is a CMake project include in `third_party/voice` that replaces installed symlinks with copies, which is a product-tree change.
 
+Patch 54 (`windows-bazel/opus-installed-headers.patch`) is that candidate, added through the toolchain file the build script
+already receives. The unpatched `rust-v0.167.0` baselines (`43003720882`, `docs/test-baselines/086ccc833b…/windows-bazel-*.json`)
+still hit the error: the MSVC shard and gnullvm shards 1, 2 and 4 exit 1, and their `voice-host` test targets (4 in MSVC, 1 or
+2 per gnullvm shard) fail to build. Those targets are absent from the baselines, so a patched run reports any failure in them
+as new rather than excusing it. Gnullvm shard 3 builds no Opus target and exits 3 (test failures only).
+
 ### Compiled-dependency caches for the lint jobs
 
 GHCR restores for the macOS lint jobs (`baseline-macos-lints.yml`):
