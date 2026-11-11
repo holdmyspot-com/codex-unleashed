@@ -14,7 +14,7 @@ Fix what the upgraded releases change at run time or in test expectations: rtc 0
  .../tests/suite/v2/turn_cost_otel.rs          |  2 +-
  codex-rs/cli/tests/worktree.rs                |  6 +-
  .../src/ui/transport_tests.rs                 |  2 +-
- codex-rs/code-mode-runtime/src/ui/workers.rs  |  4 +-
+ codex-rs/code-mode-runtime/src/ui/workers.rs  |  7 ++-
  .../src/noise_relay/harness_tests.rs          | 14 +++--
  codex-rs/exec-server/src/remote.rs            |  6 ++
  codex-rs/otel/src/network_policy.rs           |  6 +-
@@ -25,7 +25,7 @@ Fix what the upgraded releases change at run time or in test expectations: rtc 0
  codex-rs/utils/cargo-bin/Cargo.toml           |  1 -
  codex-rs/utils/cargo-bin/src/lib.rs           | 41 +++++++------
  .../voice-host/src/capture_worker_tests.rs    | 58 ++++++++++++++-----
- 19 files changed, 150 insertions(+), 82 deletions(-)
+ 19 files changed, 153 insertions(+), 82 deletions(-)
 
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
 index 0ea2b06..c80c548 100644
@@ -331,24 +331,27 @@ index c2e9f19..431c67e 100644
      }
      assert_eq!(bytes, b"\x03\0\0\0abc\0\0\0\0\x03\0\0\0hi\0");
 diff --git a/codex-rs/code-mode-runtime/src/ui/workers.rs b/codex-rs/code-mode-runtime/src/ui/workers.rs
-index d2636e0..cf16a6d 100644
+index d2636e0..4b16de9 100644
 --- a/codex-rs/code-mode-runtime/src/ui/workers.rs
 +++ b/codex-rs/code-mode-runtime/src/ui/workers.rs
-@@ -51,7 +51,7 @@ pub(super) fn run() -> io::Result<()> {
+@@ -51,7 +51,9 @@ pub(super) fn run() -> io::Result<()> {
          .name("ui-plugin-output".into())
          .spawn(move || {
              let mut writer = blocking_writer(io::stdout().lock());
 -            if let Err(error) = block_on(writer.send(codex_plugin_host::READY.to_vec().into())) {
-+            if let Err(error) = block_on(writer.send(tokio_util::bytes::Bytes::from(codex_plugin_host::READY.to_vec()))) {
++            if let Err(error) = block_on(writer.send(tokio_util::bytes::Bytes::from(
++                codex_plugin_host::READY.to_vec(),
++            ))) {
                  fatal(error);
              }
              for output in outgoing_rx {
-@@ -62,7 +62,7 @@ pub(super) fn run() -> io::Result<()> {
+@@ -62,7 +64,8 @@ pub(super) fn run() -> io::Result<()> {
                  for packet in &output.packets {
                      let bytes =
                          serde_json::to_vec(packet).unwrap_or_else(|error| fatal(error.into()));
 -                    if let Err(error) = block_on(writer.send(bytes.into())) {
-+                    if let Err(error) = block_on(writer.send(tokio_util::bytes::Bytes::from(bytes))) {
++                    if let Err(error) = block_on(writer.send(tokio_util::bytes::Bytes::from(bytes)))
++                    {
                          fatal(error);
                      }
                  }
