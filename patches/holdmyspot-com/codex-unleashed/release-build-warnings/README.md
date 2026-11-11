@@ -1,7 +1,7 @@
 # Build warnings in Codex sources and build configuration
 
 - Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
-- Prerequisites: none. Each patch applies alone and after the rest of the queue.
+- Prerequisites: none for patches 1 to 6, each of which applies alone and after the rest of the queue. Patch 7 requires the `dependency-upgrades` and `rama-0.4` patches, whose lockfile changes make its entries stale.
 - Patches, in queue order:
   1. `debug-only-release-items.patch`: release-build warnings from debug-only test hooks.
   2. `bubblewrap-netlink-initializers.patch`: `-Wmissing-field-initializers` in the vendored bubblewrap.
@@ -9,6 +9,7 @@
   4. `bazel-module-versions.patch`: Bazel's root-module version mismatch for `platforms` and `rules_cc`.
   5. `rmcp-client-doc-links.patch`: rustdoc's bare-URL warnings in `codex-rmcp-client` (queued after `fatal-warnings`).
   6. `workspace-rustdoc.patch`: rustdoc's warnings in the other 22 workspace crates (queued after 5).
+  7. `stale-cargo-deny-entries.patch`: cargo-deny's warnings about `deny.toml` entries that match no crate (queued last, after the dependency upgrades and rama 0.4).
 
 The inventory these come from, with the warnings left open and why, is [warning-inventory.md](../../../../docs/warning-inventory.md).
 
@@ -91,3 +92,20 @@ The patch edits only doc comments. URLs become autolinks, literal brackets are e
 The app-server protocol, `config.schema.json` and the Python SDK copy these doc comments into generated files, so the patch includes their output from upstream's own generators (the platform lint workflow's `generators` input, run `42541908776`; the experimental precomputed exports, which the generator rewrites only with `--experimental`, come from run `42553580839`). Those descriptions now carry the Markdown escape `\[UNSTABLE\]`, which renders as `[UNSTABLE]`. No code parses the marker.
 
 Verification: `RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps --keep-going` passes, and the schema fixture tests pass unchanged.
+
+## stale-cargo-deny-entries.patch
+
+`cargo deny check` warned about eight `deny.toml` entries that match nothing in the lockfile (repository check run `43009570386`):
+
+| Entry | Why it matches nothing |
+| --- | --- |
+| Advisory exceptions `RUSTSEC-2026-0403` and `RUSTSEC-2026-0410` | The upgraded lockfile uses `zstd-safe` 8.2.0 and `zstd-sys` 2.1.2, the versions the exceptions' reasons name as their removal condition |
+| Advisory exception `RUSTSEC-2026-0418` | The lockfile uses `libz-sys` 1.1.33; the reason says to remove it at 1.1.31 or later |
+| Allowed license `OpenSSL` | `aws-lc-sys` 0.47.0, its only user, no longer declares it |
+| `async-trait` wrapper `hickory-proto` | rama 0.4 removed `hickory-proto` from the dependency graph |
+| `reqwest` wrapper `sentry` | `sentry` 0.49.5 no longer depends on `reqwest` directly |
+| `reqwest` wrapper `webrtc-sys-build` and allowed Git source `juberti-oai/rust-sdks` | Already absent from the base lockfile |
+
+The patch deletes those entries. It changes no build input, and every check that still matches a crate is unchanged.
+
+Verification: `cargo deny check` in `codex-rs` reports none of the eight warnings, and still ends with `advisories ok, bans ok, licenses ok, sources ok`.

@@ -36,4 +36,22 @@ Scope is Codex and its direct dependencies. Each entry names its cause and its d
 | `bazel_tools` sha256 target uses implicit `__init__.py` creation | Bazel's own tools |
 | `module not found: com.holdmyspot.codexunleashed.tooling.test`; `antlr4` module name ends in digits; restricted `java.lang.foreign` methods; `java.io.tmpdir` set twice; unknown module `org.junit.platform.commons` for `--add-opens` | This repository's Java cache tooling, built by the release workflow |
 | Node.js 20 deprecation for `mlugg/setup-zig` | GitHub Actions dependency of the workflow |
-| `git am`: 3 lines add whitespace errors | Intentional trailing padding in the branding patch's TUI snapshots |
+
+## Update 2026-11-11 (queue on `rust-v0.167.0`)
+
+Sources: argument-comment lint run `43002517995`, repository checks `43009570386`, platform lints `43003310886`, macOS lints `43011377187` and Windows Bazel run `43004017546`.
+
+| Warning | Cause | Disposition |
+| --- | --- | --- |
+| `'_WIN32_WINNT' macro redefined`, about 1,565 per Windows Bazel run | Bazel's local Windows C++ toolchain defaults `_WIN32_WINNT` to `0x0601` while V8 defines `0x0A00` | Fixed: the Windows Bazel workflows pass `--repo_env=BAZEL_WIN32_WINNT=0x0A00`. Release packages are built with Cargo and are unaffected |
+| `git am`: 9 lines add whitespace errors | Trailing spaces that are real content: TUI snapshot lines and context lines of a nested `.patch` file | Fixed: workflows mark `*.snap` and `*.patch` with `-whitespace` before applying the queue; the applied tree is identical |
+| cargo-deny: eight entries in `deny.toml` match no crate | Dependency upgrades and rama 0.4 removed what they matched | Fixed by patch 55, [stale-cargo-deny-entries.patch](../patches/holdmyspot-com/codex-unleashed/release-build-warnings/stale-cargo-deny-entries.patch) |
+| cargo-deny: duplicate crate versions (`sha2`, `rustix`, `zbus`, `windows_*` and others) | Dependencies require incompatible major versions | Kept: removing a duplicate needs a dependency release that agrees with the others |
+| Trailing semicolon in macro used in expression position (`color_eyre::eyre::bail!`, 5 sites in `codex-tui`) | Upstream source at the base | Already fixed by the queue: the patched sources end each of those calls with `;` |
+| `Warning: can't set imports_granularity = Item` (one per file in `cargo fmt`) | Upstream's `rustfmt.toml` sets a nightly-only option, and upstream's CI runs stable rustfmt; upstream's file says the warning can be ignored | Kept: enforcing it needs nightly rustfmt, which would change what the formatting check enforces |
+| `linker stderr: clang++: argument unused during compilation: '--unwindlib=none'` | The hermetic `llvm` module adds `--unwindlib=none` to every link action. rustc links with `-nodefaultlibs`, so clang ignores it for Rust links | Kept: C++ links use the flag, and the toolchain cannot drop it for Rust links alone. Hiding the message would be suppression |
+| `-Wthread-safety-analysis`, `-Wpragma-clang-attribute`, `-Wignored-attributes` and `-Wundef` in V8, Abseil and libc++ headers | Third-party C++ that the Bazel jobs compile | Outside the Codex scope: fixing it means patching those dependencies |
+| `redefining builtin macro` from bindgen on `aws-lc-sys` | Already listed above | Outside the Codex scope |
+| Node.js 20 deprecation for `codespell-project/codespell-problem-matcher` and `mlugg/setup-zig` | Both actions' newest releases target Node 16 or Node 20, and the workflows pin the same versions as upstream | Kept until the actions publish Node 24 releases |
+| `cargo-shear` has no prebuilt binary, so it falls back to `cargo-binstall` | `taiki-e/install-action` has no manifest for this version | Kept: the installed version is unchanged |
+| actionlint: `queue` is an unknown key for `concurrency`; SC2016 notes on single-quoted `$` | actionlint predates `concurrency.queue`; the quoted strings are meant to stay literal | Kept. SC2115 and SC2012 in the Linux tests and release workflows were fixed |

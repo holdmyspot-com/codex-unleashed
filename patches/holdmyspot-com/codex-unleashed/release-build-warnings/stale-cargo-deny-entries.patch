@@ -1,0 +1,70 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 11 Nov 2026 08:45:00 -0500
+Subject: [PATCH] bugfix: drop cargo-deny entries that no longer match any
+ crate
+
+cargo-deny warned about eight deny.toml entries that match nothing in the
+lockfile. The upgraded lockfile uses zstd-safe 8.2.0, zstd-sys 2.1.2 and
+libz-sys 1.1.33, which their advisory exceptions name as the removal
+condition. aws-lc-sys 0.47.0 no longer declares the OpenSSL license, rama 0.4
+removed hickory-proto, and sentry 0.49.5 no longer depends on reqwest
+directly. The webrtc-sys-build wrapper and the juberti-oai/rust-sdks source
+already matched nothing at the base. Every remaining check is unchanged.
+---
+ codex-rs/deny.toml | 11 -----------
+ 1 file changed, 11 deletions(-)
+
+diff --git a/codex-rs/deny.toml b/codex-rs/deny.toml
+index 27e57e99b..0e71611d9 100644
+--- a/codex-rs/deny.toml
++++ b/codex-rs/deny.toml
+@@ -86,10 +86,6 @@ ignore = [
+     { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5.5 via elliptic-curve 0.13.8 is used by age, AWS login, user verification, and WebRTC; timing leakage can affect private-key or session-secret operations; remove when these dependency paths use crypto-bigint >=0.7.6" },
+     # Reviewed 2026-10-26.
+     { id = "RUSTSEC-2026-0459", reason = "C SQLite in libsqlite3-sys 0.37.0; sqlx-sqlite 0.9.0, the latest release, requires libsqlite3-sys <0.38. Accepted by the owner; remove when an sqlx release allows a fixed libsqlite3-sys." },
+-    { id = "RUSTSEC-2026-0403", reason = "zstd 0.13.3 pulls in zstd-safe 7.2.4. Codex, tonic and zip use read decoders or initialized output buffers and discard output on error. Remove when all paths use zstd-safe >=8.2.0." },
+-    { id = "RUSTSEC-2026-0410", reason = "zstd-safe 7.2.4 pulls in zstd-sys 2.0.16. Its allocator bug only affects wasm32, and Codex ships native binaries. Remove when the lockfile uses zstd-sys >=2.1.2." },
+-    # Reviewed 2026-10-29.
+-    { id = "RUSTSEC-2026-0418", reason = "libz-sys 1.1.29 via curl-sys/curl in codex-http-client is Windows-only and skips the affected probe; cc is locked to 1.2.55 (<1.6.0). Remove when libz-sys >=1.1.31; reassess if used on Unix with cc >=1.6.0." },
+ ]
+ # If this is true, then cargo deny will use the git executable to fetch advisory database.
+ # If this is false, then it uses a built-in git library.
+@@ -138,9 +134,6 @@ allow = [
+     # MPL-2.0 - https://www.mozilla.org/MPL/2.0/
+     # Used by: nucleo-matcher
+     "MPL-2.0",
+-    # OpenSSL - https://spdx.org/licenses/OpenSSL.html
+-    # Used by: aws-lc-sys
+-    "OpenSSL",
+     # Unicode-3.0 - https://opensource.org/license/unicode
+     # Used by: icu_decimal, icu_locale_core, icu_provider
+     "Unicode-3.0",
+@@ -232,7 +225,6 @@ deny = [
+     # Removing async-trait materially improves debug build times:
+     # https://github.com/openai/codex/pull/27304
+     { crate = "async-trait", wrappers = [
+-        "hickory-proto",
+         "opentelemetry-http",
+         "pagable",
+         "rmcp",
+@@ -258,8 +250,6 @@ deny = [
+         "opentelemetry-http",
+         "opentelemetry-otlp",
+         "rmcp",
+-        "sentry",
+-        "webrtc-sys-build",
+     ], reason = "new direct reqwest dependencies must use codex-http-client; temporary wrappers track migration debt" },
+ ]
+ 
+@@ -321,7 +311,6 @@ allow-git = [
+     "https://github.com/helix-editor/nucleo.git",
+     # CONNECT request handling needs this pinned H3 revision until released.
+     "https://github.com/hyperium/h3",
+-    "https://github.com/juberti-oai/rust-sdks.git",
+     "https://github.com/microsoft/mxc",
+     "https://github.com/modelcontextprotocol/rust-sdk",
+     "https://github.com/openai-oss-forks/crossterm",
+-- 
+2.43.0
+

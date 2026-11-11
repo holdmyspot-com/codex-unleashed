@@ -62,3 +62,4 @@ The release applies these patches in this order:
 52. [old-main-test-fixes/feedback-thread-cwd-fixture.patch](holdmyspot-com/codex-unleashed/old-main-test-fixes/feedback-thread-cwd-fixture.patch)
 53. [old-main-test-fixes/guardian-local-capability-fixtures.patch](holdmyspot-com/codex-unleashed/old-main-test-fixes/guardian-local-capability-fixtures.patch)
 54. [windows-bazel/opus-installed-headers.patch](holdmyspot-com/codex-unleashed/windows-bazel/opus-installed-headers.patch)
+55. [release-build-warnings/stale-cargo-deny-entries.patch](holdmyspot-com/codex-unleashed/release-build-warnings/stale-cargo-deny-entries.patch)
