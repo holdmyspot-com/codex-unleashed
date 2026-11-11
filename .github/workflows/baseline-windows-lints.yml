@@ -25,6 +25,9 @@ jobs:
   clippy:
     name: Clippy - ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -69,6 +72,9 @@ jobs:
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Preserve the compiled-cache tooling
+        run: bash restart-metadata/.github/scripts/lint-compiled-cache.sh preserve restart-metadata .github/workflows/baseline-windows-lints.yml
 
       - name: Retrieve the exact stable upstream source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -208,6 +214,30 @@ jobs:
           "PKG_CONFIG_LIBDIR=$env:PKG_CONFIG_LIBDIR" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           "PKG_CONFIG_PATH=" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Select the cache helper's native JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Set up the GHCR cache transport
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          version: 1.3.1
+          # ORAS 1.3.1 publishes no Windows ARM64 asset; select its Windows amd64 asset explicitly.
+          url: ${{ runner.os == 'Windows' && 'https://github.com/oras-project/oras/releases/download/v1.3.1/oras_1.3.1_windows_amd64.zip' || '' }}
+          checksum: ${{ runner.os == 'Windows' && '8cf69e46f966e592ad36261c05b8f59c02125743b7261c03f6badc3919b40cb0' || '' }}
+
+      - name: Restore compiled dependencies from GHCR
+        id: lint_cache
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf 'LINT_CACHE_NAME=%s-lint\nLINT_CACHE_TARGET_DIR=%s\n' "$TARGET" "$CARGO_TARGET_DIR" >> "$GITHUB_ENV"
+          bash "$RUNNER_TEMP/lint-cache/lint-compiled-cache.sh" restore "$RUNNER_TEMP/baseline-evidence" "$TARGET-lint" "$CARGO_TARGET_DIR" \
+            'cargo clippy --keep-going --tests --profile dev -- -D warnings'
+
       - name: Check all default workspace test targets with fatal warnings
         working-directory: codex-rs
         run: |
@@ -216,6 +246,12 @@ jobs:
           cargo --version >> "$RUNNER_TEMP/baseline-evidence/rust-toolchain.txt"
           cargo clippy --keep-going --target "$TARGET" --tests --profile dev --timings -- -D warnings \
             2>&1 | tee "$RUNNER_TEMP/baseline-evidence/clippy.log"
+
+      - name: Save compiled dependencies to GHCR
+        if: always() && steps.lint_cache.conclusion == 'success'
+        env:
+          LINT_OUTCOME: ${{ job.status }}
+        run: bash "$RUNNER_TEMP/lint-cache/lint-compiled-cache.sh" save "$RUNNER_TEMP/baseline-evidence" "$LINT_CACHE_NAME" "$LINT_CACHE_TARGET_DIR"
 
       - name: Verify the patched source and tests remain unmodified
         if: always()

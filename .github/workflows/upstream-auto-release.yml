@@ -229,6 +229,9 @@ jobs:
     needs: [detect, patch-check]
     if: ${{ !inputs.skip_gates }}
     uses: ./.github/workflows/baseline-platform-lints.yml
+    permissions:
+      contents: read
+      packages: write
     with:
       patches: ${{ needs.detect.outputs.patches }}
       upstream_commit: ${{ needs.detect.outputs.upstream_commit }}
@@ -238,6 +241,9 @@ jobs:
     needs: [detect, patch-check]
     if: ${{ !inputs.skip_gates }}
     uses: ./.github/workflows/baseline-macos-lints.yml
+    permissions:
+      contents: read
+      packages: write
     with:
       patches: ${{ needs.detect.outputs.patches }}
       upstream_commit: ${{ needs.detect.outputs.upstream_commit }}
@@ -247,6 +253,9 @@ jobs:
     needs: [detect, patch-check]
     if: ${{ !inputs.skip_gates }}
     uses: ./.github/workflows/baseline-windows-lints.yml
+    permissions:
+      contents: read
+      packages: write
     with:
       patches: ${{ needs.detect.outputs.patches }}
       upstream_commit: ${{ needs.detect.outputs.upstream_commit }}
