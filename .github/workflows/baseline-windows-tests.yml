@@ -174,7 +174,18 @@ jobs:
         id: dev-drive
         continue-on-error: true
         shell: pwsh
-        run: ./upstream/.github/scripts/setup-dev-drive.ps1
+        run: |
+          # Upstream's script provisions a fixed 64 GB Dev Drive where the runner has no D: volume, and the hosted ARM64
+          # runner filled it linking the workspace's test binaries. The VHD is dynamic, so size it from the free space
+          # on C: instead; the script itself is otherwise run unchanged.
+          $freeGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
+          $sizeGb = [math]::Min([math]::Max($freeGb - 12, 64), 240)
+          Write-Output "C: has $freeGb GB free; a provisioned Dev Drive will be $sizeGb GB."
+          $script = Join-Path $env:RUNNER_TEMP 'setup-dev-drive-sized.ps1'
+          $text = Get-Content -Raw ./upstream/.github/scripts/setup-dev-drive.ps1
+          if ($text -notmatch '\$SizeBytes = 64GB') { throw 'upstream setup-dev-drive.ps1 no longer sets a 64GB size' }
+          Set-Content -Path $script -Value ($text -replace '\$SizeBytes = 64GB', "`$SizeBytes = ${sizeGb}GB")
+          & $script
 
       - name: Point Cargo's target directory and the temporary directory at the Dev Drive
         if: inputs.package != '' && steps.dev-drive.outcome == 'success'
