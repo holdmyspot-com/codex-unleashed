@@ -2,7 +2,8 @@
 
 Changes to the Codex Unleashed patch queue, by the upstream `openai/codex` stable release the queue is based on. The
 release notes of every fork release built on an upstream release include that release's section as "Changes".
-Section headings are exactly `## Upstream rust-vX.Y.Z`.
+Section headings are exactly `## Upstream rust-vX.Y.Z`, newest upstream release first; add a new release's section above the
+existing ones.
 
 ## Upstream rust-v0.167.0
 

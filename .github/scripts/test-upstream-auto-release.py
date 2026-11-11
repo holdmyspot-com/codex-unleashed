@@ -3,6 +3,7 @@
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -166,6 +167,8 @@ class NotesTest(unittest.TestCase):
         self.assertTrue(headings)
         for heading in headings:
             self.assertRegex(heading, r"^## Upstream rust-v\d+\.\d+\.\d+$")
+        versions = [tuple(int(part) for part in re.findall(r"\d+", heading)) for heading in headings]
+        self.assertEqual(versions, sorted(versions, reverse=True), "newest upstream release first")
 
     def test_failure_summary_names_version_and_failing_item(self):
         """The summary names the upstream version, the failing patch or check, and the log."""
