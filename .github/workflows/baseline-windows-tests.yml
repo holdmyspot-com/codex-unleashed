@@ -206,6 +206,9 @@ jobs:
             printf 'CARGO_BIN_EXE_codex_windows_sandbox_setup=%s\n' "$(cygpath -w "$target_dir/codex-windows-sandbox-setup.exe")"
             printf 'CARGO_BIN_EXE_codex_command_runner=%s\n' "$(cygpath -w "$target_dir/codex-command-runner.exe")"
           } >> "$GITHUB_ENV"
+          # Scratch probe only: the elevated backend looks for its helpers next to the test executable.
+          mkdir -p "$target_dir/deps"
+          cp "$target_dir/codex-command-runner.exe" "$target_dir/codex-windows-sandbox-setup.exe" "$target_dir/deps/"
 
       # Mirrors upstream's setup-rusty-v8 action, whose paths assume the upstream checkout is the workspace root.
       - name: Verify and configure upstream V8 artifacts
