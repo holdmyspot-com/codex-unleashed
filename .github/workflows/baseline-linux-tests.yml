@@ -494,13 +494,17 @@ jobs:
             done
           ) >> "$RUNNER_TEMP/baseline-test-evidence/test-disk-usage.log" 2>&1 &
           disk_monitor=$!
-          # The sample file is lost when the runner dies of a full disk, so the job log carries a compact copy.
+          # The sample file is lost when the runner dies of a full disk, so the job log carries a compact copy. The
+          # directory sizes run in the background with a time limit so a slow walk never delays the next df line.
           (
             sample=0
             while true; do
               printf 'disk-sample %s %s\n' "$(date -u +%H:%M:%S)" "$(df -k --output=used,avail / | tail -n 1)"
               if (( sample % 5 == 0 )); then
-                sudo du -xk --max-depth=3 /home/runner /var/lib/docker /tmp 2>/dev/null | sort -nr | sed -n '1,14p' | sed 's/^/disk-top /'
+                (
+                  timeout 240 sudo du -xk --max-depth=2 /home/runner/.cache /home/runner/work/_temp /tmp /var/lib/docker \
+                    2>/dev/null | sort -nr | sed -n '1,12p' | sed 's/^/disk-top /'
+                ) &
               fi
               sample=$((sample + 1))
               sleep 60
@@ -527,7 +531,7 @@ jobs:
             fi
             # The archive carries every test binary, so the build outputs only duplicate it. Free their disk space.
             cp "$helper" "$RUNNER_TEMP/codex-linux-sandbox"
-            rm -rf "$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test"
+            rm -rf "$CARGO_TARGET_DIR"/*
             mkdir -p "$(dirname "$helper")"
             cp "$RUNNER_TEMP/codex-linux-sandbox" "$helper"
           fi
