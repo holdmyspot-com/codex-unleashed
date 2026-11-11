@@ -393,7 +393,15 @@ jobs:
           persist-credentials: false
 
       - name: Keep the patch queue outside the upstream checkout
-        run: cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
+        run: |
+          set -euo pipefail
+          cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
+          mkdir -p "$RUNNER_TEMP/package-smoke-tools/test-baselines"
+          cp restart-metadata/.github/scripts/compare-test-baseline.py restart-metadata/.github/scripts/package-smoke-baseline.sh \
+            "$RUNNER_TEMP/package-smoke-tools/"
+          if [[ -d restart-metadata/docs/test-baselines ]]; then
+            cp -R restart-metadata/docs/test-baselines/. "$RUNNER_TEMP/package-smoke-tools/test-baselines/"
+          fi
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -461,11 +469,26 @@ jobs:
           fi
 
       - name: Build and smoke-test upstream's package archives
+        id: package
+        continue-on-error: true
         uses: ./.github/actions/build-codex-packages
         with:
           target: ${{ matrix.target }}
           package-version: ${{ needs.detect.outputs.version }}+${{ needs.detect.outputs.build }}
           build-mode: release
+
+      # Upstream's action builds the archives and runs its smoke tests in one step, so a smoke-test failure fails the step.
+      # The step is allowed to fail; the next step then fails the job unless every failure is already in the baseline.
+      # Failed builds still fail the job: that step requires every archive.
+      - name: Judge the smoke-test failures against the unpatched baseline
+        if: steps.package.outcome == 'failure'
+        env:
+          TARGET: ${{ matrix.target }}
+          UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
+          PACKAGE_SMOKE_TOOLS: ${{ runner.temp }}/package-smoke-tools
+          PACKAGE_SMOKE_EVIDENCE: ${{ runner.temp }}/package-smoke-evidence
+          PYTHONPATH: ${{ github.workspace }}/sdk/python/src${{ runner.os == 'Windows' && ';' || ':' }}${{ github.workspace }}/sdk/python/tests
+        run: bash "$PACKAGE_SMOKE_TOOLS/package-smoke-baseline.sh" compare
 
       - name: Collect the release assets
         run: |

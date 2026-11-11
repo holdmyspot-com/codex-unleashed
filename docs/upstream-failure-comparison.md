@@ -416,6 +416,15 @@ after the sandboxed `codex-exec-server.exe --listen stdio` ran and its stdin was
 The patched `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-musl` package jobs passed in the dry run, so the failure is specific
 to ARM64 (no unpatched x64 package run was made). Product code is unchanged; the failure belongs to upstream's ARM64 package.
 
+How the release package job treats it. Upstream's `build-codex-packages` action builds the archives and runs pytest in one step, so a smoke-test
+failure fails the step. The package jobs of `upstream-auto-release.yml` and `baseline-package-smoke.yml` now let that step continue on error. When it
+fails, `.github/scripts/package-smoke-baseline.sh` requires every package and symbols archive (a build failure still fails the job), reruns the smoke
+tests with JUnit reports, once per compression, and compares the failing test IDs with
+`docs/test-baselines/<upstream commit>/package-smoke-<target>.json` through `compare-test-baseline.py`, the same way the nextest and Bazel baselines
+work. A failure absent from the baseline fails the job; a baseline failure does not; with no baseline file any failure is new. An unpatched dispatch of
+`baseline-package-smoke.yml` records the baseline (artifact `package-smoke-baseline-<target>`), and a patched dispatch compares. A new upstream version
+whose package smoke tests fail therefore blocks the release until its baseline is recorded from an unpatched run.
+
 ### Windows Bazel and the Opus dangling symlink
 
 Bazel builds `opusic-sys` for Windows with CMake. Every Windows Bazel job, native MSVC included, fails with
