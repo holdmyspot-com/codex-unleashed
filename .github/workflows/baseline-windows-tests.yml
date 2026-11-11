@@ -240,6 +240,9 @@ jobs:
       - name: Write the selected test command
         run: |
           set -euo pipefail
+          # Keep passing tests' output in the JUnit report, where the skip check reads it.
+          printf '%s\n' '[profile.default.junit]' 'store-success-output = true' 'store-failure-output = true' \
+            > "$RUNNER_TEMP/nextest-keep-output.toml"
           {
             printf '#!/usr/bin/env bash\nset -euo pipefail\n'
             if [[ -n "$TEST_SCRIPT" ]]; then
@@ -247,7 +250,8 @@ jobs:
               printf 'pwsh -NoProfile -NonInteractive -File %q\n' "$TEST_SCRIPT"
             else
               printf 'cd "%s/upstream/codex-rs"\n' "$GITHUB_WORKSPACE"
-              args=(cargo nextest run --target "$TARGET" --cargo-profile ci-test --test-threads 8 --no-fail-fast)
+              args=(cargo nextest run --target "$TARGET" --cargo-profile ci-test --test-threads 8 --no-fail-fast
+                --tool-config-file "keep-output:$(cygpath -w "$RUNNER_TEMP/nextest-keep-output.toml")")
               if [[ "$TEST_PACKAGE" == --workspace ]]; then
                 # voice-host links GStreamer through pkg-config, which hosted Windows runners cannot provide; the
                 # native voice runtime is covered by the Bazel and release builds.
