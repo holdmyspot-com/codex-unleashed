@@ -27,6 +27,17 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Provide sha256sum where the runner lacks it
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v sha256sum > /dev/null; then
+          mkdir -p "$RUNNER_TEMP/shims"
+          printf '#!/bin/sh\nexec shasum -a 256 "$@"\n' > "$RUNNER_TEMP/shims/sha256sum"
+          chmod +x "$RUNNER_TEMP/shims/sha256sum"
+          printf '%s\n' "$RUNNER_TEMP/shims" >> "$GITHUB_PATH"
+        fi
+
     - name: Identify profile-specific compiled state
       id: keys
       shell: bash
@@ -38,6 +49,7 @@ runs:
       run: |
         set -euo pipefail
         run_codex_tooling() { bash "$CODEX_SOURCE_CACHE_TOOL" "$@"; }
+        export PATH="$RUNNER_TEMP/shims:$PATH"
         evidence="$FOCUSED_RUNTIME/evidence"
         cd "$RESTART_ROOT"
         cp .github/upstream-commit "$evidence/upstream-commit"

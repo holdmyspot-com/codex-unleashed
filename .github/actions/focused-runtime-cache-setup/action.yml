@@ -1,5 +1,9 @@
 name: Prepare focused runtime cache inputs
 description: Build the bundled freshness helper and run upstream V8 verification against the nested checkout
+inputs:
+  tooling-root:
+    description: Checkout that holds tooling/cli, when it is not the workspace root
+    default: ${{ github.workspace }}
 runs:
   using: composite
   steps:
@@ -11,6 +15,8 @@ runs:
 
     - name: Build the accepted helper and verify upstream V8 inputs
       shell: bash
+      env:
+        TOOLING_ROOT: ${{ inputs.tooling-root }}
       run: |
         set -euo pipefail
         evidence="$FOCUSED_RUNTIME/evidence"
@@ -18,7 +24,7 @@ runs:
         mkdir -p "$FOCUSED_RUNTIME/v8-setup"
         java -version 2> "$evidence/cache-helper-java-version.txt"
         mvn -version > "$evidence/cache-helper-maven-version.txt"
-        mvn -B -ntp -f "$GITHUB_WORKSPACE/tooling/cli/pom.xml" -Pruntime -DskipTests \
+        mvn -B -ntp -f "$TOOLING_ROOT/tooling/cli/pom.xml" -Pruntime -DskipTests \
           "-Dtooling.build.directory=$helper" \
           "-Dmaven.repo.local=$FOCUSED_RUNTIME/source-cache-maven" \
           "-Djava.io.tmpdir=$TMPDIR" package 2>&1 | tee "$evidence/cache-helper-build.log"
