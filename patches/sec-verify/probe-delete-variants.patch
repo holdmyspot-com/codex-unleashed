@@ -6,7 +6,7 @@ Subject: [PATCH] test: probe legacy and elevated outside-root operations
 ---
 --- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
 +++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
-@@ -1137,3 +1137,291 @@
+@@ -1137,3 +1137,297 @@
          assert!(stdout.contains("second"), "stdout={stdout:?}");
      });
  }
@@ -286,8 +286,14 @@ Subject: [PATCH] test: probe legacy and elevated outside-root operations
 +            ProbeRestrict::Grants(&["*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "*S-1-5-11:(OI)(CI)M", "USER:(OI)(CI)F"]),
 +        ),
 +    ];
++    let is_admin = probe_run("whoami", &["/groups", "/fo", "list"]).contains("S-1-5-32-544");
++    println!("PROBE-ENV is_admin={is_admin}");
 +    for (label, base, restrict) in &variants {
 +        for elevated in [false, true] {
++            if elevated && !is_admin {
++                println!("PROBE|{label}|elevated|SKIPPED (not an administrator; elevated setup would raise a UAC prompt)");
++                continue;
++            }
 +            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
 +                probe_scenario(label, base, *restrict, elevated)
 +            }));
