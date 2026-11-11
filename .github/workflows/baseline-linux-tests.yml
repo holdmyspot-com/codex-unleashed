@@ -556,7 +556,7 @@ jobs:
               sleep 60
             done
           ) &
-          ls -l "$RUNNER_TEMP/baseline-test-archive.tar.zst" | sed 's/^/archive-size /'
+          printf 'archive-size %s\n' "$(stat -c %s "$RUNNER_TEMP/baseline-test-archive.tar.zst")"
           trap 'kill "$disk_monitor" $(jobs -p) 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
           cargo-nextest --version | tee "$RUNNER_TEMP/baseline-test-evidence/nextest-version.txt"
           # Keep passing tests' output in the JUnit report, where the skip check reads it, instead of the log.
@@ -577,7 +577,7 @@ jobs:
             fi
             # The archive carries every test binary, so the build outputs only duplicate it. Free their disk space.
             cp "$helper" "$RUNNER_TEMP/codex-linux-sandbox"
-            rm -rf "$CARGO_TARGET_DIR"/*
+            rm -rf "${CARGO_TARGET_DIR:?}"/*
             mkdir -p "$(dirname "$helper")"
             cp "$RUNNER_TEMP/codex-linux-sandbox" "$helper"
           fi

@@ -578,10 +578,10 @@ jobs:
         run: |
           set -euo pipefail
           assets="$RUNNER_TEMP/assets"
-          count="$(ls "$assets"/codex-package-*.tar.gz | wc -l)"
-          test "$count" = 6
-          count="$(ls "$assets"/codex-symbols-*.tar.gz | wc -l)"
-          test "$count" = 6
+          packages=("$assets"/codex-package-*.tar.gz)
+          test "${#packages[@]}" = 6 -a -f "${packages[0]}"
+          symbols=("$assets"/codex-symbols-*.tar.gz)
+          test "${#symbols[@]}" = 6 -a -f "${symbols[0]}"
           test -f "$assets/install.sh" -a -f "$assets/install.ps1"
           (cd "$assets" && sha256sum codex-package-*.tar.gz codex-symbols-*.tar.gz install.sh install.ps1 > SHA256SUMS && cat SHA256SUMS)
           python3 -I .github/scripts/upstream-auto-release.py notes --version "$VERSION" --build "$BUILD" \
