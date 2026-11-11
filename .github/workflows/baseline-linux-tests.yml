@@ -43,6 +43,10 @@ on:
         description: Let the patched run overwrite failing insta snapshots and record their diff, for folding into a patch
         type: boolean
         default: false
+      write_baseline:
+        description: Unpatched run only; record its failures as the baseline file for this upstream commit, saved in the evidence artifact
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       patches:
@@ -56,6 +60,7 @@ on:
 
 permissions:
   contents: read
+  packages: write # compiled-dependency cache in GHCR
 
 jobs:
   test:
@@ -94,6 +99,12 @@ jobs:
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           cp restart-metadata/.github/scripts/fail-on-cargo-warnings.sh "$RUNNER_TEMP/fail-on-cargo-warnings.sh"
           cp restart-metadata/.github/scripts/check-test-skips.py "$RUNNER_TEMP/check-test-skips.py"
+          cp restart-metadata/.github/scripts/compare-test-baseline.py "$RUNNER_TEMP/compare-test-baseline.py"
+          cp restart-metadata/.github/scripts/prune-workspace-outputs.py "$RUNNER_TEMP/prune-workspace-outputs.py"
+          cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh "$RUNNER_TEMP/ghcr-cargo-target-cache.sh"
+          cp restart-metadata/.github/cargo-cache-package "$evidence/cargo-cache-package"
+          mkdir -p "$RUNNER_TEMP/test-baselines"
+          if [[ -d restart-metadata/docs/test-baselines ]]; then cp -R restart-metadata/docs/test-baselines/. "$RUNNER_TEMP/test-baselines/"; fi
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
@@ -252,6 +263,52 @@ jobs:
           : > "$directory/.curlrc"
           printf 'CURL_HOME=%s\n' "$directory" >> "$GITHUB_ENV"
 
+      # Compiled third-party crates are restored from GHCR (the Actions cache is nearly full) under a key made from the
+      # toolchain, Cargo.lock, the upstream commit, the applied patches, the build environment and the package scope.
+      # Only dependency outputs are stored; the workspace crates are always rebuilt.
+      - name: Set up the GHCR cache transport
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          version: 1.3.1
+
+      - name: Restore compiled dependencies
+        id: dependency-cache
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CACHE_PACKAGES: ${{ inputs.package }}
+          GH_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          printf '%s' "$GITHUB_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          repository="ghcr.io/${GH_OWNER,,}/$(cat "$evidence/cargo-cache-package")"
+          digest="$(
+            {
+              rustc -vV; cargo --version
+              printf 'profile=ci-test packages=%s\n' "$CACHE_PACKAGES"
+              printf '%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}" "${ImageVersion:-}"
+              cat "$evidence/upstream-commit"
+              sha256sum codex-rs/Cargo.lock codex-rs/rust-toolchain.toml codex-rs/Cargo.toml
+              cat "$evidence/applied-patches.txt"
+              env | LC_ALL=C sort | grep -E '^(RUSTFLAGS|RUSTDOCFLAGS|CARGO_INCREMENTAL|CARGO_PROFILE_[A-Z0-9_]+|CC|CXX|CFLAGS|CXXFLAGS)=' || true
+            } | sha256sum | cut -d' ' -f1
+          )"
+          tag="cargo-v3-x86_64-unknown-linux-gnu-$digest"
+          {
+            printf 'repository=%s\n' "$repository"
+            printf 'tag=%s\n' "$tag"
+          } >> "$GITHUB_OUTPUT"
+          set +e
+          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull "$repository" "$tag" "$CARGO_TARGET_DIR" "$(cat "$evidence/upstream-ref")" 2>&1 | tee "$evidence/dependency-cache-restore.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          case "$status" in
+            0) printf 'hit=true\n' >> "$GITHUB_OUTPUT" ;;
+            3) printf 'hit=false\n' >> "$GITHUB_OUTPUT" ;;
+            *) exit "$status" ;;
+          esac
+          du -sh "$CARGO_TARGET_DIR" | tee -a "$evidence/dependency-cache-restore.log"
+
       - name: Build the maintained Linux test helper and bundled executable
         working-directory: codex-rs
         run: |
@@ -285,18 +342,45 @@ jobs:
           rm -rf "$CARGO_TARGET_DIR/debug"
           df -h / | tee -a "$RUNNER_TEMP/baseline-test-evidence/disk-after-remote-env.txt"
 
-      - name: Build one unchanged archive for the environment comparison
+      # Every run, whatever its mode, builds its test binaries once into this archive and runs from it. Stress and
+      # comparison runs reuse it instead of compiling again.
+      - name: Build the nextest archive
         id: archive
-        if: inputs.compare_upstream_image || inputs.trace_shell_startup
         working-directory: codex-rs
         env:
           BASELINE_TEST_PACKAGE: ${{ inputs.package }}
+          BASELINE_ARCHIVE_COMPARE: ${{ inputs.compare_upstream_image || inputs.trace_shell_startup }}
         run: |
           set -euo pipefail
           archive_args=(archive --target x86_64-unknown-linux-gnu --cargo-profile ci-test --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst")
           for package in $BASELINE_TEST_PACKAGE; do archive_args+=(-p "$package"); done
-          cargo-nextest nextest "${archive_args[@]}" 2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/archive.log"
+          if [[ -n "$BASELINE_TEST_PACKAGE" && "$BASELINE_ARCHIVE_COMPARE" != true ]]; then
+            # A package-limited archive would lack codex-rmcp-client's test servers, which the other packages' tests start.
+            archive_args+=(-p codex-rmcp-client)
+          fi
+          helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
+          env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
+            cargo-nextest nextest "${archive_args[@]}" 2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/archive.log"
           sha256sum "$RUNNER_TEMP/baseline-test-archive.tar.zst" > "$RUNNER_TEMP/baseline-test-evidence/archive.sha256"
+
+      - name: Save compiled dependencies
+        if: steps.dependency-cache.outputs.hit == 'false'
+        continue-on-error: true
+        env:
+          CACHE_REPOSITORY: ${{ steps.dependency-cache.outputs.repository }}
+          CACHE_TAG: ${{ steps.dependency-cache.outputs.tag }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          copy="$RUNNER_TEMP/dependency-cache"
+          rm -rf "$copy"
+          mkdir -p "$copy"
+          # Hard links keep the live target intact while the copy is pruned of workspace-crate outputs.
+          cp -al "$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu" "$copy/x86_64-unknown-linux-gnu"
+          python3 "$RUNNER_TEMP/prune-workspace-outputs.py" "$GITHUB_WORKSPACE/codex-rs" "$copy" 2>&1 | tee "$evidence/dependency-cache-prune.log"
+          du -sh "$copy" | tee -a "$evidence/dependency-cache-prune.log"
+          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "$CACHE_REPOSITORY" "$CACHE_TAG" "$copy" "$(cat "$evidence/upstream-ref")" 2>&1 | tee "$evidence/dependency-cache-save.log"
+          rm -rf "$copy"
 
       - name: Regenerate the precomputed stable app-server exports
         if: inputs.regenerate_app_server_schema
@@ -371,28 +455,11 @@ jobs:
             exit 1
           fi
 
-      - name: Build the test binaries and fail on build or nextest configuration warnings
-        env:
-          BASELINE_TEST_PACKAGE: ${{ inputs.package }}
-          BASELINE_ARCHIVE_COMPARE: ${{ inputs.compare_upstream_image || inputs.trace_shell_startup }}
-        working-directory: codex-rs
+      - name: Fail on build or nextest configuration warnings
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-test-evidence"
-          logs=("$evidence/test-helper-build.log")
-          if [[ "$BASELINE_ARCHIVE_COMPARE" == true ]]; then
-            logs+=("$evidence/archive.log")
-          else
-            # Listing builds every selected test binary and loads the nextest configuration without running a test,
-            # so test output never reaches the scanned log. The run below reuses the binaries.
-            list_args=(list --target x86_64-unknown-linux-gnu --cargo-profile ci-test --list-type binaries-only)
-            for package in $BASELINE_TEST_PACKAGE; do list_args+=(-p "$package"); done
-            helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
-            env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
-              cargo-nextest nextest "${list_args[@]}" 2>&1 > "$evidence/test-binaries.txt" | tee "$evidence/test-build.log"
-            logs+=("$evidence/test-build.log")
-          fi
-          bash "$RUNNER_TEMP/fail-on-cargo-warnings.sh" "${logs[@]}"
+          bash "$RUNNER_TEMP/fail-on-cargo-warnings.sh" "$evidence/test-helper-build.log" "$evidence/archive.log"
 
       - name: Run the maintained nextest suite or focused comparison
         id: native_tests
@@ -433,24 +500,44 @@ jobs:
           printf '%s\n' '[profile.default.junit]' 'store-success-output = true' 'store-failure-output = true' \
             > "$RUNNER_TEMP/nextest-keep-output.toml"
           helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
+          nextest_args=(run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast)
+          expression="$BASELINE_TEST_FILTER"
           if [[ "$BASELINE_ARCHIVE_COMPARE" == true ]]; then
-            nextest_args=(run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate)
+            nextest_args+=(--success-output immediate)
           else
-            nextest_args=(run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast --timings
-              --tool-config-file "keep-output:$RUNNER_TEMP/nextest-keep-output.toml")
-            for package in $BASELINE_TEST_PACKAGE; do nextest_args+=(-p "$package"); done
+            nextest_args+=(--tool-config-file "keep-output:$RUNNER_TEMP/nextest-keep-output.toml")
+            # The archive also holds codex-rmcp-client for its test servers; run only the selected packages' tests.
+            if [[ -n "$BASELINE_TEST_PACKAGE" ]]; then
+              selection=""
+              for package in $BASELINE_TEST_PACKAGE; do selection+="${selection:+ | }package(=$package)"; done
+              expression="($selection)${BASELINE_TEST_FILTER:+ & ($BASELINE_TEST_FILTER)}"
+            fi
+            # The archive carries every test binary, so the build outputs only duplicate it. Free their disk space.
+            cp "$helper" "$RUNNER_TEMP/codex-linux-sandbox"
+            rm -rf "$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test"
+            mkdir -p "$(dirname "$helper")"
+            cp "$RUNNER_TEMP/codex-linux-sandbox" "$helper"
           fi
-          if [[ -n "$BASELINE_TEST_FILTER" ]]; then
-            nextest_args+=(-E "$BASELINE_TEST_FILTER")
+          if [[ -n "$expression" ]]; then
+            nextest_args+=(-E "$expression")
           fi
           if [[ -n "$STRESS_COUNT" ]]; then
             nextest_args+=(--stress-count "$STRESS_COUNT" --retries 0)
             for _ in $(seq "$(nproc)"); do yes > /dev/null & done
           fi
           printf '%s\n' "${nextest_args[@]}" > "$RUNNER_TEMP/baseline-test-evidence/nextest-arguments.txt"
+          set +e
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
             cargo-nextest nextest "${nextest_args[@]}" \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/nextest.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf 'nextest_status=%s\n' "$status" | tee -a "$GITHUB_OUTPUT" "$RUNNER_TEMP/baseline-test-evidence/nextest-status.txt"
+          # A full run is judged against the unpatched baseline in the step below, not by its failures alone.
+          if [[ "$BASELINE_ARCHIVE_COMPARE" != true && -z "$STRESS_COUNT" && "$BASELINE_ACCEPT_SNAPSHOTS" != true ]]; then
+            exit 0
+          fi
+          exit "$status"
 
       - name: Fail on skips caused by missing test setup
         if: ${{ !cancelled() && steps.native_tests.outcome != 'skipped' && !inputs.compare_upstream_image && !inputs.trace_shell_startup }}
@@ -462,6 +549,44 @@ jobs:
           done
           python3 "$RUNNER_TEMP/check-test-skips.py" --platform linux "${reports[@]}" \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/skip-check.log"
+
+      # The tests run to completion whatever fails; this step decides the result. A patched run fails only on tests that
+      # the unpatched baseline for this upstream commit does not list. An unpatched run with write_baseline records its
+      # failures instead. Runs without a baseline file, and stress, snapshot and comparison runs, fail on any failure.
+      - name: Compare failures with the unpatched baseline
+        if: ${{ !cancelled() && steps.native_tests.outcome == 'success' && !inputs.compare_upstream_image && !inputs.trace_shell_startup }}
+        env:
+          NEXTEST_STATUS: ${{ steps.native_tests.outputs.nextest_status }}
+          WRITE_BASELINE: ${{ inputs.write_baseline }}
+          PATCHES: ${{ inputs.patches }}
+          GATED: ${{ inputs.stress_count == '' && !inputs.accept_snapshots }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          commit="$(cat "$evidence/upstream-commit")"
+          reports=()
+          for directory in "$CARGO_TARGET_DIR/nextest" "$GITHUB_WORKSPACE/codex-rs/target/nextest"; do
+            if [[ -d "$directory" ]]; then reports+=("$directory"); fi
+          done
+          common=(--platform linux --upstream-commit "$commit" --baseline-dir "$RUNNER_TEMP/test-baselines")
+          if [[ "$WRITE_BASELINE" == true ]]; then
+            if [[ -n "${PATCHES// /}" ]]; then
+              printf 'A baseline must come from an unpatched run.\n' >&2
+              exit 1
+            fi
+            python3 "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" --write-baseline \
+              --output "$evidence/test-baselines/$commit/linux.json" "${reports[@]}"
+            exit 0
+          fi
+          if [[ "$GATED" != true ]]; then
+            exit "${NEXTEST_STATUS:-0}"
+          fi
+          if [[ ! -f "$RUNNER_TEMP/test-baselines/$commit/linux.json" ]]; then
+            printf 'No committed baseline for %s; failing on the test run status (%s).\n' "$commit" "$NEXTEST_STATUS" >&2
+            exit "${NEXTEST_STATUS:-0}"
+          fi
+          python3 "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" "${reports[@]}" \
+            2>&1 | tee "$evidence/baseline-comparison.log"
 
       - name: Record the accepted snapshot changes
         if: always() && inputs.accept_snapshots
