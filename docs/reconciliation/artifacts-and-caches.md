@@ -56,6 +56,12 @@ All non-main branches have no reference in docs/, plan.md or `.github` (grep). D
 | `main.old` | branch | fixed commit 545479059a | n/a | frozen reference (do not modify) | `cargo-cache` retention pins it | explicit, per plan | none |
 | tags | tag | `checkpoint-1..5-*`, `checkpoint-incremental-build-recovery`, about 80 `rust-v0.158.0+15` .. `rust-v0.162.1+21`+ release tags | n/a | release workflow | cache retention uses them for "retained stable" | `cache-retention.yml` derives retained refs from releases | Not touched by this task. |
 
+## Cleanup done 2026-11-10 (owner decision)
+
+- Deleted the 26 old non-main branches listed in section 4 (every `ci/*`, `ci-verify-*` and `diagnostic/*` branch, `diagnose-incremental-release`, `update/latest-stable-dependencies` and `cat/cp3-linux-release-lJZ2HK`); no pull request was open. Their tips are kept in the workspace repository as `refs/archive/deleted-branches/<name>`.
+- Deleted the 110 unexpired artifacts created 2026-10-04..10-07 on old `main` (4.30 GB: `v8-canary-*`, `bazel-execution-logs-*`, `codex-package-rust-licenses-*`, `cargo-timings-rust-release-*`, `sarif-artifact*`); no workflow in the current tree produces or reads them.
+- The Actions caches scoped to `main.new` are left to expire. `cargo-cache-main-new` is renamed after the release work.
+
 ## 5. Local caches (this machine)
 
 | item | kind | path | size | owner | last consumer | cleanup policy & evidence | gap |
@@ -65,8 +71,8 @@ All non-main branches have no reference in docs/, plan.md or `.github` (grep). D
 
 ## Summary of gaps for plan.md reconciliation
 1. GHCR package contents unverifiable with the local token (needs `read:packages` or workflow-token inventory); `cargo-cache-main-new` name is stale after the main rename.
-2. About 4.2 GB of 90-day orphan artifacts (`v8-canary-*`, `bazel-execution-logs-*`, `shared-frida-native-*`) from old main, expiring 2027-01/02, no producer in the current tree.
+2. Resolved 2026-11-10 (deleted): about 4.2 GB of 90-day orphan artifacts (`v8-canary-*`, `bazel-execution-logs-*`, `shared-frida-native-*`) from old main, expiring 2027-01/02, no producer in the current tree.
 3. 28 Actions caches are still scoped to the removed `main.new` ref, and 6.5 GB of the 9.1 GB total is the duplicated `upstream-dddc3c...-downloads-v1` family; retention only prunes by ref and prefix and nothing proves it has run post-rename.
 4. `tooling-runtime-v1`, `tooling-maven`, `scheduler-memory-history-v1` cache keys have no producer found in this tree.
-5. 26 non-main branches (`ci/*`, `ci-verify-*`, `diagnostic/*`, etc.) have no owner or cleanup record.
+5. Resolved 2026-11-10: the 26 old non-main branches were deleted (see "Cleanup done").
 6. Local `restart-baseline-6aaac69` (3.4 GB) and `maven` (188 MB) have no stated end-of-life.
