@@ -40,7 +40,7 @@ Linux:
 
 ## Verification
 
-- All 55 patches of the queue applied with `git am` onto `dddc3c0a79`; the rebased 54-patch queue applies onto `rust-v0.167.0` (see "Rebase onto rust-v0.167.0").
+- All 55 patches of the queue applied with `git am` onto `dddc3c0a79`; the rebased queue (53 patches after issue-62 was dropped) applies onto `rust-v0.167.0` (see "Rebase onto rust-v0.167.0").
 - Rerun `host-loopback-mcp-fixtures.patch` and `guardian-local-capability-fixtures.patch` red/green with the MCP test servers built, then rerun the full queue's checks.
 
 ## Rebase onto rust-v0.167.0
