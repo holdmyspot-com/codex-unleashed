@@ -1,0 +1,50 @@
+name: Save compiled test state
+description: >
+  Verify that the source and dependencies are the ones the cache key describes, record the test-profile inputs when
+  the tests passed their build, and push the compiled state to GHCR without changing the test result. Needs the
+  environment documented by test-compiled-cache-restore.
+inputs:
+  restart-root:
+    description: Checkout that holds .github/scripts
+    default: ${{ github.workspace }}
+  tag:
+    description: Exact cache tag from test-compiled-cache-restore
+    required: true
+  seed-tag:
+    description: Compatible seed tag from test-compiled-cache-restore
+    required: true
+  build-succeeded:
+    description: "true when the test build finished, whatever the test results; a failed build saves a partial cache"
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Verify source and dependency identity
+      shell: bash
+      run: |
+        set -euo pipefail
+        evidence="$FOCUSED_RUNTIME/evidence"
+        git -C "$CODEX_REPO_ROOT" diff --binary > "$evidence/source.diff"
+        git -C "$CODEX_REPO_ROOT" diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+        test -z "$(git -C "$CODEX_REPO_ROOT" ls-files --others --exclude-standard)"
+        (cd "$CODEX_REPO_ROOT/codex-rs" && cargo metadata --no-deps --format-version 1) > "$evidence/workspace.json"
+        bash "$CODEX_SOURCE_CACHE_TOOL" verify-cargo-lock "$evidence/upstream-Cargo.lock" "$CODEX_REPO_ROOT/codex-rs/Cargo.lock" "$evidence/workspace.json" | tee "$evidence/dependencies.json"
+
+    - name: Record test-profile inputs and save the compiled state
+      shell: bash
+      env:
+        RESTART_ROOT: ${{ inputs.restart-root }}
+        CACHE_TAG: ${{ inputs.tag }}
+        CACHE_SEED_TAG: ${{ inputs.seed-tag }}
+        BUILD_SUCCEEDED: ${{ inputs.build-succeeded }}
+        CARGO_CACHE_STAGE: codex
+      run: |
+        set -euo pipefail
+        evidence="$FOCUSED_RUNTIME/evidence"
+        operation=push-partial
+        if [[ "$BUILD_SUCCEEDED" == true ]]; then
+          bash "$CODEX_SOURCE_CACHE_TOOL" clean-cached-release-binaries --record-source-inputs --profile ci-test \
+            "$CODEX_REPO_ROOT/codex-rs" "$TARGET" 2>&1 | tee "$evidence/cache-record.log"
+          operation=push
+        fi
+        bash "$RESTART_ROOT/.github/scripts/ghcr-cargo-target-cache.sh" "$operation" "$CARGO_CACHE_REPOSITORY" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RESTART_ROOT/.github/upstream-ref")" "$CACHE_SEED_TAG" 2>&1 | tee "$evidence/save.log"

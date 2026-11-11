@@ -1,0 +1,96 @@
+name: Restore compiled test state
+description: >
+  Key the compiled test profile on Cargo.lock, the toolchain and the applied patch set, then restore a matching
+  compiled-state cache from GHCR. Requires oras to be logged in, CARGO_CACHE_REPOSITORY, CARGO_TARGET_DIR,
+  CODEX_REPO_ROOT, CODEX_SOURCE_CACHE_TOOL, FOCUSED_RUNTIME (with an evidence directory) and TARGET in the
+  environment, and the source-cache helper built by focused-runtime-cache-setup.
+inputs:
+  restart-root:
+    description: Checkout that holds .github/scripts and the downstream patches
+    default: ${{ github.workspace }}
+  patches:
+    description: Space-separated paths, relative to restart-root, of the patches applied to the source
+    default: ""
+  workflow:
+    description: Path, relative to restart-root, of the workflow whose steps shape the compiled state
+    required: true
+  command-line:
+    description: The test build command line; a change to it changes the cache key
+    required: true
+outputs:
+  tag:
+    description: Exact cache tag
+    value: ${{ steps.keys.outputs.tag }}
+  seed-tag:
+    description: Compatible seed tag
+    value: ${{ steps.keys.outputs.seed_tag }}
+runs:
+  using: composite
+  steps:
+    - name: Identify profile-specific compiled state
+      id: keys
+      shell: bash
+      env:
+        RESTART_ROOT: ${{ inputs.restart-root }}
+        PATCHES: ${{ inputs.patches }}
+        WORKFLOW: ${{ inputs.workflow }}
+        COMMAND_LINE: ${{ inputs.command-line }}
+      run: |
+        set -euo pipefail
+        run_codex_tooling() { bash "$CODEX_SOURCE_CACHE_TOOL" "$@"; }
+        evidence="$FOCUSED_RUNTIME/evidence"
+        cd "$RESTART_ROOT"
+        cp .github/upstream-commit "$evidence/upstream-commit"
+        cp "$CODEX_REPO_ROOT/codex-rs/Cargo.lock" "$evidence/upstream-Cargo.lock"
+        : > "$evidence/applied-patches.txt"
+        read -r -d '' -a patch_paths <<< "$PATCHES" || true
+        for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do sha256sum "$patch" >> "$evidence/applied-patches.txt"; done
+        sha256sum "$WORKFLOW" .github/scripts/ghcr-cargo-target-cache.sh > "$evidence/wrappers.txt"
+        cat "$evidence/applied-patches.txt" >> "$evidence/wrappers.txt"
+        sha256sum .github/scripts/ghcr-cargo-target-cache.sh \
+          tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/{Main,CargoCacheKeys,CargoCacheParts,VerifyCargoLock}.java \
+          > "$evidence/helpers.txt"
+        {
+          rustc -vV
+          cargo --version
+          cargo nextest --version
+          printf 'profile=ci-test\ntarget=%s\n' "$TARGET"
+          printf '%s\n' "$COMMAND_LINE"
+          printf '%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}" "${ImageVersion:-}"
+          env | LC_ALL=C sort | grep -E '^(RUSTFLAGS|RUSTDOCFLAGS|RUSTC|RUSTC_WRAPPER|CARGO_INCREMENTAL|CARGO_PROFILE_[A-Z0-9_]+|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CC|CXX|AR|CFLAGS|CXXFLAGS|LIBSQLITE3_FLAGS|INCLUDE|LIB|LIBPATH|WindowsSdkDir|WindowsSDKVersion|VCToolsInstallDir|VCToolsVersion|DEVELOPER_DIR|MACOSX_DEPLOYMENT_TARGET)=' || true
+          sha256sum "$CODEX_REPO_ROOT/codex-rs/Cargo.lock" "$CODEX_REPO_ROOT/codex-rs/rust-toolchain.toml" "$CODEX_REPO_ROOT/codex-rs/Cargo.toml"
+        } > "$evidence/compiler.txt"
+        run_codex_tooling cargo-cache-keys "$TARGET" "$evidence/upstream-commit" "$evidence/wrappers.txt" "$evidence/helpers.txt" "$evidence/compiler.txt" \
+          | tee "$evidence/keys.txt" >> "$GITHUB_OUTPUT"
+
+    - name: Restore verified or partial compiled state
+      shell: bash
+      env:
+        RESTART_ROOT: ${{ inputs.restart-root }}
+        CACHE_TAG: ${{ steps.keys.outputs.tag }}
+        CACHE_SEED_TAG: ${{ steps.keys.outputs.seed_tag }}
+      run: |
+        set -euo pipefail
+        evidence="$FOCUSED_RUNTIME/evidence"
+        for tag in "$CACHE_TAG" "$CACHE_SEED_TAG"; do
+          for operation in pull pull-partial; do
+            set +e
+            bash "$RESTART_ROOT/.github/scripts/ghcr-cargo-target-cache.sh" "$operation" "$CARGO_CACHE_REPOSITORY" "$tag" "$CARGO_TARGET_DIR" "$(cat "$RESTART_ROOT/.github/upstream-ref")" 2>&1 | tee -a "$evidence/restore.log"
+            result=${PIPESTATUS[0]}
+            set -e
+            case "$result" in
+              0) printf 'restored=%s %s\n' "$operation" "$tag" | tee "$evidence/restored.txt"; exit 0 ;;
+              3) ;;
+              *) exit "$result" ;;
+            esac
+          done
+        done
+        printf 'restored=none\n' | tee "$evidence/restored.txt"
+        printf 'No profile-compatible state exists; this build starts cold.\n'
+
+    - name: Prepare restored test-profile inputs
+      shell: bash
+      run: |
+        set -euo pipefail
+        bash "$CODEX_SOURCE_CACHE_TOOL" clean-cached-release-binaries --profile ci-test \
+          "$CODEX_REPO_ROOT/codex-rs" "$TARGET" codex codex-app-server 2>&1 | tee "$FOCUSED_RUNTIME/evidence/cache-prepare.log"

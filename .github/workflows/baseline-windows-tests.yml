@@ -31,6 +31,10 @@ on:
         description: Number of trailing patches under test; the red phase restores red_restore paths to their state before them
         type: string
         default: "1"
+      archive_run_id:
+        description: Optional earlier run whose test archive to reuse instead of building one; its patches and upstream commit must match
+        type: string
+        default: ""
       target:
         description: Native Windows target from the existing free release matrix
         type: choice
@@ -63,8 +67,14 @@ jobs:
   test:
     runs-on: ${{ (inputs.target == 'aarch64-pc-windows-msvc' && 'windows-11-arm') || 'windows-2025' }}
     timeout-minutes: 240
+    permissions:
+      actions: read
+      contents: read
+      packages: write
     env:
       TARGET: ${{ inputs.target }}
+      ARCHIVE_RUN_ID: ${{ inputs.archive_run_id }}
+      CARGO_CACHE_PARTS: '1'
       TEST_PACKAGE: ${{ inputs.package }}
       TEST_FILTER: ${{ inputs.filter }}
       TEST_SCRIPT: ${{ inputs.script }}
@@ -82,6 +92,10 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
+
+      - name: Own build state, evidence and temporary directories
+        if: inputs.package != ''
+        uses: ./.github/actions/focused-runtime-storage
 
       - name: Validate the selection and read the pinned upstream commit
         id: source
@@ -172,6 +186,7 @@ jobs:
             printf 'CARGO_TARGET_DIR=%s\n' "$build_root/cargo-target"
             printf 'TEMP=%s\n' "$build_root/tmp"
             printf 'TMP=%s\n' "$build_root/tmp"
+            printf 'TMPDIR=%s\n' "$build_root/tmp"
           } >> "$GITHUB_ENV"
 
       - name: Warn when no Dev Drive is available
@@ -194,48 +209,74 @@ jobs:
         shell: pwsh
         run: Copy-Item (Get-Command dotslash).Source -Destination "$env:LOCALAPPDATA\Microsoft\WindowsApps\dotslash.exe"
 
-      - name: Build the Windows sandbox helper binaries and export their paths
+      - name: Preserve the accepted x86-64 SQLite build configuration
+        if: inputs.package != '' && inputs.target == 'x86_64-pc-windows-msvc'
+        run: echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
+
+      - name: Prepare verified V8 and bundled freshness tooling
         if: inputs.package != ''
+        uses: ./.github/actions/focused-runtime-cache-setup
+
+      - name: Set up the compiled-state cache transport
+        if: inputs.package != ''
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          version: 1.3.1
+          url: https://github.com/oras-project/oras/releases/download/v1.3.1/oras_1.3.1_windows_amd64.zip
+          checksum: 8cf69e46f966e592ad36261c05b8f59c02125743b7261c03f6badc3919b40cb0
+
+      - name: Authenticate private GHCR access
+        if: inputs.package != ''
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+          printf 'CARGO_CACHE_REPOSITORY=ghcr.io/%s/%s\n' "$owner" "$(cat .github/cargo-cache-package)" >> "$GITHUB_ENV"
+
+      - name: Restore compiled dependencies and test outputs
+        id: cache
+        if: inputs.package != ''
+        uses: ./.github/actions/test-compiled-cache-restore
+        with:
+          patches: ${{ inputs.patches }}
+          workflow: .github/workflows/baseline-windows-tests.yml
+          command-line: cargo nextest archive --target ${{ inputs.target }} --cargo-profile ci-test ${{ inputs.package }}
+
+      - name: Download the earlier test archive
+        if: inputs.package != '' && inputs.archive_run_id != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: nextest-archive-${{ inputs.target }}
+          path: ${{ runner.temp }}/nextest-archive
+          run-id: ${{ inputs.archive_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Export the archived sandbox helper paths
+        if: inputs.package != '' && inputs.archive_run_id != ''
+        run: |
+          set -euo pipefail
+          {
+            printf 'CARGO_BIN_EXE_codex_windows_sandbox_setup=%s\n' "$(cygpath -w "$RUNNER_TEMP/nextest-archive/codex-windows-sandbox-setup.exe")"
+            printf 'CARGO_BIN_EXE_codex_command_runner=%s\n' "$(cygpath -w "$RUNNER_TEMP/nextest-archive/codex-command-runner.exe")"
+          } >> "$GITHUB_ENV"
+
+      - name: Build the Windows sandbox helper binaries and export their paths
+        if: inputs.package != '' && inputs.archive_run_id == ''
         run: |
           set -euo pipefail
           cd upstream/codex-rs
           cargo build --target "$TARGET" --profile ci-test -p codex-windows-sandbox \
             --bin codex-windows-sandbox-setup --bin codex-command-runner
           target_dir="${CARGO_TARGET_DIR:-$PWD/target}/$TARGET/ci-test"
+          # Keep copies beside the test archive so a rerun can reuse both.
+          mkdir -p "$RUNNER_TEMP/nextest-archive"
+          cp "$target_dir/codex-windows-sandbox-setup.exe" "$target_dir/codex-command-runner.exe" "$RUNNER_TEMP/nextest-archive/"
           {
             printf 'CARGO_BIN_EXE_codex_windows_sandbox_setup=%s\n' "$(cygpath -w "$target_dir/codex-windows-sandbox-setup.exe")"
             printf 'CARGO_BIN_EXE_codex_command_runner=%s\n' "$(cygpath -w "$target_dir/codex-command-runner.exe")"
           } >> "$GITHUB_ENV"
-
-      # Mirrors upstream's setup-rusty-v8 action, whose paths assume the upstream checkout is the workspace root.
-      - name: Verify and configure upstream V8 artifacts
-        if: inputs.package != ''
-        run: |
-          set -euo pipefail
-          version="$(awk '/^name = "v8"$/ {getline; gsub(/[^0-9.]/, "", $0); print; exit}' upstream/codex-rs/Cargo.lock)"
-          base_url="https://github.com/openai/codex/releases/download/rusty-v8-v${version}"
-          directory="$RUNNER_TEMP/rusty_v8"
-          mkdir -p "$directory"
-          profile=ptrcomp_sandbox_release
-          archive="rusty_v8_${profile}_${TARGET}.lib.gz"
-          binding="src_binding_${profile}_${TARGET}.rs"
-          checksums="rusty_v8_${profile}_${TARGET}.sha256"
-          curl -fsSL "$base_url/$checksums" -o "$directory/$checksums"
-          trusted="upstream/third_party/v8/rusty_v8_${version//./_}_release_manifests.sha256"
-          expected="$(grep -F "  $checksums" "$trusted" | cut -d ' ' -f 1)"
-          actual="$(sha256sum < "$directory/$checksums" | cut -d ' ' -f 1)"
-          test "$expected" = "$actual"
-          curl -fsSL "$base_url/$archive" -o "$directory/$archive"
-          curl -fsSL "$base_url/$binding" -o "$directory/$binding"
-          (cd "$directory" && tr -d '\r' < "$checksums" | sha256sum --check -)
-          {
-            printf 'RUSTY_V8_ARCHIVE=%s\n' "$(cygpath -w "$directory/$archive")"
-            printf 'RUSTY_V8_SRC_BINDING_PATH=%s\n' "$(cygpath -w "$directory/$binding")"
-          } >> "$GITHUB_ENV"
-
-      - name: Preserve the accepted x86-64 SQLite build configuration
-        if: inputs.package != '' && inputs.target == 'x86_64-pc-windows-msvc'
-        run: echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
 
       - name: Write the selected test command
         run: |
@@ -250,18 +291,26 @@ jobs:
               printf 'pwsh -NoProfile -NonInteractive -File %q\n' "$TEST_SCRIPT"
             else
               printf 'cd "%s/upstream/codex-rs"\n' "$GITHUB_WORKSPACE"
-              args=(cargo nextest run --target "$TARGET" --cargo-profile ci-test --test-threads 8 --no-fail-fast
+              printf 'archive=${1:?archive path}\n'
+              build_args=(cargo nextest archive --target "$TARGET" --cargo-profile ci-test)
+              run_args=(cargo nextest run --archive-file ARCHIVE_WINDOWS --workspace-remap "$(cygpath -w "$GITHUB_WORKSPACE/upstream/codex-rs")"
+                --test-threads 8 --no-fail-fast
                 --tool-config-file "keep-output:$(cygpath -w "$RUNNER_TEMP/nextest-keep-output.toml")")
               if [[ "$TEST_PACKAGE" == --workspace ]]; then
                 # voice-host links GStreamer through pkg-config, which hosted Windows runners cannot provide; the
                 # native voice runtime is covered by the Bazel and release builds.
-                args+=(--workspace --exclude codex-voice-host)
+                build_args+=(--workspace --exclude codex-voice-host)
               else
                 read -r -a packages <<< "$TEST_PACKAGE"
-                for package in "${packages[@]}"; do args+=(-p "$package"); done
+                for package in "${packages[@]}"; do build_args+=(-p "$package"); done
               fi
-              if [[ -n "$TEST_FILTER" ]]; then args+=(-E "$TEST_FILTER"); fi
-              printf '%q ' "${args[@]}"
+              if [[ -n "$TEST_FILTER" ]]; then run_args+=(-E "$TEST_FILTER"); fi
+              printf 'archive_windows=$(cygpath -w "$archive")\n'
+              # Build the tests once into an archive; a rerun that supplies the archive skips the build.
+              printf 'if [[ ! -f "$archive" ]]; then\n  mkdir -p "$(dirname "$archive")"\n  '
+              printf '%q ' "${build_args[@]}"
+              printf -- '--archive-file "$archive_windows"\nfi\n'
+              printf '%q ' "${run_args[@]}" | sed 's/ARCHIVE_WINDOWS/"$archive_windows"/'
               printf '\n'
             fi
           } > "$RUNNER_TEMP/selected-test.sh"
@@ -274,10 +323,12 @@ jobs:
           read -r -a red_paths <<< "$RED_RESTORE"
           git -C upstream checkout "HEAD~$RED_PATCH_COUNT" -- "${red_paths[@]}"
           set +e
-          bash "$RUNNER_TEMP/selected-test.sh"
+          # The red phase compiles different sources, so it builds its own archive.
+          bash "$RUNNER_TEMP/selected-test.sh" "$RUNNER_TEMP/red-archive/tests.tar.zst"
           result=$?
           set -e
           git -C upstream checkout HEAD -- "${red_paths[@]}"
+          rm -rf "$RUNNER_TEMP/red-archive"
           if (( result == 0 )); then
             printf 'The selection passed with the production changes withheld, so it does not prove the patches.\n' >&2
             exit 1
@@ -285,19 +336,39 @@ jobs:
           printf 'The selection failed with exit %s without the production changes.\n' "$result"
 
       - name: Run the selection with the patches applied
+        id: tests
         run: |
           set -euo pipefail
           git -C upstream diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
-          bash "$RUNNER_TEMP/selected-test.sh"
+          bash "$RUNNER_TEMP/selected-test.sh" "$RUNNER_TEMP/nextest-archive/tests.tar.zst"
+
+      - name: Keep the test archive for reruns
+        if: ${{ !cancelled() && inputs.package != '' && inputs.archive_run_id == '' }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: nextest-archive-${{ inputs.target }}
+          path: ${{ runner.temp }}/nextest-archive
+          retention-days: 3
+          if-no-files-found: ignore
+
+      - name: Save compiled dependencies and test outputs
+        if: ${{ always() && inputs.package != '' && inputs.archive_run_id == '' && steps.cache.outcome == 'success' }}
+        uses: ./.github/actions/test-compiled-cache-save
+        with:
+          tag: ${{ steps.cache.outputs.tag }}
+          seed-tag: ${{ steps.cache.outputs.seed-tag }}
+          build-succeeded: ${{ hashFiles(format('{0}/nextest-archive/tests.tar.zst', runner.temp)) != '' }}
 
       - name: Fail on tests that skipped themselves for missing setup
         if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           reports=()
-          for directory in "$(cygpath -u "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/upstream/codex-rs/target}")/nextest" "$GITHUB_WORKSPACE/upstream/codex-rs/target/nextest"; do
-            if [[ -d "$directory" ]]; then reports+=("$directory"); fi
-          done
+          # An archive run stores its reports under the extraction directory, wherever nextest placed it.
+          while IFS= read -r report; do reports+=("$report"); done < <(
+            find "$(cygpath -u "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/upstream/codex-rs/target}")" "$GITHUB_WORKSPACE/upstream/codex-rs/target" "$(cygpath -u "$RUNNER_TEMP")" \
+              -path '*/nextest/*' -name junit.xml 2>/dev/null | sort -u)
+          printf 'Found %s nextest report(s).\n' "${#reports[@]}"
           python .github/scripts/check-test-skips.py --platform windows "${reports[@]}"
 
       - name: Compare the failures with the committed unpatched baseline
@@ -309,9 +380,11 @@ jobs:
           set -euo pipefail
           platform="windows-${TARGET%%-*}"
           reports=()
-          for directory in "$(cygpath -u "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/upstream/codex-rs/target}")/nextest" "$GITHUB_WORKSPACE/upstream/codex-rs/target/nextest"; do
-            if [[ -d "$directory" ]]; then reports+=("$directory"); fi
-          done
+          # An archive run stores its reports under the extraction directory, wherever nextest placed it.
+          while IFS= read -r report; do reports+=("$report"); done < <(
+            find "$(cygpath -u "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/upstream/codex-rs/target}")" "$GITHUB_WORKSPACE/upstream/codex-rs/target" "$(cygpath -u "$RUNNER_TEMP")" \
+              -path '*/nextest/*' -name junit.xml 2>/dev/null | sort -u)
+          printf 'Found %s nextest report(s).\n' "${#reports[@]}"
           if [[ -z "${PATCHES// }" ]]; then
             # An unpatched run is the source of a baseline: write it for committing under docs/test-baselines.
             mkdir -p "$RUNNER_TEMP/baseline"
