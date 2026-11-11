@@ -9,9 +9,15 @@ set -euo pipefail
 #   restore  pulls the cache for the V8 inputs of <source-directory> into <cache-directory>, then appends
 #            user.bazelrc to <source-directory> so every Bazel command reads that cache and uploads nothing
 #   save     pushes <cache-directory> under the same tag
-# The tag is cargo-v3-bazel-v8-<runner arch>-<sha256 of the Bazel module files, the Bazel version and third_party/v8>.
+# The tag is cargo-v3-bazel-v8-<runner arch>-<sha256 of the Bazel version, the runner, and the committed MODULE.bazel,
+# MODULE.bazel.lock, .bazelrc and third_party/v8>. The inputs are read from the HEAD commit, not the working tree, so a
+# seed that saves after its build and a consumer that restores before its build compute the same tag even if Bazel has
+# rewritten a tracked file in between (the original seed hashed the working tree after building and produced a tag that
+# no consumer ever computed). Save refuses a cache directory under 100 MiB: that is a build that ran no V8 action (the
+# original seed saved 8 KiB).
 # GITHUB_TOKEN authenticates to ghcr.io; GITHUB_OUTPUT receives hit=<true|false> from restore and tag= from both.
-# Exit status: 0 on success, including a restore miss; 2 for invalid arguments; otherwise the failing tool's status.
+# Exit status: 0 on success, including a restore miss; 2 for invalid arguments; 4 when save finds a near-empty cache;
+# otherwise the failing tool's status.
 if [[ $# != 5 ]]; then
   printf 'usage: %s <restore|save> <source-directory> <cache-directory> <repository> <upstream-ref>\n' "$0" >&2
   exit 2
@@ -28,8 +34,8 @@ digest="$(
   {
     cat .bazelversion
     printf '%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}"
-    sha256sum MODULE.bazel MODULE.bazel.lock
-    find third_party/v8 -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
+    git rev-parse HEAD:MODULE.bazel HEAD:MODULE.bazel.lock HEAD:.bazelrc
+    git ls-tree -r HEAD third_party/v8
   } | sha256sum | cut -d' ' -f1
 )"
 tag="cargo-v3-bazel-v8-${RUNNER_ARCH,,}-$digest"
@@ -57,6 +63,11 @@ case "$operation" in
     du -sh "$cache_directory"
     ;;
   save)
+    size_kib="$(du -sk "$cache_directory" | cut -f1)"
+    if (( size_kib < 102400 )); then
+      printf 'Refusing to save a %s KiB cache: the build wrote no substantial V8 actions into %s\n' "$size_kib" "$cache_directory" >&2
+      exit 4
+    fi
     bash "$cache_script" push "$repository" "$tag" "$cache_directory" "$upstream_ref"
     ;;
   *)

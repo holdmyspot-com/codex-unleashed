@@ -1,9 +1,12 @@
 name: Seed the compiled V8 Bazel actions
 
 # Upstream's Bazel build compiles V8 from source (upstream commit ab190cdfd) and hides that cost behind a BuildBuddy cache
-# this repository does not have. This builds only the V8 targets into an empty Bazel disk cache and pushes it to GHCR,
-# keyed on the Bazel module files and third_party/v8, so the Bazel lint and test jobs read the compiled actions instead.
-# Rerun it when MODULE.bazel, MODULE.bazel.lock or third_party/v8 change.
+# this repository does not have. This builds the V8-dependent crates under the argument-comment lint's Bazel
+# configuration into an empty Bazel disk cache and pushes it to GHCR, keyed on the committed Bazel module files, .bazelrc
+# and third_party/v8, so the Bazel lint job reads the compiled actions instead. That configuration sets
+# `--output_groups=argument_comment_lint_checks`, so a build of the V8 targets themselves ran no action and saved an empty
+# cache; building the crates that depend on V8 makes the lint aspect compile the same V8 and ICU actions the lint job does.
+# Rerun it when MODULE.bazel, MODULE.bazel.lock, .bazelrc or third_party/v8 change.
 
 on:
   workflow_dispatch:
@@ -125,8 +128,10 @@ jobs:
           .github/scripts/run-bazel-ci.sh --print-failed-action-summary -- \
             build --disk_cache="$RUNNER_TEMP/v8-bazel-cache" --config=argument-comment-lint --keep_going \
             --build_metadata="COMMIT_SHA=${GITHUB_SHA}" -- \
-            //third_party/v8:rusty_v8_archive_for_target //third_party/v8:rusty_v8_binding_for_target @crates//:v8 \
+            //codex-rs/v8-poc/... //codex-rs/code-mode-runtime/... \
             2>&1 | tee "$RUNNER_TEMP/baseline-v8-cache-evidence/bazel-v8-build.log"
+          # Evidence for the key: which tracked key inputs the build changed in the working tree.
+          git status --short -- MODULE.bazel MODULE.bazel.lock .bazelrc third_party/v8 | tee "$RUNNER_TEMP/baseline-v8-cache-evidence/key-inputs-after-build.log"
 
       - name: Save the compiled V8 actions
         env:
@@ -139,3 +144,16 @@ jobs:
           bash "$RUNNER_TEMP/v8-bazel-cache.sh" save "$GITHUB_WORKSPACE" "$RUNNER_TEMP/v8-bazel-cache" \
             "ghcr.io/${GH_OWNER,,}/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" \
             2>&1 | tee -a "$evidence/v8-cache-save.log"
+
+      # Decides whether the Bazel test shards (baseline-bazel-tests.yml), which build without the lint configuration, can
+      # read this cache. It reads the seeded cache without writing and is cut off when it misses and starts compiling V8.
+      - name: Probe whether a build without the lint configuration reads the seeded actions
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          .github/scripts/run-bazel-ci.sh --print-failed-action-summary -- \
+            build --disk_cache="$RUNNER_TEMP/v8-bazel-cache" --remote_upload_local_results=false --keep_going \
+            --verbose_failures --build_metadata=ROLE=CI -- //codex-rs/v8-poc/... \
+            2>&1 | tee "$RUNNER_TEMP/baseline-v8-cache-evidence/bazel-v8-plain-probe.log"
