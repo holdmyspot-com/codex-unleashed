@@ -356,7 +356,18 @@ jobs:
         run: |
           set -euo pipefail
           git -C upstream diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+          set +e
           bash "$RUNNER_TEMP/selected-test.sh" "$RUNNER_TEMP/nextest-archive/tests.tar.zst"
+          status=$?
+          set -e
+          # Nextest exits 100 when tests failed. A whole-workspace run is judged by the comparison with the unpatched
+          # baseline below (an unpatched run records that baseline), so those failures alone do not fail this step.
+          # Any other failure, such as a full disk or a build error, does.
+          if [[ "$status" == 100 && "$TEST_PACKAGE" == --workspace && -z "$TEST_FILTER" ]]; then
+            printf 'Nextest reported failing tests; the baseline comparison decides the outcome.\n'
+            exit 0
+          fi
+          exit "$status"
 
       - name: Keep the test archive for reruns
         if: ${{ !cancelled() && inputs.package != '' && inputs.archive_run_id == '' }}

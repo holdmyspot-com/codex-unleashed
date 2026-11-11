@@ -2,6 +2,11 @@ name: Stable upstream Windows Bazel tests
 
 on:
   workflow_dispatch:
+    inputs:
+      patches:
+        description: Space-separated repository paths of downstream patches to apply with git am, in order; empty tests pristine upstream and records its failures as the baseline
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -51,6 +56,9 @@ jobs:
           cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
           cp restart-metadata/.github/scripts/check-test-skips.py "$RUNNER_TEMP/check-test-skips.py"
           cp restart-metadata/.github/scripts/compare-test-baseline.py "$RUNNER_TEMP/compare-test-baseline.py"
+          mkdir -p "$RUNNER_TEMP/test-baselines"
+          if [[ -d restart-metadata/docs/test-baselines ]]; then cp -R restart-metadata/docs/test-baselines/. "$RUNNER_TEMP/test-baselines/"; fi
+          cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
@@ -71,6 +79,22 @@ jobs:
           test -z "$(git status --porcelain)"
           git diff --check
           git diff --binary > "$evidence/pristine-source.diff"
+
+      - name: Apply the selected downstream patches
+        id: patched
+        env:
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
+          : > "$evidence/applied-patches.txt"
+          read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
+          for patch in "${patch_paths[@]}"; do
+            printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
+            git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
+          done
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python for the maintained Windows checks and metadata
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
@@ -225,6 +249,13 @@ jobs:
           printf 'exit_code=%s\n' "$result" > "$evidence/bazel-tests.receipt"
           git diff --binary > "$evidence/source-after.diff"
           cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
+          # Bazel exits 3 when tests failed and everything else built. The comparison with the unpatched baseline below
+          # judges those failures (an unpatched run records that baseline), so they alone do not fail this step.
+          # Any other failure, such as a build error, does.
+          if [[ "$result" == 3 ]]; then
+            printf 'Bazel reported failing tests; the baseline comparison decides the outcome.\n'
+            exit 0
+          fi
           exit "$result"
 
       - name: Record native Opus install links and CMake inputs
@@ -271,23 +302,32 @@ jobs:
           python "$RUNNER_TEMP/check-test-skips.py" --platform windows --runner bazel "$(realpath bazel-testlogs)" \
             2>&1 | tee "$RUNNER_TEMP/baseline-windows-bazel-evidence/skip-check.log"
 
-      - name: Record this shard's failures as an unpatched baseline
-        # This workflow runs pristine upstream, so its failures are the baseline that patched runs are compared with.
-        # The evidence artifact carries the file for committing under docs/test-baselines.
+      - name: Record or compare this shard's failures
+        # An unpatched run is pristine upstream, so its failures are the baseline that patched runs are compared with;
+        # the evidence artifact carries the file for committing under docs/test-baselines.
         if: ${{ !cancelled() && steps.bazel_tests.outcome != 'skipped' }}
+        env:
+          PATCHES: ${{ inputs.patches }}
         run: |
           set -euo pipefail
-          python "$RUNNER_TEMP/compare-test-baseline.py" --runner bazel \
-            --platform "windows-bazel-${TARGET%%-*}-shard-${BAZEL_TEST_SHARD}" \
-            --upstream-commit "${{ steps.inputs.outputs.commit }}" --write-baseline \
-            --output "$RUNNER_TEMP/baseline-windows-bazel-evidence/windows-bazel-${TARGET%%-*}-shard-${BAZEL_TEST_SHARD}.json" \
-            "$(realpath bazel-testlogs)"
+          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
+          commit="${{ steps.inputs.outputs.commit }}"
+          platform="windows-bazel-${TARGET##*-}-shard-${BAZEL_TEST_SHARD}"
+          common=(--runner bazel --platform "$platform" --upstream-commit "$commit")
+          if [[ -z "${PATCHES// /}" ]]; then
+            python "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" --write-baseline \
+              --output "$evidence/$platform.json" "$(realpath bazel-testlogs)"
+          else
+            python "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" --baseline-dir "$RUNNER_TEMP/test-baselines" \
+              "$(realpath bazel-testlogs)" 2>&1 | tee "$evidence/baseline-comparison.log"
+            exit "${PIPESTATUS[0]}"
+          fi
 
       - name: Verify upstream source and tests remain unmodified
         if: always()
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ steps.inputs.outputs.commit }}"
+          test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
 
       - name: Retain test evidence for one day

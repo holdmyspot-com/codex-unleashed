@@ -292,7 +292,13 @@ jobs:
             # Build the tests once into an archive; a rerun that supplies the archive skips the build.
             printf 'if [[ ! -f "$archive" ]]; then\n  mkdir -p "$(dirname "$archive")"\n  '
             printf '%q ' "${build_args[@]}"
-            printf -- '--archive-file "$archive"\nfi\n'
+            printf -- '--archive-file "$archive"\n'
+            # The archive carries every test executable, and extracting it for the run needs that space again. Free
+            # the executables the build left in the target directory (library outputs stay for the compiled-state
+            # cache); the aarch64 runner otherwise ran out of disk extracting the archive.
+            printf '  find %q/%s/ci-test -maxdepth 2 -type f -perm -u+x ! -name "*.*" -delete\n' \
+              "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/codex-rs/target}" "$TARGET"
+            printf 'fi\n'
             printf '%q ' "${run_args[@]}" | sed 's/ARCHIVE/"$archive"/'
             printf '\n'
           } > "$RUNNER_TEMP/selected-test.sh"
@@ -317,12 +323,23 @@ jobs:
           fi
           printf 'The selection failed with exit %s without the production changes.\n' "$result"
 
-      - name: Run the selection with the patches applied
+      - name: Run the selection
+        id: tests
         run: |
           set -euo pipefail
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+          set +e
           bash "$RUNNER_TEMP/selected-test.sh" "$RUNNER_TEMP/nextest-archive/tests.tar.zst" 2>&1 | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/nextest.log"
-          exit "${PIPESTATUS[0]}"
+          status=${PIPESTATUS[0]}
+          set -e
+          # Nextest exits 100 when tests failed. A whole-workspace run is judged by the comparison with the unpatched
+          # baseline below (an unpatched run records that baseline), so those failures alone do not fail this step.
+          # Any other failure, such as a full disk or a build error, does.
+          if [[ "$status" == 100 && ( -z "$TEST_PACKAGE" || "$TEST_PACKAGE" == --workspace ) && -z "$TEST_FILTER" ]]; then
+            printf 'Nextest reported failing tests; the baseline comparison decides the outcome.\n'
+            exit 0
+          fi
+          exit "$status"
 
       - name: Keep the test archive for reruns
         if: ${{ !cancelled() && inputs.archive_run_id == '' }}
@@ -360,6 +377,7 @@ jobs:
         env:
           UPSTREAM_COMMIT: ${{ steps.inputs.outputs.commit }}
           PATCHES: ${{ inputs.patches }}
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
         run: |
           set -euo pipefail
           platform="macos-${TARGET%%-*}"
@@ -368,7 +386,13 @@ jobs:
           while IFS= read -r report; do reports+=("$report"); done < <(
             find "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/codex-rs/target}" "$GITHUB_WORKSPACE/codex-rs/target" "$RUNNER_TEMP" \
               -path '*/nextest/*' -name junit.xml 2>/dev/null | sort -u)
-          if (( ${#reports[@]} == 0 )); then printf 'No nextest reports to compare.\n'; exit 0; fi
+          if (( ${#reports[@]} == 0 )); then
+            # A run that failed before nextest wrote a report leaves nothing to compare; a passing test step with no
+            # report would be a vacuous check.
+            if [[ "$TESTS_OUTCOME" == success ]]; then printf '::error::The tests passed but wrote no nextest report.\n'; exit 1; fi
+            printf 'The test step ended %s before any report was written; nothing to compare.\n' "$TESTS_OUTCOME"
+            exit 0
+          fi
           if [[ -z "${PATCHES// }" ]]; then
             # An unpatched run is the source of a baseline; the evidence artifact carries it for committing under
             # docs/test-baselines.
