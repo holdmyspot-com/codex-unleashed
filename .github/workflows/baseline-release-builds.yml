@@ -452,6 +452,12 @@ jobs:
         if: runner.os == 'Windows'
         run: echo 'GIT_REDIRECT_STDIN=NUL' >> "$GITHUB_ENV"
 
+      # Cargo checks out the rusty_v8 git dependency with the Git CLI, and its submodules hold paths longer than 260
+      # characters. Upstream's setup-ci action sets the same option.
+      - name: Allow long Git paths on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
+
       # Every macOS binary requires macOS 14 (owner decisions 2026-11-09): upstream's prebuilt V8 archive is built for
       # 14.0, so the binary needs macOS 14 whatever minimum it is linked for, and this minimum states that requirement.
       # Rust and the C and C++ build scripts all read it. The macOS lint workflow uses the same value.
