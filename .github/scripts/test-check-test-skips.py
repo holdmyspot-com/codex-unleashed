@@ -77,6 +77,24 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(checker.ALLOW, checker.classify(line, "linux", "bazel")[0])
         self.assertEqual(checker.MISSING, checker.classify(line, "linux", "nextest")[0])
 
+    def test_remote_environment_skip_is_allowed_in_a_local_run_but_not_a_remote_run(self):
+        line = "Skipping test because it requires a remote test environment."
+        self.assertEqual(checker.ALLOW, checker.classify(line, "linux", "nextest", "local")[0])
+        self.assertEqual(checker.MISSING, checker.classify(line, "linux", "nextest", "remote")[0])
+        self.assertEqual(checker.MISSING, checker.classify(line, "linux", "nextest")[0])
+
+    def test_a_local_run_still_fails_on_other_missing_setup(self):
+        line = "skipping zsh test: /bin/zsh is unavailable"
+        self.assertEqual(checker.MISSING, checker.classify(line, "linux", "nextest", "local")[0])
+
+    def test_environment_option_selects_the_remote_environment_verdict(self):
+        xml = JUNIT.format(out="Skipping test because it requires a remote test environment.", err="")
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "junit.xml").write_text(xml)
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(0, checker.main(["--platform", "linux", "--environment", "local", directory]))
+                self.assertEqual(1, checker.main(["--platform", "linux", "--environment", "remote", directory]))
+
     def test_windows_and_macos_have_no_remote_environment_or_windows_setsid_upstream(self):
         remote = "Skipping test because it requires a remote test environment."
         for platform in ("windows", "macos"):

@@ -9,7 +9,11 @@ A skip passes only if an explicit allowlist rule matches it; each rule names the
 skip that matches a rule for a known missing setup, or that matches no rule, fails the check. Run it in a step
 that follows the tests so the test results are still reported.
 
-Usage: check-test-skips.py --platform {linux,macos,windows} [--runner {nextest,bazel}] PATH...
+Usage: check-test-skips.py --platform {linux,macos,windows} [--runner {nextest,bazel}]
+                           [--environment {local,remote}] PATH...
+The environment names the test environment the checked run used: "remote" (the default) when the run selected the
+Docker remote environment, "local" when it ran without one. A local run cannot execute the tests that need a remote
+environment, so it passes their skips; the remote run executes them and fails on the same skip.
 Each PATH is a JUnit XML file, a Bazel test.xml or test.log file, or a directory searched for junit.xml,
 test.xml and test.log files.
 """
@@ -45,14 +49,16 @@ class Rule:
     reason: str
     platforms: tuple = None
     runners: tuple = None
+    environments: tuple = None
 
-    def applies(self, platform, runner):
+    def applies(self, platform, runner, environment):
         return (self.platforms is None or platform in self.platforms) and (
-            self.runners is None or runner in self.runners)
+            self.runners is None or runner in self.runners) and (
+            self.environments is None or environment in self.environments)
 
 
-def rule(pattern, verdict, reason, platforms=None, runners=None):
-    return Rule(re.compile(pattern, re.IGNORECASE), verdict, reason, platforms, runners)
+def rule(pattern, verdict, reason, platforms=None, runners=None, environments=None):
+    return Rule(re.compile(pattern, re.IGNORECASE), verdict, reason, platforms, runners, environments)
 
 
 # Order matters: the first matching applicable rule decides. Missing-setup rules precede allowlist rules that
@@ -67,6 +73,10 @@ RULES = [
     rule(r"requires a remote test environment", ALLOW,
          "upstream starts the Docker remote environment only in its Linux nextest jobs, never on Windows or macOS",
          platforms=("windows", "macos")),
+    rule(r"requires a remote test environment", ALLOW,
+         "this run selected no remote environment, as upstream's local-environment test runs do; the remote run "
+         "of the same archive executes these tests and fails on this skip",
+         runners=("nextest",), environments=("local",)),
     rule(r"requires a remote test environment", MISSING,
          "remote test environment (Docker exec-server) was not set up"),
     rule(r"no protected rg is available", MISSING, "ripgrep is not installed"),
@@ -128,9 +138,9 @@ class Skip:
     line: str
 
 
-def classify(line, platform, runner="nextest"):
+def classify(line, platform, runner="nextest", environment="remote"):
     for candidate in RULES:
-        if candidate.applies(platform, runner) and candidate.pattern.search(line):
+        if candidate.applies(platform, runner, environment) and candidate.pattern.search(line):
             return candidate.verdict, candidate.reason
     return UNKNOWN, "no allowlist or missing-setup rule matches this skip"
 
@@ -198,10 +208,10 @@ def collect(paths):
     return files, list(found.values())
 
 
-def summarize(skips, platform, runner):
+def summarize(skips, platform, runner, environment):
     groups = collections.OrderedDict()
     for skip in skips:
-        verdict, reason = classify(skip.line, platform, runner)
+        verdict, reason = classify(skip.line, platform, runner, environment)
         key = (verdict, re.sub(r"\d+", "N", skip.line), reason)
         groups.setdefault(key, []).append(skip)
     return groups
@@ -225,6 +235,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--platform", required=True, choices=("linux", "macos", "windows"))
     parser.add_argument("--runner", choices=("nextest", "bazel"), default="nextest")
+    parser.add_argument("--environment", choices=("local", "remote"), default="remote",
+                        help="the test environment the checked run selected")
     parser.add_argument("paths", nargs="+")
     arguments = parser.parse_args(argv)
 
@@ -232,7 +244,7 @@ def main(argv=None):
     if not files:
         print("No test output was found to scan; the tests must keep their output.", file=sys.stderr)
         return 1
-    groups = summarize(skips, arguments.platform, arguments.runner)
+    groups = summarize(skips, arguments.platform, arguments.runner, arguments.environment)
     lines = render(groups, files, skips)
     failing = sum(len(m) for (verdict, _, _), m in groups.items() if verdict != ALLOW)
     lines.append(f"{failing} skip message(s) point to missing setup or are unclassified.")

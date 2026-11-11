@@ -47,6 +47,10 @@ on:
         description: Unpatched run only; record its failures as the baseline file for this upstream commit, saved in the evidence artifact
         type: boolean
         default: false
+      lanes:
+        description: "Space-separated test lanes: local (no remote environment) and remote (upstream's Docker exec-server). Empty runs both; snapshot, comparison and trace runs use local only"
+        type: string
+        default: ""
   workflow_call:
     inputs:
       patches:
@@ -325,9 +329,44 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/test-helper-build.log"
           test -x "$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/test_stdio_server"
 
+      # Upstream splits its Linux tests by environment: the Bazel jobs and its other platforms run with no remote
+      # environment, and its x86-64 nextest job (rust-ci-full's tests_linux_x64_remote) runs with the Docker one. The
+      # tests built for one environment fail in the other (a local stdio MCP server needs a local environment that a
+      # remote run does not register), so this job runs the archive twice, once per lane.
+      - name: Select the test lanes
+        id: lanes
+        env:
+          REQUESTED_LANES: ${{ inputs.lanes }}
+          SINGLE_LANE_MODE: ${{ inputs.accept_snapshots || inputs.compare_upstream_image || inputs.trace_shell_startup }}
+        run: |
+          set -euo pipefail
+          lanes="$REQUESTED_LANES"
+          if [[ "$SINGLE_LANE_MODE" == true ]]; then
+            # Accepted snapshots must record the local environment's text, and the focused comparisons start their own
+            # exec-servers.
+            if [[ -n "${lanes// /}" && "$lanes" != local ]]; then
+              printf 'Snapshot, comparison and trace runs use only the local lane; got lanes=%s.\n' "$lanes" >&2
+              exit 1
+            fi
+            lanes=local
+          elif [[ -z "${lanes// /}" ]]; then
+            lanes="local remote"
+          fi
+          local_lane=false
+          remote_lane=false
+          for lane in $lanes; do
+            case "$lane" in
+              local) local_lane=true ;;
+              remote) remote_lane=true ;;
+              *) printf 'Unknown test lane: %s\n' "$lane" >&2; exit 1 ;;
+            esac
+          done
+          printf 'local=%s\nremote=%s\n' "$local_lane" "$remote_lane" | tee -a "$GITHUB_OUTPUT"
+
       # Mirrors upstream's rust-ci-full-nextest-platform.yml: the debug codex binary runs `codex exec-server` in a
-      # privileged ubuntu container, and the one nextest run below executes with the remote environment selected.
+      # privileged ubuntu container. The environment variables go into a file that only the remote lane sources.
       - name: Set up the remote test environment (Docker)
+        if: steps.lanes.outputs.remote == 'true'
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -335,11 +374,11 @@ jobs:
           export CODEX_TEST_REMOTE_ENV_CONTAINER_NAME="codex-remote-test-env-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           source "${GITHUB_WORKSPACE}/scripts/test-remote-env.sh"
           {
-            echo "CODEX_TEST_ENVIRONMENT=${CODEX_TEST_ENVIRONMENT}"
-            echo "CODEX_TEST_REMOTE_ENV=${CODEX_TEST_REMOTE_ENV}"
-            echo "CODEX_TEST_REMOTE_ENV_CONTAINER_NAME=${CODEX_TEST_REMOTE_ENV_CONTAINER_NAME}"
-            echo "CODEX_TEST_REMOTE_EXEC_SERVER_URL=${CODEX_TEST_REMOTE_EXEC_SERVER_URL}"
-          } >> "$GITHUB_ENV"
+            printf 'export CODEX_TEST_ENVIRONMENT=%q\n' "${CODEX_TEST_ENVIRONMENT}"
+            printf 'export CODEX_TEST_REMOTE_ENV=%q\n' "${CODEX_TEST_REMOTE_ENV}"
+            printf 'export CODEX_TEST_REMOTE_ENV_CONTAINER_NAME=%q\n' "${CODEX_TEST_REMOTE_ENV_CONTAINER_NAME}"
+            printf 'export CODEX_TEST_REMOTE_EXEC_SERVER_URL=%q\n' "${CODEX_TEST_REMOTE_EXEC_SERVER_URL}"
+          } > "$RUNNER_TEMP/remote-test-env.sh"
           # Only the codex binary inside the container is needed. The debug build of its dependency graph filled the
           # runner's disk before the ci-test build of the test binaries, so drop it now.
           rm -rf "$CARGO_TARGET_DIR/debug"
@@ -472,6 +511,8 @@ jobs:
           BASELINE_ARCHIVE_COMPARE: ${{ inputs.compare_upstream_image || inputs.trace_shell_startup }}
           BASELINE_ACCEPT_SNAPSHOTS: ${{ inputs.accept_snapshots }}
           STRESS_COUNT: ${{ inputs.stress_count }}
+          LANE_LOCAL: ${{ steps.lanes.outputs.local }}
+          LANE_REMOTE: ${{ steps.lanes.outputs.remote }}
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -546,13 +587,29 @@ jobs:
             for _ in $(seq "$(nproc)"); do yes > /dev/null & done
           fi
           printf '%s\n' "${nextest_args[@]}" > "$RUNNER_TEMP/baseline-test-evidence/nextest-arguments.txt"
-          set +e
-          env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
-            cargo-nextest nextest "${nextest_args[@]}" \
-            2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/nextest.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          printf 'nextest_status=%s\n' "$status" | tee -a "$GITHUB_OUTPUT" "$RUNNER_TEMP/baseline-test-evidence/nextest-status.txt"
+          lanes=()
+          if [[ "$LANE_LOCAL" == true ]]; then lanes+=(local); fi
+          if [[ "$LANE_REMOTE" == true ]]; then lanes+=(remote); fi
+          reports="$RUNNER_TEMP/nextest-reports"
+          status=0
+          for lane in "${lanes[@]}"; do
+            rm -rf "$CARGO_TARGET_DIR/nextest" "$GITHUB_WORKSPACE/codex-rs/target/nextest"
+            set +e
+            (
+              # Only the remote lane selects the Docker exec-server, as upstream's remote job alone does.
+              if [[ "$lane" == remote ]]; then source "$RUNNER_TEMP/remote-test-env.sh"; fi
+              exec env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
+                cargo-nextest nextest "${nextest_args[@]}"
+            ) 2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/nextest-$lane.log"
+            lane_status=${PIPESTATUS[0]}
+            set -e
+            printf 'nextest_status_%s=%s\n' "$lane" "$lane_status" | tee -a "$GITHUB_OUTPUT" "$RUNNER_TEMP/baseline-test-evidence/nextest-status.txt"
+            if [[ "$status" == 0 ]]; then status="$lane_status"; fi
+            mkdir -p "$reports/$lane"
+            if [[ -d "$CARGO_TARGET_DIR/nextest" ]]; then mv "$CARGO_TARGET_DIR/nextest" "$reports/$lane/target-dir"; fi
+            if [[ -d "$GITHUB_WORKSPACE/codex-rs/target/nextest" ]]; then mv "$GITHUB_WORKSPACE/codex-rs/target/nextest" "$reports/$lane/workspace"; fi
+          done
+          printf 'nextest_status=%s\n' "$status" | tee -a "$GITHUB_OUTPUT"
           # A full run is judged against the unpatched baseline in the step below, not by its failures alone.
           if [[ "$BASELINE_ARCHIVE_COMPARE" != true && -z "$STRESS_COUNT" && "$BASELINE_ACCEPT_SNAPSHOTS" != true ]]; then
             exit 0
@@ -563,12 +620,13 @@ jobs:
         if: ${{ !cancelled() && steps.native_tests.outcome != 'skipped' && !inputs.compare_upstream_image && !inputs.trace_shell_startup }}
         run: |
           set -euo pipefail
-          reports=()
-          for directory in "$CARGO_TARGET_DIR/nextest" "$GITHUB_WORKSPACE/codex-rs/target/nextest"; do
-            if [[ -d "$directory" ]]; then reports+=("$directory"); fi
+          status=0
+          for lane in local remote; do
+            if [[ ! -d "$RUNNER_TEMP/nextest-reports/$lane" ]]; then continue; fi
+            python3 "$RUNNER_TEMP/check-test-skips.py" --platform linux --environment "$lane" "$RUNNER_TEMP/nextest-reports/$lane" \
+              2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/skip-check-$lane.log" || status=1
           done
-          python3 "$RUNNER_TEMP/check-test-skips.py" --platform linux "${reports[@]}" \
-            2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/skip-check.log"
+          exit "$status"
 
       # The tests run to completion whatever fails; this step decides the result. A patched run fails only on tests that
       # the unpatched baseline for this upstream commit does not list. An unpatched run with write_baseline records its
@@ -576,7 +634,8 @@ jobs:
       - name: Compare failures with the unpatched baseline
         if: ${{ !cancelled() && steps.native_tests.outcome == 'success' && !inputs.compare_upstream_image && !inputs.trace_shell_startup }}
         env:
-          NEXTEST_STATUS: ${{ steps.native_tests.outputs.nextest_status }}
+          NEXTEST_STATUS_LOCAL: ${{ steps.native_tests.outputs.nextest_status_local }}
+          NEXTEST_STATUS_REMOTE: ${{ steps.native_tests.outputs.nextest_status_remote }}
           WRITE_BASELINE: ${{ inputs.write_baseline }}
           PATCHES: ${{ inputs.patches }}
           GATED: ${{ inputs.stress_count == '' && !inputs.accept_snapshots }}
@@ -584,29 +643,33 @@ jobs:
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-test-evidence"
           commit="$(cat "$evidence/upstream-commit")"
-          reports=()
-          for directory in "$CARGO_TARGET_DIR/nextest" "$GITHUB_WORKSPACE/codex-rs/target/nextest"; do
-            if [[ -d "$directory" ]]; then reports+=("$directory"); fi
-          done
-          common=(--platform linux --upstream-commit "$commit" --baseline-dir "$RUNNER_TEMP/test-baselines")
-          if [[ "$WRITE_BASELINE" == true ]]; then
-            if [[ -n "${PATCHES// /}" ]]; then
-              printf 'A baseline must come from an unpatched run.\n' >&2
-              exit 1
+          if [[ "$WRITE_BASELINE" == true && -n "${PATCHES// /}" ]]; then
+            printf 'A baseline must come from an unpatched run.\n' >&2
+            exit 1
+          fi
+          # The local lane's baseline is linux.json; the remote lane's is linux-remote.json.
+          result=0
+          for lane in local remote; do
+            if [[ ! -d "$RUNNER_TEMP/nextest-reports/$lane" ]]; then continue; fi
+            platform=linux
+            if [[ "$lane" == remote ]]; then platform=linux-remote; fi
+            lane_status_name="NEXTEST_STATUS_${lane^^}"
+            lane_status="${!lane_status_name:-0}"
+            common=(--platform "$platform" --upstream-commit "$commit" --baseline-dir "$RUNNER_TEMP/test-baselines")
+            if [[ "$WRITE_BASELINE" == true ]]; then
+              python3 "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" --write-baseline \
+                --output "$evidence/test-baselines/$commit/$platform.json" "$RUNNER_TEMP/nextest-reports/$lane"
+            elif [[ "$GATED" != true ]]; then
+              if [[ "$lane_status" != 0 ]]; then result="$lane_status"; fi
+            elif [[ ! -f "$RUNNER_TEMP/test-baselines/$commit/$platform.json" ]]; then
+              printf 'No committed baseline for %s on %s; failing on the %s lane status (%s).\n' "$commit" "$platform" "$lane" "$lane_status" >&2
+              if [[ "$lane_status" != 0 ]]; then result="$lane_status"; fi
+            else
+              python3 "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" "$RUNNER_TEMP/nextest-reports/$lane" \
+                2>&1 | tee "$evidence/baseline-comparison-$lane.log" || result=1
             fi
-            python3 "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" --write-baseline \
-              --output "$evidence/test-baselines/$commit/linux.json" "${reports[@]}"
-            exit 0
-          fi
-          if [[ "$GATED" != true ]]; then
-            exit "${NEXTEST_STATUS:-0}"
-          fi
-          if [[ ! -f "$RUNNER_TEMP/test-baselines/$commit/linux.json" ]]; then
-            printf 'No committed baseline for %s; failing on the test run status (%s).\n' "$commit" "$NEXTEST_STATUS" >&2
-            exit "${NEXTEST_STATUS:-0}"
-          fi
-          python3 "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" "${reports[@]}" \
-            2>&1 | tee "$evidence/baseline-comparison.log"
+          done
+          exit "$result"
 
       - name: Record the accepted snapshot changes
         if: always() && inputs.accept_snapshots
@@ -814,6 +877,7 @@ jobs:
           path: |
             ${{ runner.temp }}/baseline-test-evidence
             ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings
+            ${{ runner.temp }}/nextest-reports/**/junit.xml
             ${{ env.CARGO_TARGET_DIR }}/nextest/**/junit.xml
             codex-rs/target/nextest/**/junit.xml
           retention-days: 3
