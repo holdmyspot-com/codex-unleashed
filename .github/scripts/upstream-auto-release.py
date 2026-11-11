@@ -6,6 +6,7 @@ Commands (each prints its result on standard output and exits 1 with a message o
            Print key=value lines (action, reason, version, build, tag, release_name, upstream_tag).
   patches  --readme FILE            Print the patch queue's repository paths, space-separated, in order.
   notes    --version V --build N --upstream-tag T --upstream-commit SHA --fork-commit SHA --readme FILE
+           [--changelog FILE]   Include the changelog's "## Upstream T" section as the notes' Changes.
   summary  --upstream-tag T --failing TEXT [--log-url URL]
 FILE arguments are JSON lists as returned by GET /repos/{owner}/{repo}/releases."""
 
@@ -94,9 +95,24 @@ def patch_queue(readme):
     return ["patches/" + path for _, path in entries]
 
 
-def release_notes(version, build, upstream_tag, upstream_commit, fork_commit, patches):
-    """Render the release notes as Markdown."""
+def changelog_section(changelog, upstream_tag):
+    """Return the body of the changelog's "## Upstream <upstream_tag>" section, stripped, or None when it has none."""
+    body = None
+    for line in changelog.splitlines():
+        if line.startswith("## "):
+            if body is not None:
+                break
+            if line.rstrip() == f"## Upstream {upstream_tag}":
+                body = []
+        elif body is not None:
+            body.append(line)
+    return "\n".join(body).strip() if body is not None else None
+
+
+def release_notes(version, build, upstream_tag, upstream_commit, fork_commit, patches, changes=None):
+    """Render the release notes as Markdown; changes, when given, becomes a Changes section before the patch list."""
     tag = f"rust-v{version}%2B{build}"
+    changes_section = f"## Changes\n\n{changes}\n\n" if changes else ""
     base = f"https://github.com/{FORK}/releases"
     patch_lines = "\n".join(f"{i}. [`{p.removeprefix('patches/')}`](https://github.com/{FORK}/blob/{fork_commit}/{p})"
                             for i, p in enumerate(patches, 1))
@@ -133,7 +149,7 @@ the asset. The installers verify the digest before installing.
 `codex-symbols-<target>.tar.gz` holds the debug symbols stripped from that target's binaries, for symbolicating \
 crash reports. It is listed in `SHA256SUMS` too.
 
-## Patches applied
+{changes_section}## Patches applied
 
 The patch queue at [`{fork_commit[:12]}`](https://github.com/{FORK}/tree/{fork_commit}/patches), in order:
 
@@ -164,6 +180,7 @@ def main(argv):
     notes.add_argument("--upstream-commit", required=True)
     notes.add_argument("--fork-commit", required=True)
     notes.add_argument("--readme", type=Path, required=True)
+    notes.add_argument("--changelog", type=Path, default=None)
     summary = commands.add_parser("summary")
     summary.add_argument("--upstream-tag", required=True)
     summary.add_argument("--failing", required=True)
@@ -178,8 +195,9 @@ def main(argv):
         elif args.command == "patches":
             print(" ".join(patch_queue(args.readme.read_text())))
         elif args.command == "notes":
+            changes = changelog_section(args.changelog.read_text(), args.upstream_tag) if args.changelog else None
             print(release_notes(args.version, args.build, args.upstream_tag, args.upstream_commit, args.fork_commit,
-                                patch_queue(args.readme.read_text())))
+                                patch_queue(args.readme.read_text()), changes))
         else:
             print(failure_summary(args.upstream_tag, args.failing, args.log_url))
     except (ValueError, OSError, json.JSONDecodeError) as error:

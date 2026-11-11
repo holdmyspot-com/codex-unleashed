@@ -559,7 +559,7 @@ jobs:
           (cd "$assets" && sha256sum codex-package-*.tar.gz codex-symbols-*.tar.gz install.sh install.ps1 > SHA256SUMS && cat SHA256SUMS)
           python3 -I .github/scripts/upstream-auto-release.py notes --version "$VERSION" --build "$BUILD" \
             --upstream-tag "$UPSTREAM_TAG" --upstream-commit "$UPSTREAM_COMMIT" --fork-commit "$GITHUB_SHA" \
-            --readme patches/README.md > "$RUNNER_TEMP/notes.md"
+            --readme patches/README.md --changelog CHANGELOG.md > "$RUNNER_TEMP/notes.md"
 
       - name: Attest build provenance
         if: steps.recheck.outputs.action == 'release'

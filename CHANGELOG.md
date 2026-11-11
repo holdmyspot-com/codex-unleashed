@@ -1,9 +1,10 @@
 # Changelog
 
-Changes to the Codex Unleashed patch queue, by release. Each release is upstream `openai/codex`'s stable release plus
-the patches listed in its release notes.
+Changes to the Codex Unleashed patch queue, by the upstream `openai/codex` stable release the queue is based on. The
+release notes of every fork release built on an upstream release include that release's section as "Changes".
+Section headings are exactly `## Upstream rust-vX.Y.Z`.
 
-## Next release (upstream `rust-v0.167.0`)
+## Upstream rust-v0.167.0
 
 ### Patches removed because upstream provides them
 
