@@ -1,17 +1,17 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 12:00:00 +0000
-Subject: [PATCH] test: probe legacy and elevated delete containment
+Subject: [PATCH] test: probe legacy and elevated outside-root operations
 
 ---
 --- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
 +++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
-@@ -1137,3 +1137,264 @@
+@@ -1137,3 +1137,291 @@
          assert!(stdout.contains("second"), "stdout={stdout:?}");
      });
  }
 +
-+// ---- scratch security probe: where can the legacy and elevated sandboxes delete outside their roots ----
++// ---- scratch security probe: which outside-root operations the legacy and elevated sandboxes allow ----
 +
 +fn probe_run(program: &str, args: &[&str]) -> String {
 +    match std::process::Command::new(program).args(args).output() {
@@ -60,19 +60,55 @@ Subject: [PATCH] test: probe legacy and elevated delete containment
 +    println!("restrict {}: {}", p.display(), out.trim());
 +}
 +
-+fn probe_restrict(p: &Path) {
-+    probe_restrict_with(
-+        p,
-+        &["*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "USER:(OI)(CI)F"],
-+    );
-+}
-+
 +#[derive(Clone, Copy, PartialEq)]
 +enum ProbeRestrict {
 +    Nothing,
-+    Root,
-+    Outside,
 +    Grants(&'static [&'static str]),
++}
++
++async fn probe_collect(
++    spawned: codex_utils_pty::SpawnedProcess,
++    codex_home: &Path,
++    timeout_duration: Duration,
++) -> (Vec<u8>, Vec<u8>, i32) {
++    let codex_utils_pty::SpawnedProcess {
++        session: _session,
++        mut stdout_rx,
++        mut stderr_rx,
++        exit_rx,
++    } = spawned;
++    let stdout_task = tokio::spawn(async move {
++        let mut out = Vec::new();
++        while let Some(chunk) = stdout_rx.recv().await {
++            out.extend(chunk);
++        }
++        out
++    });
++    let stderr_task = tokio::spawn(async move {
++        let mut out = Vec::new();
++        while let Some(chunk) = stderr_rx.recv().await {
++            out.extend(chunk);
++        }
++        out
++    });
++    let exit_code = timeout(timeout_duration, exit_rx)
++        .await
++        .unwrap_or_else(|_| panic!("timed out waiting for exit\n{}", sandbox_log(codex_home)))
++        .unwrap_or(-1);
++    let stdout = timeout(timeout_duration, stdout_task)
++        .await
++        .expect("stdout timeout")
++        .expect("stdout join");
++    let stderr = timeout(timeout_duration, stderr_task)
++        .await
++        .expect("stderr timeout")
++        .expect("stderr join");
++    (stdout, stderr, exit_code)
++}
++
++fn probe_squash(bytes: &[u8]) -> String {
++    let text = String::from_utf8_lossy(bytes).replace("\r\n", " / ").replace('\n', " / ");
++    text.chars().take(400).collect()
 +}
 +
 +fn probe_scenario(label: &str, base: &Path, restrict: ProbeRestrict, elevated: bool) {
@@ -81,56 +117,49 @@ Subject: [PATCH] test: probe legacy and elevated delete containment
 +    runtime.block_on(async move {
 +        fs::create_dir_all(base).expect("create probe base");
 +        let test_root = TempDir::new_in(base).expect("create probe test root");
-+        if restrict == ProbeRestrict::Root {
-+            probe_restrict(test_root.path());
-+        }
 +        if let ProbeRestrict::Grants(grants) = restrict {
 +            probe_restrict_with(test_root.path(), grants);
 +        }
-+        let codex_home = sandbox_home("probe-delete");
++        let codex_home = sandbox_home("probe-ops");
 +        let workspace = test_root.path().join("workspace");
 +        let temp_root = test_root.path().join("temp");
 +        let tmp_root = test_root.path().join("tmp");
-+        let outside_root = test_root.path().join("outside");
-+        for directory in [&workspace, &temp_root, &tmp_root, &outside_root] {
++        let out = test_root.path().join("outside");
++        for directory in [&workspace, &temp_root, &tmp_root, &out] {
 +            fs::create_dir_all(directory).expect("create probe directory");
 +        }
-+        if restrict == ProbeRestrict::Outside {
-+            probe_restrict(&outside_root);
-+        }
-+        let workspace_file = workspace.join("workspace-delete.txt");
-+        let temp_file = temp_root.join("temp-delete.txt");
-+        let tmp_file = tmp_root.join("tmp-delete.txt");
-+        let outside_file = outside_root.join("outside-delete.txt");
-+        let append_file = outside_root.join("outside-append.txt");
-+        let created_file = outside_root.join("created.txt");
-+        fs::write(&workspace_file, "workspace").expect("seed");
-+        fs::write(&temp_file, "temp").expect("seed");
-+        fs::write(&tmp_file, "tmp").expect("seed");
-+        fs::write(&outside_file, "outside").expect("seed");
-+        fs::write(&append_file, "outside2").expect("seed");
++        fs::write(workspace.join("ws-del.txt"), "ws").expect("seed");
++        fs::write(workspace.join("into.txt"), "into").expect("seed");
++        fs::write(workspace.join("x.txt"), "new").expect("seed");
++        fs::write(out.join("outside-delete.txt"), "outside").expect("seed");
++        fs::write(out.join("outside-append.txt"), "outside2").expect("seed");
++        fs::write(out.join("ren-src.txt"), "ren").expect("seed");
++        fs::write(out.join("move-out.txt"), "moveout").expect("seed");
++        fs::write(out.join("trunc.txt"), "truncate-me").expect("seed");
++        fs::write(out.join("overwrite.txt"), "orig").expect("seed");
++        fs::create_dir_all(out.join("emptydir")).expect("seed");
++        fs::create_dir_all(out.join("nonempty")).expect("seed");
++        fs::write(out.join("nonempty").join("f.txt"), "f").expect("seed");
 +        if !elevated {
-+            if label == "checkout-default" {
-+                for ancestor in base.ancestors() {
-+                    probe_icacls("ancestor-of-checkout", ancestor);
-+                }
-+            }
 +            probe_icacls(&format!("{label} test_root"), test_root.path());
-+            probe_icacls(&format!("{label} outside dir"), &outside_root);
-+            probe_icacls(&format!("{label} outside file"), &outside_file);
-+            probe_icacls(&format!("{label} workspace dir (before sandbox)"), &workspace);
++            probe_icacls(&format!("{label} outside file"), &out.join("outside-delete.txt"));
 +        }
-+        let script = workspace.join("delete-fixtures.cmd");
++        let script = workspace.join("ops.cmd");
 +        fs::write(
 +            &script,
 +            concat!(
 +                "@echo off\r\n",
-+                "del /f /q \"%WORKSPACE_DELETE%\"\r\n",
-+                "del /f /q \"%TEMP_DELETE%\"\r\n",
-+                "del /f /q \"%TMP_DELETE%\"\r\n",
-+                "del /f /q \"%OUTSIDE_DELETE%\"\r\n",
-+                "echo created> \"%OUTSIDE_CREATED%\"\r\n",
-+                "echo appended>> \"%OUTSIDE_APPEND%\"\r\n",
++                "del /f /q \"%WS%\\ws-del.txt\"\r\n",
++                "del /f /q \"%OUT%\\outside-delete.txt\"\r\n",
++                "echo created> \"%OUT%\\created.txt\"\r\n",
++                "echo appended>> \"%OUT%\\outside-append.txt\"\r\n",
++                "ren \"%OUT%\\ren-src.txt\" ren-dst.txt\r\n",
++                "move /y \"%OUT%\\move-out.txt\" \"%WS%\\moved-out.txt\"\r\n",
++                "move /y \"%WS%\\into.txt\" \"%OUT%\\into.txt\"\r\n",
++                "rmdir \"%OUT%\\emptydir\"\r\n",
++                "rmdir /s /q \"%OUT%\\nonempty\"\r\n",
++                "type nul > \"%OUT%\\trunc.txt\"\r\n",
++                "move /y \"%WS%\\x.txt\" \"%OUT%\\overwrite.txt\"\r\n",
 +                "exit /b 0\r\n",
 +            ),
 +        )
@@ -138,12 +167,8 @@ Subject: [PATCH] test: probe legacy and elevated delete containment
 +        let env_map = HashMap::from([
 +            ("TEMP".to_string(), temp_root.to_string_lossy().into_owned()),
 +            ("TMP".to_string(), tmp_root.to_string_lossy().into_owned()),
-+            ("WORKSPACE_DELETE".to_string(), workspace_file.to_string_lossy().into_owned()),
-+            ("TEMP_DELETE".to_string(), temp_file.to_string_lossy().into_owned()),
-+            ("TMP_DELETE".to_string(), tmp_file.to_string_lossy().into_owned()),
-+            ("OUTSIDE_DELETE".to_string(), outside_file.to_string_lossy().into_owned()),
-+            ("OUTSIDE_CREATED".to_string(), created_file.to_string_lossy().into_owned()),
-+            ("OUTSIDE_APPEND".to_string(), append_file.to_string_lossy().into_owned()),
++            ("WS".to_string(), workspace.to_string_lossy().into_owned()),
++            ("OUT".to_string(), out.to_string_lossy().into_owned()),
 +        ]);
 +        let permission_profile = PermissionProfile::workspace_write();
 +        let command = vec![
@@ -198,23 +223,27 @@ Subject: [PATCH] test: probe legacy and elevated delete containment
 +                return;
 +            }
 +        };
-+        let (stdout, exit_code) =
-+            collect_stdout_and_exit(spawned, codex_home.path(), Duration::from_secs(30)).await;
++        let (stdout, stderr, exit_code) =
++            probe_collect(spawned, codex_home.path(), Duration::from_secs(30)).await;
 +        if exit_code != 0 {
 +            println!("PROBE-LOG {label} {backend}\n{}", sandbox_log(codex_home.path()));
 +        }
-+        let appended = fs::read_to_string(&append_file)
-+            .map(|c| c != "outside2")
-+            .unwrap_or(false);
++        let read = |p: PathBuf| fs::read_to_string(p).ok();
 +        println!(
-+            "PROBE|{label}|{backend}|exit={exit_code}|workspace_deleted={}|temp_deleted={}|tmp_deleted={}|OUTSIDE_DELETED={}|OUTSIDE_CREATED={}|OUTSIDE_APPENDED={}|stdout={:?}",
-+            !workspace_file.exists(),
-+            !temp_file.exists(),
-+            !tmp_file.exists(),
-+            !outside_file.exists(),
-+            created_file.exists(),
-+            appended,
-+            String::from_utf8_lossy(&stdout).trim()
++            "PROBE|{label}|{backend}|exit={exit_code}|ws_control_deleted={}|DEL={}|CREATE={}|APPEND={}|RENAME_IN_OUTSIDE={}|MOVE_OUT_TO_WS={}|MOVE_IN_NEW_NAME={}|RMDIR_EMPTY={}|RMDIR_TREE={}|TRUNCATE={}|OVERWRITE_BY_MOVE={}|stdout={}|stderr={}",
++            !workspace.join("ws-del.txt").exists(),
++            !out.join("outside-delete.txt").exists(),
++            out.join("created.txt").exists(),
++            read(out.join("outside-append.txt")).as_deref() != Some("outside2"),
++            out.join("ren-dst.txt").exists() && !out.join("ren-src.txt").exists(),
++            !out.join("move-out.txt").exists(),
++            out.join("into.txt").exists(),
++            !out.join("emptydir").exists(),
++            !out.join("nonempty").exists(),
++            read(out.join("trunc.txt")).as_deref() == Some(""),
++            read(out.join("overwrite.txt")).as_deref() == Some("new"),
++            probe_squash(&stdout),
++            probe_squash(&stderr),
 +        );
 +    });
 +}
@@ -224,12 +253,20 @@ Subject: [PATCH] test: probe legacy and elevated delete containment
 +    let _account_guard =
 +        WindowsSandboxAccountTestGuard::acquire().expect("lock Windows sandbox test accounts");
 +    let _guard = legacy_process_test_guard();
-+    println!("PROBE-ENV arch={:?} user={}", std::env::var("PROCESSOR_ARCHITECTURE"), probe_run("whoami", &["/user", "/fo", "list"]).trim());
++    println!(
++        "PROBE-ENV arch={:?}\n{}\n{}",
++        std::env::var("PROCESSOR_ARCHITECTURE"),
++        probe_run("whoami", &["/user", "/fo", "list"]).trim(),
++        probe_run("whoami", &["/groups", "/fo", "list"]).trim()
++    );
 +    let userprofile = PathBuf::from(std::env::var("USERPROFILE").expect("USERPROFILE"));
 +    let variants: Vec<(&str, PathBuf, ProbeRestrict)> = vec![
 +        ("checkout-default", sandbox_cwd(), ProbeRestrict::Nothing),
-+        ("checkout-restrictive-root", sandbox_cwd(), ProbeRestrict::Root),
-+        ("checkout-restrictive-outside-only", sandbox_cwd(), ProbeRestrict::Outside),
++        (
++            "checkout-restrictive-root",
++            sandbox_cwd(),
++            ProbeRestrict::Grants(&["*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "USER:(OI)(CI)F"]),
++        ),
 +        ("userprofile-default", userprofile.join("codex-probe"), ProbeRestrict::Nothing),
 +        ("tempdir-default", std::env::temp_dir().join("codex-probe"), ProbeRestrict::Nothing),
 +        ("c-root-default", PathBuf::from("C:\\codex-probe"), ProbeRestrict::Nothing),
@@ -237,11 +274,6 @@ Subject: [PATCH] test: probe legacy and elevated delete containment
 +            "d-authusers-modify-only",
 +            sandbox_cwd(),
 +            ProbeRestrict::Grants(&["*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "*S-1-5-11:(OI)(CI)M"]),
-+        ),
-+        (
-+            "d-admins-system-only",
-+            sandbox_cwd(),
-+            ProbeRestrict::Grants(&["*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"]),
 +        ),
 +        (
 +            "d-everyone-modify-only",
@@ -252,11 +284,6 @@ Subject: [PATCH] test: probe legacy and elevated delete containment
 +            "c-root-plus-explicit-user",
 +            PathBuf::from("C:\\codex-probe"),
 +            ProbeRestrict::Grants(&["*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "*S-1-5-11:(OI)(CI)M", "USER:(OI)(CI)F"]),
-+        ),
-+        (
-+            "c-root-authusers-only",
-+            PathBuf::from("C:\\codex-probe"),
-+            ProbeRestrict::Grants(&["*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "*S-1-5-11:(OI)(CI)M"]),
 +        ),
 +    ];
 +    for (label, base, restrict) in &variants {

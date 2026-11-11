@@ -288,10 +288,49 @@ jobs:
           printf 'The selection failed with exit %s without the production changes.\n' "$result"
 
       - name: Run the selection with the patches applied
+        continue-on-error: true
         run: |
           set -euo pipefail
           git -C upstream diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
           bash "$RUNNER_TEMP/selected-test.sh"
+
+      - name: Locate the unit-test executable (scratch probe)
+        if: always()
+        run: |
+          set -euo pipefail
+          cd upstream/codex-rs
+          cargo nextest list --target "$TARGET" --cargo-profile ci-test -p codex-windows-sandbox --list-type binaries-only --message-format json > "$RUNNER_TEMP/bins.json"
+          exe="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(j["rust-binaries"]["codex-windows-sandbox"]["binary-path"])' "$(cygpath -w "$RUNNER_TEMP/bins.json")")"
+          echo "PROBE_EXE=$exe" >> "$GITHUB_ENV"
+          echo "probe exe: $exe"
+
+      - name: Run the probe as a standard local user (scratch probe)
+        if: always()
+        shell: pwsh
+        run: |
+          $chars = [char[]]'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+          $pw = (-join (1..24 | ForEach-Object { $chars[(Get-Random -Maximum $chars.Length)] })) + 'aA1!'
+          Write-Host "::add-mask::$pw"
+          $sec = ConvertTo-SecureString $pw -AsPlainText -Force
+          New-LocalUser -Name probeuser -Password $sec -PasswordNeverExpires -AccountNeverExpires | Out-Null
+          Add-LocalGroupMember -Group 'Users' -Member probeuser
+          $out = Join-Path $env:RUNNER_TEMP 'stduser-out'
+          New-Item -ItemType Directory $out -Force | Out-Null
+          icacls $out /grant 'probeuser:(OI)(CI)M' | Out-Null
+          $cred = [pscredential]::new('probeuser', $sec)
+          $p = Start-Process -FilePath $env:PROBE_EXE -ArgumentList 'unified_exec::tests::probe_delete_variants','--exact','--nocapture' `
+            -Credential $cred -LoadUserProfile -UseNewEnvironment -WorkingDirectory $out `
+            -RedirectStandardOutput "$out\stdout.txt" -RedirectStandardError "$out\stderr.txt" -Wait -PassThru
+          Write-Host "STDUSER exit=$($p.ExitCode)"
+          Write-Host '=== STDUSER stdout'
+          Get-Content "$out\stdout.txt" -ErrorAction SilentlyContinue | ForEach-Object { "STDUSER> $_" }
+          Write-Host '=== STDUSER stderr'
+          Get-Content "$out\stderr.txt" -ErrorAction SilentlyContinue | Select-Object -First 40 | ForEach-Object { "STDUSER-ERR> $_" }
+
+      - name: Remove the standard user (scratch probe)
+        if: always()
+        shell: pwsh
+        run: Remove-LocalUser -Name probeuser -ErrorAction SilentlyContinue
 
       - name: Fail on tests that skipped themselves for missing setup
         if: ${{ !cancelled() }}
