@@ -159,7 +159,7 @@ save_state() {
     printf 'The verified exact state for %s was restored and the lint passed; nothing to upload.\n' "$cache_name"
     return 0
   fi
-  export CODEX_SOURCE_CACHE_TOOL="$helper_tool" CARGO_CACHE_PARTS=1 CARGO_CACHE_STAGE=lint
+  export CODEX_SOURCE_CACHE_TOOL="$helper_tool" CARGO_CACHE_PARTS=1 CARGO_CACHE_STAGE=final
   bash "$cache_root/ghcr-cargo-target-cache.sh" "$operation" "$(read_state "$state" repository)" \
     "$(read_state "$state" tag)" "$target_dir" "$(cat "$evidence/upstream-ref")" "$(read_state "$state" seed_tag)" \
     2>&1 | tee "$evidence/lint-cache-save-$cache_name.log"
