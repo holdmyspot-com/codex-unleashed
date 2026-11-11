@@ -25,6 +25,7 @@ jobs:
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-ownership-evidence"
           mkdir -p "$evidence"
+          cp restart-metadata/.github/scripts/apt-install-with-fallback.py "$RUNNER_TEMP/apt-install-with-fallback.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           cp restart-metadata/.github/upstream-compat-releases.json "$evidence/compat-releases.json"
@@ -67,8 +68,8 @@ jobs:
       - name: Install Linux development prerequisites
         run: |
           set -euo pipefail
-          sudo apt-get update -y
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex
+          # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
+          sudo python3 -I "$RUNNER_TEMP/apt-install-with-fallback.py" build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex
 
       - name: Read upstream's pinned Rust toolchain
         id: upstream-rust

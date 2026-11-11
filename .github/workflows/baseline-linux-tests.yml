@@ -97,6 +97,7 @@ jobs:
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-test-evidence"
           mkdir -p "$evidence"
+          cp restart-metadata/.github/scripts/apt-install-with-fallback.py "$RUNNER_TEMP/apt-install-with-fallback.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           if [[ -n "$UPSTREAM_COMMIT" ]]; then
             printf '%s\n' "$UPSTREAM_COMMIT" > "$evidence/upstream-commit"
@@ -197,8 +198,8 @@ jobs:
       - name: Install Linux development prerequisites
         run: |
           set -euo pipefail
-          sudo apt-get update -y
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex strace zsh ripgrep
+          # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
+          sudo python3 -I "$RUNNER_TEMP/apt-install-with-fallback.py" build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex strace zsh ripgrep
           # Tests skip themselves when a shell or interpreter is missing, so assert each one here.
           zsh --version
           /bin/zsh --version

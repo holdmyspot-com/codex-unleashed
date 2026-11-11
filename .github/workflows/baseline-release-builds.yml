@@ -234,6 +234,7 @@ jobs:
           owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
           package="$(cat restart-metadata/.github/cargo-cache-package)"
           printf 'CARGO_CACHE_REPOSITORY=ghcr.io/%s/%s\n' "$owner" "$package" >> "$GITHUB_ENV"
+          cp restart-metadata/.github/scripts/apt-install-with-fallback.py "$RUNNER_TEMP/apt-install-with-fallback.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           if [[ -n "$UPSTREAM_COMMIT" ]]; then
             printf '%s\n' "$UPSTREAM_COMMIT" > "$evidence/upstream-commit"
@@ -370,8 +371,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
-          sudo apt-get update -y
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils pkg-config libcap-dev
+          # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
+          sudo python3 -I "$RUNNER_TEMP/apt-install-with-fallback.py" binutils pkg-config libcap-dev
 
       - name: Read upstream's pinned Rust toolchain
         id: upstream-rust
@@ -692,8 +693,8 @@ jobs:
             --first-report "$quiet_report" --interval "$quiet_report" --stop-after "$quiet_stop" -- "${release_command[@]}")
 
           if [[ "$TRACE_SIGNALS" == true ]]; then
-            sudo apt-get update -y
-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends bpftrace
+            # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
+            sudo python3 -I "$RUNNER_TEMP/apt-install-with-fallback.py" bpftrace
             cd "$RUNNER_TEMP/baseline-evidence"
             python3 "$RUNNER_TEMP/probe-runner-signals.py" \
               env --chdir="$GITHUB_WORKSPACE/codex-rs" "${release_command[@]}"

@@ -53,6 +53,7 @@ jobs:
           mkdir -p "$evidence"
           cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
           cp restart-metadata/.github/scripts/reclaim-baseline-macos-xcodes.py "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py"
+          cp restart-metadata/.github/scripts/apt-install-with-fallback.py "$RUNNER_TEMP/apt-install-with-fallback.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
@@ -144,8 +145,8 @@ jobs:
             fi
           done
           df -k / "$RUNNER_TEMP" > "$evidence/disk-after.txt"
-          sudo apt-get update -y
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex
+          # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
+          sudo python3 -I "$RUNNER_TEMP/apt-install-with-fallback.py" build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex
 
       - name: Resolve upstream's compatibility releases on Linux
         if: runner.os == 'Linux'
