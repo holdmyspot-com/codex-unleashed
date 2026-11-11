@@ -115,7 +115,7 @@ at its actual owning boundary.
 | Codespell identifiers | Clean-source maintained scan exits 65 on `WRONLY` and two LaTeX `oint` occurrences; narrower changed-file passes do not establish a whole-source pass. | Parent Codespell job `119599957110` fails on the exact same three locations: `exec-server/src/no_follow/unix.rs:124`, `tui/src/markdown_render/math_tests.rs:47`, `tui/src/markdown_render/math/render.rs:397`. Retained upstream log SHA-256: `f71bac052b7630ed6a2d1ff039312834aedbddf81fc94454c5859984b202b6b5`. | **Same diagnostics fail upstream.** Retain the findings under the nonfatal baseline policy; no suppression or identifier change is introduced. |
 | TypeScript SDK non-Git fixture and MCP conformance timeout | Historical suite reports 47 passed/two failed. Removing inherited `TMPDIR` fixes the focused non-Git case; later Node 22/normal-temp full suite passes, without isolating timeout resource contention from other changed inputs. | Parent SDK job `119599956750` reports all 49 TypeScript tests passing with its Bazel CLI, including conformance. Our historical check uses a Cargo CLI; new pristine SDK runtime acceptance against the matched CLI/helper pair is unrun. | **Upstream tests pass; local fixture-temp difference isolated, timeout cause unresolved.** Preserve command/binary identity limits; do not patch tests. |
 | Default development Cargo build misses GStreamer metadata | First clean local build cannot discover `gstreamer-1.0 >= 1.28`; installing native prerequisites makes the unchanged build pass. | Upstream target-specific release success excludes these voice components and is not an equivalent default-workspace check. The matching upstream development-build result has not been established. | **Upstream outcome unknown.** Compare full-workspace command and native prerequisite inputs; retained local counterfactual establishes a missing prerequisite only. |
-| Windows native GNU Opus header-output validation | Run `40198569205` retains unchanged source and five dangling installed-header links under `opusic-sys-0.7.5`; link invalidation cause remains unestablished. | Pinned upstream maintains Windows gnullvm target checks, but trusted builds execute on Linux RBE while tests execute on Windows. Its no-secret fallback, separate native Windows test job and release matrix use MSVC. No maintained native Windows GNU compilation check is present. A retained parent gnullvm shard reaches 22,184 actions and fails an unrelated mxc-sandbox test, with no Opus diagnostic; it has no Opus-action attestation and is not exact-release evidence. | **No maintained counterpart for native Windows GNU compilation.** Bazel Clippy on native Windows gnullvm fails the same way, on a dangling `include/opus/opus_types.h` link, with only the first queue patch (`42746469138`, opusic-sys 0.7.5) and with all 35 (`42749913658`, opusic-sys 0.7.7), so the queue does not cause it. The execution boundary differs; reproduce upstream's maintained build boundary before attributing this to Opus. The local symlink invalidation cause remains unknown; do not patch dependency source. |
+| Windows native GNU Opus header-output validation | Run `40198569205` retains unchanged source and five dangling installed-header links under `opusic-sys-0.7.5`; link invalidation cause remains unestablished. | Pinned upstream maintains Windows gnullvm target checks, but trusted builds execute on Linux RBE while tests execute on Windows. Its no-secret fallback, separate native Windows test job and release matrix use MSVC. No maintained native Windows GNU compilation check is present. A retained parent gnullvm shard reaches 22,184 actions and fails an unrelated mxc-sandbox test, with no Opus diagnostic; it has no Opus-action attestation and is not exact-release evidence. | **No maintained counterpart for native Windows GNU compilation.** Bazel Clippy on native Windows gnullvm fails the same way, on a dangling `include/opus/opus_types.h` link, with only the first queue patch (`42746469138`, opusic-sys 0.7.5) and with all 35 (`42749913658`, opusic-sys 0.7.7), so the queue does not cause it. The cause is CMake installing Bazel's symlinked source headers as symlinks; upstream fixed it on `main` (#59752, #59972), and patch 54 backports that fix. |
 | Dependency audit findings `RUSTSEC-2026-0387` and `RUSTSEC-2026-0385` | Unchanged locked versions fail the retained audit at RustSec database revision `21d909e4c8bd4e14c7aea58bf980c881a0053ab1`. | Parent audit job `119599956903` uses cargo-deny 0.19.0 and reports `advisories ok, bans ok, licenses ok, sources ok` on 2026-10-22 UTC. Its lockfile and deny configuration are byte-identical to the pinned release. Both named advisory IDs were added on 2026-10-23, after that check; retained database `21d909e4` is dated 2026-10-24. Upstream's database commit is unrecorded. | **Historical upstream audit passes; matching newer-database outcome unknown.** The advisory timing difference is established; historical success does not dismiss the retained findings. Retain exact inputs and compare the same database boundary. Stable dependency repairs remain deferred to step 7. |
 
 ### Empty-environment bundled-helper counterfactual
@@ -453,17 +453,27 @@ The flags (`--local_test_jobs`, `RUST_TEST_THREADS` and the skip list) are test-
 they do not fix the error; they only reduce load-related test failures. The installed headers recorded in the retained
 `opus-install` evidence are Windows file symlinks (reparse tag `0xA000000C`) whose targets are
 `\\?\D:\o\execroot\_main\external\rules_rs++crate+crates__opusic-sys-0.7.5\opus\include\<header>.h`, and they do not resolve once
-the action ends. The likely cause, not yet verified by a run, is that CMake's install preserves a symlinked source file as a symlink while Bazel's Windows
-execution root presents the source headers as symlinks because the repository sets `startup --windows_enable_symlinks` (rules_python needs it). Upstream's
-`.bazelrc`, `MODULE.bazel` and `third_party/voice` hold no setting for this, and upstream builds on Linux remote execution, where
-the inputs are regular files. No fix that is neither a suppression nor a dependency patch has been found or verified; a candidate
-is a CMake project include in `third_party/voice` that replaces installed symlinks with copies, which is a product-tree change.
+the action ends. CMake's install preserves a symlinked source file as a symlink, and Bazel's Windows execution root presents
+the source headers as symlinks because the repository sets `startup --windows_enable_symlinks` (rules_python needs it).
+Upstream builds on Linux remote execution, where the inputs are regular files.
 
-Patch 54 (`windows-bazel/opus-installed-headers.patch`) is that candidate, added through the toolchain file the build script
-already receives. The unpatched `rust-v0.167.0` baselines (`43003720882`, `docs/test-baselines/086ccc833b…/windows-bazel-*.json`)
+Upstream fixed this on `main` in [openai/codex#59752](https://github.com/openai/codex/pull/59752) and
+[openai/codex#59972](https://github.com/openai/codex/pull/59972): a crate patch makes Opus's `CMakeLists.txt` copy each
+public header into the build directory with `configure_file(... COPYONLY)` and install the copies. Neither change is in a
+stable release up to `rust-v0.167.2`. Patch 54 (`windows-bazel/opus-installed-headers.patch`) backports both. It replaces an
+earlier version that rewrote the installed links from the toolchain file with `file(REAL_PATH)`; a live session on run
+`43075770116` showed that `REAL_PATH` returns the link itself for a target with the `\??\` prefix, so that version failed.
+
+The unpatched `rust-v0.167.0` baselines (`43003720882`, `docs/test-baselines/086ccc833b…/windows-bazel-*.json`)
 still hit the error: the MSVC shard and gnullvm shards 1, 2 and 4 exit 1, and their `voice-host` test targets (4 in MSVC, 1 or
 2 per gnullvm shard) fail to build. Those targets are absent from the baselines, so a patched run reports any failure in them
 as new rather than excusing it. Gnullvm shard 3 builds no Opus target and exits 3 (test failures only).
+
+Once `opusic-sys` builds, the voice-host test targets fail on MSVC: `codex-voice-host` links GStreamer and `opus.dll`
+dynamically, and the tests started it without those DLLs on the `PATH` (`0xC0000135`, `STATUS_DLL_NOT_FOUND`). Upstream
+fixed this on `main` in #59082, #59231 and #59369; patch 57 (`windows-bazel-voice-host/voice-host-test-runtime.patch`)
+backports the voice-host parts. In the live session on run `43075770116`, with patches 54 and 57 applied, `opusic-sys`
+built and all four MSVC voice-host test targets passed.
 
 ### Compiled-dependency caches for the lint jobs
 
