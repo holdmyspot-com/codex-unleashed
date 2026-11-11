@@ -6,7 +6,7 @@ Subject: [PATCH] test: probe legacy and elevated delete containment
 ---
 --- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
 +++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
-@@ -1137,3 +1137,226 @@
+@@ -1137,3 +1137,264 @@
          assert!(stdout.contains("second"), "stdout={stdout:?}");
      });
  }
@@ -44,24 +44,27 @@ Subject: [PATCH] test: probe legacy and elevated delete containment
 +        .to_string()
 +}
 +
-+fn probe_restrict(p: &Path) {
++fn probe_restrict_with(p: &Path, grants: &[&str]) {
 +    let sid = probe_user_sid();
-+    let user_grant = format!("*{sid}:(OI)(CI)F");
 +    let path = p.to_string_lossy().into_owned();
-+    let out = probe_run(
-+        "icacls",
-+        &[
-+            path.as_str(),
-+            "/inheritance:r",
-+            "/grant:r",
-+            "*S-1-5-18:(OI)(CI)F",
-+            "/grant:r",
-+            "*S-1-5-32-544:(OI)(CI)F",
-+            "/grant:r",
-+            user_grant.as_str(),
-+        ],
-+    );
++    let grant_args: Vec<String> = grants
++        .iter()
++        .map(|g| g.replace("USER", &format!("*{sid}")))
++        .collect();
++    let mut args: Vec<&str> = vec![path.as_str(), "/inheritance:r"];
++    for g in &grant_args {
++        args.push("/grant:r");
++        args.push(g.as_str());
++    }
++    let out = probe_run("icacls", &args);
 +    println!("restrict {}: {}", p.display(), out.trim());
++}
++
++fn probe_restrict(p: &Path) {
++    probe_restrict_with(
++        p,
++        &["*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "USER:(OI)(CI)F"],
++    );
 +}
 +
 +#[derive(Clone, Copy, PartialEq)]
@@ -69,6 +72,7 @@ Subject: [PATCH] test: probe legacy and elevated delete containment
 +    Nothing,
 +    Root,
 +    Outside,
++    Grants(&'static [&'static str]),
 +}
 +
 +fn probe_scenario(label: &str, base: &Path, restrict: ProbeRestrict, elevated: bool) {
@@ -79,6 +83,9 @@ Subject: [PATCH] test: probe legacy and elevated delete containment
 +        let test_root = TempDir::new_in(base).expect("create probe test root");
 +        if restrict == ProbeRestrict::Root {
 +            probe_restrict(test_root.path());
++        }
++        if let ProbeRestrict::Grants(grants) = restrict {
++            probe_restrict_with(test_root.path(), grants);
 +        }
 +        let codex_home = sandbox_home("probe-delete");
 +        let workspace = test_root.path().join("workspace");
@@ -184,12 +191,18 @@ Subject: [PATCH] test: probe legacy and elevated delete containment
 +        let spawned = match spawned {
 +            Ok(spawned) => spawned,
 +            Err(err) => {
-+                println!("PROBE|{label}|{backend}|SPAWN-ERROR {err:#}");
++                println!(
++                    "PROBE|{label}|{backend}|SPAWN-ERROR {err:#}\n{}",
++                    sandbox_log(codex_home.path())
++                );
 +                return;
 +            }
 +        };
 +        let (stdout, exit_code) =
 +            collect_stdout_and_exit(spawned, codex_home.path(), Duration::from_secs(30)).await;
++        if exit_code != 0 {
++            println!("PROBE-LOG {label} {backend}\n{}", sandbox_log(codex_home.path()));
++        }
 +        let appended = fs::read_to_string(&append_file)
 +            .map(|c| c != "outside2")
 +            .unwrap_or(false);
@@ -220,6 +233,31 @@ Subject: [PATCH] test: probe legacy and elevated delete containment
 +        ("userprofile-default", userprofile.join("codex-probe"), ProbeRestrict::Nothing),
 +        ("tempdir-default", std::env::temp_dir().join("codex-probe"), ProbeRestrict::Nothing),
 +        ("c-root-default", PathBuf::from("C:\\codex-probe"), ProbeRestrict::Nothing),
++        (
++            "d-authusers-modify-only",
++            sandbox_cwd(),
++            ProbeRestrict::Grants(&["*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "*S-1-5-11:(OI)(CI)M"]),
++        ),
++        (
++            "d-admins-system-only",
++            sandbox_cwd(),
++            ProbeRestrict::Grants(&["*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"]),
++        ),
++        (
++            "d-everyone-modify-only",
++            sandbox_cwd(),
++            ProbeRestrict::Grants(&["*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "*S-1-1-0:(OI)(CI)M"]),
++        ),
++        (
++            "c-root-plus-explicit-user",
++            PathBuf::from("C:\\codex-probe"),
++            ProbeRestrict::Grants(&["*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "*S-1-5-11:(OI)(CI)M", "USER:(OI)(CI)F"]),
++        ),
++        (
++            "c-root-authusers-only",
++            PathBuf::from("C:\\codex-probe"),
++            ProbeRestrict::Grants(&["*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "*S-1-5-11:(OI)(CI)M"]),
++        ),
 +    ];
 +    for (label, base, restrict) in &variants {
 +        for elevated in [false, true] {
