@@ -50,6 +50,7 @@ jobs:
           mkdir -p "$evidence"
           cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
           cp restart-metadata/.github/scripts/check-test-skips.py "$RUNNER_TEMP/check-test-skips.py"
+          cp restart-metadata/.github/scripts/compare-test-baseline.py "$RUNNER_TEMP/compare-test-baseline.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
@@ -269,6 +270,18 @@ jobs:
           set -euo pipefail
           python "$RUNNER_TEMP/check-test-skips.py" --platform windows --runner bazel "$(realpath bazel-testlogs)" \
             2>&1 | tee "$RUNNER_TEMP/baseline-windows-bazel-evidence/skip-check.log"
+
+      - name: Record this shard's failures as an unpatched baseline
+        # This workflow runs pristine upstream, so its failures are the baseline that patched runs are compared with.
+        # The evidence artifact carries the file for committing under docs/test-baselines.
+        if: ${{ !cancelled() && steps.bazel_tests.outcome != 'skipped' }}
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/compare-test-baseline.py" --runner bazel \
+            --platform "windows-bazel-${TARGET%%-*}-shard-${BAZEL_TEST_SHARD}" \
+            --upstream-commit "${{ steps.inputs.outputs.commit }}" --write-baseline \
+            --output "$RUNNER_TEMP/baseline-windows-bazel-evidence/windows-bazel-${TARGET%%-*}-shard-${BAZEL_TEST_SHARD}.json" \
+            "$(realpath bazel-testlogs)"
 
       - name: Verify upstream source and tests remain unmodified
         if: always()

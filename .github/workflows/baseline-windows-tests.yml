@@ -299,3 +299,34 @@ jobs:
             if [[ -d "$directory" ]]; then reports+=("$directory"); fi
           done
           python .github/scripts/check-test-skips.py --platform windows "${reports[@]}"
+
+      - name: Compare the failures with the committed unpatched baseline
+        if: ${{ !cancelled() && inputs.package == '--workspace' && inputs.filter == '' }}
+        env:
+          UPSTREAM_COMMIT: ${{ steps.source.outputs.commit }}
+          PATCHES: ${{ inputs.patches }}
+        run: |
+          set -euo pipefail
+          platform="windows-${TARGET%%-*}"
+          reports=()
+          for directory in "$(cygpath -u "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/upstream/codex-rs/target}")/nextest" "$GITHUB_WORKSPACE/upstream/codex-rs/target/nextest"; do
+            if [[ -d "$directory" ]]; then reports+=("$directory"); fi
+          done
+          if [[ -z "${PATCHES// }" ]]; then
+            # An unpatched run is the source of a baseline: write it for committing under docs/test-baselines.
+            mkdir -p "$RUNNER_TEMP/baseline"
+            python .github/scripts/compare-test-baseline.py --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
+              --write-baseline --output "$RUNNER_TEMP/baseline/$platform.json" "${reports[@]}"
+          else
+            python .github/scripts/compare-test-baseline.py --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
+              --baseline-dir docs/test-baselines "${reports[@]}"
+          fi
+
+      - name: Upload the unpatched baseline
+        if: ${{ !cancelled() && inputs.package == '--workspace' && inputs.filter == '' && inputs.patches == '' }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: test-baseline-windows-${{ inputs.target }}
+          path: ${{ runner.temp }}/baseline
+          retention-days: 3
+          if-no-files-found: ignore

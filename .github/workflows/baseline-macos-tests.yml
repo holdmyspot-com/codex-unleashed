@@ -98,6 +98,10 @@ jobs:
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           cp restart-metadata/.github/scripts/check-test-skips.py "$RUNNER_TEMP/check-test-skips.py"
+          cp restart-metadata/.github/scripts/compare-test-baseline.py "$RUNNER_TEMP/compare-test-baseline.py"
+          if [[ -d restart-metadata/docs/test-baselines ]]; then
+            cp -R restart-metadata/docs/test-baselines "$RUNNER_TEMP/test-baselines"
+          fi
           cp restart-metadata/.github/scripts/reclaim-baseline-macos-xcodes.py "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           commit="${UPSTREAM_COMMIT:-$(cat restart-metadata/.github/upstream-commit)}"
@@ -246,6 +250,31 @@ jobs:
           if (( ${#reports[@]} == 0 )); then printf 'No nextest reports to check.\n'; exit 0; fi
           python3 "$RUNNER_TEMP/check-test-skips.py" --platform macos "${reports[@]}" \
             2>&1 | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/skip-check.log"
+
+      - name: Compare the failures with the committed unpatched baseline
+        if: ${{ !cancelled() && (inputs.package == '' || inputs.package == '--workspace') && inputs.filter == '' }}
+        env:
+          UPSTREAM_COMMIT: ${{ steps.inputs.outputs.commit }}
+          PATCHES: ${{ inputs.patches }}
+        run: |
+          set -euo pipefail
+          platform="macos-${TARGET%%-*}"
+          reports=()
+          for directory in "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/codex-rs/target}/nextest" "$GITHUB_WORKSPACE/codex-rs/target/nextest"; do
+            if [[ -d "$directory" ]]; then reports+=("$directory"); fi
+          done
+          if (( ${#reports[@]} == 0 )); then printf 'No nextest reports to compare.\n'; exit 0; fi
+          if [[ -z "${PATCHES// }" ]]; then
+            # An unpatched run is the source of a baseline; the evidence artifact carries it for committing under
+            # docs/test-baselines.
+            python3 "$RUNNER_TEMP/compare-test-baseline.py" --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
+              --write-baseline --output "$RUNNER_TEMP/baseline-macos-nextest-evidence/$platform.json" "${reports[@]}"
+          else
+            python3 "$RUNNER_TEMP/compare-test-baseline.py" --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
+              --baseline-dir "$RUNNER_TEMP/test-baselines" "${reports[@]}" \
+              2>&1 | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/baseline-comparison.log"
+            exit "${PIPESTATUS[0]}"
+          fi
 
       - name: Retain test evidence for one day
         if: always()
