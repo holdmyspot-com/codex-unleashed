@@ -64,6 +64,9 @@ RULES = [
     rule(r"requires a remote test environment", ALLOW,
          "upstream's Bazel jobs run no remote test environment either; only its x64 nextest job does",
          runners=("bazel",)),
+    rule(r"requires a remote test environment", ALLOW,
+         "upstream starts the Docker remote environment only in its Linux nextest jobs, never on Windows or macOS",
+         platforms=("windows", "macos")),
     rule(r"requires a remote test environment", MISSING,
          "remote test environment (Docker exec-server) was not set up"),
     rule(r"no protected rg is available", MISSING, "ripgrep is not installed"),
@@ -80,6 +83,8 @@ RULES = [
     rule(r"(?:binary|server|helper)[^,;]* (?:not available|not found|unavailable)|could not locate binary", MISSING,
          "a helper binary or test server was not built or exported"),
     rule(r"native spawning is unavailable", MISSING, "native process spawning is unavailable"),
+    rule(r"setsid not available", ALLOW, "setsid does not exist on Windows; the test reports itself unavailable there",
+         platforms=("windows",)),
     rule(r"setsid not available", MISSING, "setsid is not installed"),
     # By design on every platform.
     rule(r"Skipping test in a remote test environment", ALLOW,

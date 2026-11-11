@@ -77,6 +77,15 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(checker.ALLOW, checker.classify(line, "linux", "bazel")[0])
         self.assertEqual(checker.MISSING, checker.classify(line, "linux", "nextest")[0])
 
+    def test_windows_and_macos_have_no_remote_environment_or_windows_setsid_upstream(self):
+        remote = "Skipping test because it requires a remote test environment."
+        for platform in ("windows", "macos"):
+            self.assertEqual(checker.ALLOW, self.verdict(remote, platform), platform)
+        setsid = "setsid not available; skipping pipe_terminate_aborts_detached_readers"
+        self.assertEqual(checker.ALLOW, self.verdict(setsid, "windows"))
+        self.assertEqual(checker.MISSING, self.verdict(setsid, "macos"))
+        self.assertEqual(checker.MISSING, self.verdict(setsid, "linux"))
+
     def test_missing_ripgrep_and_kernel_landlock(self):
         self.assertEqual(checker.MISSING, self.verdict("skipping ripgrep config test: no protected rg is available"))
         self.assertEqual(checker.ALLOW, self.verdict("Skipping test: Landlock is not enforceable on this host."))
