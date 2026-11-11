@@ -1,0 +1,14 @@
+{
+  "failed": [
+    "//codex-rs/cli:cli-doctor_path_safety-test",
+    "//codex-rs/cli:cli-doctor_path_safety-test startup_and_doctor_do_not_execute_path_helpers",
+    "//codex-rs/file-watcher:file-watcher-unit-tests",
+    "//codex-rs/file-watcher:file-watcher-unit-tests tests::debounced_receiver_coalesces_each_event_batch",
+    "//codex-rs/thread-store:thread-store-unit-tests"
+  ],
+  "platform": "windows-bazel-gnullvm-shard-4",
+  "runner": "bazel",
+  "tests_executed": 101,
+  "timed_out": [],
+  "upstream_commit": "086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a"
+}

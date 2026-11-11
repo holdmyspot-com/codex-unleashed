@@ -1,0 +1,18 @@
+{
+  "failed": [
+    "//codex-rs/core:core-all-test",
+    "//codex-rs/core:core-all-test suite::subagent_notifications::subagent_stop_replaces_stop_and_skips_internal_subagents",
+    "//codex-rs/ext/multi-env-copy-file:multi-env-copy-file-copy_file-test",
+    "//codex-rs/ext/multi-env-copy-file:multi-env-copy-file-copy_file-test suite::copy_file_uses_each_environments_permissions::environment_profiles",
+    "//codex-rs/ext/multi-env-copy-file:multi-env-copy-file-copy_file-test suite::copy_file_uses_each_environments_permissions::turn_and_session_grants",
+    "//codex-rs/ext/multi-env-copy-file:multi-env-copy-file-copy_file-test suite::transfers::copy_hooks_follow_source_and_target::rewrite_paths_within_the_selected_environments",
+    "//codex-rs/ext/queue:queue-queue_service-test",
+    "//codex-rs/ext/queue:queue-queue_service-test explicitly_started_rejected_queue_messages_are_consumed",
+    "//codex-rs/ext/queue:queue-queue_service-test rejected_queue_messages_are_consumed_without_retrying_or_blocking_followups"
+  ],
+  "platform": "windows-bazel-gnullvm-shard-2",
+  "runner": "bazel",
+  "tests_executed": 87,
+  "timed_out": [],
+  "upstream_commit": "086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a"
+}

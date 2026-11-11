@@ -1,0 +1,13 @@
+{
+  "failed": [
+    "//codex-rs/cli:cli-daemon_startup-test",
+    "//codex-rs/cli:cli-daemon_startup-test restrictive_launcher_uses_embedded_if_daemon_cannot_start",
+    "//codex-rs/exec-server-cli:exec-server-cli-standalone-test",
+    "//codex-rs/exec-server-cli:exec-server-cli-standalone-test standalone_initializes_reports_version_and_runs_helpers"
+  ],
+  "platform": "windows-bazel-gnullvm-shard-1",
+  "runner": "bazel",
+  "tests_executed": 77,
+  "timed_out": [],
+  "upstream_commit": "086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a"
+}
