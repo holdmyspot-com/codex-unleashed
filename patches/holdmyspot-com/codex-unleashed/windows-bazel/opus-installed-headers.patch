@@ -1,39 +1,77 @@
-From 15eb2ef9f6a86307d9676c18aebb9ca5324c82ea Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 11 Nov 2026 05:28:15 -0500
-Subject: [PATCH] bugfix: install the Opus headers as copies when Bazel
- presents sources as symbolic links
+Date: Wed, 11 Nov 2026 15:54:52 -0500
+Subject: [PATCH] bugfix: install regular Opus headers under Bazel on Windows
 
-Under Bazel on Windows (startup --windows_enable_symlinks) the opusic-sys build script sees the Opus sources through
-symbolic links, and CMake's install step keeps a symbolic link as one. The installed include/opus headers then pointed
-into the external repository directory, and Bazel failed the build script's output tree with "child
-include/opus/opus_types.h is a dangling symbolic link". The toolchain file already passed to that build now schedules a
-step after the project's install rules that replaces every installed symbolic link with a copy of its target.
+Bazel on Windows presents the opusic-sys build script's sources as symbolic
+links, and CMake's install step copied each public header as a link whose
+target Bazel's output validation cannot resolve, failing the opusic-sys build
+script and every voice target. Backport of openai/codex#59752 (the
+opusic-sys crate annotation) and openai/codex#59972 (the patch): the Opus
+CMakeLists.txt copies its public headers into the build directory before
+installing them, so only regular files reach the install prefix.
 ---
- third_party/voice/opus-toolchain.cmake | 13 +++++++++++++
- 1 file changed, 13 insertions(+)
+ MODULE.bazel                             |  2 ++
+ patches/BUILD.bazel                      |  1 +
+ patches/opusic_sys_install_headers.patch | 26 ++++++++++++++++++++++++
+ 3 files changed, 29 insertions(+)
+ create mode 100644 patches/opusic_sys_install_headers.patch
 
-diff --git a/third_party/voice/opus-toolchain.cmake b/third_party/voice/opus-toolchain.cmake
-index 25fb567..ad3921f 100644
---- a/third_party/voice/opus-toolchain.cmake
-+++ b/third_party/voice/opus-toolchain.cmake
-@@ -12,3 +12,16 @@ else()
- endif()
- string(REGEX REPLACE "-.*" "" CMAKE_SYSTEM_PROCESSOR "$ENV{TARGET}")
- # Compiler, SDK and linker inputs remain supplied by Bazel's target toolchain.
-+# Bazel on Windows (startup --windows_enable_symlinks) shows the crate's sources to the build script as symbolic links,
-+# and CMake installs a symbolic link as one. The installed headers then pointed into an external repository that
-+# Bazel's output validation cannot resolve ("child include/opus/opus_types.h is a dangling symbolic link"). After the
-+# project's own install rules have run, replace every installed symbolic link with a copy of its target.
-+cmake_language(DEFER CALL install CODE [[
-+  foreach(installed IN LISTS CMAKE_INSTALL_MANIFEST_FILES)
-+    if(IS_SYMLINK "${installed}")
-+      file(REAL_PATH "${installed}" resolved)
-+      file(REMOVE "${installed}")
-+      file(COPY_FILE "${resolved}" "${installed}")
-+    endif()
-+  endforeach()
-+]])
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 3c1bfb7ab4..14f3cc47a1 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -732,6 +732,8 @@ crate.annotation(
+         "@rules_foreign_cc//toolchains:current_ninja_toolchain",
+     ],
+     crate = "opusic-sys",
++    patch_args = ["-p1"],
++    patches = ["//patches:opusic_sys_install_headers.patch"],
+ )
+ 
+ # The musl CLI's allocator needs declared native tools and consistent header flags.
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index e0dc7056d3..334598195c 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -1,4 +1,5 @@
+ exports_files([
++    "opusic_sys_install_headers.patch",
+     "rules_cc_windows_native_llvm.patch",
+     "abseil_windows_gnullvm_thread_identity.patch",
+     "bzip2_windows_stack_args.patch",
+diff --git a/patches/opusic_sys_install_headers.patch b/patches/opusic_sys_install_headers.patch
+new file mode 100644
+index 0000000000..e79a5a1db1
+--- /dev/null
++++ b/patches/opusic_sys_install_headers.patch
+@@ -0,0 +1,26 @@
++--- a/opus/CMakeLists.txt
+++++ b/opus/CMakeLists.txt
++@@ -301,13 +301,22 @@
++ get_library_version(OPUS_LIBRARY_VERSION OPUS_LIBRARY_VERSION_MAJOR)
++ message(DEBUG "Opus library version: ${OPUS_LIBRARY_VERSION}")
++
+++# Build-script inputs can be relative symlinks. Materialize public headers so
+++# CMake does not preserve links that become dangling in the install prefix.
+++foreach(header IN LISTS Opus_PUBLIC_HEADER)
+++  get_filename_component(header_name "${header}" NAME)
+++  set(install_header "${CMAKE_CURRENT_BINARY_DIR}/public_headers/${header_name}")
+++  configure_file("${header}" "${install_header}" COPYONLY)
+++  list(APPEND Opus_INSTALL_HEADERS "${install_header}")
+++endforeach()
+++
++ set_target_properties(opus
++                       PROPERTIES SOVERSION
++                                  ${OPUS_LIBRARY_VERSION_MAJOR}
++                                  VERSION
++                                  ${OPUS_LIBRARY_VERSION}
++                                  PUBLIC_HEADER
++-                                 "${Opus_PUBLIC_HEADER}")
+++                                 "${Opus_INSTALL_HEADERS}")
++
++ target_include_directories(
++   opus
 -- 
 2.43.0
 
