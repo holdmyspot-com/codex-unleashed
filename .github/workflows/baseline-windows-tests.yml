@@ -189,6 +189,11 @@ jobs:
             printf 'TMPDIR=%s\n' "$build_root/tmp"
           } >> "$GITHUB_ENV"
 
+      # The hosted ARM64 runner's Dev Drive filled up while linking the workspace's debug test binaries, as macOS did.
+      - name: Keep only line tables in the test profile's debug information
+        if: inputs.package != '' && inputs.target == 'aarch64-pc-windows-msvc'
+        run: printf 'CARGO_PROFILE_CI_TEST_DEBUG=line-tables-only\n' >> "$GITHUB_ENV"
+
       - name: Warn when no Dev Drive is available
         if: inputs.package != '' && steps.dev-drive.outcome != 'success'
         run: printf '::warning::Dev Drive setup failed on this runner; building and testing on the default volume.\n'
@@ -361,6 +366,8 @@ jobs:
 
       - name: Fail on tests that skipped themselves for missing setup
         if: ${{ !cancelled() }}
+        env:
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
         run: |
           set -euo pipefail
           reports=()
@@ -369,6 +376,12 @@ jobs:
             find "$(cygpath -u "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/upstream/codex-rs/target}")" "$GITHUB_WORKSPACE/upstream/codex-rs/target" "$(cygpath -u "$RUNNER_TEMP")" \
               -path '*/nextest/*' -name junit.xml 2>/dev/null | sort -u)
           printf 'Found %s nextest report(s).\n' "${#reports[@]}"
+          if (( ${#reports[@]} == 0 )); then
+            # A build that failed before nextest ran leaves nothing to check; a passing test step with no reports would be a vacuous check.
+            if [[ "$TESTS_OUTCOME" == success ]]; then printf '::error::The tests passed but wrote no nextest report.\n'; exit 1; fi
+            printf 'The test step ended %s before any report was written; nothing to check.\n' "$TESTS_OUTCOME"
+            exit 0
+          fi
           python .github/scripts/check-test-skips.py --platform windows "${reports[@]}"
 
       - name: Compare the failures with the committed unpatched baseline
@@ -376,6 +389,7 @@ jobs:
         env:
           UPSTREAM_COMMIT: ${{ steps.source.outputs.commit }}
           PATCHES: ${{ inputs.patches }}
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
         run: |
           set -euo pipefail
           platform="windows-${TARGET%%-*}"
@@ -385,6 +399,12 @@ jobs:
             find "$(cygpath -u "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/upstream/codex-rs/target}")" "$GITHUB_WORKSPACE/upstream/codex-rs/target" "$(cygpath -u "$RUNNER_TEMP")" \
               -path '*/nextest/*' -name junit.xml 2>/dev/null | sort -u)
           printf 'Found %s nextest report(s).\n' "${#reports[@]}"
+          if (( ${#reports[@]} == 0 )); then
+            # A build that failed before nextest ran leaves nothing to check; a passing test step with no reports would be a vacuous check.
+            if [[ "$TESTS_OUTCOME" == success ]]; then printf '::error::The tests passed but wrote no nextest report.\n'; exit 1; fi
+            printf 'The test step ended %s before any report was written; nothing to check.\n' "$TESTS_OUTCOME"
+            exit 0
+          fi
           if [[ -z "${PATCHES// }" ]]; then
             # An unpatched run is the source of a baseline: write it for committing under docs/test-baselines.
             mkdir -p "$RUNNER_TEMP/baseline"
