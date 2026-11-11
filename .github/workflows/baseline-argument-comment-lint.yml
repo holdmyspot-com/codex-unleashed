@@ -107,7 +107,8 @@ jobs:
           version: 1.3.1
 
       # Two cache lines keep the dylint tools' build separate from the lint package's tests. Both hold compiled
-      # outputs only; Cargo and the tests still run in full.
+      # outputs only; Cargo and the tests still run in full. The test line is restored after `cargo update` so its key
+      # covers the lockfile Cargo actually builds with.
       - name: Restore compiled dependencies from GHCR
         id: lint_cache
         env:
@@ -119,9 +120,6 @@ jobs:
           LINT_CACHE_INPUT_FILES=tools/argument-comment-lint/rust-toolchain bash "$cache" restore "$evidence" \
             argument-lint-install "$RUNNER_TEMP/dylint-install-target" \
             "cargo install --locked cargo-dylint $CARGO_DYLINT_VERSION dylint-link $DYLINT_LINK_VERSION"
-          LINT_CACHE_INPUT_FILES='tools/argument-comment-lint/Cargo.lock tools/argument-comment-lint/rust-toolchain' \
-            bash "$cache" restore "$evidence" argument-lint-test tools/argument-comment-lint/target \
-            'cargo test in tools/argument-comment-lint'
 
       - name: Install cargo-dylint tooling
         env:
@@ -143,6 +141,15 @@ jobs:
           cargo update dylint_testing dylint_linting
           cargo tree --locked -i dylint_internal | head -3
           git diff --stat -- Cargo.lock
+      - name: Restore compiled lint package dependencies from GHCR
+        id: lint_cache_test
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          LINT_CACHE_INPUT_FILES='tools/argument-comment-lint/Cargo.lock tools/argument-comment-lint/rust-toolchain' \
+            bash "$RUNNER_TEMP/lint-cache/lint-compiled-cache.sh" restore "$RUNNER_TEMP/baseline-argument-lint-evidence" \
+            argument-lint-test tools/argument-comment-lint/target 'cargo test in tools/argument-comment-lint'
       - name: Test argument comment lint package
         working-directory: tools/argument-comment-lint
         run: cargo test
@@ -158,7 +165,9 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-argument-lint-evidence"
           cache="$RUNNER_TEMP/lint-cache/lint-compiled-cache.sh"
           bash "$cache" save "$evidence" argument-lint-install "$RUNNER_TEMP/dylint-install-target"
-          bash "$cache" save "$evidence" argument-lint-test tools/argument-comment-lint/target
+          if [[ "${{ steps.lint_cache_test.conclusion }}" == success ]]; then
+            bash "$cache" save "$evidence" argument-lint-test tools/argument-comment-lint/target
+          fi
 
   bazel:
     runs-on: ubuntu-24.04

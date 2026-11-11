@@ -185,23 +185,19 @@ jobs:
         with:
           version: 1.3.1
 
-      # The dependency-lints leg is not cached: Cargo does not replay warnings for fresh dependency units, and that
-      # leg exists to surface exactly those warnings.
+      # Only the clippy leg is cached. The dependency-lints leg exists to surface warnings from dependencies, which
+      # Cargo does not replay for fresh units, and the rustdoc leg documents only workspace crates (--no-deps), so
+      # cached dependency outputs saved it no time.
       - name: Restore compiled dependencies from GHCR
         id: lint_cache
-        if: matrix.check != 'dependency-lints'
+        if: matrix.check == 'clippy'
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CHECK: ${{ matrix.check }}
         run: |
           set -euo pipefail
-          target_dir="$CARGO_TARGET_DIR"
-          case "$CHECK" in
-            clippy) suffix=lint; command='cargo clippy --keep-going --tests --profile dev -- -D warnings' ;;
-            rustdoc) suffix=doc; command='RUSTDOCFLAGS=-Dwarnings cargo doc --keep-going --workspace --no-deps --profile dev' ;;
-          esac
-          printf 'LINT_CACHE_NAME=%s-%s\nLINT_CACHE_TARGET_DIR=%s\n' "$TARGET" "$suffix" "$target_dir" >> "$GITHUB_ENV"
-          bash "$RUNNER_TEMP/lint-cache/lint-compiled-cache.sh" restore "$RUNNER_TEMP/baseline-evidence" "$TARGET-$suffix" "$target_dir" "$command"
+          printf 'LINT_CACHE_NAME=%s-lint\nLINT_CACHE_TARGET_DIR=%s\n' "$TARGET" "$CARGO_TARGET_DIR" >> "$GITHUB_ENV"
+          bash "$RUNNER_TEMP/lint-cache/lint-compiled-cache.sh" restore "$RUNNER_TEMP/baseline-evidence" "$TARGET-lint" \
+            "$CARGO_TARGET_DIR" 'cargo clippy --keep-going --tests --profile dev -- -D warnings'
 
       - name: Check all default workspace test targets with fatal warnings
         if: matrix.check == 'clippy'
