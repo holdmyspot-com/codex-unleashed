@@ -271,7 +271,7 @@ The old `native-and-rust-warning-policy.patch` supplies the `build.warnings`, ru
 
 **Owner decision 2026-11-09 (after the CP7 upgrades):** on the upgraded graph, 35 direct dependencies still warn (about 164 distinct warnings, down from 47 crates and 255; lint runs `42631784575` and `42631789429`). The owner chose to report these third-party warnings rather than fail on them; compile errors still fail the leg. serde_norway 0.9.42, the serde_yaml replacement, carries the same nine `dangerous_implicit_autorefs` errors, so the owner chose to evaluate alternatives. serde_yaml_ng keeps the same libyaml binding and noyalib is pre-1.0; [serde-saphyr](https://github.com/bourumir-wyngs/serde-saphyr) 2.1.1 is pure Rust with `#![forbid(unsafe_code)]`, and the `serde-saphyr` dependency-upgrade patch moves the three YAML readers to it, keeping serde_yaml's YAML 1.2 boolean and number rules.
 
-**Owner decision 2026-11-11:** the remaining D9 toolchain upgrades (Node, Bazel modules, Python, Zig and action pins) come after CP9 closes, so they do not invalidate the CP9 verification runs. The `Update README badges` commits use the same identity as every other commit, Gili Tzabari, as author and committer.
+**Owner decision 2026-11-11:** the remaining D9 toolchain upgrades (Node, Bazel modules, Python, Zig and action pins) come after CP9 closes, so they do not invalidate the CP9 verification runs. The automatic `Update README badges` commits keep the `github-actions[bot]` identity, which marks them as automated; every other commit uses Gili Tzabari as author and committer.
 
 ## CP7 progress
 
