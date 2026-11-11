@@ -11,6 +11,24 @@
 
 Handoff updated 2026-11-10T19:15Z for the next agent. The goal `implement plan.md` is incomplete: CP1–7 passed and are tagged, CP8 is reconciled, and CP9 is the remaining checkpoint. Prior authorization covers continuation, parallel work and pushing to `main`; creating a tag or publishing a release needs a separate owner instruction. The earlier root, Linux-owner and Windows-module8 live-worker records (sessions `01a18dac…`, `01a197e5…`, `01a198d5…`) describe workers whose runs have long ended; their session directories stay on disk as evidence and must not be deleted, but they are not live assignments.
 
+### Update 2026-11-11T10:30Z (supersedes the CP9 rebase and next-step items below where they differ)
+
+- **Rebase landed:** `rust-v0.167.0` is on `main` (`29b3ee86d`). Each regenerated output lives in the patch that causes it. `issue-62/classify-wrapped-tls-errors` was dropped because upstream fixes it (recorded in [CHANGELOG.md](CHANGELOG.md)). The queue has **53 patches**.
+- **Unpatched baselines** are in `docs/test-baselines/086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a/`. The `windows-x86_64`, `linux-bazel-shard1` and `linux-bazel-shard2` baselines are committed. `.github/scripts/compare-test-baseline.py` compares a run against them.
+- **Baselines still missing:** Linux nextest, Windows ARM64, Windows Bazel and macOS.
+  - The Linux run `42972048686` ran out of disk. `d91922b7ba` now builds test binaries without debug information, as upstream does.
+  - Windows `42967278890` failed while building the sandbox helpers.
+  - macOS `42960326874` failed in the patched selection step.
+  - Windows Bazel fails on a dangling `opusic-sys` symlink.
+- **Patched gates dispatched 2026-11-11T10:24Z on the 53-patch queue:**
+  - repository checks `43003230176`;
+  - Bazel Clippy `43003234610`;
+  - platform lints `43003310886`;
+  - generators `43003315027`.
+- **ARM64 package smoke:** `test_packaged_executor_initializes_and_enforces_sandbox[cli_root]` times out identically on unpatched upstream, so it is an upstream failure. The package job must tolerate this known failure while still failing on new ones.
+- **Still to do after the baselines:** the Linux, Bazel, Windows and macOS patched test runs (macOS last), the six-target release build, the package job, then the owner-authorized rehearsals and the CP9 tag.
+- **Upstream sandbox finding:** the Windows legacy sandbox deletes outside writable roots, which was confirmed on unpatched upstream. The owner reports it privately. Its local notes stay uncommitted.
+
 ### Current state (2026-11-10T19:15Z)
 
 - **Patch queue on `main`:** 53 patches, listed in [patches/README.md](patches/README.md); all apply with `git am` onto upstream `rust-v0.167.0` (`086ccc833b`) after the CP9 rebase (2026-11-10, owner decision 1a: full verification runs only on `rust-v0.167.0`). The regenerated-outputs patch is gone: each patch carries the outputs it regenerates, so the entry numbers below that follow the old queue shift down by one from 31 on, and the "CP7 progress" history keeps the old numbers and the `dddc3c0a79` base. Entries 40–55 are the re-tested old-main fixes in [old-main-test-fixes/](patches/holdmyspot-com/codex-unleashed/old-main-test-fixes/README.md) (integrated 2026-11-10). Entries 1–35 are the verified CP7 queue (see "CP7 progress"). Entries 36–39 are the flaky-test fixes in [flaky-tests/](patches/holdmyspot-com/codex-unleashed/flaky-tests/README.md) (Wine PTY timeout, rollout trace, otel policy export, focus palette), each with stress evidence before and after. Two further flaky-test patches (`event-wait-timeout`, `daemon-telemetry-budgets`) were dropped by the owner on 2026-11-10: no loaded run failed before them, so they had no red phase. Fix those tests only if they fail again, and only in the failing test. The 55-patch queue has not had a full verification round yet; the argument-comment lint on the 41-patch queue (`42863022361`) lost its runner and does not count.
