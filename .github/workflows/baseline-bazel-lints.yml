@@ -227,7 +227,8 @@ jobs:
               # Bazel's local Windows C++ toolchain defaults _WIN32_WINNT to 0x0601 (Windows 7) while V8's build defines
               # 0x0A00 (Windows 10), so every V8 compile warned that the macro was redefined. Rust's MSVC targets need
               # Windows 10, and the release packages are built with Cargo, so this changes only the Bazel jobs.
-              --repo_env=BAZEL_WIN32_WINNT=0x0A00
+              # rules_cc passes the value to cl.exe as the whole flag, so it must include /D_WIN32_WINNT=.
+              --repo_env=BAZEL_WIN32_WINNT=/D_WIN32_WINNT=0x0A00
               --inject_repository="voice_windows_tools=$VOICE_WINDOWS_BAZEL_REPOSITORY"
               --//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools
               --action_env="SystemRoot=$VOICE_WINDOWS_SYSTEM_ROOT"

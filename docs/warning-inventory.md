@@ -43,7 +43,7 @@ Sources: argument-comment lint run `43002517995`, repository checks `43009570386
 
 | Warning | Cause | Disposition |
 | --- | --- | --- |
-| `'_WIN32_WINNT' macro redefined`, about 1,565 per Windows Bazel run | Bazel's local Windows C++ toolchain defaults `_WIN32_WINNT` to `0x0601` while V8 defines `0x0A00` | Fixed: the Windows Bazel workflows pass `--repo_env=BAZEL_WIN32_WINNT=0x0A00`. Release packages are built with Cargo and are unaffected |
+| `'_WIN32_WINNT' macro redefined`, about 1,565 per Windows Bazel run | Bazel's local Windows C++ toolchain defaults `_WIN32_WINNT` to `0x0601` while V8 defines `0x0A00` | Fixed: the Windows Bazel workflows pass `--repo_env=BAZEL_WIN32_WINNT=/D_WIN32_WINNT=0x0A00`; rules_cc uses the value as the whole compiler flag, and a bare `0x0A00` made every MSVC compile warn D9024. Not yet confirmed by a Windows Bazel run. Release packages are built with Cargo and are unaffected |
 | `git am`: 9 lines add whitespace errors | Trailing spaces that are real content: TUI snapshot lines and context lines of a nested `.patch` file | Fixed: workflows mark `*.snap` and `*.patch` with `-whitespace` before applying the queue; the applied tree is identical |
 | cargo-deny: eight entries in `deny.toml` match no crate | Dependency upgrades and rama 0.4 removed what they matched | Fixed by patch 55, [stale-cargo-deny-entries.patch](../patches/holdmyspot-com/codex-unleashed/release-build-warnings/stale-cargo-deny-entries.patch) |
 | cargo-deny: duplicate crate versions (`sha2`, `rustix`, `zbus`, `windows_*` and others) | Dependencies require incompatible major versions | Kept: removing a duplicate needs a dependency release that agrees with the others |
