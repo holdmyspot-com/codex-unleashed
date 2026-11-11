@@ -397,3 +397,45 @@ Corrections to what is written above and in the commit history:
 - The Windows skip check first scanned zero skip messages because nextest leaves a passing test's output out of the JUnit report. `--tool-config-file` now stores it, and a narrow run (`42928698049`) reported one skip message, classified.
 - macOS ships bash 3.2, which fails on an empty array under `set -u`; the workflow guards its patch arrays and the skip check.
 - The Windows `codex-voice-host` exclusion rests on this error: the `glib-sys v0.22.8` build script fails with "Could not run `PKG_CONFIG_ALLOW_SYSTEM_CFLAGS=1 pkg-config --libs --cflags glib-2.0 'glib-2.0 >= 2.56'`. The pkg-config command could not be found." Upstream builds `codex-voice-host` on Windows only through Bazel, which vendors the native link (`MODULE.bazel` `SYSTEM_DEPS_*` settings), and in the release workflow with Cygwin `pkgconf` and GStreamer (`setup-voice-windows.ps1`). Its Cargo nextest job has no such setup and no exclusion, and the workspace has no `default-members`, so voice-host is built there; no setup visible in the repository is missing from the hosted runner beyond the one the exclusion already names.
+
+## Package smoke, Bazel symlinks, caching and baselines on rust-v0.167.0 (2026-11-11)
+
+### Packaged exec-server shutdown test on Windows ARM64
+
+The automatic release dry run `42860267858` failed `Package - aarch64-pc-windows-msvc` in
+`scripts/codex_package/smoke_tests/test_codex_package.py::test_packaged_executor_initializes_and_enforces_sandbox[cli_root]`:
+after the sandboxed `codex-exec-server.exe --listen stdio` ran and its stdin was closed, `process.wait(timeout=45)` raised
+`subprocess.TimeoutExpired`. The `app_server_root` variant passed. Two narrow runs of `baseline-package-smoke.yml` for
+`aarch64-pc-windows-msvc` on 0.167.0 give the same result, so the failure is not caused by the patch queue:
+
+| Run | Queue | Result |
+| --- | --- | --- |
+| `42939327847` | none (unpatched) | 1 failed (`...[cli_root]`, `TimeoutExpired`), 9 passed, 2 skipped |
+| `42939331881` | 54 patches | identical: 1 failed (same test, same timeout), 9 passed, 2 skipped |
+
+The patched `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-musl` package jobs passed in the dry run, so the failure is specific
+to ARM64 (no unpatched x64 package run was made). Product code is unchanged; the failure belongs to upstream's ARM64 package.
+
+### Windows Bazel and the Opus dangling symlink
+
+Bazel builds `opusic-sys` for Windows with CMake. Every Windows Bazel job, native MSVC included, fails with
+`opusic-sys-0.7.5 _bs.out_dir: child include/opus/opus_types.h is a dangling symbolic link`. Comparing main (with the
+gnullvm local flags from `df5eb764ca`) against the same code with those flags removed:
+
+| Job | With flags (`42914483021`) | Without flags (`42929299785`) |
+| --- | --- | --- |
+| gnullvm shard 1 | dangling error; 75 pass, 2 fail to build | dangling error; 75 pass, 2 fail to build |
+| gnullvm shard 2 | no error; 74 pass, 1 fails | no error; 74 pass, 1 fails |
+| gnullvm shard 3 | dangling error; 91 pass, 1 fails to build, 1 fails | dangling error; 90 pass, 1 fails to build, 2 fail |
+| gnullvm shard 4 | dangling error; 94 pass, 1 fails to build, 4 fail | dangling error; 88 pass, 9 fail to build, 2 fail |
+| msvc | dangling error; 333 pass, 4 fail to build, 6 fail | dangling error; 326 pass, 4 fail to build, 13 fail |
+
+The flags (`--local_test_jobs`, `RUST_TEST_THREADS` and the skip list) are test-runner settings and do not touch the build action, so
+they do not fix the error; they only reduce load-related test failures. The installed headers recorded in the retained
+`opus-install` evidence are Windows file symlinks (reparse tag `0xA000000C`) whose targets are
+`\\?\D:\o\execroot\_main\external\rules_rs++crate+crates__opusic-sys-0.7.5\opus\include\<header>.h`, and they do not resolve once
+the action ends. The likely cause, not yet verified by a run, is that CMake's install preserves a symlinked source file as a symlink while Bazel's Windows
+execution root presents the source headers as symlinks because the repository sets `startup --windows_enable_symlinks` (rules_python needs it). Upstream's
+`.bazelrc`, `MODULE.bazel` and `third_party/voice` hold no setting for this, and upstream builds on Linux remote execution, where
+the inputs are regular files. No fix that is neither a suppression nor a dependency patch has been found or verified; a candidate
+is a CMake project include in `third_party/voice` that replaces installed symlinks with copies, which is a product-tree change.
