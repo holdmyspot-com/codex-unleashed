@@ -458,3 +458,22 @@ execution root presents the source headers as symlinks because the repository se
 `.bazelrc`, `MODULE.bazel` and `third_party/voice` hold no setting for this, and upstream builds on Linux remote execution, where
 the inputs are regular files. No fix that is neither a suppression nor a dependency patch has been found or verified; a candidate
 is a CMake project include in `third_party/voice` that replaces installed symlinks with copies, which is a product-tree change.
+
+### Compiled-dependency caches for the lint jobs
+
+GHCR restores for the macOS lint jobs (`baseline-macos-lints.yml`):
+
+| Run | Queue | aarch64 | x86_64 |
+| --- | --- | --- | --- |
+| `42958066219` (cold) | 53 patches | `cache_result=miss`, saved; 36 min | `cache_result=miss`; 51 min |
+| `43011377187` (warm) | 54 patches | seed hit (27 s transfer), saved; 28 min | seed hit (41 s transfer), saved; 41 min |
+
+- **Exact key missed in the warm run.** Each warm job missed its exact key, because the 54th patch changes the compiled inputs. It then restored the `cargo-seed-v2` entry and saved a new exact entry.
+- **Partial saving.** The seed skips dependency compilation, but the workspace crates still compile, which bounds the saving.
+- **Earlier warm attempt.** Its aarch64 job (`43005382829`) failed before the restore: a voice source download got `curl: (35) Connection reset by peer`. `05b12094dd` makes every workflow download retry such errors.
+- **x86_64 in that attempt.** Its x86_64 job hit the cache (62 s transfer) and passed.
+
+GHCR restores for the argument-comment lint `package` job:
+
+- **Cold run `42951051998`:** `cache_result=miss`.
+- **Warm run `43002517995`:** the exact-key pulls missed, and the `cargo-seed-v2` pulls hit, with transfers of 4 s and 2 s.
