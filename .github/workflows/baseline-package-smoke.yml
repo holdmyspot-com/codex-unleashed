@@ -1,0 +1,121 @@
+name: Stable upstream package smoke test
+
+# Builds one target's package archive from the pinned upstream, with the selected downstream patches applied (none by
+# default), and runs upstream's package smoke tests. It is the package job of the automatic release, narrowed to one
+# target so a smoke-test failure can be compared with and without the patches. Nothing is published or uploaded.
+
+on:
+  workflow_dispatch:
+    inputs:
+      patches:
+        description: Space-separated repository paths of downstream patches to apply with git am, in order; empty tests pristine upstream
+        type: string
+        default: ""
+      target:
+        description: Package target
+        type: choice
+        default: aarch64-pc-windows-msvc
+        options: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc, x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package smoke - ${{ inputs.target }}
+    runs-on: ${{ (inputs.target == 'aarch64-pc-windows-msvc' && 'windows-11-arm') || (inputs.target == 'x86_64-pc-windows-msvc' && 'windows-2025') || (inputs.target == 'aarch64-unknown-linux-musl' && 'ubuntu-24.04-arm') || 'ubuntu-24.04' }}
+    timeout-minutes: 360
+    env:
+      TARGET: ${{ inputs.target }}
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_INCREMENTAL: "0"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Read the pinned upstream commit and version
+        id: source
+        run: |
+          set -euo pipefail
+          printf 'commit=%s\n' "$(cat restart-metadata/.github/upstream-commit)" >> "$GITHUB_OUTPUT"
+          printf 'version=%s\n' "$(sed 's/^rust-v//' restart-metadata/.github/upstream-ref)" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the patch queue outside the upstream checkout
+        run: cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.source.outputs.commit }}
+          persist-credentials: false
+
+      - name: Apply the patch queue
+        env:
+          PATCHES: ${{ inputs.patches }}
+        run: |
+          set -euo pipefail
+          read -r -a patch_paths <<< "$PATCHES"
+          for patch in "${patch_paths[@]}"; do
+            git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
+          done
+
+      - name: Read upstream's pinned Rust toolchain
+        id: upstream-rust
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: ${{ steps.upstream-rust.outputs.channel }}
+          targets: ${{ inputs.target }}
+
+      - name: Install upstream's Zig prerequisite
+        if: runner.os == 'Linux'
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.0
+
+      - name: Install upstream's musl build inputs
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          bash .github/scripts/install-musl-build-tools.sh
+          echo 'AWS_LC_SYS_NO_JITTER_ENTROPY=1' >> "$GITHUB_ENV"
+          target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_$TARGET"
+          printf '%s=1\n' "${target_no_jitter//-/_}" >> "$GITHUB_ENV"
+
+      - name: Verify and configure upstream V8 artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ inputs.target }}
+
+      - name: Expose the matching MSVC environment
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/setup-msvc-env
+        with:
+          target: ${{ inputs.target }}
+
+      - name: Select platform build settings
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            echo 'MACOSX_DEPLOYMENT_TARGET=14.0' >> "$GITHUB_ENV"
+          fi
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            echo 'GIT_REDIRECT_STDIN=NUL' >> "$GITHUB_ENV"
+          fi
+          if [[ "$TARGET" == x86_64-pc-windows-msvc ]]; then
+            echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
+          fi
+
+      - name: Build and smoke-test upstream's package archives
+        uses: ./.github/actions/build-codex-packages
+        with:
+          target: ${{ inputs.target }}
+          package-version: ${{ steps.source.outputs.version }}+smoke
+          build-mode: release
