@@ -1,0 +1,39 @@
+From 15eb2ef9f6a86307d9676c18aebb9ca5324c82ea Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 11 Nov 2026 05:28:15 -0500
+Subject: [PATCH] bugfix: install the Opus headers as copies when Bazel
+ presents sources as symbolic links
+
+Under Bazel on Windows (startup --windows_enable_symlinks) the opusic-sys build script sees the Opus sources through
+symbolic links, and CMake's install step keeps a symbolic link as one. The installed include/opus headers then pointed
+into the external repository directory, and Bazel failed the build script's output tree with "child
+include/opus/opus_types.h is a dangling symbolic link". The toolchain file already passed to that build now schedules a
+step after the project's install rules that replaces every installed symbolic link with a copy of its target.
+---
+ third_party/voice/opus-toolchain.cmake | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/third_party/voice/opus-toolchain.cmake b/third_party/voice/opus-toolchain.cmake
+index 25fb567..ad3921f 100644
+--- a/third_party/voice/opus-toolchain.cmake
++++ b/third_party/voice/opus-toolchain.cmake
+@@ -12,3 +12,16 @@ else()
+ endif()
+ string(REGEX REPLACE "-.*" "" CMAKE_SYSTEM_PROCESSOR "$ENV{TARGET}")
+ # Compiler, SDK and linker inputs remain supplied by Bazel's target toolchain.
++# Bazel on Windows (startup --windows_enable_symlinks) shows the crate's sources to the build script as symbolic links,
++# and CMake installs a symbolic link as one. The installed headers then pointed into an external repository that
++# Bazel's output validation cannot resolve ("child include/opus/opus_types.h is a dangling symbolic link"). After the
++# project's own install rules have run, replace every installed symbolic link with a copy of its target.
++cmake_language(DEFER CALL install CODE [[
++  foreach(installed IN LISTS CMAKE_INSTALL_MANIFEST_FILES)
++    if(IS_SYMLINK "${installed}")
++      file(REAL_PATH "${installed}" resolved)
++      file(REMOVE "${installed}")
++      file(COPY_FILE "${resolved}" "${installed}")
++    endif()
++  endforeach()
++]])
+-- 
+2.43.0
+
