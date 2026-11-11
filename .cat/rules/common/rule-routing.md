@@ -15,6 +15,9 @@ When changing an API, configuration entry, file format, data structure, command,
 documentation or a code comment that describes an earlier contract, lazy load
 `${CAT_PROJECT_ROOT}/.cat/rules/include/contract-maintenance.md`.
 
+When rebasing, editing, adding, or removing a downstream patch under `patches/`, lazy load
+`${CAT_PROJECT_ROOT}/.cat/rules/include/patch-queue.md`.
+
 When writing or editing documentation for a function or method, command, configuration entry, or user-facing workflow,
 lazy load `${CAT_PROJECT_ROOT}/.cat/rules/include/documentation.md`.
 
