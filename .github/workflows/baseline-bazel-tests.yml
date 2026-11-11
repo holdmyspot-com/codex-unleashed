@@ -320,6 +320,13 @@ jobs:
             printf 'tag=%s\n' "$tag"
             printf 'directory=%s\n' "$RUNNER_TEMP/bazel-disk-cache"
           } >> "$GITHUB_OUTPUT"
+          if [[ -z "$SELECTED_TARGETS" ]]; then
+            # A full-workspace run's outputs, kept a second time in the disk cache, exhaust the runner's disk.
+            printf 'BAZEL_DISK_CACHE=\n' >> "$GITHUB_ENV"
+            printf 'hit=disabled\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf 'BAZEL_DISK_CACHE=%s\n' "$RUNNER_TEMP/bazel-disk-cache" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/bazel-disk-cache"
           set +e
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull "$repository" "$tag" "$RUNNER_TEMP/bazel-disk-cache" "$(cat "$evidence/upstream-ref")" 2>&1 | tee "$evidence/disk-cache-restore.log"
@@ -384,7 +391,7 @@ jobs:
           if [[ "$BUNDLE_BWRAP" == true ]]; then
             if [[ "$TRACE_SELECTED" == false ]]; then
               .github/scripts/run-bazel-ci.sh --print-failed-action-summary -- \
-                build --disk_cache="$RUNNER_TEMP/bazel-disk-cache" "${ci_args[@]}" --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
+                build --disk_cache="$BAZEL_DISK_CACHE" "${ci_args[@]}" --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
                 //codex-rs/exec-server:exec-server-exec_process-test //codex-rs/bwrap:bwrap
               ln -s "$(realpath bazel-bin/codex-rs/bwrap/bwrap)" bazel-bin/codex-rs/exec-server/bwrap
               sha256sum bazel-bin/codex-rs/bwrap/bwrap \
@@ -396,7 +403,7 @@ jobs:
           printf '%s\n' "${comparison_args[@]}" > "$evidence/comparison-arguments.txt"
           set +e
           .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- \
-            test --disk_cache="$RUNNER_TEMP/bazel-disk-cache" --test_tag_filters=-argument-comment-lint "${ci_args[@]}" \
+            test --disk_cache="$BAZEL_DISK_CACHE" --test_tag_filters=-argument-comment-lint "${ci_args[@]}" \
             "${comparison_args[@]}" --test_verbose_timeout_warnings --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
             "${targets[@]}" -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests \
             2>&1 | tee "$evidence/bazel-tests.log"
@@ -442,7 +449,7 @@ jobs:
 
           set +e
           .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- \
-            test --disk_cache="$RUNNER_TEMP/bazel-disk-cache" --test_tag_filters=-argument-comment-lint "${ci_args[@]}" \
+            test --disk_cache="$BAZEL_DISK_CACHE" --test_tag_filters=-argument-comment-lint "${ci_args[@]}" \
             --test_arg=remote_process_preserves_empty_workspace_roots --test_arg=--nocapture \
             --test_env=RUST_BACKTRACE=1 --test_output=all --nocache_test_results \
             --run_under="/bin/bash $evidence/trace-test.sh" \
