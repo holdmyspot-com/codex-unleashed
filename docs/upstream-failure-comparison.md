@@ -483,3 +483,27 @@ GHCR restores for the argument-comment lint `package` job:
 
 - **Cold run `42951051998`:** `cache_result=miss`.
 - **Warm run `43002517995`:** the exact-key pulls missed, and the `cargo-seed-v2` pulls hit, with transfers of 4 s and 2 s.
+
+## Linux nextest lanes at `rust-v0.167.0`
+
+Upstream's Linux x86-64 cargo job (`tests_linux_x64_remote` in `rust-ci-full-nextest-platform.yml`) runs the archive with a remote Docker exec-server (`scripts/test-remote-env.sh`). Upstream's blocking Linux gate is Bazel, which runs tests in a local environment. Upstream postmerge cargo runs fail at "Build nextest archive" (for example run `42120450138`), and the tag commit has no postmerge run, so upstream has no passing cargo nextest result to compare against. Our workflow therefore runs the archive twice, as two lanes: `local` (no remote environment, the Bazel-equivalent environment) and `remote` (upstream's Docker exec-server). The two baselines are `linux.json` (local) and `linux-remote.json` (remote).
+
+Run [`43020352837`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/43020352837) (unpatched, 23,618 tests per lane): local lane 51 failed, 0 timed out; remote lane 190 failed, 0 timed out. The earlier single-lane run `43002480899` (remote environment for every test) had 191 failed and 1 timed out. Moving to a local lane removed 140 failures and the `rmcp_client::streamable_http_*` failures.
+
+### Local lane (51 failures)
+
+| Group | Count | Cause | Environment-independent |
+| --- | --- | --- | --- |
+| codex-tui, codex-cli `doctor_enterprise_network`, `exec-server-cli::standalone` snapshot and version assertions | 38 | Checked-in snapshots and the standalone test expect version `0.0.0`; the release-tag commit builds `0.167.0`. Also status/update-prompt width and wrap differences that follow from the longer version string. | Yes: a property of testing the release-tag commit |
+| `codex-v8-poc` `sandbox_feature_matches_linked_v8`, `reads_typed_array_contents_with_the_compiled_binding_size` | 2 | The linked V8 is built with the sandbox (via `code-mode-runtime`), but v8-poc's own `sandbox` feature is off in a cargo workspace run. Bazel enables it with `crate_features=["sandbox"]`. Upstream's cargo command is identical. | Yes: a cargo-versus-Bazel feature difference |
+| `codex-core` `network_approval::user_network_approval_once_session_and_denial_semantics` (3 cases) | 3 | The port-81 proxy command in the Python fixture times out after its 10 s socket timeout (`exit_code -1`) while the test waits for the approval prompt. Not root-caused: probably load or timing sensitivity because one runner executes what upstream splits into four partitions. | Not confirmed |
+| `codex-exec-server` `shell_snapshot_*` `remote_*` (4) | 4 | `remote_pipe_recovery` and `remote_tty_recovery` count `xxxx` captures instead of `xx` (retry timing against a 1.1 s backoff); `remote_sandbox` fails an assertion at `exec_process.rs:368`; `blocked_descriptor_path` loses its websocket. "remote" here means the in-process exec-server transport. Not root-caused: probably timing under load. | Not confirmed |
+| `codex-linux-sandbox` `root_metadata_symlinks_cannot_reopen_approved_denials` | 1 | The test finds the host apt `bwrap`, starts it, and the inner `codex-linux-sandbox` finds no system or bundled `bwrap` (`launcher.rs:60`). Upstream's package action asserts that the host has no `bwrap` on `PATH`; our workflow installs `bubblewrap`, so the test runs here but returns early ("system bubblewrap is unavailable") upstream. | No: caused by our host `bubblewrap` install |
+| `codex-cli` `app_server_daemon_package::packaged_daemon_bootstrap_seeds_local_package` | 1 | `autoUpdateEnabled` is `true` where the test expects `false` (`package.rs:196`). Not root-caused. | Not confirmed |
+| Remaining snapshot-only `codex-tui` cases | 2 | `daemon_menu` and `owned_transcript` snapshots; same version-string mismatch as the first row. | Yes |
+
+The three `codex-core` `rmcp_client::streamable_http_*` tests pass in the local lane. In the remote lane they fail with `HTTP 403: Forbidden: Host header is not allowed`, because the test HTTP server runs on the host and the client runs inside the Docker exec-server.
+
+### Remote lane (190 failures)
+
+All local-lane failures above recur in the remote lane. The other failures are tests that the upstream remote job would also run, so they are upstream-comparable only if upstream's remote job ever ran; it has no successful run. Groups: 36 `build_with_auto_env` tests with a local stdio MCP fixture ("requires a local environment"; the remote environment registers no local one), 25 `node_repl`/`cua_repl` MCP handshakes ("Send message error Transport"), 3 "executor stdio server requires an explicit cwd", 3 `streamable_http_*` Host-header 403s, 7 "Guardian review did not start", about 25 `network_approval` assertions, hook and interrupt-hook mock verification failures, "environment `remote` only supports `bash`" cases, and the proxy-subprocess tests that cannot reach `ws://172.17.0.2:31987`. These were not root-caused individually.
