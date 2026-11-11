@@ -1,0 +1,238 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 10 Nov 2026 12:00:00 +0000
+Subject: [PATCH] test: probe legacy and elevated delete containment
+
+---
+--- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
++++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+@@ -1137,3 +1137,226 @@
+         assert!(stdout.contains("second"), "stdout={stdout:?}");
+     });
+ }
++
++// ---- scratch security probe: where can the legacy and elevated sandboxes delete outside their roots ----
++
++fn probe_run(program: &str, args: &[&str]) -> String {
++    match std::process::Command::new(program).args(args).output() {
++        Ok(o) => format!(
++            "{}{}",
++            String::from_utf8_lossy(&o.stdout),
++            String::from_utf8_lossy(&o.stderr)
++        ),
++        Err(e) => format!("failed to run {program}: {e}"),
++    }
++}
++
++fn probe_icacls(label: &str, p: &Path) {
++    let path = p.to_string_lossy().into_owned();
++    println!(
++        "--- icacls {label}: {}\n{}",
++        p.display(),
++        probe_run("icacls", &[path.as_str()])
++    );
++}
++
++fn probe_user_sid() -> String {
++    let out = probe_run("whoami", &["/user", "/fo", "csv", "/nh"]);
++    out.trim()
++        .split(',')
++        .nth(1)
++        .unwrap_or("")
++        .trim()
++        .trim_matches('"')
++        .to_string()
++}
++
++fn probe_restrict(p: &Path) {
++    let sid = probe_user_sid();
++    let user_grant = format!("*{sid}:(OI)(CI)F");
++    let path = p.to_string_lossy().into_owned();
++    let out = probe_run(
++        "icacls",
++        &[
++            path.as_str(),
++            "/inheritance:r",
++            "/grant:r",
++            "*S-1-5-18:(OI)(CI)F",
++            "/grant:r",
++            "*S-1-5-32-544:(OI)(CI)F",
++            "/grant:r",
++            user_grant.as_str(),
++        ],
++    );
++    println!("restrict {}: {}", p.display(), out.trim());
++}
++
++#[derive(Clone, Copy, PartialEq)]
++enum ProbeRestrict {
++    Nothing,
++    Root,
++    Outside,
++}
++
++fn probe_scenario(label: &str, base: &Path, restrict: ProbeRestrict, elevated: bool) {
++    let backend = if elevated { "elevated" } else { "legacy" };
++    let runtime = current_thread_runtime();
++    runtime.block_on(async move {
++        fs::create_dir_all(base).expect("create probe base");
++        let test_root = TempDir::new_in(base).expect("create probe test root");
++        if restrict == ProbeRestrict::Root {
++            probe_restrict(test_root.path());
++        }
++        let codex_home = sandbox_home("probe-delete");
++        let workspace = test_root.path().join("workspace");
++        let temp_root = test_root.path().join("temp");
++        let tmp_root = test_root.path().join("tmp");
++        let outside_root = test_root.path().join("outside");
++        for directory in [&workspace, &temp_root, &tmp_root, &outside_root] {
++            fs::create_dir_all(directory).expect("create probe directory");
++        }
++        if restrict == ProbeRestrict::Outside {
++            probe_restrict(&outside_root);
++        }
++        let workspace_file = workspace.join("workspace-delete.txt");
++        let temp_file = temp_root.join("temp-delete.txt");
++        let tmp_file = tmp_root.join("tmp-delete.txt");
++        let outside_file = outside_root.join("outside-delete.txt");
++        let append_file = outside_root.join("outside-append.txt");
++        let created_file = outside_root.join("created.txt");
++        fs::write(&workspace_file, "workspace").expect("seed");
++        fs::write(&temp_file, "temp").expect("seed");
++        fs::write(&tmp_file, "tmp").expect("seed");
++        fs::write(&outside_file, "outside").expect("seed");
++        fs::write(&append_file, "outside2").expect("seed");
++        if !elevated {
++            if label == "checkout-default" {
++                for ancestor in base.ancestors() {
++                    probe_icacls("ancestor-of-checkout", ancestor);
++                }
++            }
++            probe_icacls(&format!("{label} test_root"), test_root.path());
++            probe_icacls(&format!("{label} outside dir"), &outside_root);
++            probe_icacls(&format!("{label} outside file"), &outside_file);
++            probe_icacls(&format!("{label} workspace dir (before sandbox)"), &workspace);
++        }
++        let script = workspace.join("delete-fixtures.cmd");
++        fs::write(
++            &script,
++            concat!(
++                "@echo off\r\n",
++                "del /f /q \"%WORKSPACE_DELETE%\"\r\n",
++                "del /f /q \"%TEMP_DELETE%\"\r\n",
++                "del /f /q \"%TMP_DELETE%\"\r\n",
++                "del /f /q \"%OUTSIDE_DELETE%\"\r\n",
++                "echo created> \"%OUTSIDE_CREATED%\"\r\n",
++                "echo appended>> \"%OUTSIDE_APPEND%\"\r\n",
++                "exit /b 0\r\n",
++            ),
++        )
++        .expect("write script");
++        let env_map = HashMap::from([
++            ("TEMP".to_string(), temp_root.to_string_lossy().into_owned()),
++            ("TMP".to_string(), tmp_root.to_string_lossy().into_owned()),
++            ("WORKSPACE_DELETE".to_string(), workspace_file.to_string_lossy().into_owned()),
++            ("TEMP_DELETE".to_string(), temp_file.to_string_lossy().into_owned()),
++            ("TMP_DELETE".to_string(), tmp_file.to_string_lossy().into_owned()),
++            ("OUTSIDE_DELETE".to_string(), outside_file.to_string_lossy().into_owned()),
++            ("OUTSIDE_CREATED".to_string(), created_file.to_string_lossy().into_owned()),
++            ("OUTSIDE_APPEND".to_string(), append_file.to_string_lossy().into_owned()),
++        ]);
++        let permission_profile = PermissionProfile::workspace_write();
++        let command = vec![
++            "C:\\Windows\\System32\\cmd.exe".to_string(),
++            "/d".to_string(),
++            "/c".to_string(),
++            script.display().to_string(),
++        ];
++        let spawned = if elevated {
++            spawn_windows_sandbox_session_elevated_for_permission_profile(
++                &permission_profile,
++                workspace_roots_for(workspace.as_path()).as_slice(),
++                codex_home.path(),
++                command,
++                workspace.as_path(),
++                env_map,
++                /*proxy_enforced*/ false,
++                /*network_proxy_restricting_sid*/ None,
++                Some(20_000),
++                /*read_roots_override*/ None,
++                /*read_roots_include_platform_defaults*/ true,
++                /*write_roots_override*/ None,
++                &[],
++                &[],
++                /*tty*/ false,
++                /*stdin_open*/ false,
++            )
++            .await
++        } else {
++            spawn_windows_sandbox_session_legacy(
++                &permission_profile,
++                workspace_roots_for(workspace.as_path()).as_slice(),
++                codex_home.path(),
++                command,
++                workspace.as_path(),
++                env_map,
++                Some(20_000),
++                &[],
++                &[],
++                /*tty*/ false,
++                /*stdin_open*/ false,
++            )
++            .await
++        };
++        let spawned = match spawned {
++            Ok(spawned) => spawned,
++            Err(err) => {
++                println!("PROBE|{label}|{backend}|SPAWN-ERROR {err:#}");
++                return;
++            }
++        };
++        let (stdout, exit_code) =
++            collect_stdout_and_exit(spawned, codex_home.path(), Duration::from_secs(30)).await;
++        let appended = fs::read_to_string(&append_file)
++            .map(|c| c != "outside2")
++            .unwrap_or(false);
++        println!(
++            "PROBE|{label}|{backend}|exit={exit_code}|workspace_deleted={}|temp_deleted={}|tmp_deleted={}|OUTSIDE_DELETED={}|OUTSIDE_CREATED={}|OUTSIDE_APPENDED={}|stdout={:?}",
++            !workspace_file.exists(),
++            !temp_file.exists(),
++            !tmp_file.exists(),
++            !outside_file.exists(),
++            created_file.exists(),
++            appended,
++            String::from_utf8_lossy(&stdout).trim()
++        );
++    });
++}
++
++#[test]
++fn probe_delete_variants() {
++    let _account_guard =
++        WindowsSandboxAccountTestGuard::acquire().expect("lock Windows sandbox test accounts");
++    let _guard = legacy_process_test_guard();
++    println!("PROBE-ENV arch={:?} user={}", std::env::var("PROCESSOR_ARCHITECTURE"), probe_run("whoami", &["/user", "/fo", "list"]).trim());
++    let userprofile = PathBuf::from(std::env::var("USERPROFILE").expect("USERPROFILE"));
++    let variants: Vec<(&str, PathBuf, ProbeRestrict)> = vec![
++        ("checkout-default", sandbox_cwd(), ProbeRestrict::Nothing),
++        ("checkout-restrictive-root", sandbox_cwd(), ProbeRestrict::Root),
++        ("checkout-restrictive-outside-only", sandbox_cwd(), ProbeRestrict::Outside),
++        ("userprofile-default", userprofile.join("codex-probe"), ProbeRestrict::Nothing),
++        ("tempdir-default", std::env::temp_dir().join("codex-probe"), ProbeRestrict::Nothing),
++        ("c-root-default", PathBuf::from("C:\\codex-probe"), ProbeRestrict::Nothing),
++    ];
++    for (label, base, restrict) in &variants {
++        for elevated in [false, true] {
++            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++                probe_scenario(label, base, *restrict, elevated)
++            }));
++            if result.is_err() {
++                println!("PROBE|{label}|{}|PANIC", if elevated { "elevated" } else { "legacy" });
++            }
++        }
++    }
++    panic!("probe finished; this failure only forces nextest to print the output above");
++}
+-- 
+2.50.0
+
