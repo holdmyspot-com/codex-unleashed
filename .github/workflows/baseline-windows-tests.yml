@@ -200,10 +200,10 @@ jobs:
             printf 'TMPDIR=%s\n' "$build_root/tmp"
           } >> "$GITHUB_ENV"
 
-      # The hosted ARM64 runner's Dev Drive filled up while linking the workspace's debug test binaries, as macOS did.
-      - name: Keep only line tables in the test profile's debug information
-        if: inputs.package != '' && inputs.target == 'aarch64-pc-windows-msvc'
-        run: printf 'CARGO_PROFILE_CI_TEST_DEBUG=line-tables-only\n' >> "$GITHUB_ENV"
+      # As upstream's rust-ci-full-nextest-platform.yml: debug symbols for hundreds of test binaries exhaust the disk.
+      - name: Build the test profile without debug information
+        if: inputs.package != ''
+        run: printf 'CARGO_PROFILE_CI_TEST_DEBUG=0\n' >> "$GITHUB_ENV"
 
       - name: Warn when no Dev Drive is available
         if: inputs.package != '' && steps.dev-drive.outcome != 'success'

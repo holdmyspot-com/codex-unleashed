@@ -68,6 +68,9 @@ jobs:
     timeout-minutes: 240
     env:
       CARGO_INCREMENTAL: "0"
+      # As upstream's rust-ci-full-nextest-platform.yml: debug symbols for hundreds of test binaries exhaust the disk
+      # (the extracted full-workspace archive reached 80 GB in run 42972048686).
+      CARGO_PROFILE_CI_TEST_DEBUG: "0"
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       RUST_MIN_STACK: "8388608"
       RUST_BACKTRACE: "1"

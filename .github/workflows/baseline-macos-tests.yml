@@ -220,12 +220,12 @@ jobs:
           tool: nextest@0.9.103
 
       # The full-workspace test build fills the hosted runner's disk (ld: write() failed, errno=28), where upstream's
-      # larger macos-15-xlarge runner does not, so free the inactive Xcode versions and keep only line tables.
+      # larger macos-15-xlarge runner does not, so free the inactive Xcode versions and, as upstream does, drop debug information.
       - name: Reclaim inactive Xcode versions
         run: |
           python3 "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py" \
             --evidence-directory "$RUNNER_TEMP/baseline-macos-nextest-evidence"
-          printf 'CARGO_PROFILE_CI_TEST_DEBUG=line-tables-only\n' >> "$GITHUB_ENV"
+          printf 'CARGO_PROFILE_CI_TEST_DEBUG=0\n' >> "$GITHUB_ENV"
 
       - name: Record the native host and capacity
         run: |
