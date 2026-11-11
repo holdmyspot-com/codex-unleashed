@@ -175,5 +175,5 @@ jobs:
         with:
           name: baseline-native-ownership-test
           path: ${{ runner.temp }}/baseline-ownership-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn

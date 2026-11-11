@@ -81,7 +81,7 @@ jobs:
         with:
           name: cache-package-transfer
           path: ${{ runner.temp }}/cache-transfer-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn
 
   consume:

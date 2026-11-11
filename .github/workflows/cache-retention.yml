@@ -175,11 +175,11 @@ jobs:
           done
           printf 'deleted=%s\n' "$(wc -l < "$evidence/deleted.txt" | tr -d ' ')"
 
-      - name: Retain the plan and deletion record for one day
+      - name: Retain the plan and deletion record for three days
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: cache-retention
           path: ${{ runner.temp }}/cache-retention
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn

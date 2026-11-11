@@ -283,5 +283,5 @@ jobs:
         with:
           name: baseline-windows-bazel-tests-${{ matrix.target }}-shard-${{ matrix.shard }}
           path: ${{ runner.temp }}/baseline-windows-bazel-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn

@@ -71,7 +71,7 @@ jobs:
         with:
           name: helper-process-${{ matrix.runner }}
           path: ${{ runner.temp }}/helper-process-evidence
-          retention-days: 1
+          retention-days: 3
       - name: Remove owned diagnostic storage
         if: always()
         shell: pwsh

@@ -742,7 +742,7 @@ jobs:
         with:
           name: smoke-${{ matrix.target }}-${{ matrix.bundle }}
           path: ${{ env.CARGO_TARGET_DIR }}/${{ matrix.target }}/release/${{ matrix.bundle == 'app-server' && 'codex-app-server' || 'codex' }}${{ matrix.binary-suffix }}
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: error
 
       - name: Verify upstream source and tests remain unmodified
@@ -849,7 +849,7 @@ jobs:
         with:
           name: continue-${{ matrix.target }}-${{ matrix.bundle }}
           path: ${{ runner.temp }}/continuation
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: error
 
       - name: Verify changed CLI input without publishing diagnostic outputs
@@ -895,7 +895,7 @@ jobs:
           path: |
             ${{ runner.temp }}/baseline-evidence
             ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn
 
   smoke:

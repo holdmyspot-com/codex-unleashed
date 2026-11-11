@@ -29,12 +29,12 @@ Total 40 entries, 9.14 GB. Oldest last_accessed 2026-11-05T19:51Z (scheduler his
 
 ## 3. Workflow artifacts (527 total, 5.12 GB, 0 expired)
 
-Workflow `retention-days: 1` (main since 2026-11), `upstream-auto-release.yml` uses 7. 414 artifacts from `main` created in 2026-11 (expiring 2026-11, 1-day); 3 from `main.new`; 110 from `main` created 2026-10-04..10-07 that expire 2027-01 (default 90 days).
+Workflow `retention-days: 3` everywhere, including `upstream-auto-release.yml` (owner decision 2026-11-10; it was 1, with 7 for `upstream-auto-release.yml`). 414 artifacts from `main` created in 2026-11 (expiring 2026-11, 1-day); 3 from `main.new`; 110 from `main` created 2026-10-04..10-07 that expire 2027-01 (default 90 days).
 
 | item (name prefix) | kind | key | size | owner | last consumer | cleanup policy & evidence | gap |
 |---|---|---|---|---|---|---|---|
 | `baseline-*` (clippy, rustdoc, dependency-lints, linux-tests, `*-primary`, `*-app-server`, bazel shards), `regenerated`, `checkpoint-tests-*`, `smoke-*` | workflow artifact | e.g. `baseline-clippy-aarch64-unknown-linux-musl` x44, `baseline-linux-tests` x28, `smoke-x86_64-apple-darwin-primary` x3 (387 MB) | 4-390 MB each; about 1.4 GB across the group | `baseline-*.yml`, `release-checkpoint-tests.yml` | same workflows | `retention-days: 1`; expiry date 2026-11-10..11 | Self-expiring. Matching ones are the same day's runs. |
-| `cache-retention` | workflow artifact | 17 runs | 0.3 MB total | `cache-retention.yml` (line 178-184) | operator review | `retention-days: 1` | none |
+| `cache-retention` | workflow artifact | 17 runs | 0.3 MB total | `cache-retention.yml` (line 178-184) | operator review | `retention-days: 3` | none |
 | `cargo-timings-rust-release-*`, `codex-package-rust-licenses-*` | workflow artifact | 3 each, 6 + 2 targets | 0.4-12.5 MB | `baseline-release-followup.yml`, `baseline-*lints.yml`, release flows | none | Expiry 2027-01-02..03 (90-day default), so a workflow-less `retention-days` or an old-main producer | Producer not located. Expires 2027-01; no earlier deletion evidence. |
 | `v8-canary-150.4.0-{release,ptrcomp-sandbox}-<target>` | workflow artifact | 3 each (about 13 targets) | 120-350 MB each; about 4.2 GB total, the bulk of artifact storage | no producer in current `.github/` (grep empty); apparently old-main V8 canary runs 2026-10-05..07 | none known | 90-day expiry 2027-01-03..05, no cleanup | Largest single retained item. Orphan from `main.old` workflows; needs owner decision (delete now or let expire). |
 | `bazel-execution-logs-{test,clippy,verify-release}-*` | workflow artifact | 3 each | 22-99 MB each (about 0.6 GB) | no producer in current tree (old main) | none | 90-day expiry 2027-01-03..05 | Orphan, same as above. |

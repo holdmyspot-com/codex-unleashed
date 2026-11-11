@@ -342,5 +342,5 @@ jobs:
         with:
           name: windows-${{ inputs.target }}-winget-daemon-${{ github.run_attempt }}
           path: ${{ env.FOCUSED_RUNTIME }}/evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: error

@@ -367,5 +367,5 @@ jobs:
         with:
           name: linux-${{ inputs.target }}-runtime-${{ github.run_attempt }}
           path: ${{ env.FOCUSED_RUNTIME }}/evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: error

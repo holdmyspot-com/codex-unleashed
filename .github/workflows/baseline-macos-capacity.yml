@@ -106,5 +106,5 @@ jobs:
         with:
           name: baseline-macos-capacity-${{ matrix.target }}
           path: ${{ runner.temp }}/baseline-macos-capacity
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn

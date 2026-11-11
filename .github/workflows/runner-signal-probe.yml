@@ -45,5 +45,5 @@ jobs:
         with:
           name: runner-signal-probe-${{ matrix.runner }}
           path: ${{ runner.temp }}/runner-signal-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: error

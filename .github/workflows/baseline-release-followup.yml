@@ -200,5 +200,5 @@ jobs:
           path: |
             ${{ runner.temp }}/baseline-evidence
             ${{ runner.temp }}/baseline-target/**/cargo-timings
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn

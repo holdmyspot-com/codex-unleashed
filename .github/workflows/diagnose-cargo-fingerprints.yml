@@ -259,5 +259,5 @@ jobs:
         with:
           name: linux-cargo-fingerprints
           path: ${{ runner.temp }}/baseline-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: error

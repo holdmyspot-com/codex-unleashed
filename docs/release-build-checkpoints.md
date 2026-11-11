@@ -275,7 +275,7 @@ at `7267778bf914896b6e0a11defa6765eef54a9f0d` is a compilation-free ARM64
 preflight for kernel signal observation. It installs bpftrace, starts an owned
 observer and marker, waits for a recorded SIGCONT from the known Python sender,
 then verifies a matching SIGTERM record and the marker's signal exit. Both
-processes are reaped, and probe receipts/logs have one-day artifact retention.
+processes are reaped, and probe receipts/logs have three-day artifact retention.
 The first hosted probe fails before attachment: bpftrace rejects `str(args->comm)`
 because the tracepoint field is already a string array. Commit
 `3f28138cd51c7bdfd0dd0ed43b5e24249297aa1c` passes the field directly; workflow

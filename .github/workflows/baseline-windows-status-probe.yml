@@ -57,5 +57,5 @@ jobs:
         with:
           name: baseline-windows-workspace-status
           path: ${{ runner.temp }}/baseline-windows-status-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: error

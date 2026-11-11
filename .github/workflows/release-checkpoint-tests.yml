@@ -122,7 +122,7 @@ jobs:
             ${{ runner.temp }}/checkpoint-evidence
             ${{ runner.temp }}/checkpoint-tests/build/surefire-reports/TEST-com.holdmyspot.codexunleashed.tooling.*.xml
             ${{ runner.temp }}/checkpoint-tests/build/surefire-reports/TEST-com.holdmyspot.codexunleashed.distribution.*.xml
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn
       - name: Remove owned test scratch directory
         if: always()

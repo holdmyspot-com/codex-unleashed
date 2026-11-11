@@ -213,5 +213,5 @@ jobs:
             ${{ runner.temp }}/baseline-native/build/*.log
             ${{ runner.temp }}/baseline-native/build/build-state.json
             ${{ runner.temp }}/baseline-native/build/**/config.log
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn

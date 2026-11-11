@@ -90,5 +90,5 @@ jobs:
         with:
           name: private-cache-migration
           path: ${{ runner.temp }}/cache-migration-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: error

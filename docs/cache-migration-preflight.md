@@ -94,7 +94,7 @@ assembly passing and the same 52/85/0 preview classification. No deletion runs.
 
 The goal executor retains the verified archive and analysis in session directory
 `retention-verified-nIxInb` through retention checkpoint verification and owns their
-cleanup after the last verification consumer. Hosted artifacts retain the one-day policy.
+cleanup after the last verification consumer. Hosted artifacts retain the three-day policy.
 
 ## Retention planning and pruning
 

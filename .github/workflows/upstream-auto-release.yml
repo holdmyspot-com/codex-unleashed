@@ -7,7 +7,7 @@ name: Automatic upstream release
 #
 # A dispatch with dry_run=true (the default) stops after the gates and publishes nothing: no tag, release, draft or
 # release asset. It builds no packages unless package_dry_run is set, which builds the selected targets' package archives
-# and installers into 7-day workflow artifacts only. skip_gates (dry runs only) skips the gate workflows so the package
+# and installers into 3-day workflow artifacts only. skip_gates (dry runs only) skips the gate workflows so the package
 # build can be rehearsed alone on cheaper runners. Enabling the schedule below is the owner's step at acceptance.
 #
 # Gate coverage: Linux, Windows and macOS tests (the macOS one is the Bazel suite), lints on three platforms and the
@@ -466,7 +466,7 @@ jobs:
         with:
           name: assets-${{ matrix.target }}
           path: ${{ runner.temp }}/assets/*
-          retention-days: 7
+          retention-days: 3
           if-no-files-found: error
 
   publish:

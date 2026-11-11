@@ -215,7 +215,7 @@ jobs:
         with:
           name: baseline-macos-bazel-host-${{ matrix.platform.target }}-shard-${{ matrix.shard }}
           path: ${{ runner.temp }}/baseline-macos-bazel-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: error
 
       - name: Run the maintained Bazel package shard without a second disk-cache copy
@@ -269,5 +269,5 @@ jobs:
         with:
           name: baseline-macos-bazel-tests-${{ matrix.platform.target }}-shard-${{ matrix.shard }}
           path: ${{ runner.temp }}/baseline-macos-bazel-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn

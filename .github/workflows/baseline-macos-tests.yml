@@ -253,5 +253,5 @@ jobs:
         with:
           name: baseline-macos-nextest-${{ matrix.target }}
           path: ${{ runner.temp }}/baseline-macos-nextest-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn

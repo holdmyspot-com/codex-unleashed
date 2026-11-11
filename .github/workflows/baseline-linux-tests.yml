@@ -671,5 +671,5 @@ jobs:
             ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings
             ${{ env.CARGO_TARGET_DIR }}/nextest/**/junit.xml
             codex-rs/target/nextest/**/junit.xml
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn

@@ -199,7 +199,7 @@ jobs:
         with:
           name: baseline-bazel-lint-host-${{ matrix.target }}${{ (matrix.shard && format('-shard-{0}', matrix.shard)) || '' }}
           path: ${{ runner.temp }}/baseline-bazel-lint-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: error
 
       - name: Run the maintained Bazel Clippy selection with fatal warnings
@@ -316,5 +316,5 @@ jobs:
         with:
           name: baseline-bazel-lints-${{ matrix.target }}${{ (matrix.shard && format('-shard-{0}', matrix.shard)) || '' }}
           path: ${{ runner.temp }}/baseline-bazel-lint-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn

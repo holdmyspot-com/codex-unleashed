@@ -410,5 +410,5 @@ jobs:
         with:
           name: baseline-native-bazel-tests-shard-${{ matrix.shard }}
           path: ${{ runner.temp }}/baseline-bazel-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn

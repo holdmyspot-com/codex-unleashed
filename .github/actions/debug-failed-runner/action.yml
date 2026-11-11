@@ -57,5 +57,5 @@ runs:
       with:
         name: runner-debug-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ github.run_attempt }}
         path: ${{ steps.key.outputs.storage }}/connection.json
-        retention-days: 1
+        retention-days: 3
         if-no-files-found: error

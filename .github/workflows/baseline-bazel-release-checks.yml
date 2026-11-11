@@ -167,7 +167,7 @@ jobs:
         with:
           name: baseline-bazel-release-host-${{ matrix.target }}
           path: ${{ runner.temp }}/baseline-bazel-release-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: error
 
       - name: Compile the maintained release selection with debug assertions disabled
@@ -269,5 +269,5 @@ jobs:
         with:
           name: baseline-bazel-release-checks-${{ matrix.target }}
           path: ${{ runner.temp }}/baseline-bazel-release-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn

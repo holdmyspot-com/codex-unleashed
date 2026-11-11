@@ -194,4 +194,4 @@ jobs:
         with:
           name: source-cache-runtime-${{ matrix.target }}
           path: ${{ runner.temp }}/source-cache-evidence
-          retention-days: 1
+          retention-days: 3

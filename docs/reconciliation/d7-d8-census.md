@@ -24,9 +24,9 @@ Conclusion: keep only the upstream-provided V8 artifact setup, which is already 
 |---|---|---|
 | Keep caches for the newest three stable releases | Implemented | `GhcrRetentionPlan.java:34` `RETAINED_RELEASES = 3`; applied at `:243` over published, non-draft, non-prerelease stable tags. `cache-retention.yml:3` states the rule. Releases come from `openai/codex` (`:51`), retained refs feed the Actions-cache planner (`:130-142`), and `ActionsCacheRetentionPlan.java` keeps only caches of retained refs. |
 | The GHCR and Actions-cache planners actually run and delete | Implemented | `cache-retention.yml:96-147` plans; `:149-176` deletes; `baseline-release-builds.yml:985` calls it after cached release builds (`:978-988`); a daily schedule runs at `:18-19` (cron `41 6 * * *`). |
-| Retention-plan record kept one day | Implemented | `cache-retention.yml:184` `retention-days: 1`. |
-| One-day Actions artifact retention across workflows | Implemented, one exception | 34 of 35 `actions/upload-artifact` steps in origin/main set `retention-days: 1`. Exception: `upstream-auto-release.yml:450` is `retention-days: 7` (release `assets-*` artifacts). It is the hand-off from the package build to the publish job, and the header comment (`:9-10`) describes it as 7-day. It differs from the one-day rule. Decide whether to lower it to 1, if publish always follows the build within a day, or document it as an exception. |
+| Retention-plan record kept three days | Implemented | `cache-retention.yml` `retention-days: 3` (owner decision 2026-11-10). |
+| Three-day Actions artifact retention across workflows | Implemented | Owner decision 2026-11-10: every `actions/upload-artifact` step in the overlay's workflows, including `upstream-auto-release.yml`'s build-to-publish `assets-*` artifact (formerly 7 days), sets `retention-days: 3`; the earlier rule was one day. |
 | No stray "two releases" wording | Implemented | A search of `.github`, `docs`, `tooling` and README found no "two stable" text. |
 | Upstream workflows' artifact retention | Differs, not applicable | 41 of 43 upload steps in the upstream tree lack `retention-days` (default 90 days). They are upstream-owned workflows (rust-release, bazel, v8 and others) that the overlay does not run. Only the overlay's workflows matter. |
 
-Undecided: only the 7-day artifact above (needs-owner-decision).
+Undecided: none. The 7-day `assets-*` exception was resolved by the owner's three-day rule (2026-11-10).

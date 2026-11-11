@@ -56,5 +56,5 @@ jobs:
         with:
           name: cache-fixture-cleanup
           path: ${{ runner.temp }}/cache-fixture-cleanup
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: error

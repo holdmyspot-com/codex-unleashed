@@ -91,5 +91,5 @@ jobs:
         with:
           name: baseline-nested-sandbox-fixture
           path: ${{ runner.temp }}/sandbox-fixture-evidence
-          retention-days: 1
+          retention-days: 3
           if-no-files-found: warn
