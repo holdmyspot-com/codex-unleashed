@@ -425,6 +425,16 @@ work. A failure absent from the baseline fails the job; a baseline failure does 
 `baseline-package-smoke.yml` records the baseline (artifact `package-smoke-baseline-<target>`), and a patched dispatch compares. A new upstream version
 whose package smoke tests fail therefore blocks the release until its baseline is recorded from an unpatched run.
 
+The first unpatched recording run, `43004801025` (2026-11-11), shows that the failure is intermittent rather than constant:
+
+- The package step's first pass failed `...[cli_root]` with the same `TimeoutExpired` on `codex-exec-server.exe --listen stdio`. The other tests passed: 9 passed, 2 skipped.
+- The baseline step's rerun passed all 10 tests, `[cli_root]` included.
+- The recorded `package-smoke-aarch64-pc-windows-msvc.json` therefore lists no failures.
+
+All three first passes timed out (`42939327847`, `42939331881`, `43004801025`), and the one rerun passed. That pattern suggests the first launch of the freshly extracted executable is slow on ARM64. This is an inference that has not been isolated.
+
+With an empty baseline, the job passes when the rerun is clean and fails when `[cli_root]` times out again.
+
 ### Windows Bazel and the Opus dangling symlink
 
 Bazel builds `opusic-sys` for Windows with CMake. Every Windows Bazel job, native MSVC included, fails with

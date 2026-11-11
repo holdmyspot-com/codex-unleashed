@@ -1,0 +1,8 @@
+{
+  "failed": [],
+  "platform": "package-smoke-aarch64-pc-windows-msvc",
+  "runner": "nextest",
+  "tests_executed": 10,
+  "timed_out": [],
+  "upstream_commit": "086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a"
+}
