@@ -545,3 +545,8 @@ Comparison artifacts, now fixed in the workflows:
 Not yet confirmed: Windows Bazel `code-mode-host-ui_plugin_wire-test` `loading_restrictions_close_the_isolate` got `execution_timed_out` instead of `invalid_program` for `import 'forbidden';`. That code comes only from the UI plugin runtime's 100 ms per-turn watchdog (`code-mode-runtime/src/ui/watchdog.rs`). The patches change only `Bytes` conversions in that runtime, the test passes in 0.03 to 0.25 s in every cargo run, and the gnullvm job runs eight test binaries at once. The inference is a load timeout on the first turn; the next Windows Bazel run will show whether it recurs.
 
 The Windows ARM64 run's `windows_elevated_enforces_deny_read_and_protects_setup_marker` is one of the intermittent elevated-sandbox cases listed for Windows x64 above.
+
+### Tests run at upstream's development version (2026-11-12)
+
+The 18 snapshot failures in both the unpatched and the patched runs above changed only the version: `0.0.0` became `0.167.0`. The `rust-v0.167.0` release commit changes only `[workspace.package] version`, it sits on no branch, and upstream's release workflows run no tests, so upstream never tests that version. Its CI tests main at `0.0.0`. The test and lint workflows now reset the version to `0.0.0` before applying the patches, and the patches keep upstream's `0.0.0` lockfile entries for workspace crates. Release builds keep the tag version; their `verify-cargo-lock` guard already allows Cargo's workspace-version rewrite. The baselines are re-recorded at `0.0.0`.
+

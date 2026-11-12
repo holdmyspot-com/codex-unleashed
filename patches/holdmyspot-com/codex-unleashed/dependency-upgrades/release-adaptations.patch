@@ -47,7 +47,7 @@ index 0ea2b06..c80c548 100644
        "universal-hash_0.5.1": "{\"dependencies\":[{\"name\":\"crypto-common\",\"req\":\"^0.1.6\"},{\"default_features\":false,\"name\":\"subtle\",\"req\":\"^2.4\"}],\"features\":{\"std\":[\"crypto-common/std\"]}}",
        "untrusted_0.7.1": "{\"dependencies\":[],\"features\":{}}",
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index fed4f6c..c9d0e21 100644
+index 9fbe4ec..850e6bf 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -225,7 +225,7 @@ checksum = "b2a5b0a5ab8561c603f16c3b78c24a386b1f70e7fc1b1b1e8c15738828e4a176"
@@ -68,7 +68,7 @@ index fed4f6c..c9d0e21 100644
  ]
  
  [[package]]
-@@ -4251,7 +4251,7 @@ version = "0.167.0"
+@@ -4251,7 +4251,7 @@ version = "0.0.0"
  dependencies = [
   "insta",
   "pretty_assertions",
@@ -88,7 +88,7 @@ index fed4f6c..c9d0e21 100644
   "uuid",
 @@ -5356,7 +5356,6 @@ dependencies = [
  name = "codex-utils-cargo-bin"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "assert_cmd",
   "runfiles",

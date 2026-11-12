@@ -103,6 +103,14 @@ jobs:
           read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
           # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
           printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"
+          # Upstream's CI tests main, whose workspace version is 0.0.0; a stable tag's release commit changes only that
+          # version. Test the same source, so version strings in snapshots and fixtures match what upstream tested.
+          perl -pi -e '$w = /^\[workspace\.package\]\r?$/ ? 1 : /^\[/ ? 0 : $w;' \
+            -e 's/^version = "[^"]+"(\r?)$/version = "0.0.0"$1/ if $w' codex-rs/Cargo.toml
+          if ! git diff --quiet -- codex-rs/Cargo.toml; then
+            git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              commit -q -m "Test with upstream's development version 0.0.0" -- codex-rs/Cargo.toml
+          fi
           for patch in "${patch_paths[@]}"; do
             printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
             git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \

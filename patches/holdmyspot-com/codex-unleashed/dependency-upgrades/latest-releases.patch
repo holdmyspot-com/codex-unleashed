@@ -1264,7 +1264,7 @@ index 4abf907..8d03ae2 100644
      "RUSTSEC-2024-0436", # paste 1.0.15 via starlark/v8; upstream crate is unmaintained
      "RUSTSEC-2023-0089", # atomic-polyfill via postcard/heapless/pagable; upstream crate is unmaintained
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 39ba454..32e6b6a 100644
+index 4fde712..10e4a18 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -94,7 +94,7 @@ dependencies = [
@@ -1286,7 +1286,7 @@ index 39ba454..32e6b6a 100644
   "num-bigint",
  ]
 @@ -315,7 +315,7 @@ name = "app_test_support"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
   "anyhow",
 - "base64 0.22.1",
@@ -1421,7 +1421,7 @@ index 39ba454..32e6b6a 100644
  [[package]]
  name = "cmp_any"
 @@ -1978,7 +1984,7 @@ name = "codex-agent-identity"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
   "anyhow",
 - "base64 0.22.1",
@@ -1557,7 +1557,7 @@ index 39ba454..32e6b6a 100644
  
  [[package]]
 @@ -2355,7 +2363,7 @@ name = "codex-app-server-transport"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
   "axum",
 - "base64 0.22.1",
@@ -1604,7 +1604,7 @@ index 39ba454..32e6b6a 100644
   "thiserror 2.0.21",
   "tokio",
 @@ -2441,7 +2450,7 @@ name = "codex-async-utils"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
   "pretty_assertions",
 - "rand 0.9.5",
@@ -1613,7 +1613,7 @@ index 39ba454..32e6b6a 100644
   "tokio-util",
  ]
 @@ -2516,11 +2525,12 @@ name = "codex-build-info"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
   "codex-install-context",
 + "hex",
@@ -1672,7 +1672,7 @@ index 39ba454..32e6b6a 100644
   "url",
 @@ -2701,7 +2712,7 @@ dependencies = [
  name = "codex-cloud-config"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "base64 0.22.1",
 + "base64 0.23.1",
@@ -1707,7 +1707,7 @@ index 39ba454..32e6b6a 100644
   "tokio-util",
 @@ -2859,7 +2871,7 @@ dependencies = [
  name = "codex-code-mode-runtime"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "base64 0.22.1",
 + "base64 0.23.1",
@@ -1715,7 +1715,7 @@ index 39ba454..32e6b6a 100644
   "codex-plugin-host",
   "codex-protocol",
 @@ -2886,7 +2898,7 @@ name = "codex-config"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
   "anyhow",
 - "base64 0.22.1",
@@ -1912,7 +1912,7 @@ index 39ba454..32e6b6a 100644
   "url",
 @@ -3425,7 +3439,7 @@ dependencies = [
  name = "codex-exec-server-protocol"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "base64 0.22.1",
 + "base64 0.23.1",
@@ -1928,7 +1928,7 @@ index 39ba454..32e6b6a 100644
   "starlark",
   "tempfile",
   "thiserror 2.0.21",
-@@ -3480,7 +3494,7 @@ version = "0.167.0"
+@@ -3480,7 +3494,7 @@ version = "0.0.0"
  dependencies = [
   "proc-macro2",
   "quote",
@@ -1937,7 +1937,7 @@ index 39ba454..32e6b6a 100644
  ]
  
  [[package]]
-@@ -3512,7 +3526,7 @@ version = "0.167.0"
+@@ -3512,7 +3526,7 @@ version = "0.0.0"
  dependencies = [
   "codex-utils-absolute-path",
   "pretty_assertions",
@@ -2073,7 +2073,7 @@ index 39ba454..32e6b6a 100644
  
  [[package]]
  name = "codex-image-generation-extension"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "base64 0.22.1",
 + "base64 0.23.1",
@@ -2107,7 +2107,7 @@ index 39ba454..32e6b6a 100644
   "test-case",
   "tokio",
 @@ -4019,7 +4037,7 @@ name = "codex-login"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
   "anyhow",
 - "base64 0.22.1",
@@ -2167,7 +2167,7 @@ index 39ba454..32e6b6a 100644
   "tempfile",
 @@ -4222,7 +4242,7 @@ dependencies = [
  name = "codex-message-board"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "base64 0.22.1",
 + "base64 0.23.1",
@@ -2176,7 +2176,7 @@ index 39ba454..32e6b6a 100644
   "codex-attachment-store",
 @@ -4275,7 +4295,7 @@ dependencies = [
  name = "codex-model-provider"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "base64 0.22.1",
 + "base64 0.23.1",
@@ -2296,7 +2296,7 @@ index 39ba454..32e6b6a 100644
   "pretty_assertions",
 @@ -4670,7 +4692,7 @@ dependencies = [
  name = "codex-response-debug-context"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "base64 0.22.1",
 + "base64 0.23.1",
@@ -2317,7 +2317,7 @@ index 39ba454..32e6b6a 100644
   "serde",
   "serde_json",
   "tiny_http",
-@@ -4707,7 +4729,7 @@ version = "0.167.0"
+@@ -4707,7 +4729,7 @@ version = "0.0.0"
  dependencies = [
   "anyhow",
   "axum",
@@ -2368,7 +2368,7 @@ index 39ba454..32e6b6a 100644
   "uuid",
 @@ -4806,7 +4830,7 @@ dependencies = [
  name = "codex-runtime-agent-instance"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "base64 0.22.1",
 + "base64 0.23.1",
@@ -2384,7 +2384,7 @@ index 39ba454..32e6b6a 100644
   "serde",
   "serde_json",
   "tempfile",
-@@ -4862,17 +4886,18 @@ version = "0.167.0"
+@@ -4862,17 +4886,18 @@ version = "0.0.0"
  dependencies = [
   "age",
   "anyhow",
@@ -2408,7 +2408,7 @@ index 39ba454..32e6b6a 100644
   "tracing",
  ]
 @@ -4882,7 +4907,7 @@ name = "codex-shell-command"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
   "anyhow",
 - "base64 0.22.1",
@@ -2546,7 +2546,7 @@ index 39ba454..32e6b6a 100644
  [[package]]
 @@ -5249,18 +5275,18 @@ dependencies = [
  name = "codex-user-verification"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "base64 0.22.1",
 + "base64 0.23.1",
@@ -2577,7 +2577,7 @@ index 39ba454..32e6b6a 100644
   "tempfile",
 @@ -5291,7 +5317,7 @@ dependencies = [
  name = "codex-utils-audio"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "base64 0.22.1",
 + "base64 0.23.1",
@@ -2586,7 +2586,7 @@ index 39ba454..32e6b6a 100644
   "codex-utils-string",
 @@ -5305,8 +5331,8 @@ dependencies = [
  name = "codex-utils-cache"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "lru",
 - "sha1 0.10.7",
@@ -2606,14 +2606,14 @@ index 39ba454..32e6b6a 100644
  [[package]]
 @@ -5380,7 +5406,7 @@ dependencies = [
  name = "codex-utils-image"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "base64 0.22.1",
 + "base64 0.23.1",
   "codex-utils-cache",
   "divan",
   "image",
-@@ -5396,7 +5422,7 @@ version = "0.167.0"
+@@ -5396,7 +5422,7 @@ version = "0.0.0"
  dependencies = [
   "pretty_assertions",
   "serde_json",
@@ -2624,7 +2624,7 @@ index 39ba454..32e6b6a 100644
  [[package]]
 @@ -5434,10 +5460,10 @@ dependencies = [
  name = "codex-utils-path-uri"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "base64 0.22.1",
 + "base64 0.23.1",
@@ -2635,7 +2635,7 @@ index 39ba454..32e6b6a 100644
   "serde",
   "serde_json",
   "thiserror 2.0.21",
-@@ -5474,7 +5500,7 @@ version = "0.167.0"
+@@ -5474,7 +5500,7 @@ version = "0.0.0"
  dependencies = [
   "anyhow",
   "codex-utils-cargo-bin",
@@ -2646,7 +2646,7 @@ index 39ba454..32e6b6a 100644
   "libc",
 @@ -5501,7 +5527,7 @@ dependencies = [
  name = "codex-utils-redacted-string"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "schemars 0.8.22",
 + "schemars 1.2.3",
@@ -2655,7 +2655,7 @@ index 39ba454..32e6b6a 100644
  
 @@ -5526,7 +5552,7 @@ dependencies = [
  name = "codex-utils-sleep-inhibitor"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "core-foundation 0.9.4",
 + "core-foundation 0.10.1",
@@ -2685,7 +2685,7 @@ index 39ba454..32e6b6a 100644
   "tempfile",
   "tokio",
 @@ -5620,17 +5646,17 @@ name = "codex-websocket-auth"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
   "anyhow",
 - "base64 0.22.1",
@@ -2707,7 +2707,7 @@ index 39ba454..32e6b6a 100644
  ]
  
 @@ -5655,7 +5681,7 @@ name = "codex-windows-sandbox"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
   "anyhow",
 - "base64 0.22.1",
@@ -2740,7 +2740,7 @@ index 39ba454..32e6b6a 100644
   "windows 0.58.0",
   "windows-sys 0.61.2",
  ]
-@@ -5987,7 +6013,7 @@ version = "0.167.0"
+@@ -5987,7 +6013,7 @@ version = "0.0.0"
  dependencies = [
   "anyhow",
   "assert_cmd",

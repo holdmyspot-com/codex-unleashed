@@ -1452,7 +1452,7 @@ index 2b87000..e67d849 100644
      tonic_plugin_flag = "--plugin=protoc-gen-tonic=%s",
      tonic_runtime = ":tonic_runtime",
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index c9d0e21..4655d25 100644
+index 850e6bf..1a6bc4a 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -14,9 +14,9 @@ dependencies = [

@@ -11,6 +11,13 @@
 
 Handoff updated 2026-11-10T19:15Z for the next agent. The goal `implement plan.md` is incomplete: CP1–7 passed and are tagged, CP8 is reconciled, and CP9 is the remaining checkpoint. Prior authorization covers continuation, parallel work and pushing to `main`; creating a tag or publishing a release needs a separate owner instruction. The earlier root, Linux-owner and Windows-module8 live-worker records (sessions `01a18dac…`, `01a197e5…`, `01a198d5…`) describe workers whose runs have long ended; their session directories stay on disk as evidence and must not be deleted, but they are not live assignments.
 
+### Update 2026-11-12T04:40Z (supersedes the updates below where they differ)
+
+- **Test version:** the owner decided that tests run at upstream's development version. A stable tag's release commit changes only `[workspace.package] version` (`0.0.0` to the tag version), and upstream's CI tests main at `0.0.0`. The test and lint workflows now commit that version back to `0.0.0` before applying the patches; release builds keep the tag version. The patches' `Cargo.lock` keeps upstream's `0.0.0` entries for workspace crates (`rust-1.99` had recorded `0.167.0` for all 171).
+- **Consequence:** every unpatched baseline recorded at `0.167.0` must be re-recorded: Linux local and remote, Windows x64 and ARM64, the Windows Bazel shards, native Bazel and macOS. The 18 snapshot failures that differed only in the version should leave the baselines.
+- **Round cancelled:** the 57-patch round dispatched at 03:52Z (`43151058668` to `43151077377`) tested at `0.167.0` and was cancelled. Its stress run `43151061996` passed `worker_guardian_sees_goal_set_after_spawn` 30 times in both cases with background subagents on.
+- **Next:** re-record the unpatched baselines, then rerun the patched round at `0.0.0`.
+
 ### Update 2026-11-12T03:10Z (supersedes the update below where they differ)
 
 - **Queue:** 57 patches; all baselines are committed. The Linux local and remote baselines were rewritten from unpatched run `43046251457`, which enables unprivileged user namespaces as upstream does.

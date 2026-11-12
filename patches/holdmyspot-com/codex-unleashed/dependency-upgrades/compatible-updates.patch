@@ -1021,7 +1021,7 @@ index 7b46285..a1ace75 100644
        "zvariant_4.2.0": "{\"dependencies\":[{\"features\":[\"serde\"],\"name\":\"arrayvec\",\"optional\":true,\"req\":\"^0.7.4\"},{\"default_features\":false,\"features\":[\"serde\"],\"name\":\"chrono\",\"optional\":true,\"req\":\"^0.4.38\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5.1\"},{\"name\":\"endi\",\"req\":\"^1.1.0\"},{\"features\":[\"serde\"],\"name\":\"enumflags2\",\"optional\":true,\"req\":\"^0.7.9\"},{\"kind\":\"dev\",\"name\":\"glib\",\"req\":\"^0.20.0\"},{\"features\":[\"serde\"],\"name\":\"heapless\",\"optional\":true,\"req\":\"^0.8.0\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.8.5\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"req\":\"^1.0.200\"},{\"name\":\"serde_bytes\",\"optional\":true,\"req\":\"^0.11.14\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.116\"},{\"kind\":\"dev\",\"name\":\"serde_repr\",\"req\":\"^0.1.19\"},{\"name\":\"static_assertions\",\"req\":\"^1.1.0\"},{\"features\":[\"serde\"],\"name\":\"time\",\"optional\":true,\"req\":\"^0.3.36\"},{\"features\":[\"serde\"],\"name\":\"url\",\"optional\":true,\"req\":\"^2.5.0\"},{\"features\":[\"serde\"],\"name\":\"uuid\",\"optional\":true,\"req\":\"^1.8.0\"},{\"name\":\"zvariant_derive\",\"req\":\"=4.2.0\"}],\"features\":{\"default\":[],\"gvariant\":[],\"option-as-array\":[],\"ostree-tests\":[\"gvariant\"]}}",
        "zvariant_derive_4.2.0": "{\"dependencies\":[{\"features\":[\"serde\"],\"kind\":\"dev\",\"name\":\"enumflags2\",\"req\":\"^0.7.9\"},{\"name\":\"proc-macro-crate\",\"req\":\"^3.1.0\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.81\"},{\"name\":\"quote\",\"req\":\"^1.0.36\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.200\"},{\"kind\":\"dev\",\"name\":\"serde_repr\",\"req\":\"^0.1.19\"},{\"features\":[\"extra-traits\",\"full\"],\"name\":\"syn\",\"req\":\"^2.0.64\"},{\"name\":\"zvariant_utils\",\"req\":\"=2.1.0\"}],\"features\":{}}",
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 173d2e9..39ba454 100644
+index bcee310..4fde712 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -57,6 +57,7 @@ dependencies = [
@@ -2055,7 +2055,7 @@ index 173d2e9..39ba454 100644
  
  [[package]]
 @@ -2381,7 +2441,7 @@ name = "codex-async-utils"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
   "pretty_assertions",
 - "rand 0.9.3",
@@ -2355,7 +2355,7 @@ index 173d2e9..39ba454 100644
   "starlark",
   "tempfile",
   "thiserror 2.0.21",
-@@ -3420,7 +3480,7 @@ version = "0.167.0"
+@@ -3420,7 +3480,7 @@ version = "0.0.0"
  dependencies = [
   "proc-macro2",
   "quote",
@@ -2527,7 +2527,7 @@ index 173d2e9..39ba454 100644
   "tempfile",
   "thiserror 2.0.21",
   "tokio",
-@@ -4155,7 +4215,7 @@ version = "0.167.0"
+@@ -4155,7 +4215,7 @@ version = "0.0.0"
  dependencies = [
   "insta",
   "pretty_assertions",
@@ -2606,7 +2606,7 @@ index 173d2e9..39ba454 100644
   "icu_decimal",
   "icu_locale_core",
   "icu_provider",
-@@ -4612,7 +4672,7 @@ version = "0.167.0"
+@@ -4612,7 +4672,7 @@ version = "0.0.0"
  dependencies = [
   "base64 0.22.1",
   "codex-api",
@@ -2747,7 +2747,7 @@ index 173d2e9..39ba454 100644
  
  [[package]]
  name = "codex-tools"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
 - "bitflags 2.13.1",
 + "bitflags 2.13.2",
@@ -2819,7 +2819,7 @@ index 173d2e9..39ba454 100644
   "sha2 0.10.9",
   "tempfile",
 @@ -5246,7 +5306,7 @@ name = "codex-utils-cache"
- version = "0.167.0"
+ version = "0.0.0"
  dependencies = [
   "lru",
 - "sha1 0.10.6",
@@ -2836,7 +2836,7 @@ index 173d2e9..39ba454 100644
  ]
  
  [[package]]
-@@ -5336,7 +5396,7 @@ version = "0.167.0"
+@@ -5336,7 +5396,7 @@ version = "0.0.0"
  dependencies = [
   "pretty_assertions",
   "serde_json",
