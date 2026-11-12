@@ -102,6 +102,30 @@ class CompareTests(unittest.TestCase):
                       "    codex-core::all g::test_case_2_mcp_expects", out)
         self.assertIn("[in the baseline but not run] 0", out)
 
+    def test_related_platform_failures_are_not_new(self):
+        # A patch that adds Bazel targets can move a test into another shard than the one that recorded its failure.
+        self.record("shard-1", junit(("a", "fail"), ("c", "fail")), name="one.xml")
+        self.record("shard-2", junit(("b", "fail"), ("d", "fail")), name="two.xml")
+        path = self.workspace.write("patched.xml", junit(("a", "fail"), ("b", "fail"), ("d", "pass")))
+        code, out, _ = run("--platform", "shard-1", "--related-platform", "shard-2", "--upstream-commit", COMMIT,
+                           "--baseline-dir", self.baselines, path)
+        self.assertEqual(code, 0)
+        self.assertIn("[new (fail the run)] 0", out)
+        self.assertIn("[fixed relative to the baseline] 1\n    codex-core::all d", out)
+        self.assertIn("[unchanged baseline failures] 2\n    codex-core::all a\n    codex-core::all b", out)
+        self.assertIn("[in the baseline but not run] 1\n    codex-core::all c\n", out)
+
+    def test_a_missing_related_baseline_is_exit_two(self):
+        self.record("shard-1", junit(("a", "fail")))
+        code, _, err = self.compare_related("shard-1", "shard-9")
+        self.assertEqual(code, 2)
+        self.assertIn("shard-9.json", err)
+
+    def compare_related(self, platform, related):
+        path = self.workspace.write("patched.xml", junit(("a", "fail")))
+        return run("--platform", platform, "--related-platform", related, "--upstream-commit", COMMIT,
+                   "--baseline-dir", self.baselines, path)
+
     def test_baseline_failures_alone_pass(self):
         self.record("linux", junit(("a", "fail"), ("b", "pass")))
         code, out, _ = self.compare("linux", junit(("a", "fail"), ("b", "pass")))

@@ -11,7 +11,8 @@ kind of report from a patched run and prints:
   not run   in the baseline but absent from the patched report, so nothing is known about them
 
 Usage:
-  compare-test-baseline.py --platform P --upstream-commit C [--runner nextest|bazel] [--baseline-dir D] PATH...
+  compare-test-baseline.py --platform P [--related-platform R]... --upstream-commit C [--runner nextest|bazel]
+                           [--baseline-dir D] PATH...
   compare-test-baseline.py --platform P --upstream-commit C --write-baseline [--output FILE] PATH...
 
 Each PATH is a nextest JUnit XML file, a Bazel test.xml or test.log file, or a directory searched for junit.xml,
@@ -22,6 +23,10 @@ Test IDs. A nextest ID is "<binary-id> <test name>", as nextest prints it. A Baz
 the target's test.log. Timeouts keep their ID and are listed under timed_out.
 The comparison matches IDs without test-case's case numbers (`test_case_<n>_`), which test-case 3.4 added, so a
 baseline that names a case `::direct` still matches `::test_case_1_direct`.
+
+Each --related-platform names another baseline of the same run, such as another shard of a sharded Bazel job. Its
+failures are not new here, because adding targets can move a test into a different shard than the one that recorded
+it; a related failure that runs here is fixed or unchanged. Only the --platform baseline is checked for tests not run.
 
 Exit status: 1 if any test is new, or if no report was found; 2 for a missing baseline; 0 otherwise.
 """
@@ -185,15 +190,20 @@ def matching_key(test):
     return TEST_CASE_PREFIX.sub("", test)
 
 
-def compare(baseline, report):
-    """Sort the tests into new, fixed, unchanged and not run, listing failing tests by their names in the report."""
+def compare(baseline, report, related=frozenset()):
+    """Sort the tests into new, fixed, unchanged and not run, listing failing tests by their names in the report.
+
+    `related` holds the failures of related baselines: they count as known failures, but only `baseline` is checked
+    for tests that did not run.
+    """
     failing = {matching_key(test): test for test in report.failing}
     executed = {matching_key(test) for test in report.executed}
-    recorded = {matching_key(test): test for test in baseline}
+    own = {matching_key(test): test for test in baseline}
+    recorded = {matching_key(test): test for test in related} | own
     new = sorted(test for key, test in failing.items() if key not in recorded)
     fixed = sorted(test for key, test in recorded.items() if key in executed and key not in failing)
     unchanged = sorted(failing[key] for key in recorded if key in failing)
-    not_run = sorted(test for key, test in recorded.items() if key not in executed)
+    not_run = sorted(test for key, test in own.items() if key not in executed)
     return new, fixed, unchanged, not_run
 
 
@@ -212,6 +222,8 @@ def render(sections, files, report):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--platform", required=True)
+    parser.add_argument("--related-platform", action="append", default=[],
+                        help="another baseline of the same run whose failures are not new here; repeatable")
     parser.add_argument("--upstream-commit", required=True)
     parser.add_argument("--runner", choices=("nextest", "bazel"), default="nextest")
     parser.add_argument("--baseline-dir", default="docs/test-baselines")
@@ -233,11 +245,14 @@ def main(argv=None):
               f"{len(data['timed_out'])} timed out.")
         return 0
 
-    path = baseline_path(arguments.baseline_dir, arguments.upstream_commit, arguments.platform)
-    if not path.is_file():
-        print(f"No baseline at {path}; record one from an unpatched run with --write-baseline.", file=sys.stderr)
-        return 2
-    sections = compare(read_baseline(path), report)
+    paths = [baseline_path(arguments.baseline_dir, arguments.upstream_commit, platform)
+             for platform in [arguments.platform, *arguments.related_platform]]
+    for path in paths:
+        if not path.is_file():
+            print(f"No baseline at {path}; record one from an unpatched run with --write-baseline.", file=sys.stderr)
+            return 2
+    related = set().union(*(read_baseline(path) for path in paths[1:]))
+    sections = compare(read_baseline(paths[0]), report, related)
     lines = render(sections, files, report)
     print("\n".join(lines))
     summary = os.environ.get("GITHUB_STEP_SUMMARY")

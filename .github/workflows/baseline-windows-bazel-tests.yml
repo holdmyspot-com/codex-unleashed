@@ -321,12 +321,21 @@ jobs:
           commit="${{ steps.inputs.outputs.commit }}"
           platform="windows-bazel-${TARGET##*-}-shard-${BAZEL_TEST_SHARD}"
           common=(--runner bazel --platform "$platform" --upstream-commit "$commit")
+          # select_windows_bazel_targets.py balances targets across shards by estimated duration, so a target that the
+          # patches add can move others into a different shard; the other shards' failures are known failures here.
+          related=()
+          for ((other = 1; other <= BAZEL_TEST_SHARD_COUNT; other++)); do
+            if ((other != BAZEL_TEST_SHARD)); then
+              related+=(--related-platform "windows-bazel-${TARGET##*-}-shard-$other")
+            fi
+          done
           if [[ -z "${PATCHES// /}" ]]; then
             python "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" --write-baseline \
               --output "$evidence/$platform.json" "$(realpath bazel-testlogs)"
           else
-            python "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" --baseline-dir "$RUNNER_TEMP/test-baselines" \
-              "$(realpath bazel-testlogs)" 2>&1 | tee "$evidence/baseline-comparison.log"
+            python "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" "${related[@]}" \
+              --baseline-dir "$RUNNER_TEMP/test-baselines" "$(realpath bazel-testlogs)" 2>&1 \
+              | tee "$evidence/baseline-comparison.log"
             exit "${PIPESTATUS[0]}"
           fi
 
