@@ -467,6 +467,11 @@ jobs:
       - name: Select platform build settings
         run: |
           set -euo pipefail
+          # Four concurrent Cargo jobs run the ARM Linux runner out of memory: the runner is shut down while it compiles
+          # codex-exec. baseline-release-builds.yml measured three jobs as the fastest count that fits on both Linux targets.
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            echo 'CARGO_BUILD_JOBS=3' >> "$GITHUB_ENV"
+          fi
           if [[ "$RUNNER_OS" == macOS ]]; then
             echo 'MACOSX_DEPLOYMENT_TARGET=14.0' >> "$GITHUB_ENV"
           fi
