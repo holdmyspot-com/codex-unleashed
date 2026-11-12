@@ -68,3 +68,4 @@ The release applies these patches in this order:
 58. [bazel-downloads/zlib-launchpad-fallback.patch](holdmyspot-com/codex-unleashed/bazel-downloads/zlib-launchpad-fallback.patch)
 59. [windows-bazel-voice-host/voice-host-test-runtime.patch](holdmyspot-com/codex-unleashed/windows-bazel-voice-host/voice-host-test-runtime.patch)
 60. [flaky-tests/subagent-stop-hook-wait.patch](holdmyspot-com/codex-unleashed/flaky-tests/subagent-stop-hook-wait.patch)
+61. [flaky-tests/app-server-client-leak-timeout.patch](holdmyspot-com/codex-unleashed/flaky-tests/app-server-client-leak-timeout.patch)

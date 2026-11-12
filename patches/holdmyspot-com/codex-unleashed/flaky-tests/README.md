@@ -2,7 +2,7 @@
 
 - Applies to: the queue through `rama-0.4/rama-0.4.patch` (patch 34), which sits on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 - Prerequisites: every earlier patch in the queue, through `rama-0.4/rama-0.4.patch`. The patches below apply in this order and do not depend on each other.
-- Patches: `wine-pty-timeout.patch`, `rollout-trace.patch`, `otel-policy-export.patch`, `focus-palette.patch`, `compaction-request-parsing.patch`, `file-watcher-paused-time.patch` (patches 34–39), and `subagent-stop-hook-wait.patch` (patch 60, the last in the queue, which applies after every earlier patch).
+- Patches: `wine-pty-timeout.patch`, `rollout-trace.patch`, `otel-policy-export.patch`, `focus-palette.patch`, `compaction-request-parsing.patch`, `file-watcher-paused-time.patch` (patches 34–39), `subagent-stop-hook-wait.patch` (patch 60) and `app-server-client-leak-timeout.patch` (patch 61), which apply after every earlier patch.
 
 ## Intent
 
@@ -18,6 +18,7 @@ Every test here is upstream's and fails only when the runner is slow: a fixed ti
 - `file-watcher-paused-time.patch`: `throttled_receiver_coalesces_within_interval` and `debounced_receiver_coalesces_each_event_batch` run on Tokio's paused clock. Each asserts that nothing arrives within half of a 50 ms interval, and a stall longer than that 25 ms window on a loaded Windows runner made the receiver emit early (upstream's unmodified MSVC Bazel run `43155042574`, patched gnullvm shard 2 of `43155083884`). The receivers and the tests use only Tokio timers and in-memory channels, so each timeout now fires at its exact deadline.
 
 - `subagent-stop-hook-wait.patch`: `subagent_stop_replaces_stop_and_skips_internal_subagents` waits up to 30 seconds for its second SubagentStop hook log entry instead of 2. `ResponseMock` records every request it evaluates, including ones a later matcher rejects, so `wait_for_requests(&second_child_request)` can return before the second child turn has run. The 2 second log wait then had to cover two child turns and two `python3` hook launches, which loaded Windows ARM64 runners exceed. A new `wait_for_hook_log_within` takes the budget; `wait_for_hook_log` keeps 2 seconds for the other tests.
+- `app-server-client-leak-timeout.patch`: `codex-app-server-client` tests get a 2 second nextest `leak-timeout` instead of the default 100 ms. On Windows ARM64 the output handles of some short in-process tests stayed open briefly after the test process exited, so nextest reported passing tests as leaky. No child process of the test was alive when its in-process shutdown completed, and every handle closed within 2 seconds.
 
 ## Not fixed
 
@@ -43,6 +44,7 @@ All runs are on `holdmyspot-com/codex-unleashed`. Stress runs use `stress_count=
 - Repository checks `42844896018`, platform lints `42848707830` and argument-comment lint `42844909597` passed. Bazel Clippy `42848713820`: the Linux lanes passed. The macOS lane failed on a 500 from a `rules_platform` download and the Windows gnullvm lane on a dangling `opusic-sys` symlink; neither involves these patches.
 
 - `subagent-stop-hook-wait.patch`, `codex-core` `subagent_stop_replaces_stop_and_skips_internal_subagents`, Windows ARM64 (`baseline-windows-tests.yml`, `stress_count=20`, the same single-test filter) on the 59-patch queue: without the fix, `43275593392` failed in iteration 1 ("expected at least 2 entries in subagent_stop_hook_log.jsonl, got 1"); with it, `43267988896` passed 20 of 20 at about 6 s each. Upstream's Windows Bazel MSVC baseline also lists the test as failing.
+- `app-server-client-leak-timeout.patch`, `codex-app-server-client`, Windows ARM64 without CPU load, on the 59-patch queue plus a tracing patch: at the default leak timeout `43274822988` reported 4 of 35 tests leaky, each after its in-process shutdown had completed; a listing of the test process's children after shutdown (`43279314899`) found none; with a 2 second leak timeout `43283804308` reported 0 of 35.
 
 ## Rebase onto rust-v0.167.0
 
