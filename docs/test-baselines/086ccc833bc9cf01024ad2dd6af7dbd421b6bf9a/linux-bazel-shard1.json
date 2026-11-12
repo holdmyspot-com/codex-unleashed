@@ -1,9 +1,7 @@
 {
   "failed": [
-    "//codex-rs/cli:cli-app_server_daemon_package-test",
-    "//codex-rs/cli:cli-doctor_enterprise_network-test",
-    "//codex-rs/cli:cli-doctor_enterprise_network-test network_only_config_failure_human_output",
-    "//codex-rs/cli:cli-doctor_enterprise_network-test network_only_human_output",
+    "//codex-rs/cli:cli-app_server_daemon-test",
+    "//codex-rs/cli:cli-app_server_daemon-test bootstrap_updater_is_ready_in_deep_codex_home",
     "//codex-rs/linux-sandbox:linux-sandbox-all-test",
     "//codex-rs/linux-sandbox:linux-sandbox-all-test suite::managed_proxy::managed_proxy_mode_routes_through_bridge_and_blocks_direct_egress",
     "//codex-rs/linux-sandbox:linux-sandbox-all-test suite::managed_proxy::unsupported_system_bwrap_falls_back_to_bundled_bwrap",
@@ -11,7 +9,7 @@
   ],
   "platform": "linux-bazel-shard1",
   "runner": "bazel",
-  "tests_executed": 182,
+  "tests_executed": 181,
   "timed_out": [],
   "upstream_commit": "086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a"
 }
