@@ -11,6 +11,15 @@
 
 Handoff updated 2026-11-10T19:15Z for the next agent. The goal `implement plan.md` is incomplete: CP1–7 passed and are tagged, CP8 is reconciled, and CP9 is the remaining checkpoint. Prior authorization covers continuation, parallel work and pushing to `main`; creating a tag or publishing a release needs a separate owner instruction. The earlier root, Linux-owner and Windows-module8 live-worker records (sessions `01a18dac…`, `01a197e5…`, `01a198d5…`) describe workers whose runs have long ended; their session directories stay on disk as evidence and must not be deleted, but they are not live assignments.
 
+### Update 2026-11-12T13:00Z (supersedes the updates below where they differ)
+
+- **Queue:** 59 patches. Patch 38 (`flaky-tests/compaction-request-parsing.patch`) and patch 39 (`flaky-tests/file-watcher-paused-time.patch`) change only tests; each has stress evidence before and after in [flaky-tests/README.md](patches/holdmyspot-com/codex-unleashed/flaky-tests/README.md).
+- **Baselines at `0.0.0`:** Linux, Windows x64 and ARM64, Windows Bazel and native Bazel are re-recorded. macOS is being re-recorded by unpatched run `43204224073`; patched macOS `43204242818` runs on the 59-patch queue.
+- **Round 3 (57 patches, `0.0.0`):** every new failure is fixed or explained in [docs/upstream-failure-comparison.md](docs/upstream-failure-comparison.md). Bazel Clippy `43155089482` passed. The Windows Bazel-only failures of `loading_restrictions_close_the_isolate` and `conpty_delivers_input_to_foreground_children` passed 100 loaded iterations with and without the patches (`43217011270`, `43217035835`), so no fix is kept.
+- **Final gate round (59 patches), dispatched 12:55Z:** Linux `43222420301`, Windows x64 `43222605212`, Windows ARM64 `43222610778`, Windows Bazel `43222435229`, native Bazel `43222440779`, Bazel Clippy `43222445429`.
+- **Release build:** six targets, `43206551670`; the macOS targets wait for runners.
+- **Next:** compare the final round and macOS against the baselines; run the package job, which must tolerate the known ARM64 `[cli_root]` timeout; then the owner-authorized rehearsals and the CP9 tag.
+
 ### Update 2026-11-12T04:40Z (supersedes the updates below where they differ)
 
 - **Test version:** the owner decided that tests run at upstream's development version. A stable tag's release commit changes only `[workspace.package] version` (`0.0.0` to the tag version), and upstream's CI tests main at `0.0.0`. The test and lint workflows now commit that version back to `0.0.0` before applying the patches; release builds keep the tag version. The patches' `Cargo.lock` keeps upstream's `0.0.0` entries for workspace crates (`rust-1.99` had recorded `0.167.0` for all 171).
