@@ -11,6 +11,16 @@
 
 Handoff updated 2026-11-10T19:15Z for the next agent. The goal `implement plan.md` is incomplete: CP1–7 passed and are tagged, CP8 is reconciled, and CP9 is the remaining checkpoint. Prior authorization covers continuation, parallel work and pushing to `main`; creating a tag or publishing a release needs a separate owner instruction. The earlier root, Linux-owner and Windows-module8 live-worker records (sessions `01a18dac…`, `01a197e5…`, `01a198d5…`) describe workers whose runs have long ended; their session directories stay on disk as evidence and must not be deleted, but they are not live assignments.
 
+### Update 2026-11-12T21:10Z (supersedes the updates below where they differ)
+
+- **Owner decisions 2026-11-12:** the release rehearsals (live run against `rust-v0.167.0`, the rerun no-op, the broken-patch block) and the annotated CP9 tag are approved. Enabling the schedule stays the owner's step. The Bazel Clippy jobs get a GHCR-backed cache for their compiled C++ (V8) actions; the Windows Defender probe is dropped.
+- **Queue:** 61 patches (#60 SubagentStop hook wait, #61 app-server-client 2 s leak timeout). Patch #62 (TUI startup probe stops at the DA1 reply) waits on green runs `43300544442` (Linux, 30x) and `43300574562` (Bazel, 10x); its red run `43296053693` failed as expected.
+- **Baselines:** Windows x64 re-recorded without CLI backtraces (`d1284a9015`); macOS `43281778489` and Windows ARM64 `43282237046` are re-recording.
+- **Package job:** the aarch64 musl runner ran out of memory twice; `b7cea74cca` adds the package smoke test's 12 GB swap file to release package builds. Dry run `43302401282` checks it.
+- **Windows ARM64 full-workspace trace `43266030488`:** no hang and no app-server-client failures; the only new entry, a `sqlite_log_metrics_exports_do_not_create_log_cycles` timeout, is checked against the ARM64 re-record.
+- **Bazel Clippy speed-up:** the lint builds V8 from source in two configurations on every shard (about 3 h of a 5 h macOS shard on 3 cores). Diagnostic `43303153780` finds which configuration selects the source archive; per-platform C++ jobs that fill the GHCR cache for the lint shards follow.
+- **Next:** the runs above, patch #62, the rehearsals, the CP9 tag, then cleanup (scratch branches, worktrees, the `cargo-cache-main-new` rename).
+
 ### Update 2026-11-12T13:00Z (supersedes the updates below where they differ)
 
 - **Queue:** 59 patches. Patch 38 (`flaky-tests/compaction-request-parsing.patch`) and patch 39 (`flaky-tests/file-watcher-paused-time.patch`) change only tests; each has stress evidence before and after in [flaky-tests/README.md](patches/holdmyspot-com/codex-unleashed/flaky-tests/README.md).
