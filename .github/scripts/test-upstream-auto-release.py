@@ -10,6 +10,8 @@ import sys
 import tempfile
 import unittest
 
+import yaml
+
 SCRIPT = Path(__file__).with_name("upstream-auto-release.py")
 
 
@@ -229,6 +231,37 @@ class CommandLineTest(unittest.TestCase):
                                   "--changelog", changelog.as_posix())
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("## Changes\n\n- removed one.patch\n", result.stdout)
+
+
+LEVELS = {"none": 0, "read": 1, "write": 2}
+
+
+def granted(permissions):
+    """Return a job's or workflow's permissions as a scope-to-level map; a missing block grants only contents: read."""
+    if permissions is None:
+        return {"contents": LEVELS["read"]}
+    return {scope: LEVELS[level] for scope, level in permissions.items()}
+
+
+class ReusableWorkflowPermissionsTest(unittest.TestCase):
+    """Check that each gate grants what its called workflow requests, which GitHub otherwise refuses at startup."""
+
+    def test_callers_grant_every_permission_their_called_jobs_request(self):
+        """A called job asking for more than its caller grants makes the whole run a startup failure."""
+        workflows = SCRIPT.parents[1] / "workflows"
+        caller = yaml.safe_load((workflows / "upstream-auto-release.yml").read_text())
+        default = caller.get("permissions")
+        for name, job in caller["jobs"].items():
+            uses = job.get("uses", "")
+            if not uses.startswith("./.github/workflows/"):
+                continue
+            grant = granted(job.get("permissions", default))
+            called = yaml.safe_load((workflows / Path(uses).name).read_text())
+            requests = [called.get("permissions")] + [j.get("permissions") for j in called["jobs"].values()]
+            for request in requests:
+                for scope, level in granted(request).items():
+                    with self.subTest(job=name, scope=scope):
+                        self.assertLessEqual(level, grant.get(scope, 0))
 
 if __name__ == "__main__":
     unittest.main()
