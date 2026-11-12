@@ -2,8 +2,8 @@
   "failed": [
     "//codex-rs/cli:cli-doctor_path_safety-test",
     "//codex-rs/cli:cli-doctor_path_safety-test startup_and_doctor_do_not_execute_path_helpers",
-    "//codex-rs/file-watcher:file-watcher-unit-tests",
-    "//codex-rs/file-watcher:file-watcher-unit-tests tests::debounced_receiver_coalesces_each_event_batch",
+    "//codex-rs/cli:cli-worktree-test",
+    "//codex-rs/cli:cli-worktree-test interactive_worktree_start_and_fork_bind_owner_before_turn",
     "//codex-rs/thread-store:thread-store-unit-tests"
   ],
   "platform": "windows-bazel-gnullvm-shard-4",

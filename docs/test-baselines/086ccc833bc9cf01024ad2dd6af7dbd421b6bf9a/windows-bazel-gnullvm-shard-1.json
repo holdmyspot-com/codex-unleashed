@@ -1,9 +1,8 @@
 {
   "failed": [
     "//codex-rs/cli:cli-daemon_startup-test",
-    "//codex-rs/cli:cli-daemon_startup-test restrictive_launcher_uses_embedded_if_daemon_cannot_start",
-    "//codex-rs/exec-server-cli:exec-server-cli-standalone-test",
-    "//codex-rs/exec-server-cli:exec-server-cli-standalone-test standalone_initializes_reports_version_and_runs_helpers"
+    "//codex-rs/cli:cli-daemon_startup-test daemon_exclusion_survives_resume_picker",
+    "//codex-rs/cli:cli-daemon_startup-test elevated_local_tui_uses_embedded_without_starting_daemon"
   ],
   "platform": "windows-bazel-gnullvm-shard-1",
   "runner": "bazel",
