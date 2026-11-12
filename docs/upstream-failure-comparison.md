@@ -556,6 +556,7 @@ Re-recorded baselines, from unpatched runs at `0.0.0`:
 - Linux `43155033438`: local 48 → 7 failures, remote 190 → 149. All 41 removed failures were version-only and none were added.
 - Windows x86_64 `43155036766`: 52 → 15 failures and 4 → 11 timeouts. 38 version failures were removed. Added: `step_settings` `tool_result_history` and seven tests that hit the 60 second limit while loading, all of them unmodified upstream tests.
 - Windows ARM64 `43155039747`: 81 → 36 failures and 36 → 43 timeouts, now including the reclamation timeout.
+- Native Bazel `43155045397`: shard 1 8 → 6 failures, shard 2 40 → 9. The removed entries include the version-dependent TUI snapshot and `exec-server-cli` version-report failures. Others, such as the Wine PTY, `doctor_enterprise_network`, daemon package and TUI realtime tests, passed in this run without being shown to depend on the version. The added entries are failures of unmodified upstream tests: `app_server_daemon` `bootstrap_updater_is_ready_in_deep_codex_home` and five `core-all-test` cases, including `stdio_image_responses_resize_large_image` and `step_settings` `tool_result_history`.
 - Windows Bazel `43155042574`: msvc 51 → 14, gnullvm shards 4/9/34/5 → 3/6/3/5. Each shard ran the same targets as `43003720882`. The lower `tests_executed` counts come from fewer failing targets, whose cases are counted from their logs. The added entries are upstream intermittents: file-watcher coalescing, `daemon_startup`, worktree owner binding and a sandbox profile cleanup test.
 
 ### Local compaction retry test (2026-11-12)
