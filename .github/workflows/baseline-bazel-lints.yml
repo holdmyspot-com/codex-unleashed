@@ -32,9 +32,14 @@ jobs:
           - runner: windows-2025
             target: x86_64-pc-windows-gnullvm
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      # Reads and writes the compiled C++ action cache in GHCR.
+      packages: write
     env:
       TARGET: ${{ matrix.target }}
       BAZEL_CLIPPY_SHARD: ${{ matrix.shard }}
+      CC_CACHE_LANE: clippy-${{ matrix.target }}-${{ matrix.shard || 'all' }}
     defaults:
       run:
         shell: bash
@@ -56,6 +61,8 @@ jobs:
           cp restart-metadata/.github/scripts/apt-install-with-fallback.py "$RUNNER_TEMP/apt-install-with-fallback.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          cp restart-metadata/.github/cargo-cache-package "$evidence/cargo-cache-package"
+          cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh restart-metadata/.github/scripts/bazel-cc-disk-cache.sh "$RUNNER_TEMP/"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
@@ -213,6 +220,25 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
+      - name: Set up the GHCR cache transport
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          version: 1.3.1
+
+      # A cache fault never fails the lint: the build then runs cold.
+      - name: Restore the compiled C++ actions
+        id: cc_cache
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-lint-evidence"
+          bash "$RUNNER_TEMP/bazel-cc-disk-cache.sh" restore "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bazel-cc-cache" \
+            "ghcr.io/${GH_OWNER,,}/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" "$CC_CACHE_LANE" \
+            2>&1 | tee "$evidence/cc-cache-restore.log"
+
       - name: Run the maintained Bazel Clippy selection with fatal warnings
         run: |
           set -euo pipefail
@@ -225,6 +251,19 @@ jobs:
           fi
           wrapper_args=(--print-failed-action-summary)
           clippy_args=(--config=clippy --disk_cache=)
+          if [[ -f "$RUNNER_TEMP/bazel-cc-cache.restored" ]]; then
+            cc_cache="$RUNNER_TEMP/bazel-cc-cache"
+            if [[ "$RUNNER_OS" == Windows ]]; then
+              cc_cache="$(cygpath -m "$cc_cache")"
+            fi
+            # Only C++ compiles, archives and links (chiefly V8, built for both the target and the exec configuration)
+            # reach the disk cache; every other action is marked no-cache, which keeps it out of the disk cache only.
+            # The whole cache of a lint job would be 34-110 GB.
+            clippy_args=(
+              --config=clippy "--disk_cache=$cc_cache"
+              '--modify_execution_info=^(?!(CppCompile|CppArchive|CppLink|ObjcCompile)$).*$=+no-cache'
+            )
+          fi
           if [[ "$RUNNER_OS" == Windows ]]; then
             wrapper_args+=(--windows-cross-compile)
             clippy_args+=(--workspace_status_command=./scripts/workspace-status.cmd --skip_incompatible_explicit_targets --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1)
@@ -318,6 +357,19 @@ jobs:
           git diff --binary > "$evidence/source-after.diff"
           cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
           exit "$result"
+
+      - name: Save the compiled C++ actions
+        if: ${{ !cancelled() && steps.cc_cache.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-lint-evidence"
+          bash "$RUNNER_TEMP/bazel-cc-disk-cache.sh" save "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bazel-cc-cache" \
+            "ghcr.io/${GH_OWNER,,}/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" "$CC_CACHE_LANE" \
+            2>&1 | tee "$evidence/cc-cache-save.log"
 
       - name: Verify the patched source and tests remain unmodified
         if: always()
