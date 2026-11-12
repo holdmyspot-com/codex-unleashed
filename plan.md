@@ -11,6 +11,13 @@
 
 Handoff updated 2026-11-10T19:15Z for the next agent. The goal `implement plan.md` is incomplete: CP1–7 passed and are tagged, CP8 is reconciled, and CP9 is the remaining checkpoint. Prior authorization covers continuation, parallel work and pushing to `main`; creating a tag or publishing a release needs a separate owner instruction. The earlier root, Linux-owner and Windows-module8 live-worker records (sessions `01a18dac…`, `01a197e5…`, `01a198d5…`) describe workers whose runs have long ended; their session directories stay on disk as evidence and must not be deleted, but they are not live assignments.
 
+### Update 2026-11-12T03:10Z (supersedes the update below where they differ)
+
+- **Queue:** 57 patches; all baselines are committed. The Linux local and remote baselines were rewritten from unpatched run `43046251457`, which enables unprivileged user namespaces as upstream does.
+- **First 57-patch round:** Linux `43114171410`, Windows x64 `43120032253`, Windows ARM64 `43120035970`, Windows Bazel `43103002412` and Linux Bazel `43114175498`. Every new failure is fixed or explained in [docs/upstream-failure-comparison.md](docs/upstream-failure-comparison.md), section "57-patch queue on `rust-v0.167.0`". The fixes are folded into the patches that cause the failures (`release-adaptations`, `add-branding-and-build-metadata`, `0002-resume-parent-on-subagent-completion`, and the scenario snapshots from run `43138183433`). The comparer now ignores test-case 3.4's case numbers and compares each Windows Bazel shard with every shard's baseline.
+- **Unconfirmed:** Windows Bazel `loading_restrictions_close_the_isolate` timed out once (`execution_timed_out`, 100 ms watchdog); watch for it in the next Windows Bazel run.
+- **Next:** rerun Linux, Windows (both targets) and Bazel on the regenerated queue, then macOS last; then the six-target release build, the package job, the owner-authorized rehearsals and the CP9 tag.
+
 ### Update 2026-11-11T10:30Z (supersedes the CP9 rebase and next-step items below where they differ)
 
 - **Rebase landed:** `rust-v0.167.0` is on `main` (`29b3ee86d`). Each regenerated output lives in the patch that causes it. `issue-62/classify-wrapped-tls-errors` was dropped because upstream fixes it (recorded in [CHANGELOG.md](CHANGELOG.md)). The queue has **53 patches**.

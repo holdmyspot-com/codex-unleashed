@@ -9,6 +9,7 @@ Users need to tell a Codex Unleashed build from OpenAI Codex and see which build
  codex-rs/cli/build.rs                         |   5 +
  codex-rs/cli/src/main.rs                      |  40 +++++-
  ..._server_help_documents_remote_options.snap |  12 +-
+ .../cli/tests/app_server_daemon/package.rs    |   8 +-
  codex-rs/cli/tests/build_info.rs              |  51 ++++++++
  codex-rs/login/src/auth/default_client.rs     |   5 +-
  .../login/src/auth/default_client_tests.rs    |  22 +++-
@@ -74,7 +75,7 @@ Users need to tell a Codex Unleashed build from OpenAI Codex and see which build
  codex-rs/tui/src/status/tests.rs              |  27 +++-
  codex-rs/tui/src/version.rs                   |   8 +-
  .../smoke_tests/test_codex_package.py         |   8 +-
- 69 files changed, 614 insertions(+), 251 deletions(-)
+ 70 files changed, 621 insertions(+), 252 deletions(-)
  create mode 100644 codex-rs/cli/tests/build_info.rs
  create mode 100644 codex-rs/tui/build.rs
 
@@ -255,6 +256,28 @@ index 706c032..6643854 100644
        --proxy-private-ips-via-upstream
            Allow permitted private IP destinations to use the configured upstream
            proxy. If no valid upstream proxy applies to the request protocol,
+diff --git a/codex-rs/cli/tests/app_server_daemon/package.rs b/codex-rs/cli/tests/app_server_daemon/package.rs
+index 6c010c5..92b2dd7 100644
+--- a/codex-rs/cli/tests/app_server_daemon/package.rs
++++ b/codex-rs/cli/tests/app_server_daemon/package.rs
+@@ -55,10 +55,16 @@ fn packaged_daemon_launch(action: &str, initial: InitialDaemon) -> Result<()> {
+             "unknown-linux-musl"
+         }
+     );
++    // The package must declare the version its executable reports, build number included.
++    let version = format!(
++        "{}+{}",
++        env!("CARGO_PKG_VERSION"),
++        option_env!("CODEX_UNLEASHED_BUILD_NUMBER").unwrap_or("dev")
++    );
+     std::fs::write(
+         package.join("codex-package.json"),
+         serde_json::to_vec(&serde_json::json!({
+-            "version": env!("CARGO_PKG_VERSION"), "target": target, "entrypoint": "bin/codex"
++            "version": version, "target": target, "entrypoint": "bin/codex"
+         }))?,
+     )?;
+     if action == "start" && initial == InitialDaemon::Missing {
 diff --git a/codex-rs/cli/tests/build_info.rs b/codex-rs/cli/tests/build_info.rs
 new file mode 100644
 index 0000000..ffc0726

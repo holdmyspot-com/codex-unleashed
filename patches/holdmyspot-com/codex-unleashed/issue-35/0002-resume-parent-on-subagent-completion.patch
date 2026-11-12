@@ -5,7 +5,8 @@ Subject: [PATCH 13/54] Resume available parents when V2 subagents finish
 
 A child's completion or failure now starts a turn on an idle parent, unless the parent was interrupted, and the spawn guidance tells the model it may finish its turn while delegated work keeps running. The stable unleashed_background_subagents feature, enabled by default, controls both; disabling it keeps queue-only completion mail.
 ---
- .../app-server/tests/suite/v2/guardian_v2.rs  |   3 +-
+ .../tests/suite/v2/guardian_goal_tests.rs     |  12 +-
+ .../app-server/tests/suite/v2/guardian_v2.rs  |  44 +-
  .../tests/suite/v2/thread_unsubscribe.rs      |  45 +-
  codex-rs/core/config.schema.json              |   6 +
  codex-rs/core/src/agent/control/completion.rs |  25 +-
@@ -30,6 +31,7 @@ A child's completion or failure now starts a turn on an idle parent, unless the 
  ...os__astra_input_yields_code_mode_cell.snap |   4 +-
  ...tra_kickoff_remote_compaction_windows.snap |   8 +-
  ...a_plugin_policy_limits_visible_skills.snap |   4 +-
+ ...gin_policy_without_skill_descriptions.snap |   4 +-
  ...efresh_simplified_selection_hints_off.snap |   4 +-
  ...refresh_simplified_selection_hints_on.snap |   4 +-
  ...ra_settings_release_check_tool_shapes.snap |   4 +-
@@ -38,6 +40,7 @@ A child's completion or failure now starts a turn on an idle parent, unless the 
  ...e_mode_catalog_messages_ranked_search.snap |   4 +-
  ...ed_helpers__code_mode_settled_helpers.snap |   4 +-
  ...ios__compaction__remote_slash_compact.snap |  12 +-
+ ...ves_pending_calls_and_survives_resume.snap |   9 +-
  ...s_with_named_executor_request_history.snap |   4 +-
  ...__catalog_indirect_namespace_prefixes.snap |   8 +-
  ...ailure_preserves_ordinary_mcp_history.snap |   4 +-
@@ -50,23 +53,133 @@ A child's completion or failure now starts a turn on an idle parent, unless the 
  ...tained_tool_output_retention_disabled.snap |  12 +-
  ...output_survives_compaction_and_resume.snap |   8 +-
  ...catalog_dedup__dedup_before_budgeting.snap |   4 +-
+ ...log_dedup__dedup_without_descriptions.snap |   4 +-
  ...l_catalog_dedup__skill_catalog_deltas.snap |  16 +-
  ...installation_recovery_request_history.snap |   4 +-
  ...3p_cache__strict_3p_mcp_catalog_cache.snap |   2 +-
+ ...e_rechecked_without_rewriting_history.snap |   9 +-
  ...prefix__extension_window_prefix_local.snap |  12 +-
  ...refix__extension_window_prefix_remote.snap |  12 +-
  codex-rs/core/tests/suite/step_settings.rs    |   4 +
  .../tests/suite/subagent_notifications.rs     |   7 +
  .../core/tests/suite/subagent_service_tier.rs |   4 +
  codex-rs/features/src/lib.rs                  |   8 +
- 54 files changed, 955 insertions(+), 127 deletions(-)
+ 59 files changed, 1007 insertions(+), 154 deletions(-)
  create mode 100644 codex-rs/core/tests/suite/background_subagent_tests.rs
 
+diff --git a/codex-rs/app-server/tests/suite/v2/guardian_goal_tests.rs b/codex-rs/app-server/tests/suite/v2/guardian_goal_tests.rs
+index fb6e707..51b397b 100644
+--- a/codex-rs/app-server/tests/suite/v2/guardian_goal_tests.rs
++++ b/codex-rs/app-server/tests/suite/v2/guardian_goal_tests.rs
+@@ -5,6 +5,8 @@ use codex_app_server_protocol::ThreadGoalSetResponse;
+ use pretty_assertions::assert_eq;
+ use test_case::test_case;
+ 
++const FOLLOWUP_REQUEST: &str = "Ask the worker to check again.";
++
+ /// A goal set after spawning a worker must reach its reviewer only with user provenance.
+ #[test_case("user"; "user goal")]
+ #[test_case("automatic"; "automatic goal is not authorization")]
+@@ -13,6 +15,9 @@ async fn worker_guardian_sees_goal_set_after_spawn(origin: &str) -> Result<()> {
+     skip_if_no_network!(Ok(()));
+     let state = Arc::new(MockResponsesState {
+         root_worker: true,
++        // The worker's completion wakes the idle root, so the follow-up keys on the user's request
++        // rather than on a root request number; the user's turn may also join that wake turn.
++        root_followup_text: Some(FOLLOWUP_REQUEST),
+         mcp_server_name: Some(TEST_SERVER_NAME),
+         ..Default::default()
+     });
+@@ -71,8 +76,9 @@ async fn worker_guardian_sees_goal_set_after_spawn(origin: &str) -> Result<()> {
+     }
+     wait_for_guardian_reviews(&state, /*expected*/ 2).await?;
+ 
+-    // The worker's fork and first review predate the goal. Keep the goal paused so
+-    // only the explicit follow-up below starts work, without an autonomous goal turn.
++    // The worker's fork and first review predate the goal. Keep the goal paused so no
++    // autonomous goal turn starts; only the explicit follow-up below sends the worker back
++    // to the tool, so the third review is the one that follows the goal.
+     let objective = "Publish the approved report using the configured MCP tool.";
+     let id = app
+         .send_raw_request(
+@@ -87,7 +93,7 @@ async fn worker_guardian_sees_goal_set_after_spawn(origin: &str) -> Result<()> {
+         .send_turn_start_request(TurnStartParams {
+             thread_id: root.id,
+             input: vec![UserInput::Text {
+-                text: "Ask the worker to check again.".to_owned(),
++                text: FOLLOWUP_REQUEST.to_owned(),
+                 text_elements: vec![],
+             }],
+             ..Default::default()
 diff --git a/codex-rs/app-server/tests/suite/v2/guardian_v2.rs b/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
-index c15253a..7314e8e 100644
+index c15253a..f34af33 100644
 --- a/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
 +++ b/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
-@@ -944,7 +944,8 @@ async fn guardian_v2_routes_scoped_tool_approvals(
+@@ -203,6 +203,9 @@ struct MockResponsesState {
+     mcp_tool_sequence: Option<&'static [&'static str]>,
+     mcp_messages: Mutex<Vec<&'static str>>,
+     root_worker: bool,
++    /// With a root worker, send the follow-up once a user message contains this text instead of on a fixed
++    /// root request. Turns that a child's completion starts then get a plain reply wherever they fall.
++    root_followup_text: Option<&'static str>,
+     root_user_restriction: bool,
+     root_user_input_restriction: bool,
+     compact_root_after_answer: bool,
+@@ -393,6 +396,21 @@ async fn wait_for_guardian_reviews(state: &MockResponsesState, expected: usize)
+     Ok(())
+ }
+ 
++/// Whether a user message in a root request contains `text` and no follow-up call after it answers it yet.
++///
++/// A child's completion notice can follow the user's message in the same request, so the message need not be last.
++fn followup_requested(request: &Value, text: &str) -> bool {
++    let input = request["input"].as_array().expect("root model input");
++    input
++        .iter()
++        .rposition(|item| item["role"] == "user" && item.to_string().contains(text))
++        .is_some_and(|message| {
++            !input[message..]
++                .iter()
++                .any(|item| item["call_id"] == "guardian-followup-worker")
++        })
++}
++
+ async fn parent_response(
+     State(state): State<Arc<MockResponsesState>>,
+     Json(request): Json<Value>,
+@@ -477,18 +495,21 @@ async fn parent_response(
+                     .any(|item| item["call_id"] == "guardian-user-input")
+             );
+         }
++        let followup = match state.root_followup_text {
++            Some(text) => root_request > 0 && followup_requested(&request, text),
++            None => {
++                !state.late_root_restriction
++                    && root_request
++                        == if state.compact_root_after_answer {
++                            4
++                        } else {
++                            2
++                        }
++            }
++        };
+         match root_request {
+             1 if state.root_user_input_restriction => user_input_request_events(),
+-            0 | 2 | 4
+-                if root_request == 0
+-                    || !state.late_root_restriction
+-                        && root_request
+-                            == if state.compact_root_after_answer {
+-                                4
+-                            } else {
+-                                2
+-                            } =>
+-            {
++            _ if root_request == 0 || followup => {
+                 let (call_id, tool_name, arguments) = if root_request == 0 {
+                     (
+                         "guardian-spawn-worker",
+@@ -944,7 +965,8 @@ async fn guardian_v2_routes_scoped_tool_approvals(
      if lifecycle.uses_root_worker() {
          mock_config = mock_config
              .enable_feature(Feature::Collab)
@@ -1434,6 +1547,28 @@ index f44283d..e5a50cc 100644
            - function/followup_task
            - function/interrupt_agent
            - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_policy_without_skill_descriptions.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_policy_without_skill_descriptions.snap
+index 8a81d58..0169d7a 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_policy_without_skill_descriptions.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_policy_without_skill_descriptions.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
++00:additional_tools/developer (3; hash=0878603fc9a589f5):
+         - namespace/functions; hash=fada4a476a3754dd
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=2c8d6295978dbe63
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=83607718cfa02151
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
 diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_off.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_off.snap
 index e5fd89c..d21ee19 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_off.snap
@@ -1661,6 +1796,53 @@ index b0d713e..8d10440 100644
            - function/followup_task
            - function/interrupt_agent
            - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__dynamic_tools__dynamic_tools_update_preserves_pending_calls_and_survives_resume.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__dynamic_tools__dynamic_tools_update_preserves_pending_calls_and_survives_resume.snap
+index cdbd3f8..68d73f6 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__dynamic_tools__dynamic_tools_update_preserves_pending_calls_and_survives_resume.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__dynamic_tools__dynamic_tools_update_preserves_pending_calls_and_survives_resume.snap
+@@ -1,6 +1,5 @@
+ ---
+ source: core/tests/suite/scenarios_dynamic_tools.rs
+-assertion_line: 173
+ expression: "context_snapshot::format_request_history_snapshot(\"A pending release call survives replacement with deployment. The next step uses deployment. Replacement and clearing each survive restart.\",\n&requests,\n&ContextSnapshotOptions::default().rewrite_known_segments().include_request_settings(),)"
+ ---
+ Scenario: A pending release call survives replacement with deployment. The next step uses deployment. Replacement and clearing each survive restart.
+@@ -16,7 +15,7 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (10; hash=39aa00a8736bb135):
++  tools (10; hash=a4b9a6bb590fc8b7):
+     - function/exec_command: Runs a command in a PTY, returning output or a session ID for ongoing interaction.; args=[cmd, justification, login, max_output_tokens, prefix_rule, sandbox_permissions, shell, tty, workdir, yield_time_ms]; hash=c04108e51a8548c5
+     - function/write_stdin: Writes characters to an existing unified exec session and returns recent output.; args=[chars, max_output_tokens, session_id, yield_time_ms]; hash=7fb62d8a3e2df4e2
+     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
+@@ -26,7 +25,7 @@ Settings:
+       - function/sleep
+     - custom/apply_patch: The `apply_patch` tool can be used to edit files. This is a FREEFORM tool, so do not wrap the pat...; hash=dea9f12b0111a4ba
+     - function/view_image: View a local image file from the filesystem when visual inspection is needed. Use this for images...; args=[detail, path]; hash=3b766d5bdec5d50e
+-    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=2c8d6295978dbe63
++    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=83607718cfa02151
+       - function/followup_task
+       - function/interrupt_agent
+       - function/list_agents
+@@ -51,7 +50,7 @@ Settings:
+ 
+ ## Window 2 (after request 1)
+ Settings: relative to window 1
+-  tools (10; hash=f9e31c2361b9bc7d):
++  tools (10; hash=93d00cd2e145e27f):
+     - removed function/release
+     + function/deployment: Check deployment.; args=[]; hash=2e9a71e9a20e43ad
+ -- request 2 (turn) --
+@@ -81,7 +80,7 @@ Settings: relative to window 1
+ 
+ ## Window 3 (after request 4)
+ Settings: relative to window 2
+-  tools (9; hash=4f2e62909d4cf2eb):
++  tools (9; hash=62785510999ff651):
+     - removed function/deployment
+ -- request 5 (turn) --
+ 00:message/developer:
 diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__frozen_cloud_skills__frozen_cloud_skills_with_named_executor_request_history.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__frozen_cloud_skills__frozen_cloud_skills_with_named_executor_request_history.snap
 index 892cb6f..b2355c5 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__frozen_cloud_skills__frozen_cloud_skills_with_named_executor_request_history.snap
@@ -2000,6 +2182,28 @@ index e260a8a..b7583b1 100644
            - function/followup_task
            - function/interrupt_agent
            - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_without_descriptions.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_without_descriptions.snap
+index 9bb1897..4cf591b 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_without_descriptions.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_without_descriptions.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=5e8370540461db70):
++00:additional_tools/developer (3; hash=eef7c344db74d4fe):
+         - namespace/functions; hash=7d26e086c1dbba28
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=2c8d6295978dbe63
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=83607718cfa02151
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
 diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__skill_catalog_deltas.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__skill_catalog_deltas.snap
 index c951770..6afd740 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__skill_catalog_deltas.snap
@@ -2103,6 +2307,52 @@ index 6119981..cc1ac14 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__strict_3p_cache__strict_3p_mcp_catalog_cache.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__strict_3p_cache__strict_3p_mcp_catalog_cache.snap
 @@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=2c8d6295978dbe63
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=83607718cfa02151
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__unavailable_images_are_rechecked_without_rewriting_history.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__unavailable_images_are_rechecked_without_rewriting_history.snap
+index 09ae45e..68fce86 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__unavailable_images_are_rechecked_without_rewriting_history.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__unavailable_images_are_rechecked_without_rewriting_history.snap
+@@ -1,13 +1,12 @@
+ ---
+ source: core/tests/suite/scenarios.rs
+-assertion_line: 723
+ expression: "context_snapshot::format_request_history_snapshot(\"Available file references pass through. A later request replaces missing files, preserves references on backend errors, rechecks each distinct ID once, and keeps canonical history intact.\",\n&requests, &ContextSnapshotOptions::default().rewrite_known_segments(),)"
+ ---
+ Scenario: Available file references pass through. A later request replaces missing files, preserves references on backend errors, rechecks each distinct ID once, and keeps canonical history intact.
+ 
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
++00:additional_tools/developer (3; hash=0878603fc9a589f5):
+         - namespace/functions; hash=fada4a476a3754dd
+           - custom/exec
+           - function/wait
+@@ -15,7 +14,7 @@ Scenario: Available file references pass through. A later request replaces missi
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=2c8d6295978dbe63
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=83607718cfa02151
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -43,7 +42,7 @@ Scenario: Available file references pass through. A later request replaces missi
+ 
+ ## Window 2 (after request 1: input diverged at item 06)
+ -- request 2 (turn) --
+-00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
++00:additional_tools/developer (3; hash=0878603fc9a589f5):
+         - namespace/functions; hash=fada4a476a3754dd
+           - custom/exec
+           - function/wait
+@@ -51,7 +50,7 @@ Scenario: Available file references pass through. A later request replaces missi
            - function/request_user_input_async
          - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
            - function/sleep

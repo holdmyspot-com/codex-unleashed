@@ -39,7 +39,7 @@ None. This series adds no `[codex_unleashed]` property.
 ## Patch order
 
 1. `0001-preserve-interrupted-mailbox-work.patch` returns mail that an automatic parent turn had taken to the session queue when that turn is interrupted or replaced before its task registers, and keeps background results from waking an interrupted parent again.
-2. `0002-resume-parent-on-subagent-completion.patch` adds the feature flag. A child's completion or failure then starts a turn on an idle parent, and the spawn guidance tells the model it may finish its turn while delegated work runs. Fixtures that drive parent turns explicitly disable the feature.
+2. `0002-resume-parent-on-subagent-completion.patch` adds the feature flag. A child's completion or failure then starts a turn on an idle parent, and the spawn guidance tells the model it may finish its turn while delegated work runs. Fixtures that drive parent turns explicitly disable the feature, except the Guardian goal fixture, whose mock follows the user's message and answers wake turns.
 3. `0003-defer-goal-continuation-to-live-children.patch` keeps automatic goal continuation from starting a parent turn while a direct V2 child is running.
 
 ## Reproduction
@@ -53,7 +53,7 @@ From the patched upstream checkout root:
 ```sh
 cd codex-rs && cargo nextest run -p codex-core -p codex-protocol -p codex-features -E 'test(background_subagent_) | test(mailbox_wake_tests) | test(mailbox_retention_tests) | test(abort_empty_active_turn_preserves_pending_input) | test(multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn)'
 cd codex-rs && cargo nextest run -p codex-core -p codex-code-mode-host -p codex-rmcp-client -E 'test(suite::scenarios::)'
-cd codex-rs && cargo nextest run -p codex-app-server -E 'test(app_server_resumes_parent_after_background_child_finishes) | test(thread_goal_lifecycle_emits_analytics_and_clear_deletes_goal) | test(v2_child_idle_eviction_preserves_mail_and_followup_context)'
+cd codex-rs && cargo nextest run -p codex-app-server -E 'test(app_server_resumes_parent_after_background_child_finishes) | test(thread_goal_lifecycle_emits_analytics_and_clear_deletes_goal) | test(v2_child_idle_eviction_preserves_mail_and_followup_context) | test(worker_guardian_sees_goal_set_after_spawn)'
 cd codex-rs && cargo nextest run -p codex-app-server-protocol --lib -E 'test(stable_precomputed_exports_match_schema_fixtures)'
 cd codex-rs && cargo nextest run -p codex-core -E 'test(config_schema_matches_fixture)'
 just fmt-check

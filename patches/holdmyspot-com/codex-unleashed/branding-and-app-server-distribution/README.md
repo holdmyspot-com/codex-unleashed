@@ -39,6 +39,11 @@ just fmt-check
 Run the CLI build-information checks without `CODEX_UNLEASHED_BUILD_NUMBER` to
 check the `+dev` fallback.
 
+The packaged-daemon tests in `codex-cli`'s `app_server_daemon` suite write a
+`codex-package.json` whose version must equal the one the executable reports,
+so their fixture declares `<version>+<build number>` too (Linux run
+`43114171410`).
+
 ## Server distribution warning
 
 - Patch: `warn-on-openai-app-server.patch`.

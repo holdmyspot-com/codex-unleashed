@@ -9,15 +9,22 @@ Fix what the upgraded releases change at run time or in test expectations: rtc 0
  MODULE.bazel.lock                             |  1 -
  codex-rs/Cargo.lock                           | 24 ++++----
  codex-rs/Cargo.toml                           |  6 +-
+ .../protocol/v2/model_provider_error_tests.rs |  3 +-
  .../remote_control/server_api_tests.rs        | 19 +++++-
  ...ample__sample_inherits_parent_context.snap | 12 ++--
  .../tests/suite/v2/turn_cost_otel.rs          |  2 +-
  codex-rs/cli/tests/worktree.rs                |  6 +-
  .../src/ui/transport_tests.rs                 |  2 +-
  codex-rs/code-mode-runtime/src/ui/workers.rs  |  7 ++-
- .../src/noise_relay/harness_tests.rs          | 14 +++--
+ ...eb_search__literature_search_and_open.snap |  4 +-
+ ...rch__literature_search_web_run_schema.snap | 12 ++--
+ .../src/noise_relay/harness_tests.rs          | 29 ++++++++--
  codex-rs/exec-server/src/remote.rs            |  6 ++
+ .../model-provider/tests/runtime_catalog.rs   |  7 +++
+ codex-rs/otel/src/metrics/client.rs           |  2 +
  codex-rs/otel/src/network_policy.rs           |  6 +-
+ codex-rs/otel/src/otlp.rs                     | 11 ++++
+ codex-rs/otel/src/provider.rs                 |  5 ++
  .../tests/fixtures/plugin_process.rs          |  8 ++-
  codex-rs/state/src/log_db.rs                  | 11 ++++
  codex-rs/state/src/log_db_filter_tests.rs     |  1 +
@@ -25,7 +32,7 @@ Fix what the upgraded releases change at run time or in test expectations: rtc 0
  codex-rs/utils/cargo-bin/Cargo.toml           |  1 -
  codex-rs/utils/cargo-bin/src/lib.rs           | 41 +++++++------
  .../voice-host/src/capture_worker_tests.rs    | 58 ++++++++++++++-----
- 19 files changed, 153 insertions(+), 82 deletions(-)
+ 26 files changed, 202 insertions(+), 92 deletions(-)
 
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
 index 0ea2b06..c80c548 100644
@@ -176,6 +183,20 @@ index 8d40d19..e07e817 100644
  url = "2"
  urlencoding = "2.1"
  uuid = "1"
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/model_provider_error_tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/model_provider_error_tests.rs
+index 0537ec6..fe4dc15 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/model_provider_error_tests.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/model_provider_error_tests.rs
+@@ -25,7 +25,8 @@ fn provider_error_schema_matches_wire_fields() -> anyhow::Result<()> {
+             .as_array()
+             .expect("tagged variants")
+             .iter()
+-            .find(|variant| variant["properties"]["type"]["enum"][0] == wire["type"])
++            // schemars 1 describes a single-valued discriminator with `const`.
++            .find(|variant| variant["properties"]["type"]["const"] == wire["type"])
+             .expect("schema variant for wire discriminator");
+         let wire_fields: BTreeSet<_> = wire
+             .as_object()
 diff --git a/codex-rs/app-server-transport/src/transport/remote_control/server_api_tests.rs b/codex-rs/app-server-transport/src/transport/remote_control/server_api_tests.rs
 index cc8d93d..64d687e 100644
 --- a/codex-rs/app-server-transport/src/transport/remote_control/server_api_tests.rs
@@ -355,26 +376,111 @@ index d2636e0..4b16de9 100644
                          fatal(error);
                      }
                  }
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_and_open.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_and_open.snap
+index 45e9cc1..37dacfa 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_and_open.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_and_open.snap
+@@ -15,13 +15,13 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (7; hash=dba1108606ea8676):
++  tools (7; hash=6389e5ccd44a36d0):
+     - function/exec_command: Runs a command in a PTY, returning output or a session ID for ongoing interaction.; args=[cmd, justification, login, max_output_tokens, prefix_rule, sandbox_permissions, shell, tty, workdir, yield_time_ms]; hash=c04108e51a8548c5
+     - function/write_stdin: Writes characters to an existing unified exec session and returns recent output.; args=[chars, max_output_tokens, session_id, yield_time_ms]; hash=7fb62d8a3e2df4e2
+     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
+     - custom/apply_patch: The `apply_patch` tool can be used to edit files. This is a FREEFORM tool, so do not wrap the pat...; hash=dea9f12b0111a4ba
+     - function/view_image: View a local image file from the filesystem when visual inspection is needed. Use this for images...; args=[detail, path]; hash=3b766d5bdec5d50e
+-    - namespace/web: Tools in the web namespace.; hash=c60e4db83b9fd6b0
++    - namespace/web: Tools in the web namespace.; hash=ea89bde980bfc902
+       - function/run
+     - tool_search: # Tool discovery  Searches over deferred tool metadata with BM25 and exposes matching tools for t...; args=[limit, query]; hash=b573ed69c0b0e6c7
+ -- request 1 (turn) --
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_web_run_schema.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_web_run_schema.snap
+index 66517ac..e00cc70 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_web_run_schema.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_web_run_schema.snap
+@@ -18,8 +18,8 @@ expression: "serde_json::to_string_pretty(&parameters)?"
+           }
+         },
+         "required": [
+-          "id",
+-          "ref_id"
++          "ref_id",
++          "id"
+         ],
+         "type": "object"
+       },
+@@ -70,8 +70,8 @@ expression: "serde_json::to_string_pretty(&parameters)?"
+           }
+         },
+         "required": [
+-          "pattern",
+-          "ref_id"
++          "ref_id",
++          "pattern"
+         ],
+         "type": "object"
+       },
+@@ -174,8 +174,8 @@ expression: "serde_json::to_string_pretty(&parameters)?"
+           }
+         },
+         "required": [
+-          "pageno",
+-          "ref_id"
++          "ref_id",
++          "pageno"
+         ],
+         "type": "object"
+       },
 diff --git a/codex-rs/exec-server/src/noise_relay/harness_tests.rs b/codex-rs/exec-server/src/noise_relay/harness_tests.rs
-index 4c2d77d..d98263a 100644
+index 4c2d77d..c028540 100644
 --- a/codex-rs/exec-server/src/noise_relay/harness_tests.rs
 +++ b/codex-rs/exec-server/src/noise_relay/harness_tests.rs
-@@ -660,13 +660,17 @@ where
+@@ -636,13 +636,21 @@ impl futures::Stream for ControlledWebSocket {
+     }
+ }
+ 
++/// Captured trace-safe events, and the dispatcher this layer was registered with.
+ #[derive(Clone, Default)]
+-struct SafeEvents(Arc<std::sync::Mutex<Vec<std::collections::BTreeMap<String, String>>>>);
++struct SafeEvents(
++    Arc<std::sync::Mutex<Vec<std::collections::BTreeMap<String, String>>>>,
++    Arc<std::sync::OnceLock<tracing::dispatcher::WeakDispatch>>,
++);
+ 
+ impl<S> tracing_subscriber::Layer<S> for SafeEvents
+ where
+     S: tracing::Subscriber + for<'lookup> tracing_subscriber::registry::LookupSpan<'lookup>,
+ {
++    fn on_register_dispatch(&self, subscriber: &tracing::Dispatch) {
++        let _ = self.1.set(subscriber.downgrade());
++    }
++
+     fn on_event(
+         &self,
+         event: &tracing::Event<'_>,
+@@ -660,13 +668,22 @@ where
          }
          let mut fields = Fields::default();
          event.record(&mut fields);
 -        // Match CCA's live JSON lookup: inspecting OtelData must not materialize
 -        // the context and accidentally hide a missing producer initialization.
 +        // tracing-opentelemetry 0.34 no longer exposes its per-span data, so read the span's
-+        // trace ID through the crate's public context lookup.
++        // trace ID through the crate's public context lookup. The lookup needs the dispatcher
++        // this layer belongs to: inside a subscriber callback the default dispatcher is the no-op
++        // one, because tracing does not re-enter the dispatcher that is delivering the event.
++        let dispatch = self
++            .1
++            .get()
++            .and_then(tracing::dispatcher::WeakDispatch::upgrade);
          if let Some(trace_id) = context.event_scope(event).and_then(|mut scope| {
              scope.find_map(|span| {
 -                span.extensions()
 -                    .get::<tracing_opentelemetry::OtelData>()?
 -                    .trace_id()
-+                let otel_context = tracing::dispatcher::get_default(|dispatch| {
-+                    tracing_opentelemetry::get_otel_context(&span.id(), dispatch)
-+                })?;
++                let otel_context =
++                    tracing_opentelemetry::get_otel_context(&span.id(), dispatch.as_ref()?)?;
 +                let span_context = opentelemetry::trace::TraceContextExt::span(&otel_context)
 +                    .span_context()
 +                    .clone();
@@ -399,6 +505,48 @@ index cf88006..84739cc 100644
              stream
                  .write_all(
                      b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 256\r\n\r\n{",
+diff --git a/codex-rs/model-provider/tests/runtime_catalog.rs b/codex-rs/model-provider/tests/runtime_catalog.rs
+index d65745c..681f2b0 100644
+--- a/codex-rs/model-provider/tests/runtime_catalog.rs
++++ b/codex-rs/model-provider/tests/runtime_catalog.rs
+@@ -244,10 +244,17 @@ fn tls_config() -> (String, Arc<rustls::ServerConfig>) {
+     let mut ca_params = rcgen::CertificateParams::default();
+     ca_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+     ca_params.key_usages = vec![rcgen::KeyUsagePurpose::KeyCertSign];
++    // rcgen names every certificate "rcgen self signed cert" by default. A leaf whose issuer equals
++    // its own subject looks self-signed to the Windows verifier, which then rejects its signature.
++    ca_params
++        .distinguished_name
++        .push(rcgen::DnType::CommonName, "runtime catalog test CA");
+     let ca = rcgen::CertifiedIssuer::self_signed(ca_params, rcgen::KeyPair::generate().unwrap())
+         .unwrap();
+     let mut leaf = rcgen::CertificateParams::new(vec!["chatgpt.com".into()]).unwrap();
+     leaf.extended_key_usages = vec![rcgen::ExtendedKeyUsagePurpose::ServerAuth];
++    leaf.distinguished_name
++        .push(rcgen::DnType::CommonName, "chatgpt.com");
+     let key = rcgen::KeyPair::generate().unwrap();
+     let cert = leaf.signed_by(&key, &ca).unwrap();
+     let config = rustls::ServerConfig::builder()
+diff --git a/codex-rs/otel/src/metrics/client.rs b/codex-rs/otel/src/metrics/client.rs
+index 9564f1e..6e1571d 100644
+--- a/codex-rs/otel/src/metrics/client.rs
++++ b/codex-rs/otel/src/metrics/client.rs
+@@ -667,6 +667,7 @@ fn build_otlp_metric_exporter(
+ 
+             opentelemetry_otlp::MetricExporter::builder()
+                 .with_tonic()
++                .with_retry_policy(crate::otlp::export_retry_policy())
+                 .with_endpoint(endpoint)
+                 .with_temporality(temporality)
+                 .with_metadata(MetadataMap::from_headers(header_map))
+@@ -689,6 +690,7 @@ fn build_otlp_metric_exporter(
+ 
+             let mut exporter_builder = opentelemetry_otlp::MetricExporter::builder()
+                 .with_http()
++                .with_retry_policy(crate::otlp::export_retry_policy())
+                 .with_endpoint(endpoint)
+                 .with_temporality(temporality)
+                 .with_protocol(protocol)
 diff --git a/codex-rs/otel/src/network_policy.rs b/codex-rs/otel/src/network_policy.rs
 index e39c800..77d782d 100644
 --- a/codex-rs/otel/src/network_policy.rs
@@ -416,6 +564,79 @@ index e39c800..77d782d 100644
                      let mut builder = http::Response::builder().status(response.status());
                      if let Some(headers) = builder.headers_mut() {
                          *headers = response.headers().clone();
+diff --git a/codex-rs/otel/src/otlp.rs b/codex-rs/otel/src/otlp.rs
+index df57c57..122b723 100644
+--- a/codex-rs/otel/src/otlp.rs
++++ b/codex-rs/otel/src/otlp.rs
+@@ -3,6 +3,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
+ use http::Uri;
+ use opentelemetry_otlp::OTEL_EXPORTER_OTLP_TIMEOUT;
+ use opentelemetry_otlp::OTEL_EXPORTER_OTLP_TIMEOUT_DEFAULT;
++use opentelemetry_otlp::RetryPolicy;
+ use opentelemetry_otlp::tonic_types::transport::Certificate as TonicCertificate;
+ use opentelemetry_otlp::tonic_types::transport::ClientTlsConfig;
+ use opentelemetry_otlp::tonic_types::transport::Identity as TonicIdentity;
+@@ -19,6 +20,16 @@ use std::io::ErrorKind;
+ use std::path::PathBuf;
+ use std::time::Duration;
+ 
++/// Returns the retry policy for every OTLP exporter: one attempt per export.
++///
++/// opentelemetry-otlp 0.33 retries failed exports by default, up to four attempts per batch.
++/// Earlier releases made one attempt, and telemetry shutdown budgets assume it: on Windows each
++/// refused connection to an absent local collector takes about two seconds, so four attempts
++/// exceed the five-second shutdown budget.
++pub(crate) fn export_retry_policy() -> RetryPolicy {
++    RetryPolicy::disabled()
++}
++
+ pub(crate) fn build_header_map(headers: &std::collections::HashMap<String, String>) -> HeaderMap {
+     let mut header_map = HeaderMap::new();
+     for (key, value) in headers {
+diff --git a/codex-rs/otel/src/provider.rs b/codex-rs/otel/src/provider.rs
+index d04d107..d256b19 100644
+--- a/codex-rs/otel/src/provider.rs
++++ b/codex-rs/otel/src/provider.rs
+@@ -481,6 +481,7 @@ fn build_logger(
+ 
+             let exporter = LogExporter::builder()
+                 .with_tonic()
++                .with_retry_policy(crate::otlp::export_retry_policy())
+                 .with_endpoint(endpoint)
+                 .with_metadata(MetadataMap::from_headers(header_map))
+                 .with_tls_config(tls_config)
+@@ -506,6 +507,7 @@ fn build_logger(
+ 
+             let mut exporter_builder = LogExporter::builder()
+                 .with_http()
++                .with_retry_policy(crate::otlp::export_retry_policy())
+                 .with_endpoint(endpoint)
+                 .with_protocol(protocol)
+                 .with_headers(headers);
+@@ -563,6 +565,7 @@ fn build_tracer_provider(
+ 
+             SpanExporter::builder()
+                 .with_tonic()
++                .with_retry_policy(crate::otlp::export_retry_policy())
+                 .with_endpoint(endpoint)
+                 .with_metadata(MetadataMap::from_headers(header_map))
+                 .with_tls_config(tls_config)
+@@ -584,6 +587,7 @@ fn build_tracer_provider(
+ 
+                 let mut exporter_builder = SpanExporter::builder()
+                     .with_http()
++                    .with_retry_policy(crate::otlp::export_retry_policy())
+                     .with_endpoint(endpoint)
+                     .with_protocol(protocol)
+                     .with_headers(headers);
+@@ -616,6 +620,7 @@ fn build_tracer_provider(
+ 
+             let mut exporter_builder = SpanExporter::builder()
+                 .with_http()
++                .with_retry_policy(crate::otlp::export_retry_policy())
+                 .with_endpoint(endpoint)
+                 .with_protocol(protocol)
+                 .with_headers(headers);
 diff --git a/codex-rs/plugin-host/tests/fixtures/plugin_process.rs b/codex-rs/plugin-host/tests/fixtures/plugin_process.rs
 index 25c7b1c..ed8f93a 100644
 --- a/codex-rs/plugin-host/tests/fixtures/plugin_process.rs
