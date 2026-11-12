@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 12 Nov 2026 03:14:54 -0500
+Subject: [PATCH] Parse each request body once in the local compaction retry
+ test
+
+local_compaction_retries_preserve_instructions_and_tool_metadata checks 300 function
+call outputs in each of the three compaction requests. Each lookup called
+ResponsesRequest::function_call_output, which decodes and parses the request's whole
+body, several megabytes of JSON, so the test parsed about 900 bodies in an unoptimized
+build. Upstream's full suite ran it for 40 to 60 seconds on Linux and past nextest's
+60 second limit on Windows and macOS.
+
+The test now indexes each request's function call outputs by call id once and
+checks every source output against those indexes. The assertions are unchanged.
+---
+ codex-rs/core/src/compact_tests.rs | 22 ++++++++++++++++++++--
+ 1 file changed, 20 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/core/src/compact_tests.rs b/codex-rs/core/src/compact_tests.rs
+index a57d2f024..6076395a4 100644
+--- a/codex-rs/core/src/compact_tests.rs
++++ b/codex-rs/core/src/compact_tests.rs
+@@ -211,6 +211,22 @@ async fn local_compaction_retries_preserve_instructions_and_tool_metadata(
+             serde_json::to_value(&expected_code_mode_output)?,
+         );
+     }
++    // Each lookup on a request decodes and parses its whole multi-megabyte body, so index the
++    // compacted outputs once per request instead of once per source output.
++    let compact_outputs_by_request = requests
++        .iter()
++        .map(|request| {
++            let mut by_call_id = std::collections::HashMap::new();
++            for item in request.inputs_of_type("function_call_output") {
++                let call_id = item["call_id"]
++                    .as_str()
++                    .expect("compacted call id")
++                    .to_string();
++                by_call_id.entry(call_id).or_insert(item);
++            }
++            by_call_id
++        })
++        .collect::<Vec<_>>();
+     for mut output in outputs {
+         if !metadata_enabled {
+             let metadata = output["internal_chat_message_metadata_passthrough"]
+@@ -220,8 +236,10 @@ async fn local_compaction_retries_preserve_instructions_and_tool_metadata(
+             metadata.remove("tool_calls_complete");
+         }
+         let call_id = output["call_id"].as_str().expect("source call id");
+-        for request in &requests {
+-            let compact_output = request.function_call_output(call_id);
++        for compact_outputs in &compact_outputs_by_request {
++            let compact_output = compact_outputs
++                .get(call_id)
++                .expect("function call output item not found in request");
+             assert_eq!(compact_output["output"], json!("Plan updated"));
+             assert_eq!(
+                 compact_output["internal_chat_message_metadata_passthrough"],
+-- 
+2.43.0
+
