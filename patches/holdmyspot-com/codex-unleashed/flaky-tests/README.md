@@ -36,6 +36,7 @@ All runs are on `holdmyspot-com/codex-unleashed`. Stress runs use `stress_count=
 - Fix 5 red phase `42844805122`: with `network_policy.rs` withheld, `export_started_before_publication_waits_and_then_exports` failed 20 of 20 and the run then passed with the fix.
 - Bazel `//bazel/rules/testing/wine:wine-test-support-unit-tests`, 20 runs each: before `42850502873`, TIMEOUT in 20 of 20 at 60.4 s; after `42850528725`, passed.
 - Rows not patched: focused run `42845848861`.
+- `compaction-request-parsing.patch`, `codex-core` `local_compaction_retries_preserve_instructions_and_tool_metadata`, 10 loaded iterations on the 58-patch `rust-v0.167.0` queue (ubuntu-24.04 image `20261101.360.1`, rustc 1.99.1): with `compact_tests.rs` restored, `43181555576` passed 10 of 10 (metadata enabled 45–56 s, disabled 24–34 s), so the red gate did not fail on Linux; with the fix, `43185823797` took 5.1–6.7 s and 3.4–4.3 s. Its failing evidence is the 60 s timeout in patched Linux run `43155074619` and in upstream's Windows x86_64, Windows ARM64 and macOS x86_64 baselines ([upstream-failure-comparison.md](../../../../docs/upstream-failure-comparison.md)).
 - Repository checks `42844896018`, platform lints `42848707830` and argument-comment lint `42844909597` passed. Bazel Clippy `42848713820`: the Linux lanes passed. The macOS lane failed on a 500 from a `rules_platform` download and the Windows gnullvm lane on a dangling `opusic-sys` symlink; neither involves these patches.
 
 ## Rebase onto rust-v0.167.0
