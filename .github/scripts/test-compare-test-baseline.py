@@ -87,6 +87,21 @@ class CompareTests(unittest.TestCase):
         self.assertIn("[unchanged baseline failures] 1\n    codex-core::all a", out)
         self.assertIn("[in the baseline but not run] 1\n    codex-core::all d", out)
 
+    def test_test_case_numbers_do_not_change_a_test_id(self):
+        # test-case 3.4 prefixes each generated case with its number; 3.3 kept a leading underscore instead.
+        self.record("linux", junit(("f::direct", "fail"), ("g::_mcp_expects", "fail"), ("h::plain", "fail"),
+                                   ("k::code_mode", "pass")))
+        code, out, _ = self.compare("linux", junit(("f::test_case_1_direct", "fail"),
+                                                    ("g::test_case_2_mcp_expects", "fail"),
+                                                    ("h::test_case_1_plain", "pass"),
+                                                    ("k::test_case_2_code_mode", "fail")))
+        self.assertEqual(code, 1)
+        self.assertIn("[new (fail the run)] 1\n    codex-core::all k::test_case_2_code_mode", out)
+        self.assertIn("[fixed relative to the baseline] 1\n    codex-core::all h::plain", out)
+        self.assertIn("[unchanged baseline failures] 2\n    codex-core::all f::test_case_1_direct\n"
+                      "    codex-core::all g::test_case_2_mcp_expects", out)
+        self.assertIn("[in the baseline but not run] 0", out)
+
     def test_baseline_failures_alone_pass(self):
         self.record("linux", junit(("a", "fail"), ("b", "pass")))
         code, out, _ = self.compare("linux", junit(("a", "fail"), ("b", "pass")))

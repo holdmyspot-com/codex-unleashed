@@ -20,6 +20,8 @@ test.xml and test.log files. The platform is any label that names a file; the sc
 Test IDs. A nextest ID is "<binary-id> <test name>", as nextest prints it. A Bazel ID is the target label
 ("//package:target") for a target-level failure, and "<label> <test name>" for each "test <name> ... FAILED" line in
 the target's test.log. Timeouts keep their ID and are listed under timed_out.
+The comparison matches IDs without test-case's case numbers (`test_case_<n>_`), which test-case 3.4 added, so a
+baseline that names a case `::direct` still matches `::test_case_1_direct`.
 
 Exit status: 1 if any test is new, or if no report was found; 2 for a missing baseline; 0 otherwise.
 """
@@ -36,6 +38,7 @@ ANSI_ESCAPE = re.compile(r"[\x1b�?]\[[0-9;]*[A-Za-z]")
 LIBTEST_FAILED = re.compile(r"^test (\S+) \.\.\. FAILED\s*$")
 FAILURE_TAGS = ("failure", "error")
 TIMEOUT = re.compile(r"time(?:d)?[ -]?out", re.IGNORECASE)
+TEST_CASE_PREFIX = re.compile(r"(?<=::)(?:test_case_[0-9]+_)?_*")
 
 
 class Report:
@@ -171,11 +174,26 @@ def read_baseline(path):
     return set(data.get("failed", [])) | set(data.get("timed_out", []))
 
 
+def matching_key(test):
+    """Return the form of a test ID that the comparison matches on.
+
+    test-case 3.4 names each generated case `test_case_<n>_<name>`, where 3.3 named it `<name>`, keeping a leading
+    underscore when the name began with one. The patch queue upgrades test-case, so a baseline recorded on an upstream
+    commit that uses 3.3 names the same cases differently. The key drops that prefix and any leading underscores of
+    each `::` segment. It cannot join two different cases: 3.3 rejects two cases of one test with the same name.
+    """
+    return TEST_CASE_PREFIX.sub("", test)
+
+
 def compare(baseline, report):
-    new = sorted(report.failing - baseline)
-    fixed = sorted(test for test in baseline if test in report.executed and test not in report.failing)
-    unchanged = sorted(baseline & report.failing)
-    not_run = sorted(test for test in baseline if test not in report.executed)
+    """Sort the tests into new, fixed, unchanged and not run, listing failing tests by their names in the report."""
+    failing = {matching_key(test): test for test in report.failing}
+    executed = {matching_key(test) for test in report.executed}
+    recorded = {matching_key(test): test for test in baseline}
+    new = sorted(test for key, test in failing.items() if key not in recorded)
+    fixed = sorted(test for key, test in recorded.items() if key in executed and key not in failing)
+    unchanged = sorted(failing[key] for key in recorded if key in failing)
+    not_run = sorted(test for key, test in recorded.items() if key not in executed)
     return new, fixed, unchanged, not_run
 
 
