@@ -194,6 +194,8 @@
   "platform": "linux-remote",
   "runner": "nextest",
   "tests_executed": 23618,
-  "timed_out": [],
+  "timed_out": [
+    "codex-core::all suite::code_mode::code_mode_excludes_mcp_servers_using_their_configured_identity"
+  ],
   "upstream_commit": "086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a"
 }
