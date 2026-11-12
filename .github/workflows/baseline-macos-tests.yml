@@ -32,6 +32,10 @@ on:
         description: Number of trailing patches under test; the red phase restores red_restore paths to their state before them
         type: string
         default: "1"
+      stress_count:
+        description: Optional repeat count; requires a package other than --workspace and runs each selected test this many times under CPU load, with no retries
+        type: string
+        default: ""
   workflow_call:
     inputs:
       patches:
@@ -75,6 +79,7 @@ jobs:
       TEST_FILTER: ${{ inputs.filter }}
       RED_RESTORE: ${{ inputs.red_restore }}
       RED_PATCH_COUNT: ${{ inputs.red_patch_count }}
+      STRESS_COUNT: ${{ inputs.stress_count }}
       CARGO_INCREMENTAL: '0'
       RUST_BACKTRACE: '1'
       RUST_MIN_STACK: '8388608'
@@ -101,6 +106,10 @@ jobs:
           fi
           if [[ "$TEST_PACKAGE" == *--workspace* && "$TEST_PACKAGE" != --workspace ]]; then
             printf 'Use --workspace alone, not with other packages.\n' >&2
+            exit 1
+          fi
+          if [[ -n "$STRESS_COUNT" ]] && { ! [[ "$STRESS_COUNT" =~ ^[1-9][0-9]*$ ]] || [[ -z "$TEST_PACKAGE" || "$TEST_PACKAGE" == --workspace ]]; }; then
+            printf 'stress_count must be a positive integer and requires a package other than --workspace, not %s.\n' "$STRESS_COUNT" >&2
             exit 1
           fi
           evidence="$RUNNER_TEMP/baseline-macos-nextest-evidence"
@@ -287,8 +296,15 @@ jobs:
           printf '%s\n' '[profile.default.junit]' 'store-success-output = true' 'store-failure-output = true' \
             > "$RUNNER_TEMP/nextest-keep-output.toml"
           build_args=(cargo nextest archive --target "$TARGET" --cargo-profile ci-test)
-          run_args=(cargo nextest run --archive-file ARCHIVE --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast
+          run_args=(cargo nextest run --archive-file ARCHIVE --workspace-remap "$GITHUB_WORKSPACE/codex-rs"
             --tool-config-file "keep-output:$RUNNER_TEMP/nextest-keep-output.toml")
+          if [[ -n "$STRESS_COUNT" ]]; then
+            # Without fail-fast, nextest exits with only the last stress iteration's status, so a failure in an
+            # earlier iteration would pass the run.
+            run_args+=(--stress-count "$STRESS_COUNT" --retries 0)
+          else
+            run_args+=(--no-fail-fast)
+          fi
           if [[ -z "$TEST_PACKAGE" || "$TEST_PACKAGE" == --workspace ]]; then
             build_args+=(--workspace)
           else
@@ -309,6 +325,11 @@ jobs:
             printf '  find %q/%s/ci-test -maxdepth 2 -type f -perm -u+x ! -name "*.*" -delete\n' \
               "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/codex-rs/target}" "$TARGET"
             printf 'fi\n'
+            if [[ -n "$STRESS_COUNT" ]]; then
+              # Load every CPU only while the tests run, not while the archive builds.
+              printf 'for _ in $(seq "$(sysctl -n hw.logicalcpu)"); do yes > /dev/null & done\n'
+              printf "trap 'kill \$(jobs -p) 2>/dev/null || true' EXIT\n"
+            fi
             printf '%q ' "${run_args[@]}" | sed 's/ARCHIVE/"$archive"/'
             printf '\n'
           } > "$RUNNER_TEMP/selected-test.sh"
