@@ -550,3 +550,29 @@ The Windows ARM64 run's `windows_elevated_enforces_deny_read_and_protects_setup_
 
 The 18 snapshot failures in both the unpatched and the patched runs above changed only the version: `0.0.0` became `0.167.0`. The `rust-v0.167.0` release commit changes only `[workspace.package] version`, it sits on no branch, and upstream's release workflows run no tests, so upstream never tests that version. Its CI tests main at `0.0.0`. The test and lint workflows now reset the version to `0.0.0` before applying the patches, and the patches keep upstream's `0.0.0` lockfile entries for workspace crates. Release builds keep the tag version; their `verify-cargo-lock` guard already allows Cargo's workspace-version rewrite. The baselines are re-recorded at `0.0.0`.
 
+
+Re-recorded baselines, from unpatched runs at `0.0.0`:
+
+- Linux `43155033438`: local 48 → 7 failures, remote 190 → 149. All 41 removed failures were version-only and none were added.
+- Windows x86_64 `43155036766`: 52 → 15 failures and 4 → 11 timeouts. 38 version failures were removed. Added: `step_settings` `tool_result_history` and seven tests that hit the 60 second limit while loading, all of them unmodified upstream tests.
+- Windows ARM64 `43155039747`: 81 → 36 failures and 36 → 43 timeouts, now including the reclamation timeout.
+- Windows Bazel `43155042574`: msvc 51 → 14, gnullvm shards 4/9/34/5 → 3/6/3/5. Each shard ran the same targets as `43003720882`. The lower `tests_executed` counts come from fewer failing targets, whose cases are counted from their logs. The added entries are upstream intermittents: file-watcher coalescing, `daemon_startup`, worktree owner binding and a sandbox profile cleanup test.
+
+### Local compaction retry test (2026-11-12)
+
+The patched Linux run `43155074619` had one failure outside the baselines: `compact` `local_compaction_retries_preserve_instructions_and_tool_metadata`. Its metadata-enabled case hit the 60 second limit on all four tries, and the other case took 39–45 s. In upstream's unpatched full run the cases took 40 s and 23–25 s. Across about 700 tests, the patched run's median duration matched the unpatched run's (ratio 1.01).
+
+The patches do not make the test slower when it runs alone. Focused runs of only this test, local lane:
+
+| Patches | Run | metadata enabled | metadata disabled |
+|---|---|---|---|
+| none | `43178045336` | 23.9 s | 17.3 s |
+| 1–26 | `43178060196` | 35.6 s | 17.9 s |
+| 1–27 (Rust 1.99) | `43178074055` | 31.1 s | 16.1 s |
+| 1–28 | `43178087674` | no build: tokio's `AsyncFd::new` deprecation is fatal until `release-adaptations.patch` | |
+| 1–29 (latest releases) | `43178101972` | 45.2 s | 24.8 s |
+| all 57 | `43178115800` | 21.2 s | 14.0 s |
+
+Runner speed varies by up to a factor of two, and the full queue was the fastest. Unmodified upstream already times this test out on Windows x86_64, Windows ARM64 and macOS x86_64; it is in those baselines. For each of its 300 source outputs, the test looks the output up in each of the three compaction requests, and every lookup decodes and parses the whole multi-megabyte body: about 900 parses in the `opt-level = 0` `ci-test` build. `flaky-tests/compaction-request-parsing.patch`, now patch 38, indexes each request's outputs once.
+
+The fix was checked with a stress run of both cases, ten iterations each, with every CPU busy. Both runs used runner image ubuntu-24.04 `20261101.360.1`, rustc 1.99.1 and the same load. The red run, `43181555576`, restored the test file to upstream. All ten iterations passed there, so the workflow's red gate failed: the slow lookup stays under the limit on a Linux runner. The patched run, `43185823797`, cut the metadata-enabled case from 45–56 s to 5.1–6.7 s and the disabled case from 24–34 s to 3.4–4.3 s. The patch is kept without a failing red phase on Linux: the timeouts in the patched Linux run and in upstream's Windows and macOS baselines are its failing evidence.
