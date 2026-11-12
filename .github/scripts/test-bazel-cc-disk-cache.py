@@ -56,12 +56,20 @@ esac
 """
 
 
+def remove_tree(directory):
+    """Remove the directory tree, including the files that Git on Windows writes read-only."""
+    for path in directory.rglob("*"):
+        if path.is_file() and not path.is_symlink():
+            path.chmod(0o644)
+    shutil.rmtree(directory)
+
+
 class BazelCcDiskCacheTest(unittest.TestCase):
     """Check the tags, merges and uploads of the C++ action cache script."""
 
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, self.root)
+        self.addCleanup(remove_tree, self.root)
         scripts = self.root / "scripts"
         scripts.mkdir()
         shutil.copy(SCRIPT, scripts / SCRIPT.name)
