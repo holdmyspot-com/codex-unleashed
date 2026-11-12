@@ -1,0 +1,58 @@
+From e1de5d402bcb3f7d13e64bf54aa67a2d9ecfbf12 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 12 Nov 2026 12:17:59 -0500
+Subject: [PATCH] test: give the SubagentStop hook log 30 seconds in
+ subagent_stop_replaces_stop_and_skips_internal_subagents
+
+Its request waits return once any Responses request arrives, so the 2 second hook-log wait had to cover two child turns and two python3 hook launches, which loaded Windows ARM64 runners exceed.
+---
+ .../tests/suite/subagent_notifications.rs     | 23 +++++++++++++++++--
+ 1 file changed, 21 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/core/tests/suite/subagent_notifications.rs b/codex-rs/core/tests/suite/subagent_notifications.rs
+index cac3553fc..937afce84 100644
+--- a/codex-rs/core/tests/suite/subagent_notifications.rs
++++ b/codex-rs/core/tests/suite/subagent_notifications.rs
+@@ -367,7 +367,22 @@ async fn wait_for_hook_log(
+     filename: &str,
+     expected_len: usize,
+ ) -> Result<Vec<serde_json::Value>> {
+-    let deadline = Instant::now() + Duration::from_secs(2);
++    wait_for_hook_log_within(home, filename, expected_len, Duration::from_secs(2)).await
++}
++
++/// Waits until `filename` under `home` holds at least `expected_len` hook inputs.
++///
++/// # Errors
++///
++/// Returns an error if the log cannot be read or parsed, or if it holds fewer than `expected_len` entries once
++/// `budget` has elapsed.
++async fn wait_for_hook_log_within(
++    home: &Path,
++    filename: &str,
++    expected_len: usize,
++    budget: Duration,
++) -> Result<Vec<serde_json::Value>> {
++    let deadline = Instant::now() + budget;
+     loop {
+         let inputs = read_hook_log(home, filename)?;
+         if inputs.len() >= expected_len {
+@@ -879,10 +894,14 @@ async fn subagent_stop_replaces_stop_and_skips_internal_subagents() -> Result<()
+     let _ = wait_for_requests(&first_child_request).await?;
+     let _ = wait_for_requests(&second_child_request).await?;
+ 
+-    let subagent_stop_inputs = wait_for_hook_log(
++    // `wait_for_requests` returns once any Responses request arrives, because every mock records the requests it
++    // evaluates. Both SubagentStop hooks start `python3`, which can take seconds each on a loaded runner, so this
++    // wait covers both child turns and both hook runs.
++    let subagent_stop_inputs = wait_for_hook_log_within(
+         test.codex_home_path(),
+         "subagent_stop_hook_log.jsonl",
+         /*expected_len*/ 2,
++        Duration::from_secs(30),
+     )
+     .await?;
+     assert_eq!(subagent_stop_inputs.len(), 2);
+-- 
+2.43.0
+

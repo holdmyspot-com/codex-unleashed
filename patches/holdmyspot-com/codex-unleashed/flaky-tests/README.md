@@ -2,7 +2,7 @@
 
 - Applies to: the queue through `rama-0.4/rama-0.4.patch` (patch 34), which sits on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 - Prerequisites: every earlier patch in the queue, through `rama-0.4/rama-0.4.patch`. The patches below apply in this order and do not depend on each other.
-- Patches: `wine-pty-timeout.patch`, `rollout-trace.patch`, `otel-policy-export.patch`, `focus-palette.patch`, `compaction-request-parsing.patch`, `file-watcher-paused-time.patch`.
+- Patches: `wine-pty-timeout.patch`, `rollout-trace.patch`, `otel-policy-export.patch`, `focus-palette.patch`, `compaction-request-parsing.patch`, `file-watcher-paused-time.patch` (patches 34–39), and `subagent-stop-hook-wait.patch` (patch 60, the last in the queue, which applies after every earlier patch).
 
 ## Intent
 
@@ -16,6 +16,8 @@ Every test here is upstream's and fails only when the runner is slow: a fixed ti
 - `focus-palette.patch`: the exit-clears-inline-draft test waits until it has answered the startup probe's cursor-position, keyboard and palette queries before it sends the exit key.
 - `compaction-request-parsing.patch`: `compact` `local_compaction_retries_preserve_instructions_and_tool_metadata` indexes each compaction request's function call outputs by call id once. It used to call `ResponsesRequest::function_call_output` for each of its 300 source outputs in each of the three requests, and every call decodes and parses the whole multi-megabyte request body, so the test parsed about 900 bodies in the unoptimized `ci-test` build. The assertions are unchanged.
 - `file-watcher-paused-time.patch`: `throttled_receiver_coalesces_within_interval` and `debounced_receiver_coalesces_each_event_batch` run on Tokio's paused clock. Each asserts that nothing arrives within half of a 50 ms interval, and a stall longer than that 25 ms window on a loaded Windows runner made the receiver emit early (upstream's unmodified MSVC Bazel run `43155042574`, patched gnullvm shard 2 of `43155083884`). The receivers and the tests use only Tokio timers and in-memory channels, so each timeout now fires at its exact deadline.
+
+- `subagent-stop-hook-wait.patch`: `subagent_stop_replaces_stop_and_skips_internal_subagents` waits up to 30 seconds for its second SubagentStop hook log entry instead of 2. `ResponseMock` records every request it evaluates, including ones a later matcher rejects, so `wait_for_requests(&second_child_request)` can return before the second child turn has run. The 2 second log wait then had to cover two child turns and two `python3` hook launches, which loaded Windows ARM64 runners exceed. A new `wait_for_hook_log_within` takes the budget; `wait_for_hook_log` keeps 2 seconds for the other tests.
 
 ## Not fixed
 
@@ -39,6 +41,8 @@ All runs are on `holdmyspot-com/codex-unleashed`. Stress runs use `stress_count=
 - `compaction-request-parsing.patch`, `codex-core` `local_compaction_retries_preserve_instructions_and_tool_metadata`, 10 loaded iterations on the 58-patch `rust-v0.167.0` queue (ubuntu-24.04 image `20261101.360.1`, rustc 1.99.1): with `compact_tests.rs` restored, `43181555576` passed 10 of 10 (metadata enabled 45–56 s, disabled 24–34 s), so the red gate did not fail on Linux; with the fix, `43185823797` took 5.1–6.7 s and 3.4–4.3 s. Its failing evidence is the 60 s timeout in patched Linux run `43155074619` and in upstream's Windows x86_64, Windows ARM64 and macOS x86_64 baselines ([upstream-failure-comparison.md](../../../../docs/upstream-failure-comparison.md)).
 - `file-watcher-paused-time.patch`, `codex-file-watcher` coalescing tests, 200 loaded iterations on Windows x86_64 (`baseline-windows-tests.yml`, `stress_count=200`) on the 59-patch queue: with the test file and `Cargo.toml` restored, `43191032706` failed 13 of 400 test runs (9 throttled, 4 debounced), and `43194633393` failed in iteration 2 and then passed all 200 iterations with the fix. On loaded Linux the unfixed tests passed 200 of 200 (`43188552260`). Before `52ea65343b` the stress gate missed failures: nextest 0.9.103 exits with only the last stress iteration's status when fail-fast is off, so `43191032706` reported its red phase as passing.
 - Repository checks `42844896018`, platform lints `42848707830` and argument-comment lint `42844909597` passed. Bazel Clippy `42848713820`: the Linux lanes passed. The macOS lane failed on a 500 from a `rules_platform` download and the Windows gnullvm lane on a dangling `opusic-sys` symlink; neither involves these patches.
+
+- `subagent-stop-hook-wait.patch`, `codex-core` `subagent_stop_replaces_stop_and_skips_internal_subagents`, Windows ARM64 (`baseline-windows-tests.yml`, `stress_count=20`, the same single-test filter) on the 59-patch queue: without the fix, `43275593392` failed in iteration 1 ("expected at least 2 entries in subagent_stop_hook_log.jsonl, got 1"); with it, `43267988896` passed 20 of 20 at about 6 s each. Upstream's Windows Bazel MSVC baseline also lists the test as failing.
 
 ## Rebase onto rust-v0.167.0
 
