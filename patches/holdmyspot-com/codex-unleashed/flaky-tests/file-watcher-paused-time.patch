@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 12 Nov 2026 03:49:05 -0500
+Subject: [PATCH] Run the file watcher coalescing tests on paused time
+
+throttled_receiver_coalesces_within_interval and
+debounced_receiver_coalesces_each_event_batch check that no event arrives within half
+of a 50 millisecond interval. On a loaded runner, a stall longer than that 25
+millisecond window lets the receiver emit early, and the assertion that the wait timed
+out fails. Both failed this way on Windows: upstream's unmodified MSVC Bazel run
+43155042574 and a gnullvm shard of the patched run 43155083884.
+
+Both tests now run on Tokio's paused clock. The receivers and the test use only Tokio
+timers and in-memory channels, so time advances only when every task is waiting and
+each timeout fires at its exact deadline.
+---
+ codex-rs/file-watcher/Cargo.toml                | 1 +
+ codex-rs/file-watcher/src/file_watcher_tests.rs | 6 ++++--
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/file-watcher/Cargo.toml b/codex-rs/file-watcher/Cargo.toml
+index 781698794..afb14fcde 100644
+--- a/codex-rs/file-watcher/Cargo.toml
++++ b/codex-rs/file-watcher/Cargo.toml
+@@ -20,3 +20,4 @@ tracing = { workspace = true, features = ["log"] }
+ [dev-dependencies]
+ pretty_assertions = { workspace = true }
+ tempfile = { workspace = true }
++tokio = { workspace = true, features = ["test-util"] }
+diff --git a/codex-rs/file-watcher/src/file_watcher_tests.rs b/codex-rs/file-watcher/src/file_watcher_tests.rs
+index ecf54cabd..1309ba152 100644
+--- a/codex-rs/file-watcher/src/file_watcher_tests.rs
++++ b/codex-rs/file-watcher/src/file_watcher_tests.rs
+@@ -20,7 +20,8 @@ fn notify_event(kind: EventKind, paths: Vec<PathBuf>) -> Event {
+     event
+ }
+ 
+-#[tokio::test]
++// Paused time keeps the timeouts exact; on a loaded runner a stall can outlast the blocked window.
++#[tokio::test(start_paused = true)]
+ async fn throttled_receiver_coalesces_within_interval() {
+     let (tx, rx) = watch_channel();
+     let mut throttled = ThrottledWatchReceiver::new(rx, TEST_THROTTLE_INTERVAL);
+@@ -86,7 +87,8 @@ async fn throttled_receiver_flushes_pending_on_shutdown() {
+     assert_eq!(closed, None);
+ }
+ 
+-#[tokio::test]
++// Paused time keeps the timeouts exact; on a loaded runner a stall can outlast the blocked window.
++#[tokio::test(start_paused = true)]
+ async fn debounced_receiver_coalesces_each_event_batch() {
+     let (tx, rx) = watch_channel();
+     let mut debounced = DebouncedWatchReceiver::new(rx, TEST_THROTTLE_INTERVAL);
+-- 
+2.43.0
+

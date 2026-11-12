@@ -2,7 +2,7 @@
 
 - Applies to: the queue through `rama-0.4/rama-0.4.patch` (patch 34), which sits on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 - Prerequisites: every earlier patch in the queue, through `rama-0.4/rama-0.4.patch`. The patches below apply in this order and do not depend on each other.
-- Patches: `wine-pty-timeout.patch`, `rollout-trace.patch`, `otel-policy-export.patch`, `focus-palette.patch`, `compaction-request-parsing.patch`.
+- Patches: `wine-pty-timeout.patch`, `rollout-trace.patch`, `otel-policy-export.patch`, `focus-palette.patch`, `compaction-request-parsing.patch`, `file-watcher-paused-time.patch`.
 
 ## Intent
 
@@ -15,6 +15,7 @@ Every test here is upstream's and fails only when the runner is slow: a fixed ti
 - `otel-policy-export.patch`: `PolicyExporter::export` waits up to 10 seconds for the application network policy to be published instead of failing with "application network policy is unavailable", which dropped delta metrics exported before publication. It subscribes to policy changes before checking, so a publication in between is not missed. Other denials still fail at once. A timer thread bounds the wait, because SDK worker threads drive export futures outside a Tokio runtime. Unit tests start an export before the policy exists and publish while it waits.
 - `focus-palette.patch`: the exit-clears-inline-draft test waits until it has answered the startup probe's cursor-position, keyboard and palette queries before it sends the exit key.
 - `compaction-request-parsing.patch`: `compact` `local_compaction_retries_preserve_instructions_and_tool_metadata` indexes each compaction request's function call outputs by call id once. It used to call `ResponsesRequest::function_call_output` for each of its 300 source outputs in each of the three requests, and every call decodes and parses the whole multi-megabyte request body, so the test parsed about 900 bodies in the unoptimized `ci-test` build. The assertions are unchanged.
+- `file-watcher-paused-time.patch`: `throttled_receiver_coalesces_within_interval` and `debounced_receiver_coalesces_each_event_batch` run on Tokio's paused clock. Each asserts that nothing arrives within half of a 50 ms interval, and a stall longer than that 25 ms window on a loaded Windows runner made the receiver emit early (upstream's unmodified MSVC Bazel run `43155042574`, patched gnullvm shard 2 of `43155083884`). The receivers and the tests use only Tokio timers and in-memory channels, so each timeout now fires at its exact deadline.
 
 ## Not fixed
 
