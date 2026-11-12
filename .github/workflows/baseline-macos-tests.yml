@@ -82,6 +82,8 @@ jobs:
       STRESS_COUNT: ${{ inputs.stress_count }}
       CARGO_INCREMENTAL: '0'
       RUST_BACKTRACE: '1'
+      # Keep panic backtraces without changing the CLI errors that tests assert, as upstream's nextest job does.
+      RUST_LIB_BACKTRACE: '0'
       RUST_MIN_STACK: '8388608'
       NEXTEST_STATUS_LEVEL: leak
     defaults:
