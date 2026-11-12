@@ -132,8 +132,10 @@ jobs:
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-lint-evidence"
+          # macOS runs /bin/bash 3.2, which lacks the ${name,,} lowercase expansion.
+          owner=$(printf '%s' "$GH_OWNER" | tr '[:upper:]' '[:lower:]')
           bash "$RUNNER_TEMP/bazel-cc-disk-cache.sh" exists "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bazel-cc-cache" \
-            "ghcr.io/${GH_OWNER,,}/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" "$CC_CACHE_LANE" \
+            "ghcr.io/$owner/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" "$CC_CACHE_LANE" \
             2>&1 | tee "$evidence/cc-cache-exists.log"
 
       - name: Prepare upstream's Bazel host and toolchain
@@ -262,8 +264,10 @@ jobs:
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-lint-evidence"
+          # macOS runs /bin/bash 3.2, which lacks the ${name,,} lowercase expansion.
+          owner=$(printf '%s' "$GH_OWNER" | tr '[:upper:]' '[:lower:]')
           bash "$RUNNER_TEMP/bazel-cc-disk-cache.sh" restore "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bazel-cc-cache" \
-            "ghcr.io/${GH_OWNER,,}/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" "$CC_CACHE_LANE" \
+            "ghcr.io/$owner/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" "$CC_CACHE_LANE" \
             ${CC_SHARED_LANE:+"$CC_SHARED_LANE"} 2>&1 | tee "$evidence/cc-cache-restore.log"
 
       - name: Run the maintained Bazel Clippy selection with fatal warnings
@@ -401,8 +405,10 @@ jobs:
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-lint-evidence"
+          # macOS runs /bin/bash 3.2, which lacks the ${name,,} lowercase expansion.
+          owner=$(printf '%s' "$GH_OWNER" | tr '[:upper:]' '[:lower:]')
           bash "$RUNNER_TEMP/bazel-cc-disk-cache.sh" save "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bazel-cc-cache" \
-            "ghcr.io/${GH_OWNER,,}/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" "$CC_CACHE_LANE" \
+            "ghcr.io/$owner/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" "$CC_CACHE_LANE" \
             ${CC_SHARED_LANE:+"$CC_SHARED_LANE"} 2>&1 | tee "$evidence/cc-cache-save.log"
 
       - name: Verify the patched source and tests remain unmodified
