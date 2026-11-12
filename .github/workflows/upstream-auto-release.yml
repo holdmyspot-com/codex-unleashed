@@ -405,7 +405,7 @@ jobs:
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           mkdir -p "$RUNNER_TEMP/package-smoke-tools/test-baselines"
           cp restart-metadata/.github/scripts/compare-test-baseline.py restart-metadata/.github/scripts/package-smoke-baseline.sh \
-            "$RUNNER_TEMP/package-smoke-tools/"
+            restart-metadata/.github/scripts/fit-linux-build-memory.sh "$RUNNER_TEMP/package-smoke-tools/"
           if [[ -d restart-metadata/docs/test-baselines ]]; then
             cp -R restart-metadata/docs/test-baselines/. "$RUNNER_TEMP/package-smoke-tools/test-baselines/"
           fi
@@ -464,14 +464,13 @@ jobs:
         with:
           target: ${{ matrix.target }}
 
+      - name: Fit the build into the hosted Linux runner's memory
+        if: runner.os == 'Linux'
+        run: bash "$RUNNER_TEMP/package-smoke-tools/fit-linux-build-memory.sh"
+
       - name: Select platform build settings
         run: |
           set -euo pipefail
-          # Four concurrent Cargo jobs run the ARM Linux runner out of memory: the runner is shut down while it compiles
-          # codex-exec. baseline-release-builds.yml measured three jobs as the fastest count that fits on both Linux targets.
-          if [[ "$RUNNER_OS" == Linux ]]; then
-            echo 'CARGO_BUILD_JOBS=3' >> "$GITHUB_ENV"
-          fi
           if [[ "$RUNNER_OS" == macOS ]]; then
             echo 'MACOSX_DEPLOYMENT_TARGET=14.0' >> "$GITHUB_ENV"
           fi
