@@ -1,14 +1,5 @@
 {
   "failed": [
-    "codex-cli::bin/codex mcp_login::tests::callback_line_is_bounded_and_does_not_expose_input_in_errors",
-    "codex-cli::cloud_auth cloud_list_only_allows_trusted_credential_destinations",
-    "codex-cli::features mcp_list_reports_invalid_keybinding_reason",
-    "codex-cli::features remote_start_rejects_add_dir_before_connecting",
-    "codex-cli::features remote_start_rejects_writable_root_overrides_before_connecting",
-    "codex-cli::mcp_add_remove add_rejects_blank_client_credentials_before_saving",
-    "codex-core::all suite::step_settings::tool_result_history_keeps_originating_model_across_switch_and_replay",
-    "codex-core::all suite::subagent_notifications::subagent_stop_replaces_stop_and_skips_internal_subagents",
-    "codex-tcp-tunnel diagnostics::tests::handshake_timeout_preserves_legacy_debug_output",
     "codex-utils-pty tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child",
     "codex-v8-poc tests::sandbox_feature_matches_linked_v8",
     "codex-windows-sandbox unified_exec::tests::legacy_capture_cancellation_terminates_descendants_without_timeout",
@@ -20,17 +11,7 @@
   "runner": "nextest",
   "tests_executed": 22316,
   "timed_out": [
-    "codex-cli::worktree interactive_worktree_start_and_fork_bind_owner_before_turn",
-    "codex-core client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits",
-    "codex-core compact::tests::local_compaction_retries_preserve_instructions_and_tool_metadata::metadata_enabled",
-    "codex-core image_preparation::tests::detail_policies_apply_the_expected_budgets",
-    "codex-core::all suite::code_mode::code_mode_excludes_mcp_servers_using_their_configured_identity",
-    "codex-core::all suite::code_mode::mcp_code_mode_exclusion_does_not_change_direct_mode_tool_exposure",
-    "codex-core::all suite::compact_remote::remote_compact_v2_charges_retained_images_to_token_budget::default_trims_images",
-    "codex-core::all suite::compact_remote::remote_compact_v2_charges_retained_images_to_token_budget::disabled_preserves_images",
-    "codex-core::windows_sandbox windows_elevated_approved_git_pull_preserves_deny_read",
-    "codex-tui app::tests::background_task_defaults_tests::command_center_new_checkout_and_worktree_preserve_source_and_default_branch",
-    "codex-tui app::tests::session_lifecycle_requests::managed_worktree_transitions_bind_owner_and_preserve_only_fork_history"
+    "codex-core::all suite::code_mode::code_mode_excludes_mcp_servers_using_their_configured_identity"
   ],
   "upstream_commit": "086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a"
 }
