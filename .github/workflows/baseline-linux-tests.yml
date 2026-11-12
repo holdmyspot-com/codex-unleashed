@@ -496,14 +496,16 @@ jobs:
           done
           git -C .. diff --stat HEAD | tee "$RUNNER_TEMP/baseline-test-evidence/red-withheld.txt"
           helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
-          stress_args=()
+          stress_args=(--no-fail-fast)
           if [[ -n "$STRESS_COUNT" ]]; then
+            # nextest 0.9.103 exits with only the last stress iteration's status when fail-fast is off, so a stress
+            # run keeps fail-fast: the first failing iteration ends the run with a failing status.
             stress_args=(--stress-count "$STRESS_COUNT" --retries 0)
             for _ in $(seq "$(nproc)"); do yes > /dev/null & done
             trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
           fi
           if env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
-            cargo-nextest nextest run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast \
+            cargo-nextest nextest run --target x86_64-unknown-linux-gnu --cargo-profile ci-test \
             "${stress_args[@]}" "${package_args[@]}" \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/red-nextest.log"; then
             red_status=0
@@ -581,7 +583,10 @@ jobs:
           printf '%s\n' '[profile.default.junit]' 'store-success-output = true' 'store-failure-output = true' \
             > "$RUNNER_TEMP/nextest-keep-output.toml"
           helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
-          nextest_args=(run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast)
+          nextest_args=(run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" --workspace-remap "$GITHUB_WORKSPACE/codex-rs")
+          # nextest 0.9.103 exits with only the last stress iteration's status when fail-fast is off, so a stress run
+          # keeps fail-fast: the first failing iteration ends the run with a failing status.
+          if [[ -z "$STRESS_COUNT" ]]; then nextest_args+=(--no-fail-fast); fi
           expression="$BASELINE_TEST_FILTER"
           if [[ "$BASELINE_ARCHIVE_COMPARE" == true ]]; then
             nextest_args+=(--success-output immediate)

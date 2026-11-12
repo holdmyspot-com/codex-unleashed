@@ -346,7 +346,11 @@ jobs:
               printf '%q ' "${build_args[@]}"
               printf -- '--archive-file "$archive_windows"\nfi\n'
               if [[ -n "$STRESS_COUNT" ]]; then
-                run_args+=(--stress-count "$STRESS_COUNT" --retries 0)
+                # nextest 0.9.103 exits with only the last stress iteration's status when fail-fast is off, so a stress
+                # run keeps fail-fast: the first failing iteration ends the run with a failing status.
+                filtered=()
+                for argument in "${run_args[@]}"; do [[ "$argument" == --no-fail-fast ]] || filtered+=("$argument"); done
+                run_args=("${filtered[@]}" --stress-count "$STRESS_COUNT" --retries 0)
                 # Load every CPU only while the tests run, not while the archive builds.
                 printf 'for _ in $(seq "$(nproc)"); do yes > /dev/null & done\n'
                 printf "trap 'kill \$(jobs -p) 2>/dev/null || true' EXIT\n"
