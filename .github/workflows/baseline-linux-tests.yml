@@ -700,9 +700,10 @@ jobs:
         if: always() && inputs.accept_snapshots
         run: |
           set -euo pipefail
-          git add -A -- '*.snap'
-          git diff --cached --stat -- '*.snap'
-          git diff --cached --binary -- '*.snap' > "$RUNNER_TEMP/baseline-test-evidence/accepted-snapshots.diff"
+          # insta records changed inline snapshots in untracked .pending-snap files instead of editing the test source.
+          git add -A -- '*.snap' '*.pending-snap'
+          git diff --cached --stat -- '*.snap' '*.pending-snap'
+          git diff --cached --binary -- '*.snap' '*.pending-snap' > "$RUNNER_TEMP/baseline-test-evidence/accepted-snapshots.diff"
 
       - name: Trace the same unmodified remote shell selection
         env:
@@ -890,7 +891,7 @@ jobs:
             pathspec+=(':(exclude)codex-rs/app-server-protocol/schema')
           fi
           if [[ "$BASELINE_ACCEPT_SNAPSHOTS" == true ]]; then
-            pathspec+=(':(exclude,glob)**/*.snap' ':(exclude,glob)**/*.snap.new')
+            pathspec+=(':(exclude,glob)**/*.snap' ':(exclude,glob)**/*.snap.new' ':(exclude,glob)**/*.pending-snap')
           fi
           git diff --exit-code HEAD -- "${pathspec[@]}"
 
