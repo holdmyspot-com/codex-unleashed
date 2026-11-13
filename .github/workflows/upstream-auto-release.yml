@@ -314,6 +314,10 @@ jobs:
     name: macOS Bazel tests
     needs: [detect, patch-check]
     if: ${{ !inputs.skip_gates }}
+    # The called workflow's jobs request these permissions; the caller must grant them.
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/baseline-macos-bazel-tests.yml
     with:
       patches: ${{ needs.detect.outputs.patches }}

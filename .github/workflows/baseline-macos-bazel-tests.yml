@@ -37,12 +37,17 @@ jobs:
             bazel_arch: x86_64
             bazel_sha256: 14c9bcb01303b38192e0e2895051c1bcf19bf89d7e416f5aeeeb48b6b624cfbf
     runs-on: ${{ matrix.platform.runner }}
+    permissions:
+      contents: read
+      # Reads and writes the compiled C++ action cache in GHCR.
+      packages: write
     env:
       TARGET: ${{ matrix.platform.target }}
       BAZEL_ARCH: ${{ matrix.platform.bazel_arch }}
       BAZEL_SHA256: ${{ matrix.platform.bazel_sha256 }}
       BAZEL_TEST_SHARD: ${{ matrix.shard }}
       BAZEL_TEST_SHARD_COUNT: '2'
+      CC_CACHE_LANE: bazel-test-${{ matrix.platform.target }}-${{ matrix.shard }}
     defaults:
       run:
         shell: bash
@@ -70,6 +75,11 @@ jobs:
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           cp restart-metadata/.github/scripts/reclaim-baseline-macos-xcodes.py "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py"
+          cp restart-metadata/.github/scripts/compare-test-baseline.py "$RUNNER_TEMP/compare-test-baseline.py"
+          mkdir -p "$RUNNER_TEMP/test-baselines"
+          if [[ -d restart-metadata/docs/test-baselines ]]; then cp -R restart-metadata/docs/test-baselines/. "$RUNNER_TEMP/test-baselines/"; fi
+          cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh restart-metadata/.github/scripts/bazel-cc-disk-cache.sh "$RUNNER_TEMP/"
+          cp restart-metadata/.github/cargo-cache-package "$evidence/cargo-cache-package"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
       - name: Retrieve the exact stable upstream source
@@ -228,7 +238,34 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
-      - name: Run the maintained Bazel package shard without a second disk-cache copy
+      - name: Set up the GHCR cache transport
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          version: 1.3.1
+
+      # Upstream hides the cost of compiling V8 from source behind its BuildBuddy cache; without one, each shard spent
+      # about three of its six hours compiling V8, and an Intel shard reached the job limit. A cache fault never fails
+      # the tests: the build then runs cold.
+      - name: Restore the compiled C++ actions
+        id: cc_cache
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
+          # macOS runs /bin/bash 3.2, which lacks the ${name,,} lowercase expansion.
+          owner=$(printf '%s' "$GH_OWNER" | tr '[:upper:]' '[:lower:]')
+          bash "$RUNNER_TEMP/bazel-cc-disk-cache.sh" restore "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bazel-cc-cache" \
+            "ghcr.io/$owner/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" "$CC_CACHE_LANE" \
+            2>&1 | tee "$evidence/cc-cache-restore.log"
+
+      - name: Run the maintained Bazel package shard
+        id: bazel_tests
+        # A cold build that would reach the job's six-hour limit stops here instead, so the steps below still save the
+        # C++ actions it compiled and the next run starts warm.
+        timeout-minutes: 290
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
@@ -253,9 +290,18 @@ jobs:
           ) >> "$evidence/disk-usage.log" 2>&1 &
           disk_monitor=$!
           trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
+          cache_args=(--disk_cache=)
+          if [[ -f "$RUNNER_TEMP/bazel-cc-cache.restored" ]]; then
+            # Only C++ compiles, archives and links (chiefly V8, built for both the target and the exec configuration)
+            # reach the disk cache; every other action is marked no-cache, which keeps it out of the disk cache only.
+            cache_args=(
+              "--disk_cache=$RUNNER_TEMP/bazel-cc-cache"
+              '--modify_execution_info=^(?!(CppCompile|CppArchive|CppLink|ObjcCompile)$).*$=+no-cache'
+            )
+          fi
           set +e
           .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- \
-            test --disk_cache= --test_tag_filters=-argument-comment-lint \
+            test "${cache_args[@]}" --test_tag_filters=-argument-comment-lint \
             --test_verbose_timeout_warnings --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
             "${targets[@]}" -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests \
             2>&1 | tee "$evidence/bazel-tests.log"
@@ -264,7 +310,50 @@ jobs:
           printf 'exit_code=%s\n' "$result" > "$evidence/bazel-tests.receipt"
           git diff --binary > "$evidence/source-after.diff"
           cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
+          # Bazel exits 3 when tests failed and everything else built. The comparison with the unpatched baseline below
+          # judges those failures (an unpatched run records that baseline), so they alone do not fail this step.
+          # Any other failure, such as a build error, does.
+          if [[ "$result" == 3 ]]; then
+            printf 'Bazel reported failing tests; the baseline comparison decides the outcome.\n'
+            exit 0
+          fi
           exit "$result"
+
+      - name: Save the compiled C++ actions
+        if: ${{ !cancelled() && steps.cc_cache.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
+          owner=$(printf '%s' "$GH_OWNER" | tr '[:upper:]' '[:lower:]')
+          bash "$RUNNER_TEMP/bazel-cc-disk-cache.sh" save "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bazel-cc-cache" \
+            "ghcr.io/$owner/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" "$CC_CACHE_LANE" \
+            2>&1 | tee "$evidence/cc-cache-save.log"
+
+      - name: Record or compare this shard's failures
+        # An unpatched run is pristine upstream, so its failures are the baseline that patched runs are compared with;
+        # the evidence artifact carries the file for committing under docs/test-baselines. Shards are assigned by
+        # package name, so a test never moves between shards and each shard is compared with its own baseline only.
+        if: ${{ !cancelled() && steps.bazel_tests.outcome == 'success' }}
+        env:
+          PATCHES: ${{ inputs.patches }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
+          platform="macos-bazel-${BAZEL_ARCH}-shard-${BAZEL_TEST_SHARD}"
+          common=(--runner bazel --platform "$platform" --upstream-commit "$(cat "$evidence/upstream-commit")")
+          if [[ -z "${PATCHES// /}" ]]; then
+            python3 "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" --write-baseline \
+              --output "$evidence/$platform.json" "$(realpath bazel-testlogs)"
+          else
+            python3 "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" \
+              --baseline-dir "$RUNNER_TEMP/test-baselines" "$(realpath bazel-testlogs)" 2>&1 \
+              | tee "$evidence/baseline-comparison.log"
+            exit "${PIPESTATUS[0]}"
+          fi
 
       - name: Verify the tested source and tests remain unmodified
         if: always()
