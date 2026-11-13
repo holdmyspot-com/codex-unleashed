@@ -1,4 +1,4 @@
-From acb680b0b4708cd4d872cb5ff822df66dbcde2b6 Mon Sep 17 00:00:00 2001
+From 666b5d3253a4935c39a2a82be4df6b04924e0a51 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 12 Nov 2026 19:23:15 -0500
 Subject: [PATCH] Let Ctrl+C quit while only the TUI tools server starts, and

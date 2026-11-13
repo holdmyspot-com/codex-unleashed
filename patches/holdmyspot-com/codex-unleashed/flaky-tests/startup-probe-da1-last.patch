@@ -1,4 +1,4 @@
-From 3a9dd6fd5321b720772226566717b00a55c86887 Mon Sep 17 00:00:00 2001
+From df56c2d20dbc5f6351979425ebb912b60bf1fdcb Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 12 Nov 2026 14:36:04 -0500
 Subject: [PATCH] Query DA1 last at TUI startup and stop the probe when its
@@ -22,16 +22,16 @@ no terminal does once DA1 is sent last. The probe then stopped before the color
 replies arrived, and they reached the composer as typed input. The fake terminal now
 answers DA1 after the other queries.
 ---
- codex-rs/tui/src/terminal_probe.rs        | 78 +++++++++++++++++++++--
+ codex-rs/tui/src/terminal_probe.rs        | 79 +++++++++++++++++++++--
  codex-rs/tui/src/tui.rs                   |  2 +-
  codex-rs/tui/tests/suite/focus_palette.rs | 18 +++---
- 3 files changed, 85 insertions(+), 13 deletions(-)
+ 3 files changed, 86 insertions(+), 13 deletions(-)
 
 diff --git a/codex-rs/tui/src/terminal_probe.rs b/codex-rs/tui/src/terminal_probe.rs
-index 08118acd4..4c5830d8c 100644
+index 08118acd4..16f3b0f35 100644
 --- a/codex-rs/tui/src/terminal_probe.rs
 +++ b/codex-rs/tui/src/terminal_probe.rs
-@@ -23,9 +23,17 @@ mod terminal_identity;
+@@ -23,9 +23,18 @@ mod terminal_identity;
  #[path = "terminal_probe/windows_replay.rs"]
  mod windows_replay;
  
@@ -45,12 +45,13 @@ index 08118acd4..4c5830d8c 100644
 +/// spent in full only by terminals that never answer DA1. It is longer than [`DEFAULT_TIMEOUT`]
 +/// so that a slow terminal, such as one behind a slow SSH link or on a loaded machine, is not
 +/// mistaken for one that cannot answer.
++#[cfg(unix)]
 +pub(crate) const STARTUP_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 1);
 +
  /// Default terminal foreground and background colors reported by OSC 10 and OSC 11.
  #[derive(Debug, Clone, Copy, Eq, PartialEq)]
  pub(crate) struct DefaultColors {
-@@ -307,11 +315,13 @@ mod imp {
+@@ -307,11 +316,13 @@ mod imp {
          if keyboard_probe == StartupKeyboardEnhancementProbe::Query {
              query.extend_from_slice(b"\x1B[?u");
          }
@@ -66,7 +67,7 @@ index 08118acd4..4c5830d8c 100644
          tty.write_all(&query)?;
  
          let mut buffer = Vec::new();
-@@ -382,8 +392,12 @@ mod imp {
+@@ -382,8 +393,12 @@ mod imp {
              if startup_probe_complete(&probe, keyboard_probe) {
                  return Ok(probe);
              }
@@ -80,7 +81,7 @@ index 08118acd4..4c5830d8c 100644
                  finish_startup_probe(&mut probe, keyboard_probe, saw_supported_keyboard);
                  return Ok(probe);
              }
-@@ -575,6 +589,7 @@ mod imp {
+@@ -575,6 +590,7 @@ mod imp {
      #[cfg(test)]
      mod tests {
          use super::*;
@@ -88,7 +89,7 @@ index 08118acd4..4c5830d8c 100644
          use pretty_assertions::assert_eq;
          use std::os::fd::OwnedFd;
          use std::os::unix::net::UnixStream;
-@@ -758,6 +773,61 @@ mod imp {
+@@ -758,6 +774,61 @@ mod imp {
              assert_eq!(probe.terminal_app_over_ssh, None);
          }
  
