@@ -117,7 +117,8 @@ jobs:
             git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               commit -q -m "Test with upstream's development version 0.0.0" -- codex-rs/Cargo.toml
           fi
-          for patch in "${patch_paths[@]}"; do
+          # macOS runs /bin/bash 3.2, where an empty array is unbound under set -u.
+          for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
             printf '%s  %s\n' "$(shasum -a 256 < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
             git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
