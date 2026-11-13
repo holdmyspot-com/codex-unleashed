@@ -595,33 +595,10 @@ jobs:
       - name: Include supplied legal documents in final package archives
         run: |
           set -euo pipefail
-          legal_tool="$RUNNER_TEMP/package-legal-tools/package-license.py"
-          legal_metadata="$RUNNER_TEMP/package-legal-metadata"
-          for variant in codex codex-app-server; do
-            python3 "$legal_tool" stage --metadata-root "$legal_metadata" \
-              --upstream-root "$GITHUB_WORKSPACE" --package-dir "$RUNNER_TEMP/$variant-package-$TARGET"
-          done
-          PYTHONPATH="$GITHUB_WORKSPACE/scripts" python3 - "$TARGET" "$RUNNER_TEMP" <<'PY'
-          from pathlib import Path
-          import sys
-          from codex_package.archive import write_archive
-          target, runner_temp = sys.argv[1:]
-          for variant in ("codex", "codex-app-server"):
-              package = Path(runner_temp) / f"{variant}-package-{target}"
-              for suffix in ("tar.gz", "tar.zst"):
-                  write_archive(package, Path("dist") / target / f"{variant}-package-{target}.{suffix}", force=True)
-          PY
-          for variant in codex codex-app-server; do
-            archive="dist/$TARGET/$variant-package-$TARGET"
-            python3 "$legal_tool" check --metadata-root "$legal_metadata" \
-              --upstream-root "$GITHUB_WORKSPACE" --archive "$archive.tar.gz"
-            PYTHONPATH="$GITHUB_WORKSPACE/scripts" python3 - "$archive.tar.zst" <<'PY' | python3 "$legal_tool" check --metadata-root "$legal_metadata" --upstream-root "$GITHUB_WORKSPACE" --archive -
-          import subprocess
-          import sys
-          from codex_package.archive import resolve_zstd_command
-          subprocess.run([*resolve_zstd_command(), "-d", "-c", sys.argv[1]], check=True)
-          PY
-          done
+          python3 "$RUNNER_TEMP/package-legal-tools/package-license.py" finalize \
+            --metadata-root "$RUNNER_TEMP/package-legal-metadata" \
+            --upstream-root "$GITHUB_WORKSPACE" --package-root "$RUNNER_TEMP" \
+            --archive-root "$GITHUB_WORKSPACE/dist/$TARGET" --target "$TARGET"
 
       - name: Collect the release assets
         run: |

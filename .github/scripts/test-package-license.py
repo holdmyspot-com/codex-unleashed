@@ -2,6 +2,7 @@
 
 import importlib.util
 import io
+from contextlib import contextmanager, redirect_stderr
 from pathlib import Path
 import tarfile
 import tempfile
@@ -59,6 +60,132 @@ class PackageLicenseTest(unittest.TestCase):
                 archive.addfile(member, io.BytesIO(b"x" * member.size))
         stream.seek(0)
         return stream
+
+    def package_tar(self, package_dir, compressed):
+        """Create the archive bytes supplied by the in-memory upstream-writer stand-in."""
+        stream = io.BytesIO()
+        mode = "w:gz" if compressed else "w"
+        with tarfile.open(fileobj=stream, mode=mode) as archive:
+            for path in sorted(package_dir.rglob("*")):
+                archive.add(path, arcname=path.relative_to(package_dir).as_posix(), recursive=False)
+        return stream.getvalue()
+
+    def test_supplied_documents_accepts_pinned_bubblewrap_notice_layout(self):
+        """Read the original COPYING notice when upstream LICENSE is its symlink alias."""
+        alias = self.upstream / "codex-rs/vendor/bubblewrap/LICENSE"
+        alias.unlink(missing_ok=True)
+        alias.symlink_to("COPYING")
+        documents = package_license.supplied_documents(self.metadata, self.upstream)
+        self.assertEqual(
+            (self.upstream / "codex-rs/vendor/bubblewrap/COPYING").read_bytes(),
+            documents["codex-resources/legal/licenses/upstream/codex-rs/vendor/bubblewrap/COPYING"],
+        )
+
+    def test_finalize_stages_both_variants_before_writing_and_checks_every_archive(self):
+        """Finalization stages both canonical packages, writes four outputs, then validates each output."""
+        package_root = self.root / "staging"
+        archive_root = self.root / "dist"
+        packages = {
+            "codex-package-x86_64-unknown-linux-gnu": package_root / "codex-package-x86_64-unknown-linux-gnu",
+            "codex-app-server-package-x86_64-unknown-linux-gnu": package_root / "codex-app-server-package-x86_64-unknown-linux-gnu",
+        }
+        for package in packages.values():
+            self.write(package / "codex-package.json", b"canonical package")
+
+        writes = []
+
+        def write_archive(package_dir, archive_path, *, force):
+            writes.append((package_dir, archive_path, force))
+            self.assertEqual(
+                {name: (package_dir / name).read_bytes() for name in self.documents},
+                self.documents,
+            )
+            archive_path.parent.mkdir(parents=True, exist_ok=True)
+            archive_path.write_bytes(self.package_tar(package_dir, compressed=archive_path.name.endswith(".tar.gz")))
+
+        @contextmanager
+        def decompress_zstd(archive_path):
+            """The in-memory collaborator exposes the plain tar stream required after zstd decoding."""
+            with archive_path.open("rb") as stream:
+                yield stream
+
+        package_license.finalize_packages(
+            self.metadata,
+            self.upstream,
+            package_root,
+            archive_root,
+            "x86_64-unknown-linux-gnu",
+            write_archive=write_archive,
+            decompress_zstd=decompress_zstd,
+        )
+
+        self.assertEqual(
+            [(package_root / f"{variant}-package-x86_64-unknown-linux-gnu",
+              archive_root / f"{variant}-package-x86_64-unknown-linux-gnu{suffix}", True)
+             for variant in ("codex", "codex-app-server")
+             for suffix in (".tar.gz", ".tar.zst")],
+            writes,
+        )
+
+    def test_finalize_stops_when_first_archive_write_fails(self):
+        """A failed first upstream write prevents later archive writes from succeeding."""
+        package_root = self.root / "staging"
+        archive_root = self.root / "dist"
+        for variant in ("codex", "codex-app-server"):
+            self.write(package_root / f"{variant}-package-target/codex-package.json", b"canonical package")
+        writes = []
+
+        def fail_first_write(package_dir, archive_path, *, force):
+            writes.append(archive_path)
+            raise OSError("writer failed")
+
+        with self.assertRaisesRegex(OSError, "writer failed"):
+            package_license.finalize_packages(
+                self.metadata,
+                self.upstream,
+                package_root,
+                archive_root,
+                "target",
+                write_archive=fail_first_write,
+                decompress_zstd=lambda archive_path: self.fail("decompression must not run"),
+            )
+        self.assertEqual([archive_root / "codex-package-target.tar.gz"], writes)
+
+    def test_finalize_stops_when_first_archive_validation_fails(self):
+        """A malformed first gzip archive prevents writer calls for dependent outputs."""
+        package_root = self.root / "staging"
+        archive_root = self.root / "dist"
+        for variant in ("codex", "codex-app-server"):
+            self.write(package_root / f"{variant}-package-target/codex-package.json", b"canonical package")
+        writes = []
+
+        def write_invalid_first(package_dir, archive_path, *, force):
+            writes.append(archive_path)
+            archive_path.parent.mkdir(parents=True, exist_ok=True)
+            archive_path.write_bytes(b"not an archive")
+
+        with self.assertRaises(tarfile.TarError):
+            package_license.finalize_packages(
+                self.metadata,
+                self.upstream,
+                package_root,
+                archive_root,
+                "target",
+                write_archive=write_invalid_first,
+                decompress_zstd=lambda archive_path: self.fail("decompression must not run"),
+            )
+        self.assertEqual([archive_root / "codex-package-target.tar.gz"], writes)
+
+    def test_finalize_missing_arguments_exit_two(self):
+        """The finalize CLI rejects missing staging, archive, or target arguments with status two."""
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as result:
+                package_license.main([
+                    "finalize",
+                    "--metadata-root", str(self.metadata),
+                    "--upstream-root", str(self.upstream),
+                ])
+        self.assertEqual(2, result.exception.code)
 
     def test_stage_and_check_preserve_package_and_include_complete_sources(self):
         """Staging leaves existing resources intact and the archive checker accepts all supplied bytes."""
