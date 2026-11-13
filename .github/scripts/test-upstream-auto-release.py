@@ -2,6 +2,8 @@
 """Exercise upstream stable-release detection, versioning, patch-queue listing and release notes."""
 
 import importlib.util
+from contextlib import redirect_stdout, redirect_stderr
+import io
 import json
 import re
 from pathlib import Path
@@ -95,6 +97,170 @@ class DetectTest(unittest.TestCase):
         for requested in ("rust-v0.168.0", "rust-v0.166.0", "rust-v0.1.0", "bogus"):
             with self.subTest(requested=requested), self.assertRaises(ValueError):
                 self.module.decide(releases, [], requested=requested)
+
+
+class PublicationPlanTest(unittest.TestCase):
+    """The publisher retains the built version and reconciles GitHub release snapshots on retry."""
+
+    def setUp(self):
+        self.module = load()
+        self.tag = "rust-v0.167.0+1"
+        self.commit = "a" * 40
+        self.digests = {"codex-package-test.tar.gz": "b" * 64}
+        self.request = dict(tag=self.tag, fork_commit=self.commit, upstream_tag="rust-v0.167.0",
+                            upstream_commit="d" * 40, tag_commit=self.commit, asset_digests=self.digests)
+
+    def release(self, draft=True, prerelease=True):
+        """Represent GitHub's release response, with its saved publication request and asset digests."""
+        return dict(tag_name=self.tag, target_commitish=self.commit, draft=draft, prerelease=prerelease,
+                    body=self.module.publication_marker(**{key: value for key, value in self.request.items()
+                                                          if key != "tag_commit"}),
+                    assets=[dict(name=name, digest="sha256:" + digest) for name, digest in self.digests.items()])
+
+    def test_leftover_draft_keeps_built_tag_and_resumes_upload(self):
+        """A draft of build one resumes build one instead of selecting build two."""
+        release = self.release()
+        release["assets"] = []
+        plan = self.module.publication_plan([release], **self.request)
+        self.assertEqual(plan, {"action": "release", "phase": "upload", "tag": self.tag})
+
+    def test_published_prerelease_resumes_install_verification(self):
+        """An already published matching request skips uploads and proceeds to installation."""
+        self.assertEqual(self.module.publication_plan([self.release(draft=False)], **self.request),
+                         {"action": "release", "phase": "verify", "tag": self.tag})
+
+    def test_unknown_create_outcome_reuses_the_original_request(self):
+        """After the create response is lost, reconciliation resumes the same persisted request."""
+        first = self.module.publication_plan([], **self.request)
+        self.assertEqual(first["phase"], "create")
+        recovered = self.module.publication_plan([self.release()], **self.request)
+        self.assertEqual(recovered["tag"], first["tag"])
+        self.assertEqual(recovered["phase"], "upload")
+
+    def test_changed_artifacts_cannot_claim_the_original_tag(self):
+        """A changed package digest claiming the retained tag is rejected before upload."""
+        release = self.release()
+        with self.assertRaisesRegex(ValueError, "different publication request"):
+            self.module.publication_plan([release], **(self.request | {"asset_digests": {"new": "c" * 64}}))
+
+    def test_published_asset_mismatch_is_rejected(self):
+        """A saved request does not excuse missing or changed published release assets."""
+        release = self.release(draft=False)
+        release["assets"] = []
+        with self.assertRaisesRegex(ValueError, "assets"):
+            self.module.publication_plan([release], **self.request)
+
+    def test_completed_stable_release_is_a_noop(self):
+        """A completed release does not repeat installation or promotion."""
+        plan = self.module.publication_plan([self.release(draft=False, prerelease=False)], **self.request)
+        self.assertEqual((plan["action"], plan["phase"]), ("noop", "complete"))
+
+    def test_wrong_tag_target_fails_before_any_publication(self):
+        """An existing tag cannot redirect the same package request to another source commit."""
+        with self.assertRaisesRegex(ValueError, "targets"):
+            self.module.publication_plan([], **(self.request | {"tag_commit": "e" * 40}))
+
+    def test_wrong_upstream_tag_or_commit_is_rejected(self):
+        """The publication request must retain the built upstream identity."""
+        for change in (dict(upstream_tag="rust-v0.168.0"), dict(upstream_commit="bad")):
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, "upstream"):
+                self.module.publication_plan([], **(self.request | change))
+
+    def test_draft_with_changed_existing_asset_is_rejected(self):
+        """A draft with conflicting bytes is rejected rather than clobbered."""
+        release = self.release()
+        release["assets"][0]["digest"] = "sha256:" + "e" * 64
+        with self.assertRaisesRegex(ValueError, "assets differ"):
+            self.module.publication_plan([release], **self.request)
+
+    def test_racing_published_build_prevents_resuming_a_draft(self):
+        """Another build published after detection prevents a duplicate even when this request has a draft."""
+        plan = self.module.publication_plan([self.release(), fork("rust-v0.167.0+2")], **self.request)
+        self.assertEqual(plan["action"], "noop")
+
+    def test_another_published_build_is_a_noop(self):
+        """A racing publisher of the same upstream version prevents a duplicate release."""
+        self.assertEqual(self.module.publication_plan([fork("rust-v0.167.0+2")], **self.request)["action"], "noop")
+
+
+class ReleaseIdentityTest(unittest.TestCase):
+    """Same-run reruns restore the original selected build or reject inconsistent retained state."""
+
+    def setUp(self):
+        self.module = load()
+        self.decision = self.module.decide([upstream("rust-v0.167.0")], [])
+        self.identity = dict(format_version=1, run_id="123", fork_commit="a" * 40,
+                             upstream_commit="b" * 40, decision=self.decision)
+
+    def test_restore_keeps_original_build(self):
+        """The immutable run record returns build one even after a draft exists externally."""
+        restored = self.module.restore_identity(self.identity, "123", "a" * 40)
+        self.assertEqual(restored["tag"], "rust-v0.167.0+1")
+        self.assertEqual(restored["upstream_commit"], "b" * 40)
+
+    def test_inconsistent_identity_is_rejected(self):
+        """A changed run, fork source, tag/build relationship or upstream commit is rejected."""
+        changes = [dict(run_id="456"), dict(fork_commit="c" * 40), dict(upstream_commit="bad"),
+                   dict(decision=self.decision | {"build": 2}), dict(unrecognized="field")]
+        for change in changes:
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.module.restore_identity(self.identity | change, "123", "a" * 40)
+
+
+class IdentityCommandTest(unittest.TestCase):
+    """The workflow commands persist and restore identity and reconcile actual local asset hashes."""
+
+    def test_saved_identity_restores_outputs_and_rejects_missing_record(self):
+        """Save and restore preserve the initial build, while a missing retained record fails closed."""
+        module = load()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            decision = module.decide([upstream("rust-v0.167.0")], [])
+            selected = root / "decision"
+            selected.write_text("\n".join(f"{key}={value}" for key, value in decision.items()))
+            identity = root / "identity.json"
+            common = ["--identity", str(identity), "--run-id", "123", "--fork-commit", "a" * 40]
+            self.assertEqual(module.main(["save-identity", *common, "--decision-output", str(selected),
+                                          "--upstream-commit", "b" * 40]), 0)
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = module.main(["restore-identity", *common])
+            self.assertEqual(result, 0)
+            self.assertIn("tag=rust-v0.167.0+1\n", output.getvalue())
+            self.assertIn("upstream_commit=" + "b" * 40 + "\n", output.getvalue())
+            identity.unlink()
+            with redirect_stderr(io.StringIO()):
+                self.assertEqual(module.main(["restore-identity", *common]), 1)
+
+    def test_publication_command_binds_bytes_before_create_and_rejects_changed_retry(self):
+        """The real command hashes the input assets and writes the request marker used by later reconciliation."""
+        module = load()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assets = root / "assets"
+            assets.mkdir()
+            package = assets / "codex-package-test.tar.gz"
+            package.write_bytes(b"original package")
+            releases = root / "releases.json"
+            releases.write_text("[]")
+            notes = root / "notes.md"
+            notes.write_text("Release notes\n")
+            arguments = ["publication", "--fork-releases", str(releases), "--tag", "rust-v0.167.0+1",
+                         "--fork-commit", "a" * 40, "--upstream-tag", "rust-v0.167.0",
+                         "--upstream-commit", "b" * 40, "--tag-commit", "", "--assets-directory", str(assets),
+                         "--notes", str(notes)]
+            with redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(module.main(arguments), 0)
+            self.assertIn("phase=create", output.getvalue())
+            releases.write_text(json.dumps([dict(tag_name="rust-v0.167.0+1", target_commitish="a" * 40,
+                                                  draft=True, prerelease=True, body=notes.read_text(), assets=[])]))
+            with redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(module.main(arguments), 0)
+            self.assertIn("phase=upload", output.getvalue())
+            package.write_bytes(b"changed package")
+            with redirect_stderr(io.StringIO()) as error:
+                self.assertEqual(module.main(arguments), 1)
+            self.assertIn("different publication request", error.getvalue())
 
 
 class PatchQueueTest(unittest.TestCase):

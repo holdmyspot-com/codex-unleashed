@@ -76,3 +76,4 @@ The release applies these patches in this order:
 66. [flaky-tests/agents-overview-pin-refresh-race.patch](holdmyspot-com/codex-unleashed/flaky-tests/agents-overview-pin-refresh-race.patch)
 67. [flaky-tests/windows-sandbox-helper-sharing-violation.patch](holdmyspot-com/codex-unleashed/flaky-tests/windows-sandbox-helper-sharing-violation.patch)
 68. [flaky-tests/windows-arm64-load-timeouts.patch](holdmyspot-com/codex-unleashed/flaky-tests/windows-arm64-load-timeouts.patch)
+69. [release-reproduction/deterministic-archives.patch](holdmyspot-com/codex-unleashed/release-reproduction/deterministic-archives.patch)

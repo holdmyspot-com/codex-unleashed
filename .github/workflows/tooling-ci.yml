@@ -1,0 +1,78 @@
+name: tooling-ci
+
+on:
+  push:
+    paths:
+      - tooling/cli/**
+      - .github/workflows/tooling-ci.yml
+  pull_request:
+    paths:
+      - tooling/cli/**
+      - .github/workflows/tooling-ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Maven verification (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15, macos-15-intel]
+    defaults:
+      run:
+        shell: bash
+    env:
+      RUSTUP_TOOLCHAIN: 1.95.0
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Select the maintained tooling JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Select the native Cargo fixture toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+
+      - name: Prepare isolated temporary state
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/tooling-temp"
+          printf 'TMPDIR=%s\nTMP=%s\nTEMP=%s\n' \
+            "$RUNNER_TEMP/tooling-temp" "$RUNNER_TEMP/tooling-temp" "$RUNNER_TEMP/tooling-temp" >> "$GITHUB_ENV"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            echo 'GIT_REDIRECT_STDIN=NUL' >> "$GITHUB_ENV"
+          fi
+
+      - name: Verify tests and assemble the runtime
+        run: |
+          mvn -q -B -ntp -f tooling/cli/pom.xml -Pruntime \
+            "-Dtooling.build.directory=$RUNNER_TEMP/tooling-build" \
+            "-Dmaven.repo.local=$RUNNER_TEMP/tooling-maven" \
+            "-Djava.io.tmpdir=$TMPDIR" verify
+
+      - name: Execute the assembled launcher
+        run: |
+          python - "$BASH" "$RUNNER_OS" "$RUNNER_TEMP/tooling-build/runtime/bin/codex-tooling" <<'PYTHON'
+          import subprocess
+          import sys
+          bash, runner_os, launcher = sys.argv[1:]
+          command = [launcher] if runner_os == 'Linux' else [bash, launcher]
+          result = subprocess.run(command, capture_output=True, text=True)
+          sys.stdout.write(result.stdout)
+          sys.stderr.write(result.stderr)
+          if result.returncode != 2 or 'Usage: codex-tooling' not in result.stderr:
+              raise SystemExit('The assembled launcher did not report its command usage with exit 2')
+          PYTHON
+
+      - name: Remove job-owned build state
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/tooling-temp" "$RUNNER_TEMP/tooling-build" "$RUNNER_TEMP/tooling-maven"
