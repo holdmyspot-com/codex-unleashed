@@ -6,6 +6,8 @@ Run with Python's isolated mode; fixtures are test-owned and removed after their
 """
 
 import hashlib
+import copy
+import importlib.util
 import io
 import json
 from pathlib import Path
@@ -15,6 +17,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 # Six release targets and their payload names are the public manifest contract exercised by these commands.
 TARGETS = (
@@ -42,6 +45,38 @@ def git(root, *arguments):
 def dump(path, value):
     """Write one test-owned JSON document without mutating shared fixtures."""
     path.write_text(json.dumps(value, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+
+
+def native_build_fixture(target):
+    """Return one complete diagnostic observation for the receipt's target."""
+    return {
+        "format_version": 1,
+        "target": target,
+        "runner": {"os": "Linux", "arch": "X64", "image_os": "ubuntu24", "image_version": "observed"},
+        "operations": [
+            {"operation": "build_binaries", "commands": [["cargo", "build", "--release"]],
+             "environment": {"STABLE_GIT_COMMIT": "a" * 40}},
+            {"operation": "archive_packages", "commands": [["python3", "build_codex_package.py"]],
+             "environment": {}},
+        ],
+        "tools": [
+            {"name": name, "status": "observed" if name == "rustc" else "not_applicable",
+             "path": "/usr/bin/rustc" if name == "rustc" else None,
+             "version": "rustc 1.80.0" if name == "rustc" else None}
+            for name in ("rustc", "cargo", "git", "zig", "cc", "cxx", "linker", "strip", "objcopy",
+                         "dsymutil", "python", "zstd")
+        ],
+        "resources": [{"role": "packaged_resource", "path": "codex-resources/bwrap", "size": 12,
+                       "sha256": "a" * 64}],
+    }
+
+
+def load_manifest_helper():
+    """Load the manifest module so unit tests can exercise its in-process decisions."""
+    spec = importlib.util.spec_from_file_location("release_manifest_test_module", HELPER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def archive(path, name):
@@ -111,10 +146,12 @@ class ReleaseManifestCommands(unittest.TestCase):
     @classmethod
     def receipt_arguments(cls, source, patch_repo, assets, target):
         """Return the public receipt invocation for the fixture's pinned identities and packaged version proof."""
+        native_inputs = assets.parent / f"native-inputs-{target}.json"
+        dump(native_inputs, native_build_fixture(target))
         return ["receipt", "--source", source, "--patch-repo", patch_repo, "--target", target, "--version", "1.2.3+4",
                 "--build-number", "4", "--upstream-tag", "rust-v1.2.3", "--upstream-commit", cls.upstream,
                 "--fork-commit", cls.fork, "--run-id", "123", "--run-attempt", "1", "--assets", assets,
-                "--output", assets / f"package-receipt-{target}.json"]
+                "--output", assets / f"package-receipt-{target}.json", "--native-inputs", native_inputs]
 
     def setUp(self):
         """Give each test independent writable repositories/assets copied from the immutable template."""
@@ -279,6 +316,252 @@ class ReleaseManifestCommands(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         result = self.verify()
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_receipt_accepts_and_binds_native_build_observations(self):
+        """A receipt validates its supplied native observations and persists the same diagnostic record."""
+        target = TARGETS[0]
+        lane = self.root / ("lane-" + target)
+        native_build = native_build_fixture(target)
+        native_build["operations"][0]["environment"]["DEVELOPER_DIR"] = "/Applications/Xcode.app/Contents/Developer"
+        native_build["operations"][0]["environment"]["AWS_LC_SYS_NO_JITTER_ENTROPY"] = "1"
+        arguments = self.receipt_arguments(self.source, self.patch_repo, lane, target)
+        dump(Path(arguments[-1]), native_build)
+
+        result = self.invoke(*arguments)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads((lane / f"package-receipt-{target}.json").read_text())
+        self.assertEqual(receipt["inputs"]["native_build"], native_build)
+
+    def test_native_build_accepts_missing_optional_observations_and_different_image_paths(self):
+        """Nullable tool probes and observed runner/resource values remain diagnostic facts."""
+        target = TARGETS[0]
+        value = native_build_fixture(target)
+        value["runner"]["image_version"] = "another image"
+        value["operations"][0]["commands"][0].append("/different/checkout/build")
+        value["operations"][0]["environment"].update(
+            PATH="", CARGO_TARGET_DIR="/var/tmp/target", CC_unlisted_target="/opt/cc"
+        )
+        value["tools"][0].update(path="/opt/alternate/rustc", version="another rustc", status="observed")
+        value["tools"][1].update(path=None, version=None, status="unavailable")
+        value["runner"].update(os=None, arch=None, image_os=None, image_version="another image")
+        value["resources"].extend([
+            {"role": "configured_v8_archive", "path": "libv8.a", "size": 0, "sha256": "b" * 64},
+            {"role": "packaged_resource", "path": "codex-resources/other-bwrap", "size": 13,
+             "sha256": "c" * 64},
+        ])
+        value["resources"].sort(key=lambda resource: (resource["role"], resource["path"]))
+
+        result = load_manifest_helper().validate_native_build(value, target)
+
+        self.assertIs(result, value)
+
+    def test_receipt_validation_does_not_accept_receipts_without_native_build(self):
+        """The current receipt contract requires native_build and has no legacy receipt fallback."""
+        helper = load_manifest_helper()
+        receipt = helper.read_json(self.assets / f"package-receipt-{TARGETS[0]}.json")
+        del receipt["inputs"]["native_build"]
+
+        with self.assertRaises(ValueError):
+            helper.validate_receipt(receipt)
+
+    def test_invalid_native_inputs_do_not_publish_a_receipt(self):
+        """A malformed native input is rejected before receipt output is written."""
+        target = TARGETS[0]
+        lane = self.root / ("lane-" + target)
+        arguments = self.receipt_arguments(self.source, self.patch_repo, lane, target)
+        native_inputs = Path(arguments[-1])
+        output = lane / f"package-receipt-{target}.json"
+        output.unlink()
+        dump(native_inputs, {"format_version": 1, "target": target, "unexpected": True})
+
+        result = self.invoke(*arguments)
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertFalse(output.exists())
+
+    def test_native_build_rejects_missing_malformed_oversized_extra_and_wrong_target_values(self):
+        """Required shape, bounded strings, exact keys and receipt target agreement are enforced."""
+        target = TARGETS[0]
+        cases = []
+        missing = native_build_fixture(target)
+        del missing["runner"]["arch"]
+        cases.append(("missing runner field", missing))
+        malformed = native_build_fixture(target)
+        malformed["operations"].reverse()
+        cases.append(("wrong operation order", malformed))
+        oversized = native_build_fixture(target)
+        oversized["operations"][0]["commands"][0][0] = "x" * (64 * 1024 + 1)
+        cases.append(("oversized argument", oversized))
+        nul_argument = native_build_fixture(target)
+        nul_argument["operations"][0]["commands"][0][0] = "cargo\x00build"
+        cases.append(("NUL argument", nul_argument))
+        oversized_environment = native_build_fixture(target)
+        oversized_environment["operations"][0]["environment"]["PATH"] = "x" * (64 * 1024 + 1)
+        cases.append(("oversized environment value", oversized_environment))
+        nul_environment = native_build_fixture(target)
+        nul_environment["operations"][0]["environment"]["PATH"] = "x\x00y"
+        cases.append(("NUL environment value", nul_environment))
+        too_many_commands = native_build_fixture(target)
+        too_many_commands["operations"][0]["commands"] = [["cargo"] for _ in range(257)]
+        cases.append(("too many commands", too_many_commands))
+        too_many_commands_across_operations = native_build_fixture(target)
+        too_many_commands_across_operations["operations"][0]["commands"] = [["cargo"] for _ in range(128)]
+        too_many_commands_across_operations["operations"][1]["commands"] = [["python3"] for _ in range(129)]
+        cases.append(("too many commands across operations", too_many_commands_across_operations))
+        too_many_arguments = native_build_fixture(target)
+        too_many_arguments["operations"][0]["commands"] = [["cargo"] * 257]
+        cases.append(("too many arguments", too_many_arguments))
+        too_many_environment_entries = native_build_fixture(target)
+        too_many_environment_entries["operations"][0]["environment"] = {
+            f"CARGO_TARGET_{index}": "" for index in range(257)
+        }
+        cases.append(("too many environment entries", too_many_environment_entries))
+        too_many_environment_entries_across_operations = native_build_fixture(target)
+        too_many_environment_entries_across_operations["operations"][0]["environment"] = {
+            f"CARGO_TARGET_{index}": "" for index in range(129)
+        }
+        too_many_environment_entries_across_operations["operations"][1]["environment"] = {
+            f"CARGO_TARGET_{index}": "" for index in range(128)
+        }
+        cases.append(("too many environment entries across operations", too_many_environment_entries_across_operations))
+        extra = native_build_fixture(target)
+        extra["extra"] = "not in the contract"
+        cases.append(("extra key", extra))
+        wrong_target = native_build_fixture(TARGETS[1])
+        cases.append(("wrong target", wrong_target))
+
+        helper = load_manifest_helper()
+        for description, value in cases:
+            with self.subTest(description=description):
+                with self.assertRaises(ValueError):
+                    helper.validate_native_build(value, target)
+
+    def test_native_build_rejects_credentials_unknown_roles_unsafe_paths_and_bad_resource_values(self):
+        """Only approved environment families and safe, uniquely ordered resource records are accepted."""
+        target = TARGETS[0]
+        cases = []
+        credential = native_build_fixture(target)
+        credential["operations"][0]["environment"]["AWS_SECRET_ACCESS_KEY"] = "secret"
+        cases.append(("credential key", credential))
+        unapproved_aws_lc = native_build_fixture(target)
+        unapproved_aws_lc["operations"][0]["environment"]["AWS_LC_SYS_UNAPPROVED"] = "value"
+        cases.append(("unapproved AWS LC key", unapproved_aws_lc))
+        unapproved_aws_fips = native_build_fixture(target)
+        unapproved_aws_fips["operations"][0]["environment"]["AWS_LC_FIPS_SYS_UNAPPROVED"] = "value"
+        cases.append(("unapproved AWS FIPS key", unapproved_aws_fips))
+        unknown_role = native_build_fixture(target)
+        unknown_role["resources"][0]["role"] = "linker_input"
+        cases.append(("unsupported role", unknown_role))
+        unsafe_path = native_build_fixture(target)
+        unsafe_path["resources"][0]["path"] = "../outside"
+        cases.append(("unsafe path", unsafe_path))
+        duplicate = native_build_fixture(target)
+        duplicate["resources"].append(copy.deepcopy(duplicate["resources"][0]))
+        duplicate["resources"].sort(key=lambda resource: (resource["role"], resource["path"]))
+        cases.append(("duplicate resource", duplicate))
+        negative_size = native_build_fixture(target)
+        negative_size["resources"][0]["size"] = -1
+        cases.append(("negative size", negative_size))
+        uppercase_hash = native_build_fixture(target)
+        uppercase_hash["resources"][0]["sha256"] = "A" * 64
+        cases.append(("uppercase digest", uppercase_hash))
+        unsorted = native_build_fixture(target)
+        unsorted["resources"] = [
+            {"role": "packaged_resource", "path": "z", "size": 0, "sha256": "a" * 64},
+            {"role": "configured_v8_archive", "path": "v8.a", "size": 0, "sha256": "b" * 64},
+        ]
+        cases.append(("unsorted resources", unsorted))
+        unsafe_v8_path = native_build_fixture(target)
+        unsafe_v8_path["resources"] = [
+            {"role": "configured_v8_archive", "path": "subdir/v8.a", "size": 0, "sha256": "a" * 64}
+        ]
+        cases.append(("configured archive path is not a basename", unsafe_v8_path))
+        boolean_size = native_build_fixture(target)
+        boolean_size["resources"][0]["size"] = True
+        cases.append(("boolean resource size", boolean_size))
+        duplicate_tool = native_build_fixture(target)
+        duplicate_tool["tools"][-1]["name"] = duplicate_tool["tools"][0]["name"]
+        cases.append(("duplicate tool", duplicate_tool))
+        invalid_status = native_build_fixture(target)
+        invalid_status["tools"][0]["status"] = "failed"
+        cases.append(("unsupported tool status", invalid_status))
+
+        helper = load_manifest_helper()
+        for description, value in cases:
+            with self.subTest(description=description):
+                with self.assertRaises(ValueError):
+                    helper.validate_native_build(value, target)
+
+    def test_authenticate_manifest_uses_fixed_trust_policy_and_returns_validated_manifest(self):
+        """The bootstrap authenticates the manifest with fixed repository/workflow arguments before returning it."""
+        helper = load_manifest_helper()
+        value = helper.read_json(self.manifest)
+        commands = []
+
+        result = helper.authenticate_manifest(self.manifest, run_command=lambda command: commands.append(command))
+
+        self.assertEqual(result, value)
+        self.assertEqual(commands, [["gh", "attestation", "verify", str(self.manifest), "--repo", REPOSITORY,
+                                     "--signer-workflow", WORKFLOW]])
+
+    def test_authenticate_manifest_rejects_schema_before_attestation(self):
+        """A malformed manifest is rejected before the in-memory attestation collaborator is called."""
+        helper = load_manifest_helper()
+        manifest = helper.read_json(self.manifest)
+        manifest["native_build"] = native_build_fixture(TARGETS[0])
+        dump(self.manifest, manifest)
+        commands = []
+
+        with self.assertRaises(ValueError):
+            helper.authenticate_manifest(self.manifest, run_command=lambda command: commands.append(command))
+
+        self.assertEqual(commands, [])
+
+    def test_authenticate_command_returns_zero_after_attestation_succeeds(self):
+        """The CLI returns success after its in-memory command collaborator accepts the fixed attestation request."""
+        helper = load_manifest_helper()
+        commands = []
+
+        def accept_attestation(arguments):
+            commands.append(arguments)
+            return "verified"
+
+        with patch.object(helper, "run", side_effect=accept_attestation):
+            result = helper.main(["authenticate", "--manifest", str(self.manifest)], None)
+
+        self.assertEqual(result, 0)
+        self.assertEqual(commands, [["gh", "attestation", "verify", str(self.manifest), "--repo", REPOSITORY,
+                                     "--signer-workflow", WORKFLOW]])
+
+    def test_authenticate_command_returns_nonzero_for_invalid_manifest_schema(self):
+        """The CLI rejects malformed manifest schema without invoking attestation."""
+        helper = load_manifest_helper()
+        self.manifest.write_text("{}", encoding="utf-8")
+        commands = []
+
+        with patch.object(helper, "run", side_effect=lambda command: commands.append(command)):
+            result = helper.main(["authenticate", "--manifest", str(self.manifest)], None)
+
+        self.assertEqual(result, 1)
+        self.assertEqual(commands, [])
+
+    def test_authenticate_command_returns_nonzero_when_attestation_fails(self):
+        """The CLI reports a failed attestation as failure using its configured command collaborator."""
+        helper = load_manifest_helper()
+        command = ["gh", "attestation", "verify", str(self.manifest), "--repo", REPOSITORY,
+                   "--signer-workflow", WORKFLOW]
+        commands = []
+
+        def fail_attestation(arguments):
+            commands.append(arguments)
+            raise ValueError("attestation rejected")
+
+        with patch.object(helper, "run", side_effect=fail_attestation):
+            result = helper.main(["authenticate", "--manifest", str(self.manifest)], None)
+
+        self.assertEqual(result, 1)
+        self.assertEqual(commands, [command])
 
     def test_mismatched_observed_cli_version_is_rejected(self):
         """An archive filename cannot substitute for the native CLI version observation."""

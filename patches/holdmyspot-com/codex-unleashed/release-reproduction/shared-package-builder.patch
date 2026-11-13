@@ -1,0 +1,1111 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 13 Nov 2026 14:00:00 -0500
+Subject: [PATCH] refactor: share package build and archive operations
+
+Extract the package action's binary selection, Cargo profile/build, symbol
+archive, and package assembly commands into one Bash entry point. Record the
+observed operation inputs for the later reproducer while preserving existing
+platform behavior.
+
+---
+diff --git a/.github/actions/build-cargo-package-binaries/action.yml b/.github/actions/build-cargo-package-binaries/action.yml
+index 928e0a1db2ad4425f37edf39c95b33fbeaead7ce..112ef6544f365b728660938a7dff16c328a9f9b3 100644
+--- a/.github/actions/build-cargo-package-binaries/action.yml
++++ b/.github/actions/build-cargo-package-binaries/action.yml
+@@ -19,25 +19,14 @@ runs:
+     - name: Configure Cargo release profile
+       shell: bash
+       env:
++        PACKAGE_ACTION_PATH: ${{ github.action_path }}
++        TARGET: ${{ inputs.target }}
+         BUILD_MODE: ${{ inputs.build-mode }}
+-        # macOS symbol extraction needs packed dSYM bundles before binaries are stripped.
+-        CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ contains(inputs.target, 'apple-darwin') && 'packed' || 'off' }}
+       run: |
+         set -euo pipefail
+-        echo "CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=$CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO" >> "$GITHUB_ENV"
+-        case "$BUILD_MODE" in
+-          release) ;;
+-          debug)
+-            # Use the release profile so assertions, symbols and packaging match production.
+-            # Only trade compiler optimizations for faster builds.
+-            {
+-              echo "CARGO_PROFILE_RELEASE_OPT_LEVEL=0"
+-              echo "CARGO_PROFILE_RELEASE_LTO=off"
+-              echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256"
+-            } >> "$GITHUB_ENV"
+-            ;;
+-          *) echo "Unsupported build mode: $BUILD_MODE" >&2; exit 1 ;;
+-        esac
++        package_source_root="$(cd "${PACKAGE_ACTION_PATH}/../../.." && pwd)"
++        bash "${package_source_root}/.github/scripts/codex-package-operations.sh" \
++          profile-env --target "$TARGET" --build-mode "$BUILD_MODE" >> "$GITHUB_ENV"
+
+     - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+       with:
+@@ -96,40 +85,26 @@ runs:
+       with:
+         target: ${{ inputs.target }}
+
+-    - name: Build bwrap and export digest
+-      if: ${{ runner.os == 'Linux' }}
+-      shell: bash
+-      working-directory: codex-rs
+-      env:
+-        TARGET: ${{ inputs.target }}
+-      run: |
+-        set -euo pipefail
+-        cargo build --target "${TARGET}" --release --timings --bin bwrap
+-
+-        bwrap_path="${CARGO_TARGET_DIR}/${TARGET}/release/bwrap"
+-        # Codex embeds this digest at build time and verifies the packaged
+-        # bwrap at runtime, so hash its final stripped bytes first.
+-        strip --strip-debug --strip-unneeded "$bwrap_path"
+-        digest="$(sha256sum "$bwrap_path" | awk '{print $1}')"
+-        echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
+-
+-    - name: Build Codex package binaries
++    - name: Build package binaries
+       shell: bash
+       working-directory: codex-rs
+       env:
+         TARGET: ${{ inputs.target }}
++        RUNNER_OS: ${{ runner.os }}
++        BUILD_MODE: ${{ inputs.build-mode }}
+         BINARIES: ${{ inputs.binaries }}
++        PACKAGE_ACTION_PATH: ${{ github.action_path }}
+       run: |
+         set -euo pipefail
+-        build_args=()
+-        for binary in $BINARIES; do
+-          build_args+=(--bin "$binary")
+-        done
+-        # SQLite intrinsics can emit instructions unsupported by older x64
+-        # CPUs, causing Windows release binaries to crash during startup.
+-        if [[ "${TARGET}" == "x86_64-pc-windows-msvc" ]]; then
+-          export LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC
+-        fi
+-        STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
+-        export STABLE_GIT_COMMIT
+-        cargo build --target "${TARGET}" --release --timings "${build_args[@]}"
++        package_source_root="$(cd "${PACKAGE_ACTION_PATH}/../../.." && pwd)"
++        build_result="${RUNNER_TEMP}/codex-build-operations-${TARGET}"
++        bash "${package_source_root}/.github/scripts/codex-package-operations.sh" \
++          build-binaries \
++          --target "$TARGET" \
++          --runner-os "$RUNNER_OS" \
++          --build-mode "$BUILD_MODE" \
++          --binaries "$BINARIES" \
++          --target-dir "$CARGO_TARGET_DIR" \
++          --result-dir "$build_result"
++        cat "${build_result}/export.env" >> "$GITHUB_ENV"
++        echo "CODEX_PACKAGE_BUILD_RESULT=${build_result}" >> "$GITHUB_ENV"
+diff --git a/.github/actions/build-codex-packages/action.yml b/.github/actions/build-codex-packages/action.yml
+index aa8a517679870a75eb88e0b1ac6c777ccd77a0df..1976334007ac9d730335e754bd0e1f92cb13ac51 100644
+--- a/.github/actions/build-codex-packages/action.yml
++++ b/.github/actions/build-codex-packages/action.yml
+@@ -23,28 +23,19 @@ runs:
+       shell: bash
+       working-directory: codex-rs
+       env:
+-        BASE_BINARIES: "codex codex-app-server codex-code-mode-host codex-exec-server"
+-        WINDOWS_ONLY_BINARIES: "codex-command-runner codex-windows-sandbox-setup"
+         BUILD_MODE: ${{ inputs.build-mode }}
+         BUILD_SYSTEM: ${{ inputs.build-system }}
+         PACKAGE_ACTION_PATH: ${{ github.action_path }}
+       run: |
+         set -euo pipefail
+         package_source_root="$(cd "${PACKAGE_ACTION_PATH}/../../.." && pwd)"
++        needed_binaries="$(bash "${package_source_root}/.github/scripts/codex-package-operations.sh" \
++          select-binaries \
++          --runner-os "$RUNNER_OS" \
++          --build-mode "$BUILD_MODE" \
++          --build-system "$BUILD_SYSTEM")"
+         echo "source_root=$package_source_root" >> "$GITHUB_OUTPUT"
+-        needed_binaries="$BASE_BINARIES"
+-        if [[ "$RUNNER_OS" == "Windows" ]]; then
+-          needed_binaries+=" $WINDOWS_ONLY_BINARIES"
+-        fi
+         echo "NEEDED_BINARIES=$needed_binaries" >> "$GITHUB_ENV"
+-        case "$BUILD_SYSTEM" in
+-          cargo|bazel) ;;
+-          *) echo "Unsupported build system: $BUILD_SYSTEM" >&2; exit 1 ;;
+-        esac
+-        case "$BUILD_MODE" in
+-          release|debug) ;;
+-          *) echo "Unsupported build mode: $BUILD_MODE" >&2; exit 1 ;;
+-        esac
+
+     - name: Set up Python 3.12
+       uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+@@ -80,94 +71,30 @@ runs:
+         target: ${{ inputs.target }}
+         build-mode: ${{ inputs.build-mode }}
+
+-    - name: Normalize Windows PDB filenames
+-      if: ${{ runner.os == 'Windows' }}
+-      shell: bash
+-      working-directory: codex-rs
+-      env:
+-        TARGET: ${{ inputs.target }}
+-      run: |
+-        set -euo pipefail
+-        release_dir="${CARGO_TARGET_DIR}/${TARGET}/release"
+-        for binary in $NEEDED_BINARIES; do
+-          expected_pdb="${release_dir}/${binary}.pdb"
+-          if [[ -f "$expected_pdb" ]]; then
+-            continue
+-          fi
+-
+-          underscored_pdb="${release_dir}/${binary//-/_}.pdb"
+-          if [[ ! -f "$underscored_pdb" ]]; then
+-            echo "PDB for ${binary} not found at ${expected_pdb} or ${underscored_pdb}" >&2
+-            exit 1
+-          fi
+-          cp "$underscored_pdb" "$expected_pdb"
+-        done
+-
+-    - name: Archive symbols and strip binaries
+-      shell: bash
+-      working-directory: codex-rs
+-      env:
+-        TARGET: ${{ inputs.target }}
+-        PACKAGE_SOURCE_ROOT: ${{ steps.package_setup.outputs.source_root }}
+-      run: |
+-        set -euo pipefail
+-        bash "${PACKAGE_SOURCE_ROOT}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
+-          --target "${TARGET}" \
+-          --artifact-name "${TARGET}" \
+-          --release-dir "${CARGO_TARGET_DIR}/${TARGET}/release" \
+-          --archive-dir "../symbols-dist/${TARGET}" \
+-          --binaries "$NEEDED_BINARIES"
+-
+-    - name: Build Codex package archives
++    - name: Archive symbols and build packages
+       shell: bash
+       working-directory: codex-rs
+       env:
+         TARGET: ${{ inputs.target }}
++        RUNNER_OS: ${{ runner.os }}
++        BINARIES: ${{ env.NEEDED_BINARIES }}
+         CODEX_PACKAGE_VERSION: ${{ inputs.package-version }}
+         PACKAGE_SOURCE_ROOT: ${{ steps.package_setup.outputs.source_root }}
+       run: |
+         set -euo pipefail
+-        target="${TARGET}"
+-        release_dir="${CARGO_TARGET_DIR}/${target}/release"
+-        archive_dir="${GITHUB_WORKSPACE}/dist/${target}"
+-        exe_suffix=""
+-        if [[ "$RUNNER_OS" == "Windows" ]]; then
+-          exe_suffix=".exe"
+-        fi
+-
+-        package_args=(
+-          --target "$target"
+-          --code-mode-host-bin "${release_dir}/codex-code-mode-host${exe_suffix}"
+-          --exec-server-bin "${release_dir}/codex-exec-server${exe_suffix}"
+-          --cargo-profile release
+-          --package-version "$CODEX_PACKAGE_VERSION"
+-          --force
+-        )
+-        if [[ "$RUNNER_OS" == "Linux" ]]; then
+-          package_args+=(--bwrap-bin "${release_dir}/bwrap")
+-        fi
+-        if [[ "$RUNNER_OS" == "Windows" ]]; then
+-          package_args+=(
+-            --codex-command-runner-bin "${release_dir}/codex-command-runner.exe"
+-            --codex-windows-sandbox-setup-bin "${release_dir}/codex-windows-sandbox-setup.exe"
+-          )
+-        fi
+-
+-        python3 "${PACKAGE_SOURCE_ROOT}/scripts/build_codex_package.py" \
+-          "${package_args[@]}" \
+-          --variant codex \
+-          --entrypoint-bin "${release_dir}/codex${exe_suffix}" \
+-          --package-dir "${RUNNER_TEMP}/codex-package-${target}" \
+-          --archive-output "${archive_dir}/codex-package-${target}.tar.gz" \
+-          --archive-output "${archive_dir}/codex-package-${target}.tar.zst"
+-
+-        python3 "${PACKAGE_SOURCE_ROOT}/scripts/build_codex_package.py" \
+-          "${package_args[@]}" \
+-          --variant codex-app-server \
+-          --entrypoint-bin "${release_dir}/codex-app-server${exe_suffix}" \
+-          --package-dir "${RUNNER_TEMP}/codex-app-server-package-${target}" \
+-          --archive-output "${archive_dir}/codex-app-server-package-${target}.tar.gz" \
+-          --archive-output "${archive_dir}/codex-app-server-package-${target}.tar.zst"
++        archive_result="${RUNNER_TEMP}/codex-archive-operations-${TARGET}"
++        bash "${PACKAGE_SOURCE_ROOT}/.github/scripts/codex-package-operations.sh" \
++          archive-packages \
++          --target "$TARGET" \
++          --runner-os "$RUNNER_OS" \
++          --binaries "$BINARIES" \
++          --target-dir "$CARGO_TARGET_DIR" \
++          --source-root "$PACKAGE_SOURCE_ROOT" \
++          --workspace "$GITHUB_WORKSPACE" \
++          --runner-temp "$RUNNER_TEMP" \
++          --package-version "$CODEX_PACKAGE_VERSION" \
++          --result-dir "$archive_result"
++        echo "CODEX_PACKAGE_ARCHIVE_RESULT=${archive_result}" >> "$GITHUB_ENV"
+
+     - name: Smoke-test assembled packages
+       shell: bash
+diff --git a/.github/scripts/codex-package-operations.sh b/.github/scripts/codex-package-operations.sh
+new file mode 100644
+index 0000000000000000000000000000000000000000..e86cab1992c2b24a002cb74239b0e9c6dce61cf7
+--- /dev/null
++++ b/.github/scripts/codex-package-operations.sh
+@@ -0,0 +1,456 @@
++#!/usr/bin/env bash
++
++set -euo pipefail
++
++# Reports a command-line error and returns the status reserved for invalid arguments.
++#
++# Arguments:
++#   Description: The corrective message for the caller.
++# Output: Writes the message to standard error.
++# Exit status: 2.
++argument_error() {
++  printf '%s\n' "$1" >&2
++  return 2
++}
++
++# Parses one command's named options into variables owned by its caller.
++#
++# Arguments:
++#   Description: The allowed option names followed by option-value pairs.
++# Environment: Caller-local variables named after the allowed options receive values.
++# Exit status: 0 for valid pairs, 2 for missing, duplicate, unsupported, or empty values.
++parse_arguments() {
++  local allowed_options="$1"
++  local seen_options=:
++  local option option_name option_value
++  shift
++
++  while (($#)); do
++    option="$1"
++    case "$option" in
++      --runner-os) option_name=runner_os ;;
++      --build-mode) option_name=build_mode ;;
++      --build-system) option_name=build_system ;;
++      --target) option_name=target ;;
++      --binaries) option_name=binaries ;;
++      --target-dir) option_name=target_dir ;;
++      --result-dir) option_name=result_dir ;;
++      --source-root) option_name=source_root ;;
++      --workspace) option_name=workspace ;;
++      --runner-temp) option_name=runner_temp ;;
++      --package-version) option_name=package_version ;;
++      *) argument_error "Unknown option: $option"; return 2 ;;
++    esac
++
++    case " $allowed_options " in
++      *" $option_name "*) ;;
++      *) argument_error "Option $option is not valid for this command"; return 2 ;;
++    esac
++
++    case "$seen_options" in
++      *":$option_name:"*) argument_error "Option $option was provided more than once"; return 2 ;;
++    esac
++    seen_options="${seen_options}${option_name}:"
++
++    shift
++    if (($# == 0)); then
++      argument_error "Option $option requires a value"
++      return 2
++    fi
++    option_value="$1"
++    if [[ -z "$option_value" ]]; then
++      argument_error "Option $option requires a non-empty value"
++      return 2
++    fi
++    case "$option_value" in
++      *$'\n'*|*$'\r'*) argument_error "Option $option must be a single line"; return 2 ;;
++    esac
++    printf -v "$option_name" '%s' "$option_value"
++    shift
++  done
++
++  local required_option
++  for required_option in $allowed_options; do
++    if [[ -z "${!required_option}" ]]; then
++      argument_error "Missing required option: --${required_option//_/-}"
++      return 2
++    fi
++  done
++}
++
++# Validates the runner identity accepted by package operations.
++#
++# Arguments:
++#   Description: The GitHub runner operating system.
++# Exit status: 0 for Linux, macOS, or Windows; 2 otherwise.
++validate_runner_os() {
++  case "$1" in
++    Linux|macOS|Windows) ;;
++    *) argument_error "Unsupported runner OS: $1"; return 2 ;;
++  esac
++}
++
++# Validates the package action's supported build mode and build system.
++#
++# Arguments:
++#   Description: The build mode and package build system.
++# Exit status: 0 for release or debug with Cargo or Bazel; 2 otherwise.
++validate_build_selection() {
++  case "$1" in
++    release|debug) ;;
++    *) argument_error "Unsupported build mode: $1"; return 2 ;;
++  esac
++  case "$2" in
++    cargo|bazel) ;;
++    *) argument_error "Unsupported build system: $2"; return 2 ;;
++  esac
++}
++
++# Produces the effective Cargo release-profile assignments for one package target.
++#
++# Arguments:
++#   Description: The Rust target triple and the release or debug build mode.
++# Output: Writes fixed KEY=value assignments, one per line.
++# Exit status: 0 for a supported mode; 2 otherwise.
++profile_assignments() {
++  local target="$1"
++  local build_mode="$2"
++
++  case "$build_mode" in
++    release|debug) ;;
++    *) argument_error "Unsupported build mode: $build_mode"; return 2 ;;
++  esac
++
++  if [[ "$target" == *apple-darwin* ]]; then
++    printf '%s\n' 'CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=packed'
++  else
++    printf '%s\n' 'CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=off'
++  fi
++  if [[ "$build_mode" == debug ]]; then
++    printf '%s\n' \
++      'CARGO_PROFILE_RELEASE_OPT_LEVEL=0' \
++      'CARGO_PROFILE_RELEASE_LTO=off' \
++      'CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256'
++  fi
++}
++
++# Writes the selected argument vector before running one build or archive tool.
++# These NUL records preserve historical argv for diagnostics; consumers must never resolve or replay them as locators.
++# Persisted file locators use an explicit project-relative base in their owning result format.
++#
++# Arguments:
++#   Description: The executable and its individually separated arguments.
++# Environment: Uses the result directory and command index owned by the active operation.
++# Side effects: Creates the next NUL-delimited commands/NNNN.argv file.
++# Exit status: The invoked executable's status.
++run_recorded() {
++  local command_file command_number argument
++  command_index=$((command_index + 1))
++  printf -v command_number '%04d' "$command_index"
++  command_file="${result_dir}/commands/${command_number}.argv"
++  : > "$command_file" || return $?
++  for argument in "$@"; do
++    printf '%s\0' "$argument" >> "$command_file" || return $?
++  done
++  "$@"
++}
++
++# Creates an empty result directory owned by this operation.
++#
++# Arguments:
++#   Description: The caller-selected result directory.
++# Side effects: Creates the result directory and its commands directory.
++# Exit status: 0 when the directory is new or empty; 1 when it contains earlier data or cannot be created.
++prepare_result_directory() {
++  local destination="$1"
++  local existing_path
++
++  if [[ -d "$destination" ]]; then
++    for existing_path in "$destination"/* "$destination"/.[!.]* "$destination"/..?*; do
++      if [[ -e "$existing_path" || -L "$existing_path" ]]; then
++        printf 'Result directory must be empty: %s\n' "$destination" >&2
++        return 1
++      fi
++    done
++  else
++    mkdir -p "$destination" || return $?
++  fi
++  mkdir -p "${destination}/commands"
++}
++
++# Writes the approved present environment variables as NUL-delimited key-value pairs.
++#
++# Arguments:
++#   Description: The environment record path.
++# Output: Writes each present approved key and value as two NUL-terminated strings.
++# Exit status: 0 when the record is written.
++record_environment() {
++  local output_path="$1"
++  local name value
++  : > "$output_path"
++
++  while IFS= read -r name; do
++    case "$name" in
++      PATH|CARGO_HOME|CARGO_TARGET_DIR|RUSTUP_TOOLCHAIN|RUSTC|RUSTC_WRAPPER|RUSTC_WORKSPACE_WRAPPER|RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CARGO_BUILD_JOBS|CARGO_INCREMENTAL|STABLE_GIT_COMMIT|CODEX_UNLEASHED_BUILD_NUMBER|CODEX_BWRAP_SHA256|MACOSX_DEPLOYMENT_TARGET|SDKROOT|DEVELOPER_DIR|LIBSQLITE3_FLAGS|SOURCE_DATE_EPOCH|AWS_LC_SYS_NO_JITTER_ENTROPY|INCLUDE|LIB|LIBPATH|VCINSTALLDIR|VCToolsInstallDir|WindowsSdkDir|WindowsSDKVersion)
++        ;;
++      CARGO_PROFILE_RELEASE_*|CARGO_TARGET_*|RUSTY_V8_*) ;;
++      CC|CXX|AR|CFLAGS|CXXFLAGS|LDFLAGS|CC_*|CXX_*|AR_*|CFLAGS_*|CXXFLAGS_*|LDFLAGS_*) ;;
++      *) continue ;;
++    esac
++    value="${!name}"
++    printf '%s\0%s\0' "$name" "$value" >> "$output_path"
++  done < <(compgen -e)
++}
++
++# Writes common result metadata before a build or archive operation starts.
++#
++# Arguments:
++#   Description: The operation name, target, runner OS, and selected binaries.
++# Side effects: Writes one-line result metadata and the binary selection.
++# Exit status: 0 when all metadata files are written.
++write_common_metadata() {
++  local operation="$1"
++  local target="$2"
++  local runner_os="$3"
++  local binaries="$4"
++  printf '1\n' > "${result_dir}/format-version"
++  printf '%s\n' "$operation" > "${result_dir}/operation"
++  printf '%s\n' "$target" > "${result_dir}/target"
++  printf '%s\n' "$runner_os" > "${result_dir}/runner-os"
++  printf '%s\n' "$binaries" > "${result_dir}/binaries"
++}
++
++# Completes a result record by atomically publishing its completion marker.
++#
++# Arguments:
++#   Description: None.
++# Side effects: Atomically renames a temporary marker to completed.
++# Exit status: 0 when the marker is published.
++complete_result() {
++  local temporary_marker="${result_dir}/.completed.tmp"
++  printf 'true\n' > "$temporary_marker" || return $?
++  mv -f "$temporary_marker" "${result_dir}/completed"
++}
++
++# Selects the package binaries using the runner operating system and build mode.
++#
++# Arguments:
++#   Description: Runner OS, build mode, and Cargo or Bazel build system options.
++# Output: Writes the exact space-separated binary list on one line.
++# Exit status: 0 for supported selections; 2 for invalid arguments.
++select_binaries() {
++  local runner_os='' build_mode='' build_system='' selected_binaries
++  parse_arguments 'runner_os build_mode build_system' "$@" || return $?
++  validate_runner_os "$runner_os" || return $?
++  validate_build_selection "$build_mode" "$build_system" || return $?
++
++  selected_binaries='codex codex-app-server codex-code-mode-host codex-exec-server'
++  if [[ "$runner_os" == Windows ]]; then
++    selected_binaries+=' codex-command-runner codex-windows-sandbox-setup'
++  fi
++  printf '%s\n' "$selected_binaries"
++}
++
++# Emits the fixed profile assignments consumed by the Cargo package build.
++#
++# Arguments:
++#   Description: The Rust target triple and release or debug build mode options.
++# Output: Writes the profile assignments only.
++# Exit status: 0 for a supported build mode; 2 otherwise.
++profile_env() {
++  local target='' build_mode=''
++  parse_arguments 'target build_mode' "$@" || return $?
++  profile_assignments "$target" "$build_mode"
++}
++
++# Builds selected Cargo package binaries and records the inputs observed at that operation.
++#
++# Arguments:
++#   Description: Target, runner OS, build mode, binaries, Cargo target directory, and result directory options.
++# Environment: Reads only approved determining variables and exports the effective profile and build identity.
++# Side effects: Runs Cargo, strip, SHA-256, and Git commands; retains records and partial outputs in the result directory.
++# Exit status: 0 on completion, 2 for invalid arguments, or the first failed child status.
++build_binaries() {
++  local target='' runner_os='' build_mode='' binaries='' target_dir='' result_dir=''
++  local command_index=0
++  local profile_file export_file assignment bwrap_path bwrap_digest_file digest_value git_commit_file
++  local STABLE_GIT_COMMIT
++  local build_argument
++  local -a selected_binaries=()
++  parse_arguments 'target runner_os build_mode binaries target_dir result_dir' "$@" || return $?
++  validate_runner_os "$runner_os" || return $?
++  case "$build_mode" in
++    release|debug) ;;
++    *) argument_error "Unsupported build mode: $build_mode"; return 2 ;;
++  esac
++  if [[ -z "$binaries" ]]; then
++    argument_error 'Option --binaries requires at least one binary name'
++    return 2
++  fi
++  IFS=$' \t\n' read -r -a selected_binaries <<< "$binaries"
++  if ((${#selected_binaries[@]} == 0)); then
++    argument_error 'Option --binaries requires at least one binary name'
++    return 2
++  fi
++  prepare_result_directory "$result_dir" || return $?
++  write_common_metadata build_binaries "$target" "$runner_os" "$binaries" || return $?
++  printf '%s\n' "$build_mode" > "${result_dir}/build-mode" || return $?
++  profile_file="${result_dir}/profile.env"
++  export_file="${result_dir}/export.env"
++  profile_assignments "$target" "$build_mode" > "$profile_file" || return $?
++  cp "$profile_file" "$export_file" || return $?
++  while IFS= read -r assignment; do
++    export "${assignment%%=*}=${assignment#*=}"
++  done < "$profile_file"
++
++  if [[ "$runner_os" == Linux ]]; then
++    run_recorded cargo build --target "$target" --release --timings --bin bwrap || return $?
++    bwrap_path="${target_dir}/${target}/release/bwrap"
++    run_recorded strip --strip-debug --strip-unneeded "$bwrap_path" || return $?
++    bwrap_digest_file="${result_dir}/.bwrap-sha256sum.out"
++    run_recorded sha256sum "$bwrap_path" > "$bwrap_digest_file" || return $?
++    IFS=' ' read -r digest_value _ < "$bwrap_digest_file"
++    case "$digest_value" in
++      *[!0-9a-f]*|'') printf 'Invalid SHA-256 output for %s\n' "$bwrap_path" >&2; return 1 ;;
++    esac
++    export CODEX_BWRAP_SHA256="$digest_value"
++    printf 'CODEX_BWRAP_SHA256=%s\n' "$digest_value" >> "$export_file" || return $?
++  fi
++
++  if [[ "$target" == x86_64-pc-windows-msvc ]]; then
++    export LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC
++  fi
++  git_commit_file="${result_dir}/.git-rev-parse.out"
++  run_recorded git rev-parse HEAD > "$git_commit_file" || return $?
++  IFS= read -r STABLE_GIT_COMMIT < "$git_commit_file"
++  export STABLE_GIT_COMMIT
++  printf '%s\n' "$STABLE_GIT_COMMIT" > "${result_dir}/source-commit" || return $?
++
++  record_environment "${result_dir}/environment.nul" || return $?
++
++  local -a build_arguments=(cargo build --target "$target" --release --timings)
++  for build_argument in "${selected_binaries[@]}"; do
++    build_arguments+=(--bin "$build_argument")
++  done
++  run_recorded "${build_arguments[@]}" || return $?
++  complete_result
++}
++
++# Archives the selected package binaries and records the archive tools' inputs.
++#
++# Arguments:
++#   Description: Target, runner OS, binaries, target directory, source root, workspace, runner temp, package version,
++#                and result directory options.
++# Environment: Reads only approved determining variables.
++# Side effects: Normalizes PDB names, archives symbols, builds package archives, and retains operation records.
++# Exit status: 0 on completion, 2 for invalid arguments, or the first failed child status.
++archive_packages() {
++  local target='' runner_os='' binaries='' target_dir='' source_root='' workspace='' runner_temp='' package_version='' result_dir=''
++  local command_index=0
++  local release_dir archive_dir executable_suffix binary package_variant expected_pdb underscored_pdb
++  local -a package_arguments=()
++  local -a selected_binaries=()
++  parse_arguments 'target runner_os binaries target_dir source_root workspace runner_temp package_version result_dir' "$@" || return $?
++  validate_runner_os "$runner_os" || return $?
++  if [[ -z "$binaries" ]]; then
++    argument_error 'Option --binaries requires at least one binary name'
++    return 2
++  fi
++  if [[ ! -d "$source_root" ]]; then
++    argument_error "Source root is not a directory: $source_root"
++    return 2
++  fi
++  IFS=$' \t\n' read -r -a selected_binaries <<< "$binaries"
++  if ((${#selected_binaries[@]} == 0)); then
++    argument_error 'Option --binaries requires at least one binary name'
++    return 2
++  fi
++  prepare_result_directory "$result_dir" || return $?
++  write_common_metadata archive_packages "$target" "$runner_os" "$binaries" || return $?
++  printf '%s\n' "$package_version" > "${result_dir}/package-version" || return $?
++  record_environment "${result_dir}/environment.nul" || return $?
++
++  release_dir="${target_dir}/${target}/release"
++  archive_dir="${workspace}/dist/${target}"
++  executable_suffix=''
++  if [[ "$runner_os" == Windows ]]; then
++    executable_suffix=.exe
++    for binary in "${selected_binaries[@]}"; do
++      expected_pdb="${release_dir}/${binary}.pdb"
++      if [[ -f "$expected_pdb" ]]; then
++        continue
++      fi
++      underscored_pdb="${release_dir}/${binary//-/_}.pdb"
++      if [[ ! -f "$underscored_pdb" ]]; then
++        printf 'PDB for %s not found at %s or %s\n' "$binary" "$expected_pdb" "$underscored_pdb" >&2
++        return 1
++      fi
++      run_recorded cp "$underscored_pdb" "$expected_pdb" || return $?
++    done
++  fi
++
++  run_recorded bash "${source_root}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
++    --target "$target" \
++    --artifact-name "$target" \
++    --release-dir "$release_dir" \
++    --archive-dir "${workspace}/symbols-dist/${target}" \
++    --binaries "$binaries" || return $?
++
++  package_arguments=(
++    --target "$target"
++    --code-mode-host-bin "${release_dir}/codex-code-mode-host${executable_suffix}"
++    --exec-server-bin "${release_dir}/codex-exec-server${executable_suffix}"
++    --cargo-profile release
++    --package-version "$package_version"
++    --force
++  )
++  if [[ "$runner_os" == Linux ]]; then
++    package_arguments+=(--bwrap-bin "${release_dir}/bwrap")
++  fi
++  if [[ "$runner_os" == Windows ]]; then
++    package_arguments+=(
++      --codex-command-runner-bin "${release_dir}/codex-command-runner.exe"
++      --codex-windows-sandbox-setup-bin "${release_dir}/codex-windows-sandbox-setup.exe"
++    )
++  fi
++
++  for package_variant in codex codex-app-server; do
++    if [[ "$package_variant" == codex ]]; then
++      binary=codex
++    else
++      binary=codex-app-server
++    fi
++    run_recorded python3 "${source_root}/scripts/build_codex_package.py" \
++      "${package_arguments[@]}" \
++      --variant "$package_variant" \
++      --entrypoint-bin "${release_dir}/${binary}${executable_suffix}" \
++      --package-dir "${runner_temp}/${binary}-package-${target}" \
++      --archive-output "${archive_dir}/${binary}-package-${target}.tar.gz" \
++      --archive-output "${archive_dir}/${binary}-package-${target}.tar.zst" || return $?
++  done
++  complete_result
++}
++
++# Dispatches one of the package operations and returns its status to the caller.
++#
++# Arguments:
++#   Description: One operation name followed by that operation's named options.
++# Exit status: 0 on success, 2 for invalid command arguments, or the operation's failure status.
++main() {
++  local operation
++  if (($# == 0)); then
++    argument_error 'Expected select-binaries, profile-env, build-binaries, or archive-packages'
++    return 2
++  fi
++  operation="$1"
++  shift
++  case "$operation" in
++    select-binaries) select_binaries "$@" ;;
++    profile-env) profile_env "$@" ;;
++    build-binaries) build_binaries "$@" ;;
++    archive-packages) archive_packages "$@" ;;
++    *) argument_error "Unknown operation: $operation"; return 2 ;;
++  esac
++}
++
++main "$@"
+diff --git a/.github/scripts/test-codex-package-operations.sh b/.github/scripts/test-codex-package-operations.sh
+new file mode 100644
+index 0000000000000000000000000000000000000000..77c8f5dd24be30f72d6cc81f07a7169e232b5d5a
+--- /dev/null
++++ b/.github/scripts/test-codex-package-operations.sh
+@@ -0,0 +1,391 @@
++#!/usr/bin/env bash
++
++set -euo pipefail
++
++# Tests the production operation entry point at its shell boundaries with isolated fixture tools.
++# Fixture tools test argument forwarding and operation ordering; they do not establish native build output.
++
++# Fails the shell suite with the supplied diagnostic.
++#
++# Arguments:
++#   Description: The assertion failure message.
++# Output: Writes the failure message to standard error.
++# Exit status: 1.
++fail() {
++  printf '%s\n' "$1" >&2
++  exit 1
++}
++
++# Compares two exact strings and reports the assertion label on mismatch.
++#
++# Arguments:
++#   Description: Assertion label, expected string, and observed string.
++# Exit status: 0 when the strings match; otherwise terminates the test suite.
++assert_equal() {
++  local label="$1"
++  local expected="$2"
++  local actual="$3"
++  if [[ "$expected" != "$actual" ]]; then
++    printf '%s\nexpected: <%s>\nactual:   <%s>\n' "$label" "$expected" "$actual" >&2
++    exit 1
++  fi
++}
++
++# Asserts that an operation rejects an unsupported build selection before work begins.
++#
++# Arguments:
++#   Description: Option name and unsupported option value.
++# Exit status: 0 when status 2 is returned.
++assert_invalid_selection() {
++  local option="$1"
++  local value="$2"
++  local status
++  if [[ "$option" == --build-mode ]]; then
++    if bash "$operations_script" select-binaries \
++      --runner-os Linux --build-mode "$value" --build-system cargo >/dev/null 2>&1; then
++      fail "Invalid selection was accepted: ${option} ${value}"
++    else
++      status=$?
++    fi
++  elif bash "$operations_script" select-binaries \
++    --runner-os Linux --build-mode release --build-system "$value" >/dev/null 2>&1; then
++    fail "Invalid selection was accepted: ${option} ${value}"
++  else
++    status=$?
++  fi
++  assert_equal "${option} ${value} status" 2 "$status"
++}
++
++# Reads one NUL-delimited argv file and compares it with expected arguments.
++#
++# Arguments:
++#   Description: Record path followed by expected argument strings.
++# Exit status: 0 when the exact argument vector matches.
++assert_argv() {
++  local record_path="$1"
++  shift
++  python3 - "$record_path" "$@" <<'PY'
++import pathlib
++import sys
++
++record = pathlib.Path(sys.argv[1]).read_bytes().split(b"\0")
++if record[-1] != b"":
++    raise SystemExit(f"argv record lacks its final NUL: {sys.argv[1]}")
++actual = [item.decode() for item in record[:-1]]
++expected = sys.argv[2:]
++if actual != expected:
++    raise SystemExit(f"argv mismatch for {sys.argv[1]}: expected {expected!r}; got {actual!r}")
++PY
++}
++
++# Installs fixture executables for the build operation.
++#
++# Arguments:
++#   Description: Fixture bin directory and fixture log directory.
++# Side effects: Creates cargo, strip, and git shell fixtures.
++# Exit status: 0 when all fixtures are written.
++install_build_fixtures() {
++  local fixture_bin="$1"
++  local fixture_logs="$2"
++  mkdir -p "$fixture_bin" "$fixture_logs"
++  cat > "${fixture_bin}/cargo" <<'STUB'
++#!/usr/bin/env bash
++set -euo pipefail
++count_file="${FIXTURE_LOG_DIR}/cargo.count"
++count=0
++if [[ -f "$count_file" ]]; then read -r count < "$count_file"; fi
++count=$((count + 1))
++printf '%s\n' "$count" > "$count_file"
++printf '%s\0' "$@" > "${FIXTURE_LOG_DIR}/cargo.${count}.argv"
++if [[ "$1" == build && "$*" == *"--bin bwrap"* ]]; then
++  mkdir -p "${CARGO_TARGET_DIR}/${CARGO_TARGET}/release"
++  printf 'before-strip' > "${CARGO_TARGET_DIR}/${CARGO_TARGET}/release/bwrap"
++fi
++if [[ "$1" == build && "$*" != *"--bin bwrap"* ]]; then
++  printf '%s\n' "${CODEX_BWRAP_SHA256-absent}" "${CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO-absent}" "${CARGO_PROFILE_RELEASE_OPT_LEVEL-absent}" "${STABLE_GIT_COMMIT-absent}" "${LIBSQLITE3_FLAGS-absent}" > "${FIXTURE_LOG_DIR}/cargo.final-env"
++fi
++if [[ "${CARGO_FAIL_STATUS-}" != '' && "$1" == build && "$*" != *"--bin bwrap"* ]]; then exit "$CARGO_FAIL_STATUS"; fi
++STUB
++  cat > "${fixture_bin}/strip" <<'STUB'
++#!/usr/bin/env bash
++set -euo pipefail
++printf '%s\0' "$@" > "${FIXTURE_LOG_DIR}/strip.argv"
++printf '%s' '-stripped' >> "$3"
++STUB
++  cat > "${fixture_bin}/git" <<'STUB'
++#!/usr/bin/env bash
++set -euo pipefail
++printf '%s\0' "$@" > "${FIXTURE_LOG_DIR}/git.argv"
++printf 'fixture-commit-123\n'
++STUB
++  chmod +x "${fixture_bin}/cargo" "${fixture_bin}/strip" "${fixture_bin}/git"
++}
++
++# Exercises the shared selection and Cargo build operations with a path containing spaces.
++#
++# Arguments:
++#   Description: Temporary test root.
++# Side effects: Creates fixture tools and build operation records.
++# Exit status: 0 when outputs, environment inheritance, command order, and failure boundaries match.
++test_build_operation() {
++  local test_root="$1"
++  local fixture_bin="${test_root}/fixture tools"
++  local fixture_logs="${test_root}/fixture logs"
++  local target_dir="${test_root}/cargo target"
++  local result_dir="${test_root}/build result"
++  local target=x86_64-unknown-linux-musl
++  local selected expected_digest actual_digest status
++  install_build_fixtures "$fixture_bin" "$fixture_logs"
++
++  selected="$(bash "$operations_script" select-binaries --runner-os Linux --build-mode release --build-system cargo)"
++  assert_equal 'Linux release binary selection' \
++    'codex codex-app-server codex-code-mode-host codex-exec-server' "$selected"
++  selected="$(bash "$operations_script" select-binaries --runner-os macOS --build-mode debug --build-system bazel)"
++  assert_equal 'macOS debug binary selection' \
++    'codex codex-app-server codex-code-mode-host codex-exec-server' "$selected"
++  selected="$(bash "$operations_script" select-binaries --runner-os Windows --build-mode release --build-system cargo)"
++  assert_equal 'Windows release binary selection' \
++    'codex codex-app-server codex-code-mode-host codex-exec-server codex-command-runner codex-windows-sandbox-setup' "$selected"
++  selected="$(bash "$operations_script" select-binaries --runner-os Windows --build-mode debug --build-system bazel)"
++  assert_equal 'Windows debug binary selection' \
++    'codex codex-app-server codex-code-mode-host codex-exec-server codex-command-runner codex-windows-sandbox-setup' "$selected"
++  assert_invalid_selection --build-mode fast
++  assert_invalid_selection --build-system make
++
++  assert_equal 'Linux release profile' 'CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=off' \
++    "$(bash "$operations_script" profile-env --target x86_64-unknown-linux-musl --build-mode release)"
++  assert_equal 'macOS release profile' 'CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=packed' \
++    "$(bash "$operations_script" profile-env --target aarch64-apple-darwin --build-mode release)"
++  assert_equal 'Windows debug profile' 'CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=off
++CARGO_PROFILE_RELEASE_OPT_LEVEL=0
++CARGO_PROFILE_RELEASE_LTO=off
++CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256' \
++    "$(bash "$operations_script" profile-env --target x86_64-pc-windows-msvc --build-mode debug)"
++  assert_equal 'macOS debug profile' 'CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=packed
++CARGO_PROFILE_RELEASE_OPT_LEVEL=0
++CARGO_PROFILE_RELEASE_LTO=off
++CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256' \
++    "$(bash "$operations_script" profile-env --target aarch64-apple-darwin --build-mode debug)"
++
++  export PATH="${fixture_bin}:$PATH"
++  export FIXTURE_LOG_DIR="$fixture_logs"
++  export CARGO_TARGET="$target"
++  export CARGO_TARGET_DIR="$target_dir"
++  export CARGO_BUILD_JOBS=2
++  export RUSTFLAGS='-C link-arg=/fixture path/arg'
++  export CODEX_UNLEASHED_BUILD_NUMBER=123
++  export RUNNER_TEMP="${test_root}/runner temp"
++  bash "$operations_script" build-binaries \
++    --target "$target" --runner-os Linux --build-mode debug \
++    --binaries 'codex codex-app-server codex-code-mode-host codex-exec-server' \
++    --target-dir "$target_dir" --result-dir "$result_dir"
++  expected_digest="$(sha256sum "${target_dir}/${target}/release/bwrap" | awk '{print $1}')"
++  actual_digest="$(sed -n '1p' "${fixture_logs}/cargo.final-env")"
++  assert_equal 'exported stripped bwrap digest' "$expected_digest" "$actual_digest"
++  assert_equal 'exported release split setting' off "$(sed -n '2p' "${fixture_logs}/cargo.final-env")"
++  assert_equal 'exported debug profile setting' 0 "$(sed -n '3p' "${fixture_logs}/cargo.final-env")"
++  assert_equal 'exported source commit' fixture-commit-123 "$(sed -n '4p' "${fixture_logs}/cargo.final-env")"
++  assert_equal 'non-Windows SQLite compatibility setting' absent "$(sed -n '5p' "${fixture_logs}/cargo.final-env")"
++  assert_equal 'source commit result' fixture-commit-123 "$(cat "${result_dir}/source-commit")"
++  assert_equal 'completion marker' true "$(cat "${result_dir}/completed")"
++  assert_equal 'profile record' 'CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=off
++CARGO_PROFILE_RELEASE_OPT_LEVEL=0
++CARGO_PROFILE_RELEASE_LTO=off
++CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256' "$(cat "${result_dir}/profile.env")"
++  assert_equal 'export record' "$(cat "${result_dir}/profile.env")
++CODEX_BWRAP_SHA256=${expected_digest}" "$(cat "${result_dir}/export.env")"
++  assert_argv "${result_dir}/commands/0001.argv" cargo build --target "$target" --release --timings --bin bwrap
++  assert_argv "${result_dir}/commands/0002.argv" strip --strip-debug --strip-unneeded "${target_dir}/${target}/release/bwrap"
++  assert_argv "${result_dir}/commands/0005.argv" cargo build --target "$target" --release --timings \
++    --bin codex --bin codex-app-server --bin codex-code-mode-host --bin codex-exec-server
++  assert_argv "${fixture_logs}/cargo.2.argv" build --target "$target" --release --timings \
++    --bin codex --bin codex-app-server --bin codex-code-mode-host --bin codex-exec-server
++  python3 - "${result_dir}/environment.nul" "$expected_digest" <<'PY'
++import pathlib
++import sys
++
++parts = pathlib.Path(sys.argv[1]).read_bytes().split(b"\0")
++values = dict(zip(parts[0:-1:2], parts[1:-1:2]))
++assert values[b"RUSTFLAGS"] == b"-C link-arg=/fixture path/arg"
++assert values[b"CARGO_BUILD_JOBS"] == b"2"
++assert values[b"CODEX_BWRAP_SHA256"] == sys.argv[2].encode()
++assert values[b"STABLE_GIT_COMMIT"] == b"fixture-commit-123"
++assert b"GH_TOKEN" not in values
++PY
++
++  result_dir="${test_root}/Windows build result"
++  bash "$operations_script" build-binaries \
++    --target x86_64-pc-windows-msvc --runner-os Windows --build-mode release \
++    --binaries 'codex codex-app-server' --target-dir "$target_dir" --result-dir "$result_dir"
++  assert_equal 'Windows SQLite compatibility setting' SQLITE_DISABLE_INTRINSIC \
++    "$(sed -n '5p' "${fixture_logs}/cargo.final-env")"
++
++  result_dir="${test_root}/failed build result"
++  export CARGO_FAIL_STATUS=37
++  if bash "$operations_script" build-binaries \
++    --target x86_64-unknown-linux-musl --runner-os Linux --build-mode release \
++    --binaries 'codex codex-app-server' --target-dir "$target_dir" --result-dir "$result_dir"; then
++    fail 'Failed package Cargo command unexpectedly succeeded'
++  else
++    status=$?
++  fi
++  assert_equal 'preserved package Cargo failure status' 37 "$status"
++  [[ ! -e "${result_dir}/completed" ]] || fail 'Failed build published completed marker'
++}
++
++# Exercises archive argument forwarding and failure ordering using explicit fixture script paths.
++#
++# Arguments:
++#   Description: Temporary test root.
++# Side effects: Creates a copied minimal source fixture and archive result records.
++# Exit status: 0 when exact tool arguments and early failure behavior match.
++test_archive_operation() {
++  local test_root="$1"
++  local fixture_root="${test_root}/source fixture with spaces"
++  local fixture_logs="${test_root}/archive logs"
++  local target_dir="${test_root}/archive target"
++  local result_dir="${test_root}/archive result"
++  local windows_target=aarch64-pc-windows-msvc windows_release binary underscored_pdb status
++  mkdir -p "${fixture_root}/.github/scripts" "${fixture_root}/scripts" \
++    "${target_dir}/x86_64-unknown-linux-musl/release" "$fixture_logs"
++  cat > "${fixture_root}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" <<'STUB'
++#!/usr/bin/env bash
++set -euo pipefail
++printf '%s\0' "$@" > "${FIXTURE_LOG_DIR}/symbols.argv"
++printf '%s\n' "${CODEX_UNLEASHED_BUILD_NUMBER-unset}" > "${FIXTURE_LOG_DIR}/symbols.env"
++if [[ "${SYMBOL_FAIL_STATUS-}" != '' ]]; then exit "$SYMBOL_FAIL_STATUS"; fi
++STUB
++  cat > "${fixture_root}/scripts/build_codex_package.py" <<'STUB'
++import os
++import pathlib
++import sys
++
++count_path = pathlib.Path(os.environ["FIXTURE_LOG_DIR"]) / "package.count"
++count = int(count_path.read_text() or "0") + 1 if count_path.exists() else 1
++count_path.write_text(str(count))
++(pathlib.Path(os.environ["FIXTURE_LOG_DIR"]) / f"package.{count}.argv").write_bytes(
++    b"\0".join(value.encode() for value in sys.argv[1:]) + b"\0"
++)
++print(os.environ.get("CODEX_UNLEASHED_BUILD_NUMBER", "unset"), file=open(
++    pathlib.Path(os.environ["FIXTURE_LOG_DIR"]) / f"package.{count}.env", "w"
++))
++STUB
++  chmod +x "${fixture_root}/.github/scripts/archive-release-symbols-and-strip-binaries.sh"
++  export FIXTURE_LOG_DIR="$fixture_logs"
++  export CODEX_UNLEASHED_BUILD_NUMBER=456
++  bash "$operations_script" archive-packages \
++    --target x86_64-unknown-linux-musl --runner-os Linux \
++    --binaries 'codex codex-app-server codex-code-mode-host codex-exec-server' \
++    --target-dir "$target_dir" --source-root "$fixture_root" --workspace "$test_root" \
++    --runner-temp "${test_root}/archive runner temp" --package-version 1.2.3 --result-dir "$result_dir"
++  assert_equal 'archive completion marker' true "$(cat "${result_dir}/completed")"
++  assert_argv "${result_dir}/commands/0001.argv" bash \
++    "${fixture_root}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
++    --target x86_64-unknown-linux-musl --artifact-name x86_64-unknown-linux-musl \
++    --release-dir "${target_dir}/x86_64-unknown-linux-musl/release" \
++    --archive-dir "${test_root}/symbols-dist/x86_64-unknown-linux-musl" \
++    --binaries 'codex codex-app-server codex-code-mode-host codex-exec-server'
++  assert_argv "${fixture_logs}/symbols.argv" \
++    --target x86_64-unknown-linux-musl --artifact-name x86_64-unknown-linux-musl \
++    --release-dir "${target_dir}/x86_64-unknown-linux-musl/release" \
++    --archive-dir "${test_root}/symbols-dist/x86_64-unknown-linux-musl" \
++    --binaries 'codex codex-app-server codex-code-mode-host codex-exec-server'
++  assert_equal 'symbol tool inherited build identity' 456 "$(cat "${fixture_logs}/symbols.env")"
++  assert_argv "${fixture_logs}/package.1.argv" \
++    --target x86_64-unknown-linux-musl \
++    --code-mode-host-bin "${target_dir}/x86_64-unknown-linux-musl/release/codex-code-mode-host" \
++    --exec-server-bin "${target_dir}/x86_64-unknown-linux-musl/release/codex-exec-server" \
++    --cargo-profile release --package-version 1.2.3 --force --bwrap-bin \
++    "${target_dir}/x86_64-unknown-linux-musl/release/bwrap" \
++    --variant codex --entrypoint-bin "${target_dir}/x86_64-unknown-linux-musl/release/codex" \
++    --package-dir "${test_root}/archive runner temp/codex-package-x86_64-unknown-linux-musl" \
++    --archive-output "${test_root}/dist/x86_64-unknown-linux-musl/codex-package-x86_64-unknown-linux-musl.tar.gz" \
++    --archive-output "${test_root}/dist/x86_64-unknown-linux-musl/codex-package-x86_64-unknown-linux-musl.tar.zst"
++  assert_argv "${fixture_logs}/package.2.argv" \
++    --target x86_64-unknown-linux-musl \
++    --code-mode-host-bin "${target_dir}/x86_64-unknown-linux-musl/release/codex-code-mode-host" \
++    --exec-server-bin "${target_dir}/x86_64-unknown-linux-musl/release/codex-exec-server" \
++    --cargo-profile release --package-version 1.2.3 --force --bwrap-bin \
++    "${target_dir}/x86_64-unknown-linux-musl/release/bwrap" \
++    --variant codex-app-server --entrypoint-bin "${target_dir}/x86_64-unknown-linux-musl/release/codex-app-server" \
++    --package-dir "${test_root}/archive runner temp/codex-app-server-package-x86_64-unknown-linux-musl" \
++    --archive-output "${test_root}/dist/x86_64-unknown-linux-musl/codex-app-server-package-x86_64-unknown-linux-musl.tar.gz" \
++    --archive-output "${test_root}/dist/x86_64-unknown-linux-musl/codex-app-server-package-x86_64-unknown-linux-musl.tar.zst"
++
++  windows_release="${target_dir}/${windows_target}/release"
++  mkdir -p "$windows_release"
++  for binary in codex codex-app-server codex-code-mode-host codex-exec-server \
++    codex-command-runner codex-windows-sandbox-setup; do
++    underscored_pdb="${binary//-/_}"
++    printf '%s' "$binary symbols" > "${windows_release}/${underscored_pdb}.pdb"
++  done
++  result_dir="${test_root}/Windows archive result"
++  bash "$operations_script" archive-packages \
++    --target "$windows_target" --runner-os Windows \
++    --binaries 'codex codex-app-server codex-code-mode-host codex-exec-server codex-command-runner codex-windows-sandbox-setup' \
++    --target-dir "$target_dir" --source-root "$fixture_root" --workspace "$test_root" \
++    --runner-temp "${test_root}/archive runner temp" --package-version 1.2.3 --result-dir "$result_dir"
++  for binary in codex codex-app-server codex-code-mode-host codex-exec-server \
++    codex-command-runner codex-windows-sandbox-setup; do
++    underscored_pdb="${binary//-/_}"
++    [[ -f "${windows_release}/${binary}.pdb" ]] || fail "PDB name was not normalized for ${binary}"
++    [[ -f "${windows_release}/${underscored_pdb}.pdb" ]] || fail "Source PDB was removed for ${binary}"
++  done
++  assert_argv "${fixture_logs}/package.3.argv" \
++    --target "$windows_target" \
++    --code-mode-host-bin "${windows_release}/codex-code-mode-host.exe" \
++    --exec-server-bin "${windows_release}/codex-exec-server.exe" \
++    --cargo-profile release --package-version 1.2.3 --force \
++    --codex-command-runner-bin "${windows_release}/codex-command-runner.exe" \
++    --codex-windows-sandbox-setup-bin "${windows_release}/codex-windows-sandbox-setup.exe" \
++    --variant codex --entrypoint-bin "${windows_release}/codex.exe" \
++    --package-dir "${test_root}/archive runner temp/codex-package-${windows_target}" \
++    --archive-output "${test_root}/dist/${windows_target}/codex-package-${windows_target}.tar.gz" \
++    --archive-output "${test_root}/dist/${windows_target}/codex-package-${windows_target}.tar.zst"
++  assert_argv "${fixture_logs}/package.4.argv" \
++    --target "$windows_target" \
++    --code-mode-host-bin "${windows_release}/codex-code-mode-host.exe" \
++    --exec-server-bin "${windows_release}/codex-exec-server.exe" \
++    --cargo-profile release --package-version 1.2.3 --force \
++    --codex-command-runner-bin "${windows_release}/codex-command-runner.exe" \
++    --codex-windows-sandbox-setup-bin "${windows_release}/codex-windows-sandbox-setup.exe" \
++    --variant codex-app-server --entrypoint-bin "${windows_release}/codex-app-server.exe" \
++    --package-dir "${test_root}/archive runner temp/codex-app-server-package-${windows_target}" \
++    --archive-output "${test_root}/dist/${windows_target}/codex-app-server-package-${windows_target}.tar.gz" \
++    --archive-output "${test_root}/dist/${windows_target}/codex-app-server-package-${windows_target}.tar.zst"
++
++  result_dir="${test_root}/failed archive result"
++  export SYMBOL_FAIL_STATUS=29
++  if bash "$operations_script" archive-packages \
++    --target x86_64-unknown-linux-musl --runner-os Linux \
++    --binaries 'codex codex-app-server' --target-dir "$target_dir" --source-root "$fixture_root" \
++    --workspace "$test_root" --runner-temp "$test_root" --package-version 1.2.3 --result-dir "$result_dir"; then
++    fail 'Failed symbol operation unexpectedly succeeded'
++  else
++    status=$?
++  fi
++  assert_equal 'preserved symbol failure status' 29 "$status"
++  [[ ! -e "${result_dir}/completed" ]] || fail 'Failed archive published completed marker'
++  assert_equal 'package commands prevented after symbol failure' 1 "$(find "${result_dir}/commands" -type f | wc -l | tr -d ' ')"
++}
++
++# Runs all focused package operation checks in one isolated temporary tree.
++#
++# Arguments:
++#   Description: None.
++# Side effects: Creates and removes temporary fixtures.
++# Exit status: 0 when all checks pass.
++main() {
++  local source_root operations_script test_root
++  source_root="$(cd "$(dirname "$0")/../.." && pwd)"
++  operations_script="${source_root}/.github/scripts/codex-package-operations.sh"
++  test_root="$(mktemp -d "${TMPDIR:-/tmp}/codex package operations.XXXXXX")"
++  trap 'rm -rf -- "$test_root"' EXIT
++  test_build_operation "$test_root"
++  test_archive_operation "$test_root"
++  printf 'Package operation selection, profile, build, archive, and failure-boundary checks passed.\n'
++  rm -rf -- "$test_root"
++  trap - EXIT
++}
++
++main "$@"

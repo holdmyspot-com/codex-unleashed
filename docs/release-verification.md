@@ -10,6 +10,16 @@ Download every asset for the selected release into a new directory:
 gh release download 'rust-v0.167.0+1' --repo holdmyspot-com/codex-unleashed --dir release-assets
 ```
 
+Before using source references from the downloaded manifest, authenticate that manifest with the fixed consumer policy:
+
+```bash
+python3 -I .github/scripts/release-manifest.py authenticate --manifest release-assets/release-manifest.json
+```
+
+Success verifies the manifest's GitHub attestation for the configured repository and signer workflow. It authenticates
+the manifest only; it does not verify the release assets, receipts, checksums or reconstructed source. Run the full
+verification command below to check those records and files.
+
 Read `release-assets/release-manifest.json` to obtain `fork_commit`, `upstream.commit` and `upstream.tag`. Check out that
 fork commit in `patch-repo` and that upstream commit in `upstream-source`. Fetch the upstream tag as well; verification
 requires it to resolve to the pinned commit. The fork checkout supplies the raw patches and their order from
@@ -59,8 +69,9 @@ publisher/workflow check. Neither mode proves a binary is bit-for-bit reproducib
 
 ## Manifest and receipt contract for release maintainers
 
-The helper `.github/scripts/release-manifest.py` has three commands. Each returns 0 on success or 1 with a diagnostic
-on invalid input, missing files, Git failure or failed attestation; argument syntax errors return 2.
+The helper `.github/scripts/release-manifest.py` has four commands. Each returns 0 on success or 1 with a diagnostic
+on invalid input, missing files, Git failure or failed attestation; argument syntax errors return 2. `authenticate`
+validates the manifest schema and fixed consumer policy before asking GitHub CLI to verify that manifest's attestation.
 
 `receipt` records one target's packaged files. Before invoking it, run that target's packaged CLI natively with
 `--version`, storing its stdout in `assets/codex-version-TARGET.txt`. Its exact observed text, allowing a final newline,
@@ -72,16 +83,21 @@ python3 -I .github/scripts/release-manifest.py receipt \
   --source upstream-source --patch-repo patch-repo --target x86_64-unknown-linux-musl \
   --version '0.167.0+1' --build-number 1 --upstream-tag rust-v0.167.0 \
   --upstream-commit "$upstream_commit" --fork-commit "$fork_commit" --run-id "$run_id" --run-attempt 1 \
-  --assets assets --output assets/package-receipt-x86_64-unknown-linux-musl.json
+  --assets assets --output assets/package-receipt-x86_64-unknown-linux-musl.json --native-inputs native-inputs.json
 ```
 
 Each target directory contains its `codex-package-TARGET.tar.gz`, `codex-symbols-TARGET.tar.gz`, and version proof;
 the x86_64 Linux directory also supplies `install.sh` and `install.ps1`. An optional
 `codex-app-server-package-TARGET.tar.gz` is supported and inventoried separately. Each distributed server archive must contain
 its own regular `codex-app-server` or `codex-app-server.exe` member, whose hash is recorded separately from the CLI.
-The package receipt records archive hashes and executable-member hashes separately. It records the operation, Python,
-Git and host values actually visible at the receipt boundary; it does not infer earlier compiler invocations or build
-environment measurements. The native caller and workflow attestation establish the origin of the version proof.
+The package receipt records archive hashes and executable-member hashes separately. Its required `--native-inputs`
+file supplies the `inputs.native_build` record: runner observations, the `build_binaries` and `archive_packages`
+argument vectors and approved diagnostic environment values, one status/path/version record for each named tool, and
+sorted resource path/size/SHA256 observations. Present empty environment values remain distinct from omitted keys.
+These observations preserve the values the builder reported for diagnosis; they do not establish complete compiler
+input capture or require a reproduction host to use the same image, tool path or environment. The receipt also records
+the operation, Python, Git and host values visible at the receipt boundary; it does not infer earlier compiler
+invocations. The native caller and workflow attestation establish the origin of the version proof.
 
 Merge the six target directories without replacing duplicate names, then assemble:
 

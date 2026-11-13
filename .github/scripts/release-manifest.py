@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record packaged release inputs, assemble a manifest, or verify downloaded assets and reconstructed source.
+"""Record packaged inputs, assemble a manifest, authenticate it, or verify release assets and reconstructed source.
 
 receipt requires a clean patched source checkout, its exact patch-repository checkout, collected assets and a
 codex-version-TARGET.txt file containing packaged CLI stdout. assemble requires all six receipts and payloads.
@@ -37,6 +37,23 @@ SHA256 = re.compile(r"[0-9a-f]{64}")
 GIT_SHA = re.compile(r"[0-9a-f]{40}")
 SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
 VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\+([1-9][0-9]*)")
+# Exact process-variable names the shared release builder permits in native operation diagnostics.
+NATIVE_ENVIRONMENT_EXACT_KEYS = frozenset({
+    "PATH", "CARGO_HOME", "CARGO_TARGET_DIR", "RUSTUP_TOOLCHAIN", "RUSTC", "RUSTC_WRAPPER",
+    "RUSTC_WORKSPACE_WRAPPER", "RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_JOBS",
+    "CARGO_INCREMENTAL", "STABLE_GIT_COMMIT", "CODEX_UNLEASHED_BUILD_NUMBER", "CODEX_BWRAP_SHA256",
+    "MACOSX_DEPLOYMENT_TARGET", "DEVELOPER_DIR", "SDKROOT", "LIBSQLITE3_FLAGS", "SOURCE_DATE_EPOCH", "INCLUDE", "LIB",
+    "LIBPATH", "VCINSTALLDIR", "VCToolsInstallDir", "WindowsSdkDir", "WindowsSDKVersion",
+    "CC", "CXX", "AR", "CFLAGS", "CXXFLAGS", "LDFLAGS", "AWS_LC_SYS_NO_JITTER_ENTROPY"
+})
+# Prefix families the shared release builder permits in native operation diagnostics, with a required suffix.
+NATIVE_ENVIRONMENT_PREFIXES = (
+    "CARGO_PROFILE_RELEASE_", "CARGO_TARGET_", "RUSTY_V8_"
+)
+# Target-qualified C tool keys are handled by the environment family predicate below.
+NATIVE_TARGET_ENVIRONMENT_PREFIXES = tuple(
+    f"{name}_" for name in ("CC", "CXX", "AR", "CFLAGS", "CXXFLAGS", "LDFLAGS")
+)
 
 
 def require(condition, message):
@@ -259,6 +276,117 @@ def validate_identity(value):
         hash_field(patch["sha256"], SHA256, "patch SHA256")
 
 
+def is_approved_native_environment_key(key):
+    """Return whether a key belongs to the shared builder's approved diagnostic environment families."""
+    if isinstance(key, str):
+        if key in NATIVE_ENVIRONMENT_EXACT_KEYS:
+            return True
+        for prefix in (*NATIVE_ENVIRONMENT_PREFIXES, *NATIVE_TARGET_ENVIRONMENT_PREFIXES):
+            has_family_prefix = key.startswith(prefix)
+            has_family_suffix = len(key) > len(prefix)
+            if has_family_prefix and has_family_suffix:
+                return True
+    return False
+
+
+def require_bounded_native_string(value, subject):
+    """Require one exact native observation string to fit the per-string byte bound."""
+    require(isinstance(value, str), f"{subject} must be text")
+    require(len(value.encode("utf-8")) <= 64 * 1024, f"{subject} exceeds 64 KiB")
+
+
+def require_nullable_native_string(value, subject):
+    """Require one nullable native observation string to fit the per-string byte bound when present."""
+    if value is not None:
+        require_bounded_native_string(value, subject)
+
+
+def validate_native_build(value, target):
+    """Validate the bounded diagnostic observations for one receipt target and return the original object."""
+    fields(value, ("format_version", "target", "runner", "operations", "tools", "resources"), "native_build")
+    require(type(value["format_version"]) is int and value["format_version"] == 1,
+            "Unsupported native_build format_version")
+    require(value["target"] == target, "native_build target differs from receipt target")
+    require_bounded_native_string(value["target"], "native_build target")
+
+    runner = value["runner"]
+    runner_fields = ("os", "arch", "image_os", "image_version")
+    fields(runner, runner_fields, "native_build runner")
+    for name in runner_fields:
+        require_nullable_native_string(runner[name], f"native_build runner {name}")
+
+    expected_operations = ("build_binaries", "archive_packages")
+    operations = value["operations"]
+    require(isinstance(operations, list) and len(operations) == len(expected_operations),
+            "native_build requires build_binaries then archive_packages")
+    command_count = 0
+    environment_count = 0
+    for operation, expected_name in zip(operations, expected_operations):
+        fields(operation, ("operation", "commands", "environment"), "native_build operation")
+        require(operation["operation"] == expected_name, "native_build operation order is invalid")
+        commands = operation["commands"]
+        require(isinstance(commands, list) and 0 < len(commands) <= 256,
+                "native_build operation requires 1 to 256 commands")
+        command_count += len(commands)
+        require(command_count <= 256, "native_build requires at most 256 commands")
+        for command in commands:
+            require(isinstance(command, list) and 0 < len(command) <= 256,
+                    "native_build command requires 1 to 256 arguments")
+            for argument in command:
+                require_bounded_native_string(argument, "native_build argument")
+                require("\x00" not in argument, "native_build argument contains NUL")
+        environment = operation["environment"]
+        require(isinstance(environment, dict) and len(environment) <= 256,
+                "native_build environment requires at most 256 entries")
+        environment_count += len(environment)
+        require(environment_count <= 256, "native_build requires at most 256 environment entries")
+        for name, observed in environment.items():
+            require(is_approved_native_environment_key(name), f"Unapproved native_build environment key: {name!r}")
+            require_bounded_native_string(observed, f"native_build environment value for {name}")
+            require("\x00" not in observed, f"native_build environment value for {name} contains NUL")
+
+    tools = value["tools"]
+    required_tool_names = ("rustc", "cargo", "git", "zig", "cc", "cxx", "linker", "strip", "objcopy",
+                           "dsymutil", "python", "zstd")
+    require(isinstance(tools, list) and len(tools) == len(required_tool_names),
+            "native_build requires one entry for each diagnostic tool")
+    seen_tools = set()
+    for tool in tools:
+        fields(tool, ("name", "status", "path", "version"), "native_build tool")
+        name = tool["name"]
+        require(isinstance(name, str) and name in required_tool_names, "Unsupported native_build tool")
+        require(name not in seen_tools, f"Duplicate native_build tool: {name}")
+        seen_tools.add(name)
+        require(tool["status"] in ("observed", "unavailable", "not_applicable"),
+                f"Invalid native_build tool status for {name}")
+        require_nullable_native_string(tool["path"], f"native_build tool path for {name}")
+        require_nullable_native_string(tool["version"], f"native_build tool version for {name}")
+    require(seen_tools == set(required_tool_names), "native_build is missing a diagnostic tool")
+
+    resources = value["resources"]
+    require(isinstance(resources, list), "native_build resources must be an array")
+    resource_identities = []
+    for resource in resources:
+        fields(resource, ("role", "path", "size", "sha256"), "native_build resource")
+        role = resource["role"]
+        require(role in ("packaged_resource", "configured_v8_archive"), "Unsupported native_build resource role")
+        path_value = resource["path"]
+        require_bounded_native_string(path_value, "native_build resource path")
+        path = PurePosixPath(path_value)
+        unsafe_path = (path_value in ("", ".") or path.is_absolute() or ".." in path.parts or
+                       "\\" in path_value or path.as_posix() != path_value)
+        require(not unsafe_path, f"Unsafe native_build resource path: {path_value!r}")
+        if role == "configured_v8_archive":
+            require(path.name == path_value, "configured_v8_archive path must be a basename")
+        require(type(resource["size"]) is int and resource["size"] >= 0,
+                "native_build resource size must be a nonnegative integer")
+        hash_field(resource["sha256"], SHA256, "native_build resource SHA256")
+        resource_identities.append((role, path_value))
+    require(len(set(resource_identities)) == len(resource_identities), "Duplicate native_build resource identity")
+    require(resource_identities == sorted(resource_identities), "native_build resources must be sorted by role and path")
+    return value
+
+
 def shared_identity(value):
     """Return release inputs that every target receipt and the manifest must agree on exactly."""
     return {key: value[key] for key in ("format_version", "repository", "signer_workflow", "release", "upstream", "fork_commit", "patches", "source")}
@@ -282,7 +410,7 @@ def validate_source(value, patch_repo, source, temp_root):
 
 
 def validate_receipt(value):
-    """Validate a target receipt, its actual observed version, bounded inventory and recorded build inputs."""
+    """Validate a target receipt, its actual observed version, bounded inventory and required build observations."""
     fields(value, ("format_version", "repository", "signer_workflow", "release", "upstream", "fork_commit", "patches", "source",
                    "target", "run", "observed_cli_version", "inputs", "artifacts", "binaries"), "receipt")
     validate_identity(value)
@@ -292,9 +420,10 @@ def validate_receipt(value):
     fields(value["run"], ("id", "attempt"), "run")
     require(isinstance(value["run"]["id"], str) and value["run"]["id"].isdigit(), "Run id must be numeric text")
     require(type(value["run"]["attempt"]) is int and value["run"]["attempt"] > 0, "Run attempt must be positive")
-    fields(value["inputs"], ("receipt_operation", "python", "host", "git"), "observed inputs")
+    fields(value["inputs"], ("receipt_operation", "python", "host", "git", "native_build"), "observed inputs")
     require(value["inputs"]["receipt_operation"] == "receipt", "Invalid receipt operation")
     require(all(isinstance(value["inputs"][key], str) for key in ("python", "host", "git")), "Invalid observed tool inputs")
+    validate_native_build(value["inputs"]["native_build"], target)
     require(isinstance(value["artifacts"], list) and len(value["artifacts"]) <= MAX_ASSETS, "Invalid receipt artifact inventory")
     names = []
     for entry in value["artifacts"]:
@@ -333,7 +462,9 @@ def observed_version(path):
 
 
 def create_receipt(args, temp_root):
-    """Record validated source, observed packaged CLI version and payload/binary identities for one native target."""
+    """Record source, native build observations and packaged asset identities for one target receipt."""
+    native_build = read_json(args.native_inputs)
+    validate_native_build(native_build, args.target)
     value = {"format_version": 1, "repository": REPOSITORY, "signer_workflow": SIGNER_WORKFLOW,
              "release": {"tag": "rust-v" + args.version, "version": args.version, "build_number": args.build_number},
              "upstream": {"repository": UPSTREAM_REPOSITORY, "tag": args.upstream_tag, "commit": args.upstream_commit},
@@ -342,7 +473,7 @@ def create_receipt(args, temp_root):
              "run": {"id": args.run_id, "attempt": args.run_attempt},
              "observed_cli_version": observed_version(args.assets / proof_name(args.target)),
              "inputs": {"receipt_operation": "receipt", "python": platform.python_version(), "host": platform.platform(),
-                        "git": run(["git", "--version"])}, "artifacts": [], "binaries": []}
+                        "git": run(["git", "--version"]), "native_build": native_build}, "artifacts": [], "binaries": []}
     for path in sorted(args.assets.iterdir()):
         if path.resolve() == args.output.resolve():
             continue
@@ -422,6 +553,15 @@ def attestation_command(path):
     return ["gh", "attestation", "verify", str(path), "--repo", REPOSITORY, "--signer-workflow", SIGNER_WORKFLOW]
 
 
+def authenticate_manifest(manifest_path, *, run_command):
+    """Validate a manifest and verify its attestation with the fixed consumer trust policy."""
+    path = Path(manifest_path)
+    value = read_json(path)
+    validate_manifest(value)
+    run_command(attestation_command(path))
+    return value
+
+
 def verify(args, temp_root):
     """Verify all release bytes, receipt agreement and reconstructed source; optionally require hosted attestations."""
     root = args.release_dir
@@ -471,6 +611,12 @@ def verify(args, temp_root):
         print("Verified checksums and reconstructed source only; GitHub attestations were not checked")
 
 
+def authenticate(args):
+    """Authenticate one validated manifest before a caller trusts its recorded source identities."""
+    authenticate_manifest(args.manifest, run_command=run)
+    print("Authenticated release manifest")
+
+
 def main(arguments, temp_root):
     """Parse one supported operation and return 0 on completion or 1 with a safe diagnostic on failure."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -483,6 +629,7 @@ def main(arguments, temp_root):
         receipt.add_argument("--" + option, required=True)
     for option in ("build-number", "run-attempt"):
         receipt.add_argument("--" + option, type=int, required=True)
+    receipt.add_argument("--native-inputs", type=Path, required=True)
     assembly = commands.add_parser("assemble", help="assemble the six receipts and checksums")
     for option in ("receipts", "assets", "output"):
         assembly.add_argument("--" + option, type=Path, required=True)
@@ -490,12 +637,16 @@ def main(arguments, temp_root):
     for option in ("release-dir", "patch-repo", "upstream-source"):
         verification.add_argument("--" + option, type=Path, required=True)
     verification.add_argument("--verify-attestations", action="store_true")
+    authentication = commands.add_parser("authenticate", help="validate and authenticate one release manifest")
+    authentication.add_argument("--manifest", type=Path, required=True)
     args = parser.parse_args(arguments)
     try:
         if args.command == "receipt":
             create_receipt(args, temp_root)
         elif args.command == "assemble":
             assemble(args)
+        elif args.command == "authenticate":
+            authenticate(args)
         else:
             verify(args, temp_root)
     except (ValueError, OSError, subprocess.CalledProcessError, tarfile.TarError, UnicodeError) as error:
