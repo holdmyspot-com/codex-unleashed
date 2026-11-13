@@ -1,0 +1,38 @@
+From 2e0effe1d0910cf0b7eca6ef75bb12a7ec466554 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 13 Nov 2026 01:41:04 -0500
+Subject: [PATCH] Wait for the pin result in
+ pin_action_updates_shared_section_state
+
+Completing the first pin starts an agents-overview refresh, and the refresh task reports on the same app event channel. When the refresh finishes before the second pin request, the test took the refresh result for the pin result and failed its AgentsOverviewPinToggled assertion; an unpatched macOS run failed it once this way. The test now skips other events until the pin result arrives.
+---
+ .../tui/src/app/agents_overview_actions_tests.rs    | 13 ++++++++-----
+ 1 file changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/codex-rs/tui/src/app/agents_overview_actions_tests.rs b/codex-rs/tui/src/app/agents_overview_actions_tests.rs
+index dd48bb15c..6c38eaef5 100644
+--- a/codex-rs/tui/src/app/agents_overview_actions_tests.rs
++++ b/codex-rs/tui/src/app/agents_overview_actions_tests.rs
+@@ -30,11 +30,14 @@ async fn pin_action_updates_shared_section_state() -> Result<()> {
+         ))
+         .await?;
+         assert!(app.agents_overview.pending_pin_change.is_some());
+-        let completed = rx.recv().await.expect("pin request completes");
+-        assert!(matches!(
+-            &completed,
+-            AppEvent::AgentsOverviewPinToggled { .. }
+-        ));
++        // Completing the first pin starts an overview refresh whose result shares this channel and can arrive
++        // before the second pin's result.
++        let completed = loop {
++            let event = rx.recv().await.expect("pin request completes");
++            if matches!(&event, AppEvent::AgentsOverviewPinToggled { .. }) {
++                break event;
++            }
++        };
+         app.agents_overview
+             .refresh_notifications
+             .insert(thread_id, Vec::new());
+-- 
+2.43.0
+

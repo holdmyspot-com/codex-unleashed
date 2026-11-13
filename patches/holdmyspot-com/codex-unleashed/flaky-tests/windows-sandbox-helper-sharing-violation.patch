@@ -1,0 +1,91 @@
+From af00bebf198c3f8122644a8c80387e116e4410e5 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 13 Nov 2026 01:46:43 -0500
+Subject: [PATCH] Keep a staged Windows sandbox helper that a running helper
+ holds open
+
+The Windows sandbox tests copy codex-windows-sandbox-setup and codex-command-runner next to the test executable, which every binary of a nextest archive shares. A helper started by another test can still be running, and the copy then fails. The tests already keep the staged copy when Windows reports access denied, but Windows ARM64 runners report a sharing violation (os error 32) instead: an unpatched run failed 8 times this way, and the cases it hits change from run to run. The tests now keep the staged copy for either error.
+---
+ codex-rs/core/tests/windows_sandbox.rs                |  2 +-
+ .../exec-server/tests/exec_process/windows_sandbox.rs |  2 +-
+ codex-rs/exec-server/tests/file_system_windows.rs     |  2 +-
+ codex-rs/utils/cargo-bin/src/executable.rs            | 11 +++++++++++
+ codex-rs/utils/cargo-bin/src/lib.rs                   |  1 +
+ 5 files changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/codex-rs/core/tests/windows_sandbox.rs b/codex-rs/core/tests/windows_sandbox.rs
+index cf7f6a879..34b8d6b4e 100644
+--- a/codex-rs/core/tests/windows_sandbox.rs
++++ b/codex-rs/core/tests/windows_sandbox.rs
+@@ -142,7 +142,7 @@ fn stage_windows_sandbox_helpers() -> anyhow::Result<()> {
+             // A sandbox helper can briefly remain alive after the sandboxed
+             // command exits. Bazel may retry the test while that process still
+             // has the staged executable open, so keep the already-staged copy.
+-            if err.kind() == std::io::ErrorKind::PermissionDenied && destination.exists() {
++            if codex_utils_cargo_bin::is_executable_in_use(&err) && destination.exists() {
+                 continue;
+             }
+             return Err(err).with_context(|| {
+diff --git a/codex-rs/exec-server/tests/exec_process/windows_sandbox.rs b/codex-rs/exec-server/tests/exec_process/windows_sandbox.rs
+index f34aa493e..97966572c 100644
+--- a/codex-rs/exec-server/tests/exec_process/windows_sandbox.rs
++++ b/codex-rs/exec-server/tests/exec_process/windows_sandbox.rs
+@@ -109,7 +109,7 @@ async fn tmpdir_uses_command_environment_over_rpc(
+             let source = codex_utils_cargo_bin::cargo_bin(name)?;
+             let destination = resources.join(std::path::Path::new(name).with_extension("exe"));
+             if let Err(error) = codex_utils_cargo_bin::copy_executable(&source, &destination)
+-                && !(error.kind() == std::io::ErrorKind::PermissionDenied && destination.is_file())
++                && !(codex_utils_cargo_bin::is_executable_in_use(&error) && destination.is_file())
+             {
+                 return Err(error).with_context(|| format!("stage Windows sandbox helper {name}"));
+             }
+diff --git a/codex-rs/exec-server/tests/file_system_windows.rs b/codex-rs/exec-server/tests/file_system_windows.rs
+index bcb4c462e..1a176e048 100644
+--- a/codex-rs/exec-server/tests/file_system_windows.rs
++++ b/codex-rs/exec-server/tests/file_system_windows.rs
+@@ -488,7 +488,7 @@ async fn file_system_elevated_relative_read_denial_uses_policy_cwd(
+         let source = codex_utils_cargo_bin::cargo_bin(name)?;
+         let destination = resources.join(Path::new(name).with_extension("exe"));
+         if let Err(error) = codex_utils_cargo_bin::copy_executable(&source, &destination)
+-            && !(error.kind() == std::io::ErrorKind::PermissionDenied && destination.is_file())
++            && !(codex_utils_cargo_bin::is_executable_in_use(&error) && destination.is_file())
+         {
+             return Err(error).with_context(|| format!("stage Windows sandbox helper {name}"));
+         }
+diff --git a/codex-rs/utils/cargo-bin/src/executable.rs b/codex-rs/utils/cargo-bin/src/executable.rs
+index cb4cb9f08..68edbe924 100644
+--- a/codex-rs/utils/cargo-bin/src/executable.rs
++++ b/codex-rs/utils/cargo-bin/src/executable.rs
+@@ -36,6 +36,17 @@ pub fn write_executable(path: &Path, script: &str) -> io::Result<()> {
+     fs::set_permissions(path, fs::Permissions::from_mode(/*mode*/ 0o755))
+ }
+ 
++/// Returns whether copying an executable fixture failed because a running process holds the destination open.
++///
++/// A sandbox helper can outlive the test that started it. Windows then rejects a copy over its executable with
++/// access denied or with a sharing violation.
++pub fn is_executable_in_use(error: &io::Error) -> bool {
++    // ERROR_SHARING_VIOLATION
++    const SHARING_VIOLATION: i32 = 32;
++    error.kind() == io::ErrorKind::PermissionDenied
++        || (cfg!(windows) && error.raw_os_error() == Some(SHARING_VIOLATION))
++}
++
+ /// Copies an executable fixture, preserving the source permissions like [`fs::copy`].
+ pub fn copy_executable(source: &Path, destination: &Path) -> io::Result<()> {
+     #[cfg(target_os = "linux")]
+diff --git a/codex-rs/utils/cargo-bin/src/lib.rs b/codex-rs/utils/cargo-bin/src/lib.rs
+index cc616442f..cf0dc2b8b 100644
+--- a/codex-rs/utils/cargo-bin/src/lib.rs
++++ b/codex-rs/utils/cargo-bin/src/lib.rs
+@@ -7,6 +7,7 @@ pub use runfiles;
+ 
+ mod executable;
+ pub use executable::copy_executable;
++pub use executable::is_executable_in_use;
+ #[cfg(unix)]
+ pub use executable::write_executable;
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,126 @@
+From 6c520d9a026ae169cbdcf6d2acde86a9cbdf916f Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 13 Nov 2026 02:53:36 -0500
+Subject: [PATCH] Give Windows ARM64 tests slowed by workspace load more time
+
+Five exec and state tests pass alone on a loaded Windows ARM64 runner in 5 to 50 seconds but exceed their 60 or 90 second ceilings while the full workspace runs beside them. copy_hooks_follow_source_and_target runs a hook shell per environment, and on that runner more than 30 seconds can pass between two events of its turn, so it waits up to 120 seconds.
+---
+ codex-rs/.config/nextest.toml                 | 16 +++++++++++++
+ codex-rs/core/tests/common/test_codex.rs      | 24 ++++++++++++++++++-
+ .../tests/suite/transfers.rs                  | 10 ++++++--
+ 3 files changed, 47 insertions(+), 3 deletions(-)
+
+diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
+index 50e5ef037..e09bc0f27 100644
+--- a/codex-rs/.config/nextest.toml
++++ b/codex-rs/.config/nextest.toml
+@@ -134,6 +134,22 @@ slow-timeout = { period = "30s", terminate-after = 4 }
+ filter = 'package(codex-feedback) & test(=tests::feedback_upload_delivers_large_files_intact)'
+ slow-timeout = { period = "30s", terminate-after = 4 }
+ 
++[[profile.default.overrides]]
++# These cases take 5 to 50 seconds alone on a loaded Windows ARM64 runner, but more than 90 seconds
++# while the rest of the workspace runs beside them.
++platform = 'cfg(windows)'
++filter = '''
++    (package(codex-exec) & binary(all) & (
++        test(=suite::auth_env::exec_api_key_cannot_discard_stored_workspace_network_policy) |
++        test(=suite::auth_env::exec_bootstrap_rejects_redirected_oauth_and_cloud_policy) |
++        test(=suite::completion_backfill::ignores_unrelated_turn_completion_before_backfilling_primary_turn) |
++        test(=suite::cyber_access_program::cyber_access_program_is_selected_per_turn)
++    )) |
++    (package(codex-state) & test(=sqlite::tests::configured_log_directory_is_initialized_on_use_and_retries_after_failure)) |
++    (package(codex-multi-env-copy-file) & binary(copy_file) & test(suite::transfers::copy_hooks_follow_source_and_target::))
++'''
++slow-timeout = { period = "1m", terminate-after = 4 }
++
+ [[profile.default.overrides]]
+ # These Windows-heavy tests spawn subprocesses, session files, or JSON-RPC
+ # clients and have been the dominant source of 30s full-CI timeouts.
+diff --git a/codex-rs/core/tests/common/test_codex.rs b/codex-rs/core/tests/common/test_codex.rs
+index f9a9b85f3..b69fe7f03 100644
+--- a/codex-rs/core/tests/common/test_codex.rs
++++ b/codex-rs/core/tests/common/test_codex.rs
+@@ -1244,6 +1244,7 @@ impl TestCodex {
+             permission_profile,
+             /*service_tier*/ None,
+             /*environments*/ None,
++            SUBMIT_TURN_COMPLETE_TIMEOUT,
+         )
+         .await
+     }
+@@ -1279,6 +1280,25 @@ impl TestCodex {
+         .await
+     }
+ 
++    /// Like `submit_turn_with_environments`, but allows `turn_complete_timeout` between consecutive
++    /// events of the turn instead of 30 seconds.
++    pub async fn submit_turn_with_environments_within(
++        &self,
++        prompt: &str,
++        environments: Option<Vec<TurnEnvironmentSelection>>,
++        turn_complete_timeout: Duration,
++    ) -> Result<()> {
++        self.submit_turn_with_context(
++            prompt,
++            AskForApproval::Never,
++            PermissionProfile::Disabled,
++            /*service_tier*/ None,
++            environments,
++            turn_complete_timeout,
++        )
++        .await
++    }
++
+     async fn submit_turn_with_permission_profile_context(
+         &self,
+         prompt: &str,
+@@ -1293,6 +1313,7 @@ impl TestCodex {
+             permission_profile,
+             service_tier,
+             environments,
++            SUBMIT_TURN_COMPLETE_TIMEOUT,
+         )
+         .await
+     }
+@@ -1304,6 +1325,7 @@ impl TestCodex {
+         permission_profile: PermissionProfile,
+         service_tier: Option<Option<String>>,
+         environments: Option<Vec<TurnEnvironmentSelection>>,
++        turn_complete_timeout: Duration,
+     ) -> Result<()> {
+         let (sandbox_policy, permission_profile) =
+             turn_permission_fields(permission_profile, self.config.cwd.as_path());
+@@ -1348,7 +1370,7 @@ impl TestCodex {
+                 EventMsg::TurnComplete(event) => event.turn_id == turn_id,
+                 _ => false,
+             },
+-            SUBMIT_TURN_COMPLETE_TIMEOUT,
++            turn_complete_timeout,
+         )
+         .await;
+         Ok(())
+diff --git a/codex-rs/ext/multi-env-copy-file/tests/suite/transfers.rs b/codex-rs/ext/multi-env-copy-file/tests/suite/transfers.rs
+index 519b27f4e..451972787 100644
+--- a/codex-rs/ext/multi-env-copy-file/tests/suite/transfers.rs
++++ b/codex-rs/ext/multi-env-copy-file/tests/suite/transfers.rs
+@@ -400,8 +400,14 @@ async fn copy_hooks_follow_source_and_target(swap_endpoints: bool) -> Result<()>
+         ],
+     )
+     .await;
+-    test.submit_turn_with_environments("Copy the file.", Some(selections))
+-        .await?;
++    // Each environment runs its hooks in a new shell. On a loaded Windows runner, PowerShell
++    // startup alone can leave more than the default 30 seconds between two events of the turn.
++    test.submit_turn_with_environments_within(
++        "Copy the file.",
++        Some(selections),
++        std::time::Duration::from_secs(120),
++    )
++    .await?;
+     let output = mock
+         .function_call_output_text("copy")
+         .context("copy result")?;
+-- 
+2.43.0
+

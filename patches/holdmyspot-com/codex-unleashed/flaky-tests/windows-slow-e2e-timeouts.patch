@@ -1,0 +1,35 @@
+From 41ff2860eb82853840cd437c428641c8ca3a5ad8 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 12 Nov 2026 23:46:20 -0500
+Subject: [PATCH] Give three slow Windows end-to-end tests a two-minute timeout
+
+interactive_worktree_start_and_fork_bind_owner_before_turn, mcp_code_mode_exclusion_does_not_change_direct_mode_tool_exposure and windows_elevated_approved_git_pull_preserves_deny_read take 30 to 60 seconds on a Windows runner when they pass: 41 s, 59 s, and 60 s then 30 s in an unpatched x86_64 run. A busy runner pushes them past the 60-second ceiling on both tries, so they get the same 30-second period with four terminations that the codex-exec worktree end-to-end case already has.
+---
+ codex-rs/.config/nextest.toml | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
+index 50fb1aa81..04cbb1807 100644
+--- a/codex-rs/.config/nextest.toml
++++ b/codex-rs/.config/nextest.toml
+@@ -117,6 +117,17 @@ platform = 'cfg(windows)'
+ filter = 'test(start_thread_uses_all_default_environments_from_codex_home)'
+ slow-timeout = { period = "1m", terminate-after = 2 }
+ 
++[[profile.default.overrides]]
++# These end-to-end cases take 30 to 60 seconds on a Windows runner even when they pass,
++# so they exceed the default 60-second ceiling whenever the runner is busy.
++platform = 'cfg(windows)'
++filter = '''
++    (package(codex-cli) & binary(worktree) & test(=interactive_worktree_start_and_fork_bind_owner_before_turn)) |
++    (package(codex-core) & binary(all) & test(=suite::code_mode::mcp_code_mode_exclusion_does_not_change_direct_mode_tool_exposure)) |
++    (package(codex-core) & binary(windows_sandbox) & test(=windows_elevated_approved_git_pull_preserves_deny_read))
++'''
++slow-timeout = { period = "30s", terminate-after = 4 }
++
+ [[profile.default.overrides]]
+ # These Windows-heavy tests spawn subprocesses, session files, or JSON-RPC
+ # clients and have been the dominant source of 30s full-CI timeouts.
+-- 
+2.43.0
+

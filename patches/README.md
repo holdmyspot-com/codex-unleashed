@@ -71,3 +71,8 @@ The release applies these patches in this order:
 61. [flaky-tests/app-server-client-leak-timeout.patch](holdmyspot-com/codex-unleashed/flaky-tests/app-server-client-leak-timeout.patch)
 62. [flaky-tests/startup-probe-da1-last.patch](holdmyspot-com/codex-unleashed/flaky-tests/startup-probe-da1-last.patch)
 63. [mcp-startup-ctrl-c/mcp-startup-ctrl-c.patch](holdmyspot-com/codex-unleashed/mcp-startup-ctrl-c/mcp-startup-ctrl-c.patch)
+64. [flaky-tests/windows-slow-e2e-timeouts.patch](holdmyspot-com/codex-unleashed/flaky-tests/windows-slow-e2e-timeouts.patch)
+65. [flaky-tests/feedback-upload-timeout.patch](holdmyspot-com/codex-unleashed/flaky-tests/feedback-upload-timeout.patch)
+66. [flaky-tests/agents-overview-pin-refresh-race.patch](holdmyspot-com/codex-unleashed/flaky-tests/agents-overview-pin-refresh-race.patch)
+67. [flaky-tests/windows-sandbox-helper-sharing-violation.patch](holdmyspot-com/codex-unleashed/flaky-tests/windows-sandbox-helper-sharing-violation.patch)
+68. [flaky-tests/windows-arm64-load-timeouts.patch](holdmyspot-com/codex-unleashed/flaky-tests/windows-arm64-load-timeouts.patch)

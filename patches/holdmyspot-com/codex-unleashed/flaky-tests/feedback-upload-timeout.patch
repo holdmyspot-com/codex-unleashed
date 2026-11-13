@@ -1,0 +1,30 @@
+From c776d6a78620bc623da4fba71f17cd9614f52846 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 13 Nov 2026 01:41:04 -0500
+Subject: [PATCH] Give the slow feedback upload test a two-minute timeout
+
+feedback_upload_delivers_large_files_intact takes 57 to 60 seconds on an Intel macOS runner when it passes (unpatched runs time out on the first try and pass in 57 s and 59 s on the retry), and 37 to 41 seconds on Windows. A busy runner pushes it past the 60-second ceiling on both tries, so it gets the 30-second period with four terminations that the other slow end-to-end cases use.
+---
+ codex-rs/.config/nextest.toml | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
+index 04cbb1807..50e5ef037 100644
+--- a/codex-rs/.config/nextest.toml
++++ b/codex-rs/.config/nextest.toml
+@@ -128,6 +128,12 @@ filter = '''
+ '''
+ slow-timeout = { period = "30s", terminate-after = 4 }
+ 
++[[profile.default.overrides]]
++# This upload round trip takes 37 to 41 seconds on a Windows runner and 57 to 60 seconds on an
++# Intel macOS runner when it passes, so it exceeds the default 60-second ceiling there.
++filter = 'package(codex-feedback) & test(=tests::feedback_upload_delivers_large_files_intact)'
++slow-timeout = { period = "30s", terminate-after = 4 }
++
+ [[profile.default.overrides]]
+ # These Windows-heavy tests spawn subprocesses, session files, or JSON-RPC
+ # clients and have been the dominant source of 30s full-CI timeouts.
+-- 
+2.43.0
+
