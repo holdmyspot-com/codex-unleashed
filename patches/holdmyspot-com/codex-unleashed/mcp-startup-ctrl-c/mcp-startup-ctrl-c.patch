@@ -1,0 +1,260 @@
+From acb680b0b4708cd4d872cb5ff822df66dbcde2b6 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 12 Nov 2026 19:23:15 -0500
+Subject: [PATCH] Let Ctrl+C quit while only the TUI tools server starts, and
+ show MCP startup
+
+The TUI starts its own codex_tui MCP server for every thread, and the chat widget
+counted that startup as running work. A Ctrl+C in the first fraction of a second after
+launch therefore interrupted the startup instead of quitting, left the TUI's own tools
+uninitialized and added an "MCP startup interrupted" warning. Nothing on screen showed
+why, because the status indicator stayed hidden during MCP startup.
+
+An MCP startup round now marks the TUI busy only while it waits for more than the
+TUI tools server. That server no longer appears in the "Booting MCP server" header,
+and Ctrl+C quits while it is all that is starting. While user MCP servers start, the
+status indicator shows the header, so Ctrl+C visibly interrupts their startup.
+---
+ codex-rs/tui/src/app/tests/mcp_startup.rs     |  4 +-
+ codex-rs/tui/src/chatwidget/mcp_startup.rs    | 28 +++++-
+ ...et__tests__mcp_startup_header_booting.snap |  2 +
+ .../tui/src/chatwidget/status_surfaces.rs     |  4 +-
+ .../tui/src/chatwidget/tests/mcp_startup.rs   | 86 ++++++++++++++++++-
+ codex-rs/tui/src/chatwidget/turn_runtime.rs   | 11 +--
+ 6 files changed, 121 insertions(+), 14 deletions(-)
+
+diff --git a/codex-rs/tui/src/app/tests/mcp_startup.rs b/codex-rs/tui/src/app/tests/mcp_startup.rs
+index 3c355bb8e..c1d7d79cb 100644
+--- a/codex-rs/tui/src/app/tests/mcp_startup.rs
++++ b/codex-rs/tui/src/app/tests/mcp_startup.rs
+@@ -88,9 +88,9 @@ async fn subagent_mcp_startup_settles_while_cached_servers_remain_deferred() {
+     }
+ 
+     insta::assert_snapshot!(visible_startup_states.join("\n"), @r"
++    eager: • Booting MCP server: eager
+     eager: idle
+-    eager: idle
+-    deferred: idle
++    deferred: • Booting MCP server: deferred
+     deferred: idle
+     ");
+ }
+diff --git a/codex-rs/tui/src/chatwidget/mcp_startup.rs b/codex-rs/tui/src/chatwidget/mcp_startup.rs
+index b90d414b4..234440e23 100644
+--- a/codex-rs/tui/src/chatwidget/mcp_startup.rs
++++ b/codex-rs/tui/src/chatwidget/mcp_startup.rs
+@@ -13,6 +13,7 @@ use codex_app_server_protocol::McpServerStartupState;
+ use codex_app_server_protocol::McpServerStatusUpdatedNotification;
+ 
+ use super::ChatWidget;
++use crate::dynamic_tools;
+ 
+ const MCP_STARTUP_SINGLE_HEADER_PREFIX: &str = "Booting MCP server:";
+ const MCP_STARTUP_MULTI_HEADER_PREFIX: &str = "Starting MCP servers";
+@@ -157,11 +158,36 @@ impl ChatWidget {
+         self.request_redraw();
+     }
+ 
++    /// Returns whether an MCP startup round is running for more than the TUI's own tools server.
++    ///
++    /// The TUI starts its tools server for every thread. That startup is brief and not work the
++    /// user asked for, so while it is all that keeps the round open, the TUI is not busy and Ctrl+C
++    /// quits instead of interrupting it.
++    pub(super) fn user_mcp_startup_running(&self) -> bool {
++        let Some(current) = &self.mcp_startup_status else {
++            return false;
++        };
++        let only_tui_tools_server_starting = current.get(dynamic_tools::NAMESPACE)
++            == Some(&McpStartupStatus::Starting)
++            && current.iter().all(|(name, state)| {
++                name == dynamic_tools::NAMESPACE || !matches!(state, McpStartupStatus::Starting)
++            })
++            && self
++                .mcp_startup_expected_servers
++                .as_ref()
++                .is_some_and(|expected| expected.iter().all(|name| current.contains_key(name)));
++        !only_tui_tools_server_starting
++    }
++
+     pub(super) fn mcp_startup_status_header(&self) -> Option<String> {
+         let current = self.mcp_startup_status.as_ref()?;
++        let current: Vec<_> = current
++            .iter()
++            .filter(|(name, _)| name.as_str() != dynamic_tools::NAMESPACE)
++            .collect();
+         let total = current.len();
+         let mut starting: Vec<_> = current
+-            .iter()
++            .into_iter()
+             .filter_map(|(name, state)| {
+                 if matches!(state, McpStartupStatus::Starting) {
+                     Some(name)
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__mcp_startup_header_booting.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__mcp_startup_header_booting.snap
+index f7988ba63..eabb685df 100644
+--- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__mcp_startup_header_booting.snap
++++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__mcp_startup_header_booting.snap
+@@ -3,6 +3,8 @@ source: tui/src/chatwidget/tests/mcp_startup.rs
+ expression: normalized_backend_snapshot(terminal.backend())
+ ---
+ "                                                                                "
++"• Booting MCP server: alpha (0s • esc to interrupt)                             "
++"                                                                                "
+ "                                                                                "
+ "› Ask Codex to do anything                                                      "
+ "                                                                                "
+diff --git a/codex-rs/tui/src/chatwidget/status_surfaces.rs b/codex-rs/tui/src/chatwidget/status_surfaces.rs
+index 9e6baf141..78bcb91bb 100644
+--- a/codex-rs/tui/src/chatwidget/status_surfaces.rs
++++ b/codex-rs/tui/src/chatwidget/status_surfaces.rs
+@@ -1032,7 +1032,7 @@ impl ChatWidget {
+     /// Startup takes precedence over normal task states, and idle state renders
+     /// as `Ready` regardless of the last active status bucket.
+     pub(super) fn run_state_status_text(&self) -> String {
+-        if self.mcp_startup_status.is_some() {
++        if self.user_mcp_startup_running() {
+             return "Starting".to_string();
+         }
+ 
+@@ -1093,7 +1093,7 @@ impl ChatWidget {
+             return false;
+         }
+ 
+-        self.mcp_startup_status.is_some() || self.bottom_pane.is_task_running()
++        self.user_mcp_startup_running() || self.bottom_pane.is_task_running()
+     }
+ 
+     pub(super) fn should_animate_terminal_title_spinner(&self) -> bool {
+diff --git a/codex-rs/tui/src/chatwidget/tests/mcp_startup.rs b/codex-rs/tui/src/chatwidget/tests/mcp_startup.rs
+index 58bc2153d..0b3742c2a 100644
+--- a/codex-rs/tui/src/chatwidget/tests/mcp_startup.rs
++++ b/codex-rs/tui/src/chatwidget/tests/mcp_startup.rs
+@@ -128,6 +128,86 @@ async fn mcp_startup_dedupes_same_round_duplicate_failure_warning() {
+     assert_eq!(summary_text, "⚠ MCP startup incomplete (failed: alpha)\n");
+ }
+ 
++/// Returns whether the chat widget asked the app to quit, ignoring its other events.
++fn exit_requested(rx: &mut tokio::sync::mpsc::UnboundedReceiver<AppEvent>) -> bool {
++    while let Ok(event) = rx.try_recv() {
++        if matches!(event, AppEvent::Exit(ExitMode::ShutdownFirst)) {
++            return true;
++        }
++    }
++    false
++}
++
++#[tokio::test]
++async fn tui_tools_server_startup_leaves_ctrl_c_to_quit() {
++    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
++    // A thread without configured MCP servers expects none; the TUI adds its tools server per thread.
++    chat.set_mcp_startup_expected_servers(Vec::<String>::new());
++
++    notify_mcp_status(
++        &mut chat,
++        crate::dynamic_tools::NAMESPACE,
++        McpServerStartupState::Starting,
++    );
++
++    assert!(!chat.bottom_pane.is_task_running());
++    assert!(!chat.bottom_pane.status_indicator_visible());
++    chat.handle_key_event(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
++    assert!(exit_requested(&mut rx), "Ctrl+C did not quit");
++    while let Ok(op) = op_rx.try_recv() {
++        assert!(
++            !matches!(op, Op::Interrupt),
++            "Ctrl+C interrupted MCP startup"
++        );
++    }
++}
++
++#[tokio::test]
++async fn ctrl_c_interrupts_user_mcp_server_startup() {
++    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
++    chat.set_mcp_startup_expected_servers(["alpha".to_string()]);
++
++    notify_mcp_status(&mut chat, "alpha", McpServerStartupState::Starting);
++    notify_mcp_status(
++        &mut chat,
++        crate::dynamic_tools::NAMESPACE,
++        McpServerStartupState::Starting,
++    );
++    chat.handle_key_event(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
++
++    next_interrupt_op(&mut op_rx);
++    assert!(!exit_requested(&mut rx), "Ctrl+C quit during MCP startup");
++}
++
++#[tokio::test]
++async fn mcp_startup_status_leaves_out_the_tui_tools_server() {
++    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
++    chat.set_mcp_startup_expected_servers(["alpha".to_string()]);
++
++    notify_mcp_status(
++        &mut chat,
++        crate::dynamic_tools::NAMESPACE,
++        McpServerStartupState::Starting,
++    );
++    notify_mcp_status(&mut chat, "alpha", McpServerStartupState::Starting);
++    assert!(chat.bottom_pane.is_task_running());
++    assert_eq!(
++        chat.status_state.current_status.header,
++        "Booting MCP server: alpha"
++    );
++
++    notify_mcp_status(&mut chat, "alpha", McpServerStartupState::Ready);
++    assert!(!chat.bottom_pane.is_task_running());
++    assert!(!chat.bottom_pane.status_indicator_visible());
++
++    notify_mcp_status(
++        &mut chat,
++        crate::dynamic_tools::NAMESPACE,
++        McpServerStartupState::Ready,
++    );
++    assert!(chat.mcp_startup_status.is_none());
++}
++
+ #[tokio::test]
+ async fn mcp_startup_header_booting_snapshot() {
+     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+@@ -136,7 +216,11 @@ async fn mcp_startup_header_booting_snapshot() {
+     notify_mcp_status(&mut chat, "alpha", McpServerStartupState::Starting);
+ 
+     assert!(chat.bottom_pane.is_task_running());
+-    assert!(!chat.bottom_pane.status_indicator_visible());
++    assert!(chat.bottom_pane.status_indicator_visible());
++    assert_eq!(
++        chat.status_state.current_status.header,
++        "Booting MCP server: alpha"
++    );
+     let height = chat.desired_height(/*width*/ 80);
+     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, height))
+         .expect("create terminal");
+diff --git a/codex-rs/tui/src/chatwidget/turn_runtime.rs b/codex-rs/tui/src/chatwidget/turn_runtime.rs
+index ef5954a85..56fba8a40 100644
+--- a/codex-rs/tui/src/chatwidget/turn_runtime.rs
++++ b/codex-rs/tui/src/chatwidget/turn_runtime.rs
+@@ -41,19 +41,14 @@ impl ChatWidget {
+     /// Synchronize the bottom-pane "task running" indicator with the current lifecycles.
+     ///
+     /// The bottom pane only has one running flag, but this module treats it as a derived state of
+-    /// both the agent turn lifecycle and MCP startup lifecycle.
++    /// both the agent turn lifecycle and the startup of user MCP servers. While those servers start,
++    /// the status indicator shows them, so Ctrl+C visibly interrupts that startup.
+     pub(super) fn update_task_running_state(&mut self) {
+         self.bottom_pane.set_task_running(
+             self.turn_lifecycle.agent_turn_running
+                 || self.review.is_review_mode
+-                || self.mcp_startup_status.is_some(),
++                || self.user_mcp_startup_running(),
+         );
+-        if self.mcp_startup_status.is_some()
+-            && !self.turn_lifecycle.agent_turn_running
+-            && !self.review.is_review_mode
+-        {
+-            self.bottom_pane.hide_status_indicator();
+-        }
+         self.refresh_status_surfaces();
+     }
+ 
+-- 
+2.43.0
+

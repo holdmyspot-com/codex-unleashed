@@ -1,0 +1,204 @@
+From 3a9dd6fd5321b720772226566717b00a55c86887 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 12 Nov 2026 14:36:04 -0500
+Subject: [PATCH] Query DA1 last at TUI startup and stop the probe when its
+ reply arrives
+
+The startup probe sent DA1 first and waited 250 ms for the cursor, color and
+keyboard replies. A terminal that answered after 250 ms, such as one behind a slow
+SSH link or on a loaded machine, was treated as not answering DA1, so the TUI skipped
+the exit DA1 query that drains focus and keyboard reports before handing the terminal
+back to the shell. The focus palette test failed this way under load with "missing
+exit DA1 query".
+
+Terminals answer queries in order, so the probe now sends DA1 after every other
+query and stops as soon as the DA1 reply arrives. The deadline then matters only for
+terminals that never answer DA1, and the startup probe gets its own 1 second budget.
+Terminals that answer DA1 but not the color queries no longer wait out the deadline.
+Other probes keep the 250 ms default.
+
+The focus palette test's fake terminal answered DA1 before the color queries, which
+no terminal does once DA1 is sent last. The probe then stopped before the color
+replies arrived, and they reached the composer as typed input. The fake terminal now
+answers DA1 after the other queries.
+---
+ codex-rs/tui/src/terminal_probe.rs        | 78 +++++++++++++++++++++--
+ codex-rs/tui/src/tui.rs                   |  2 +-
+ codex-rs/tui/tests/suite/focus_palette.rs | 18 +++---
+ 3 files changed, 85 insertions(+), 13 deletions(-)
+
+diff --git a/codex-rs/tui/src/terminal_probe.rs b/codex-rs/tui/src/terminal_probe.rs
+index 08118acd4..4c5830d8c 100644
+--- a/codex-rs/tui/src/terminal_probe.rs
++++ b/codex-rs/tui/src/terminal_probe.rs
+@@ -23,9 +23,17 @@ mod terminal_identity;
+ #[path = "terminal_probe/windows_replay.rs"]
+ mod windows_replay;
+ 
+-/// Default wall-clock budget for each terminal probe or startup probe group.
++/// Default wall-clock budget for each terminal probe outside startup.
+ pub(crate) const DEFAULT_TIMEOUT: Duration = Duration::from_millis(/*millis*/ 250);
+ 
++/// Wall-clock budget for the startup probe group.
++///
++/// The startup probe queries DA1 last and stops as soon as the reply arrives, so this budget is
++/// spent in full only by terminals that never answer DA1. It is longer than [`DEFAULT_TIMEOUT`]
++/// so that a slow terminal, such as one behind a slow SSH link or on a loaded machine, is not
++/// mistaken for one that cannot answer.
++pub(crate) const STARTUP_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 1);
++
+ /// Default terminal foreground and background colors reported by OSC 10 and OSC 11.
+ #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+ pub(crate) struct DefaultColors {
+@@ -307,11 +315,13 @@ mod imp {
+         if keyboard_probe == StartupKeyboardEnhancementProbe::Query {
+             query.extend_from_slice(b"\x1B[?u");
+         }
+-        // DA1 finishes keyboard detection and establishes whether we can use it at exit.
+-        query.extend_from_slice(b"\x1B[c\x1B[6n\x1B]10;?\x1B\\\x1B]11;?\x1B\\");
++        query.extend_from_slice(b"\x1B[6n\x1B]10;?\x1B\\\x1B]11;?\x1B\\");
+         if query_identity {
+             query.extend_from_slice(b"\x1B[>c");
+         }
++        // DA1 goes last. Terminals answer in order, so its reply ends the probe, finishes keyboard
++        // detection and establishes whether we can use DA1 at exit.
++        query.extend_from_slice(b"\x1B[c");
+         tty.write_all(&query)?;
+ 
+         let mut buffer = Vec::new();
+@@ -382,8 +392,12 @@ mod imp {
+             if startup_probe_complete(&probe, keyboard_probe) {
+                 return Ok(probe);
+             }
++            // The DA1 query was sent last, so its reply follows every reply the terminal will send.
+             let now = Instant::now();
+-            if now >= deadline || buffer.len() >= MAX_STARTUP_PROBE_BYTES {
++            if find_primary_device_attributes(buffer).is_some()
++                || now >= deadline
++                || buffer.len() >= MAX_STARTUP_PROBE_BYTES
++            {
+                 finish_startup_probe(&mut probe, keyboard_probe, saw_supported_keyboard);
+                 return Ok(probe);
+             }
+@@ -575,6 +589,7 @@ mod imp {
+     #[cfg(test)]
+     mod tests {
+         use super::*;
++        use crate::terminal_probe::STARTUP_TIMEOUT;
+         use pretty_assertions::assert_eq;
+         use std::os::fd::OwnedFd;
+         use std::os::unix::net::UnixStream;
+@@ -758,6 +773,61 @@ mod imp {
+             assert_eq!(probe.terminal_app_over_ssh, None);
+         }
+ 
++        #[test]
++        fn startup_probe_stops_at_the_da1_reply() {
++            // The terminal answered DA1 but not the color queries sent before it.
++            let mut tty = tty_with_buffered_input(b"\x1b[20;10R\x1b[?1;2c");
++            let mut buffer = Vec::new();
++            let started_at = Instant::now();
++            let probe = read_startup_probe(
++                &mut tty,
++                Duration::from_secs(/*secs*/ 30),
++                StartupKeyboardEnhancementProbe::Skip,
++                /*query_identity*/ false,
++                &mut buffer,
++            )
++            .expect("finish at the DA1 reply");
++
++            assert!(
++                started_at.elapsed() < Duration::from_secs(/*secs*/ 10),
++                "probe waited {:?} after the DA1 reply",
++                started_at.elapsed()
++            );
++            assert_eq!(probe.cursor_position, Some(Position { x: 9, y: 19 }));
++            assert_eq!(probe.default_colors, None);
++        }
++
++        #[test]
++        fn startup_probe_reads_replies_from_a_slow_terminal() {
++            let (reader, writer) = UnixStream::pair().expect("create terminal input pair");
++            let mut terminal = writer.try_clone().expect("clone terminal writer");
++            let reader: OwnedFd = reader.into();
++            let writer: OwnedFd = writer.into();
++            let mut tty = Tty::new(reader.into(), writer.into()).expect("create terminal probe");
++            let replies = std::thread::spawn(move || {
++                std::thread::sleep(Duration::from_millis(/*millis*/ 400));
++                terminal
++                    .write_all(
++                        b"\x1b[?7u\x1b[20;10R\x1b]10;rgb:eeee/eeee/eeee\x07\x1b]11;rgb:1111/1111/1111\x07\x1b[?1;2c",
++                    )
++                    .expect("send terminal replies");
++            });
++            let mut buffer = Vec::new();
++            let probe = read_startup_probe(
++                &mut tty,
++                STARTUP_TIMEOUT,
++                StartupKeyboardEnhancementProbe::Query,
++                /*query_identity*/ false,
++                &mut buffer,
++            )
++            .expect("read the slow terminal's replies");
++            replies.join().expect("terminal replies thread");
++
++            assert_eq!(probe.keyboard_enhancement_supported, Some(true));
++            assert_eq!(probe.cursor_position, Some(Position { x: 9, y: 19 }));
++            assert!(find_primary_device_attributes(&buffer).is_some());
++        }
++
+         #[test]
+         fn startup_probe_finds_responses_after_large_typeahead() {
+             let mut input = vec![b'x'; 2_048];
+diff --git a/codex-rs/tui/src/tui.rs b/codex-rs/tui/src/tui.rs
+index 25c70c4e5..3007b8640 100644
+--- a/codex-rs/tui/src/tui.rs
++++ b/codex-rs/tui/src/tui.rs
+@@ -520,7 +520,7 @@ pub(crate) fn init() -> Result<InitializedTerminal> {
+         } else {
+             StartupKeyboardEnhancementProbe::Query
+         };
+-        match crate::terminal_probe::startup(crate::terminal_probe::DEFAULT_TIMEOUT, keyboard_probe)
++        match crate::terminal_probe::startup(crate::terminal_probe::STARTUP_TIMEOUT, keyboard_probe)
+         {
+             Ok(probe) => {
+                 tracing::info!(
+diff --git a/codex-rs/tui/tests/suite/focus_palette.rs b/codex-rs/tui/tests/suite/focus_palette.rs
+index 69840ba32..1e859aacb 100644
+--- a/codex-rs/tui/tests/suite/focus_palette.rs
++++ b/codex-rs/tui/tests/suite/focus_palette.rs
+@@ -489,14 +489,6 @@ impl PtyCodex {
+             self.cursor_answered = true;
+         }
+ 
+-        if !self.keyboard_answered && contains_bytes(&self.output, b"\x1b[c") {
+-            if contains_bytes(&self.output, b"\x1b[?u") {
+-                self.write_input(b"\x1b[?7u")?;
+-            }
+-            self.write_input(b"\x1b[?1;2c")?;
+-            self.keyboard_answered = true;
+-        }
+-
+         if !self.palette_answered
+             && contains_bytes(&self.output, b"\x1b]10;?")
+             && contains_bytes(&self.output, b"\x1b]11;?")
+@@ -505,6 +497,16 @@ impl PtyCodex {
+             self.palette_answered = true;
+         }
+ 
++        // The TUI sends DA1 last and stops its startup probe at the DA1 reply, so answer it after the
++        // other queries, as a terminal answering in order would.
++        if !self.keyboard_answered && contains_bytes(&self.output, b"\x1b[c") {
++            if contains_bytes(&self.output, b"\x1b[?u") {
++                self.write_input(b"\x1b[?7u")?;
++            }
++            self.write_input(b"\x1b[?1;2c")?;
++            self.keyboard_answered = true;
++        }
++
+         Ok(())
+     }
+ 
+-- 
+2.43.0
+

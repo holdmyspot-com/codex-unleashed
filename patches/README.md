@@ -69,3 +69,5 @@ The release applies these patches in this order:
 59. [windows-bazel-voice-host/voice-host-test-runtime.patch](holdmyspot-com/codex-unleashed/windows-bazel-voice-host/voice-host-test-runtime.patch)
 60. [flaky-tests/subagent-stop-hook-wait.patch](holdmyspot-com/codex-unleashed/flaky-tests/subagent-stop-hook-wait.patch)
 61. [flaky-tests/app-server-client-leak-timeout.patch](holdmyspot-com/codex-unleashed/flaky-tests/app-server-client-leak-timeout.patch)
+62. [flaky-tests/startup-probe-da1-last.patch](holdmyspot-com/codex-unleashed/flaky-tests/startup-probe-da1-last.patch)
+63. [mcp-startup-ctrl-c/mcp-startup-ctrl-c.patch](holdmyspot-com/codex-unleashed/mcp-startup-ctrl-c/mcp-startup-ctrl-c.patch)
