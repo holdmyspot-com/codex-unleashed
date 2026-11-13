@@ -482,3 +482,34 @@ Completion requires all seven implementation changes, the retained backport-defe
 Compare the final branch with the fixed old-main commit, including changes outside `patches/`. The appendix retains all item-level dispositions and links to the 144 patch/mailbox and 648-file inventories. Record migrated commits, verified upstream equivalents or exact omitted/deferred leftovers; review mixed hunks separately. Path inventories and byte equality do not establish semantic acceptance. Reconcile the 18 saved uncommitted worktree change sets, original worktree commits and 33 archived independent checkouts using [worktree-recovery.md](docs/worktree-recovery.md); cleanup did not select those changes for migration. Keep unresolved security/compatibility findings explicit.
 
 Retained artifacts and remote caches need explicit ownership, effective paths, last consumer and cleanup evidence. Do not recreate local native caches to satisfy the old historical storage prescription. Neither revising this plan nor producing an intermediate build completes the goal.
+
+
+## Additional patches after the existing sequence
+
+Implement the following three features as separate patches at the end of the plan. Each has its own independent
+show/hide setting, defaulting to disabled when omitted, so an unchanged configuration retains stock Codex visibility.
+Enabling one setting must not enable either of the others. These tasks are pending; the feasibility discussion is not
+implementation or acceptance evidence.
+
+- [ ] **Plaintext agent messages:** add a setting to show or hide explicit messages exchanged between agents.
+  When enabled, use the supported plaintext delivery path for new messages and display their sender, recipient, and
+  message text. When disabled, retain stock message delivery and visibility. Do not attempt to decrypt previously
+  encrypted messages. Acceptance: focused tests establish omitted/disabled stock behavior, enabled plaintext delivery
+  and display, and independent settings; exercise a real exchange between two agents with the setting enabled and
+  disabled.
+- [ ] **Readable handoff reports:** add a separate setting to show or hide ordinary reports that agents write for
+  handoffs or before compaction. Enabled reports describe completed work, decisions, evidence, and remaining work in
+  plaintext. Keep these reports separate from encrypted compaction state. Disabled mode retains stock behavior without
+  requesting these additional reports. Acceptance: focused tests cover omitted/disabled behavior, enabled report
+  generation and display, and independent settings; exercise a handoff and a compaction with the setting enabled,
+  verifying that the readable report remains accessible after resumption.
+- [ ] **Reasoning summaries:** add a separate setting to show or hide model-provided reasoning summaries through the
+  supported API. Request and display these summaries only when enabled and supported by the selected model/API;
+  clearly report when summaries are unavailable. Disabled mode retains stock behavior. These summaries do not expose
+  raw private model reasoning. Acceptance: focused tests cover omitted/disabled behavior, enabled summary requests and
+  display, unsupported-model/API behavior, and independent settings; verify the enabled path with a supported model.
+
+For each patch, document its setting and default, regenerate affected configuration/schema artifacts, and pass its
+focused regressions and the applicable cumulative checks before acceptance. Encrypted compaction state and raw private
+model reasoning are outside these plaintext display features; there is no supported client-side decryption path for
+them.
