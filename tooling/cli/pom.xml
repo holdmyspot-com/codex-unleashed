@@ -62,6 +62,37 @@
   </dependencies>
   <build>
     <directory>${tooling.build.directory}</directory>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>exec-maven-plugin</artifactId>
+          <version>3.6.4</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-antrun-plugin</artifactId>
+          <version>3.2.0</version>
+          <dependencies>
+            <dependency>
+              <groupId>com.puppycrawl.tools</groupId>
+              <artifactId>checkstyle</artifactId>
+              <version>14.1.0</version>
+            </dependency>
+            <dependency>
+              <groupId>net.sourceforge.pmd</groupId>
+              <artifactId>pmd-ant</artifactId>
+              <version>7.27.0</version>
+            </dependency>
+            <dependency>
+              <groupId>net.sourceforge.pmd</groupId>
+              <artifactId>pmd-java</artifactId>
+              <version>7.27.0</version>
+            </dependency>
+          </dependencies>
+        </plugin>
+      </plugins>
+    </pluginManagement>
     <plugins>
       <!-- Build entry points stay outside the runtime module, but participate in typed packaging tests. -->
       <plugin>
@@ -122,6 +153,132 @@
   </build>
   <profiles>
     <profile>
+      <id>quality-preflight</id>
+      <properties>
+        <quality.report.base>${project.build.directory}/quality-preflight</quality.report.base>
+        <quality.driver>${project.basedir}/src/build/java/com/holdmyspot/codexunleashed/build/QualityPreflight.java</quality.driver>
+        <quality.repository>${project.basedir}/../..</quality.repository>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>quality-checkstyle</id>
+                <phase>verify</phase>
+                <goals><goal>run</goal></goals>
+                <configuration>
+                  <!-- Missing completion receipts remain fatal in the final aggregation. -->
+                  <failOnError>false</failOnError>
+                  <target>
+                    <property file="${quality.report.base}/current.properties"/>
+                    <property name="quality.run.directory" value="${quality.report.base}/${quality.run.id}"/>
+                    <record name="${quality.run.directory}/checkstyle.log" loglevel="verbose" action="start"/>
+                    <taskdef name="checkstyle" classname="com.puppycrawl.tools.checkstyle.ant.CheckstyleAntTask"
+                      classpathref="maven.plugin.classpath"/>
+                    <checkstyle config="${project.basedir}/../config/checkstyle.xml" failOnViolation="false"
+                      failureProperty="quality.checkstyle.findings" maxErrors="0" maxWarnings="0">
+                      <formatter type="xml" toFile="${quality.run.directory}/checkstyle.xml"/>
+                      <fileset dir="${project.basedir}/src" followsymlinks="false" defaultexcludes="false"
+                        includes="main/java/**/*.java,test/java/**/*.java,build/java/**/*.java">
+                        <present targetdir="${quality.run.directory}/sources/tooling/cli/src"/>
+                      </fileset>
+                    </checkstyle>
+                    <condition property="quality.checkstyle.outcome" value="findings" else="passed">
+                      <isset property="quality.checkstyle.findings"/>
+                    </condition>
+                    <echo file="${quality.run.directory}/checkstyle.result">${quality.checkstyle.outcome}</echo>
+                    <record name="${quality.run.directory}/checkstyle.log" action="stop"/>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>quality-pmd</id>
+                <phase>verify</phase>
+                <goals><goal>run</goal></goals>
+                <configuration>
+                  <!-- Missing completion receipts remain fatal in the final aggregation. -->
+                  <failOnError>false</failOnError>
+                  <target>
+                    <property file="${quality.report.base}/current.properties"/>
+                    <property name="quality.run.directory" value="${quality.report.base}/${quality.run.id}"/>
+                    <record name="${quality.run.directory}/pmd.log" loglevel="verbose" action="start"/>
+                    <pathconvert property="quality.dependency.classpath" refid="maven.test.classpath"/>
+                    <echo file="${quality.run.directory}/classpath.txt" encoding="UTF-8">${quality.dependency.classpath}</echo>
+                    <taskdef name="pmd" classname="net.sourceforge.pmd.ant.PMDTask"
+                      classpathref="maven.plugin.classpath"/>
+                    <pmd rulesetfiles="${project.basedir}/../config/pmd.xml" failOnError="true"
+                      failOnRuleViolation="false" failuresPropertyName="quality.pmd.findings"
+                      minimumPriority="5" encoding="UTF-8" cacheLocation="${project.build.directory}/quality-pmd.cache">
+                      <sourceLanguage name="java" version="${maven.compiler.release}"/>
+                      <auxclasspath>
+                        <!-- PMD needs the JDK classes as well as the resolved test classpath. -->
+                        <pathelement location="${java.home}/lib/jrt-fs.jar"/>
+                        <restrict><path refid="maven.test.classpath"/><exists/></restrict>
+                      </auxclasspath>
+                      <formatter type="xml" toFile="${quality.run.directory}/pmd.xml"/>
+                      <formatter type="html" toFile="${quality.run.directory}/pmd.html"/>
+                      <fileset dir="${project.basedir}/src" followsymlinks="false" defaultexcludes="false"
+                        includes="main/java/**/*.java,test/java/**/*.java,build/java/**/*.java">
+                        <present targetdir="${quality.run.directory}/sources/tooling/cli/src"/>
+                      </fileset>
+                    </pmd>
+                    <condition property="quality.pmd.outcome" value="findings" else="passed">
+                      <isset property="quality.pmd.findings"/>
+                    </condition>
+                    <echo file="${quality.run.directory}/pmd.result">${quality.pmd.outcome}</echo>
+                    <record name="${quality.run.directory}/pmd.log" action="stop"/>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <configuration>
+              <executable>${java.home}/bin/java</executable>
+              <workingDirectory>${quality.repository}</workingDirectory>
+            </configuration>
+            <executions>
+              <execution>
+                <id>quality-validate-manifest</id>
+                <phase>initialize</phase>
+                <goals><goal>exec</goal></goals>
+                <configuration>
+                  <arguments>
+                    <argument>-Djava.io.tmpdir=${java.io.tmpdir}</argument>
+                    <argument>${quality.driver}</argument>
+                    <argument>prepare</argument>
+                    <argument>${quality.repository}</argument>
+                    <argument>${quality.paths}</argument>
+                    <argument>${quality.report.base}</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+              <execution>
+                <id>quality-aggregate</id>
+                <phase>verify</phase>
+                <goals><goal>exec</goal></goals>
+                <configuration>
+                  <arguments>
+                    <argument>-Djava.io.tmpdir=${java.io.tmpdir}</argument>
+                    <argument>${quality.driver}</argument>
+                    <argument>verify</argument>
+                    <argument>${quality.repository}</argument>
+                    <argument>${quality.paths}</argument>
+                    <argument>${quality.report.base}</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
       <id>runtime</id>
       <build>
         <plugins>
@@ -179,7 +336,6 @@
           <plugin>
             <groupId>org.codehaus.mojo</groupId>
             <artifactId>exec-maven-plugin</artifactId>
-            <version>3.6.4</version>
             <executions>
               <execution>
                 <id>build-bundled-runtime</id>
