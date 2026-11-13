@@ -75,6 +75,16 @@ jobs:
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
+      - name: Add a page file on the Windows build volume
+        # A cold Windows lint failed with "memory allocation failed" and "The paging file is too small" while about
+        # 8 GB of memory was free: rustc commits several times the memory it touches, and the runner's commit limit is
+        # its 16 GB of memory plus a 3 GB page file. The page file grows by itself, but not fast enough.
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "$env:GITHUB_WORKSPACE/restart-metadata/.github/scripts/add-windows-page-file.ps1" `
+            -Path D:\pagefile-bazel.sys -MinimumMiB 32768 -MaximumMiB 49152
+
       - name: Retrieve the exact stable upstream source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
