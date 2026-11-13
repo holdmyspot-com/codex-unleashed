@@ -11,6 +11,14 @@
 
 Handoff updated 2026-11-10T19:15Z for the next agent. The goal `implement plan.md` is incomplete: CP1–7 passed and are tagged, CP8 is reconciled, and CP9 is the remaining checkpoint. Prior authorization covers continuation, parallel work and pushing to `main`; creating a tag or publishing a release needs a separate owner instruction. The earlier root, Linux-owner and Windows-module8 live-worker records (sessions `01a18dac…`, `01a197e5…`, `01a198d5…`) describe workers whose runs have long ended; their session directories stay on disk as evidence and must not be deleted, but they are not live assignments.
 
+### Update 2026-11-13T02:40Z (supersedes the updates below where they differ)
+
+- **Queue:** 63 patches. #62 `flaky-tests/startup-probe-da1-last.patch` (the TUI startup probe sends DA1 last and stops at its reply). #63 `mcp-startup-ctrl-c/mcp-startup-ctrl-c.patch`, approved by the owner on 2026-11-12: Ctrl+C quits while only the TUI's own `codex_tui` MCP server starts, and the status indicator shows user MCP servers starting. Red `43336705606`; the focus palette exit test passed 30 of 30 under load (`43336783607`; without the fix `43300544442` failed in iteration 5); full `codex-tui` `43346167473` passed except `resume_lists_all_providers_and_fork_keeps_provider_filter`, which needs the `codex` binary that a package-only run does not build.
+- **Remaining behavior:** when a user MCP server and `codex_tui` start together, Ctrl+C interrupts the startup and the core cancels every server's startup, `codex_tui` included.
+- **Accept runs:** `baseline-linux-tests.yml` now records changed inline snapshots (`.pending-snap` files) with the accepted snapshot diff (`43348276242`).
+- **Bazel Clippy:** cold run `43310918186`: the shared-v8 jobs and both Linux shards passed; lint-windows failed after 3 h 50 min (baseline 2 h 12 min) when rustc ran out of memory compiling `//codex-rs/cli:codex`. Its C++ disk cache was saved. Warm run `43350179326` shows whether the failure recurs with the C++ actions cached.
+- **Next:** the warm Clippy run, the rehearsals, the CP9 tag, then cleanup.
+
 ### Update 2026-11-12T21:10Z (supersedes the updates below where they differ)
 
 - **Owner decisions 2026-11-12:** the release rehearsals (live run against `rust-v0.167.0`, the rerun no-op, the broken-patch block) and the annotated CP9 tag are approved. Enabling the schedule stays the owner's step. The Bazel Clippy jobs get a GHCR-backed cache for their compiled C++ (V8) actions; the Windows Defender probe is dropped.
