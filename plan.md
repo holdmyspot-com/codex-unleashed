@@ -11,6 +11,86 @@
 
 Handoff updated 2026-11-10T19:15Z for the next agent. The goal `implement plan.md` is incomplete: CP1–7 passed and are tagged, CP8 is reconciled, and CP9 is the remaining checkpoint. Prior authorization covers continuation, parallel work and pushing to `main`; creating a tag or publishing a release needs a separate owner instruction. The earlier root, Linux-owner and Windows-module8 live-worker records (sessions `01a18dac…`, `01a197e5…`, `01a198d5…`) describe workers whose runs have long ended; their session directories stay on disk as evidence and must not be deleted, but they are not live assignments.
 
+### Handoff 2026-11-13T13:20Z (supersedes the updates below where they differ)
+
+The goal `implement plan.md` is still open. CP1–7 have passed and are tagged, and CP8 is reconciled. CP9, automatic releases from upstream stable, is the only open checkpoint. Full verification runs only on `rust-v0.167.0` (`086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`), with the workspace version set to 0.0.0.
+
+**What the owner has authorized:**
+- Pushing to `main`; `main.old` stays untouched.
+- The release rehearsals: a live run against `rust-v0.167.0`, then its no-op rerun.
+- The annotated CP9 tag. Other tags and releases need a new owner instruction.
+- Deleting remote scratch branches, except `main`, `main.old`, `t9-kept` and `sec-verify-sandbox`.
+- Enabling the release schedule stays the owner's step.
+
+**Done since the 03:25Z update:**
+- The two-phase Windows Clippy lint did not fix the out-of-memory failure. `35caf2f842` adds a page file to the runner (`.github/scripts/add-windows-page-file.ps1`), and cold run `43367320004` passed.
+- Patches 64–68 (`3e4141540d`, in `flaky-tests/`) fix the Windows and nextest failures of live rehearsal `43356668136`. The 68-patch queue applies cleanly.
+
+  | # | Patch | Fix |
+  |---|---|---|
+  | 64 | `windows-slow-e2e-timeouts` | nextest timeouts for 3 slow Windows end-to-end tests |
+  | 65 | `feedback-upload-timeout` | nextest timeout for the feedback upload test |
+  | 66 | `agents-overview-pin-refresh-race` | removes a race in the pin test |
+  | 67 | `windows-sandbox-helper-sharing-violation` | handles a sharing violation in the Windows sandbox helper |
+  | 68 | `windows-arm64-load-timeouts` | gives Windows ARM64 tests slowed by workspace load more time |
+
+  Full ARM64 run `43389090363`: 56 fixed, 23 unchanged, 0 new failures.
+- Rehearsal `43356668136` was cancelled once its findings were triaged.
+
+**Open item A: macOS aarch64 `app_server_daemon` timeouts.**
+- In the rehearsal, 6 `codex-cli` `binary(app_server_daemon)` tests timed out at 60 s on aarch64, compared with 2 in the unpatched baseline. Intel is unaffected.
+- Daemon-only runs on the same `macos-15-arm64` image (20261103.629):
+
+  | Patches | Run | Result |
+  |---|---|---|
+  | none | `43418117862` | 13 passed, 5 slow, 115 s |
+  | first 15 | `43411660063` | 1 timed out, 7 slow, 234 s |
+  | first 18 | `43411688822` | 13 passed, 7 slow, 140 s |
+  | first 26 | `43411717486` | no result: did not compile (`-D linker-messages`, fixed by later patches) |
+  | first 33 | `43411744580` | 5 timed out, 306 s |
+
+- Patch 19's `pid_start.rs` change is not the cause (red check `43380042707`). None of patches 1–15 touches daemon or CLI code, so single runs cannot separate a regression from runner noise.
+- **In flight:** 3-iteration stress runs of `binary(app_server_daemon)`: unpatched `43426789143` and all 68 patches `43426814858`. Compare per-test durations on matching images.
+  - If the patched run is reliably slower, bisect further with `baseline-macos-tests.yml` on `main` (`-f package=codex-cli -f 'filter=binary(app_server_daemon)' -f patches=<first k queue paths>`).
+  - If both are equally slow, add patch 69: a nextest override for `package(codex-cli) & binary(app_server_daemon)` with `platform = 'cfg(all(target_os = "macos", target_arch = "aarch64"))'` and a longer `slow-timeout`, following patch 68. Then show it red without the override and green with it, and add its entries to `patches/README.md` and `flaky-tests/README.md`.
+
+**Open item B: the macOS Bazel release gate.**
+- The gate is the `macos-tests` job of `upstream-auto-release.yml`, which calls `baseline-macos-bazel-tests.yml`. In the rehearsal:
+  - every shard spent about 3 h compiling V8 from source, and Intel shard 2 hit the 6 h job limit;
+  - the gate required every test to pass, so upstream's own failures failed it.
+- Two commits on branch `macos-bazel-cache` change this. They are **not on `main` yet**; locally they sit on top of `main` in `worktrees/cp9-fork`.
+  - `6bef9f18b5`:
+    - a GHCR cache of compiled C++ actions (`bazel-cc-disk-cache.sh`, lane `bazel-test-<target>-<shard>`, as the Clippy job does);
+    - a 290-minute limit on the Bazel step, so a cold build still saves its cache;
+    - Bazel exit 3 (failed tests) is left to a comparison step;
+    - the comparison step uses `compare-test-baseline.py` with baseline `macos-bazel-<arm64|x86_64>-shard-<n>`, and an unpatched run writes that baseline;
+    - `packages: write` for the caller job.
+  - `4c5514e5b5`: makes the patch loop work with an empty queue under macOS bash 3.2.
+- **In flight:** unpatched run `43418753763` on `macos-bazel-cache` seeds the caches and writes the baselines into its evidence artifacts (`baseline-macos-bazel-tests-<target>-shard-<n>`).
+- Next steps:
+  1. When all four jobs have a test result, commit the four `macos-bazel-*.json` files under `docs/test-baselines/086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a/`.
+  2. If an Intel shard stopped at the 290-minute limit, run once more warm to get its baseline.
+  3. Check that a warm run reads the cache (restore log `hit=exact` and a much shorter Bazel step).
+  4. Fast-forward `main` to the branch.
+
+**After A and B:**
+1. Rerun the live rehearsal: `gh workflow run upstream-auto-release.yml -R holdmyspot-com/codex-unleashed --ref main -f upstream_tag=rust-v0.167.0 -f dry_run=false`. Then do the no-op rerun.
+2. Create the annotated CP9 tag.
+3. Record the results here.
+
+**Cleanup:**
+- Remote branch `macos-bazel-cache`, once merged.
+- Local worktrees that the owner must remove (the sandbox blocks `git worktree remove`): `diag-asc`, `diag-cf`, `flaky-arm64`, `t9-linux` under `/home/gili/codex-unleashed/worktrees/`.
+- The `cargo-cache-main-new` package rename.
+- The untracked diagnostic `.github/scripts/sample-windows-memory.ps1` in `cp9-fork`. Do not commit it.
+- Leave `t9-fork-scratch` alone.
+
+**Working notes:**
+- Read job logs with `gh api repos/holdmyspot-com/codex-unleashed/actions/jobs/<id>/logs`, filtering out proxy and token lines before printing.
+- Native builds run only on CI.
+- Commits use author and committer Gili Tzabari and `type: summary` subjects.
+- Compare runs only on matching runner images and load.
+
 ### Update 2026-11-13T03:25Z (supersedes the updates below where they differ)
 
 - **Live rehearsal `43351221801` (cancelled):** every Windows gate failed. Patch #62 left `STARTUP_TIMEOUT` unused on Windows, which has no startup probe, so Clippy and the release builds failed with `-D dead-code`; `f200a4e07c` gates it on Unix. The Windows test gate rejected the empty `red_patch_count` that its `workflow_call` inputs leave unset; `dcc4fe6627` checks the count only for a red phase. Live rehearsal `43356668136` reruns on the fixed `main`.
