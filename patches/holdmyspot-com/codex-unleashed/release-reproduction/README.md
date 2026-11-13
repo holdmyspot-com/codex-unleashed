@@ -39,3 +39,31 @@ shellcheck .github/scripts/codex-package-operations.sh .github/scripts/test-code
 CODEX_REPO_ROOT="$PWD" python3 -m unittest discover -s scripts/codex_package -p 'test_*.py'
 git diff --check
 ```
+
+## Archive command
+
+`archive-command.patch` is queue entry 71 and requires entries 1–70. It exposes the existing package archive writer to release tooling through a module command. Archive creation uses the same gzip and zstd compression arguments and normalized tar bytes as direct calls to `write_archive`.
+
+From the patched upstream checkout, write a package archive:
+
+```sh
+CODEX_REPO_ROOT="$PWD" PYTHONPATH="$PWD/scripts" python3 -m codex_package.archive write \
+  --package-dir staging/codex-package-x86_64-unknown-linux-gnu \
+  --archive-output archives/codex-package-x86_64-unknown-linux-gnu.tar.gz
+```
+
+Use a `.tar.zst` output path to select zstd compression. An existing output is rejected unless `--force` is supplied; that option replaces the archive using the writer's existing replacement behavior. Successful writes produce no terminal output.
+
+To obtain the writer's selected zstd executable and fixed arguments for archive inspection:
+
+```sh
+CODEX_REPO_ROOT="$PWD" PYTHONPATH="$PWD/scripts" python3 -m codex_package.archive resolve-zstd
+```
+
+The resolver writes one JSON argument array followed by a newline. Both commands exit 0 on success, 2 for invalid invocation, or 1 when the archive writer or resolver fails; failure diagnostics go to stderr.
+
+The portable module tests compare direct and command-created gzip/zstd bytes, verify resolver output, reject invalid invocations without creating an archive, and exercise failure status and forced replacement. Run them with:
+
+```sh
+CODEX_REPO_ROOT="$PWD" python3 scripts/codex_package/test_archive.py ArchiveModuleCommandTest
+```

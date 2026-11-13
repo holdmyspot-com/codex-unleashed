@@ -1,0 +1,237 @@
+From 6a2a2a7fd8f9be7caf53f56aabb9481673e6e460 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 13 Nov 2026 12:20:01 -0500
+Subject: [PATCH] feature: expose archive writer to Java release tooling
+
+Release tooling needs a direct process boundary to the existing archive writer so legal finalization can preserve its canonical bytes.
+---
+ scripts/codex_package/archive.py      |  61 +++++++++++++
+ scripts/codex_package/test_archive.py | 127 ++++++++++++++++++++++++++
+ 2 files changed, 188 insertions(+)
+
+diff --git a/scripts/codex_package/archive.py b/scripts/codex_package/archive.py
+index 50b771d..60ef6ff 100644
+--- a/scripts/codex_package/archive.py
++++ b/scripts/codex_package/archive.py
+@@ -1,8 +1,12 @@
+ """Archive writers for canonical Codex package directories."""
+ 
++import argparse
+ import gzip
++import json
++import os
+ import shutil
+ import subprocess
++import sys
+ import tarfile
+ import tempfile
+ import zipfile
+@@ -170,3 +174,60 @@ def package_entries(package_dir: Path) -> list[Path]:
+         package_dir.rglob("*"),
+         key=lambda path: path.relative_to(package_dir).as_posix(),
+     )
++
++
++def main() -> int:
++    """Write an archive or print the resolved zstd argv for a module caller.
++
++    Successful writes are silent; resolve-zstd prints one JSON array and LF.
++    Invalid arguments exit 2. Archive or resolver failures report to stderr
++    and return 1; successful operations return 0. --force replaces an existing
++    archive using the writer's normal replacement behavior.
++    """
++    parser = argparse.ArgumentParser(
++        description="Write canonical package archives using the package writer."
++    )
++    commands = parser.add_subparsers(dest="command", required=True)
++    write = commands.add_parser("write", help="Write an archive from a package tree.")
++    write.add_argument("--package-dir", type=Path, required=True)
++    write.add_argument("--archive-output", type=Path, required=True)
++    write.add_argument("--force", action="store_true")
++    commands.add_parser("resolve-zstd", help="Print the resolved zstd argument vector.")
++    args = parser.parse_args()
++
++    try:
++        if args.command == "write":
++            write_archive_silently(
++                args.package_dir, args.archive_output, force=args.force
++            )
++        else:
++            print(json.dumps(resolve_zstd_command()))
++    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
++        print(f"Package archive operation failed: {error}", file=sys.stderr)
++        return 1
++    return 0
++
++
++def write_archive_silently(
++    package_dir: Path, archive_path: Path, *, force: bool
++) -> None:
++    """Keep compressor progress off the module command's successful output."""
++    sys.stdout.flush()
++    sys.stderr.flush()
++    saved_stdout = os.dup(sys.stdout.fileno())
++    saved_stderr = os.dup(sys.stderr.fileno())
++    null_output = os.open(os.devnull, os.O_WRONLY)
++    try:
++        os.dup2(null_output, sys.stdout.fileno())
++        os.dup2(null_output, sys.stderr.fileno())
++        write_archive(package_dir, archive_path, force=force)
++    finally:
++        os.dup2(saved_stdout, sys.stdout.fileno())
++        os.dup2(saved_stderr, sys.stderr.fileno())
++        os.close(saved_stdout)
++        os.close(saved_stderr)
++        os.close(null_output)
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/scripts/codex_package/test_archive.py b/scripts/codex_package/test_archive.py
+index 6d835fa..fe1bcbd 100644
+--- a/scripts/codex_package/test_archive.py
++++ b/scripts/codex_package/test_archive.py
+@@ -1,6 +1,7 @@
+ #!/usr/bin/env python3
+ 
+ import hashlib
++import json
+ import os
+ from pathlib import Path
+ import subprocess
+@@ -230,6 +231,132 @@ class SymbolsArchiveBoundaryTest(unittest.TestCase):
+                 )
+ 
+ 
++class ArchiveModuleCommandTest(unittest.TestCase):
++    def setUp(self) -> None:
++        self.repo_root = Path(__file__).resolve().parents[2]
++        self.environment = os.environ.copy()
++        self.environment["CODEX_REPO_ROOT"] = str(self.repo_root)
++        self.environment["PYTHONPATH"] = os.pathsep.join(
++            (str(self.repo_root / "scripts"), self.environment.get("PYTHONPATH", ""))
++        ).rstrip(os.pathsep)
++
++    def run_archive_command(self, *arguments: str) -> subprocess.CompletedProcess[str]:
++        return subprocess.run(
++            [sys.executable, "-m", "codex_package.archive", *arguments],
++            cwd=self.repo_root,
++            env=self.environment,
++            capture_output=True,
++            text=True,
++            check=False,
++        )
++
++    def test_module_write_matches_direct_writer_for_gzip_and_zstd(self) -> None:
++        with tempfile.TemporaryDirectory() as temp_dir:
++            root = Path(temp_dir)
++            package_dir = root / "package with spaces"
++            package_dir.mkdir()
++            (package_dir / "payload.txt").write_bytes(b"module archive payload\n")
++            (package_dir / "payload.txt").chmod(0o640)
++
++            for suffix in ("tar.gz", "tar.zst"):
++                direct_archive = root / f"direct.{suffix}"
++                module_archive = root / f"module.{suffix}"
++                write_archive(package_dir, direct_archive, force=False)
++
++                result = self.run_archive_command(
++                    "write",
++                    "--package-dir",
++                    str(package_dir),
++                    "--archive-output",
++                    str(module_archive),
++                )
++
++                self.assertEqual(result.returncode, 0, result.stderr)
++                self.assertEqual(result.stdout, "")
++                self.assertEqual(result.stderr, "")
++                self.assertEqual(module_archive.read_bytes(), direct_archive.read_bytes())
++
++    def test_resolve_zstd_prints_existing_resolver_argv_as_json(self) -> None:
++        result = self.run_archive_command("resolve-zstd")
++
++        self.assertEqual(result.returncode, 0, result.stderr)
++        self.assertEqual(result.stdout, json.dumps(resolve_zstd_command()) + "\n")
++        self.assertEqual(result.stderr, "")
++
++    def test_invalid_command_exits_two_without_creating_archive(self) -> None:
++        with tempfile.TemporaryDirectory() as temp_dir:
++            package_dir = Path(temp_dir) / "package"
++            package_dir.mkdir()
++            archive_path = Path(temp_dir) / "invalid.tar.gz"
++            result = self.run_archive_command(
++                "write",
++                "--package-dir",
++                str(package_dir),
++                "--archive-output",
++                str(archive_path),
++                "--unknown",
++            )
++
++            self.assertEqual(result.returncode, 2)
++            self.assertNotEqual(result.stderr, "")
++            self.assertFalse(archive_path.exists())
++
++    def test_resolver_failure_exits_one_with_stderr_diagnostic(self) -> None:
++        with tempfile.TemporaryDirectory() as temp_dir:
++            self.environment["PATH"] = temp_dir
++            result = self.run_archive_command("resolve-zstd")
++
++            self.assertEqual(result.returncode, 1)
++            self.assertEqual(result.stdout, "")
++            self.assertIn("zstd is required", result.stderr)
++
++    def test_writer_failure_exits_one_and_successful_force_is_silent(self) -> None:
++        with tempfile.TemporaryDirectory() as temp_dir:
++            root = Path(temp_dir)
++            package_dir = root / "package"
++            package_dir.mkdir()
++            (package_dir / "payload.txt").write_bytes(b"first\n")
++            output_path = root / "output.unsupported"
++            failed = self.run_archive_command(
++                "write",
++                "--package-dir",
++                str(package_dir),
++                "--archive-output",
++                str(output_path),
++            )
++            self.assertEqual(failed.returncode, 1)
++            self.assertEqual(failed.stdout, "")
++            self.assertNotEqual(failed.stderr, "")
++            self.assertFalse(output_path.exists())
++
++            output_path = root / "output.tar.gz"
++            output_path.write_bytes(b"previous archive")
++            without_force = self.run_archive_command(
++                "write",
++                "--package-dir",
++                str(package_dir),
++                "--archive-output",
++                str(output_path),
++            )
++            self.assertEqual(without_force.returncode, 1)
++            self.assertEqual(output_path.read_bytes(), b"previous archive")
++
++            expected_path = root / "expected.tar.gz"
++            write_archive(package_dir, expected_path, force=False)
++            forced = self.run_archive_command(
++                "write",
++                "--package-dir",
++                str(package_dir),
++                "--archive-output",
++                str(output_path),
++                "--force",
++            )
++            self.assertEqual(forced.returncode, 0, forced.stderr)
++            self.assertEqual(forced.stdout, "")
++            self.assertEqual(forced.stderr, "")
++            self.assertEqual(output_path.read_bytes(), expected_path.read_bytes())
++
++
+ class ResolveZstdCommandTest(unittest.TestCase):
+     def test_prefers_zstd_from_path(self) -> None:
+         def which(name: str) -> str | None:
+-- 
+2.43.0
+
