@@ -288,9 +288,18 @@ fn windows_capture_unix_signal_compatibility() {
 
     let raw_output = RawExecToolCallOutput {
         exit_status: std::process::ExitStatus::from_raw(9),
-        stdout: StreamOutput::default(),
-        stderr: StreamOutput::default(),
-        aggregated_output: StreamOutput::default(),
+        stdout: StreamOutput {
+            text: Vec::new(),
+            truncated_after_lines: None,
+        },
+        stderr: StreamOutput {
+            text: Vec::new(),
+            truncated_after_lines: None,
+        },
+        aggregated_output: StreamOutput {
+            text: Vec::new(),
+            truncated_after_lines: None,
+        },
         timed_out: false,
         capture_failure: None,
     };
