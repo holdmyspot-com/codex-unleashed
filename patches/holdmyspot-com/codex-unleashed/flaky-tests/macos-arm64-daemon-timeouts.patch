@@ -1,0 +1,31 @@
+From 9d961f805ba4ac60bb62e101472d78c2ea55949a Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 15 Nov 2026 12:20:02 -0500
+Subject: [PATCH] Give macOS ARM64 app-server daemon tests more time
+
+On macOS ARM64 runners the codex-cli app_server_daemon tests start and restart a real daemon and exceed the 60 second nextest ceiling under load. Unpatched stress run 43426789143 and the 68-patch run 43426814858 both time out three tests at 60 seconds, so the slowness is the runner's, not the patch queue's. Intel is unaffected.
+---
+ codex-rs/.config/nextest.toml | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
+index e09bc0f..7f988cf 100644
+--- a/codex-rs/.config/nextest.toml
++++ b/codex-rs/.config/nextest.toml
+@@ -150,6 +150,13 @@ filter = '''
+ '''
+ slow-timeout = { period = "1m", terminate-after = 4 }
+ 
++[[profile.default.overrides]]
++# Each daemon test starts and restarts a real app-server daemon. On macOS ARM64 runners these tests
++# take more than 60 seconds under load with and without the downstream patch queue.
++platform = 'cfg(all(target_os = "macos", target_arch = "aarch64"))'
++filter = 'package(codex-cli) & binary(app_server_daemon)'
++slow-timeout = { period = "1m", terminate-after = 4 }
++
+ [[profile.default.overrides]]
+ # These Windows-heavy tests spawn subprocesses, session files, or JSON-RPC
+ # clients and have been the dominant source of 30s full-CI timeouts.
+-- 
+2.43.0
+
