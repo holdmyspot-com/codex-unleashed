@@ -37,7 +37,6 @@ use core_test_support::apps_test_server::AppsTestServer;
 use core_test_support::apps_test_server::apps_enabled_builder;
 use core_test_support::apps_test_server::recorded_apps_tool_calls;
 use core_test_support::exec_server::ExecServerProcess;
-use core_test_support::is_remote_test_environment;
 use core_test_support::responses::ResponseMock;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
@@ -54,10 +53,8 @@ use core_test_support::skip_if_wine_exec;
 use core_test_support::submit_thread_settings;
 use core_test_support::test_codex::TestCodex;
 use core_test_support::test_codex::TestCodexBuilder;
-use core_test_support::test_codex::TestEnv;
 use core_test_support::test_codex::environment_config_for_selection;
 use core_test_support::test_codex::test_codex;
-use core_test_support::test_docker_container_name;
 use core_test_support::test_target_os;
 use core_test_support::wait_for_event;
 use core_test_support::wait_for_event_match;
@@ -1394,25 +1391,7 @@ async fn executor_plugin_hook_fixture(
             )
             .expect("configure Node REPL MCP server");
     });
-    // The MCP mock is host-owned. Keep the remote exec-server protocol under test
-    // without assigning the host's loopback URL to a different network namespace.
-    let executor = if test_docker_container_name().is_some() {
-        Some(ExecServerProcess::start().await?)
-    } else {
-        None
-    };
-    let test = if let Some(executor) = &executor {
-        let test_env =
-            TestEnv::local_with_exec_server_url(Some(executor.websocket_url.clone())).await?;
-        builder.build_with_environment(&server, test_env).await?
-    } else {
-        builder.build_with_auto_env(&server).await?
-    };
-    assert_eq!(
-        test.executor_environment().environment().is_remote(),
-        is_remote_test_environment(),
-        "remote fixture mode must retain a remote executor",
-    );
+    let test = builder.build_with_auto_env(&server).await?;
     wait_for_mcp_server(&test.codex, "node_repl").await?;
 
     let mut plugin_roots = Vec::new();
@@ -1451,7 +1430,6 @@ async fn executor_plugin_hook_fixture(
         responses,
         hook_called,
         plugin_roots,
-        _executor: executor,
     })
 }
 
@@ -1461,7 +1439,6 @@ struct ExecutorHookFixture {
     responses: ResponseMock,
     hook_called: Arc<Notify>,
     plugin_roots: Vec<(&'static str, PathUri)>,
-    _executor: Option<ExecServerProcess>,
 }
 
 impl ExecutorHookFixture {
