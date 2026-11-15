@@ -1,12 +1,13 @@
-From 9d961f805ba4ac60bb62e101472d78c2ea55949a Mon Sep 17 00:00:00 2001
+From 256cf4f74d4a96f8b37368b4d9eb7ddc568664ab Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Sun, 15 Nov 2026 12:20:02 -0500
+Date: Sun, 15 Nov 2026 12:56:14 -0500
 Subject: [PATCH] Give macOS ARM64 app-server daemon tests more time
 
-On macOS ARM64 runners the codex-cli app_server_daemon tests start and restart a real daemon and exceed the 60 second nextest ceiling under load. Unpatched stress run 43426789143 and the 68-patch run 43426814858 both time out three tests at 60 seconds, so the slowness is the runner's, not the patch queue's. Intel is unaffected.
+On macOS ARM64 runners the codex-cli app_server_daemon tests start and restart a real daemon and exceed the 60 second nextest ceiling under load. Unpatched stress run 43426789143 and the 68-patch run 43426814858 both time out three tests at 60 seconds, so the slowness is the runner's, not the patch queue's. With a longer nextest period, managed_identity_survives_locale_and_timezone_changes then fails its own 30 second wait for the updater socket (run 43740847551), so that wait is left to nextest's timeout. Intel is unaffected.
 ---
- codex-rs/.config/nextest.toml | 7 +++++++
- 1 file changed, 7 insertions(+)
+ codex-rs/.config/nextest.toml           | 7 +++++++
+ codex-rs/cli/tests/app_server_daemon.rs | 4 ++--
+ 2 files changed, 9 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
 index e09bc0f..7f988cf 100644
@@ -26,6 +27,22 @@ index e09bc0f..7f988cf 100644
  [[profile.default.overrides]]
  # These Windows-heavy tests spawn subprocesses, session files, or JSON-RPC
  # clients and have been the dominant source of 30s full-CI timeouts.
+diff --git a/codex-rs/cli/tests/app_server_daemon.rs b/codex-rs/cli/tests/app_server_daemon.rs
+index 72b10fa..35cf4fe 100644
+--- a/codex-rs/cli/tests/app_server_daemon.rs
++++ b/codex-rs/cli/tests/app_server_daemon.rs
+@@ -265,9 +265,9 @@ fn managed_identity_survives_locale_and_timezone_changes() -> Result<()> {
+                 .home
+                 .path()
+                 .join("app-server-daemon/app-server-updater.sock");
+-            let deadline = Instant::now() + Duration::from_secs(30);
++            // nextest's timeout bounds this wait; a loaded macOS ARM64 runner can need more than
++            // 30 seconds for the updater to bind its socket.
+             while !updater_socket.exists() {
+-                ensure!(Instant::now() < deadline, "updater did not become ready");
+                 std::thread::sleep(Duration::from_millis(50));
+             }
+             let mut legacy: Value = serde_json::from_slice(&original)?;
 -- 
 2.43.0
 
