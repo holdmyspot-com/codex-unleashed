@@ -69,7 +69,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$T9_EVIDENCE"
-          { git rev-parse HEAD; git rev-parse HEAD^{tree}; uname -a; df -h "$RUNNER_TEMP"; } > "$T9_EVIDENCE/worker-source-and-platform.txt"
+          {
+            git rev-parse HEAD
+            git rev-parse 'HEAD^{tree}'
+            uname -a
+            df -h "$RUNNER_TEMP"
+          } > "$T9_EVIDENCE/worker-source-and-platform.txt"
 
       - name: Prepare maintained Linux CI environment
         uses: ./.github/actions/setup-ci
@@ -125,6 +130,7 @@ jobs:
           idle-timeout-minutes: ${{ inputs.idle_timeout_minutes }}
 
       - name: Wait for authenticated test client
+        if: always()
         env:
           T9_EVIDENCE: ${{ runner.temp }}/t9-native-behavior
         run: |
@@ -136,6 +142,7 @@ jobs:
           done
 
       - name: Wait for behavior evidence to be ready for export
+        if: always()
         env:
           T9_EVIDENCE: ${{ runner.temp }}/t9-native-behavior
         run: |
