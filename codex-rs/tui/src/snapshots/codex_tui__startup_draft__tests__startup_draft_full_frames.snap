@@ -1,0 +1,75 @@
+---
+source: tui/src/startup_draft_tests.rs
+expression: "snapshots.join(\"\\n---\\n\")"
+---
+empty (48 columns):
+  >_ Codex Unleashed (v<VERSION>)
+     Unofficial fork of OpenAI Codex
+     https://holdmyspot.com/codex-unleashed/
+     loading
+
+
+› Ask Codex to do anything
+
+  ? for shortcuts
+---
+configured (48 columns):
+  >_ Codex Unleashed (v<VERSION>)
+     Unofficial fork of OpenAI Codex
+     https://holdmyspot.com/codex-unleashed/
+     workspace
+
+
+› Ask Codex to do anything
+
+  ? for shortcuts
+---
+resuming (48 columns):
+  >_ Codex Unleashed (v<VERSION>)
+     Unofficial fork of OpenAI Codex
+     https://holdmyspot.com/codex-unleashed/
+     loading
+  Resuming session…
+
+› Ask Codex to do anything
+
+  ? for shortcuts
+---
+forking (48 columns):
+  >_ Codex Unleashed (v<VERSION>)
+     Unofficial fork of OpenAI Codex
+     https://holdmyspot.com/codex-unleashed/
+     loading
+  Forking session…
+
+› draft while loading
+
+
+---
+multiline (48 columns):
+  >_ Codex Unleashed (v<VERSION>)
+     Unofficial fork of OpenAI Codex
+     https://holdmyspot.com/codex-unleashed/
+     loading
+
+
+› first startup line
+  second startup line
+
+
+---
+narrow (18 columns):
+  >_ Codex Unleas…
+     Unofficial
+     fork of
+     OpenAI Codex
+     https://holdm
+     yspot.com/cod
+     ex-unleashed/
+     loading
+
+
+› first startup
+  line
+  second startup
+  line

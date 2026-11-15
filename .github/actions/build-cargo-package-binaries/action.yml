@@ -1,0 +1,110 @@
+name: Build Cargo package binaries
+description: Set up Cargo and build unstripped runtime package binaries and symbols.
+inputs:
+  target:
+    description: Rust release target triple.
+    required: true
+  binaries:
+    description: Space-separated binary target names.
+    required: true
+  build-mode:
+    description: Release optimizations, or debug for faster package smoke builds.
+    default: release
+
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/setup-ci
+
+    - name: Configure Cargo release profile
+      shell: bash
+      env:
+        PACKAGE_ACTION_PATH: ${{ github.action_path }}
+        TARGET: ${{ inputs.target }}
+        BUILD_MODE: ${{ inputs.build-mode }}
+      run: |
+        set -euo pipefail
+        package_source_root="$(cd "${PACKAGE_ACTION_PATH}/../../.." && pwd)"
+        bash "${package_source_root}/.github/scripts/codex-package-operations.sh" \
+          profile-env --target "$TARGET" --build-mode "$BUILD_MODE" >> "$GITHUB_ENV"
+
+    - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+      with:
+        targets: ${{ inputs.target }}
+
+    - name: Use hermetic Cargo home (musl)
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      working-directory: codex-rs
+      run: |
+        set -euo pipefail
+        cargo_home="${GITHUB_WORKSPACE}/.cargo-home"
+        mkdir -p "${cargo_home}/bin"
+        echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
+        echo "${cargo_home}/bin" >> "$GITHUB_PATH"
+        : > "${cargo_home}/config.toml"
+
+    - name: Install Zig
+      if: ${{ runner.os == 'Linux' }}
+      uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+      with:
+        version: 0.14.0
+        use-cache: false
+
+    - name: Install musl build tools
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      working-directory: codex-rs
+      env:
+        TARGET: ${{ inputs.target }}
+      run: bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
+
+    - name: Disable aws-lc jitter entropy (musl)
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      working-directory: codex-rs
+      env:
+        TARGET: ${{ inputs.target }}
+      run: |
+        set -euo pipefail
+        # aws-lc's jitter entropy path does not work reliably on musl builders,
+        # so disable it globally and per target.
+        echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
+        target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_${TARGET}"
+        target_no_jitter="${target_no_jitter//-/_}"
+        echo "${target_no_jitter}=1" >> "$GITHUB_ENV"
+
+    - name: Configure rusty_v8 artifact overrides and verify checksums
+      uses: ./.github/actions/setup-rusty-v8
+      with:
+        target: ${{ inputs.target }}
+
+    - name: Configure MSVC environment
+      if: ${{ runner.os == 'Windows' }}
+      uses: ./.github/actions/setup-msvc-env
+      with:
+        target: ${{ inputs.target }}
+
+    - name: Build package binaries
+      shell: bash
+      working-directory: codex-rs
+      env:
+        TARGET: ${{ inputs.target }}
+        RUNNER_OS: ${{ runner.os }}
+        BUILD_MODE: ${{ inputs.build-mode }}
+        BINARIES: ${{ inputs.binaries }}
+        PACKAGE_ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        package_source_root="$(cd "${PACKAGE_ACTION_PATH}/../../.." && pwd)"
+        build_result="${RUNNER_TEMP}/codex-build-operations-${TARGET}"
+        bash "${package_source_root}/.github/scripts/codex-package-operations.sh" \
+          build-binaries \
+          --target "$TARGET" \
+          --runner-os "$RUNNER_OS" \
+          --build-mode "$BUILD_MODE" \
+          --binaries "$BINARIES" \
+          --target-dir "$CARGO_TARGET_DIR" \
+          --result-dir "$build_result"
+        cat "${build_result}/export.env" >> "$GITHUB_ENV"
+        echo "CODEX_PACKAGE_BUILD_RESULT=${build_result}" >> "$GITHUB_ENV"

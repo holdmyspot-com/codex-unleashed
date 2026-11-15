@@ -1,0 +1,9 @@
+---
+source: tui/src/chatwidget/tests/app_server.rs
+expression: rendered
+---
+Codex Unleashed (v<VERSION>)
+     Unofficial fork of OpenAI Codex
+     https://holdmyspot.com/codex-unleashed/
+model: GPT-5.6 Luna high
+directory: /tmp/thread-settings
