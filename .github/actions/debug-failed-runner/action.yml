@@ -1,0 +1,61 @@
+name: Debug a failed runner
+description: Keep a failed workspace available through key-restricted SSH until the remote shell exits
+inputs:
+  public-key:
+    description: Public SSH key whose private key remains with the debugging client
+    required: true
+  idle-timeout-minutes:
+    description: Positive whole minutes allowed before joining or while waiting at an idle shell prompt
+    default: '10'
+outputs:
+  ssh-command:
+    description: SSH command for the owned live debug session
+    value: ${{ steps.upterm.outputs.ssh-command }}
+runs:
+  using: composite
+  steps:
+    - name: Prepare restricted access
+      id: key
+      uses: ./.github/actions/debug-failed-runner/storage
+      env:
+        DEBUG_PUBLIC_KEY: ${{ inputs.public-key }}
+        DEBUG_IDLE_MINUTES: ${{ inputs.idle-timeout-minutes }}
+
+    - name: Open restricted debug session
+      id: upterm
+      uses: owenthereal/action-upterm@b9dfa526f890bbd5162d781f8d9c69b97731d73d
+      env:
+        UPTERM_AUTHORIZED_KEYS: ${{ steps.key.outputs.key-file }}
+        SHELL: /bin/bash
+        PROMPT_COMMAND: ${{ steps.key.outputs.shell-startup }}
+      with:
+        upterm-version: v0.40.0
+        detached: true
+        wait-timeout-minutes: ${{ inputs.idle-timeout-minutes }}
+
+    - name: Record live connection details
+      shell: bash
+      env:
+        DEBUG_STORAGE: ${{ steps.key.outputs.storage }}
+        DEBUG_SSH_COMMAND: ${{ steps.upterm.outputs.ssh-command }}
+        DEBUG_JOIN_COMMAND: ${{ steps.upterm.outputs.join-command }}
+      run: |
+        node - <<'JS'
+        const fs = require('node:fs');
+        const path = require('node:path');
+        if (!process.env.DEBUG_SSH_COMMAND)
+          throw new Error('The remote action did not publish an SSH command');
+        fs.writeFileSync(path.join(process.env.DEBUG_STORAGE, 'connection.json'),
+          `${JSON.stringify({sshCommand: process.env.DEBUG_SSH_COMMAND,
+            joinCommand: process.env.DEBUG_JOIN_COMMAND,
+            workspace: process.env.GITHUB_WORKSPACE,
+            resume: 'Exit the remote shell to continue cleanup; the original failed step remains failed.'}, null, 2)}\n`);
+        JS
+
+    - name: Publish connection details while the runner stays alive
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+      with:
+        name: runner-debug-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ github.run_attempt }}
+        path: ${{ steps.key.outputs.storage }}/connection.json
+        retention-days: 1
+        if-no-files-found: error

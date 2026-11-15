@@ -1,0 +1,100 @@
+From d3abf6cfb864e40db761d83587531c623f3655d3 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 24 Oct 2026 16:30:07 +0000
+Subject: [PATCH] config: avoid conflicting C standards in AWS-LC actions
+
+AWS-LC selects C11 explicitly, while modern MSVC toolchains also enable
+their default C17 feature. Exclude that default for targets owning a C11
+selection, retaining their other features and C++ options.
+---
+ BUILD.bazel | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/BUILD.bazel b/BUILD.bazel
+index 58cac9f..202fd2c 100755
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -31,6 +31,10 @@ BORINGSSL_CONLYOPTS = select({
+     "//conditions:default": ["-std=c11"],
+ })
+
++# Explicit C11 targets exclude the toolchain default, such as MSVC C17,
++# so each C compilation receives one standard flag.
++BORINGSSL_C_FEATURES = ["-default_c_std"]
++
+ BORINGSSL_CXXOPTS = select({
+     "@platforms//os:windows": [],
+     "//conditions:default": [
+@@ -228,7 +232,7 @@ cc_library(
+         ],
+     }) + BORINGSSL_COPTS,
+     cxxopts = BORINGSSL_CXXOPTS,
+-    features = ["-opt"],
++    features = ["-opt"] + BORINGSSL_C_FEATURES,
+     includes = [
+         "include",
+         "third_party/jitterentropy/jitterentropy-library",
+@@ -504,6 +508,7 @@ cc_library(
+     conlyopts = BORINGSSL_CONLYOPTS,
+     copts = COMMON_COPTS + BORINGSSL_COPTS,
+     cxxopts = BORINGSSL_CXXOPTS,
++    features = BORINGSSL_C_FEATURES,
+     implementation_deps = [
+         ":jitterentropy",
+     ],
+@@ -567,6 +572,7 @@ cc_library(
+     conlyopts = BORINGSSL_CONLYOPTS,
+     copts = COMMON_COPTS + BORINGSSL_COPTS,
+     cxxopts = BORINGSSL_CXXOPTS,
++    features = BORINGSSL_C_FEATURES,
+     includes = ["include"],
+     visibility = ["//visibility:public"],
+     deps = [
+@@ -587,6 +593,7 @@ cc_binary(
+     conlyopts = BORINGSSL_CONLYOPTS,
+     copts = COMMON_COPTS + BORINGSSL_COPTS,
+     cxxopts = BORINGSSL_CXXOPTS,
++    features = BORINGSSL_C_FEATURES,
+     includes = [
+         "include",
+         "tool",
+@@ -615,6 +622,7 @@ cc_library(
+     conlyopts = BORINGSSL_CONLYOPTS,
+     copts = TEST_COPTS + BORINGSSL_COPTS,
+     cxxopts = BORINGSSL_CXXOPTS,
++    features = BORINGSSL_C_FEATURES,
+     includes = ["include"],
+     local_defines = ["BORINGSSL_USE_BAZEL_RUNFILES"],
+     deps = [
+@@ -637,6 +645,7 @@ cc_library(
+     conlyopts = BORINGSSL_CONLYOPTS,
+     copts = TEST_COPTS + BORINGSSL_COPTS,
+     cxxopts = BORINGSSL_CXXOPTS,
++    features = BORINGSSL_C_FEATURES,
+     includes = ["crypto/test"],
+     deps = [
+         ":crypto_test_support",
+@@ -764,6 +773,7 @@ cc_test(
+     conlyopts = BORINGSSL_CONLYOPTS,
+     copts = TEST_COPTS + ["-DAWS_LC_TEST_ENV"] + BORINGSSL_COPTS,
+     cxxopts = BORINGSSL_CXXOPTS,
++    features = BORINGSSL_C_FEATURES,
+     data = CRYPTO_TEST_DATA,
+     linkstatic = True,
+     shard_count = 30,
+@@ -782,6 +792,7 @@ cc_test(
+     conlyopts = BORINGSSL_CONLYOPTS,
+     copts = TEST_COPTS + BORINGSSL_COPTS,
+     cxxopts = BORINGSSL_CXXOPTS,
++    features = BORINGSSL_C_FEATURES,
+     data = CRYPTO_TEST_DATA,
+     deps = [
+         ":crypto",
+@@ -813,6 +824,7 @@ cc_test(
+     conlyopts = BORINGSSL_CONLYOPTS,
+     copts = TEST_COPTS + BORINGSSL_COPTS,
+     cxxopts = BORINGSSL_CXXOPTS,
++    features = BORINGSSL_C_FEATURES,
+     data = CRYPTO_TEST_DATA,
+     linkstatic = True,
+     deps = [

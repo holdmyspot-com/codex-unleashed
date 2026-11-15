@@ -1,0 +1,9 @@
+---
+source: tui/src/history_cell/tests.rs
+expression: rendered
+---
+  >_ Codex Unleashed (vtest)
+     Unofficial fork of OpenAI Codex
+     https://holdmyspot.com/codex-unleashed/
+     /tmp/project
+  permissions: YOLO mode

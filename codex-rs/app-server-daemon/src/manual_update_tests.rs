@@ -1,0 +1,158 @@
+use super::super::manual_update;
+use super::Daemon;
+use super::Duration;
+use super::TempDir;
+use super::UpdateOutput;
+use super::UpdateStatus;
+use super::manual_update_daemon;
+use pretty_assertions::assert_eq;
+
+#[cfg(unix)]
+#[tokio::test]
+async fn manual_request_replaces_a_different_updater() {
+    let mut replies = Vec::new();
+    for legacy_record in [false, true] {
+        let home = TempDir::new().expect("home");
+        let (daemon, _) = manual_update_daemon(&home);
+        let old_exe = write_handoff_updater(&home, &daemon, "upstream");
+        let current_exe = write_handoff_updater(&home, &daemon, "unleashed");
+        let settings = daemon.load_settings().await.expect("settings");
+        let worker = crate::backend::pid_update_loop_backend(
+            daemon.backend_paths_with_bin(&settings, &old_exe),
+        );
+        worker.start().await.expect("old updater");
+        wait_for_handoff_updater(&daemon).await;
+        if legacy_record {
+            let mut record: serde_json::Value = serde_json::from_slice(
+                &std::fs::read(&daemon.update_pid_file).expect("PID record"),
+            )
+            .expect("parse PID record");
+            record.as_object_mut().unwrap().remove("executableIdentity");
+            std::fs::write(
+                &daemon.update_pid_file,
+                serde_json::to_vec(&record).unwrap(),
+            )
+            .expect("legacy PID record");
+        }
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            manual_update::request_with_executable(&daemon, &current_exe),
+        )
+        .await;
+        worker.stop().await.expect("stop fixture updater");
+        replies.push((
+            result
+                .expect("manual request timeout")
+                .expect("manual request"),
+            handoff_updater_reply(&daemon.manual_update_socket_path(), "unleashed"),
+        ));
+    }
+    for (reply, expected) in replies {
+        assert_eq!(reply, expected);
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn manual_request_reuses_a_matching_updater() {
+    let home = TempDir::new().expect("home");
+    let (daemon, _) = manual_update_daemon(&home);
+    let current_exe = write_handoff_updater(&home, &daemon, "unleashed");
+    let settings = daemon.load_settings().await.expect("settings");
+    let worker = crate::backend::pid_update_loop_backend(
+        daemon.backend_paths_with_bin(&settings, &current_exe),
+    );
+    worker.start().await.expect("current updater");
+    wait_for_handoff_updater(&daemon).await;
+    let initial_record = std::fs::read(&daemon.update_pid_file).expect("initial PID record");
+    let result = manual_update::request_with_executable(&daemon, &current_exe).await;
+    let final_record = std::fs::read(&daemon.update_pid_file).expect("final PID record");
+    worker.stop().await.expect("stop fixture updater");
+    assert_eq!(
+        result.expect("manual request"),
+        handoff_updater_reply(&daemon.manual_update_socket_path(), "unleashed")
+    );
+    assert_eq!(initial_record, final_record);
+}
+
+#[cfg(unix)]
+fn write_handoff_updater(home: &TempDir, daemon: &Daemon, message: &str) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let executable = home.path().join(message);
+    let test_binary = std::env::current_exe().expect("test executable");
+    let socket = daemon.manual_update_socket_path();
+    // The shell launches the Rust fixture; the fixture owns the socket and response.
+    std::fs::write(
+        &executable,
+        format!(
+            "#!/bin/sh\nexport CODEX_TEST_UPDATER_SOCKET='{}'\nexport CODEX_TEST_UPDATER_MESSAGE='{message}'\nexec '{}' --ignored --exact update_loop::tests::manual_update_tests::updater_handoff_process --nocapture\n",
+            socket.display().to_string().replace('\'', "'\\''"),
+            test_binary.display().to_string().replace('\'', "'\\''"),
+        ),
+    )
+    .expect("fixture executable");
+    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755))
+        .expect("executable fixture");
+    executable
+}
+
+#[cfg(unix)]
+async fn wait_for_handoff_updater(daemon: &Daemon) {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while codex_uds::UnixStream::connect(&daemon.manual_update_socket_path())
+            .await
+            .is_err()
+        {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("fixture socket ready");
+}
+
+#[cfg(unix)]
+fn handoff_updater_reply(socket: &std::path::Path, message: &str) -> UpdateOutput {
+    UpdateOutput {
+        status: UpdateStatus::NoUpdate,
+        managed_codex_path: socket.to_owned(),
+        installed_version: None,
+        running_version: None,
+        message: message.to_owned(),
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[ignore = "fixture subprocess launched only by the updater handoff tests"]
+async fn updater_handoff_process() {
+    use tokio::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
+
+    let socket = std::path::PathBuf::from(std::env::var("CODEX_TEST_UPDATER_SOCKET").unwrap());
+    let message = std::env::var("CODEX_TEST_UPDATER_MESSAGE").unwrap();
+    codex_uds::prepare_private_socket_directory(socket.parent().unwrap())
+        .await
+        .unwrap();
+    if socket.exists() {
+        std::fs::remove_file(&socket).unwrap();
+    }
+    let mut listener = codex_uds::UnixListener::bind(&socket).await.unwrap();
+    // Bound the child lifetime even if its parent's assertion or cleanup fails.
+    let _ = tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            let mut connection = listener.accept().await.unwrap();
+            let mut request = [0; 7];
+            if connection.read_exact(&mut request).await.is_err() {
+                continue;
+            }
+            assert_eq!(&request, b"update\n");
+            let reply = handoff_updater_reply(&socket, &message);
+            connection
+                .write_all(&serde_json::to_vec(&Ok::<_, String>(reply)).unwrap())
+                .await
+                .unwrap();
+        }
+    })
+    .await;
+}

@@ -1,0 +1,8 @@
+---
+source: tui/src/history_cell/tests.rs
+expression: "render_lines(&cell.transcript_lines(100)).join(\"\\n\")"
+---
+⚠ The connected app-server identifies itself as OpenAI Codex v0.160.0, older than your Codex CLI
+  v0.160.0+39. Update it to a Codex Unleashed app-server to use Codex Unleashed server features.
+  Use /daemon to manage the local background server.
+  Updating may interrupt active or queued work.

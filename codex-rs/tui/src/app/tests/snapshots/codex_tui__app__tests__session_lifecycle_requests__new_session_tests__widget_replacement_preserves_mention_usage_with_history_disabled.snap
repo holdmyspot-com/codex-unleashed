@@ -1,0 +1,18 @@
+---
+source: tui/src/app/tests/new_session_tests.rs
+expression: "normalize_snapshot_paths(render_bottom_popup(&app.chat_widget, 80))"
+---
+  >_ Codex Unleashed (v0.0.0+dev)
+     Unofficial fork of OpenAI Codex
+     https://holdmyspot.com/codex-unleashed/
+     /tmp/project
+
+
+› status   [Skill]
+  statsig  [Skill]
+
+  enter insert · esc close
+
+› $stat
+
+  GPT-5.6-Sol default · /tmp/project

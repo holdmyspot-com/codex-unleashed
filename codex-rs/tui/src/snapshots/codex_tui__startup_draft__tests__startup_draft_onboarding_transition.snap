@@ -1,0 +1,16 @@
+---
+source: tui/src/startup_draft_tests.rs
+expression: frames
+---
+before onboarding: hidden (0x0 viewport)
+---
+after onboarding:
+  >_ Codex Unleashed (v<VERSION>)
+     Unofficial fork of OpenAI Codex
+     https://holdmyspot.com/codex-unleashed/
+     loading
+
+
+› Ask Codex to do anything
+
+  ? for shortcuts

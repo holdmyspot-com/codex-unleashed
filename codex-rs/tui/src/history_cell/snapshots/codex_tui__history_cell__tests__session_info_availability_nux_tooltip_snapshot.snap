@@ -1,0 +1,10 @@
+---
+source: tui/src/history_cell/tests.rs
+expression: rendered
+---
+  >_ Codex Unleashed (v0.0.0+dev)
+     Unofficial fork of OpenAI Codex
+     https://holdmyspot.com/codex-unleashed/
+     /tmp/project
+
+  Tip: Model just became available
