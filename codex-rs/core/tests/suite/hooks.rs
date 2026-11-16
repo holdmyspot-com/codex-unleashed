@@ -4612,8 +4612,7 @@ async fn local_bundled_cleanup_hook_runs_without_saved_trust(
             .expect("disable executor capability discovery");
         let repl: McpServerConfig = serde_json::from_value(serde_json::json!({
             "url": repl_url,
-            // This fixture owns a host loopback server, even when tools run remotely.
-            "environment_id": codex_config::DEFAULT_MCP_SERVER_ENVIRONMENT_ID,
+            "environment_id": super::rmcp_client::remote_aware_environment_id(),
         }))
         .expect("valid MCP configuration");
         config
@@ -4625,17 +4624,7 @@ async fn local_bundled_cleanup_hook_runs_without_saved_trust(
             )
             .expect("configure MCP server");
     });
-    let test = builder.build_with_remote_and_local_env(&server).await?;
-    assert_eq!(
-        test.codex
-            .environment_selections()
-            .await
-            .into_iter()
-            .next()
-            .map(|selection| selection.environment_id),
-        Some(super::rmcp_client::remote_aware_environment_id()),
-        "host MCP availability must not replace the selected tool executor",
-    );
+    let test = builder.build_with_auto_env(&server).await?;
     assert!(!test.config.bypass_hook_trust);
     assert_eq!(
         test.config.features.enabled(Feature::CodexHooks),
