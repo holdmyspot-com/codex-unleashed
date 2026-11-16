@@ -149,7 +149,6 @@ async fn guardian_revalidates_owning_session_before_allow(
     let base_url = format!("{}/v1", streaming_server.uri());
     let server = responses::start_mock_server().await;
     let mut test = test_codex()
-        .with_separate_host_cwd()
         .with_model_info_override("test-gpt-5.1-codex", |model| {
             model.comp_hash = Some("compatible".to_owned());
             model.auto_review_model_override = Some(model.slug.clone());
@@ -173,7 +172,7 @@ async fn guardian_revalidates_owning_session_before_allow(
             }
         })
         .with_code_mode_host_program(codex_utils_cargo_bin::cargo_bin("codex-code-mode-host")?)
-        .build_with_remote_and_local_env(&server)
+        .build_with_auto_env(&server)
         .await?;
     if review_mode == GuardianContextMode::Legacy {
         test.codex.ensure_rollout_materialized().await;

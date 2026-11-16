@@ -50,7 +50,6 @@ async fn cancelling_tool_aborts_its_guardian_review(cancellation: Cancellation) 
 
     let server = responses::start_mock_server().await;
     let mut builder = test_codex()
-        .with_separate_host_cwd()
         .with_model("test-gpt-5.1-codex")
         .with_config(move |config| {
             config.permissions.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
@@ -67,7 +66,7 @@ async fn cancelling_tool_aborts_its_guardian_review(cancellation: Cancellation) 
         builder = builder
             .with_code_mode_host_program(codex_utils_cargo_bin::cargo_bin("codex-code-mode-host")?);
     }
-    let test = builder.build_with_remote_and_local_env(&server).await?;
+    let test = builder.build_with_auto_env(&server).await?;
     let output_file = test.cwd.path().join("cancelled-guardian-command.txt");
     let output_path = shlex::try_join([output_file.to_string_lossy().as_ref()])?;
     let tool_args = json!({

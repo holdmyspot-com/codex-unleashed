@@ -1908,7 +1908,6 @@ async fn guardian_session_is_reused_for_consecutive_tool_reviews_without_prewarm
     let mut extensions = ExtensionRegistryBuilder::<Config>::new();
     extensions.tool_lifecycle_contributor(lifecycle_recorder.clone());
     let mut builder = test_codex()
-        .with_separate_host_cwd()
         .with_model_info_override("gpt-5.4", |_| {})
         .with_extensions(Arc::new(extensions.build()))
         .with_config(move |config| {
@@ -1937,11 +1936,20 @@ async fn guardian_session_is_reused_for_consecutive_tool_reviews_without_prewarm
                     NetworkSandboxPolicy::Restricted,
                 ))
                 .expect("set parent permission profile");
+        })
+        .with_workspace_setup(|cwd, fs| async move {
+            fs.write_file(
+                &codex_utils_path_uri::PathUri::from_abs_path(&cwd.join("guardian-secret.txt")),
+                SECRET.as_bytes().to_vec(),
+                Default::default(),
+                /*sandbox*/ None,
+            )
+            .await?;
+            Ok(())
         });
-    let test = builder.build_with_remote_and_local_env(&server).await?;
+    let test = builder.build_with_auto_env(&server).await?;
 
     let secret_file = test.config.cwd.join("guardian-secret.txt");
-    fs::write(&secret_file, SECRET)?;
     let guardian_output_file = test.cwd.path().join("guardian-write.txt");
     let first_output_file = test.cwd.path().join("guardian-first.txt");
     let second_output_file = test.cwd.path().join("guardian-second.txt");
