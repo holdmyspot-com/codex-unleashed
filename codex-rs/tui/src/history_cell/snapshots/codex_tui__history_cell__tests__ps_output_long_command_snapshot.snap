@@ -1,0 +1,11 @@
+---
+source: tui/src/history_cell/tests.rs
+expression: rendered
+---
+/ps
+
+Background terminals
+  (transcript will be available after terminal completes)
+
+  • rg "foo" src --glob '**/*. [...]
+    ↳ searching...

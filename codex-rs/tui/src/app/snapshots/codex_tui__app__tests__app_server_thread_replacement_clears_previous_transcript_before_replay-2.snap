@@ -1,0 +1,11 @@
+---
+source: tui/src/app/tests.rs
+expression: rendered
+---
+  >_ Codex Unleashed (v0.0.0+dev)
+     Unofficial fork of OpenAI Codex
+     https://holdmyspot.com/codex-unleashed/
+     <thread cwd>
+
+
+› Next thread prompt

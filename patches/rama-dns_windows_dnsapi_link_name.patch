@@ -1,0 +1,12 @@
+diff --git a/src/client/windows.rs b/src/client/windows.rs
+--- a/src/client/windows.rs
++++ b/src/client/windows.rs
+@@ -957,7 +957,7 @@
+         pub(super) strings: [*const u16; 1],
+     }
+ 
+-    #[link(name = "Dnsapi")]
++    #[link(name = "dnsapi")]
+     unsafe extern "system" {
+         /// DnsQueryEx:
+         /// Official docs:

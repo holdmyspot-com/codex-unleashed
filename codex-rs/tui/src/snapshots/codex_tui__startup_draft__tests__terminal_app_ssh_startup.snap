@@ -1,0 +1,32 @@
+---
+source: tui/src/startup_draft_tests.rs
+expression: "frames.join(\"\\n---\\n\").replace(crate::version::CODEX_CLI_VERSION, \"<VERSION>\")"
+---
+terminal_app_over_ssh=false, owned=true
+  >_ Codex Unleashed (v<VERSION>)
+     Unofficial fork of OpenAI Codex
+     https://holdmyspot.com/codex-unleashed/
+     loading
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  ? for shortcuts
+---
+terminal_app_over_ssh=true, owned=false
+  >_ Codex Unleashed (v<VERSION>)
+     Unofficial fork of OpenAI Codex
+     https://holdmyspot.com/codex-unleashed/
+     loading
+
+
+› Ask Codex to do anything
+
+  ? for shortcuts
