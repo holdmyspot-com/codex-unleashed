@@ -1396,18 +1396,25 @@ async fn executor_plugin_hook_fixture(
     });
     // The MCP mock is host-owned. Keep the remote exec-server protocol under test
     // without assigning the host's loopback URL to a different network namespace.
-    let executor = if test_docker_container_name().is_some() {
-        Some(ExecServerProcess::start().await?)
+    let docker_container_selected = test_docker_container_name().is_some();
+    eprintln!("T9_DIAG docker_container_selected={docker_container_selected}");
+    let executor = if docker_container_selected {
+        let executor = ExecServerProcess::start().await?;
+        eprintln!("T9_DIAG host_exec_server_started=true websocket_url={}", executor.websocket_url);
+        Some(executor)
     } else {
+        eprintln!("T9_DIAG host_exec_server_started=false");
         None
     };
     let test = if let Some(executor) = &executor {
         let test_env =
             TestEnv::local_with_exec_server_url(Some(executor.websocket_url.clone())).await?;
+        eprintln!("T9_DIAG forwarded_test_env_websocket_url={}", executor.websocket_url);
         builder.build_with_environment(&server, test_env).await?
     } else {
         builder.build_with_auto_env(&server).await?
     };
+    eprintln!("T9_DIAG effective_executor_websocket_url={:?}", test.executor_environment().exec_server_url());
     assert_eq!(
         test.executor_environment().environment().is_remote(),
         is_remote_test_environment(),
