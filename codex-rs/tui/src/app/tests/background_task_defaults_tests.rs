@@ -317,7 +317,7 @@ async fn command_center_new_reads_server_defaults_for_actual_destination() -> Re
             thread_mode,
             LoaderOverrides {
                 user_config_path: Some(server_home.path().join("config.toml").abs()),
-                ..LoaderOverrides::default()
+                ..LoaderOverrides::without_managed_config_for_tests()
             },
         )
         .await?;
