@@ -1,0 +1,89 @@
+From 5d8803bb7684855a222bdfc76ee06b0b3dbc7076 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 15 Nov 2026 01:27:55 -0500
+Subject: [PATCH] voice: preserve capture timestamps
+
+---
+ codex-rs/voice-host/src/audio_track.rs       | 21 +++++++++++++-------
+ codex-rs/voice-host/src/audio_track_tests.rs | 16 +++++++++++++++
+ 2 files changed, 30 insertions(+), 7 deletions(-)
+
+diff --git a/codex-rs/voice-host/src/audio_track.rs b/codex-rs/voice-host/src/audio_track.rs
+index 587a19b..c3d2c44 100644
+--- a/codex-rs/voice-host/src/audio_track.rs
++++ b/codex-rs/voice-host/src/audio_track.rs
+@@ -24,6 +24,16 @@ pub(crate) struct EncodedAudio {
+     pub(crate) at: Instant,
+ }
+ 
++impl EncodedAudio {
++    fn into_sample(self, duration: Duration) -> Sample {
++        Sample {
++            data: self.data.into(),
++            duration,
++            ..Sample::new(self.at)
++        }
++    }
++}
++
+ pub(crate) struct AudioTrack {
+     pub(crate) track: Arc<TrackLocalStaticSample>,
+     ssrc: u32,
+@@ -120,9 +130,10 @@ impl AudioTrack {
+     pub(crate) async fn send(&mut self, frame: EncodedAudio) -> Result<(), &'static str> {
+         tokio::time::timeout(SEND_TIMEOUT, async {
+             let duration = Duration::from_millis(/*millis*/ 20);
++            let at = frame.at;
+             let elapsed = self
+                 .end
+-                .map(|end| frame.at.saturating_duration_since(end))
++                .map(|end| at.saturating_duration_since(end))
+                 .unwrap_or_default();
+             // RTP counts audio samples, not callback wall-clock jitter. Skipping
+             // fractional packets changes the source grid and causes receivers
+@@ -153,16 +164,12 @@ impl AudioTrack {
+                 .write_sample(
+                     self.ssrc,
+                     /*payload_type*/ OPUS_PAYLOAD_TYPE,
+-                    &Sample {
+-                        data: frame.data.into(),
+-                        duration,
+-                        ..Sample::new(Instant::now())
+-                    },
++                    &frame.into_sample(duration),
+                     &[],
+                 )
+                 .await
+                 .map_err(|_| "failed to send voice audio")?;
+-            self.end = Some(self.end.unwrap_or(frame.at) + skipped + duration);
++            self.end = Some(self.end.unwrap_or(at) + skipped + duration);
+             Ok(())
+         })
+         .await
+diff --git a/codex-rs/voice-host/src/audio_track_tests.rs b/codex-rs/voice-host/src/audio_track_tests.rs
+index affed2f..4b799e3 100644
+--- a/codex-rs/voice-host/src/audio_track_tests.rs
++++ b/codex-rs/voice-host/src/audio_track_tests.rs
+@@ -15,3 +15,19 @@ async fn timestamp_jitter_does_not_accumulate_but_mute_advances_the_clock() {
+     track.send(EncodedAudio { data: vec![], at }).await.unwrap();
+     assert_eq!(track.end, Some(start + Duration::from_millis(30_020)));
+ }
++
++#[test]
++fn captured_audio_sample_preserves_capture_time() {
++    let captured_at = Instant::now() - Duration::from_secs(30);
++    let payload = vec![1, 2, 3, 4];
++    let duration = Duration::from_millis(20);
++    let sample = EncodedAudio {
++        data: payload.clone(),
++        at: captured_at,
++    }
++    .into_sample(duration);
++
++    assert_eq!(sample.timestamp, captured_at);
++    assert_eq!(sample.data.as_ref(), payload.as_slice());
++    assert_eq!(sample.duration, duration);
++}
+-- 
+2.43.0
+

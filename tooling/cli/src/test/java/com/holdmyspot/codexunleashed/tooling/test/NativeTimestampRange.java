@@ -14,13 +14,17 @@ import java.util.Map;
  */
 final class NativeTimestampRange
 {
+	/** The number of nanoseconds in one second. */
 	private static final BigInteger NANOS_PER_SECOND = BigInteger.valueOf(1_000_000_000L);
+	/** The Node.js probe for setting and reading nanosecond timestamps. */
 	private static final String PROBE = "const fs=require('node:fs');" +
 		"const seconds=Number(process.argv[2]);fs.utimesSync(process.argv[1],seconds,seconds);" +
 		"process.stdout.write(fs.statSync(process.argv[1],{bigint:true}).mtimeNs.toString());";
+	/** The PowerShell probe for reading both supported file timestamps. */
 	private static final String WINDOWS_READ = "$item=Get-Item -LiteralPath $env:TIMESTAMP_FILE;" +
 		"[Console]::WriteLine(([bigint]$item.LastWriteTimeUtc.Ticks-621355968000000000)*100);" +
 		"[Console]::WriteLine(([bigint]$item.LastAccessTimeUtc.Ticks-621355968000000000)*100);";
+	/** The PowerShell probe for setting the file's last-write timestamp. */
 	private static final String WINDOWS_WRITE = "$value=[DateTime]::UnixEpoch.AddTicks(" +
 		"[long]$env:TIMESTAMP_SECONDS*10000000);" +
 		"[IO.File]::SetLastWriteTimeUtc($env:TIMESTAMP_FILE,$value);";

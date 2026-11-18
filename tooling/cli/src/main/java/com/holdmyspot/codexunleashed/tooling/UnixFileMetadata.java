@@ -28,20 +28,33 @@ public final class UnixFileMetadata
 
 	/**
 	 * Borrows the platform linker and resolves only the current platform's metadata signature.
+	 *
 	 * @param scope invocation-owned shared services, kept open until all operations finish
 	 */
 	UnixFileMetadata(ToolingScope scope)
 	{
 		Linker linker = scope.getNativeLinker();
-		linuxReader = operatingSystem.equals("Linux") ? MethodHandleProxies.asInterfaceInstance(LinuxReader.class,
-			Binding.bind(linker, "statx", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
-				ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS))) : null;
-		darwinReader = operatingSystem.equals("Mac OS X") ? MethodHandleProxies.asInterfaceInstance(DarwinReader.class,
-			Binding.bind(linker, Darwin.symbol(linker, true), FunctionDescriptor.of(ValueLayout.JAVA_INT,
-				ValueLayout.ADDRESS, ValueLayout.ADDRESS))) : null;
-		darwinNoFollowReader = operatingSystem.equals("Mac OS X") ? MethodHandleProxies.asInterfaceInstance(DarwinReader.class,
-			Binding.bind(linker, Darwin.symbol(linker, false), FunctionDescriptor.of(ValueLayout.JAVA_INT,
-				ValueLayout.ADDRESS, ValueLayout.ADDRESS))) : null;
+		if (operatingSystem.equals("Linux"))
+			linuxReader = MethodHandleProxies.asInterfaceInstance(LinuxReader.class,
+				Binding.bind(linker, "statx", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+					ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS)));
+		else
+			linuxReader = null;
+
+		if (operatingSystem.equals("Mac OS X"))
+		{
+			darwinReader = MethodHandleProxies.asInterfaceInstance(DarwinReader.class,
+				Binding.bind(linker, Darwin.symbol(linker, true), FunctionDescriptor.of(ValueLayout.JAVA_INT,
+					ValueLayout.ADDRESS, ValueLayout.ADDRESS)));
+			darwinNoFollowReader = MethodHandleProxies.asInterfaceInstance(DarwinReader.class,
+				Binding.bind(linker, Darwin.symbol(linker, false), FunctionDescriptor.of(ValueLayout.JAVA_INT,
+					ValueLayout.ADDRESS, ValueLayout.ADDRESS)));
+		}
+		else
+		{
+			darwinReader = null;
+			darwinNoFollowReader = null;
+		}
 	}
 
 	/**
@@ -167,7 +180,11 @@ public final class UnixFileMetadata
 		 */
 		private static String symbol(Linker linker, boolean followLinks)
 		{
-			String base = followLinks ? "stat" : "lstat";
+			String base;
+			if (followLinks)
+				base = "stat";
+			else
+				base = "lstat";
 			if (linker.defaultLookup().find(base + "$INODE64").isPresent())
 				return base + "$INODE64";
 			return base;
@@ -205,7 +222,12 @@ public final class UnixFileMetadata
 			if (operatingSystem.equals("Linux"))
 			{
 				MemorySegment data = arena.allocate(Linux.BUFFER_SIZE, Long.BYTES);
-				check(linuxReader.invoke(state, 0, name, followLinks ? 0 : 0x100, Linux.MODIFIED, data), state, path);
+				int flags;
+				if (followLinks)
+					flags = 0;
+				else
+					flags = 0x100;
+				check(linuxReader.invoke(state, 0, name, flags, Linux.MODIFIED, data), state, path);
 				if ((data.get(ValueLayout.JAVA_INT, 0) & Linux.MODIFIED) == 0)
 					throw new IOException("Native metadata does not provide modification time for " + path);
 				return Instant.ofEpochSecond(data.get(ValueLayout.JAVA_LONG, Linux.SECONDS_OFFSET),
@@ -214,7 +236,12 @@ public final class UnixFileMetadata
 			if (operatingSystem.equals("Mac OS X"))
 			{
 				MemorySegment data = arena.allocate(Darwin.BUFFER_SIZE, Long.BYTES);
-				check((followLinks ? darwinReader : darwinNoFollowReader).invoke(state, name, data), state, path);
+				DarwinReader reader;
+				if (followLinks)
+					reader = darwinReader;
+				else
+					reader = darwinNoFollowReader;
+				check(reader.invoke(state, name, data), state, path);
 				return Instant.ofEpochSecond(data.get(ValueLayout.JAVA_LONG, Darwin.SECONDS_OFFSET),
 					data.get(ValueLayout.JAVA_LONG, Darwin.NANOS_OFFSET));
 			}

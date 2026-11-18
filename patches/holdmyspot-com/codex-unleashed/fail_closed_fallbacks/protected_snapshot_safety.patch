@@ -1,0 +1,571 @@
+From fbdde3b8d15c2455cc039eb48026640853c5714a Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 14 Nov 2026 09:20:36 -0500
+Subject: [PATCH] bugfix: fail closed when protected shell snapshots are unsafe
+
+Protected execution must stop when snapshot capture, credential filtering or transport fails rather than execute without its required protection.
+---
+ codex-rs/exec-server/src/local_process.rs     |  76 ++++++
+ codex-rs/exec-server/src/shell_snapshot.rs    |  97 ++++++--
+ .../src/shell_snapshot_credentials.rs         |  24 +-
+ .../exec-server/src/shell_snapshot_tests.rs   | 234 ++++++++++++++++++
+ 4 files changed, 391 insertions(+), 40 deletions(-)
+
+diff --git a/codex-rs/exec-server/src/local_process.rs b/codex-rs/exec-server/src/local_process.rs
+index 854043b..61848f7 100644
+--- a/codex-rs/exec-server/src/local_process.rs
++++ b/codex-rs/exec-server/src/local_process.rs
+@@ -1244,6 +1244,8 @@ fn notification_sender(inner: &Inner) -> Option<RpcNotificationSender> {
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    use crate::protocol::ShellInfo;
++    use crate::protocol::ShellSnapshotRequest;
+     use codex_exec_server_protocol::JSONRPCMessage;
+     use codex_exec_server_protocol::JSONRPCResponse;
+     use codex_exec_server_protocol::RequestId;
+@@ -1433,6 +1435,80 @@ mod tests {
+         )
+     }
+ 
++    #[cfg(any(target_os = "linux", target_os = "macos"))]
++    #[tokio::test]
++    async fn protected_snapshot_capture_failure_does_not_start_command() {
++        let zsh_path = std::process::Command::new("which")
++            .arg("zsh")
++            .output()
++            .expect("run which for required zsh boundary")
++            .stdout;
++        let zsh_path = String::from_utf8(zsh_path)
++            .expect("zsh path is utf8")
++            .trim()
++            .to_string();
++        assert!(
++            !zsh_path.is_empty(),
++            "required zsh executable is unavailable"
++        );
++
++        let home = tempfile::TempDir::new().expect("temporary home");
++        let startup_marker = home.path().join("startup-ran");
++        let command_marker = home.path().join("user-command-ran");
++        std::fs::write(
++            home.path().join(".zshrc"),
++            format!("printf startup > '{}'\nexit 7\n", startup_marker.display()),
++        )
++        .expect("write failing startup file");
++        let mut params = test_exec_params(HashMap::from([
++            ("HOME".to_string(), home.path().display().to_string()),
++            ("ZDOTDIR".to_string(), home.path().display().to_string()),
++            ("PATH".to_string(), "/usr/bin:/bin".to_string()),
++        ]));
++        params.process_id = ProcessId::from("protected-snapshot-capture-failure");
++        params.argv = vec![
++            zsh_path.clone(),
++            "-lc".to_string(),
++            format!("printf user > '{}'", command_marker.display()),
++        ];
++        params.shell_snapshot = Some(ShellSnapshotRequest {
++            scope_id: "protected-capture-failure".to_string(),
++            shell: ShellInfo {
++                name: "zsh".to_string(),
++                path: zsh_path,
++            },
++        });
++        let mut proxy = RemoteNetworkProxyConfig::from_effective_config(&NetworkProxyConfig {
++            enabled: true,
++            ..NetworkProxyConfig::default()
++        })
++        .expect("remote proxy config");
++        proxy.enable_credential_masking(Default::default());
++        params.network_proxy = Some(RemoteNetworkProxyLaunchConfig::new(proxy));
++
++        let (backend, metrics, exporter) = telemetry_backend();
++        let error = backend
++            .exec(params.clone(), ProcessTelemetry::default())
++            .await
++            .expect_err("protected capture failure must reject execution");
++        assert_eq!(error.code, -32603);
++        assert!(error.message.contains("shell snapshot capture exited"));
++        assert!(startup_marker.exists(), "trusted startup capture ran");
++        assert!(!command_marker.exists(), "user command was not launched");
++        assert!(
++            !backend
++                .inner
++                .processes
++                .lock()
++                .await
++                .contains_key(&params.process_id),
++            "rejected command was not registered"
++        );
++        backend.shutdown().await;
++        metrics.shutdown().expect("shutdown metrics");
++        let _ = exporter.get_finished_metrics().expect("finished metrics");
++    }
++
+     fn assert_finished_process_result(
+         metrics: codex_otel::MetricsClient,
+         exporter: &InMemoryMetricExporter,
+diff --git a/codex-rs/exec-server/src/shell_snapshot.rs b/codex-rs/exec-server/src/shell_snapshot.rs
+index ccb1ca0..6bd1c8a 100644
+--- a/codex-rs/exec-server/src/shell_snapshot.rs
++++ b/codex-rs/exec-server/src/shell_snapshot.rs
+@@ -2,6 +2,8 @@
+ //! unnamed reader when the capture sandbox permits it; otherwise retain env replay.
+ //! Command metrics exclude prewarm and measure lookup/capture wait before replay.
+ //! File replay admits larger shell state while environment replay keeps its launch budget.
++//! Protected replay failures reject the command before launch; optional unprotected
++//! optimization failures retain ordinary shell startup.
+ 
+ use std::collections::HashMap;
+ use std::collections::VecDeque;
+@@ -89,6 +91,64 @@ struct ShellSnapshot {
+ // Keep a bounded metric label alongside the original RPC error.
+ type CaptureResult = Result<ShellSnapshot, (&'static str, JSONRPCErrorError)>;
+ 
++#[derive(Debug)]
++enum SnapshotTransportFailure {
++    Materialization(std::io::Error),
++    BlockingTask(tokio::task::JoinError),
++}
++
++impl SnapshotTransportFailure {
++    fn kind(&self) -> &'static str {
++        match self {
++            Self::Materialization(error) => {
++                let _ = error.kind();
++                "materialization"
++            }
++            Self::BlockingTask(error) => {
++                let _ = error.is_cancelled();
++                "blocking_task"
++            }
++        }
++    }
++}
++
++enum SnapshotTransportDecision<T> {
++    Ready(T),
++    Fallback { failure: SnapshotTransportFailure },
++    Reject(SnapshotTransportFailure),
++}
++
++fn protected_snapshot_capture_result(
++    protected: bool,
++    result: CaptureResult,
++) -> Result<Result<ShellSnapshot, Instant>, JSONRPCErrorError> {
++    match result {
++        Err((_, error)) if protected => Err(error),
++        result => Ok(result.map_err(|_| Instant::now())),
++    }
++}
++
++fn snapshot_transport_decision<T>(
++    protected: bool,
++    result: Result<Result<T, std::io::Error>, tokio::task::JoinError>,
++) -> SnapshotTransportDecision<T> {
++    match result {
++        Ok(Ok(reader)) => SnapshotTransportDecision::Ready(reader),
++        Ok(Err(error)) if protected => {
++            SnapshotTransportDecision::Reject(SnapshotTransportFailure::Materialization(error))
++        }
++        Err(error) if protected => {
++            SnapshotTransportDecision::Reject(SnapshotTransportFailure::BlockingTask(error))
++        }
++        Ok(Err(error)) => SnapshotTransportDecision::Fallback {
++            failure: SnapshotTransportFailure::Materialization(error),
++        },
++        Err(error) => SnapshotTransportDecision::Fallback {
++            failure: SnapshotTransportFailure::BlockingTask(error),
++        },
++    }
++}
++
+ #[derive(Clone, Copy, PartialEq, Eq)]
+ pub(crate) enum CapturePurpose {
+     Execution,
+@@ -224,10 +284,7 @@ impl ShellSnapshotCache {
+         };
+         let uncached;
+         let snapshot = if protected {
+-            uncached = match capture.await {
+-                Err(("credential_proxy", error)) => return Err(error),
+-                result => result.map_err(|_| Instant::now()),
+-            };
++            uncached = protected_snapshot_capture_result(protected, capture.await)?;
+             &uncached
+         } else {
+             match purpose {
+@@ -258,9 +315,6 @@ impl ShellSnapshotCache {
+             return Ok(None);
+         }
+         let Ok(snapshot) = snapshot else {
+-            if protected {
+-                credentials::restore_fallback(prepared);
+-            }
+             telemetry.shell_snapshot_command(wait, availability, "fallback");
+             return Ok(None);
+         };
+@@ -272,23 +326,30 @@ impl ShellSnapshotCache {
+         // existing replay until the launcher supports remapping child descriptors.
+         let reader = if snapshot.file_source {
+             let state = snapshot.state.clone();
+-            match tokio::task::spawn_blocking(move || {
+-                crate::shell_snapshot_file::materialize(shell_type, &state)
+-            })
+-            .await
+-            {
+-                Ok(Ok(reader)) => Some(reader),
+-                error => {
++            match snapshot_transport_decision(
++                protected,
++                tokio::task::spawn_blocking(move || {
++                    crate::shell_snapshot_file::materialize(shell_type, &state)
++                })
++                .await,
++            ) {
++                SnapshotTransportDecision::Ready(reader) => Some(reader),
++                SnapshotTransportDecision::Fallback { failure } => {
+                     tracing::warn!(
+-                        ?error,
++                        ?failure,
++                        failure_kind = failure.kind(),
+                         "cannot prepare shell snapshot transport; using normal startup"
+                     );
+                     telemetry.shell_snapshot_command(wait, availability, "fallback");
+-                    if protected {
+-                        credentials::restore_fallback(prepared);
+-                    }
+                     return Ok(None);
+                 }
++                SnapshotTransportDecision::Reject(failure) => {
++                    tracing::warn!(?failure, "protected shell snapshot transport unavailable");
++                    return Err(internal_error(
++                        "protected shell snapshot transport unavailable; command was not launched"
++                            .to_string(),
++                    ));
++                }
+             }
+         } else {
+             None
+diff --git a/codex-rs/exec-server/src/shell_snapshot_credentials.rs b/codex-rs/exec-server/src/shell_snapshot_credentials.rs
+index 8d5a17a..f09e2fa 100644
+--- a/codex-rs/exec-server/src/shell_snapshot_credentials.rs
++++ b/codex-rs/exec-server/src/shell_snapshot_credentials.rs
+@@ -1,13 +1,12 @@
+ //! Prepare one uncached login capture before creating any replay transport.
+ //! Startup profiles are trusted with real credentials. Raw capture bytes stay executor-local;
+-//! unsafe executable state falls back to normal startup.
++//! unsafe executable state rejects protected execution.
+ 
+ use std::collections::BTreeSet;
+ use std::collections::HashMap;
+ 
+ use codex_network_proxy::CredentialMaskingFailureMode;
+ use codex_network_proxy::NetworkProxy;
+-use codex_network_proxy::NetworkProxyHandle;
+ use codex_network_proxy::RemoteCredentialBrokerCache;
+ use codex_network_proxy::brokered_credential_value_env_keys;
+ use codex_network_proxy::is_managed_proxy_env_var;
+@@ -27,30 +26,11 @@ use super::MAX_SNAPSHOT_BYTES;
+ use super::SnapshotReplay;
+ use super::parse_snapshot;
+ use crate::local_process::shell_environment_policy;
+-use crate::process_sandbox::PreparedExecRequest;
+ use crate::protocol::ExecParams;
+ use crate::rpc::internal_error;
+ 
+ const CONFIGURED_VALUE_PREFIX: &str = "__CODEX_SHELL_SNAPSHOT_CONFIGURED_";
+ 
+-pub(super) fn restore_fallback(prepared: &mut PreparedExecRequest) {
+-    if let Some(proxy) = prepared
+-        .network_proxy_handle
+-        .as_ref()
+-        .and_then(NetworkProxyHandle::proxy)
+-    {
+-        for value in prepared.env.values_mut() {
+-            proxy.restore_brokered_text(value);
+-        }
+-        proxy.restore_and_disable_brokered_credentials(&mut prepared.env, &mut []);
+-        let warning = "Credential masking is unavailable for this shell snapshot; running with unmasked credentials.";
+-        tracing::warn!("{warning}");
+-        if let Some(script) = prepared.command.last_mut() {
+-            *script = format!("\\builtin printf '%s\\n' '{warning}' >&2\n{script}");
+-        }
+-    }
+-}
+-
+ pub(super) async fn prepare(
+     params: &ExecParams,
+     output: &[u8],
+@@ -143,7 +123,7 @@ pub(super) async fn prepare(
+     proxy
+         .handle_unmasked_credentials(
+             &mut snapshot.environment,
+-            CredentialMaskingFailureMode::Warn,
++            CredentialMaskingFailureMode::Error,
+         )
+         .map_err(|_| {
+             (
+diff --git a/codex-rs/exec-server/src/shell_snapshot_tests.rs b/codex-rs/exec-server/src/shell_snapshot_tests.rs
+index b6b39ee..46e8e31 100644
+--- a/codex-rs/exec-server/src/shell_snapshot_tests.rs
++++ b/codex-rs/exec-server/src/shell_snapshot_tests.rs
+@@ -1,6 +1,12 @@
+ use std::collections::BTreeMap;
+ use std::collections::HashMap;
++use std::sync::Arc;
+ 
++use codex_network_proxy::NetworkProxy;
++use codex_network_proxy::NetworkProxyConfig;
++use codex_network_proxy::NetworkProxyState;
++use codex_network_proxy::RemoteNetworkProxyConfig;
++use codex_network_proxy::RemoteNetworkProxyLaunchConfig;
+ use codex_otel::MetricsClient;
+ use codex_otel::MetricsConfig;
+ use codex_protocol::config_types::ShellEnvironmentPolicyInherit;
+@@ -17,7 +23,11 @@ use super::MAX_SNAPSHOT_BYTES;
+ use super::SNAPSHOT_RETRY_BACKOFF;
+ use super::ShellSnapshotCache;
+ use super::SnapshotReplay;
++use super::SnapshotTransportDecision;
++use super::credentials;
+ use super::parse_snapshot;
++use super::protected_snapshot_capture_result;
++use super::snapshot_transport_decision;
+ use crate::process_sandbox::prepare_exec_request_with_telemetry;
+ use crate::process_telemetry::ProcessTelemetry;
+ use crate::protocol::ExecEnvPolicy;
+@@ -26,6 +36,230 @@ use crate::protocol::ProcessId;
+ use crate::protocol::ShellInfo;
+ use crate::protocol::ShellSnapshotRequest;
+ use crate::telemetry::ExecServerTelemetry;
++use codex_exec_server_protocol::JSONRPCErrorError;
++
++fn protected_snapshot_test_params(env: HashMap<String, String>) -> ExecParams {
++    ExecParams {
++        metadata: None,
++        process_id: ProcessId::from("protected-snapshot-test"),
++        argv: vec![
++            "/bin/zsh".to_string(),
++            "-lc".to_string(),
++            "true".to_string(),
++        ],
++        cwd: codex_utils_path_uri::PathUri::from_host_native_path(
++            std::env::current_dir().expect("current directory"),
++        )
++        .expect("current directory URI"),
++        env_policy: None,
++        shell_snapshot: None,
++        env,
++        tty: false,
++        pipe_stdin: false,
++        arg0: None,
++        sandbox: None,
++        enforce_managed_network: false,
++        managed_network: None,
++        network_proxy: None,
++    }
++}
++
++#[test]
++fn protected_snapshot_capture_failure_is_returned() {
++    for (reason, error) in [
++        (
++            "nonzero_exit",
++            JSONRPCErrorError {
++                code: -32001,
++                data: Some(serde_json::json!({"capture": "nonzero_exit"})),
++                message: "capture exited unsuccessfully".to_string(),
++            },
++        ),
++        (
++            "credential_snapshot",
++            JSONRPCErrorError {
++                code: -32603,
++                data: Some(serde_json::json!({"capture": "unsafe_state"})),
++                message: "unsafe captured credential state".to_string(),
++            },
++        ),
++        (
++            "spawn_failure",
++            JSONRPCErrorError {
++                code: -32002,
++                data: Some(serde_json::json!({"capture": "transient_transport"})),
++                message: "capture process transport failed".to_string(),
++            },
++        ),
++    ] {
++        let protected = protected_snapshot_capture_result(
++            /*protected*/ true,
++            Err((reason, error.clone())),
++        );
++        assert!(matches!(protected, Err(actual) if actual == error));
++
++        let unprotected =
++            protected_snapshot_capture_result(/*protected*/ false, Err((reason, error)));
++        assert!(matches!(unprotected, Ok(Err(_))));
++    }
++}
++
++async fn credential_snapshot_test_proxy() -> NetworkProxy {
++    let credential_brokers = codex_network_proxy::RemoteCredentialBrokerCache::default();
++    let mut remote = RemoteNetworkProxyConfig::from_effective_config(&NetworkProxyConfig {
++        enabled: true,
++        ..NetworkProxyConfig::default()
++    })
++    .expect("remote proxy config");
++    remote.enable_credential_masking(Default::default());
++    let state = NetworkProxyState::from_remote_launch_config(
++        RemoteNetworkProxyLaunchConfig::new(remote),
++        codex_utils_path_uri::Platform::native(),
++        &credential_brokers,
++        &HashMap::new(),
++    )
++    .expect("network proxy state");
++    NetworkProxy::builder()
++        .state(Arc::new(state))
++        .build()
++        .await
++        .expect("network proxy")
++}
++
++#[tokio::test]
++async fn protected_snapshot_rejects_recognized_raw_credentials() {
++    let proxy = credential_snapshot_test_proxy().await;
++    let credential_brokers = codex_network_proxy::RemoteCredentialBrokerCache::default();
++    let params = protected_snapshot_test_params(HashMap::new());
++    let raw = b"opaque-executor-credential";
++    let unbound_capture = [
++        b"# Snapshot file\n\0\0\0GH_ENTERPRISE_TOKEN=".as_slice(),
++        raw,
++        b"\0AUTH_HEADER=Bearer ".as_slice(),
++        raw,
++        b"\0".as_slice(),
++    ]
++    .concat();
++    let result = credentials::prepare(
++        &params,
++        &unbound_capture,
++        SnapshotReplay::Environment,
++        &proxy,
++        &credential_brokers,
++    )
++    .await;
++    let Err(error) = result else {
++        panic!("unbound recognized credential must be rejected");
++    };
++    assert_eq!(error.0, "credential_proxy");
++    assert_eq!(error.1.code, -32603);
++    assert!(
++        error
++            .1
++            .message
++            .contains("failed to prepare startup credentials")
++    );
++    assert!(!error.1.message.contains("opaque-executor-credential"));
++
++    let bound_capture = [
++        b"# Snapshot file\n\0\0\0GH_TOKEN=".as_slice(),
++        raw,
++        b"\0".as_slice(),
++    ]
++    .concat();
++    let snapshot = credentials::prepare(
++        &params,
++        &bound_capture,
++        SnapshotReplay::Environment,
++        &proxy,
++        &credential_brokers,
++    )
++    .await
++    .expect("bound credential should be safely virtualized");
++    let token = snapshot
++        .environment
++        .get("GH_TOKEN")
++        .expect("replayed token");
++    assert_ne!(token, "opaque-executor-credential");
++    assert!(token.contains("masked"));
++    assert!(
++        !snapshot
++            .environment
++            .values()
++            .any(|value| value.contains("opaque-executor-credential"))
++    );
++
++    let ordinary_capture = b"# Snapshot file\n\0\0\0ORDINARY=visible\0";
++    let snapshot = credentials::prepare(
++        &params,
++        ordinary_capture,
++        SnapshotReplay::Environment,
++        &proxy,
++        &credential_brokers,
++    )
++    .await
++    .expect("ordinary environment should remain valid");
++    assert_eq!(
++        snapshot.environment.get("ORDINARY"),
++        Some(&"visible".to_string())
++    );
++}
++
++#[tokio::test]
++async fn protected_snapshot_transport_failure_is_returned() {
++    let protected_success = snapshot_transport_decision(
++        /*protected*/ true,
++        Ok::<_, tokio::task::JoinError>(Ok::<_, std::io::Error>(7)),
++    );
++    assert!(matches!(
++        protected_success,
++        SnapshotTransportDecision::Ready(7)
++    ));
++
++    let protected_materialization = snapshot_transport_decision(
++        /*protected*/ true,
++        Ok::<Result<usize, std::io::Error>, tokio::task::JoinError>(Err(std::io::Error::other(
++            "test materialization failure",
++        ))),
++    );
++    assert!(
++        !matches!(
++            protected_materialization,
++            SnapshotTransportDecision::Fallback { .. }
++        ),
++        "protected materialization failure must reject instead of falling back"
++    );
++
++    let join_failure = tokio::spawn(async {
++        panic!("test blocking task failure");
++        #[allow(unreachable_code)]
++        Ok::<usize, std::io::Error>(7)
++    })
++    .await
++    .expect_err("blocking task should fail");
++    let protected_join_failure = snapshot_transport_decision(
++        /*protected*/ true,
++        Err::<Result<usize, std::io::Error>, tokio::task::JoinError>(join_failure),
++    );
++    assert!(
++        !matches!(
++            protected_join_failure,
++            SnapshotTransportDecision::Fallback { .. }
++        ),
++        "protected blocking-task failure must reject instead of falling back"
++    );
++
++    let unprotected = snapshot_transport_decision(
++        /*protected*/ false,
++        Ok::<Result<usize, std::io::Error>, tokio::task::JoinError>(Err(std::io::Error::other(
++            "test materialization failure",
++        ))),
++    );
++    assert!(matches!(
++        unprotected,
++        SnapshotTransportDecision::Fallback { .. }
++    ));
++}
+ 
+ #[test_case(1, CapturePurpose::Execution; "succeeds_on_first_attempt")]
+ #[test_case(2, CapturePurpose::Execution; "recovers_on_second_attempt")]
+-- 
+2.43.0
+

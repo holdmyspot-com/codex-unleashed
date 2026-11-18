@@ -1,0 +1,107 @@
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 14 Nov 2026 23:28:45 +0000
+Subject: [PATCH] test: verify installed voice resources survive relocation
+
+Exercise packaged voice resources from the installed directory so
+release verification detects missing or misplaced runtime files.
+
+---
+diff --git a/codex-rs/voice-host/tests/installed_package_runtime.rs b/codex-rs/voice-host/tests/installed_package_runtime.rs
+new file mode 100644
+index 0000000..9762b98
+--- /dev/null
++++ b/codex-rs/voice-host/tests/installed_package_runtime.rs
+@@ -0,0 +1,93 @@
++//! Exercise initialization using a physical installed package supplied by its caller.
++
++use std::fs;
++use std::fs::File;
++use std::io::Read;
++use std::path::PathBuf;
++use std::time::Duration;
++
++use anyhow::Context;
++use anyhow::Result;
++use anyhow::bail;
++use anyhow::ensure;
++use codex_install_context::InstallContext;
++use codex_realtime_webrtc::VoiceHost;
++use tokio::time::timeout;
++
++/// The existing voice-host test deadline of 10 seconds for each lifecycle sequence.
++const DEADLINE: Duration = Duration::from_secs(/*secs*/ 10);
++
++/// Caller-owned input file containing the actual installed package path.
++const INSTALLED_PACKAGE_PATH_FILE: &str = "installed_package_path.txt";
++
++/// Caller-owned input file containing the independently obtained expected build commit.
++const EXPECTED_BUILD_COMMIT_FILE: &str = "expected_build_commit.txt";
++
++/// The handoff contract's 64 KiB per-file limit; one extra byte detects oversized inputs.
++const MAX_INPUT_FILE_BYTES: usize = 64 * 1024;
++
++/// Reads a bounded raw UTF-8 value from a file in the test invocation directory.
++///
++/// Returns an error when the file is missing, empty, larger than 64 KiB, or invalid UTF-8.
++/// The returned contents are not trimmed.
++fn read_invocation_input(name: &str) -> Result<String> {
++    let input_file = File::open(name);
++    let input_file = input_file.with_context(|| format!("open invocation input {name}"))?;
++    let mut bounded_file = input_file.take((MAX_INPUT_FILE_BYTES + 1) as u64);
++    let mut contents = Vec::new();
++    let read_result = bounded_file.read_to_end(&mut contents);
++    read_result.with_context(|| format!("read invocation input {name}"))?;
++
++    if contents.len() > MAX_INPUT_FILE_BYTES {
++        bail!("invocation input {name} exceeds the {MAX_INPUT_FILE_BYTES}-byte limit");
++    }
++    if contents.is_empty() {
++        bail!("invocation input {name} is empty");
++    }
++
++    let decoded = String::from_utf8(contents);
++    let decoded =
++        decoded.with_context(|| format!("invocation input {name} must be valid UTF-8"))?;
++    Ok(decoded)
++}
++
++#[tokio::test]
++#[ignore = "requires a physical installed package"]
++async fn installed_package_initializes_closes_and_rejects_duplicate_initialization() -> Result<()> {
++    let installed_package_path = read_invocation_input(INSTALLED_PACKAGE_PATH_FILE)?;
++    let expected_build_commit = read_invocation_input(EXPECTED_BUILD_COMMIT_FILE)?;
++
++    let package_path = PathBuf::from(installed_package_path);
++    let package_path = fs::canonicalize(package_path)?;
++    let package_bin = package_path.join("bin");
++    let executable_name = if cfg!(windows) { "codex.exe" } else { "codex" };
++    let executable_path = package_bin.join(executable_name);
++    let executable_path = fs::canonicalize(executable_path)?;
++    let install_context =
++        InstallContext::from_exe(cfg!(target_os = "macos"), Some(&executable_path), None);
++    let package = install_context
++        .package_layout
++        .context("installed package has no primary package layout")?;
++    ensure!(
++        package.package_dir.as_path() == package_path.as_path(),
++        "installed package path is not the primary package root"
++    );
++
++    timeout(DEADLINE, async {
++        let host = VoiceHost::connect(&package, &expected_build_commit).await?;
++        let host = host.initialize_runtime().await?;
++        host.close().await?;
++
++        let host = VoiceHost::connect(&package, &expected_build_commit).await?;
++        let host = host.initialize_runtime().await?;
++        let duplicate_initialization = host.initialize_runtime().await;
++        ensure!(
++            duplicate_initialization.is_err(),
++            "duplicate runtime initialization must fail"
++        );
++        Ok(())
++    })
++    .await??;
++
++    Ok(())
++}

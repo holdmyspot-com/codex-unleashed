@@ -68,11 +68,11 @@ public final class SourceInputSnapshotsTest
 		{
 			SourceInputSnapshots.write(fixture.scope, fixture.pending(), fixture.inputs(Map.of("src/lib.rs", "same")));
 			Map<String, String> files = Map.of("src/lib.rs", "same", "Cargo.lock", "new", "nested/Cargo.lock", "newer");
-			requireThat(SourceInputSnapshots.record(fixture.scope, fixture.snapshot, fixture.inputs(files)), "SourceInputSnapshots")
-				.isEqualTo(3);
+			requireThat(SourceInputSnapshots.record(fixture.scope, fixture.snapshot, fixture.inputs(files)),
+				"SourceInputSnapshots").isEqualTo(3);
 			requireThat(Files.exists(fixture.pending()), "Files.exists(fixture.pending())").isFalse();
-			requireThat(SourceInputSnapshots.read(fixture.scope, fixture.snapshot).path("files").size(), "SourceInputSnapshots")
-				.isEqualTo(3);
+			requireThat(SourceInputSnapshots.read(fixture.scope, fixture.snapshot).path("files").size(),
+				"SourceInputSnapshots").isEqualTo(3);
 		}
 	}
 
@@ -88,7 +88,8 @@ public final class SourceInputSnapshotsTest
 		{
 			SourceInputInventory.Snapshot inputs = fixture.inputs(Map.of("source.rs", "prepared"));
 			Path resumable = SourceInputSnapshots.resumable(fixture.snapshot);
-			requireException(IOException.class, () -> SourceInputSnapshots.checkpoint(fixture.scope, fixture.snapshot, inputs));
+			requireException(IOException.class,
+				() -> SourceInputSnapshots.checkpoint(fixture.scope, fixture.snapshot, inputs));
 			requireThat(Files.exists(resumable), "Files.exists(resumable)").isFalse();
 			SourceInputSnapshots.write(fixture.scope, fixture.pending(), inputs);
 			SourceInputSnapshots.checkpoint(fixture.scope, fixture.snapshot, inputs);
@@ -117,18 +118,22 @@ public final class SourceInputSnapshotsTest
 		{
 			Files.createDirectories(fixture.snapshot.getParent());
 			Files.writeString(fixture.snapshot, "existing successful inputs");
-			IOException missing = requireException(IOException.class, () -> SourceInputSnapshots.record(fixture.scope, fixture.snapshot, fixture.inputs(Map.of("source.rs", "first"))));
+			IOException missing = requireException(IOException.class,
+				() -> SourceInputSnapshots.record(fixture.scope, fixture.snapshot,
+					fixture.inputs(Map.of("source.rs", "first"))));
 			requireThat(missing.getMessage().contains("were not prepared"), "missing").isTrue();
 			SourceInputSnapshots.write(fixture.scope, fixture.pending(),
 				fixture.inputs(Map.of("source.rs", "first", "removed.rs", "old", "unchanged.rs", "same")));
-			IOException changed = requireException(IOException.class, () -> SourceInputSnapshots.record(fixture.scope, fixture.snapshot,
+			IOException changed = requireException(IOException.class,
+				() -> SourceInputSnapshots.record(fixture.scope, fixture.snapshot,
 					fixture.inputs(Map.of("source.rs", "second", "added.rs", "new", "unchanged.rs", "same"))));
 			requireThat(changed.getMessage().contains("Source inputs changed during the build"), "changed").isTrue();
-			requireThat(changed.getMessage().contains("Differing paths: [added.rs, removed.rs, source.rs]"), "changed")
-				.withContext(changed.getMessage(), "diagnostic")
-				.isTrue();
-			requireThat(Files.readString(fixture.snapshot), "Files.readString(fixture.snapshot)")
-				.isEqualTo("existing successful inputs");
+			boolean changedPathsAreListed = changed.getMessage().contains(
+				"Differing paths: [added.rs, removed.rs, source.rs]");
+			requireThat(changedPathsAreListed, "changed").
+				withContext(changed.getMessage(), "diagnostic").isTrue();
+			String snapshotContents = Files.readString(fixture.snapshot);
+			requireThat(snapshotContents, "Files.readString(fixture.snapshot)").isEqualTo("existing successful inputs");
 			requireThat(Files.isRegularFile(fixture.pending()), "Files.isRegularFile(fixture.pending())").isTrue();
 		}
 	}
@@ -145,7 +150,9 @@ public final class SourceInputSnapshotsTest
 		{
 			Files.createDirectories(fixture.snapshot);
 			Files.writeString(fixture.snapshot.resolve("keep"), "existing output");
-			requireException(IOException.class, () -> SourceInputSnapshots.write(fixture.scope, fixture.snapshot, fixture.inputs(Map.of("source.rs", "hash"))));
+			requireException(IOException.class,
+				() -> SourceInputSnapshots.write(fixture.scope, fixture.snapshot,
+					fixture.inputs(Map.of("source.rs", "hash"))));
 			requireThat(Files.readString(fixture.snapshot.resolve("keep")), "Files").isEqualTo("existing output");
 			try (Stream<Path> files = Files.list(fixture.snapshot.getParent()))
 			{
@@ -179,8 +186,11 @@ public final class SourceInputSnapshotsTest
 	 */
 	private static final class Fixture implements AutoCloseable
 	{
+		/** The scope shared by this fixture's source and snapshot operations. */
 		private final ToolingScope scope = new DefaultToolingScope();
+		/** The owned fixture root beneath Maven's temporary directory. */
 		private final Path root = Files.createTempDirectory("source-input-snapshots-");
+		/** The successful snapshot path used by the fixture. */
 		private final Path snapshot = root.resolve("cache/target.json");
 
 		/**

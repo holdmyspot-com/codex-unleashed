@@ -68,15 +68,18 @@ public final class SystemCommands
 	}
 
 	/**
-	 * Executes a command with inherited streams and only the supplied environment variables.
+	 * Executes a command with inherited streams and the supplied environment, replacing other parent variables.
+	 * <p>
+	 * On Windows, the JDK or operating system may additionally provide {@code SystemRoot} and
+	 * {@code PROCESSOR_ARCHITECTURE} when omitted from the supplied map.
 	 *
-	 * @param command the executable followed by its arguments
+	 * @param command          the executable followed by its arguments
 	 * @param workingDirectory the child working directory
-	 * @param environment the complete child environment
+	 * @param environment      explicit child variables and their values
 	 * @return the ordinary process exit status, including unsuccessful outcomes
-	 * @throws NullPointerException if an argument, command element, environment key, or value is null
+	 * @throws NullPointerException     if an argument, command element, environment key, or value is null
 	 * @throws IllegalArgumentException if the command is empty
-	 * @throws IOException if startup, waiting, or process cleanup fails
+	 * @throws IOException              if startup, waiting, or process cleanup fails
 	 */
 	public static int execute(List<String> command, Path workingDirectory, Map<String, String> environment)
 		throws IOException
@@ -272,7 +275,8 @@ public final class SystemCommands
 
 	/**
 	 * Executes a command without invoking a shell, giving it end-of-input as standard input and inheriting standard
-	 * error, the working directory, and environment. Returns standard output decoded as UTF-8, rejecting malformed output.
+	 * error, the working directory, and environment. Returns standard output decoded as UTF-8, rejecting malformed
+	 * output.
 	 *
 	 * @param command the executable followed by its arguments
 	 * @return the command's standard output
@@ -317,8 +321,11 @@ public final class SystemCommands
 	 */
 	private static final class CaptureFiles implements AutoCloseable
 	{
+		/** The directory that owns the capture files. */
 		private final Path root;
+		/** Captured standard output file. */
 		private final Path stdout;
+		/** Captured standard error file. */
 		private final Path stderr;
 
 		/**

@@ -20,6 +20,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Stream;
 import org.testng.SkipException;
@@ -41,18 +42,24 @@ public final class CargoCacheFormatTest
         Map.of(1, "70fc06b320b818b9b9e350ce24818dd7c21c4ecf01c584f29c4352e445fadfde");
     /** Digest-index field names and version for each format version; the index exists only on POSIX file systems. */
     private static final Map<Integer, String> INDEX_SHAPES = Map.of(1,
-        "[files, format_version, hashed_at_nanos] [changed_nanos, digest, file_key, modified_nanos, size] format_version=1");
+        "[files, format_version, hashed_at_nanos] " +
+            "[changed_nanos, digest, file_key, modified_nanos, size] format_version=1");
     /** A fixed modification time for every fixture path. */
     private static final FileTime FIXED = FileTime.from(Instant.parse("2026-01-02T03:04:05Z"));
 
     /** Creates independent method fixtures. */
-    public CargoCacheFormatTest() {}
+    public CargoCacheFormatTest()
+    {
+    }
 
     /**
-     * Collects a fixed output tree and writes a fixed source snapshot, then compares their format with the recorded one.
+     * Collects a fixed output tree and writes a fixed source snapshot, then compares
+     * their format with the recorded one.
+     *
      * @throws IOException if fixture storage fails
      */
-    @Test public void restoredStateFormatMatchesItsVersion() throws IOException
+    @Test
+    public void restoredStateFormatMatchesItsVersion() throws IOException
     {
         try (ToolingScope scope = new DefaultToolingScope(); Fixture fixture = new Fixture())
         {
@@ -62,13 +69,16 @@ public final class CargoCacheFormatTest
             format.put("digests", CargoCacheParts.DIGESTS);
             format.put("part_entries", CargoCacheParts.PART_ENTRIES);
             format.put("groups", normalized(CargoCacheParts.collect(scope, fixture.target, "codex")));
-            format.put("ownership_record", Files.readString(fixture.target.resolve(CargoCacheParts.OWNERS)));
+            format.put("ownership_record",
+                Files.readString(fixture.target.resolve(CargoCacheParts.OWNERS)));
             Path snapshot = fixture.root.resolve("snapshot.json");
-            SourceInputSnapshots.write(scope, snapshot, new SourceInputInventory.Snapshot(fixture.root,
-                Map.of("src/lib.rs", "a".repeat(64)), Map.of("src/lib.rs", BigInteger.valueOf(1_767_323_045_000_000_000L))));
+            SourceInputSnapshots.write(scope, snapshot,
+                new SourceInputInventory.Snapshot(fixture.root, Map.of("src/lib.rs", "a".repeat(64)),
+                    Map.of("src/lib.rs", BigInteger.valueOf(1_767_323_045_000_000_000L))));
             format.put("source_snapshot", Files.readString(snapshot));
             String text = scope.getJsonMapper().writeValueAsString(format);
-            String fingerprint = HexFormat.of().formatHex(CargoCacheKeys.digest().digest(text.getBytes(StandardCharsets.UTF_8)));
+            String fingerprint = HexFormat.of().formatHex(
+                CargoCacheKeys.digest().digest(text.getBytes(StandardCharsets.UTF_8)));
             requireThat(fingerprint, "formatFingerprint").withContext(text, "format").
                 isEqualTo(FINGERPRINTS.get(CargoCacheKeys.FORMAT_VERSION));
         }
@@ -76,20 +86,24 @@ public final class CargoCacheFormatTest
 
     /**
      * Compares the digest index's field names and version with the recorded ones.
+     *
      * @throws IOException if fixture storage fails
      * @throws SkipException if the file system has no POSIX change times, so no index is written
      */
-    @Test public void digestIndexShapeMatchesItsVersion() throws IOException
+    @Test
+    public void digestIndexShapeMatchesItsVersion() throws IOException
     {
         if (!FileSystems.getDefault().supportedFileAttributeViews().contains("unix"))
             throw new SkipException("The digest index requires POSIX change times");
         try (ToolingScope scope = new DefaultToolingScope(); Fixture fixture = new Fixture())
         {
             CargoCacheParts.collect(scope, fixture.target, "codex");
-            JsonNode index = scope.getJsonMapper().readTree(Files.readString(fixture.target.resolve(CargoCacheParts.DIGESTS)));
-            TreeSet<String> fields = new TreeSet<>(index.propertyNames());
-            TreeSet<String> fileFields = new TreeSet<>();
-            for (var file : index.get("files").properties()) fileFields.addAll(file.getValue().propertyNames());
+            JsonNode index = scope.getJsonMapper().
+                readTree(Files.readString(fixture.target.resolve(CargoCacheParts.DIGESTS)));
+            Set<String> fields = new TreeSet<>(index.propertyNames());
+            Set<String> fileFields = new TreeSet<>();
+            for (Map.Entry<String, JsonNode> file : index.get("files").properties())
+                fileFields.addAll(file.getValue().propertyNames());
             String shape = fields + " " + fileFields + " format_version=" + index.get("format_version");
             requireThat(shape, "digestIndexShape").isEqualTo(INDEX_SHAPES.get(CargoCacheKeys.FORMAT_VERSION));
         }
@@ -99,13 +113,14 @@ public final class CargoCacheFormatTest
      * Keeps each entry's path, file type, size and content, and its time except for the ownership record's.
      * <p>
      * Permission bits differ between POSIX and Windows hosts, and the ownership record is rewritten at collection time.
+     *
      * @param groups collected groups
      * @return platform-neutral groups
      */
     private static Map<String, List<List<Object>>> normalized(Map<String, List<List<Object>>> groups)
     {
         Map<String, List<List<Object>>> result = new LinkedHashMap<>();
-        for (var group : groups.entrySet())
+        for (Map.Entry<String, List<List<Object>>> group : groups.entrySet())
         {
             List<List<Object>> entries = new ArrayList<>();
             for (List<Object> entry : group.getValue())
@@ -130,6 +145,7 @@ public final class CargoCacheFormatTest
 
         /**
          * Writes a library, its dependency file and a fingerprint, all with fixed times.
+         *
          * @throws IOException if storage fails
          */
         private Fixture() throws IOException
@@ -143,12 +159,14 @@ public final class CargoCacheFormatTest
             Files.writeString(fingerprint.resolve("lib-a"), "0123456789abcdef");
             try (Stream<Path> paths = Files.walk(target))
             {
-                for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.setLastModifiedTime(path, FIXED);
+                for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
+                    Files.setLastModifiedTime(path, FIXED);
             }
         }
 
         /**
          * Deletes only the owned fixture.
+         *
          * @throws IOException if deletion fails
          */
         @Override public void close() throws IOException

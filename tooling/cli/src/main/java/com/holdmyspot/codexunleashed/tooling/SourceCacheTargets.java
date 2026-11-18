@@ -9,6 +9,7 @@ import java.util.Objects;
  */
 public final class SourceCacheTargets
 {
+	/** The extension used by Cargo source-cache metadata snapshots. */
 	private static final String JSON_SUFFIX = ".json";
 
 	/**

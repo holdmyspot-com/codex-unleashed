@@ -1,0 +1,474 @@
+From bec7dd32ed8fbb514b61171d29fb22be7994b821 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 16 Nov 2026 22:12:26 -0500
+Subject: [PATCH] bugfix: reuse the MSVC environment that an earlier setup step
+ already configured
+
+The Windows package job configures the Visual Studio developer environment in prepare-bazel-ci, again in the MSVC setup step, and a third time when the Cargo package build repeats its setup. Every VsDevCmd run prepends the same two thousand characters of tool directories to PATH, and the next run passes that PATH to cmd.exe, which rejects lines longer than 8191 characters. The third run therefore failed with "The input line is too long" and never exported VCToolsInstallDir. The setup now reuses an environment whose recorded tools directory and host and target tool directory are already on PATH, runs VsDevCmd only for a host or target that is not configured yet, and still derives and exports the linker.
+---
+ .../actions/setup-msvc-env/setup-msvc-env.ps1 |  33 +-
+ .github/scripts/test-setup-msvc-env.ps1       | 407 ++++++++++++++++++
+ 2 files changed, 436 insertions(+), 4 deletions(-)
+ create mode 100644 .github/scripts/test-setup-msvc-env.ps1
+
+diff --git a/.github/actions/setup-msvc-env/setup-msvc-env.ps1 b/.github/actions/setup-msvc-env/setup-msvc-env.ps1
+index e2706d9..f034492 100644
+--- a/.github/actions/setup-msvc-env/setup-msvc-env.ps1
++++ b/.github/actions/setup-msvc-env/setup-msvc-env.ps1
+@@ -69,11 +69,36 @@ $VarsToExport = @(
+     "WindowsSDKVersion"
+ )
+ 
+-# Run VsDevCmd inside cmd.exe because it is a batch file, then copy just the
+-# variables Cargo/rustc need into the GitHub Actions environment file. PowerShell
+-# cannot mutate the parent composite-action environment directly.
+-$EnvLines = & cmd.exe /c ('"{0}" -no_logo -arch={1} -host_arch={2} >nul && set' -f $VsDevCmd, $TargetArch, $HostArch)
++# Writes a PATH entry with one separator style and no trailing separator or quotes, so that entries spelled
++# differently by VsDevCmd and by this script compare equal.
++function Format-PathEntry {
++    param([string]$Entry)
++
++    return ($Entry.Trim().Trim('"') -replace '[\\/]+', '\').TrimEnd('\')
++}
++
++# VsDevCmd prepends the same two thousand characters of tool directories to PATH every time it runs, and the next run
++# hands that PATH to cmd.exe, which rejects a batch line longer than 8191 characters. An earlier step of this job (for
++# example prepare-bazel-ci, or an earlier use of this action) leaves the host and target tool directory on PATH and
++# records VCToolsInstallDir; that environment already is what VsDevCmd would produce, so reuse it. The comparison
++# ignores case because the architecture names differ in case between VsDevCmd and the callers.
++$ToolsBinDirectory = $null
++if ($env:VCToolsInstallDir) {
++    $ToolsBinDirectory = Format-PathEntry "$env:VCToolsInstallDir\bin\Host${HostArch}\${TargetArch}"
++}
++$ConfiguredPath = $ToolsBinDirectory -and (@($env:PATH -split ';' | ForEach-Object { Format-PathEntry $_ }) -contains $ToolsBinDirectory)
++
+ $VcToolsInstallDir = $null
++if ($ConfiguredPath) {
++    $VcToolsInstallDir = $env:VCToolsInstallDir
++    Write-Output "Reusing the MSVC environment already configured for host $HostArch and target $TargetArch at $VcToolsInstallDir"
++    $EnvLines = @()
++} else {
++    # Run VsDevCmd inside cmd.exe because it is a batch file, then copy just the
++    # variables Cargo/rustc need into the GitHub Actions environment file. PowerShell
++    # cannot mutate the parent composite-action environment directly.
++    $EnvLines = & cmd.exe /c ('"{0}" -no_logo -arch={1} -host_arch={2} >nul && set' -f $VsDevCmd, $TargetArch, $HostArch)
++}
+ foreach ($Line in $EnvLines) {
+     if ($Line -notmatch "^(.*?)=(.*)$") {
+         continue
+diff --git a/.github/scripts/test-setup-msvc-env.ps1 b/.github/scripts/test-setup-msvc-env.ps1
+new file mode 100644
+index 0000000..552d2d9
+--- /dev/null
++++ b/.github/scripts/test-setup-msvc-env.ps1
+@@ -0,0 +1,407 @@
++<#
++.SYNOPSIS
++Exercises the MSVC environment setup action's script with a controlled Visual Studio installation.
++.DESCRIPTION
++Runs the actual setup-msvc-env.ps1 once per case. A controlled vswhere.exe and VsDevCmd.bat model Visual Studio: running
++VsDevCmd.bat prepends the target's tool directories to the PATH that cmd.exe passes it, and fails with "The input line is
++too long." when the resulting PATH would exceed cmd.exe's 8191-character line limit, as the hosted Windows image does.
++The cases cover a first run, a second and a third run in one job, a different target, a different host and an
++environment that lacks the recorded tool directory.
++The controlled vswhere.exe is a POSIX shell script, so the cases run under PowerShell on Linux or macOS; on Windows the
++script reports that it was skipped.
++#>
++[CmdletBinding()]
++param()
++
++$ErrorActionPreference = "Stop"
++
++# cmd.exe rejects a batch line longer than this many characters.
++$global:MsvcTestCmdLineLimit = 8191
++$global:MsvcTestInstallRoot = "C:\Program Files\Microsoft Visual Studio\18\Enterprise"
++$global:MsvcTestToolsDir = "$global:MsvcTestInstallRoot\VC\Tools\MSVC\14.51.36231\"
++
++# The controlled commands run in the setup script's call, where script-scoped variables of this file are not visible, so
++# the state they read is global.
++$global:MsvcTestState = $null
++
++<#
++.SYNOPSIS
++Describes the directories that VsDevCmd.bat prepends for a host and target architecture.
++.PARAMETER HostArch
++The architecture of the machine running the tools.
++.PARAMETER TargetArch
++The architecture of the binaries being linked.
++#>
++function Get-VsDevCmdPathEntries {
++    param([string]$HostArch, [string]$TargetArch)
++
++    $root = $global:MsvcTestInstallRoot
++    $bin = "$($global:MsvcTestToolsDir)bin\Host$($HostArch.ToUpperInvariant())\$TargetArch"
++    return @(
++        "$root\Common7\IDE\Extensions\Microsoft\IntelliCode\CLI",
++        $bin,
++        "$root\Common7\IDE\VC\VCPackages",
++        "$root\Common7\IDE\CommonExtensions\Microsoft\TestWindow",
++        "$root\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer",
++        "$root\MSBuild\Current\bin\Roslyn",
++        "$root\Team Tools\DiagnosticsHub\Collector",
++        "$root\Team Tools\Performance Tools\x64",
++        "$root\Team Tools\Performance Tools",
++        "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64",
++        "C:\Program Files (x86)\Windows Kits\10\bin\x64",
++        "C:\Program Files (x86)\Windows Kits\10\Redist\10.0.26100.0\ucrt\DLLs\x64",
++        "C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8.1 Tools\x64",
++        "$root\Common7\Tools\devinit",
++        "$root\MSBuild\Current\Bin\amd64",
++        "C:\Windows\Microsoft.NET\Framework64\v4.0.30319",
++        "$root\Common7\IDE\",
++        "$root\Common7\Tools\",
++        "$root\VC\Tools\Llvm\x64\bin",
++        "$root\VC\Linux\bin\ConnectionManagerExe",
++        "$root\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer\Extensions\Git\cmd",
++        "$root\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin",
++        "$root\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja",
++        "$root\Common7\IDE\CommonExtensions\Microsoft\Azure Storage Emulator\bin",
++        "$root\Common7\IDE\Extensions\Microsoft\LiveShare\Agent\tools"
++    )
++}
++
++<#
++.SYNOPSIS
++Creates a PATH of the given length from distinct runner tool directories.
++.PARAMETER Length
++The minimum number of characters, which the result reaches without a trailing separator.
++#>
++function New-RunnerPath {
++    param([int]$Length)
++
++    $entries = [System.Collections.Generic.List[string]]::new()
++    $index = 0
++    while (($entries -join ";").Length -lt $Length) {
++        $entries.Add("C:\hostedtoolcache\windows\tool$index\x64\bin")
++        $index++
++    }
++    return ($entries -join ";")
++}
++
++<#
++.SYNOPSIS
++Sets the process environment and the controlled installation for one case.
++.PARAMETER Overrides
++Case-specific environment values and installed files.
++#>
++function Reset-TestState {
++    param([hashtable]$Overrides = @{})
++
++    $global:MsvcTestState = [ordered]@{
++        Path = (New-RunnerPath 2630)
++        VcToolsInstallDir = $null
++        HostArch = ""
++        InstalledFiles = @(
++            "$($global:MsvcTestInstallRoot)\Common7\Tools\VsDevCmd.bat",
++            "$($global:MsvcTestToolsDir)bin\Hostx64\x64\link.exe",
++            "$($global:MsvcTestToolsDir)bin\Hostx64\arm64\link.exe",
++            "$($global:MsvcTestToolsDir)bin\Hostarm64\x64\link.exe"
++        )
++        VsDevCmdRuns = [System.Collections.Generic.List[string]]::new()
++    }
++    foreach ($key in $Overrides.Keys) {
++        $global:MsvcTestState[$key] = $Overrides[$key]
++    }
++
++    [Environment]::SetEnvironmentVariable("PATH", $global:MsvcTestState.Path)
++    [Environment]::SetEnvironmentVariable("VCToolsInstallDir", $global:MsvcTestState.VcToolsInstallDir)
++    [Environment]::SetEnvironmentVariable("PROCESSOR_ARCHITECTURE", "AMD64")
++    [Environment]::SetEnvironmentVariable("PROCESSOR_ARCHITEW6432", $null)
++    [Environment]::SetEnvironmentVariable("RUNNER_TEMP", $script:Work)
++    [Environment]::SetEnvironmentVariable("GITHUB_ENV", $script:GitHubEnv)
++    Set-Content -LiteralPath $script:GitHubEnv -Value @() -Encoding utf8
++}
++
++<#
++.SYNOPSIS
++Writes a path with one separator style so that paths built with Windows and POSIX separators compare equal.
++.PARAMETER Path
++The path to normalize.
++#>
++function ConvertTo-PosixPath {
++    param([string]$Path)
++
++    return $Path -replace "[\\/]+", "/"
++}
++
++<#
++.SYNOPSIS
++Models the file-existence checks of the Visual Studio installation.
++.PARAMETER Path
++The path being checked.
++#>
++function Test-Path {
++    param([Parameter(Position = 0)][string]$Path, [string]$LiteralPath)
++
++    if (-not $Path) {
++        $Path = $LiteralPath
++    }
++    $normalized = ConvertTo-PosixPath $Path
++    return ($Path -eq $global:MsvcTestVsWhere) -or ($global:MsvcTestState.InstalledFiles | Where-Object { (ConvertTo-PosixPath $_) -eq $normalized })
++}
++
++<#
++.SYNOPSIS
++Reports that no Rust toolchain is installed, so the linker comes from Visual Studio.
++.PARAMETER Name
++The command name.
++#>
++function Get-Command {
++    param([Parameter(Position = 0)][string]$Name)
++
++    return $null
++}
++
++<#
++.SYNOPSIS
++Models running VsDevCmd.bat under cmd.exe and printing the environment with set.
++.DESCRIPTION
++Returns the lines that "set" prints after VsDevCmd.bat has prepended its tool directories to the inherited PATH. Prints the
++cmd.exe error and returns nothing when the extended PATH would exceed the line limit.
++#>
++function cmd.exe {
++    $command = ($args -join " ")
++    if ($command -notmatch "-arch=(\w+) -host_arch=(\w+)") {
++        throw "Unexpected cmd.exe command line: $command"
++    }
++    $targetArch = $Matches[1]
++    $hostArch = $Matches[2]
++    $global:MsvcTestState.VsDevCmdRuns.Add("$hostArch/$targetArch")
++
++    $separator = ";"
++    $extended = ((Get-VsDevCmdPathEntries -HostArch $hostArch -TargetArch $targetArch) -join $separator) + $separator + $env:PATH
++    if ($extended.Length -gt $global:MsvcTestCmdLineLimit) {
++        [Console]::Error.WriteLine("The input line is too long.")
++        [Console]::Error.WriteLine("The syntax of the command is incorrect.")
++        return
++    }
++    "ALLUSERSPROFILE=C:\ProgramData"
++    "INCLUDE=$($global:MsvcTestToolsDir)include"
++    "LIB=$($global:MsvcTestToolsDir)lib\$targetArch"
++    "Path=$extended"
++    "VCToolsInstallDir=$($global:MsvcTestToolsDir)"
++    "WindowsSdkDir=C:\Program Files (x86)\Windows Kits\10\"
++    "UNRELATED=value"
++}
++
++<#
++.SYNOPSIS
++Confirms that a controlled setup result matches an expected value.
++.PARAMETER Expected
++The required outcome.
++.PARAMETER Actual
++The observed outcome.
++.PARAMETER Description
++The result being checked.
++#>
++function Assert-Equal {
++    param($Expected, $Actual, [string]$Description)
++
++    if ($Expected -ne $Actual) {
++        throw "$Description expected '$Expected' but received '$Actual'."
++    }
++}
++
++<#
++.SYNOPSIS
++Reads the GITHUB_ENV file as name and value pairs in write order.
++#>
++function Get-EnvironmentWrites {
++    return @(Get-Content -LiteralPath $script:GitHubEnv | Where-Object { $_ } | ForEach-Object {
++        $name, $value = $_ -split "=", 2
++        [pscustomobject]@{ Name = $name; Value = $value }
++    })
++}
++
++<#
++.SYNOPSIS
++Applies the GITHUB_ENV writes to the process environment, as the runner does before its next step.
++#>
++function Import-EnvironmentWrites {
++    foreach ($write in Get-EnvironmentWrites) {
++        [Environment]::SetEnvironmentVariable($write.Name, $write.Value)
++    }
++    Set-Content -LiteralPath $script:GitHubEnv -Value @() -Encoding utf8
++}
++
++<#
++.SYNOPSIS
++Runs one case, reports its outcome and records a failure so that the remaining cases still run.
++.PARAMETER Name
++The case name shown in the report.
++.PARAMETER Body
++The case's steps and assertions.
++#>
++function Invoke-Case {
++    param([string]$Name, [scriptblock]$Body)
++
++    try {
++        & $Body
++        Write-Output "ok $Name"
++    } catch {
++        $script:Failures.Add("$Name`: $($_.Exception.Message)")
++        Write-Output "FAIL $Name`: $($_.Exception.Message)"
++    }
++}
++
++<#
++.SYNOPSIS
++Runs the setup script and returns its output lines.
++.PARAMETER Target
++The Rust target triple.
++.PARAMETER HostArch
++The Visual Studio host architecture override, or an empty string.
++#>
++function Invoke-Setup {
++    param([string]$Target = "x86_64-pc-windows-msvc", [string]$HostArch = "")
++
++    return @(& $script:SetupScript -Target $Target -HostArch $HostArch)
++}
++
++<#
++.SYNOPSIS
++Returns the target's expected linker line in GITHUB_ENV.
++.PARAMETER Target
++The Rust target triple.
++#>
++function Get-ExpectedLinkerLine {
++    param([string]$Target)
++
++    $name = $Target.ToUpperInvariant().Replace("-", "_")
++    return "CARGO_TARGET_${name}_LINKER=$($global:MsvcTestToolsDir)bin\Hostx64\$($Target -like 'aarch64*' ? 'arm64' : 'x64')\link.exe"
++}
++
++<#
++.SYNOPSIS
++Puts the environment in the state that an earlier VsDevCmd.bat run leaves for the next step.
++.PARAMETER TargetArch
++The architecture that the earlier run configured.
++#>
++function Get-ConfiguredState {
++    param([string]$TargetArch = "x64", [string]$HostArch = "x64")
++
++    $separator = ";"
++    $path = ((Get-VsDevCmdPathEntries -HostArch $HostArch -TargetArch $TargetArch) -join $separator) + $separator + (New-RunnerPath 2630)
++    return @{ Path = $path; VcToolsInstallDir = $global:MsvcTestToolsDir }
++}
++
++if ($IsWindows) {
++    Write-Output "Skipped: the controlled vswhere.exe is a POSIX shell script."
++    exit 0
++}
++
++$script:Failures = [System.Collections.Generic.List[string]]::new()
++$script:Work = Join-Path ([IO.Path]::GetTempPath()) ("msvc-env-test-" + [guid]::NewGuid().ToString("N"))
++New-Item -ItemType Directory -Path $script:Work | Out-Null
++$script:GitHubEnv = Join-Path $script:Work "github-env"
++$script:SetupScript = Join-Path $PSScriptRoot "../actions/setup-msvc-env/setup-msvc-env.ps1"
++$originalPath = $env:PATH
++
++# The controlled vswhere.exe prints the installation path. The script builds its path with Windows separators, which a
++# POSIX file system treats as part of a single file name.
++$programFiles = Join-Path $script:Work "pf86"
++$global:MsvcTestVsWhere = "$programFiles\Microsoft Visual Studio\Installer\vswhere.exe"
++[IO.File]::WriteAllText($global:MsvcTestVsWhere, "#!/bin/sh`nprintf '%s\n' '$($global:MsvcTestInstallRoot)'`n")
++chmod +x $global:MsvcTestVsWhere
++[Environment]::SetEnvironmentVariable("ProgramFiles(x86)", $programFiles)
++
++try {
++    # A first run in a fresh environment runs VsDevCmd.bat once and exports the environment it prints.
++    Invoke-Case "first run configures the environment" {
++        Reset-TestState
++        Invoke-Setup | Out-Null
++        Assert-Equal 1 $global:MsvcTestState.VsDevCmdRuns.Count "first run VsDevCmd.bat runs"
++        Assert-Equal "x64/x64" $global:MsvcTestState.VsDevCmdRuns[0] "first run architectures"
++        $names = (Get-EnvironmentWrites).Name
++        foreach ($expected in "INCLUDE", "LIB", "PATH", "VCToolsInstallDir", "WindowsSdkDir") {
++            Assert-Equal $true ($names -ccontains $expected) "first run exports $expected"
++        }
++        Assert-Equal $false ($names -contains "UNRELATED") "first run exports only approved variables"
++        $linkerLines = @(Get-EnvironmentWrites | Where-Object { $_.Name -like "CARGO_TARGET_*_LINKER" } | ForEach-Object { ConvertTo-PosixPath "$($_.Name)=$($_.Value)" })
++        Assert-Equal (ConvertTo-PosixPath (Get-ExpectedLinkerLine "x86_64-pc-windows-msvc")) ($linkerLines -join ",") "first run linker line"
++    }
++
++    # An environment that an earlier step configured for the same host and target is reused without another VsDevCmd.bat run.
++    Invoke-Case "configured environment is reused" {
++        Reset-TestState (Get-ConfiguredState)
++        Invoke-Setup | Out-Null
++        Assert-Equal 0 $global:MsvcTestState.VsDevCmdRuns.Count "configured environment VsDevCmd.bat runs"
++        $writes = Get-EnvironmentWrites
++        Assert-Equal "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER" ($writes.Name -join ",") "configured environment writes"
++        Assert-Equal (ConvertTo-PosixPath (Get-ExpectedLinkerLine "x86_64-pc-windows-msvc")) (ConvertTo-PosixPath "$($writes[0].Name)=$($writes[0].Value)") "configured environment linker line"
++    }
++
++    # The comparison ignores case, which differs between the PATH entry and the architecture names, and trailing separators.
++    Invoke-Case "comparison ignores case and trailing separators" {
++        $configured = Get-ConfiguredState
++        $configured.Path = $configured.Path.Replace("bin\HostX64\x64", "BIN\hostx64\X64\")
++        Reset-TestState $configured
++        Invoke-Setup | Out-Null
++        Assert-Equal 0 $global:MsvcTestState.VsDevCmdRuns.Count "case and separator variant VsDevCmd.bat runs"
++    }
++
++    # A later step sees the first step's exports, so the second and third runs in one job leave the environment unchanged.
++    Invoke-Case "repeated runs in one job do not grow PATH" {
++        Reset-TestState
++        Invoke-Setup | Out-Null
++        $firstRunPath = (Get-EnvironmentWrites | Where-Object { $_.Name -ceq "PATH" }).Value
++        foreach ($run in 2..3) {
++            Import-EnvironmentWrites
++            Invoke-Setup | Out-Null
++        }
++        Assert-Equal 1 $global:MsvcTestState.VsDevCmdRuns.Count "three runs in one job VsDevCmd.bat runs"
++        Assert-Equal $firstRunPath $env:PATH "PATH after three runs"
++    }
++
++    # A different target needs its own tool directory, so VsDevCmd.bat runs again.
++    Invoke-Case "another target configures its own environment" {
++        Reset-TestState (Get-ConfiguredState)
++        Invoke-Setup -Target "aarch64-pc-windows-msvc" | Out-Null
++        Assert-Equal 1 $global:MsvcTestState.VsDevCmdRuns.Count "other target VsDevCmd.bat runs"
++        Assert-Equal "x64/arm64" $global:MsvcTestState.VsDevCmdRuns[0] "other target architectures"
++    }
++
++    # A different host architecture needs its own tool directory, so VsDevCmd.bat runs again.
++    Invoke-Case "another host architecture configures its own environment" {
++        Reset-TestState (Get-ConfiguredState)
++        Invoke-Setup -HostArch "arm64" | Out-Null
++        Assert-Equal 1 $global:MsvcTestState.VsDevCmdRuns.Count "other host VsDevCmd.bat runs"
++        Assert-Equal "arm64/x64" $global:MsvcTestState.VsDevCmdRuns[0] "other host architectures"
++    }
++
++    # Without a recorded tools directory the script cannot tell that the environment is in place.
++    Invoke-Case "an unrecorded tools directory runs VsDevCmd.bat" {
++        $configured = Get-ConfiguredState
++        $configured.VcToolsInstallDir = $null
++        Reset-TestState $configured
++        Invoke-Setup | Out-Null
++        Assert-Equal 1 $global:MsvcTestState.VsDevCmdRuns.Count "unrecorded tools directory VsDevCmd.bat runs"
++    }
++
++    # A recorded tools directory whose host and target directory is not on PATH is not a configured environment.
++    Invoke-Case "a tools directory missing from PATH runs VsDevCmd.bat" {
++        $configured = Get-ConfiguredState
++        $configured.Path = New-RunnerPath 2630
++        Reset-TestState $configured
++        Invoke-Setup | Out-Null
++        Assert-Equal 1 $global:MsvcTestState.VsDevCmdRuns.Count "tools directory missing from PATH VsDevCmd.bat runs"
++    }
++
++    if ($script:Failures.Count -gt 0) {
++        throw "$($script:Failures.Count) MSVC environment setup cases failed."
++    }
++    Write-Output "All MSVC environment setup cases passed."
++} finally {
++    [Environment]::SetEnvironmentVariable("PATH", $originalPath)
++    foreach ($name in "VCToolsInstallDir", "GITHUB_ENV", "RUNNER_TEMP", "ProgramFiles(x86)") {
++        [Environment]::SetEnvironmentVariable($name, $null)
++    }
++    Remove-Item -LiteralPath $script:Work -Recurse -Force -ErrorAction SilentlyContinue
++    Remove-Variable -Scope Global -Name MsvcTestState, MsvcTestVsWhere, MsvcTestCmdLineLimit, MsvcTestToolsDir, MsvcTestInstallRoot -ErrorAction SilentlyContinue
++}
+-- 
+2.43.0
+

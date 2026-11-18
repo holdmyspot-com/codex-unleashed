@@ -1,0 +1,140 @@
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 14 Nov 2026 23:28:21 +0000
+Subject: [PATCH] bugfix: preserve caller-owned Opus fortification
+
+Disable the Opus default macro only when explicit C compiler flags
+already define it, preserving the caller-selected hardening level.
+
+---
+diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
+index 58d4828..a470545 100644
+--- a/third_party/voice/build_native.py
++++ b/third_party/voice/build_native.py
+@@ -475,12 +475,21 @@ class NativeBuild:
+             )
+             if "/cygdrive/" in (self.output / "libffi-pkg-config.log").read_text():
+                 raise ValueError("pkg-config did not relocate libffi to native paths")
++        has_declared_c_fortify_source = any(
++            flag == "-D_FORTIFY_SOURCE" or flag.startswith("-D_FORTIFY_SOURCE=")
++            for flag in self.flags["CFLAGS"]
++        )
+         self.cmake(
+             "opus",
+             [
+                 "-DOPUS_BUILD_SHARED_LIBRARY=ON",
+                 "-DOPUS_BUILD_TESTING=OFF",
+                 "-DOPUS_BUILD_PROGRAMS=OFF",
++                *(
++                    ["-DOPUS_FORTIFY_SOURCE=OFF"]
++                    if has_declared_c_fortify_source
++                    else []
++                ),
+                 # Windows ARM64 guarantees NEON; upstream misses its ARM64 spelling.
+                 *(
+                     ["-DOPUS_PRESUME_NEON=ON"]
+diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
+index 9cd6703..62d6c2e 100644
+--- a/third_party/voice/test_build_native.py
++++ b/third_party/voice/test_build_native.py
+@@ -48,6 +48,36 @@ class NativeBuildTests(unittest.TestCase):
+             "LIB": "fixture lib",
+         }
+ 
++    def _capture_opus_request(
++        self, c_flags, *, output_name, cxx_flags=None, ambient_cflags=None
++    ):
++        self.args.output = self.root / output_name
++        self.args.c_flag = list(c_flags)
++        self.args.cxx_flag = list(cxx_flags or [])
++        if ambient_cflags is None:
++            self.environment.pop("CFLAGS", None)
++        else:
++            self.environment["CFLAGS"] = ambient_cflags
++
++        build = NativeBuild(self.args, self.environment)
++        with (
++            patch(
++                "build_native.prepare_sources",
++                side_effect=lambda *args: (build.output / "build").mkdir(),
++            ),
++            patch.object(build, "cmake") as cmake,
++            patch.object(build, "meson"),
++            patch.object(build, "run"),
++        ):
++            build.build()
++
++        opus_requests = [
++            call.args[1] for call in cmake.call_args_list if call.args[0] == "opus"
++        ]
++        self.assertEqual(len(opus_requests), 1)
++        receipt = json.loads((build.output / "built.json").read_text())
++        return opus_requests[0], build, receipt
++
+     def test_cli_entrypoint_imports_its_sibling_with_safe_path_enabled(self):
+         result = subprocess.run(
+             [
+@@ -415,6 +445,64 @@ class NativeBuildTests(unittest.TestCase):
+                 delattr(self.args, name)
+             self.assertFalse(self.args.output.exists())
+ 
++    @unittest.skipIf(os.name == "nt", "Exercises Unix toolchain fortification flags")
++    def test_opus_uses_declared_toolchain_fortification_once(self):
++        cases = [
++            ["-O2", "-D_FORTIFY_SOURCE=1"],
++            ["-O2", "-D_FORTIFY_SOURCE=2"],
++            ["-O2", "-D_FORTIFY_SOURCE"],
++            ["-O2", "-D_FORTIFY_SOURCE="],
++        ]
++        for index, flags in enumerate(cases):
++            with self.subTest(flags=flags):
++                options, build, receipt = self._capture_opus_request(
++                    flags, output_name=f"opus-fortify-{index}"
++                )
++                self.assertEqual(options.count("-DOPUS_FORTIFY_SOURCE=OFF"), 1)
++                self.assertEqual(build.flags["CFLAGS"], flags)
++                self.assertEqual(build.environment["CFLAGS"], shlex.join(flags))
++                self.assertEqual(receipt["flags"]["CFLAGS"], flags)
++
++    @unittest.skipIf(os.name == "nt", "Exercises Unix toolchain fortification flags")
++    def test_opus_retains_its_default_fortification_without_toolchain_definition(self):
++        cases = [
++            ([], [], None),
++            (["-O2"], [], None),
++            (["-O2", "-D_FORTIFY_SOURCE_OTHER=1"], [], None),
++            ([], ["-D_FORTIFY_SOURCE=2"], None),
++            ([], [], "-D_FORTIFY_SOURCE=2"),
++        ]
++        for index, (c_flags, cxx_flags, ambient_cflags) in enumerate(cases):
++            with self.subTest(
++                c_flags=c_flags, cxx_flags=cxx_flags, ambient_cflags=ambient_cflags
++            ):
++                options, build, receipt = self._capture_opus_request(
++                    c_flags,
++                    output_name=f"opus-default-{index}",
++                    cxx_flags=cxx_flags,
++                    ambient_cflags=ambient_cflags,
++                )
++                self.assertFalse(
++                    any(
++                        option.startswith("-DOPUS_FORTIFY_SOURCE=")
++                        for option in options
++                    )
++                )
++                self.assertEqual(build.flags["CFLAGS"], c_flags)
++                self.assertEqual(receipt["flags"]["CFLAGS"], c_flags)
++                if c_flags:
++                    self.assertEqual(build.environment["CFLAGS"], shlex.join(c_flags))
++                else:
++                    self.assertNotIn("CFLAGS", build.environment)
++                self.assertEqual(build.flags["CXXFLAGS"], cxx_flags)
++                self.assertEqual(receipt["flags"]["CXXFLAGS"], cxx_flags)
++                if cxx_flags:
++                    self.assertEqual(
++                        build.environment["CXXFLAGS"], shlex.join(cxx_flags)
++                    )
++                if ambient_cflags is not None:
++                    self.assertNotIn("CFLAGS", build.environment)
++
+     def test_windows_recipes_use_explicit_targets_and_posix_paths(self):
+         self.environment["USERPROFILE"] = str(self.root / "user profile")
+         for architecture, flag in (("x86_64", "-m64"), ("aarch64", "-marm64")):

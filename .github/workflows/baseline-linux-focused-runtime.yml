@@ -46,6 +46,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Build the tooling runtime
+        uses: ./.github/actions/setup-tooling
+
       - name: Read exact source and runner selection
         id: source
         run: |
@@ -147,7 +150,7 @@ jobs:
         run: |
           set -euo pipefail
           # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
-          sudo python3 -I .github/scripts/apt-install-with-fallback.py build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex strace
+          sudo bash "$CODEX_TOOLING" apt-install-with-fallback build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex strace
           {
             uname -a
             nproc
@@ -378,3 +381,8 @@ jobs:
           path: ${{ env.FOCUSED_RUNTIME }}/evidence
           retention-days: 3
           if-no-files-found: error
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"

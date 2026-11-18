@@ -89,6 +89,11 @@ jobs:
           path: restart-metadata
           persist-credentials: false
 
+      - name: Set up the Java tooling runtime
+        uses: ./restart-metadata/.github/actions/setup-tooling
+        with:
+          tooling-root: ${{ github.workspace }}/restart-metadata
+
       - name: Preserve restart inputs outside the source checkout
         id: inputs
         env:
@@ -97,7 +102,6 @@ jobs:
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-test-evidence"
           mkdir -p "$evidence"
-          cp restart-metadata/.github/scripts/apt-install-with-fallback.py "$RUNNER_TEMP/apt-install-with-fallback.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           if [[ -n "$UPSTREAM_COMMIT" ]]; then
             printf '%s\n' "$UPSTREAM_COMMIT" > "$evidence/upstream-commit"
@@ -106,9 +110,6 @@ jobs:
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           cp restart-metadata/.github/scripts/fail-on-cargo-warnings.sh "$RUNNER_TEMP/fail-on-cargo-warnings.sh"
-          cp restart-metadata/.github/scripts/check-test-skips.py "$RUNNER_TEMP/check-test-skips.py"
-          cp restart-metadata/.github/scripts/compare-test-baseline.py "$RUNNER_TEMP/compare-test-baseline.py"
-          cp restart-metadata/.github/scripts/prune-workspace-outputs.py "$RUNNER_TEMP/prune-workspace-outputs.py"
           cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh "$RUNNER_TEMP/ghcr-cargo-target-cache.sh"
           cp restart-metadata/.github/cargo-cache-package "$evidence/cargo-cache-package"
           mkdir -p "$RUNNER_TEMP/test-baselines"
@@ -207,7 +208,7 @@ jobs:
         run: |
           set -euo pipefail
           # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
-          sudo python3 -I "$RUNNER_TEMP/apt-install-with-fallback.py" build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex strace zsh ripgrep
+          sudo bash "$CODEX_TOOLING" apt-install-with-fallback build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex strace zsh ripgrep
           # Tests skip themselves when a shell or interpreter is missing, so assert each one here.
           zsh --version
           /bin/zsh --version
@@ -439,7 +440,7 @@ jobs:
           mkdir -p "$copy"
           # Hard links keep the live target intact while the copy is pruned of workspace-crate outputs.
           cp -al "$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu" "$copy/x86_64-unknown-linux-gnu"
-          python3 "$RUNNER_TEMP/prune-workspace-outputs.py" "$GITHUB_WORKSPACE/codex-rs" "$copy" 2>&1 | tee "$evidence/dependency-cache-prune.log"
+          bash "$CODEX_TOOLING" prune-workspace-outputs --workspace-manifest-dir "$GITHUB_WORKSPACE/codex-rs" --target-copy "$copy" --live-target "$CARGO_TARGET_DIR" 2>&1 | tee "$evidence/dependency-cache-prune.log"
           du -sh "$copy" | tee -a "$evidence/dependency-cache-prune.log"
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "$CACHE_REPOSITORY" "$CACHE_TAG" "$copy" "$(cat "$evidence/upstream-ref")" 2>&1 | tee "$evidence/dependency-cache-save.log"
           rm -rf "$copy"
@@ -648,7 +649,7 @@ jobs:
           status=0
           for lane in local remote; do
             if [[ ! -d "$RUNNER_TEMP/nextest-reports/$lane" ]]; then continue; fi
-            python3 "$RUNNER_TEMP/check-test-skips.py" --platform linux --environment "$lane" "$RUNNER_TEMP/nextest-reports/$lane" \
+            bash "$CODEX_TOOLING" check-test-skips --platform linux --environment "$lane" "$RUNNER_TEMP/nextest-reports/$lane" \
               2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/skip-check-$lane.log" || status=1
           done
           exit "$status"
@@ -682,7 +683,7 @@ jobs:
             lane_status="${!lane_status_name:-0}"
             common=(--platform "$platform" --upstream-commit "$commit" --baseline-dir "$RUNNER_TEMP/test-baselines")
             if [[ "$WRITE_BASELINE" == true ]]; then
-              python3 "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" --write-baseline \
+              bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" --write-baseline \
                 --output "$evidence/test-baselines/$commit/$platform.json" "$RUNNER_TEMP/nextest-reports/$lane"
             elif [[ "$GATED" != true ]]; then
               if [[ "$lane_status" != 0 ]]; then result="$lane_status"; fi
@@ -690,7 +691,7 @@ jobs:
               printf 'No committed baseline for %s on %s; failing on the %s lane status (%s).\n' "$commit" "$platform" "$lane" "$lane_status" >&2
               if [[ "$lane_status" != 0 ]]; then result="$lane_status"; fi
             else
-              python3 "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" "$RUNNER_TEMP/nextest-reports/$lane" \
+              bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" "$RUNNER_TEMP/nextest-reports/$lane" \
                 2>&1 | tee "$evidence/baseline-comparison-$lane.log" || result=1
             fi
           done
@@ -872,10 +873,17 @@ jobs:
           exit "$comparison_result"
 
       - name: Remove the remote test environment
-        if: always()
+        if: ${{ always() && steps.lanes.outputs.remote == 'true' }}
         env:
           REMOTE_ENV_CONTAINER: codex-remote-test-env-${{ github.run_id }}-${{ github.run_attempt }}
-        run: docker rm -f "$REMOTE_ENV_CONTAINER" || true
+        run: |
+          set -euo pipefail
+          containers="$(docker container ls --all --format '{{.Names}}')"
+          while IFS= read -r container; do
+            if [[ "$container" == "$REMOTE_ENV_CONTAINER" ]]; then
+              docker rm -f "$REMOTE_ENV_CONTAINER"
+            fi
+          done <<< "$containers"
 
       - name: Verify the tested source matches its upstream and patch commits
         if: always()
@@ -908,3 +916,8 @@ jobs:
             codex-rs/target/nextest/**/junit.xml
           retention-days: 3
           if-no-files-found: warn
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"

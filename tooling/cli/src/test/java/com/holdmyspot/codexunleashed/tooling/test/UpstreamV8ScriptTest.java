@@ -114,11 +114,10 @@ public final class UpstreamV8ScriptTest
 			{
 				int status = Main.run(new String[]{"upstream-v8-script", action.toString()},
 					InputStream.nullInputStream(), out, err);
-				requireThat(status, "status")
-					.withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic")
-					.isEqualTo(0);
-				requireThat(output.toString(StandardCharsets.UTF_8), "output.toString(StandardCharsets.UTF_8)")
-					.isEqualTo("echo ready\n");
+				requireThat(status, "status").withContext(
+					diagnostics.toString(StandardCharsets.UTF_8), "diagnostic").isEqualTo(0);
+				requireThat(output.toString(StandardCharsets.UTF_8),
+					"output.toString(StandardCharsets.UTF_8)").isEqualTo("echo ready\n");
 			}
 		}
 		finally

@@ -1,0 +1,1079 @@
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Subject: [PATCH] build: produce native voice runtime resources
+
+Build the target voice runtime and retain its verified output for packaging.
+
+---
+diff --git a/.github/scripts/codex-voice-runtime.sh b/.github/scripts/codex-voice-runtime.sh
+new file mode 100755
+index 0000000..4eb7530
+--- /dev/null
++++ b/.github/scripts/codex-voice-runtime.sh
+@@ -0,0 +1,525 @@
++#!/usr/bin/env bash
++# Build and stage same-commit native voice resources for one primary release target.
++set -Eeuo pipefail
++
++# The producer-created result directory is the only path cleaned after a failed run.
++RESULT_DIR=
++# This flag distinguishes a producer-owned result from a caller-owned preexisting path.
++RESULT_CREATED=0
++
++# Reports the command form and exits when an invocation cannot be used.
++# Exit status:
++# - 2 because the invocation omitted, repeated, or added an unsupported argument.
++usage_error() {
++  printf 'Usage: %s build --upstream-root ABSOLUTE_PATH --target TARGET --build-commit COMMIT --result-dir ABSOLUTE_PATH\n' "$0" >&2
++  exit 2
++}
++
++# Reports an input or execution failure and leaves cleanup to the exit handler.
++# Arguments:
++# - A confirmed input or execution failure that tells the caller what to correct or inspect.
++# Exit status:
++# - 1 for the reported producer failure.
++fail() {
++  printf 'codex-voice-runtime: %s\n' "$1" >&2
++  exit 1
++}
++
++# Removes partial output from a producer-owned result and keeps its evidence directory.
++# Arguments:
++# - The shell exit status that caused producer shutdown.
++# Side effects:
++# - Removes partial release/, verification/, and completed paths only when this invocation created the result directory.
++# - Reports the retained evidence path after a failed producer-owned run.
++# Exit status:
++# - The same status that caused producer shutdown.
++on_exit() {
++  local status="$1"
++
++  trap - EXIT
++  if [[ "$status" != 0 ]]; then
++    if [[ "$RESULT_CREATED" == 1 ]]; then
++      rm -rf -- "$RESULT_DIR/release" "$RESULT_DIR/verification" "$RESULT_DIR/completed"
++      printf 'evidence retained at %s/evidence\n' "$RESULT_DIR" >&2
++    fi
++  fi
++  exit "$status"
++}
++
++# Maps one supported application release target to its same-runner native voice build.
++# Arguments:
++# - Application target: One primary release target supported by the native runtime build.
++# Output:
++# - Voice target, Bazel runtime suffix, required runner label, runner OS, host architecture, and helper extension separated by tabs.
++# Exit status:
++# - 0 when the application target is supported; 1 otherwise.
++target_details() {
++  local application_target="$1"
++
++  case "$application_target" in
++    x86_64-unknown-linux-musl) printf 'x86_64-unknown-linux-gnu\tlinux_x86_64\tubuntu-24.04\tLinux\tx86_64\t\n' ;;
++    aarch64-unknown-linux-musl) printf 'aarch64-unknown-linux-gnu\tlinux_aarch64\tubuntu-24.04-arm\tLinux\taarch64\t\n' ;;
++    x86_64-apple-darwin) printf 'x86_64-apple-darwin\tmacos_x86_64\tmacos-15-intel\tmacOS\tx86_64\t\n' ;;
++    aarch64-apple-darwin) printf 'aarch64-apple-darwin\tmacos_aarch64\tmacos-15\tmacOS\tarm64\t\n' ;;
++    x86_64-pc-windows-msvc) printf 'x86_64-pc-windows-msvc\twindows_x86_64\twindows-2025\tWindows\tAMD64\t.exe\n' ;;
++    aarch64-pc-windows-msvc) printf 'aarch64-pc-windows-msvc\twindows_aarch64\twindows-11-arm\tWindows\tARM64\t.exe\n' ;;
++    *) return 1 ;;
++  esac
++}
++
++# Verifies that the selected application target is running on its declared native host.
++# Arguments:
++# - Runner OS, observed host architecture, expected runner OS, and expected host architecture.
++# Exit status:
++# - 0 when the runner matches the selected target; otherwise exits with a diagnostic.
++check_runner_identity() {
++  local runner_os="$1"
++  local actual_architecture="$2"
++  local expected_runner_os="$3"
++  local expected_architecture="$4"
++
++  if [[ "$runner_os" == "$expected_runner_os" ]]; then :; else
++    fail "target requires runner OS $expected_runner_os; current runner is '${runner_os:-unset}'"
++  fi
++  if [[ "$actual_architecture" == "$expected_architecture" ]]; then :; else
++    fail "target requires host architecture $expected_architecture; current host is '${actual_architecture:-unset}'"
++  fi
++}
++
++# Confirms that the checked-out upstream commit still matches the requested build identity.
++# Arguments:
++# - Absolute upstream checkout and expected full lowercase commit identifier.
++# Exit status:
++# - 0 when HEAD resolves to the expected commit; otherwise exits with a diagnostic.
++check_source_identity() {
++  local upstream_root="$1"
++  local expected_commit="$2"
++  local actual_commit
++
++  if actual_commit="$(git -C "$upstream_root" rev-parse --verify 'HEAD^{commit}')"; then :; else
++    fail "cannot resolve HEAD in upstream checkout $upstream_root"
++  fi
++  if [[ "$actual_commit" != "$expected_commit" ]]; then
++    fail "upstream HEAD changed: expected $expected_commit, found $actual_commit"
++  fi
++}
++
++# Confirms the prepared Windows tool repository belongs to the selected target and pinned package set.
++# Arguments:
++# - Absolute upstream checkout and selected voice target.
++# - Absolute repository path exported by setup-voice-windows.ps1.
++# Exit status:
++# - 0 when generated metadata and installed package inventory match the selected target; otherwise exits with a diagnostic.
++check_windows_prerequisites() {
++  local upstream_root="$1"
++  local voice_target="$2"
++  local tools_root="$3"
++  local tools_metadata="$tools_root/evidence/tools.json"
++  local bazel_metadata="$tools_root/voice-tools.json"
++  local package_inventory="$tools_root/evidence/packages.txt"
++
++  if [[ ! -d "$tools_root" ]]; then
++    fail "Windows build-tool repository is missing: $tools_root"
++  fi
++  if [[ ! -f "$tools_metadata" ]]; then
++    fail "Windows build-tool identity file is missing: $tools_metadata"
++  fi
++  if [[ ! -f "$bazel_metadata" ]]; then
++    fail "Windows Bazel repository identity file is missing: $bazel_metadata"
++  fi
++  if [[ ! -f "$package_inventory" ]]; then
++    fail "Windows installed-package inventory is missing: $package_inventory"
++  fi
++  if grep -Fq -- "\"target\": \"$voice_target\"" "$tools_metadata"; then :; else
++    fail "Windows setup target does not match $voice_target in $tools_metadata"
++  fi
++  if grep -Fq -- "\"target\": \"$voice_target\"" "$bazel_metadata"; then :; else
++    fail "Windows Bazel repository target does not match $voice_target in $bazel_metadata"
++  fi
++  if grep -Fq -- '"schemaVersion": 1' "$bazel_metadata"; then :; else
++    fail "Windows Bazel repository schema is not version 1 in $bazel_metadata"
++  fi
++  if grep -Fq -- '"cygwinArchitecture": "x86_64"' "$bazel_metadata"; then :; else
++    fail "Windows Cygwin host architecture is not x86_64 in $bazel_metadata"
++  fi
++  if grep -Fq -- '"pkgconf_version": "3.0.6"' "$tools_metadata"; then :; else
++    fail "Windows pkgconf version is not 3.0.6 in $tools_metadata"
++  fi
++  if python "$upstream_root/.github/scripts/voice-cygwin-inputs.py" check-installed --inventory "$package_inventory"; then :; else
++    fail "Windows installed Cygwin packages do not match the pinned snapshot"
++  fi
++}
++
++# Runs a command with separate retained standard-output and standard-error logs.
++# Arguments:
++# - Description used in the failure diagnostic, stdout log path, stderr log path, then command and arguments.
++# Exit status:
++# - 0 when the command succeeds; otherwise exits after reporting its status and log location.
++run_logged() {
++  local description="$1"
++  local stdout_log="$2"
++  local stderr_log="$3"
++  local status
++  shift 3
++
++  if "$@" > "$stdout_log" 2> "$stderr_log"; then
++    return 0
++  else
++    status="$?"
++    fail "$description failed with status $status; see $stdout_log and $stderr_log"
++  fi
++}
++
++# Builds the four same-commit native voice outputs with the selected upstream Bazel wrapper.
++# Arguments:
++# - Absolute upstream checkout, output directory for retained build logs, Bazel runtime suffix, runner OS, Windows repository path, SystemRoot, and host architecture.
++# Exit status:
++# - 0 when Bazel builds the runtime, helper, and both native runtime tests; otherwise exits after retaining build logs.
++run_native_build() {
++  local upstream_root="$1"
++  local evidence_root="$2"
++  local runtime_suffix="$3"
++  local runner_os="$4"
++  local windows_tools_root="$5"
++  local system_root="$6"
++  local windows_architecture="$7"
++  local run_bazel="$upstream_root/.github/scripts/run-bazel-ci.sh"
++  local status_command=./scripts/workspace-status.sh
++  local helper_target=//codex-rs/voice-host:codex-voice-host
++  local -a wrapper_args=(--remote-download-toplevel --print-failed-action-summary)
++  local -a bazel_args=(build --config=release)
++
++  if [[ ! -x "$run_bazel" ]]; then
++    fail "upstream Bazel CI wrapper is missing or not executable: $run_bazel"
++  fi
++  if [[ "$runner_os" == macOS ]]; then
++    bazel_args+=(--macos_minimum_os=14.0)
++  fi
++  if [[ "$runner_os" == Windows ]]; then
++    status_command=./scripts/workspace-status.cmd
++    wrapper_args+=(--windows-msvc-host-platform)
++    bazel_args+=(
++      --platforms=//:local_windows_msvc
++      '--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows,//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain'
++      --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
++      --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
++      "--inject_repository=voice_windows_tools=$windows_tools_root"
++      --//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools
++      "--action_env=SystemRoot=$system_root"
++      "--host_action_env=SystemRoot=$system_root"
++      "--action_env=PROCESSOR_ARCHITECTURE=$windows_architecture"
++      "--host_action_env=PROCESSOR_ARCHITECTURE=$windows_architecture"
++    )
++  fi
++  bazel_args+=("--workspace_status_command=$status_command" --)
++  bazel_args+=(
++    "//third_party/voice:native_runtime_$runtime_suffix"
++    "$helper_target"
++    //codex-rs/voice-host:voice-host-packaged_runtime-test-bin
++    //codex-rs/voice-host:voice-host-installed_package_runtime-test-bin
++  )
++
++  (
++    trap - EXIT
++    cd -- "$upstream_root"
++    run_logged 'native voice Bazel build' "$evidence_root/build.stdout.log" "$evidence_root/build.stderr.log" "$run_bazel" "${wrapper_args[@]}" -- "${bazel_args[@]}"
++  )
++}
++
++# Requires a regular build output before any release files are staged.
++# Arguments:
++# - Build output path and its caller-readable role.
++# Exit status:
++# - 0 when the output is a file; otherwise exits with its missing-resource diagnostic.
++require_build_file() {
++  local path="$1"
++  local role="$2"
++
++  if [[ ! -f "$path" ]]; then
++    fail "native build did not produce $role: $path"
++  fi
++}
++
++# Writes a sorted hash inventory for every helper and sealed runtime file under release/.
++# Arguments:
++# - Release directory, evidence directory, and the three build identity values.
++# Side effects:
++# - Writes evidence/release_files.json with paths relative to release/.
++# Exit status:
++# - 0 when every release file has a supported relative path and digest; otherwise exits with a diagnostic.
++write_release_file_inventory() {
++  local release_root="$1"
++  local evidence_root="$2"
++  local build_commit="$3"
++  local application_target="$4"
++  local voice_target="$5"
++  local relative_path
++  local file_path
++  local size
++  local hash_output
++  local file_hash
++  local separator=
++  local -a release_paths=()
++
++  while IFS= read -r relative_path; do
++    release_paths+=("$relative_path")
++  done < <(cd -- "$release_root" && find . -type f -print | LC_ALL=C sort)
++  if [[ "${#release_paths[@]}" == 0 ]]; then
++    fail "release directory has no files: $release_root"
++  fi
++  {
++    printf '{\n  "format_version": 1,\n  "source_commit": "%s",\n  "app_target": "%s",\n  "voice_target": "%s",\n  "files": [\n' "$build_commit" "$application_target" "$voice_target"
++    for relative_path in "${release_paths[@]}"; do
++      relative_path="${relative_path#./}"
++      case "$relative_path" in
++        '' | *[!A-Za-z0-9._/-]*) fail "release file path cannot be represented safely: $relative_path" ;;
++      esac
++      case "/$relative_path/" in
++        */../*) fail "release file path escapes the release directory: $relative_path" ;;
++      esac
++      file_path="$release_root/$relative_path"
++      size="$(wc -c < "$file_path" | tr -d '[:space:]')"
++      if command -v sha256sum >/dev/null 2>&1; then
++        hash_output="$(sha256sum -- "$file_path")"
++      elif command -v shasum >/dev/null 2>&1; then
++        hash_output="$(shasum -a 256 "$file_path")"
++      else
++        fail 'no SHA-256 command is available (expected sha256sum or shasum)'
++      fi
++      file_hash="${hash_output:0:64}"
++      if [[ "$file_hash" =~ ^[0-9a-f]{64}$ ]]; then :; else
++        fail "SHA-256 command returned an invalid digest for $relative_path"
++      fi
++      printf '%s    {"path": "%s", "size": %s, "sha256": "%s"}' "$separator" "$relative_path" "$size" "$file_hash"
++      printf '\n'
++      separator=,
++    done
++    printf '  ]\n}\n'
++  } > "$evidence_root/release_files.json"
++}
++
++# Validates CLI inputs and creates one exclusively owned same-commit native voice result.
++# Arguments:
++# - build --upstream-root absolute checkout --target application target --build-commit full source commit --result-dir absolute fresh output path.
++# Environment:
++# - RUNNER_OS and the host architecture identify the native runner.
++# - Windows additionally reads SystemRoot, PROCESSOR_ARCHITECTURE, and VOICE_WINDOWS_BAZEL_REPOSITORY from the prepared setup step.
++# Side effects:
++# - Creates the result directory, retained evidence, staged helper/runtime, two native test executables, and completed marker on success.
++# - On failure after exclusive result creation, removes release/, verification/, and completed while retaining evidence/.
++# Exit status:
++# - 0 when native outputs are staged, sealed, identified, and inventoried; 1 for build or resource failures; 2 for invalid arguments.
++main() {
++  trap 'on_exit "$?"' EXIT
++  local operation="${1:-}"
++  local upstream_root=
++  local application_target=
++  local build_commit=
++  local result_dir=
++  local has_upstream_root=0
++  local has_target=0
++  local has_build_commit=0
++  local has_result_dir=0
++  local target_mapping
++  local voice_target
++  local runtime_suffix
++  local expected_runner_label
++  local expected_runner_os
++  local expected_architecture
++  local helper_extension
++  local runner_os="${RUNNER_OS:-}"
++  local actual_architecture
++  local system_root=
++  local windows_architecture=
++  local tools_root=
++  local result_parent
++  local helper_source
++  local runtime_source
++  local packaged_test_source
++  local installed_test_source
++  local release_root
++  local verification_root
++  local evidence_root
++  local helper_commit
++  local helper_bytes
++  local helper_name
++  local argument
++
++  if [[ "$operation" == build ]]; then :; else
++    usage_error
++  fi
++  shift
++  while (($#)); do
++    argument="$1"
++    case "$argument" in
++      --upstream-root)
++        if [[ "$has_upstream_root" == 1 ]]; then usage_error; fi
++        if [[ "$#" -lt 2 ]]; then usage_error; fi
++        if [[ -n "${2:-}" ]]; then :; else usage_error; fi
++        has_upstream_root=1
++        upstream_root="$2"
++        shift 2
++        ;;
++      --target)
++        if [[ "$has_target" == 1 ]]; then usage_error; fi
++        if [[ "$#" -lt 2 ]]; then usage_error; fi
++        if [[ -n "${2:-}" ]]; then :; else usage_error; fi
++        has_target=1
++        application_target="$2"
++        shift 2
++        ;;
++      --build-commit)
++        if [[ "$has_build_commit" == 1 ]]; then usage_error; fi
++        if [[ "$#" -lt 2 ]]; then usage_error; fi
++        if [[ -n "${2:-}" ]]; then :; else usage_error; fi
++        has_build_commit=1
++        build_commit="$2"
++        shift 2
++        ;;
++      --result-dir)
++        if [[ "$has_result_dir" == 1 ]]; then usage_error; fi
++        if [[ "$#" -lt 2 ]]; then usage_error; fi
++        if [[ -n "${2:-}" ]]; then :; else usage_error; fi
++        has_result_dir=1
++        result_dir="$2"
++        shift 2
++        ;;
++      *) usage_error ;;
++    esac
++  done
++  if [[ "$has_upstream_root" == 1 ]]; then :; else usage_error; fi
++  if [[ "$has_target" == 1 ]]; then :; else usage_error; fi
++  if [[ "$has_build_commit" == 1 ]]; then :; else usage_error; fi
++  if [[ "$has_result_dir" == 1 ]]; then :; else usage_error; fi
++  if [[ "$upstream_root" == /* ]]; then :; else
++    fail "upstream root must be an existing absolute directory: $upstream_root"
++  fi
++  if [[ -d "$upstream_root" ]]; then :; else
++    fail "upstream root must be an existing absolute directory: $upstream_root"
++  fi
++  if [[ "$result_dir" == /* ]]; then :; else
++    fail "result directory must be an absolute path: $result_dir"
++  fi
++  if [[ "$build_commit" =~ ^[0-9a-f]{40}$ ]]; then :; else
++    fail "build commit must be a full lowercase 40-character Git commit identifier: $build_commit"
++  fi
++  if target_mapping="$(target_details "$application_target")"; then :; else
++    fail "unsupported primary application target: $application_target"
++  fi
++  IFS=$'\t' read -r voice_target runtime_suffix expected_runner_label expected_runner_os expected_architecture helper_extension <<< "$target_mapping"
++  case "$runner_os" in
++    Linux | macOS)
++    if actual_architecture="$(uname -m)"; then :; else
++      fail 'cannot identify the native runner architecture with uname -m'
++    fi
++      ;;
++    Windows)
++    actual_architecture="${PROCESSOR_ARCHITECTURE:-}"
++    system_root="${SystemRoot:-}"
++    windows_architecture="$actual_architecture"
++    if [[ -z "$system_root" ]]; then
++      fail 'Windows native build requires the actual nonempty SystemRoot environment value'
++    fi
++    if [[ -z "${VOICE_WINDOWS_BAZEL_REPOSITORY:-}" ]]; then
++      fail 'Windows native build requires VOICE_WINDOWS_BAZEL_REPOSITORY from setup-voice-windows.ps1'
++    fi
++    tools_root="$VOICE_WINDOWS_BAZEL_REPOSITORY"
++      ;;
++    *) fail "unsupported or missing GitHub runner OS: '${runner_os:-unset}'" ;;
++  esac
++  check_runner_identity "$runner_os" "$actual_architecture" "$expected_runner_os" "$expected_architecture"
++  upstream_root="$(cd -- "$upstream_root" && pwd -P)"
++  result_parent="$(dirname -- "$result_dir")"
++  if [[ -d "$result_parent" ]]; then :; else
++    fail "result directory parent must already exist: $result_parent"
++  fi
++  result_dir="$(cd -- "$result_parent" && pwd -P)/$(basename -- "$result_dir")"
++  if [[ -e "$result_dir" ]]; then
++    fail "result directory already exists and is caller-owned: $result_dir"
++  fi
++  if [[ -L "$result_dir" ]]; then
++    fail "result directory already exists as a symbolic link: $result_dir"
++  fi
++  RESULT_DIR="$result_dir"
++  if mkdir -- "$RESULT_DIR"; then :; else
++    fail "cannot exclusively create result directory: $RESULT_DIR"
++  fi
++  RESULT_CREATED=1
++  evidence_root="$RESULT_DIR/evidence"
++  release_root="$RESULT_DIR/release"
++  verification_root="$RESULT_DIR/verification"
++  mkdir -- "$evidence_root"
++  : > "$evidence_root/build.stdout.log"
++  : > "$evidence_root/build.stderr.log"
++  printf '%s\n' "$build_commit" > "$evidence_root/source_commit.txt"
++  printf '%s\n' "$application_target" > "$evidence_root/app_target.txt"
++  printf '%s\n' "$voice_target" > "$evidence_root/voice_target.txt"
++  printf '%s\n' "$expected_runner_label" > "$evidence_root/runner_label.txt"
++
++  check_source_identity "$upstream_root" "$build_commit"
++  if [[ "$runner_os" == Windows ]]; then
++    check_windows_prerequisites "$upstream_root" "$voice_target" "$tools_root"
++  fi
++  run_native_build "$upstream_root" "$evidence_root" "$runtime_suffix" "$runner_os" "$tools_root" "$system_root" "$windows_architecture"
++  check_source_identity "$upstream_root" "$build_commit"
++
++  helper_name="codex-voice-host$helper_extension"
++  helper_source="$upstream_root/bazel-bin/codex-rs/voice-host/$helper_name"
++  runtime_source="$upstream_root/bazel-bin/third_party/voice/native_runtime_$runtime_suffix"
++  packaged_test_source="$upstream_root/bazel-bin/codex-rs/voice-host/voice-host-packaged_runtime-test-bin$helper_extension"
++  installed_test_source="$upstream_root/bazel-bin/codex-rs/voice-host/voice-host-installed_package_runtime-test-bin$helper_extension"
++  require_build_file "$helper_source" 'voice-host helper'
++  require_build_file "$runtime_source/runtime.json" 'voice runtime receipt'
++  if [[ -d "$runtime_source" ]]; then :; else
++    fail "native build did not produce runtime directory: $runtime_source"
++  fi
++  require_build_file "$packaged_test_source" 'packaged runtime test executable'
++  require_build_file "$installed_test_source" 'installed-package runtime test executable'
++  if [[ -x "$helper_source" ]]; then :; else
++    fail "native voice-host helper is not executable: $helper_source"
++  fi
++  if [[ -x "$packaged_test_source" ]]; then :; else
++    fail "packaged runtime test is not executable: $packaged_test_source"
++  fi
++  if [[ -x "$installed_test_source" ]]; then :; else
++    fail "installed-package runtime test is not executable: $installed_test_source"
++  fi
++  if grep -Fq -- "\"sourceCommit\": \"$build_commit\"" "$runtime_source/runtime.json"; then :; else
++    fail "voice runtime receipt sourceCommit does not match $build_commit"
++  fi
++  mkdir -- "$release_root" "$verification_root"
++  cp -p -- "$helper_source" "$release_root/$helper_name"
++  cp -p -- "$packaged_test_source" "$verification_root/packaged-runtime-test-bin$helper_extension"
++  cp -p -- "$installed_test_source" "$verification_root/installed-package-runtime-test-bin$helper_extension"
++
++  run_logged 'voice runtime staging' "$evidence_root/stage.stdout.log" "$evidence_root/stage.stderr.log" \
++    python "$upstream_root/third_party/voice/release_runtime.py" stage --target "$voice_target" --source "$runtime_source" --output "$release_root/runtime"
++  if [[ "$runner_os" == Windows ]]; then
++    run_logged 'Windows CRT staging' "$evidence_root/windows-crt.stdout.log" "$evidence_root/windows-crt.stderr.log" \
++      python "$upstream_root/third_party/voice/windows_crt.py" --root "$release_root/runtime" --target "$voice_target" --helper "$release_root/$helper_name"
++  fi
++  run_logged 'voice runtime sealing' "$evidence_root/seal.stdout.log" "$evidence_root/seal.stderr.log" \
++    python "$upstream_root/third_party/voice/release_runtime.py" seal --target "$voice_target" --output "$release_root/runtime"
++  if "$release_root/$helper_name" --build-commit | head -c 129 > "$evidence_root/helper-build-commit.txt"; then :; else
++    fail 'staged voice-host helper failed its bounded --build-commit identity check'
++  fi
++  helper_bytes="$(wc -c < "$evidence_root/helper-build-commit.txt" | tr -d '[:space:]')"
++  if [[ "$helper_bytes" != 41 ]]; then
++    fail "staged voice-host helper returned $helper_bytes identity bytes; expected one 40-character commit and newline"
++  fi
++  IFS= read -r helper_commit < "$evidence_root/helper-build-commit.txt"
++  if [[ "$helper_commit" == "$build_commit" ]]; then :; else
++    fail "staged voice-host helper reports build commit '${helper_commit:-empty}', expected $build_commit"
++  fi
++  write_release_file_inventory "$release_root" "$evidence_root" "$build_commit" "$application_target" "$voice_target"
++  check_source_identity "$upstream_root" "$build_commit"
++  printf 'native voice producer complete\n' > "$RESULT_DIR/completed"
++  RESULT_CREATED=0
++}
++
++# Keeps the CLI-selected producer operation inside its cleanup boundary.
++# Arguments:
++# - The producer operation and its command-line arguments.
++# Exit status:
++# - 0 when the requested producer operation completes; otherwise reports the failure status.
++main "$@"
+diff --git a/.github/scripts/test-codex-voice-runtime.sh b/.github/scripts/test-codex-voice-runtime.sh
+new file mode 100755
+index 0000000..c9e07f2
+--- /dev/null
++++ b/.github/scripts/test-codex-voice-runtime.sh
+@@ -0,0 +1,535 @@
++#!/usr/bin/env bash
++# Exercises the producer's target mapping, resource staging, identity checks and failure cleanup.
++set -euo pipefail
++
++SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
++PRODUCER="$SCRIPT_DIR/codex-voice-runtime.sh"
++# The isolated fixture root owns test checkouts and is removed by this test process at exit.
++TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/codex-voice-runtime-tests.XXXXXX")"
++if [[ "${VOICE_TEST_KEEP_ROOT:-0}" == 1 ]]; then
++  trap 'printf "FIXTURE_EVIDENCE_ROOT=%s\\n" "$TEST_ROOT"' EXIT
++else
++  trap 'rm -rf -- "$TEST_ROOT"' EXIT
++fi
++# The fake checkout and helper use this fixed full commit as their valid identity.
++EXPECTED_COMMIT=1111111111111111111111111111111111111111
++# The fake Git boundary returns this distinct commit when a source identity change is required.
++CHANGED_COMMIT=2222222222222222222222222222222222222222
++# The active fixture checkout created by make_fixture and passed to one producer run.
++FIXTURE_ROOT=
++
++# Stops the fixture with a message that identifies the failed behavior.
++fail() {
++  printf 'FAIL: %s\n' "$1" >&2
++  exit 1
++}
++
++# Checks an exact value produced by the producer command or its fixture.
++assert_equal() {
++  local expected="$1"
++  local actual="$2"
++  local description="$3"
++
++  if [[ "$actual" != "$expected" ]]; then
++    fail "$description: expected '$expected', got '$actual'"
++  fi
++}
++
++# Requires a regular output file written by the producer.
++assert_file() {
++  local path="$1"
++  local description="$2"
++
++  if [[ ! -f "$path" ]]; then
++    fail "$description: missing file $path"
++  fi
++}
++
++# Requires a producer-owned path to be absent after a failed run.
++assert_absent() {
++  local path="$1"
++  local description="$2"
++
++  if [[ -e "$path" ]]; then
++    fail "$description: unexpected path $path"
++  fi
++  if [[ -L "$path" ]]; then
++    fail "$description: unexpected path $path"
++  fi
++}
++
++# Requires one exact argument to reach the fake Bazel boundary as one value.
++# Arguments:
++# - The complete expected argument, without the log's angle-bracket delimiters.
++# Exit status:
++# - 0 when the fake Bazel wrapper received the argument intact; otherwise exits with a diagnostic.
++assert_build_argument() {
++  local argument="$1"
++
++  if grep -Fxq -- "<$argument>" "$TEST_ROOT/build-arguments.txt"; then :; else
++    fail "Bazel argument was missing or split: $argument"
++  fi
++}
++
++# Creates a local upstream checkout and fake native tool boundaries for one case.
++make_fixture() {
++  local case_name="$1"
++  local root="$TEST_ROOT/$case_name upstream"
++  local bin="$root/fake-bin"
++
++  FIXTURE_ROOT="$root"
++  mkdir -p "$bin" "$root/.github/scripts" "$root/third_party/voice" "$root/codex-rs/voice-host"
++  cat > "$bin/git" <<'FAKE_GIT'
++#!/usr/bin/env bash
++set -euo pipefail
++if [[ "${1:-}" == -C && "${3:-}" == rev-parse ]]; then
++  if [[ -n "${FAKE_GIT_CHANGE_MARKER:-}" && -f "$FAKE_GIT_CHANGE_MARKER" ]]; then
++    printf '%s\n' "$FAKE_CHANGED_COMMIT"
++  else
++    printf '%s\n' "$FAKE_GIT_COMMIT"
++  fi
++  exit 0
++fi
++exec /usr/bin/git "$@"
++FAKE_GIT
++  cat > "$bin/uname" <<'FAKE_UNAME'
++#!/usr/bin/env bash
++set -euo pipefail
++if [[ "${1:-}" == -m ]]; then
++  printf '%s\n' "$FAKE_UNAME_MACHINE"
++  exit 0
++fi
++exec /usr/bin/uname "$@"
++FAKE_UNAME
++  cat > "$bin/python" <<'FAKE_PYTHON'
++#!/usr/bin/env bash
++set -euo pipefail
++script="$1"
++shift
++case "$script" in
++  */release_runtime.py)
++    operation="$1"
++    shift
++    target=
++    source=
++    output=
++    while (($#)); do
++      case "$1" in
++        --target) target="$2"; shift 2 ;;
++        --source) source="$2"; shift 2 ;;
++        --output) output="$2"; shift 2 ;;
++        *) shift ;;
++      esac
++    done
++    if [[ "$operation" == stage ]]; then
++      if [[ "${FAKE_STAGE_STATUS:-0}" != 0 ]]; then
++        mkdir -p "$output"
++        printf 'injected stage failure\n' >&2
++        exit "$FAKE_STAGE_STATUS"
++      fi
++      if [[ "$target" == *-pc-windows-msvc ]]; then
++        mkdir -p "$output/bin"
++        cp "$source/bin/gstfixture.dll" "$output/bin/gstfixture.dll"
++        printf '{"schemaVersion":1,"target":"%s","sourceCommit":"%s","developmentOnly":true,"libraries":[{"path":"bin/gstfixture.dll","sha256":"fixture"}],"plugins":["bin/gstfixture.dll"]}\n' "$target" "$FAKE_GIT_COMMIT" > "$output/runtime.json"
++      else
++        mkdir -p "$output/lib"
++        cp "$source/lib/libfixture.so" "$output/lib/libfixture.so"
++        printf '{"schemaVersion":1,"target":"%s","sourceCommit":"%s","developmentOnly":true,"libraries":[{"path":"lib/libfixture.so","sha256":"fixture"}],"plugins":["lib/libfixture.so"]}\n' "$target" "$FAKE_GIT_COMMIT" > "$output/runtime.json"
++      fi
++      printf 'fake staged %s\n' "$target"
++      exit 0
++    fi
++    if [[ "$operation" == seal ]]; then
++      if [[ "${FAKE_SEAL_STATUS:-0}" != 0 ]]; then
++        printf 'injected seal failure\n' >&2
++        exit "$FAKE_SEAL_STATUS"
++      fi
++      sed 's/"developmentOnly":true/"developmentOnly":false,"distribution":"publicRelease"/' "$output/runtime.json" > "$output/runtime.json.new"
++      mv "$output/runtime.json.new" "$output/runtime.json"
++      printf 'fake sealed %s\n' "$target"
++      exit 0
++    fi
++    printf 'unexpected release_runtime operation: %s\n' "$operation" >&2
++    exit 90
++    ;;
++  */windows_crt.py)
++    if [[ "${FAKE_CRT_STATUS:-0}" != 0 ]]; then
++      printf 'injected CRT identity failure\n' >&2
++      exit "$FAKE_CRT_STATUS"
++    fi
++    root=
++    while (($#)); do
++      case "$1" in --root) root="$2"; shift 2 ;; *) shift ;; esac
++    done
++    mkdir -p "$root/bin"
++    printf 'fixture CRT\n' > "$root/bin/vcruntime140.dll"
++    exit 0
++    ;;
++  */voice-cygwin-inputs.py)
++    if [[ "${FAKE_WINDOWS_PACKAGES_OK:-1}" == 1 ]]; then exit 0; fi
++    printf 'injected Windows package identity mismatch\n' >&2
++    exit 91
++    ;;
++  *)
++    printf 'unexpected Python interface: %s\n' "$script" >&2
++    exit 92
++    ;;
++esac
++FAKE_PYTHON
++  cat > "$root/.github/scripts/run-bazel-ci.sh" <<'FAKE_BUILD'
++#!/usr/bin/env bash
++set -euo pipefail
++printf '<%s>\n' "$@" >> "$FAKE_BUILD_ARGUMENTS"
++suffix=
++targets=0
++for argument in "$@"; do
++  if [[ "$argument" == -- ]]; then targets=$((targets + 1)); fi
++  case "$argument" in
++    //third_party/voice:native_runtime_*) suffix="${argument#//third_party/voice:native_runtime_}" ;;
++  esac
++done
++if [[ -n "${FAKE_CHANGE_COMMIT_AFTER_BUILD:-}" ]]; then
++  : > "$FAKE_GIT_CHANGE_MARKER"
++fi
++if [[ -z "$suffix" ]]; then
++  printf 'runtime target was not requested\n' >&2
++  exit 93
++fi
++runtime="bazel-bin/third_party/voice/native_runtime_$suffix"
++case "$suffix" in
++  linux_x86_64) voice_target=x86_64-unknown-linux-gnu ;;
++  linux_aarch64) voice_target=aarch64-unknown-linux-gnu ;;
++  macos_x86_64) voice_target=x86_64-apple-darwin ;;
++  macos_aarch64) voice_target=aarch64-apple-darwin ;;
++  windows_x86_64) voice_target=x86_64-pc-windows-msvc ;;
++  windows_aarch64) voice_target=aarch64-pc-windows-msvc ;;
++  *) printf 'unknown fixture runtime suffix: %s\n' "$suffix" >&2; exit 95 ;;
++esac
++if [[ "$suffix" == windows_* ]]; then
++  mkdir -p "$runtime/bin"
++  printf 'fixture DLL\n' > "$runtime/bin/gstfixture.dll"
++else
++  mkdir -p "$runtime/lib"
++  printf 'fixture shared library\n' > "$runtime/lib/libfixture.so"
++fi
++printf '{"target": "%s", "sourceCommit": "%s"}\n' "$voice_target" "$FAKE_GIT_COMMIT" > "$runtime/runtime.json"
++mkdir -p bazel-bin/codex-rs/voice-host
++extension=
++if [[ "$suffix" == windows_* ]]; then extension=.exe; fi
++if [[ "${FAKE_MISSING_RESOURCE:-}" != helper ]]; then
++  if [[ "$suffix" == windows_* ]]; then helper=bazel-bin/codex-rs/voice-host/codex-voice-host.exe
++  else helper=bazel-bin/codex-rs/voice-host/codex-voice-host; fi
++  cat > "$helper" <<'HELPER'
++#!/usr/bin/env bash
++set -euo pipefail
++if [[ "${1:-}" == --build-commit ]]; then printf '%s\n' "$FAKE_HELPER_COMMIT"; exit 0; fi
++exit 94
++HELPER
++  chmod +x "$helper"
++fi
++if [[ "${FAKE_MISSING_RESOURCE:-}" != packaged-test ]]; then
++  printf '#!/usr/bin/env bash\nexit 0\n' > "bazel-bin/codex-rs/voice-host/voice-host-packaged_runtime-test-bin$extension"
++  chmod +x "bazel-bin/codex-rs/voice-host/voice-host-packaged_runtime-test-bin$extension"
++fi
++if [[ "${FAKE_MISSING_RESOURCE:-}" != installed-test ]]; then
++  printf '#!/usr/bin/env bash\nexit 0\n' > "bazel-bin/codex-rs/voice-host/voice-host-installed_package_runtime-test-bin$extension"
++  chmod +x "bazel-bin/codex-rs/voice-host/voice-host-installed_package_runtime-test-bin$extension"
++fi
++if [[ "${FAKE_MISSING_RESOURCE:-}" == runtime ]]; then
++  rm -rf -- "$runtime"
++fi
++if [[ "${FAKE_BUILD_STATUS:-0}" != 0 ]]; then
++  printf 'injected build failure\n' >&2
++  exit "$FAKE_BUILD_STATUS"
++fi
++FAKE_BUILD
++  chmod +x "$bin/git" "$bin/uname" "$bin/python" "$root/.github/scripts/run-bazel-ci.sh"
++}
++
++# Runs the producer and prints its captured boundary output for retained evidence.
++run_producer() {
++  local root="$1"
++  local target="$2"
++  local runner_os="$3"
++  local machine="$4"
++  local commit="$5"
++  local result="$6"
++  shift 6
++  local status=0
++  local processor_architecture=AMD64
++  local log_root="$TEST_ROOT/logs"
++  local evidence_log
++
++  if [[ "$machine" == aarch64 ]]; then
++    processor_architecture=ARM64
++  fi
++  mkdir -p "$log_root"
++  PATH="$root/fake-bin:$PATH" \
++  RUNNER_OS="$runner_os" \
++  FAKE_UNAME_MACHINE="$machine" \
++  FAKE_GIT_COMMIT="$EXPECTED_COMMIT" \
++  FAKE_CHANGED_COMMIT="$CHANGED_COMMIT" \
++  FAKE_HELPER_COMMIT="$commit" \
++  FAKE_BUILD_ARGUMENTS="$TEST_ROOT/build-arguments.txt" \
++  FAKE_GIT_CHANGE_MARKER="$TEST_ROOT/git-changed" \
++  FAKE_WINDOWS_PACKAGES_OK="${FAKE_WINDOWS_PACKAGES_OK:-1}" \
++  SystemRoot="${SystemRoot:-/fixture/windows}" \
++  PROCESSOR_ARCHITECTURE="$processor_architecture" \
++  env "$@" bash "$PRODUCER" build --upstream-root "$root" --target "$target" --build-commit "$commit" --result-dir "$result" \
++    > "$log_root/$target.stdout" 2> "$log_root/$target.stderr" || status=$?
++  printf 'CASE target=%s status=%s\n' "$target" "$status"
++  sed 's/^/stdout: /' "$log_root/$target.stdout"
++  sed 's/^/stderr: /' "$log_root/$target.stderr"
++  if [[ -d "$result/evidence" ]]; then
++    for evidence_log in "$result/evidence"/*.log; do
++      if [[ -f "$evidence_log" ]]; then
++        printf 'producer-evidence %s:\n' "${evidence_log##*/}"
++        sed 's/^/producer-evidence: /' "$evidence_log"
++      fi
++    done
++  fi
++  return "$status"
++}
++
++# Confirms failed runs leave no usable release tree while preserving owned evidence.
++assert_failed_result_cleanup() {
++  local result="$1"
++  assert_absent "$result/completed" 'failed producer completion marker'
++  assert_absent "$result/release" 'failed producer release tree'
++  assert_absent "$result/verification" 'failed producer verification tree'
++  assert_file "$result/evidence/build.stdout.log" 'failed producer build log'
++  assert_file "$result/evidence/build.stderr.log" 'failed producer error log'
++}
++
++# Runs one fake native build and checks its mapped targets and sealed output files.
++check_target_mapping() {
++  local target="$1"
++  local runner_os="$2"
++  local machine="$3"
++  local expected_voice="$4"
++  local expected_suffix="$5"
++  local expected_runner="$6"
++  local expected_helper="$7"
++  local processor_architecture=AMD64
++  local name="mapping-${target}"
++  local root
++  local result="$TEST_ROOT/$name result"
++
++  if [[ "$machine" == aarch64 ]]; then
++    processor_architecture=ARM64
++  fi
++  make_fixture "$name"
++  root="$FIXTURE_ROOT"
++  rm -f -- "$TEST_ROOT/git-changed" "$TEST_ROOT/build-arguments.txt"
++  if [[ "$runner_os" == Windows ]]; then
++    mkdir -p "$root/windows-tools/evidence" "$root/windows-tools/pkgconf-image" "$root/windows-tools/cygwin"
++    printf '{"target": "%s", "pkgconf_version": "3.0.6"}\n' "$target" > "$root/windows-tools/evidence/tools.json"
++    printf '{"schemaVersion": 1, "target": "%s", "cygwinArchitecture": "x86_64"}\n' "$target" > "$root/windows-tools/voice-tools.json"
++    printf 'fixture package inventory\n' > "$root/windows-tools/evidence/packages.txt"
++    export VOICE_WINDOWS_BAZEL_REPOSITORY="$root/windows-tools"
++  else
++    unset VOICE_WINDOWS_BAZEL_REPOSITORY || true
++  fi
++  run_producer "$root" "$target" "$runner_os" "$machine" "$EXPECTED_COMMIT" "$result" || fail "producer rejected valid target $target"
++  assert_file "$result/completed" "completed result for $target"
++  assert_equal "$target" "$(cat "$result/evidence/app_target.txt")" "application target for $target"
++  assert_equal "$expected_voice" "$(cat "$result/evidence/voice_target.txt")" "voice target for $target"
++  assert_equal "$expected_runner" "$(cat "$result/evidence/runner_label.txt")" "native runner mapping for $target"
++  assert_file "$result/release/$expected_helper" "copied helper for $target"
++  if [[ -x "$result/release/$expected_helper" ]]; then :; else
++    fail "copied helper is not executable for $target"
++  fi
++  assert_file "$result/verification/packaged-runtime-test-bin${expected_helper##*codex-voice-host}" "packaged runtime test for $target"
++  assert_file "$result/verification/installed-package-runtime-test-bin${expected_helper##*codex-voice-host}" "installed package test for $target"
++  if [[ -x "$result/verification/packaged-runtime-test-bin${expected_helper##*codex-voice-host}" ]]; then :; else
++    fail "packaged runtime test is not executable for $target"
++  fi
++  if [[ -x "$result/verification/installed-package-runtime-test-bin${expected_helper##*codex-voice-host}" ]]; then :; else
++    fail "installed package test is not executable for $target"
++  fi
++  assert_file "$result/release/runtime/runtime.json" "sealed runtime for $target"
++  assert_file "$result/evidence/release_files.json" "release file manifest for $target"
++  if grep -Fq -- "\"source_commit\": \"$EXPECTED_COMMIT\"" "$result/evidence/release_files.json"; then :; else
++    fail "release file manifest source identity for $target"
++  fi
++  if grep -Fq -- "\"app_target\": \"$target\"" "$result/evidence/release_files.json"; then :; else
++    fail "release file manifest application target for $target"
++  fi
++  if grep -Fq -- "\"voice_target\": \"$expected_voice\"" "$result/evidence/release_files.json"; then :; else
++    fail "release file manifest voice target for $target"
++  fi
++  sed -n 's/.*"path": "\([^"]*\)".*/\1/p' "$result/evidence/release_files.json" > "$TEST_ROOT/$target release-paths.txt"
++  if LC_ALL=C sort -c "$TEST_ROOT/$target release-paths.txt"; then :; else
++    fail "release file manifest entries are not sorted for $target"
++  fi
++  if [[ "$runner_os" == Windows ]]; then
++    assert_build_argument --windows-msvc-host-platform
++    assert_build_argument --platforms=//:local_windows_msvc
++    assert_build_argument '--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows,//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain'
++    assert_build_argument --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
++    assert_build_argument --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
++    assert_build_argument "--inject_repository=voice_windows_tools=$root/windows-tools"
++    assert_build_argument --//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools
++    assert_build_argument '--action_env=SystemRoot=/fixture/windows'
++    assert_build_argument '--host_action_env=SystemRoot=/fixture/windows'
++    assert_build_argument "--action_env=PROCESSOR_ARCHITECTURE=$processor_architecture"
++    assert_build_argument "--host_action_env=PROCESSOR_ARCHITECTURE=$processor_architecture"
++    assert_build_argument --workspace_status_command=./scripts/workspace-status.cmd
++  fi
++  if [[ "$runner_os" == macOS ]]; then
++    assert_build_argument --macos_minimum_os=14.0
++  fi
++  if [[ "$runner_os" == Linux ]]; then
++    assert_build_argument --workspace_status_command=./scripts/workspace-status.sh
++  fi
++  if grep -Fq -- "//third_party/voice:native_runtime_$expected_suffix" "$TEST_ROOT/build-arguments.txt"; then :; else
++    fail "Bazel runtime target mapping for $target"
++  fi
++}
++
++# Runs a failure case and checks that its result directory contains evidence only.
++check_failed_case() {
++  local name="$1"
++  local target="$2"
++  local runner_os="$3"
++  local machine="$4"
++  shift 4
++  local root
++  local result="$TEST_ROOT/$name result"
++
++  make_fixture "$name"
++  root="$FIXTURE_ROOT"
++  rm -f -- "$TEST_ROOT/git-changed" "$TEST_ROOT/build-arguments.txt"
++  if run_producer "$root" "$target" "$runner_os" "$machine" "$EXPECTED_COMMIT" "$result" "$@"; then
++    fail "$name unexpectedly succeeded"
++  fi
++  assert_failed_result_cleanup "$result"
++}
++
++# Runs a preflight failure and requires that no result directory is created.
++check_preflight_failure() {
++  local name="$1"
++  local target="$2"
++  local runner_os="$3"
++  local machine="$4"
++  local commit="$5"
++  shift 5
++  local root
++  local result="$TEST_ROOT/$name result"
++
++  make_fixture "$name"
++  root="$FIXTURE_ROOT"
++  rm -f -- "$TEST_ROOT/git-changed" "$TEST_ROOT/build-arguments.txt"
++  if run_producer "$root" "$target" "$runner_os" "$machine" "$commit" "$result" "$@"; then
++    fail "$name unexpectedly succeeded"
++  fi
++  assert_absent "$result" "$name result directory"
++  if [[ -s "$TEST_ROOT/build-arguments.txt" ]]; then
++    fail "$name invoked Bazel before preflight rejected it"
++  fi
++}
++
++# The producer command maps all six application targets to native runtime targets and host runners.
++check_target_mapping x86_64-unknown-linux-musl Linux x86_64 x86_64-unknown-linux-gnu linux_x86_64 ubuntu-24.04 codex-voice-host
++check_target_mapping aarch64-unknown-linux-musl Linux aarch64 aarch64-unknown-linux-gnu linux_aarch64 ubuntu-24.04-arm codex-voice-host
++check_target_mapping x86_64-apple-darwin macOS x86_64 x86_64-apple-darwin macos_x86_64 macos-15-intel codex-voice-host
++check_target_mapping aarch64-apple-darwin macOS arm64 aarch64-apple-darwin macos_aarch64 macos-15 codex-voice-host
++check_target_mapping x86_64-pc-windows-msvc Windows x86_64 x86_64-pc-windows-msvc windows_x86_64 windows-2025 codex-voice-host.exe
++check_target_mapping aarch64-pc-windows-msvc Windows aarch64 aarch64-pc-windows-msvc windows_aarch64 windows-11-arm codex-voice-host.exe
++
++# The producer rejects invalid targets and source identities before creating state or invoking Bazel.
++check_preflight_failure unsupported-target x86_64-wasm32-wasi Linux x86_64 "$EXPECTED_COMMIT"
++check_failed_case changed-source-before x86_64-unknown-linux-musl Linux x86_64 FAKE_GIT_COMMIT="$CHANGED_COMMIT"
++
++# The producer rejects missing helper, runtime, or native test outputs after a successful build.
++check_failed_case missing-helper x86_64-unknown-linux-musl Linux x86_64 FAKE_MISSING_RESOURCE=helper
++check_failed_case missing-runtime x86_64-unknown-linux-musl Linux x86_64 FAKE_MISSING_RESOURCE=runtime
++check_failed_case missing-packaged-test x86_64-unknown-linux-musl Linux x86_64 FAKE_MISSING_RESOURCE=packaged-test
++check_failed_case missing-installed-test x86_64-unknown-linux-musl Linux x86_64 FAKE_MISSING_RESOURCE=installed-test
++
++# The producer removes partial build, stage, seal, and post-build identity results while keeping logs.
++check_failed_case changed-source-after x86_64-unknown-linux-musl Linux x86_64 FAKE_CHANGE_COMMIT_AFTER_BUILD=1
++check_failed_case failed-build x86_64-unknown-linux-musl Linux x86_64 FAKE_BUILD_STATUS=31
++check_failed_case failed-stage x86_64-unknown-linux-musl Linux x86_64 FAKE_STAGE_STATUS=32
++check_failed_case failed-seal x86_64-unknown-linux-musl Linux x86_64 FAKE_SEAL_STATUS=33
++check_failed_case changed-helper-identity x86_64-unknown-linux-musl Linux x86_64 FAKE_HELPER_COMMIT="$CHANGED_COMMIT"
++
++# The producer rejects a Windows prerequisite repository whose generated target identity differs.
++make_fixture wrong-windows-identity
++windows_root="$FIXTURE_ROOT"
++mkdir -p "$windows_root/windows-tools/evidence" "$windows_root/windows-tools/pkgconf-image" "$windows_root/windows-tools/cygwin"
++printf '{"target": "x86_64-pc-windows-msvc", "pkgconf_version": "3.0.6"}\n' > "$windows_root/windows-tools/evidence/tools.json"
++printf '{"schemaVersion": 1, "target": "x86_64-pc-windows-msvc", "cygwinArchitecture": "x86_64"}\n' > "$windows_root/windows-tools/voice-tools.json"
++printf 'fixture package inventory\n' > "$windows_root/windows-tools/evidence/packages.txt"
++export VOICE_WINDOWS_BAZEL_REPOSITORY="$windows_root/windows-tools"
++check_failed_case wrong-windows-identity aarch64-pc-windows-msvc Windows aarch64
++unset VOICE_WINDOWS_BAZEL_REPOSITORY
++
++# The producer rejects a Windows prerequisite package inventory that differs from the pinned snapshot.
++make_fixture wrong-windows-package-identity
++windows_root="$FIXTURE_ROOT"
++mkdir -p "$windows_root/windows-tools/evidence" "$windows_root/windows-tools/pkgconf-image" "$windows_root/windows-tools/cygwin"
++printf '{"target": "x86_64-pc-windows-msvc", "pkgconf_version": "3.0.6"}\n' > "$windows_root/windows-tools/evidence/tools.json"
++printf '{"schemaVersion": 1, "target": "x86_64-pc-windows-msvc", "cygwinArchitecture": "x86_64"}\n' > "$windows_root/windows-tools/voice-tools.json"
++printf 'fixture package inventory\n' > "$windows_root/windows-tools/evidence/packages.txt"
++export VOICE_WINDOWS_BAZEL_REPOSITORY="$windows_root/windows-tools"
++check_failed_case wrong-windows-package-identity x86_64-pc-windows-msvc Windows x86_64 FAKE_WINDOWS_PACKAGES_OK=0
++unset VOICE_WINDOWS_BAZEL_REPOSITORY
++
++# Verify that the Windows producer rejects absent authoritative tools metadata.
++# Arguments: fixture name; metadata layout, either missing or root-only.
++# Environment: TEST_ROOT and FIXTURE_ROOT select the test scratch and fixture paths.
++# Environment: VOICE_WINDOWS_BAZEL_REPOSITORY is set to the fixture repository during
++# the producer call and unset before returning.
++# Errors: Calls fail when the producer accepts invalid metadata, reports the wrong
++# path, leaves failed output, or invokes Bazel before rejecting the prerequisite.
++# Exit status: Returns 0 when rejection and cleanup checks pass; fail exits with 1.
++check_windows_tools_metadata_failure() {
++  local name="$1"
++  local layout="$2"
++  local target=x86_64-pc-windows-msvc
++  local root
++  local result="$TEST_ROOT/$name result"
++  local tools_root
++  local expected_metadata
++
++  make_fixture "$name"
++  root="$FIXTURE_ROOT"
++  rm -f -- "$TEST_ROOT/git-changed" "$TEST_ROOT/build-arguments.txt"
++  tools_root="$root/windows-tools"
++  mkdir -p "$tools_root/evidence" "$tools_root/pkgconf-image" "$tools_root/cygwin"
++  printf '{"schemaVersion": 1, "target": "%s", "cygwinArchitecture": "x86_64"}\n' "$target" > "$tools_root/voice-tools.json"
++  printf 'fixture package inventory\n' > "$tools_root/evidence/packages.txt"
++  if [[ "$layout" == root-only ]]; then
++    printf '{"target": "%s", "pkgconf_version": "3.0.6"}\n' "$target" > "$tools_root/tools.json"
++  fi
++  export VOICE_WINDOWS_BAZEL_REPOSITORY="$tools_root"
++  if run_producer "$root" "$target" Windows x86_64 "$EXPECTED_COMMIT" "$result"; then
++    fail "$name unexpectedly succeeded"
++  fi
++  expected_metadata="$tools_root/evidence/tools.json"
++  if grep -Fq -- "Windows build-tool identity file is missing: $expected_metadata" "$TEST_ROOT/logs/$target.stderr"; then :; else
++    fail "$name did not reject the missing authoritative metadata path"
++  fi
++  assert_failed_result_cleanup "$result"
++  if [[ -s "$TEST_ROOT/build-arguments.txt" ]]; then
++    fail "$name invoked Bazel before prerequisite metadata was rejected"
++  fi
++  unset VOICE_WINDOWS_BAZEL_REPOSITORY
++}
++
++check_windows_tools_metadata_failure missing-windows-tools-metadata missing
++check_windows_tools_metadata_failure misleading-root-only-windows-tools-metadata root-only
++
++# The producer preserves a caller-owned result path when it already exists.
++make_fixture preexisting-result
++existing_root="$FIXTURE_ROOT"
++existing_result="$TEST_ROOT/preexisting-result result"
++mkdir -p "$existing_result"
++printf 'caller-owned\n' > "$existing_result/sentinel"
++if run_producer "$existing_root" x86_64-unknown-linux-musl Linux x86_64 "$EXPECTED_COMMIT" "$existing_result"; then
++  fail 'producer accepted a preexisting result directory'
++fi
++assert_equal caller-owned "$(cat "$existing_result/sentinel")" 'preexisting result sentinel'
++assert_absent "$existing_result/completed" 'preexisting result completion marker'
++
++printf 'PASS: native voice producer fixture cases\n'

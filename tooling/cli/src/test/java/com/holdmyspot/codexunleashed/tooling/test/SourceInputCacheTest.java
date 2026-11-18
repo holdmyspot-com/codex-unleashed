@@ -87,7 +87,8 @@ public final class SourceInputCacheTest
 			requireThat(SourceInputSnapshots.resumable(fixture.snapshot(profile)), "completedPreparation").isRegularFile();
 			fixture.record(profile);
 			requireThat(Files.exists(SourceInputSnapshots.pending(fixture.snapshot(profile))), "pendingInputs").isFalse();
-			requireThat(Files.exists(SourceInputSnapshots.resumable(fixture.snapshot(profile))), "completedPreparation").isFalse();
+			requireThat(Files.exists(SourceInputSnapshots.resumable(fixture.snapshot(profile))),
+				"completedPreparation").isFalse();
 		}
 	}
 
@@ -217,7 +218,8 @@ public final class SourceInputCacheTest
 				IOException failure = requireException(IOException.class, () -> fixture.prepare(profile));
 				requireThat(failure.getMessage(), "cleanupFailure").contains("Cargo clean failed with status 7");
 				requireThat(Files.exists(fixture.snapshot(profile)), "successfulSnapshot").isFalse();
-				requireThat(Files.exists(SourceInputSnapshots.resumable(fixture.snapshot(profile))), "resumableState").isFalse();
+				requireThat(Files.exists(SourceInputSnapshots.resumable(fixture.snapshot(profile))),
+					"resumableState").isFalse();
 				requireThat(SourceInputSnapshots.pending(fixture.snapshot(profile)), "pendingInputs").isRegularFile();
 			}
 			requireThat(fixture.cleanCalls().size(), "cleanupAttempts").isEqualTo(2);
@@ -240,7 +242,8 @@ public final class SourceInputCacheTest
 
 			IOException failure = requireException(IOException.class, () -> fixture.prepare(profile));
 
-			requireThat(failure.getMessage(), "missingExecutable").contains("Binaries absent from Cargo metadata: cache-demo");
+				requireThat(failure.getMessage(), "missingExecutable").
+					contains("Binaries absent from Cargo metadata: cache-demo");
 			requireThat(fixture.cleanCalls(), "cleanRequests").isEmpty();
 			requireThat(fixture.cargoCalls.size(), "metadataRequests").isEqualTo(1);
 			requireThat(Files.exists(fixture.snapshot(profile)), "successfulSnapshot").isFalse();
@@ -296,8 +299,8 @@ public final class SourceInputCacheTest
 
 			fixture.prepare(CargoCacheProfile.CI_TEST);
 
-			requireThat(Files.getLastModifiedTime(fixture.source).toInstant(), "ci-testRecordedTimestamp")
-				.isEqualTo(SAVED.plusSeconds(50));
+			requireThat(Files.getLastModifiedTime(fixture.source).toInstant(), "ci-testRecordedTimestamp").
+				isEqualTo(SAVED.plusSeconds(50));
 			fixture.record(CargoCacheProfile.CI_TEST);
 			requireThat(Files.readString(fixture.snapshot(CargoCacheProfile.RELEASE)), "releaseInputs").isEqualTo(release);
 			requireThat(fixture.snapshot(CargoCacheProfile.CI_TEST), "ci-testInputs").isRegularFile();
@@ -320,10 +323,14 @@ public final class SourceInputCacheTest
 			CargoCacheProfile other = CargoCacheProfile.CI_TEST;
 			if (profile == CargoCacheProfile.CI_TEST)
 				other = CargoCacheProfile.RELEASE;
-			Path host = fixture.write(fixture.target.resolve(profile.cargoName() + "/build/script"), "host", NOW.plusSeconds(1));
-			Path target = fixture.write(fixture.target.resolve("test-target/" + profile.cargoName() + "/cache-demo"), "target", NOW);
-			Path retainedHost = fixture.write(fixture.target.resolve(other.cargoName() + "/build/script"), "keep host", SAVED);
-			Path retainedTarget = fixture.write(fixture.target.resolve("test-target/" + other.cargoName() + "/cache-demo"), "keep target", SAVED);
+			Path host = fixture.write(fixture.target.resolve(profile.cargoName() + "/build/script"), "host",
+				NOW.plusSeconds(1));
+			Path target = fixture.write(
+				fixture.target.resolve("test-target/" + profile.cargoName() + "/cache-demo"), "target", NOW);
+			Path retainedHost = fixture.write(fixture.target.resolve(other.cargoName() + "/build/script"), "keep host",
+				SAVED);
+			Path retainedTarget = fixture.write(
+				fixture.target.resolve("test-target/" + other.cargoName() + "/cache-demo"), "keep target", SAVED);
 			FileTime changedTime = FileTime.from(SAVED.plusSeconds(100));
 			Files.setLastModifiedTime(fixture.source, changedTime);
 
@@ -429,7 +436,8 @@ public final class SourceInputCacheTest
 			fixture.initialize();
 			fixture.seedSuccess(profile);
 			Path host = fixture.write(fixture.target.resolve(profile.cargoName() + "/build/script"), "host", NOW);
-			Path target = fixture.write(fixture.target.resolve("test-target/" + profile.cargoName() + "/cache-demo"), "target", NOW);
+			Path target = fixture.write(
+				fixture.target.resolve("test-target/" + profile.cargoName() + "/cache-demo"), "target", NOW);
 			Files.setLastModifiedTime(fixture.source, FileTime.from(SAVED.plusSeconds(100)));
 
 			fixture.prepare(profile);
@@ -454,7 +462,8 @@ public final class SourceInputCacheTest
 		{
 			fixture.initialize();
 			fixture.seedSuccess(profile);
-			Path selected = fixture.write(fixture.target.resolve("test-target/" + profile.cargoName() + "/side-demo"), "selected", SAVED);
+			Path selected = fixture.write(
+				fixture.target.resolve("test-target/" + profile.cargoName() + "/side-demo"), "selected", SAVED);
 			Path sibling = fixture.write(selected.resolveSibling("side_companion"), "sibling", SAVED);
 			Path library = fixture.write(selected.resolveSibling("deps/libside_demo.rlib"), "library", SAVED);
 			SourceInputCache.Request request = new SourceInputCache.Request(fixture.workspace, "test-target",
@@ -474,21 +483,33 @@ public final class SourceInputCacheTest
 	 */
 	private static final class Fixture implements AutoCloseable
 	{
+		/** Shared native bindings used by the fixture's inventory and timestamp operations. */
 		private final ToolingScope scope = new DefaultToolingScope();
+		/** Temporary root removed when the fixture closes. */
 		private final Path base;
+		/** Workspace whose source inputs are inventoried. */
 		private final Path workspace;
+		/** Source file whose contents and timestamp drive cache checks. */
 		private final Path source;
+		/** Compiled outputs managed by the cache tests. */
 		private final Path target;
+		/** Environment values supplied to the controlled command runner. */
 		private final Map<String, String> environment = new HashMap<>();
+		/** Cargo commands emitted by the production cache coordinator. */
 		private final List<List<String>> cargoCalls = new ArrayList<>();
 		/** Exit status supplied by the external cleanup collaborator. */
 		private int cleanStatus;
-		/** Cargo metadata field shapes used by SourceCacheMetadataTest, with two workspace members and one external library. */
+		/**
+		 * Cargo metadata fields used by SourceCacheMetadataTest: two workspace members and one external library.
+		 */
 		private String metadata = """
 			{"packages":[
-			 {"name":"cache-demo","id":"root","targets":[{"name":"cache_demo","kind":["lib"]},{"name":"cache-demo","kind":["bin"]}]},
-			 {"name":"side-demo","id":"side","targets":[{"name":"side_demo","kind":["lib"]},{"name":"side-demo","kind":["bin"]}]},
-			 {"name":"external-dependency","id":"external","targets":[{"name":"external_dependency","kind":["lib"]}]}],
+			 {"name":"cache-demo","id":"root","targets":[
+			  {"name":"cache_demo","kind":["lib"]},{"name":"cache-demo","kind":["bin"]}]},
+			 {"name":"side-demo","id":"side","targets":[
+			  {"name":"side_demo","kind":["lib"]},{"name":"side-demo","kind":["bin"]}]},
+			 {"name":"external-dependency","id":"external","targets":[
+			  {"name":"external_dependency","kind":["lib"]}]}],
 			 "workspace_members":["root","side"]}
 			""";
 
@@ -675,9 +696,15 @@ public final class SourceInputCacheTest
 		{
 			requireThat(directory, "commandWorkingDirectory").isEqualTo(workspace);
 			requireThat(temporary, "commandTemporaryDirectory").isEqualTo(base.resolve("captures"));
-			requireThat(overrides, "commandEnvironment").isEqualTo(environment);
-			if (command.equals(List.of("git", "-C", workspace.toString(), "rev-parse", "--show-toplevel")))
-				return new SystemCommands.Result(1, "", "outsideAGitRepository");
+			boolean isGitRootDiscovery = command.equals(List.of("git", "-C", workspace.toString(), "rev-parse",
+				"--show-toplevel"));
+			Map<String, String> expectedEnvironment = new HashMap<>(environment);
+			if (isGitRootDiscovery)
+				expectedEnvironment.put("LC_ALL", "C");
+			requireThat(overrides, "commandEnvironment").isEqualTo(expectedEnvironment);
+			if (isGitRootDiscovery)
+				return new SystemCommands.Result(128, "",
+					"fatal: not a git repository (or any of the parent directories): .git");
 			if (command.getFirst().equals("fixture-cargo"))
 			{
 				cargoCalls.add(List.copyOf(command));

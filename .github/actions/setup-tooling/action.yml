@@ -1,0 +1,20 @@
+name: Set up Java tooling runtime
+description: Build the Codex tooling launcher in job-owned temporary state
+inputs:
+  tooling-root:
+    description: Checkout that holds tooling/cli, when it is not the workspace root
+    default: ${{ github.workspace }}
+runs:
+  using: composite
+  steps:
+    - name: Select the maintained tooling JDK
+      uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+      with:
+        distribution: zulu
+        java-version: 27.0.1
+
+    - name: Build the tooling runtime
+      shell: bash
+      env:
+        TOOLING_ROOT: ${{ inputs.tooling-root }}
+      run: bash "$GITHUB_ACTION_PATH/../../scripts/setup-tooling.sh"

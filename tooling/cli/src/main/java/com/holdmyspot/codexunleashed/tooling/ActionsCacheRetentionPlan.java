@@ -29,7 +29,8 @@ public final class ActionsCacheRetentionPlan
 	/**
 	 * Selects the upstream reference that names an upstream-scoped cache key.
 	 */
-	private static final Pattern UPSTREAM_KEY = Pattern.compile("^upstream-([0-9a-f]{40}|main|rust-v\\d+\\.\\d+\\.\\d+)-.*$");
+	private static final Pattern UPSTREAM_KEY = Pattern.compile(
+		"^upstream-([0-9a-f]{40}|main|rust-v\\d+\\.\\d+\\.\\d+)-.*$");
 	/**
 	 * Selects the cache line of a key that ends with a workflow run ID and attempt number.
 	 */
@@ -51,11 +52,12 @@ public final class ActionsCacheRetentionPlan
 	 * <p>
 	 * The object must contain retained_upstream_refs, a non-empty array of stable upstream tags, {@code main} or full
 	 * commit IDs, and caches with unique positive integer IDs, string key and ref fields and ISO-8601 created_at
-	 * instants. A cache whose key starts with {@code upstream-} followed by a commit, {@code main} or stable tag and a
-	 * hyphen is retained when that reference is retained and is otherwise obsolete. A cache whose key ends with a
-	 * hyphen, a run ID, a hyphen and an attempt number is retained when it is the newest cache with the same key prefix
-	 * on the same branch, and is otherwise obsolete; GitHub restores the newest cache that matches a prefix, so older
-	 * ones are never read. Every other cache is unmanaged and left to GitHub's eviction of caches unread for seven days.
+	 * instants. A
+	 * cache whose key starts with {@code upstream-} followed by a commit, {@code main} or stable tag and a hyphen is
+	 * retained when that reference is retained and is otherwise obsolete. A cache whose key ends with a hyphen, a run ID,
+	 * a hyphen and an attempt number is retained when it is the newest cache with the same key prefix on the same branch,
+	 * and is otherwise obsolete; GitHub restores the newest cache that matches a prefix, so older ones are never read.
+	 * Every other cache is unmanaged and left to GitHub's eviction of caches unread for seven days.
 	 * Newer means a later created_at, then a larger ID. IDs keep inventory order.
 	 *
 	 * @param scope open caller-owned shared values; remains open
@@ -67,7 +69,8 @@ public final class ActionsCacheRetentionPlan
 	 * @throws NullPointerException if an argument is null
 	 * @throws IOException if input cannot be read or does not satisfy the inventory contract
 	 */
-	public static int run(ToolingScope scope, String[] arguments, InputStream in, PrintStream out, PrintStream err) throws IOException
+	public static int run(ToolingScope scope, String[] arguments, InputStream in, PrintStream out, PrintStream err)
+		throws IOException
 	{
 		Objects.requireNonNull(scope, "scope may not be null");
 		Objects.requireNonNull(arguments, "arguments");
@@ -121,7 +124,12 @@ public final class ActionsCacheRetentionPlan
 			Matcher run = RUN_KEY.matcher(cache.key());
 			if (!run.matches())
 				continue;
-			newestOfLine.merge(cache.ref() + "\n" + run.group(1), cache, (left, right) -> left.isNewerThan(right) ? left : right);
+			newestOfLine.merge(cache.ref() + "\n" + run.group(1), cache, (left, right) ->
+			{
+				if (left.isNewerThan(right))
+					return left;
+				return right;
+			});
 		}
 
 		List<BigInteger> retainedIds = new ArrayList<>();

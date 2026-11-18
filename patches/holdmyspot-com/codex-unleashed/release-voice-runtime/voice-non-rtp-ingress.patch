@@ -1,0 +1,194 @@
+From 33db8d66bd4f29a452bb8a9c785244011c59ec14 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 15 Nov 2026 01:27:20 -0500
+Subject: [PATCH] voice: preserve non-RTP ingress packets
+
+---
+ codex-rs/voice-host/src/incoming.rs       |  10 +-
+ codex-rs/voice-host/src/incoming_tests.rs | 119 ++++++++++++++++++++++
+ 2 files changed, 127 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/voice-host/src/incoming.rs b/codex-rs/voice-host/src/incoming.rs
+index 78a94fb..1441813 100644
+--- a/codex-rs/voice-host/src/incoming.rs
++++ b/codex-rs/voice-host/src/incoming.rs
+@@ -53,6 +53,7 @@ pub(crate) struct Incoming {
+ }
+ 
+ pub(crate) struct Ingress {
++    read_queue: VecDeque<TaggedPacket>,
+     write_queue: VecDeque<TaggedPacket>,
+     state: Arc<State>,
+     sender: mpsc::Sender<ReceivedRtp>,
+@@ -74,6 +75,7 @@ impl Incoming {
+                 receiver,
+             },
+             Ingress {
++                read_queue: VecDeque::new(),
+                 write_queue: VecDeque::new(),
+                 state,
+                 sender,
+@@ -121,8 +123,12 @@ impl sansio::Protocol<TaggedPacket, TaggedPacket, ()> for Ingress {
+     type Time = Instant;
+ 
+     fn handle_read(&mut self, message: TaggedPacket) -> Result<(), Self::Error> {
+-        let Packet::Rtp(packet) = message.message.packet else {
++        if !matches!(&message.message.packet, Packet::Rtp(_)) {
++            self.read_queue.push_back(message);
+             return Ok(());
++        }
++        let Packet::Rtp(packet) = message.message.packet else {
++            unreachable!("packet was checked as RTP");
+         };
+         let epoch = self.state.epoch.load(Ordering::Acquire);
+         if epoch % 2 == 1 || self.state.failed.load(Ordering::Acquire) {
+@@ -163,7 +169,7 @@ impl sansio::Protocol<TaggedPacket, TaggedPacket, ()> for Ingress {
+     }
+ 
+     fn poll_read(&mut self) -> Option<Self::Rout> {
+-        None
++        self.read_queue.pop_front()
+     }
+ 
+     fn handle_write(&mut self, message: TaggedPacket) -> Result<(), Self::Error> {
+diff --git a/codex-rs/voice-host/src/incoming_tests.rs b/codex-rs/voice-host/src/incoming_tests.rs
+index fd99291..9352659 100644
+--- a/codex-rs/voice-host/src/incoming_tests.rs
++++ b/codex-rs/voice-host/src/incoming_tests.rs
+@@ -1,7 +1,12 @@
+ use super::*;
+ use pretty_assertions::assert_eq;
++use rtc::interceptor::Attribute;
+ use rtc::rtp::header::Header;
+ use rtc::sansio::Protocol;
++use rtc::shared::EcnCodepoint;
++use rtc::shared::TransportContext;
++use rtc::shared::TransportProtocol;
++use std::net::SocketAddr;
+ 
+ fn pair() -> (Incoming, Ingress) {
+     let (incoming, ingress) = Incoming::new();
+@@ -26,6 +31,120 @@ fn packet(size: usize, at: Instant) -> TaggedPacket {
+     }
+ }
+ 
++fn rtcp_packet(
++    at: Instant,
++    transport: TransportContext,
++    source: u32,
++    reason: &'static [u8],
++    attributes: Vec<Attribute>,
++) -> TaggedPacket {
++    let mut packet = TaggedPacket {
++        now: at,
++        transport,
++        message: Packet::Rtcp(vec![Box::new(rtc::rtcp::goodbye::Goodbye {
++            sources: vec![source],
++            reason: reason.into(),
++        })])
++        .into(),
++    };
++    packet.message.attributes = attributes;
++    packet
++}
++
++fn assert_packet_fields_equal(actual: &TaggedPacket, expected: &TaggedPacket) {
++    assert_eq!(actual.now, expected.now);
++    assert_eq!(actual.transport, expected.transport);
++    assert_eq!(actual.message.packet, expected.message.packet);
++    assert_eq!(
++        actual.message.attributes.len(),
++        expected.message.attributes.len()
++    );
++    assert_eq!(
++        actual
++            .message
++            .attributes
++            .iter()
++            .map(std::mem::discriminant)
++            .collect::<Vec<_>>(),
++        expected
++            .message
++            .attributes
++            .iter()
++            .map(std::mem::discriminant)
++            .collect::<Vec<_>>()
++    );
++}
++
++#[test]
++fn non_rtp_packets_forward_once_in_order_without_changing_rtp_or_outbound_behavior() {
++    let (mut incoming, mut ingress) = pair();
++    let first = rtcp_packet(
++        Instant::now(),
++        TransportContext {
++            local_addr: SocketAddr::from(([127, 0, 0, 1], 4000)),
++            peer_addr: SocketAddr::from(([127, 0, 0, 1], 5000)),
++            transport_protocol: TransportProtocol::UDP,
++            ecn: Some(EcnCodepoint::Ect0),
++        },
++        11,
++        b"first sender left",
++        vec![Attribute::DeliverToApplication],
++    );
++    let second = rtcp_packet(
++        Instant::now(),
++        TransportContext {
++            local_addr: SocketAddr::from(([127, 0, 0, 1], 4001)),
++            peer_addr: SocketAddr::from(([127, 0, 0, 1], 5001)),
++            transport_protocol: TransportProtocol::TCP,
++            ecn: Some(EcnCodepoint::Ce),
++        },
++        22,
++        b"second sender left",
++        vec![Attribute::RecoveredByFec, Attribute::DeliverToApplication],
++    );
++    let first_expected = TaggedPacket {
++        now: first.now,
++        transport: first.transport,
++        message: first.message.clone(),
++    };
++    let second_expected = TaggedPacket {
++        now: second.now,
++        transport: second.transport,
++        message: second.message.clone(),
++    };
++
++    ingress.handle_read(first).unwrap();
++    ingress.handle_read(second).unwrap();
++    let first_actual = ingress.poll_read().unwrap();
++    let second_actual = ingress.poll_read().unwrap();
++    assert_packet_fields_equal(&first_actual, &first_expected);
++    assert_packet_fields_equal(&second_actual, &second_expected);
++    assert!(ingress.poll_read().is_none());
++
++    let input = packet(/*size*/ 32, Instant::now());
++    let Packet::Rtp(expected_rtp) = &input.message.packet else {
++        panic!()
++    };
++    let expected_bytes = expected_rtp.marshal().unwrap();
++    let expected_at = input.now;
++    ingress.handle_read(input).unwrap();
++    let received = incoming.take().unwrap().unwrap();
++    assert_eq!(received.at, expected_at);
++    assert_eq!(received.as_ref(), expected_bytes.as_ref());
++    assert!(ingress.poll_read().is_none());
++
++    let outgoing = packet(/*size*/ 32, Instant::now());
++    let outgoing_expected = TaggedPacket {
++        now: outgoing.now,
++        transport: outgoing.transport,
++        message: outgoing.message.clone(),
++    };
++    ingress.handle_write(outgoing).unwrap();
++    let outgoing_actual = ingress.poll_write().unwrap();
++    assert_packet_fields_equal(&outgoing_actual, &outgoing_expected);
++    assert!(ingress.poll_write().is_none());
++}
++
+ #[test]
+ fn arrival_and_rtp_bytes_survive_the_adapter_without_an_upstream_copy() {
+     let (mut incoming, mut ingress) = pair();
+-- 
+2.43.0
+

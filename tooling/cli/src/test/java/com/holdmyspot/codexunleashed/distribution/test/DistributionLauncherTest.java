@@ -5,7 +5,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import com.holdmyspot.codexunleashed.tooling.QuietBuildDump;
+import com.holdmyspot.codexunleashed.tooling.SystemCommands;
+import com.holdmyspot.codexunleashed.tooling.ToolingLauncher;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -30,6 +35,7 @@ public final class DistributionLauncherTest
      * <p>
      * Resolution uses the JDK's module system, which jlink also uses; the JDK's own tools are trusted to work as
      * documented, so the test neither links an image nor runs the parser.
+     *
      * @throws Exception if module staging, resolution or independent cleanup fails
      */
     @Test
@@ -41,13 +47,13 @@ public final class DistributionLauncherTest
             Files.copy(dependencyJar(TOML_JAR), modules.resolve(TOML_JAR));
             for (String jar : TOML_DEPENDENCY_JARS)
                 Files.copy(dependencyJar(jar), modules.resolve(jar));
-            var finder = java.lang.module.ModuleFinder.of(modules);
-            var references = finder.findAll();
+            java.lang.module.ModuleFinder finder = java.lang.module.ModuleFinder.of(modules);
+            java.util.Set<java.lang.module.ModuleReference> references = finder.findAll();
             requireThat(references.size(), "stagedModuleCount").isEqualTo(1 + TOML_DEPENDENCY_JARS.size());
-            for (var reference : references)
-                requireThat(reference.descriptor().isAutomatic(), reference.descriptor().name() + ".isAutomatic()")
-                    .isFalse();
-            var configuration = ModuleLayer.boot().configuration().resolve(finder,
+            for (java.lang.module.ModuleReference reference : references)
+                requireThat(reference.descriptor().isAutomatic(), reference.descriptor().name() + ".isAutomatic()").
+                    isFalse();
+            java.lang.module.Configuration configuration = ModuleLayer.boot().configuration().resolve(finder,
                 java.lang.module.ModuleFinder.of(), java.util.Set.of("tools.jackson.dataformat.toml"));
             requireThat(configuration.modules().size(), "resolvedModuleCount").isEqualTo(references.size());
         }
@@ -59,59 +65,21 @@ public final class DistributionLauncherTest
      * An independent Java receiver observes the values after the packaged launcher has executed. The shell launcher
      * assigns {@code LAUNCHER}, {@code DIR} and {@code JAVA_TEMP}, a POSIX shell resets {@code IFS}, and a shell drops
      * variables whose names it cannot represent, so the fixture supplies only other portable names.
+     *
      * @throws Exception if fixture compilation, production packaging, launch or cleanup fails
      */
     @Test
-    public void linuxLaunchersPreserveEnvironmentAndArguments() throws Exception
+    public void linuxLauncherPreservesInvocation() throws Exception
     {
         if (!System.getProperty("os.name").equals("Linux"))
             throw new SkipException("Linux launcher preservation requires actual Linux");
         try (Directory directory = new Directory())
         {
             Path root = directory.path;
-            Path modules = Files.createDirectory(root.resolve("modules"));
-            Path fixture = Files.createDirectory(root.resolve("receiver-source"));
-            Path receiver = fixture.resolve("Main.java");
-            Files.writeString(receiver, """
-                package com.holdmyspot.codexunleashed.tooling;
-                public final class Main {
-                    public static void main(String[] args) throws Exception {
-                        var result = new java.util.Properties();
-                        result.setProperty("stdin", new String(System.in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
-                        System.out.print("authentic stdout");
-                        System.err.print("authentic stderr");
-                        System.getenv().forEach((name, value) -> result.setProperty("env." + name, value));
-                        for (int i = 1; i < args.length; ++i) result.setProperty("arg." + (i - 1), args[i]);
-                        try (var output = java.nio.file.Files.newOutputStream(java.nio.file.Path.of(args[0]))) {
-                            result.store(output, "Independent actual child environment and arguments");
-                        }
-                        System.exit(23);
-                    }
-                }
-                """);
-            Files.writeString(fixture.resolve("module-info.java"), "module com.holdmyspot.codexunleashed.tooling {}\n");
-            Path receiverClasses = Files.createDirectory(root.resolve("receiver-classes"));
-            checked(root, tool("javac"), "-d", receiverClasses.toString(), fixture.resolve("module-info.java").toString(),
-                receiver.toString());
-            checked(root, tool("jar"), "--create", "--file", modules.resolve("tooling.jar").toString(),
-                "-C", receiverClasses.toString(), ".");
-            Files.writeString(fixture.resolve("module-info.java"), "module ch.qos.logback.classic {}\n");
-            Path loggingClasses = Files.createDirectory(root.resolve("logging-classes"));
-            checked(root, tool("javac"), "-d", loggingClasses.toString(), fixture.resolve("module-info.java").toString());
-            checked(root, tool("jar"), "--create", "--file", modules.resolve("logging.jar").toString(),
-                "-C", loggingClasses.toString(), ".");
-            Path driver = Files.createDirectory(root.resolve("driver-classes"));
-            Path buildSource = Path.of(System.getProperty("basedir", ".")).resolve(
-                "src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java").toAbsolutePath();
-            checked(root, tool("javac"), "--release", "27", "-Xlint:all", "-Werror", "-Xdoclint:all/private",
-                "-d", driver.toString(), buildSource.toString());
-            Path parent = Files.createDirectories(root.resolve("nested space/quote'\""));
-            Path runtime = parent.resolve("runtime");
-            checked(root, tool("java"), "-cp", driver.toString(),
-                "com.holdmyspot.codexunleashed.distribution.DistributionMain", modules.toString(),
-                runtime.toString());
+            RuntimeFixture fixture = createRuntime(root);
+            Path runtime = fixture.runtime();
 
-            java.util.Map<String, String> supplied = new java.util.LinkedHashMap<>();
+            Map<String, String> supplied = new LinkedHashMap<>();
             supplied.put("NORMAL", "spaces 'single' \"double\" $literal");
             supplied.put("MULTILINE", "first\nsecond");
             supplied.put("EMPTY", "");
@@ -150,23 +118,171 @@ public final class DistributionLauncherTest
                 requireThat(exit, "actualLauncherExit").isEqualTo(23);
             }
             java.util.Properties result = new java.util.Properties();
-            try (java.io.InputStream input = Files.newInputStream(captured)) { result.load(input); }
+            try (java.io.InputStream input = Files.newInputStream(captured))
+            {
+                result.load(input);
+            }
             requireThat(result.getProperty("stdin"), "actualStandardInput").isEqualTo("authentic stdin\n");
+            requireThat(result.getProperty("launcher"), "actualPackagedLauncher").
+                isEqualTo(runtime.resolve("bin/codex-tooling").toString());
             requireThat(Files.readString(output), "actualStandardOutput").isEqualTo("authentic stdout");
             String diagnostic = Files.readString(error);
             requireThat(diagnostic, "actualStandardError").contains("authentic stderr");
             requireThat(diagnostic, "standardOutputAbsentFromError").doesNotContain("authentic stdout");
-            java.util.Map<String, String> observed = new java.util.LinkedHashMap<>();
+            Map<String, String> observed = new LinkedHashMap<>();
             for (String key : supplied.keySet()) observed.put(key, result.getProperty("env." + key));
             requireThat(observed, "actualLauncherEnvironment").isEqualTo(supplied);
             for (int index = 0; index < arguments.size(); ++index)
                 requireThat(result.getProperty("arg." + index), "actualUserArgument").isEqualTo(arguments.get(index));
-
         }
     }
 
     /**
+     * Preserves literal Java arguments, JVM properties and separate process streams through the packaged Windows
+     * runtime's direct Java entry.
+     * <p>
+     * The fixture uses the production Windows argument encoder and a receiver packaged independently by jlink. A
+     * non-Windows host skips this test; that result does not establish native Windows acceptance.
+     *
+     * @throws Exception if fixture compilation, production packaging, launch or cleanup fails
+     */
+    @Test
+    public void windowsJavaPreservesInvocation() throws Exception
+    {
+        if (!System.getProperty("os.name").startsWith("Windows"))
+            throw new SkipException("Windows launcher preservation requires actual Windows");
+        try (Directory directory = new Directory("distribution launcher '100% & !-"))
+        {
+            Path root = directory.path;
+            RuntimeFixture fixture = createRuntime(root);
+            Path launcher = fixture.launcher();
+            Path temporaryDirectory = Files.createDirectory(root.resolve("temporary directory '100% & !"));
+            Path captured = root.resolve("receiver output.properties");
+            List<String> arguments = List.of("", "whitespace value", "line one\nline two",
+                "embedded \"double quotes\"", "trailing backslash\\", "%CODEX_LITERAL%", "ampersand&",
+                "pipe|", "caret^", "exclamation!", "dollar$", "parentheses()", "percent%middle%");
+            List<String> command = new ArrayList<>(ToolingLauncher.command(QuietBuildDump.Platform.WINDOWS,
+                launcher, temporaryDirectory));
+            command.add(captured.toString());
+            command.addAll(arguments);
+
+            String systemRoot = System.getenv("SystemRoot");
+            if (systemRoot == null || systemRoot.isEmpty())
+                throw new IllegalStateException("Windows SystemRoot is required to start the packaged Java runtime");
+            Map<String, String> supplied = new LinkedHashMap<>();
+            supplied.put("SystemRoot", systemRoot);
+            supplied.put("CODEX_LITERAL", "expanded-value");
+
+            ProcessBuilder launch = SystemCommands.createBuilder(command).directory(root.toFile());
+            launch.environment().clear();
+            launch.environment().putAll(supplied);
+            Path inputPath = root.resolve("receiver-stdin.txt");
+            Path output = root.resolve("receiver-stdout.log");
+            Path error = root.resolve("receiver-stderr.log");
+            launch.redirectInput(inputPath.toFile()).redirectOutput(output.toFile()).redirectError(error.toFile());
+            Files.writeString(inputPath, "windows receiver input\n");
+            try (Process child = launch.start())
+            {
+                int exit = child.waitFor();
+                if (exit != 23)
+                {
+                    System.err.println(Files.readString(output));
+                    System.err.println(Files.readString(error));
+                }
+                requireThat(exit, "actualWindowsJavaExit").isEqualTo(23);
+            }
+
+            java.util.Properties result = new java.util.Properties();
+            try (java.io.InputStream input = Files.newInputStream(captured))
+            {
+                result.load(input);
+            }
+            requireThat(result.getProperty("stdin"), "actualWindowsStandardInput").
+                isEqualTo("windows receiver input\n");
+            requireThat(result.getProperty("launcher"), "actualWindowsPackagedLauncher").isEqualTo(launcher.toString());
+            requireThat(result.getProperty("temporaryDirectory"), "actualWindowsTemporaryDirectory").
+                isEqualTo(temporaryDirectory.toString());
+            requireThat(result.getProperty("allowAmbiguousCommands"), "actualWindowsArgumentEncodingProperty").
+                isEqualTo("true");
+            requireThat(Files.readString(output), "actualWindowsStandardOutput").isEqualTo("authentic stdout");
+            String diagnostic = Files.readString(error);
+            requireThat(diagnostic, "actualWindowsStandardError").contains("authentic stderr");
+            requireThat(diagnostic, "standardOutputAbsentFromWindowsError").doesNotContain("authentic stdout");
+            requireThat(result.getProperty("argumentCount"), "actualWindowsArgumentCount").
+                isEqualTo(Integer.toString(arguments.size()));
+            for (int index = 0; index < arguments.size(); ++index)
+                requireThat(result.getProperty("arg." + index), "actualWindowsUserArgument").
+                    isEqualTo(arguments.get(index));
+            requireThat(result.getProperty("env.CODEX_LITERAL"), "actualWindowsControlledEnvironment").
+                isEqualTo("expanded-value");
+            requireThat(result.getProperty("arg." + arguments.indexOf("%CODEX_LITERAL%")),
+                "percentArgumentRemainsLiteral").isEqualTo("%CODEX_LITERAL%");
+        }
+    }
+
+    /**
+     * Builds an independently owned receiver module and jlink runtime beneath one fixture root.
+     *
+     * @param root owned fixture root
+     * @return the runtime and its packaged launcher identity
+     * @throws Exception if compilation or packaging fails
+     */
+    private static RuntimeFixture createRuntime(Path root) throws Exception
+    {
+        Path modules = Files.createDirectory(root.resolve("modules"));
+        Path source = Files.createDirectory(root.resolve("receiver-source"));
+        Path receiver = source.resolve("Main.java");
+        Files.writeString(receiver, """
+            package com.holdmyspot.codexunleashed.tooling;
+            public final class Main {
+                public static void main(String[] args) throws Exception {
+                    var result = new java.util.Properties();
+                    result.setProperty("launcher", System.getProperty("codex.tooling.launcher", ""));
+                    result.setProperty("temporaryDirectory", System.getProperty("java.io.tmpdir", ""));
+                    result.setProperty("allowAmbiguousCommands",
+                        System.getProperty("jdk.lang.Process.allowAmbiguousCommands", ""));
+                    String standardInput = new String(System.in.readAllBytes(),
+                        java.nio.charset.StandardCharsets.UTF_8);
+                    result.setProperty("stdin", standardInput);
+                    System.out.print("authentic stdout");
+                    System.err.print("authentic stderr");
+                    System.getenv().forEach((name, value) -> result.setProperty("env." + name, value));
+                    result.setProperty("argumentCount", Integer.toString(args.length - 1));
+                    for (int i = 1; i < args.length; ++i) result.setProperty("arg." + (i - 1), args[i]);
+                    try (var output = java.nio.file.Files.newOutputStream(java.nio.file.Path.of(args[0]))) {
+                        result.store(output, "Independent actual child environment and arguments");
+                    }
+                    System.exit(23);
+                }
+            }
+            """);
+        Files.writeString(source.resolve("module-info.java"),
+            "module com.holdmyspot.codexunleashed.tooling {}\n");
+        Path receiverClasses = Files.createDirectory(root.resolve("receiver-classes"));
+        checked(root, tool("javac"), "-d", receiverClasses.toString(), source.resolve("module-info.java").toString(),
+            receiver.toString());
+        checked(root, tool("jar"), "--create", "--file", modules.resolve("tooling.jar").toString(),
+            "-C", receiverClasses.toString(), ".");
+        Files.writeString(source.resolve("module-info.java"), "module ch.qos.logback.classic {}\n");
+        Path loggingClasses = Files.createDirectory(root.resolve("logging-classes"));
+        checked(root, tool("javac"), "-d", loggingClasses.toString(), source.resolve("module-info.java").toString());
+        checked(root, tool("jar"), "--create", "--file", modules.resolve("logging.jar").toString(),
+            "-C", loggingClasses.toString(), ".");
+        Path driver = Files.createDirectory(root.resolve("driver-classes"));
+        Path buildSource = Path.of(System.getProperty("basedir", ".")).resolve(
+            "src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java").toAbsolutePath();
+        checked(root, tool("javac"), "--release", "27", "-Xlint:all", "-Werror", "-Xdoclint:all/private",
+            "-d", driver.toString(), buildSource.toString());
+        Path parent = Files.createDirectories(root.resolve("installation space '100% & !"));
+        Path runtime = parent.resolve("runtime");
+        checked(root, tool("java"), "-cp", driver.toString(),
+            "com.holdmyspot.codexunleashed.distribution.DistributionMain", modules.toString(), runtime.toString());
+        return new RuntimeFixture(runtime, runtime.resolve("bin/codex-tooling"));
+    }
+
+    /**
      * Finds a dependency JAR that the build placed on this JVM's module or class path.
+     *
      * @param name the JAR's file name
      * @return the JAR
      * @throws IOException if no path entry has that name
@@ -182,35 +298,50 @@ public final class DistributionLauncherTest
 
     /**
      * Resolves a required tool from the actual selected JDK, including native Windows spelling.
+     *
      * @param name tool basename
      * @return absolute JDK tool path
      */
     private static String tool(String name)
     {
-        return Path.of(System.getProperty("java.home"), "bin",
-            name + (java.io.File.separatorChar == 92 ? ".exe" : "")).toString();
+        String executableName = name;
+        if (java.io.File.separatorChar == 92)
+            executableName += ".exe";
+        return Path.of(System.getProperty("java.home"), "bin", executableName).toString();
     }
 
     /**
      * Runs a real packaging operation in an owned fixture and retains a failed result in the assertion.
+     *
      * @param root owned diagnostic parent
      * @param arguments exact process arguments
      * @return exact UTF-8 standard output
      * @throws Exception if acquisition, execution, collection or status validation fails
      */
-    private static String checked(Path root, String... arguments) throws Exception
-    {
+	private static String checked(Path root, String... arguments) throws Exception
+	{
         Path stdout = Files.createTempFile(root, "stdout-", ".log");
         Path stderr = Files.createTempFile(root, "stderr-", ".log");
-        ProcessBuilder builder = new ProcessBuilder(arguments).redirectOutput(stdout.toFile()).redirectError(stderr.toFile());
+        ProcessBuilder builder = new ProcessBuilder(arguments).
+            redirectOutput(stdout.toFile()).redirectError(stderr.toFile());
         try (Process child = builder.start())
         {
             int status = child.waitFor();
             if (status != 0) System.err.print(Files.readString(stderr));
             requireThat(status, "packagingStatus").isEqualTo(0);
         }
-        return Files.readString(stdout);
-    }
+		return Files.readString(stdout);
+	}
+
+	/**
+	 * Independently packaged image paths owned by one test fixture.
+	 *
+	 * @param runtime the linked image root
+	 * @param launcher the packaged wrapper identity
+	 */
+	private record RuntimeFixture(Path runtime, Path launcher)
+	{
+	}
 
 	/** Owns and removes one test's filesystem independently. */
 	private static final class Directory implements AutoCloseable
@@ -220,21 +351,34 @@ public final class DistributionLauncherTest
 
 		/**
 		 * Creates one exclusive fixture.
+		 *
 		 * @throws IOException if the fixture cannot be created
 		 */
 		private Directory() throws IOException
 		{
-			path = Files.createTempDirectory("distribution-launcher-").toAbsolutePath();
+			this("distribution-launcher-");
+		}
+
+		/**
+		 * Creates one exclusive fixture with a caller-selected, platform-legal path prefix.
+		 *
+		 * @param prefix platform-legal root name prefix
+		 * @throws IOException if the fixture cannot be created
+		 */
+		private Directory(String prefix) throws IOException
+		{
+			path = Files.createTempDirectory(prefix).toAbsolutePath();
 		}
 
 		/**
 		 * Removes only this fixture's paths.
+		 *
 		 * @throws IOException if owned fixture removal fails
 		 */
 		@Override
 		public void close() throws IOException
 		{
-			try (var files = Files.walk(path))
+			try (java.util.stream.Stream<Path> files = Files.walk(path))
 			{
 				for (Path file : files.sorted(Comparator.reverseOrder()).toList())
 					Files.delete(file);

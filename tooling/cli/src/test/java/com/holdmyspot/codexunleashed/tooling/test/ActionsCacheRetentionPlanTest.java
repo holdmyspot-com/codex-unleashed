@@ -38,7 +38,7 @@ public final class ActionsCacheRetentionPlanTest
 	 * each branch, and leaves other caches to GitHub's own eviction.
 	 */
 	@Test
-	public void keepsRetainedUpstreamCachesAndNewestRunCaches()
+	public void keepsRetainedAndNewestCaches()
 	{
 		String zig = "setup-zig-cache-v2-build-zig-linux-x86_64-0.14.0-";
 		String inventory = """
@@ -120,9 +120,9 @@ public final class ActionsCacheRetentionPlanTest
 		{
 			int status = Main.run(new String[]{"plan-actions-cache-retention"},
 				new ByteArrayInputStream(inventory.getBytes(StandardCharsets.UTF_8)), out, err);
-			requireThat(status, "status")
-				.withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic")
-				.isEqualTo(0);
+			requireThat(status, "status").
+				withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic").
+				isEqualTo(0);
 		}
 		try (ToolingScope scope = new DefaultToolingScope())
 		{
@@ -148,8 +148,8 @@ public final class ActionsCacheRetentionPlanTest
 			requireThat(status, "status").isEqualTo(1);
 		}
 		requireThat(output.size(), "output.size()").isEqualTo(0);
-		requireThat(diagnostics.toString(StandardCharsets.UTF_8).contains(expectedDiagnostic), "diagnostics")
-			.withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic")
-			.isTrue();
+		requireThat(diagnostics.toString(StandardCharsets.UTF_8).contains(expectedDiagnostic), "diagnostics").
+			withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic").
+			isTrue();
 	}
 }

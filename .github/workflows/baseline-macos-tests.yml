@@ -96,6 +96,11 @@ jobs:
           path: restart-metadata
           persist-credentials: false
 
+      - name: Set up the Java tooling runtime
+        uses: ./restart-metadata/.github/actions/setup-tooling
+        with:
+          tooling-root: ${{ github.workspace }}/restart-metadata
+
       - name: Validate the selection and preserve restart inputs outside the source checkout
         id: inputs
         env:
@@ -118,12 +123,9 @@ jobs:
           mkdir -p "$evidence"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
-          cp restart-metadata/.github/scripts/check-test-skips.py "$RUNNER_TEMP/check-test-skips.py"
-          cp restart-metadata/.github/scripts/compare-test-baseline.py "$RUNNER_TEMP/compare-test-baseline.py"
           if [[ -d restart-metadata/docs/test-baselines ]]; then
             cp -R restart-metadata/docs/test-baselines "$RUNNER_TEMP/test-baselines"
           fi
-          cp restart-metadata/.github/scripts/reclaim-baseline-macos-xcodes.py "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           commit="${UPSTREAM_COMMIT:-$(cat restart-metadata/.github/upstream-commit)}"
           printf '%s\n' "$commit" > "$evidence/upstream-commit"
@@ -210,19 +212,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/setsid-bin"
-          cat > "$RUNNER_TEMP/setsid-bin/setsid" <<'SHIM'
-          #!/usr/bin/env python3
-          import os
-          import sys
-
-          if len(sys.argv) < 2:
-              sys.exit(1)
-          if os.fork() != 0:
-              sys.exit(0)
-          os.setsid()
-          os.execvp(sys.argv[1], sys.argv[1:])
-          SHIM
-          chmod +x "$RUNNER_TEMP/setsid-bin/setsid"
+          cc -O2 -Wall -Wextra -Werror -o "$RUNNER_TEMP/setsid-bin/setsid" restart-metadata/.github/scripts/setsid-shim.c
           printf '%s\n' "$RUNNER_TEMP/setsid-bin" >> "$GITHUB_PATH"
 
       - name: Read upstream's pinned Rust toolchain
@@ -244,7 +234,7 @@ jobs:
       # larger macos-15-xlarge runner does not, so free the inactive Xcode versions and, as upstream does, drop debug information.
       - name: Reclaim inactive Xcode versions
         run: |
-          python3 "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py" \
+          bash "$CODEX_TOOLING" reclaim-baseline-macos-xcodes \
             --evidence-directory "$RUNNER_TEMP/baseline-macos-nextest-evidence"
           printf 'CARGO_PROFILE_CI_TEST_DEBUG=0\n' >> "$GITHUB_ENV"
 
@@ -402,7 +392,7 @@ jobs:
             find "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/codex-rs/target}" "$GITHUB_WORKSPACE/codex-rs/target" "$RUNNER_TEMP" \
               -path '*/nextest/*' -name junit.xml 2>/dev/null | sort -u)
           if (( ${#reports[@]} == 0 )); then printf 'No nextest reports to check.\n'; exit 0; fi
-          python3 "$RUNNER_TEMP/check-test-skips.py" --platform macos "${reports[@]}" \
+          bash "$CODEX_TOOLING" check-test-skips --platform macos "${reports[@]}" \
             2>&1 | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/skip-check.log"
 
       - name: Compare the failures with the committed unpatched baseline
@@ -429,10 +419,10 @@ jobs:
           if [[ -z "${PATCHES// }" ]]; then
             # An unpatched run is the source of a baseline; the evidence artifact carries it for committing under
             # docs/test-baselines.
-            python3 "$RUNNER_TEMP/compare-test-baseline.py" --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
+            bash "$CODEX_TOOLING" compare-test-baseline --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
               --write-baseline --output "$RUNNER_TEMP/baseline-macos-nextest-evidence/$platform.json" "${reports[@]}"
           else
-            python3 "$RUNNER_TEMP/compare-test-baseline.py" --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
+            bash "$CODEX_TOOLING" compare-test-baseline --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
               --baseline-dir "$RUNNER_TEMP/test-baselines" "${reports[@]}" \
               2>&1 | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/baseline-comparison.log"
             exit "${PIPESTATUS[0]}"
@@ -446,3 +436,8 @@ jobs:
           path: ${{ runner.temp }}/baseline-macos-nextest-evidence
           retention-days: 3
           if-no-files-found: warn
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"

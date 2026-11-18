@@ -33,8 +33,8 @@ public final class SourceCacheCommandTest
 			int status = Main.run(new String[]{"clean-cached-release-binaries", "missing-workspace", "../outside",
 				"codex"}, InputStream.nullInputStream(), err, err);
 			requireThat(status, "status").isEqualTo(2);
-			requireThat(diagnostics.toString(StandardCharsets.UTF_8).contains("Invalid Cargo target directory name"), "actual")
-				.isTrue();
+			requireThat(diagnostics.toString(StandardCharsets.UTF_8).
+				contains("Invalid Cargo target directory name"), "actual").isTrue();
 		}
 	}
 
@@ -49,11 +49,10 @@ public final class SourceCacheCommandTest
 		{
 			int status = Main.run(new String[]{"clean-cached-release-binaries", "--profile", "ci-test",
 				"missing-workspace", "../outside", "codex"}, InputStream.nullInputStream(), err, err);
-			requireThat(status, "status")
-				.withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic")
-				.isEqualTo(2);
-			requireThat(diagnostics.toString(StandardCharsets.UTF_8).contains("Invalid Cargo target directory name"), "actual")
-				.isTrue();
+			requireThat(status, "status").withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic").
+				isEqualTo(2);
+			requireThat(diagnostics.toString(StandardCharsets.UTF_8).
+				contains("Invalid Cargo target directory name"), "actual").isTrue();
 		}
 	}
 
@@ -68,11 +67,10 @@ public final class SourceCacheCommandTest
 		{
 			int status = Main.run(new String[]{"clean-cached-release-binaries", "--profile", "../outside",
 				"missing-workspace", "native-target", "codex"}, InputStream.nullInputStream(), err, err);
-			requireThat(status, "status")
-				.withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic")
-				.isEqualTo(2);
-			requireThat(diagnostics.toString(StandardCharsets.UTF_8).contains("Unsupported Cargo cache profile"), "diagnostics")
-				.isTrue();
+			requireThat(status, "status").withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic").
+				isEqualTo(2);
+			requireThat(diagnostics.toString(StandardCharsets.UTF_8).
+				contains("Unsupported Cargo cache profile"), "diagnostics").isTrue();
 		}
 	}
 

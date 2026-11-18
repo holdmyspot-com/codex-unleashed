@@ -1,0 +1,3 @@
+pgmajfault 9
+pswpin 11
+pswpout 12

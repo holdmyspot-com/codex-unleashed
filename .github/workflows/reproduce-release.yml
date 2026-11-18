@@ -1,0 +1,141 @@
+name: Reproduce authenticated release
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published release tag whose complete assets will be authenticated
+        required: true
+        type: string
+      target:
+        description: Native release target
+        required: true
+        type: choice
+        options:
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+          - x86_64-pc-windows-msvc
+          - aarch64-pc-windows-msvc
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ${{ fromJSON('{"x86_64-unknown-linux-musl":"ubuntu-24.04","aarch64-unknown-linux-musl":"ubuntu-24.04-arm","aarch64-apple-darwin":"macos-15-arm64","x86_64-apple-darwin":"macos-15-intel","x86_64-pc-windows-msvc":"windows-2025","aarch64-pc-windows-msvc":"windows-11-arm"}')[inputs.target] }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET: ${{ inputs.target }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Retain independent trusted driver
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/reproduction-driver"
+          git clone --no-local --no-hardlinks "$GITHUB_WORKSPACE" "$root"
+          test ! -e "$root/.git/objects/info/alternates"
+          {
+            printf 'REPRODUCTION_ROOT=%s\n' "$root"
+            printf 'REPRODUCTION_RELEASE=%s\n' "$RUNNER_TEMP/reproduction-release"
+            printf 'REPRODUCTION_OUTPUT=%s\n' "$RUNNER_TEMP/reproduction-output"
+          } >> "$GITHUB_ENV"
+      - uses: ./.github/actions/setup-tooling
+        with:
+          tooling-root: ${{ env.REPRODUCTION_ROOT }}
+      - name: Download complete published release
+        run: |
+          set -euo pipefail
+          mkdir "$REPRODUCTION_RELEASE"
+          gh release download "$RELEASE_TAG" --repo holdmyspot-com/codex-unleashed --dir "$REPRODUCTION_RELEASE"
+      - name: Authenticate and reconstruct recorded source
+        id: prepare
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          shopt -s dotglob nullglob
+          entries=(*)
+          if (( ${#entries[@]} )); then rm -rf -- "${entries[@]}"; fi
+          state="$(bash "$CODEX_TOOLING" release-reproduction prepare \
+            --project-root "$REPRODUCTION_ROOT" --manifest "$REPRODUCTION_RELEASE/release-manifest.json" \
+            --target "$TARGET" --workspace "$GITHUB_WORKSPACE" --output-dir "$REPRODUCTION_OUTPUT")"
+          printf 'state=%s\n' "$state" >> "$GITHUB_OUTPUT"
+          printf 'REPRODUCTION_FORK=%s/%s/fork_checkout\n' "$REPRODUCTION_ROOT" "${state%/state.json}" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e
+        with:
+          version: '0.13.5'
+      - name: Read recorded source Rust toolchain
+        id: rust
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^" ]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: ${{ steps.rust.outputs.channel }}
+          targets: ${{ inputs.target }}
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        if: runner.os == 'Linux'
+        with:
+          version: 0.14.0
+      - name: Install recorded Linux prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          bash .github/scripts/install-musl-build-tools.sh
+          bash "$CODEX_TOOLING" apt-install-with-fallback binutils make pkg-config libcap-dev
+          echo 'AWS_LC_SYS_NO_JITTER_ENTROPY=1' >> "$GITHUB_ENV"
+          target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_$TARGET"
+          printf '%s=1\n' "${target_no_jitter//-/_}" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ inputs.target }}
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: ${{ inputs.target }}
+          cache-scope: reproduction-voice-${{ inputs.target }}
+      - uses: ./.github/actions/setup-msvc-env
+        if: runner.os == 'Windows'
+        with:
+          target: ${{ inputs.target }}
+      - name: Install recorded Windows voice prerequisites
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:REPRODUCTION_FORK/.github/scripts/setup-baseline-windows-voice.ps1" `
+            -EvidenceDirectory "$env:REPRODUCTION_OUTPUT/windows-setup" -Target $env:TARGET
+      - name: Recompute Windows Bazel path
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./.github/scripts/compute-bazel-windows-path.ps1 -Target $env:TARGET
+      - name: Fit Linux build memory
+        if: runner.os == 'Linux'
+        run: bash "$REPRODUCTION_FORK/.github/scripts/fit-linux-build-memory.sh"
+      - name: Run shared recorded recipe and compare compressed archive
+        env:
+          PREPARED_STATE: ${{ steps.prepare.outputs.state }}
+        run: |
+          set -euo pipefail
+          bash "$CODEX_TOOLING" release-reproduction run-prepared \
+            --project-root "$REPRODUCTION_ROOT" --state "$PREPARED_STATE" \
+            --release-dir "$REPRODUCTION_RELEASE" --workspace "$GITHUB_WORKSPACE" \
+            --output-dir "$REPRODUCTION_OUTPUT"
+      - name: Retain reproduction evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: reproduction-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.REPRODUCTION_OUTPUT }}
+          if-no-files-found: warn
+      - name: Remove only validated owned attempt
+        if: always() && steps.prepare.outputs.state != ''
+        env:
+          PREPARED_STATE: ${{ steps.prepare.outputs.state }}
+        run: |
+          bash "$CODEX_TOOLING" release-reproduction cleanup \
+            --project-root "$REPRODUCTION_ROOT" --state "$PREPARED_STATE"

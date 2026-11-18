@@ -7,8 +7,8 @@ prepares MSVC. Requires SystemRoot, a host processor architecture, RUNNER_TEMP, 
 GITHUB_ENV. Reads .github/scripts/voice-cygwin-snapshot.json from that checkout,
 downloads its binary and source archives from the upstream openai/codex release,
 and rejects any archive whose byte count or SHA-256 digest differs from the manifest.
-Runs the checkout's setup-voice-windows.ps1 for x86_64-pc-windows-msvc, then exports
-VOICE_WINDOWS_SYSTEM_ROOT and VOICE_WINDOWS_HOST_ARCH through GITHUB_ENV.
+Runs the checkout's setup-voice-windows.ps1 for the validated selected Windows target, then
+exports VOICE_WINDOWS_SYSTEM_ROOT and VOICE_WINDOWS_HOST_ARCH through GITHUB_ENV.
 Copies the manifest to EvidenceDirectory and attempts to copy available tool evidence
 there even if installation raises a terminating error. Terminating download,
 verification, installation, and evidence-copy errors stop the script. Downloads remain
@@ -17,7 +17,9 @@ under RUNNER_TEMP.
 Destination directory created if needed for the manifest and installed-tools evidence.
 #>
 param(
-    [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$EvidenceDirectory
+    [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$EvidenceDirectory,
+    [ValidateSet("x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc")]
+    [string]$Target = "x86_64-pc-windows-msvc"
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,7 +51,7 @@ foreach ($Archive in @($Manifest.archive, $Manifest.sourceArchive)) {
 
 try {
     & ./.github/scripts/setup-voice-windows.ps1 `
-        -Target "x86_64-pc-windows-msvc" `
+        -Target $Target `
         -SnapshotArchive (Join-Path $Downloads $Manifest.archive.name)
 } finally {
     $ToolEvidence = Join-Path $env:RUNNER_TEMP "voice-windows-build-tools/evidence"

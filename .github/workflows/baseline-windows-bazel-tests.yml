@@ -47,6 +47,18 @@ jobs:
           path: restart-metadata
           persist-credentials: false
 
+      - name: Select the maintained tooling JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Build the tooling runtime
+        shell: bash
+        env:
+          TOOLING_ROOT: restart-metadata
+        run: bash restart-metadata/.github/scripts/setup-tooling.sh
+
       - name: Preserve restart inputs outside the source checkout
         id: inputs
         run: |
@@ -54,8 +66,6 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
           mkdir -p "$evidence"
           cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
-          cp restart-metadata/.github/scripts/check-test-skips.py "$RUNNER_TEMP/check-test-skips.py"
-          cp restart-metadata/.github/scripts/compare-test-baseline.py "$RUNNER_TEMP/compare-test-baseline.py"
           mkdir -p "$RUNNER_TEMP/test-baselines"
           if [[ -d restart-metadata/docs/test-baselines ]]; then cp -R restart-metadata/docs/test-baselines/. "$RUNNER_TEMP/test-baselines/"; fi
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
@@ -111,13 +121,11 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Check upstream's Windows wrapper and target selector
+      - name: Check upstream's Windows wrapper
         if: matrix.target == 'x86_64-pc-windows-gnullvm' && matrix.shard == 1
         shell: pwsh
         run: |
           python .github/scripts/test_run_bazel_with_buildbuddy.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m unittest discover -s .github/scripts -p test_select_windows_bazel_targets.py
           exit $LASTEXITCODE
 
       - name: Prepare upstream's Bazel host and toolchain
@@ -162,25 +170,7 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
           cargo metadata --format-version 1 --filter-platform "$TARGET" \
             --manifest-path codex-rs/Cargo.toml > "$RUNNER_TEMP/baseline-cargo-metadata.json"
-          python - <<'PYTHON'
-          import subprocess
-          import tomllib
-          from pathlib import Path
-
-          before = tomllib.loads(subprocess.check_output(["git", "show", "HEAD:codex-rs/Cargo.lock"], text=True))
-          after = tomllib.loads(Path("codex-rs/Cargo.lock").read_text())
-          before_header = {key: value for key, value in before.items() if key != "package"}
-          after_header = {key: value for key, value in after.items() if key != "package"}
-          assert before_header == after_header, "Cargo changed lockfile metadata beyond workspace versions"
-          before_external = [package for package in before["package"] if "source" in package]
-          after_external = [package for package in after["package"] if "source" in package]
-          assert before_external == after_external, "Cargo changed external dependency records"
-          version = tomllib.loads(Path("codex-rs/Cargo.toml").read_text())["workspace"]["package"]["version"]
-          expected_workspace = [dict(package, version=version) for package in before["package"] if "source" not in package]
-          actual_workspace = [package for package in after["package"] if "source" not in package]
-          assert expected_workspace == actual_workspace, "Cargo changed workspace records beyond their release version"
-          print(f"Verified {len(actual_workspace)} workspace versions; external dependencies unchanged")
-          PYTHON
+          bash "$CODEX_TOOLING" verify-workspace-lock-versions "$GITHUB_WORKSPACE"
           git diff --check
           git diff -- codex-rs/Cargo.lock > "$evidence/workspace-version-lock.diff"
           git diff --binary > "$evidence/source-before.diff"
@@ -210,8 +200,9 @@ jobs:
             query='tests(//...) except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...))'
             .github/scripts/run-bazel-query-ci.sh --output=label -- "$query" \
               | LC_ALL=C sort > "$evidence/candidate-targets.txt"
-            python .github/scripts/select_windows_bazel_targets.py \
+            bash "$CODEX_TOOLING" select-windows-bazel-targets \
               --shard "$BAZEL_TEST_SHARD" --shard-count "$BAZEL_TEST_SHARD_COUNT" \
+              --durations "$GITHUB_WORKSPACE/.github/scripts/windows_bazel_test_durations.tsv" \
               < "$evidence/candidate-targets.txt" > "$evidence/selected-targets.txt"
             test -s "$evidence/selected-targets.txt"
             while IFS= read -r target; do
@@ -240,6 +231,10 @@ jobs:
               --host_action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH"
             )
           fi
+          printf '%s\n' "${targets[@]}" > "$evidence/execution-targets.txt"
+          bep="$evidence/bazel-tests.bep.json"
+          rm -f -- "$bep"
+          test_args+=("--build_event_json_file=$bep")
           printf 'shard=%s\nshard_count=%s\n' "$BAZEL_TEST_SHARD" "$BAZEL_TEST_SHARD_COUNT" > "$evidence/shard.txt"
           (
             while true; do
@@ -262,8 +257,12 @@ jobs:
           result=${PIPESTATUS[0]}
           set -e
           printf 'exit_code=%s\n' "$result" > "$evidence/bazel-tests.receipt"
+          bash "$CODEX_TOOLING" validate-bazel-test-evidence \
+            --bep "$bep" --expected-patterns "$evidence/execution-targets.txt" --bazel-exit-code "$result" \
+            > "$evidence/bazel-test-evidence.json"
           git diff --binary > "$evidence/source-after.diff"
           cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
+          printf 'bep-complete=true\n' >> "$GITHUB_OUTPUT"
           # Bazel exits 3 when tests failed and everything else built. The comparison with the unpatched baseline below
           # judges those failures (an unpatched run records that baseline), so they alone do not fail this step.
           # Any other failure, such as a build error, does.
@@ -275,52 +274,52 @@ jobs:
 
       - name: Record native Opus install links and CMake inputs
         if: always() && env.BAZEL_OUTPUT_BASE != ''
+        shell: pwsh
         run: |
-          python - <<'PYTHON'
-          import json
-          import os
-          import shutil
-          from pathlib import Path
-
-          base = Path(os.environ["BAZEL_OUTPUT_BASE"])
-          evidence = Path(os.environ["RUNNER_TEMP"]) / "baseline-windows-bazel-evidence" / "opus-install"
-          evidence.mkdir(parents=True, exist_ok=True)
-          records = []
-          pattern = "execroot/_main/bazel-out/*/bin/external/*opusic-sys*/_bs.out_dir"
-          for output in sorted(base.glob(pattern)):
-              for header in sorted((output / "include" / "opus").glob("*.h")):
-                  metadata = header.lstat()
-                  records.append({
-                      "path": header.relative_to(base).as_posix(),
-                      "exists": header.exists(),
-                      "symlink": header.is_symlink(),
-                      "link_target": os.readlink(header) if header.is_symlink() else None,
-                      "file_attributes": getattr(metadata, "st_file_attributes", None),
-                      "reparse_tag": getattr(metadata, "st_reparse_tag", None),
-                  })
-              for name in ("CMakeCache.txt", "cmake_install.cmake", "install_manifest.txt"):
-                  for source in sorted(output.glob(f"**/{name}")):
-                      destination = evidence / source.relative_to(base)
-                      destination.parent.mkdir(parents=True, exist_ok=True)
-                      shutil.copyfile(source, destination)
-          (evidence / "headers.json").write_text(json.dumps({
-              "path_base": "BAZEL_OUTPUT_BASE",
-              "headers": records,
-          }, indent=2) + "\n")
-          print(f"Recorded {len(records)} installed Opus headers")
-          PYTHON
+          $base = (Resolve-Path -LiteralPath $env:BAZEL_OUTPUT_BASE).ProviderPath
+          $evidence = Join-Path $env:RUNNER_TEMP 'baseline-windows-bazel-evidence/opus-install'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          $records = [System.Collections.Generic.List[object]]::new()
+          $pattern = Join-Path $base 'execroot/_main/bazel-out/*/bin/external/*opusic-sys*/_bs.out_dir'
+          foreach ($output in @(Get-Item -Path $pattern -Force -ErrorAction SilentlyContinue | Sort-Object FullName)) {
+            $includeDirectory = Join-Path $output.FullName 'include/opus'
+            if (Test-Path -LiteralPath $includeDirectory) {
+              foreach ($header in @(Get-ChildItem -LiteralPath $includeDirectory -Filter '*.h' -Force | Sort-Object Name)) {
+                $target = $null
+                if ($header.LinkType -eq 'SymbolicLink') { $target = @($header.Target)[0] }
+                $records.Add([ordered]@{
+                  path = [System.IO.Path]::GetRelativePath($base, $header.FullName).Replace('\', '/')
+                  exists = Test-Path -LiteralPath $header.FullName
+                  symlink = $header.LinkType -eq 'SymbolicLink'
+                  link_target = $target
+                  file_attributes = [int]$header.Attributes
+                  link_type = $header.LinkType
+                })
+              }
+            }
+            foreach ($name in 'CMakeCache.txt', 'cmake_install.cmake', 'install_manifest.txt') {
+              foreach ($source in @(Get-ChildItem -LiteralPath $output.FullName -Recurse -Force -File -Filter $name | Sort-Object FullName)) {
+                $destination = Join-Path $evidence ([System.IO.Path]::GetRelativePath($base, $source.FullName))
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+                Copy-Item -LiteralPath $source.FullName -Destination $destination
+              }
+            }
+          }
+          $json = [ordered]@{ path_base = 'BAZEL_OUTPUT_BASE'; headers = @($records) } | ConvertTo-Json -Depth 5
+          [System.IO.File]::WriteAllText((Join-Path $evidence 'headers.json'), $json + "`n", [System.Text.UTF8Encoding]::new($false))
+          Write-Output "Recorded $($records.Count) installed Opus headers"
 
       - name: Fail on skips caused by missing test setup
         if: ${{ !cancelled() && steps.bazel_tests.outcome != 'skipped' }}
         run: |
           set -euo pipefail
-          python "$RUNNER_TEMP/check-test-skips.py" --platform windows --runner bazel "$(realpath bazel-testlogs)" \
+          bash "$CODEX_TOOLING" check-test-skips --platform windows --runner bazel "$(realpath bazel-testlogs)" \
             2>&1 | tee "$RUNNER_TEMP/baseline-windows-bazel-evidence/skip-check.log"
 
       - name: Record or compare this shard's failures
         # An unpatched run is pristine upstream, so its failures are the baseline that patched runs are compared with;
         # the evidence artifact carries the file for committing under docs/test-baselines.
-        if: ${{ !cancelled() && steps.bazel_tests.outcome != 'skipped' }}
+        if: ${{ !cancelled() && steps.bazel_tests.outcome == 'success' && steps.bazel_tests.outputs['bep-complete'] == 'true' }}
         env:
           PATCHES: ${{ inputs.patches }}
         run: |
@@ -329,7 +328,7 @@ jobs:
           commit="${{ steps.inputs.outputs.commit }}"
           platform="windows-bazel-${TARGET##*-}-shard-${BAZEL_TEST_SHARD}"
           common=(--runner bazel --platform "$platform" --upstream-commit "$commit")
-          # select_windows_bazel_targets.py balances targets across shards by estimated duration, so a target that the
+          # select-windows-bazel-targets balances targets across shards by estimated duration, so a target that the
           # patches add can move others into a different shard; the other shards' failures are known failures here.
           related=()
           for ((other = 1; other <= BAZEL_TEST_SHARD_COUNT; other++)); do
@@ -338,10 +337,10 @@ jobs:
             fi
           done
           if [[ -z "${PATCHES// /}" ]]; then
-            python "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" --write-baseline \
+            bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" --write-baseline \
               --output "$evidence/$platform.json" "$(realpath bazel-testlogs)"
           else
-            python "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" "${related[@]}" \
+            bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" "${related[@]}" \
               --baseline-dir "$RUNNER_TEMP/test-baselines" "$(realpath bazel-testlogs)" 2>&1 \
               | tee "$evidence/baseline-comparison.log"
             exit "${PIPESTATUS[0]}"
@@ -362,3 +361,8 @@ jobs:
           path: ${{ runner.temp }}/baseline-windows-bazel-evidence
           retention-days: 3
           if-no-files-found: warn
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"

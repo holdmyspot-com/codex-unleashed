@@ -65,6 +65,11 @@ jobs:
           path: restart-metadata
           persist-credentials: false
 
+      - name: Build the tooling runtime
+        uses: ./restart-metadata/.github/actions/setup-tooling
+        with:
+          tooling-root: restart-metadata
+
       - name: Preserve restart inputs outside the source checkout
         id: inputs
         env:
@@ -76,7 +81,6 @@ jobs:
           cargo_target_dir="$RUNNER_TEMP/baseline-target"
           mkdir -p "$evidence" "$cargo_home" "$cargo_target_dir"
           printf 'CARGO_HOME=%s\nCARGO_TARGET_DIR=%s\n' "$cargo_home" "$cargo_target_dir" >> "$GITHUB_ENV"
-          cp restart-metadata/.github/scripts/apt-install-with-fallback.py "$RUNNER_TEMP/apt-install-with-fallback.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           if [[ -n "$UPSTREAM_COMMIT" ]]; then
             printf '%s\n' "$UPSTREAM_COMMIT" > "$evidence/upstream-commit"
@@ -84,13 +88,13 @@ jobs:
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
-          cp restart-metadata/.github/scripts/direct-dependency-lints.py "$RUNNER_TEMP/direct-dependency-lints.py"
+          cp restart-metadata/.github/scripts/direct-dependency-lints.sh "$RUNNER_TEMP/direct-dependency-lints.sh"
           cp restart-metadata/.github/scripts/fail-on-cargo-warnings.sh "$RUNNER_TEMP/fail-on-cargo-warnings.sh"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
       - name: Preserve the compiled-cache tooling
-        run: bash restart-metadata/.github/scripts/lint-compiled-cache.sh preserve restart-metadata .github/workflows/baseline-platform-lints.yml .github/scripts/direct-dependency-lints.py .github/scripts/fail-on-cargo-warnings.sh
+        run: bash restart-metadata/.github/scripts/lint-compiled-cache.sh preserve restart-metadata .github/workflows/baseline-platform-lints.yml .github/scripts/direct-dependency-lints.sh .github/scripts/fail-on-cargo-warnings.sh
 
       - name: Retrieve the exact stable upstream source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -138,7 +142,7 @@ jobs:
         run: |
           set -euo pipefail
           # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
-          sudo python3 -I "$RUNNER_TEMP/apt-install-with-fallback.py" build-essential binutils pkg-config libcap-dev libasound2-dev
+          sudo bash "$CODEX_TOOLING" apt-install-with-fallback build-essential binutils pkg-config libcap-dev libasound2-dev
 
       - name: Read upstream's pinned Rust toolchain
         id: upstream-rust
@@ -239,23 +243,23 @@ jobs:
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-evidence"
           cargo metadata --format-version 1 --locked --filter-platform "$TARGET" \
-            | python3 -I "$RUNNER_TEMP/direct-dependency-lints.py" list > "$evidence/direct-dependencies.txt"
+            | bash "$CODEX_TOOLING" direct-dependency-lints list > "$evidence/direct-dependencies.txt"
           wc -l < "$evidence/direct-dependencies.txt"
           export CODEX_DIRECT_DEPENDENCIES="$evidence/direct-dependencies.txt"
-          export RUSTC_WRAPPER="$RUNNER_TEMP/direct-dependency-lints.py"
+          export RUSTC_WRAPPER="$RUNNER_TEMP/direct-dependency-lints.sh"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/dependency-lints-target"
           chmod +x "$RUSTC_WRAPPER"
           cargo check --keep-going --target "$TARGET" --tests --profile dev --timings \
             2>&1 | tee "$evidence/dependency-lints.log"
           bash "$RUNNER_TEMP/fail-on-cargo-warnings.sh" "$evidence/dependency-lints.log" \
             > "$evidence/dependency-warnings.txt" 2>&1 || (( $? == 1 ))
-          python3 -I "$RUNNER_TEMP/direct-dependency-lints.py" build-warnings "$CODEX_DIRECT_DEPENDENCIES" "$CARGO_TARGET_DIR" \
+          bash "$CODEX_TOOLING" direct-dependency-lints build-warnings "$CODEX_DIRECT_DEPENDENCIES" "$CARGO_TARGET_DIR" \
             > "$evidence/dependency-build-script-warnings.txt" || (( $? == 1 ))
           # Exit status 1 from either check only means that it found warnings.
           {
             printf '### Direct dependency warnings (reported, not fatal)\n\n'
-            grep -E '^warning: `[^`]+` \(' "$evidence/dependency-lints.log" | grep -v duplicate \
-              | sed -E 's/^warning: `([^`]+)` \(([^)]+)\) generated ([0-9]+) warnings?.*/- `\1` (\2): \3/' || true
+            grep -E "^warning: \`[^\`]+\` \(" "$evidence/dependency-lints.log" | grep -v duplicate \
+              | sed -E "s/^warning: \`([^\`]+)\` \(([^)]+)\) generated ([0-9]+) warnings?.*/- \`\1\` (\2): \3/" || true
             printf '\nBuild-script warnings:\n\n```\n'
             cat "$evidence/dependency-build-script-warnings.txt"
             printf '```\n'
@@ -285,6 +289,12 @@ jobs:
           retention-days: 3
           if-no-files-found: warn
 
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
+
   regenerate:
     # Generated files that need cargo or Bazel are completed here, since native builds run only remotely.
     name: Regenerate
@@ -304,6 +314,11 @@ jobs:
           path: restart-metadata
           persist-credentials: false
 
+      - name: Build the tooling runtime
+        uses: ./restart-metadata/.github/actions/setup-tooling
+        with:
+          tooling-root: restart-metadata
+
       - name: Preserve restart inputs outside the source checkout
         id: inputs
         env:
@@ -322,7 +337,6 @@ jobs:
           done
           evidence="$RUNNER_TEMP/regenerate-evidence"
           mkdir -p "$evidence"
-          cp restart-metadata/.github/scripts/apt-install-with-fallback.py "$RUNNER_TEMP/apt-install-with-fallback.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
@@ -367,7 +381,7 @@ jobs:
         run: |
           set -euo pipefail
           # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
-          sudo python3 -I "$RUNNER_TEMP/apt-install-with-fallback.py" build-essential binutils pkg-config libcap-dev libasound2-dev
+          sudo bash "$CODEX_TOOLING" apt-install-with-fallback build-essential binutils pkg-config libcap-dev libasound2-dev
 
       - name: Read upstream's pinned Rust toolchain
         id: upstream-rust-2
@@ -433,3 +447,8 @@ jobs:
           path: ${{ runner.temp }}/regenerate-evidence
           retention-days: 3
           if-no-files-found: warn
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"

@@ -1,0 +1,101 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] .github: format symbol validation script
+
+Format the queue93 Python file with the repository's pinned Ruff version.
+The formatting-only change preserves its Python AST.
+
+diff --git a/.github/scripts/test-code-mode-symbol-validation.py b/.github/scripts/test-code-mode-symbol-validation.py
+index 02055a5..43c4631 100644
+--- a/.github/scripts/test-code-mode-symbol-validation.py
++++ b/.github/scripts/test-code-mode-symbol-validation.py
+@@ -20,6 +20,7 @@ class CodeModeSymbolValidationTest(unittest.TestCase):
+     selection, validation response, ordering, and exit propagation. They do not
+     establish native symbol-table correctness or real-tool behavior.
+     """
++
+     def setUp(self):
+         self.case_root = Path(tempfile.mkdtemp(dir=TEMP_ROOT))
+         self.addCleanup(shutil.rmtree, self.case_root)
+@@ -62,7 +63,10 @@ sys.exit(0)
+     def read_events(self):
+         if not self.events.exists():
+             return []
+-        return [line.split("|", 1)[0] for line in self.events.read_text(encoding="utf-8").splitlines()]
++        return [
++            line.split("|", 1)[0]
++            for line in self.events.read_text(encoding="utf-8").splitlines()
++        ]
+ 
+     def add_binary(self, name="codex-code-mode-host"):
+         binary = self.release / name
+@@ -102,20 +106,28 @@ sys.exit(0)
+         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+         self.assertEqual(self.read_events(), ["fake-nm"])
+ 
+-    def test_linux_accepts_one_defined_exact_entrypoint_with_lowercase_or_uppercase_type(self):
++    def test_linux_accepts_one_defined_exact_entrypoint_with_lowercase_or_uppercase_type(
++        self,
++    ):
+         for symbol_type in ("t", "T"):
+             with self.subTest(symbol_type=symbol_type):
+                 self.events.unlink(missing_ok=True)
+                 self.add_binary()
+                 self.set_linux_symbol_output(symbol_type)
+-                self.environment["BINARY_PATH"] = str(self.release / "codex-code-mode-host")
++                self.environment["BINARY_PATH"] = str(
++                    self.release / "codex-code-mode-host"
++                )
+ 
+                 result = self.run_packager("x86_64-unknown-linux-gnu")
+ 
+                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+-                self.assertEqual(self.read_events(), ["fake-nm", "objcopy", "strip", "objcopy"])
++                self.assertEqual(
++                    self.read_events(), ["fake-nm", "objcopy", "strip", "objcopy"]
++                )
+ 
+-    def test_linux_rejects_undefined_generic_suffixed_duplicate_and_absent_entrypoint(self):
++    def test_linux_rejects_undefined_generic_suffixed_duplicate_and_absent_entrypoint(
++        self,
++    ):
+         invalid_outputs = {
+             "undefined": f"                 U {EXACT_SYMBOL}\n",
+             "generic mention": "0000000000001000 T codex_code_mode_host::main::h123456\n",
+@@ -157,11 +169,20 @@ sys.exit(0)
+         self.assertEqual(self.read_events(), ["nm", "objcopy", "strip", "objcopy"])
+ 
+     def test_macos_accepts_plain_and_cargo_hashed_single_dwarf_members(self):
+-        for member_name in ("codex-code-mode-host", "codex_code_mode_host-0123456789abcdef"):
++        for member_name in (
++            "codex-code-mode-host",
++            "codex_code_mode_host-0123456789abcdef",
++        ):
+             with self.subTest(member_name=member_name):
+                 self.events.unlink(missing_ok=True)
+                 self.add_binary()
+-                dsym = self.release / "codex-code-mode-host.dSYM" / "Contents" / "Resources" / "DWARF"
++                dsym = (
++                    self.release
++                    / "codex-code-mode-host.dSYM"
++                    / "Contents"
++                    / "Resources"
++                    / "DWARF"
++                )
+                 dsym_bundle = dsym.parent.parent.parent
+                 if dsym_bundle.exists():
+                     shutil.rmtree(dsym_bundle)
+@@ -188,7 +209,13 @@ sys.exit(0)
+         for label, members in fixtures.items():
+             with self.subTest(label=label):
+                 self.events.unlink(missing_ok=True)
+-                dwarf = self.release / "codex-code-mode-host.dSYM" / "Contents" / "Resources" / "DWARF"
++                dwarf = (
++                    self.release
++                    / "codex-code-mode-host.dSYM"
++                    / "Contents"
++                    / "Resources"
++                    / "DWARF"
++                )
+                 shutil.rmtree(dwarf.parent.parent.parent, ignore_errors=True)
+                 dwarf.mkdir(parents=True)
+                 for name, kind in members:

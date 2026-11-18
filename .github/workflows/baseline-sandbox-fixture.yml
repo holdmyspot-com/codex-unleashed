@@ -22,13 +22,17 @@ jobs:
           path: restart-metadata
           persist-credentials: false
 
+      - name: Build the tooling runtime
+        uses: ./restart-metadata/.github/actions/setup-tooling
+        with:
+          tooling-root: restart-metadata
+
       - name: Preserve source identity and the diagnostic probe
         id: inputs
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/sandbox-fixture-evidence"
           mkdir -p "$evidence"
-          cp restart-metadata/.github/scripts/apt-install-with-fallback.py "$RUNNER_TEMP/apt-install-with-fallback.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           cp restart-metadata/.github/scripts/probe-nested-bwrap.py "$RUNNER_TEMP/probe-nested-bwrap.py"
@@ -55,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
-          sudo python3 -I "$RUNNER_TEMP/apt-install-with-fallback.py" build-essential pkg-config libcap-dev bubblewrap
+          sudo bash "$CODEX_TOOLING" apt-install-with-fallback build-essential pkg-config libcap-dev bubblewrap
 
       - name: Read upstream's pinned Rust toolchain
         id: upstream-rust
@@ -94,3 +98,8 @@ jobs:
           path: ${{ runner.temp }}/sandbox-fixture-evidence
           retention-days: 3
           if-no-files-found: warn
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"

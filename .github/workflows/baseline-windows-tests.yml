@@ -100,6 +100,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up the Java tooling runtime
+        uses: ./.github/actions/setup-tooling
+
       - name: Own build state, evidence and temporary directories
         if: inputs.package != ''
         uses: ./.github/actions/focused-runtime-storage
@@ -189,12 +192,11 @@ jobs:
         with:
           target: ${{ env.TARGET }}
 
-      # The next three steps reproduce upstream's setup-ci effects for Windows. The composite action itself resolves
+      # The following steps reproduce upstream's setup-ci effects for Windows. The composite action itself resolves
       # ./.github/scripts relative to the workspace root, which here holds the restart checkout rather than upstream.
-      - name: Configure a Dev Drive for the build and temporary directories
+      - name: Prepare the Dev Drive setup script
         if: inputs.package != ''
-        id: dev-drive
-        continue-on-error: true
+        id: dev-drive-script
         shell: pwsh
         run: |
           # Upstream's script provisions a fixed 64 GB Dev Drive where the runner has no D: volume, and the hosted ARM64
@@ -207,7 +209,16 @@ jobs:
           $text = Get-Content -Raw ./upstream/.github/scripts/setup-dev-drive.ps1
           if ($text -notmatch '\$SizeBytes = 64GB') { throw 'upstream setup-dev-drive.ps1 no longer sets a 64GB size' }
           Set-Content -Path $script -Value ($text -replace '\$SizeBytes = 64GB', "`$SizeBytes = ${sizeGb}GB")
-          & $script
+          "path=$script" >> $env:GITHUB_OUTPUT
+
+      - name: Configure a Dev Drive for the build and temporary directories
+        if: inputs.package != ''
+        id: dev-drive
+        continue-on-error: true
+        shell: pwsh
+        env:
+          DEV_DRIVE_SCRIPT: ${{ steps.dev-drive-script.outputs.path }}
+        run: '& $env:DEV_DRIVE_SCRIPT'
 
       - name: Point Cargo's target directory and the temporary directory at the Dev Drive
         if: inputs.package != '' && steps.dev-drive.outcome == 'success'
@@ -436,7 +447,7 @@ jobs:
             printf 'The test step ended %s before any report was written; nothing to check.\n' "$TESTS_OUTCOME"
             exit 0
           fi
-          python .github/scripts/check-test-skips.py --platform windows "${reports[@]}"
+          bash "$CODEX_TOOLING" check-test-skips --platform windows "${reports[@]}"
 
       - name: Compare the failures with the committed unpatched baseline
         if: ${{ !cancelled() && inputs.package == '--workspace' && inputs.filter == '' }}
@@ -462,10 +473,10 @@ jobs:
           if [[ -z "${PATCHES// }" ]]; then
             # An unpatched run is the source of a baseline: write it for committing under docs/test-baselines.
             mkdir -p "$RUNNER_TEMP/baseline"
-            python .github/scripts/compare-test-baseline.py --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
+            bash "$CODEX_TOOLING" compare-test-baseline --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
               --write-baseline --output "$RUNNER_TEMP/baseline/$platform.json" "${reports[@]}"
           else
-            python .github/scripts/compare-test-baseline.py --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
+            bash "$CODEX_TOOLING" compare-test-baseline --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
               --baseline-dir docs/test-baselines "${reports[@]}"
           fi
 
@@ -477,3 +488,8 @@ jobs:
           path: ${{ runner.temp }}/baseline
           retention-days: 3
           if-no-files-found: ignore
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"

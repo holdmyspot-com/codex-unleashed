@@ -4,10 +4,14 @@ on:
   push:
     paths:
       - tooling/cli/**
+      - .github/actions/setup-tooling/**
+      - .github/scripts/test-tooling-consumers.py
       - .github/workflows/tooling-ci.yml
   pull_request:
     paths:
       - tooling/cli/**
+      - .github/actions/setup-tooling/**
+      - .github/scripts/test-tooling-consumers.py
       - .github/workflows/tooling-ci.yml
   workflow_dispatch:
 
@@ -33,11 +37,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Select the maintained tooling JDK
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
-        with:
-          distribution: zulu
-          java-version: 27.0.1
+      - name: Build the tooling runtime
+        uses: ./.github/actions/setup-tooling
 
       - name: Select the native Cargo fixture toolchain
         uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
@@ -52,27 +53,39 @@ jobs:
             echo 'GIT_REDIRECT_STDIN=NUL' >> "$GITHUB_ENV"
           fi
 
-      - name: Verify tests and assemble the runtime
+      - name: Verify tooling tests
         run: |
+          tooling_root="$CODEX_TOOLING_ROOT"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            tooling_root="$(cygpath -u "$tooling_root")"
+          fi
+          export TMPDIR="$tooling_root/tmp" TMP="$tooling_root/tmp" TEMP="$tooling_root/tmp"
+          test_context="$tooling_root/verification/test_context.json"
+          context_working_directory="$GITHUB_WORKSPACE"
+          context_temporary_directory="$tooling_root/tmp"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            context_working_directory="$(cygpath -w "$context_working_directory")"
+            context_temporary_directory="$(cygpath -w "$context_temporary_directory")"
+          fi
+          mkdir -p "$tooling_root/verification/build"
+          jq -n --arg working_directory "$context_working_directory" \
+            --arg temporary_directory "$context_temporary_directory" \
+            '{format_version: 1, working_directory: $working_directory,
+              temporary_directory: $temporary_directory, environment: env}' > "$test_context"
           mvn -q -B -ntp -f tooling/cli/pom.xml -Pruntime \
-            "-Dtooling.build.directory=$RUNNER_TEMP/tooling-build" \
-            "-Dmaven.repo.local=$RUNNER_TEMP/tooling-maven" \
-            "-Djava.io.tmpdir=$TMPDIR" verify
+            "-Dtooling.build.directory=$tooling_root/verification/build" \
+            "-Dmaven.repo.local=$tooling_root/maven" \
+            "-Djava.io.tmpdir=$tooling_root/tmp" \
+            "-Dquiet.build.test.context=$test_context" verify
 
-      - name: Execute the assembled launcher
-        run: |
-          python - "$BASH" "$RUNNER_OS" "$RUNNER_TEMP/tooling-build/runtime/bin/codex-tooling" <<'PYTHON'
-          import subprocess
-          import sys
-          bash, runner_os, launcher = sys.argv[1:]
-          command = [launcher] if runner_os == 'Linux' else [bash, launcher]
-          result = subprocess.run(command, capture_output=True, text=True)
-          sys.stdout.write(result.stdout)
-          sys.stderr.write(result.stderr)
-          if result.returncode != 2 or 'Usage: codex-tooling' not in result.stderr:
-              raise SystemExit('The assembled launcher did not report its command usage with exit 2')
-          PYTHON
+      - name: Probe assembled tooling consumers
+        run: python -I .github/scripts/test-tooling-consumers.py
 
-      - name: Remove job-owned build state
+      - name: Remove job-owned tooling state
         if: always()
-        run: rm -rf -- "$RUNNER_TEMP/tooling-temp" "$RUNNER_TEMP/tooling-build" "$RUNNER_TEMP/tooling-maven"
+        run: |
+          tooling_root="$RUNNER_TEMP/codex-tooling"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            tooling_root="$(cygpath -u "$tooling_root")"
+          fi
+          rm -rf -- "$tooling_root"

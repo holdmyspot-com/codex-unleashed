@@ -34,7 +34,7 @@ The Explanation forms part of this license for interpreting these License Terms.
 
 If a specific License Term and an explanation cannot reasonably be read consistently, the specific License Term takes precedence to the extent of the conflict.
 
-The Explanation does not independently create permissions or obligations unrelated to interpreting the corresponding provisions. FAQs and other explanatory materials are not incorporated into this license.
+The Explanation does not independently create permissions or obligations unrelated to interpreting the corresponding provisions.
 
 ## HoldMySpot License Explanation · Version 1.0
 

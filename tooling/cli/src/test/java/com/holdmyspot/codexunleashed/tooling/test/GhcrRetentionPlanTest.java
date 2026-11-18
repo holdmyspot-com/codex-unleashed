@@ -83,12 +83,12 @@ public final class GhcrRetentionPlanTest
 			version(20, "2026-01-01T00:00:00Z", "cargo-v2-aarch64-apple-darwin-off-" + HASH,
 				"cargo-release-k-rust-v0.9.0")));
 		JsonNode result = plan(inventory);
-		requireThat(result.path("retained_releases").toString(), "retained_releases")
-			.isEqualTo("[\"rust-v0.10.0\",\"rust-v0.9.0\",\"rust-v0.8.0\",\"main\"]");
-		requireThat(result.path("retained_version_ids").toString(), "retained_version_ids")
-			.isEqualTo("[2,11,12,14,16,22,23,20]");
-		requireThat(result.path("obsolete_version_ids").toString(), "obsolete_version_ids")
-			.isEqualTo("[1,10,13,15,21,24,17,19]");
+		requireThat(result.path("retained_releases").toString(), "retained_releases").
+			isEqualTo("[\"rust-v0.10.0\",\"rust-v0.9.0\",\"rust-v0.8.0\",\"main\"]");
+		requireThat(result.path("retained_version_ids").toString(), "retained_version_ids").
+			isEqualTo("[2,11,12,14,16,22,23,20]");
+		requireThat(result.path("obsolete_version_ids").toString(), "obsolete_version_ids").
+			isEqualTo("[1,10,13,15,21,24,17,19]");
 		requireThat(result.path("unmanaged_version_ids").toString(), "unmanaged_version_ids").isEqualTo("[18]");
 	}
 
@@ -185,9 +185,9 @@ public final class GhcrRetentionPlanTest
 		{
 			int status = Main.run(new String[]{"plan-ghcr-retention"},
 				new ByteArrayInputStream(inventory.getBytes(StandardCharsets.UTF_8)), out, err);
-			requireThat(status, "status")
-				.withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic")
-				.isEqualTo(0);
+			requireThat(status, "status").
+				withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic").
+				isEqualTo(0);
 		}
 		try (ToolingScope scope = new DefaultToolingScope())
 		{
@@ -213,8 +213,8 @@ public final class GhcrRetentionPlanTest
 			requireThat(status, "status").isEqualTo(1);
 		}
 		requireThat(output.size(), "output.size()").isEqualTo(0);
-		requireThat(diagnostics.toString(StandardCharsets.UTF_8).contains(expectedDiagnostic), "diagnostics")
-			.withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic")
-			.isTrue();
+		requireThat(diagnostics.toString(StandardCharsets.UTF_8).contains(expectedDiagnostic), "diagnostics").
+			withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic").
+			isTrue();
 	}
 }

@@ -15,6 +15,7 @@ public interface ToolingScope extends Scope
 {
 	/**
 	 * Returns the platform native linker; arenas and native owners remain the borrower's responsibility.
+	 *
 	 * @return the shared linker
 	 * @throws IllegalStateException if the scope is closed
 	 */
@@ -22,6 +23,7 @@ public interface ToolingScope extends Scope
 
 	/**
 	 * Returns immutable Unix timestamp write bindings; each operation owns its temporary native arguments.
+	 *
 	 * @return this scope's shared Unix timestamp writer
 	 * @throws IllegalStateException if the scope is closed
 	 * @throws UnsupportedOperationException if the native ABI or function is unavailable
@@ -30,6 +32,7 @@ public interface ToolingScope extends Scope
 
 	/**
 	 * Returns immutable Unix metadata bindings for the current operating system.
+	 *
 	 * @return this scope's shared Unix timestamp reader
 	 * @throws IllegalStateException if the scope is closed
 	 * @throws UnsupportedOperationException if the required native function is unavailable
@@ -38,6 +41,7 @@ public interface ToolingScope extends Scope
 
 	/**
 	 * Returns immutable Windows timestamp bindings, preserving the system library's existing process lifetime.
+	 *
 	 * @return this scope's shared Windows timestamp adapter
 	 * @throws IllegalStateException if the scope is closed
 	 * @throws UnsupportedOperationException if the native ABI or a required function is unavailable
@@ -46,6 +50,7 @@ public interface ToolingScope extends Scope
 
 	/**
 	 * Returns this scope's immutable JSON parser, which rejects trailing JSON values.
+	 *
 	 * @return the same mapper on repeated calls within this scope
 	 * @throws IllegalStateException if the scope is closed
 	 */
@@ -53,6 +58,7 @@ public interface ToolingScope extends Scope
 
 	/**
 	 * Returns the immutable ASCII artifact mapper; writers select ordering per document.
+	 *
 	 * @return this scope's shared mapper
 	 * @throws IllegalStateException if the scope is closed
 	 */
@@ -60,6 +66,7 @@ public interface ToolingScope extends Scope
 
 	/**
 	 * Returns this scope's immutable upstream-action YAML parser.
+	 *
 	 * @return the same mapper on repeated calls within this scope
 	 * @throws IllegalStateException if the scope is closed
 	 */
@@ -67,6 +74,7 @@ public interface ToolingScope extends Scope
 
 	/**
 	 * Returns this scope's immutable TOML parser.
+	 *
 	 * @return the same mapper on repeated calls within this scope
 	 * @throws IllegalStateException if the scope is closed
 	 */
@@ -74,6 +82,7 @@ public interface ToolingScope extends Scope
 
 	/**
 	 * Returns the pattern selecting upstream stable release tags with three decimal version components.
+	 *
 	 * @return this scope's shared immutable pattern
 	 * @throws IllegalStateException if the scope is closed
 	 */

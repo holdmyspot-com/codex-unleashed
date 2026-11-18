@@ -28,10 +28,12 @@ public final class ToolingScopeTest
 			requireThat(first.getTomlMapper() == first.getTomlMapper(), "sharedTomlMapper").isTrue();
 			requireThat(first.getStableReleaseTagPattern() == first.getStableReleaseTagPattern(), "sharedPattern").isTrue();
 			requireThat(first.getJsonMapper() == second.getJsonMapper(), "crossScopeJsonSharing").isFalse();
-			requireThat(first.getArtifactJsonMapper() == second.getArtifactJsonMapper(), "crossScopeArtifactSharing").isFalse();
+			requireThat(first.getArtifactJsonMapper() == second.getArtifactJsonMapper(),
+				"crossScopeArtifactSharing").isFalse();
 			requireThat(first.getYamlMapper() == second.getYamlMapper(), "crossScopeYamlSharing").isFalse();
 			requireThat(first.getTomlMapper() == second.getTomlMapper(), "crossScopeTomlSharing").isFalse();
-			requireThat(first.getStableReleaseTagPattern() == second.getStableReleaseTagPattern(), "crossScopePatternSharing").isFalse();
+			requireThat(first.getStableReleaseTagPattern() == second.getStableReleaseTagPattern(),
+				"crossScopePatternSharing").isFalse();
 		}
 	}
 
@@ -39,21 +41,23 @@ public final class ToolingScopeTest
 	@Test
 	public void refusesAcquisitionAfterClose()
 	{
-		ToolingScope scope = new DefaultToolingScope();
-		scope.getJsonMapper();
-		scope.close();
-		scope.close();
+		try (ToolingScope scope = new DefaultToolingScope())
+		{
+			scope.getJsonMapper();
+			scope.close();
+			scope.close();
 
-		requireThat(scope.isClosed(), "closed").isTrue();
-		requireException(IllegalStateException.class, scope::getJsonMapper);
-		requireException(IllegalStateException.class, scope::getNativeLinker);
-		requireException(IllegalStateException.class, scope::getUnixFileTimes);
-		requireException(IllegalStateException.class, scope::getUnixFileMetadata);
-		requireException(IllegalStateException.class, scope::getWindowsFileTimes);
-		requireException(IllegalStateException.class, scope::getArtifactJsonMapper);
-		requireException(IllegalStateException.class, scope::getYamlMapper);
-		requireException(IllegalStateException.class, scope::getTomlMapper);
-		requireException(IllegalStateException.class, scope::getStableReleaseTagPattern);
+			requireThat(scope.isClosed(), "closed").isTrue();
+			requireException(IllegalStateException.class, scope::getJsonMapper);
+			requireException(IllegalStateException.class, scope::getNativeLinker);
+			requireException(IllegalStateException.class, scope::getUnixFileTimes);
+			requireException(IllegalStateException.class, scope::getUnixFileMetadata);
+			requireException(IllegalStateException.class, scope::getWindowsFileTimes);
+			requireException(IllegalStateException.class, scope::getArtifactJsonMapper);
+			requireException(IllegalStateException.class, scope::getYamlMapper);
+			requireException(IllegalStateException.class, scope::getTomlMapper);
+			requireException(IllegalStateException.class, scope::getStableReleaseTagPattern);
+		}
 	}
 
 	/** Per-document writers preserve ASCII formatting and never change the next document's key ordering. */

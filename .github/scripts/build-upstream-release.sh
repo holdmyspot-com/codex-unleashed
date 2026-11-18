@@ -26,6 +26,28 @@ if [[ -n "${RELEASE_BUNDLE+set}" ]]; then
       ;;
   esac
 fi
+# Print "size modified path" for every library file directly inside a deps directory below $1, sorted by path, with
+# the modification time in UTC to the nanosecond. GNU stat (Linux, Git Bash) and BSD stat (macOS) both report
+# seconds with a nine-digit fraction; only their option syntax and the date conversion differ.
+list_deps_libraries() {
+  local root=$1 path size stamp seconds fraction gnu=false
+  if stat --version > /dev/null 2>&1; then gnu=true; fi
+  while IFS= read -r -d '' path; do
+    if [[ ${path%/*} != */deps && ${path%/*} != deps ]] || [[ ! -f "$path" ]]; then continue; fi
+    if [[ $gnu == true ]]; then
+      read -r size stamp < <(stat -L -c '%s %.9Y' "$path")
+      seconds=${stamp%.*}
+      fraction=${stamp#*.}000000000; fraction=${fraction:0:9}
+      printf '%s %s.%sZ %s\n' "$size" "$(date -u -d "@$seconds" +%Y-%m-%dT%H:%M:%S)" "$fraction" "$path"
+    else
+      read -r size stamp < <(stat -L -f '%z %Fm' "$path")
+      seconds=${stamp%.*}
+      fraction=${stamp#*.}000000000; fraction=${fraction:0:9}
+      printf '%s %s.%sZ %s\n' "$size" "$(date -u -r "$seconds" +%Y-%m-%dT%H:%M:%S)" "$fraction" "$path"
+    fi
+  done < <(find "$root" \( -type f -o -type l \) -name 'lib*' -print0 | LC_ALL=C sort -z)
+}
+
 evidence="$RUNNER_TEMP/baseline-evidence"
 mkdir -p "$evidence"
 
@@ -80,16 +102,7 @@ if [[ -n "${RELEASE_PACKAGES+set}" ]]; then
   compile build --target "$TARGET" --release --timings --verbose "${selection[@]}" 2>&1 |
     tee "$evidence/cargo-build-packages.log" || status=$?
   if (( status != 0 )); then
-    python3 -I - "$CARGO_TARGET_DIR" > "$evidence/package-libraries.txt" <<'LIST'
-import datetime, pathlib, sys
-for path in sorted(pathlib.Path(sys.argv[1]).rglob("lib*")):
-    if path.parent.name != "deps" or not path.is_file():
-        continue
-    metadata = path.stat()
-    seconds, nanoseconds = divmod(metadata.st_mtime_ns, 1_000_000_000)
-    moment = datetime.datetime.fromtimestamp(seconds, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-    print(f"{metadata.st_size} {moment}.{nanoseconds:09d}Z {path}")
-LIST
+    list_deps_libraries "$CARGO_TARGET_DIR" > "$evidence/package-libraries.txt" || true
     exit "$status"
   fi
   printf 'packages=%s build_seconds=%s\n' "${packages[*]}" "$((SECONDS-started))" | tee -a "$evidence/build-stage-timings.log"

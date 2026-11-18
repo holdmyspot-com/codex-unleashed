@@ -1,0 +1,49 @@
+From: Codex <codex@openai.com>
+Subject: [PATCH] scripts: format package archive sources
+
+Apply the pinned Ruff formatting to the two files flagged by the formatting gate.
+The change is formatting-only and preserves both Python ASTs.
+Base source manifest: 179c13555d250ced53dddd9a9eb4d3f2230720f482f4a63888cb8f3421376b23.
+
+---
+diff --git a/scripts/codex_package/archive.py b/scripts/codex_package/archive.py
+index 60ef6ff12f808abef1ad1cb3f3e0aae179273cef..b5f1feba7122dbefa2b3ab2d126d6e1bda0e2bc8 100644
+--- a/scripts/codex_package/archive.py
++++ b/scripts/codex_package/archive.py
+@@ -88,9 +88,7 @@ def write_tar_archive(package_dir: Path, archive_path: Path, *, mode: str) -> No
+             add_normalized_archive_entries(archive, package_dir)
+ 
+ 
+-def add_normalized_archive_entries(
+-    archive: tarfile.TarFile, package_dir: Path
+-) -> None:
++def add_normalized_archive_entries(archive: tarfile.TarFile, package_dir: Path) -> None:
+     for path in package_entries(package_dir):
+         archive.add(
+             path,
+diff --git a/scripts/codex_package/test_archive.py b/scripts/codex_package/test_archive.py
+index fe1bcbd80d966432e7f43e7965b50fcaf69f839b..d05b7051b24de800fedd4ed43f788a5df857ba20 100644
+--- a/scripts/codex_package/test_archive.py
++++ b/scripts/codex_package/test_archive.py
+@@ -141,7 +141,9 @@ class WriteArchiveTest(unittest.TestCase):
+             with self.assertRaises(RuntimeError):
+                 write_archive(package_dir, root / "package.tar.gz", force=False)
+ 
+-    def test_windows_executables_keep_their_role_without_host_execute_bits(self) -> None:
++    def test_windows_executables_keep_their_role_without_host_execute_bits(
++        self,
++    ) -> None:
+         with tempfile.TemporaryDirectory() as temp_dir:
+             root = Path(temp_dir)
+             package_dir = root / "package"
+@@ -274,7 +276,9 @@ class ArchiveModuleCommandTest(unittest.TestCase):
+                 self.assertEqual(result.returncode, 0, result.stderr)
+                 self.assertEqual(result.stdout, "")
+                 self.assertEqual(result.stderr, "")
+-                self.assertEqual(module_archive.read_bytes(), direct_archive.read_bytes())
++                self.assertEqual(
++                    module_archive.read_bytes(), direct_archive.read_bytes()
++                )
+ 
+     def test_resolve_zstd_prints_existing_resolver_argv_as_json(self) -> None:
+         result = self.run_archive_command("resolve-zstd")

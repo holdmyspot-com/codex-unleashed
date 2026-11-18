@@ -4,15 +4,21 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.spi.ToolProvider;
 
 /**
@@ -26,6 +32,10 @@ public final class QualityPreflight
 	 */
 	private static final List<Path> SOURCE_ROOTS = List.of(Path.of("tooling/cli/src/main/java"),
 		Path.of("tooling/cli/src/test/java"), Path.of("tooling/cli/src/build/java"));
+	/**
+	 * Stable names for the source roots, in {@link #SOURCE_ROOTS} order.
+	 */
+	private static final List<String> SOURCE_GROUPS = List.of("main", "test", "build");
 	/**
 	 * The pointer to the current invocation within one Maven build directory.
 	 */
@@ -46,6 +56,12 @@ public final class QualityPreflight
 	 * The Javadoc diagnostics produced for the selected sources.
 	 */
 	private static final String JAVADOC_LOG = "javadoc.log";
+	/**
+	 * Extracts the declared name from a Java module descriptor for Javadoc's read edge.
+	 */
+	private static final Pattern MODULE_DECLARATION = Pattern.compile(
+		"(?m)^\\s*(?:open\\s+)?module\\s+([\\p{javaJavaIdentifierStart}][\\p{javaJavaIdentifierPart}]*" +
+			"(?:\\.[\\p{javaJavaIdentifierStart}][\\p{javaJavaIdentifierPart}]*)*)\\s*\\{");
 
 	/**
 	 * Prepares exact inputs, or checks the retained analyzer outcomes and Javadoc.
@@ -172,10 +188,14 @@ public final class QualityPreflight
 		}
 		Path invocation = reports.resolve(current.getProperty(RUN_ID));
 		List<Path> paths = readPaths(repository, invocation.resolve(MANIFEST));
+		Path retainedSources = invocation.resolve(SOURCES);
+		List<Path> selectedSources = new ArrayList<>();
+		for (Path source : paths)
+			selectedSources.add(retainedSources.resolve(repository.toAbsolutePath().normalize().relativize(source)));
 		Path classpath = invocation.resolve("classpath.txt");
 		String doclint;
 		if (Files.isRegularFile(classpath))
-			doclint = runJavadoc(invocation, paths, Files.readString(classpath).strip());
+			doclint = runJavadoc(retainedSources, invocation, selectedSources, Files.readString(classpath).strip());
 		else
 		{
 			Files.writeString(invocation.resolve(JAVADOC_LOG), "Maven did not publish the resolved test classpath\n");
@@ -196,31 +216,101 @@ public final class QualityPreflight
 	/**
 	 * Runs the installed JDK's private Javadoc/doclint against the exact named sources.
 	 *
+	 * @param selectedSources frozen copies of exactly the selected source files
 	 * @param invocation retained report directory
 	 * @param sources    exact selected source files
 	 * @param classpath  compiled main/test/build classes and resolved Maven dependencies
 	 * @return passed, findings, or tool-error
 	 * @throws IOException if Javadoc diagnostics cannot be written
 	 */
-	private static String runJavadoc(Path invocation, List<Path> sources, String classpath) throws IOException
+	private static String runJavadoc(Path selectedSources, Path invocation, List<Path> sources, String classpath)
+		throws IOException
 	{
+		Map<String, List<Path>> groups = new LinkedHashMap<>();
+		for (String group : SOURCE_GROUPS)
+			groups.put(group, new ArrayList<>());
+		for (Path source : sources)
+		{
+			Path relative = selectedSources.toAbsolutePath().normalize().relativize(source);
+			int rootIndex = -1;
+			for (int index = 0; index < SOURCE_ROOTS.size(); index += 1)
+			{
+				if (relative.startsWith(SOURCE_ROOTS.get(index)))
+				{
+					rootIndex = index;
+					break;
+				}
+			}
+			if (rootIndex < 0)
+				throw new IOException("Selected Javadoc source has no source root: " + source);
+			groups.get(SOURCE_GROUPS.get(rootIndex)).add(source);
+		}
+		String aggregate = "passed";
+		for (Map.Entry<String, List<Path>> group : groups.entrySet())
+		{
+			if (group.getValue().isEmpty())
+				continue;
+			int rootIndex = SOURCE_GROUPS.indexOf(group.getKey());
+			Path sourceRoot = selectedSources.toAbsolutePath().normalize().resolve(SOURCE_ROOTS.get(rootIndex));
+			String outcome = runJavadocGroup(invocation, sourceRoot, group.getKey(), group.getValue(), classpath);
+			Files.writeString(invocation.resolve("javadoc-" + group.getKey() + ".result"), outcome + "\n");
+			if (outcome.equals("tool-error"))
+				aggregate = "tool-error";
+			else if (outcome.equals("findings") && aggregate.equals("passed"))
+				aggregate = "findings";
+		}
+		return aggregate;
+	}
+
+	/**
+	 * Runs private Javadoc/doclint for one source root and retains its own output and diagnostics.
+	 *
+	 * @param invocation report directory for this analysis
+	 * @param sourceRoot selected source root used as Javadoc's source path
+	 * @param group      stable source-root name
+	 * @param sources    exact selected Java source files in this root
+	 * @param classpath  compiled main/test/build classes and resolved Maven dependencies
+	 * @return passed, findings, or tool-error
+	 * @throws IOException if diagnostics cannot be written
+	 */
+	private static String runJavadocGroup(Path invocation, Path sourceRoot, String group, List<Path> sources,
+		String classpath) throws IOException
+	{
+		Path log = invocation.resolve("javadoc-" + group + ".log");
 		if (Runtime.version().feature() != 27)
 		{
-			Files.writeString(invocation.resolve(JAVADOC_LOG), "JDK 27 is required for Java quality preflight\n");
+			Files.writeString(log, "JDK 27 is required for Java quality preflight\n");
 			return "tool-error";
 		}
 		ToolProvider javadoc = ToolProvider.findFirst("javadoc").orElse(null);
 		if (javadoc == null)
 		{
-			Files.writeString(invocation.resolve(JAVADOC_LOG), "JDK 27 Javadoc tool provider is unavailable\n");
+			Files.writeString(log, "JDK 27 Javadoc tool provider is unavailable\n");
 			return "tool-error";
 		}
+		Path output = invocation.resolve("javadoc-" + group);
 		List<String> arguments = new ArrayList<>(List.of("-private", "-Xdoclint:all", "-Werror", "-quiet",
-			"-encoding", "UTF-8", "-classpath", classpath, "--module-path", classpath, "-sourcepath", "", "-d",
-			invocation.resolve("javadoc").toString()));
+			"-encoding", "UTF-8"));
+		boolean modular = sources.stream().anyMatch(source -> source.getFileName().toString().equals("module-info.java"));
+		arguments.addAll(List.of("--module-path", classpath));
+		if (modular)
+		{
+			String module = moduleName(sourceRoot.resolve("module-info.java"));
+			Path receipt = invocation.resolve("javadoc-" + group + "-classes.txt");
+			String unavailable = moduleClassesProblem(receipt);
+			if (unavailable != null)
+			{
+				Files.writeString(log, "Compiled module classes unavailable for " + group + ": " + receipt + "\n" +
+					unavailable + "\n");
+				return "tool-error";
+			}
+			arguments.addAll(List.of("--add-reads", module + "=ALL-UNNAMED", "--patch-module",
+				module + "=" + Files.readString(receipt, StandardCharsets.UTF_8)));
+		}
+		arguments.addAll(List.of("-classpath", classpath, "-sourcepath", sourceRoot.toString(), "-d", output.toString()));
 		for (Path source : sources)
 			arguments.add(source.toString());
-		try (PrintWriter diagnostics = new PrintWriter(Files.newBufferedWriter(invocation.resolve(JAVADOC_LOG))))
+		try (PrintWriter diagnostics = new PrintWriter(Files.newBufferedWriter(log)))
 		{
 			int status = javadoc.run(diagnostics, diagnostics, arguments.toArray(String[]::new));
 			return switch (status)
@@ -230,6 +320,58 @@ public final class QualityPreflight
 				default -> "tool-error";
 			};
 		}
+	}
+
+	/**
+	 * Checks that a group's receipt names the compiled output directory of its selected module.
+	 * <p>
+	 * The receipt's complete UTF-8 content is one path, without splitting or trimming.
+	 *
+	 * @param receipt receipt that Maven published for the group's compiled classes
+	 * @return why the compiled classes are unavailable, or null if the receipt names an existing absolute directory
+	 */
+	private static String moduleClassesProblem(Path receipt)
+	{
+		String contents;
+		try
+		{
+			contents = Files.readString(receipt, StandardCharsets.UTF_8);
+		}
+		catch (IOException e)
+		{
+			return "receipt is missing or unreadable: " + e;
+		}
+		if (contents.isEmpty())
+			return "receipt is empty";
+		Path directory;
+		try
+		{
+			directory = Path.of(contents);
+		}
+		catch (InvalidPathException e)
+		{
+			return "receipt does not name a path: " + e.getMessage();
+		}
+		if (!directory.isAbsolute())
+			return "receipt names a relative path: " + contents;
+		if (!Files.isDirectory(directory))
+			return "receipt names a path that is not an existing directory: " + contents;
+		return null;
+	}
+
+	/**
+	 * Reads the named module for a source root, rejecting an invalid selected descriptor.
+	 *
+	 * @param moduleInfo selected Java module descriptor
+	 * @return declared module name
+	 * @throws IOException if the module descriptor cannot be read or has no declaration
+	 */
+	private static String moduleName(Path moduleInfo) throws IOException
+	{
+		Matcher declaration = MODULE_DECLARATION.matcher(Files.readString(moduleInfo));
+		if (!declaration.find())
+			throw new IOException("Selected module descriptor has no module declaration: " + moduleInfo);
+		return declaration.group(1);
 	}
 
 	/**

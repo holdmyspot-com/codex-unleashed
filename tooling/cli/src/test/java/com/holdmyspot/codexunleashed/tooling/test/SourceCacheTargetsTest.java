@@ -25,10 +25,10 @@ public final class SourceCacheTargetsTest
 	@Test
 	public void retainsTargetFilenameSemantics()
 	{
-		requireThat(SourceCacheTargets.directoryName("x86_64-unknown-linux-gnu"), "SourceCacheTargets")
-			.isEqualTo("x86_64-unknown-linux-gnu");
-		requireThat(SourceCacheTargets.directoryName("custom.target.json"), "SourceCacheTargets")
-			.isEqualTo("custom.target");
+		requireThat(SourceCacheTargets.directoryName("x86_64-unknown-linux-gnu"), "SourceCacheTargets").
+			isEqualTo("x86_64-unknown-linux-gnu");
+		requireThat(SourceCacheTargets.directoryName("custom.target.json"), "SourceCacheTargets").
+			isEqualTo("custom.target");
 		requireThat(SourceCacheTargets.directoryName("custom.JSON"), "SourceCacheTargets").isEqualTo("custom.JSON");
 		requireThat(SourceCacheTargets.directoryName(".json"), "SourceCacheTargets").isEqualTo(".json");
 		requireThat(SourceCacheTargets.directoryName(".custom.json"), "SourceCacheTargets").isEqualTo(".custom");
@@ -43,7 +43,8 @@ public final class SourceCacheTargetsTest
 		for (String target : List.of("", ".", "..", "../outside", "../outside.json", "/outside", "nested/target",
 			"./target", "target/", "..json", "...json", "nul\u0000target"))
 		{
-			IllegalArgumentException failure = requireException(IllegalArgumentException.class, () -> SourceCacheTargets.directoryName(target));
+			IllegalArgumentException failure = requireException(IllegalArgumentException.class,
+				() -> SourceCacheTargets.directoryName(target));
 			requireThat(failure.getMessage().startsWith("Invalid Cargo target directory name: "), "failure").isTrue();
 		}
 	}

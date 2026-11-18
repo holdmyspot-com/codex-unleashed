@@ -1,7 +1,9 @@
 package com.holdmyspot.codexunleashed.tooling;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigInteger;
+import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -14,11 +16,13 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -48,12 +52,13 @@ final class CargoOutputDigests
 	static final String PART_ENTRIES = ".codex-cache-part-entries";
 	/** Current index format. */
 	private static final int FORMAT_VERSION = 1;
-	/** Minimum age, in nanoseconds, of a recorded change time relative to its hashing before the digest is trusted. */
+	/** Minimum age, in nanoseconds, of a recorded change time before its digest is trusted. */
 	private static final BigInteger SETTLED_NANOS = BigInteger.valueOf(1_000_000_000L);
 	/** Fields of the index document. */
 	private static final Set<String> DOCUMENT_FIELDS = Set.of("format_version", "hashed_at_nanos", "files");
 	/** Fields of each file entry. */
-	private static final Set<String> FILE_FIELDS = Set.of("file_key", "size", "modified_nanos", "changed_nanos", "digest");
+	private static final Set<String> FILE_FIELDS = Set.of(
+		"file_key", "size", "modified_nanos", "changed_nanos", "digest");
 
 	/** Index location inside the output directory. */
 	private final Path index;
@@ -94,7 +99,7 @@ final class CargoOutputDigests
 			recordedTime = integer(document.get("hashed_at_nanos"), "hashed_at_nanos");
 			JsonNode files = document.get("files");
 			if (!files.isObject()) throw new IOException("Invalid cached output digest index files");
-			for (var file : files.properties())
+			for (Map.Entry<String, JsonNode> file : files.properties())
 			{
 				JsonNode value = file.getValue();
 				requireFields(value, FILE_FIELDS, file.getKey());
@@ -149,7 +154,7 @@ final class CargoOutputDigests
 	{
 		if (!indexed) return;
 		Map<String, Object> files = new TreeMap<>();
-		for (var file : observed.entrySet())
+		for (Map.Entry<String, Entry> file : observed.entrySet())
 		{
 			Entry entry = file.getValue();
 			Map<String, Object> value = new LinkedHashMap<>();
@@ -193,10 +198,10 @@ final class CargoOutputDigests
 		try
 		{
 			if (!indexed) return;
-			for (var prior : recorded.entrySet())
+			for (Map.Entry<String, Entry> prior : recorded.entrySet())
 				if (prior.getValue().changedNanos().compareTo(recordedAt.subtract(SETTLED_NANOS)) < 0)
 					observed.put(prior.getKey(), prior.getValue());
-			for (var part : signatures.entrySet())
+			for (Map.Entry<String, String> part : signatures.entrySet())
 			{
 				Path list = lists.resolve(part.getKey() + ".json");
 				if (!Files.isRegularFile(list, LinkOption.NOFOLLOW_LINKS)) continue;
@@ -213,9 +218,10 @@ final class CargoOutputDigests
 		finally
 		{
 			if (Files.isDirectory(lists, LinkOption.NOFOLLOW_LINKS))
-				try (var paths = Files.walk(lists))
+				try (Stream<Path> paths = Files.walk(lists))
 				{
-					for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
+					List<Path> pathsToDelete = paths.sorted(Comparator.reverseOrder()).toList();
+					for (Path path : pathsToDelete)
 						Files.delete(path);
 				}
 		}
@@ -244,7 +250,7 @@ final class CargoOutputDigests
 		{
 			attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
 		}
-		catch (NoSuchFileException absent)
+		catch (NoSuchFileException _)
 		{
 			return;
 		}
@@ -266,13 +272,16 @@ final class CargoOutputDigests
 	 */
 	static String hash(Path path) throws IOException
 	{
-		var digest = CargoCacheKeys.digest();
-		try (var input = Files.newInputStream(path))
+		MessageDigest digest = CargoCacheKeys.digest();
+		try (InputStream input = Files.newInputStream(path))
 		{
-			byte[] buffer = new byte[65536];
-			int count;
-			while ((count = input.read(buffer)) != -1)
+			byte[] buffer = new byte[65_536];
+			int count = input.read(buffer);
+			while (count != -1)
+			{
 				digest.update(buffer, 0, count);
+				count = input.read(buffer);
+			}
 		}
 		return HexFormat.of().formatHex(digest.digest());
 	}

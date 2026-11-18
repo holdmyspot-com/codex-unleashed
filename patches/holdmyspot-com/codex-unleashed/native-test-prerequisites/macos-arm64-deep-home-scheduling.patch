@@ -1,0 +1,30 @@
+From 38d7c278a287c83506ae3c844b192674ce33fd49 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 15 Nov 2026 17:23:03 -0500
+Subject: [PATCH] test: serialize the macOS ARM deep-home daemon case
+
+Reserve all configured nextest slots for the deep-home bootstrap test on macOS ARM64. Keep external CPU stress and the existing four-minute outer bound.
+---
+ codex-rs/.config/nextest.toml | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
+index 7f988cf..89ac5aa 100644
+--- a/codex-rs/.config/nextest.toml
++++ b/codex-rs/.config/nextest.toml
+@@ -150,6 +150,12 @@ filter = '''
+ '''
+ slow-timeout = { period = "1m", terminate-after = 4 }
+ 
++[[profile.default.overrides]]
++platform = 'cfg(all(target_os = "macos", target_arch = "aarch64"))'
++filter = 'package(codex-cli) & binary(=app_server_daemon) & test(=bootstrap_updater_is_ready_in_deep_codex_home)'
++threads-required = "num-test-threads"
++slow-timeout = { period = "1m", terminate-after = 4 }
++
+ [[profile.default.overrides]]
+ # Each daemon test starts and restarts a real app-server daemon. On macOS ARM64 runners these tests
+ # take more than 60 seconds under load with and without the downstream patch queue.
+-- 
+2.43.0
+

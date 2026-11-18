@@ -176,6 +176,18 @@ jobs:
           path: restart-metadata
           persist-credentials: false
 
+      - name: Select the maintained tooling JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Build the tooling runtime
+        shell: bash
+        env:
+          TOOLING_ROOT: restart-metadata
+        run: bash restart-metadata/.github/scripts/setup-tooling.sh
+
       - name: Preserve restart inputs outside the source checkout
         id: inputs
         run: |
@@ -223,19 +235,24 @@ jobs:
 
       - name: Verify codex-rs Cargo manifests inherit workspace settings
         if: always() && !cancelled()
-        run: python3 .github/scripts/verify_cargo_workspace_manifests.py
+        run: bash "$CODEX_TOOLING" verify-cargo-workspace-manifests "$GITHUB_WORKSPACE"
 
       - name: Verify codex-tui does not import codex-core directly
         if: always() && !cancelled()
-        run: python3 .github/scripts/verify_tui_core_boundary.py
+        run: bash "$CODEX_TOOLING" verify-tui-core-boundary "$GITHUB_WORKSPACE"
 
       - name: Verify Bazel clippy flags match Cargo workspace lints
         if: always() && !cancelled()
-        run: python3 .github/scripts/verify_bazel_clippy_lints.py
+        run: bash "$CODEX_TOOLING" verify-bazel-clippy-lints "$GITHUB_WORKSPACE"
 
       - name: Check for a clean worktree
         if: always() && !cancelled()
         uses: ./.github/actions/check-clean-worktree
+
+      - name: Remove the owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
 
   formatting:
     name: just fmt-check and Prettier
@@ -247,6 +264,18 @@ jobs:
         with:
           path: restart-metadata
           persist-credentials: false
+
+      - name: Select the maintained tooling JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Build the tooling runtime
+        shell: bash
+        env:
+          TOOLING_ROOT: restart-metadata
+        run: bash restart-metadata/.github/scripts/setup-tooling.sh
 
       - name: Preserve restart inputs outside the source checkout
         id: inputs
@@ -313,11 +342,11 @@ jobs:
 
       - name: Ensure root README.md contains only ASCII and certain Unicode code points
         if: always() && !cancelled()
-        run: ./scripts/asciicheck.py README.md
+        run: bash "$CODEX_TOOLING" verify-readme-characters "$GITHUB_WORKSPACE/README.md"
 
       - name: Check root README ToC
         if: always() && !cancelled()
-        run: python3 scripts/readme_toc.py README.md
+        run: bash "$CODEX_TOOLING" verify-readme-toc "$GITHUB_WORKSPACE/README.md"
 
       - name: Check formatting (run `just fmt` to fix)
         if: always() && !cancelled()
@@ -334,6 +363,11 @@ jobs:
       - name: Check for a clean worktree
         if: always() && !cancelled()
         uses: ./.github/actions/check-clean-worktree
+
+      - name: Remove the owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
 
   cargo-deny:
     name: cargo-deny
@@ -421,6 +455,18 @@ jobs:
           path: restart-metadata
           persist-credentials: false
 
+      - name: Select the maintained tooling JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Build the tooling runtime
+        shell: bash
+        env:
+          TOOLING_ROOT: restart-metadata
+        run: bash restart-metadata/.github/scripts/setup-tooling.sh
+
       - name: Preserve restart inputs outside the source checkout
         id: inputs
         run: |
@@ -473,7 +519,7 @@ jobs:
       - name: Check rusty_v8 MODULE.bazel checksums
         shell: bash
         run: |
-          python3 .github/scripts/rusty_v8_bazel.py check-module-bazel
+          bash "$CODEX_TOOLING" verify-v8-module-checksums "$GITHUB_WORKSPACE"
           just test-github-scripts
 
       - name: Check MODULE.bazel.lock is up to date
@@ -484,6 +530,11 @@ jobs:
       - name: Check for a clean worktree
         if: always() && !cancelled()
         uses: ./.github/actions/check-clean-worktree
+
+      - name: Remove the owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
 
   codespell:
     name: Check for spelling errors

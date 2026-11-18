@@ -1,0 +1,204 @@
+package com.holdmyspot.codexunleashed.tooling.test;
+
+import com.holdmyspot.codexunleashed.tooling.CompareTestBaseline;
+import com.holdmyspot.codexunleashed.tooling.DefaultToolingScope;
+import com.holdmyspot.codexunleashed.tooling.TestReports;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
+import org.testng.annotations.Test;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+/** Verifies deterministic baseline matching and the report comparison protocol. */
+public final class CompareTestBaselineTest
+{
+	/** Creates a test instance. */
+	public CompareTestBaselineTest()
+	{
+		super();
+	}
+
+	/**
+	 * Separates new, fixed, unchanged and not-run failures while normalizing generated case numbers.
+	 *
+	 * @throws IOException if a fixture report cannot be written
+	 */
+	@Test public void comparesAllFourSections() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path xml = fixture.write("<testsuites><testsuite>" +
+				"<testcase name='direct::test_case_1_direct' classname='bin'><failure type='failure'/></testcase>" +
+				"<testcase name='new' classname='bin'><error type='exec'/></testcase>" +
+				"<testcase name='fixed' classname='bin'/><testcase name='skipped' classname='bin'><skipped/>" +
+				"</testcase></testsuite></testsuites>");
+			TestReports.Report report = TestReports.collect(List.of(xml), TestReports.Runner.NEXTEST);
+			CompareTestBaseline.Sections sections = CompareTestBaseline.compare(
+				Set.of("bin direct::direct", "bin fixed", "bin missing"), report, Set.of());
+			requireThat(sections.newFailures(), "new").isEqualTo(List.of("bin new"));
+			requireThat(sections.fixed(), "fixed").isEqualTo(List.of("bin fixed"));
+			requireThat(sections.unchanged(), "unchanged").isEqualTo(List.of("bin direct::test_case_1_direct"));
+			requireThat(sections.notRun(), "notRun").isEqualTo(List.of("bin missing"));
+		}
+	}
+
+	/**
+	 * Related failures are known without adding them to the primary baseline's not-run section.
+	 *
+	 * @throws IOException if a fixture report cannot be written
+	 */
+	@Test public void relatedFailuresDoNotBecomeNewOrNotRun() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path xml = fixture.write("<testsuites><testcase name='b' classname='bin'><failure/></testcase>" +
+				"</testsuites>");
+			TestReports.Report report = TestReports.collect(List.of(xml), TestReports.Runner.NEXTEST);
+			CompareTestBaseline.Sections sections = CompareTestBaseline.compare(Set.of("bin a"), report,
+				Set.of("bin b", "bin c"));
+			requireThat(sections.newFailures(), "relatedKnown").isEmpty();
+			requireThat(sections.unchanged(), "relatedUnchanged").isEqualTo(List.of("bin b"));
+			requireThat(sections.notRun(), "primaryOnlyNotRun").isEqualTo(List.of("bin a"));
+		}
+	}
+
+	/** Drops case number prefixes and leading underscores at every generated segment. */
+	@Test public void normalizesEveryCaseSegment()
+	{
+		requireThat(CompareTestBaseline.matchingKey("bin::test_case_7__direct::test_case_3__child"),
+			"normalized").isEqualTo("bin::direct::child");
+	}
+
+	/**
+	 * Retains the exact baseline schema, key order, indentation, sorted arrays and final newline.
+	 *
+	 * @throws IOException if fixture or baseline IO fails
+	 */
+	@Test public void writesCanonicalBaselineBytes() throws IOException
+	{
+		try (Fixture fixture = new Fixture(); var scope = new DefaultToolingScope())
+		{
+			Path xml = fixture.write("<testsuites><testcase name='z' classname='bin'><failure type='test failure'/>" +
+				"</testcase><testcase name='a' classname='bin'><failure type='test timeout'/>" +
+				"</testcase></testsuites>");
+			TestReports.Report report = TestReports.collect(List.of(xml), TestReports.Runner.NEXTEST);
+			Path target = fixture.root.resolve("out/baseline.json");
+			CompareTestBaseline.writeBaseline(scope, target, "commit", "linux", "nextest", report);
+			String expected = """
+				{
+				  "failed": [
+				    "bin z"
+				  ],
+				  "platform": "linux",
+				  "runner": "nextest",
+				  "tests_executed": 2,
+				  "timed_out": [
+				    "bin a"
+				  ],
+				  "upstream_commit": "commit"
+				}
+				""";
+			requireThat(Files.readString(target), "goldenBaseline").isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * Preserves write/compare command statuses and appends the same fenced comparison sections.
+	 *
+	 * @throws IOException if fixture or summary IO fails
+	 */
+	@Test public void commandComparesAndWritesExplicitSummary() throws IOException
+	{
+		try (Fixture fixture = new Fixture(); var scope = new DefaultToolingScope())
+		{
+			Path original = fixture.write("original.xml", "<testsuites><testcase name='old' classname='bin'>" +
+				"<failure type='test failure'/></testcase></testsuites>");
+			Path patched = fixture.write("patched.xml", "<testsuites><testcase name='old' classname='bin'/>" +
+				"<testcase name='new' classname='bin'><failure/></testcase></testsuites>");
+			Path baselines = fixture.root.resolve("baselines");
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+			try (PrintStream out = new PrintStream(output, true, StandardCharsets.UTF_8);
+				PrintStream err = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8))
+			{
+				int status = CompareTestBaseline.run(scope, new String[]{"--platform", "linux", "--upstream-commit", "commit",
+					"--baseline-dir", baselines.toString(), "--write-baseline", original.toString()}, null, out, err);
+				requireThat(status, "writeStatus").isEqualTo(0);
+			}
+			Path summary = fixture.root.resolve("summary.md");
+			try (PrintStream out = new PrintStream(output, true, StandardCharsets.UTF_8);
+				PrintStream err = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8))
+			{
+				int status = CompareTestBaseline.run(scope, new String[]{"--platform", "linux", "--upstream-commit", "commit",
+					"--baseline-dir", baselines.toString(), patched.toString()}, summary, out, err);
+				requireThat(status, "newFailureStatus").isEqualTo(1);
+			}
+			requireThat(output.toString(StandardCharsets.UTF_8), "sections").contains(
+				"[new (fail the run)] 1" + System.lineSeparator() + "    bin new");
+			requireThat(Files.readString(summary), "summarySections").isEqualTo(
+				"### Test baseline comparison\n\n```\n" +
+				"Scanned 1 report file(s): 2 test(s) executed, 1 failing or timed out.\n" +
+				"[new (fail the run)] 1\n" +
+				"    bin new\n" +
+				"[fixed relative to the baseline] 1\n" +
+				"    bin old\n" +
+				"[unchanged baseline failures] 0\n" +
+				"[in the baseline but not run] 0\n```\n");
+		}
+	}
+
+	/** Owns one temporary report. */
+	private static final class Fixture implements AutoCloseable
+	{
+		/** Directory containing this test's reports and baselines. */
+		private final Path root;
+		/**
+		 * Creates a fixture-owned temporary directory.
+		 *
+		 * @throws IOException if temporary storage cannot be created
+		 */
+		private Fixture() throws IOException
+		{
+			root = Files.createTempDirectory("baseline-");
+		}
+		/**
+		 * Writes the default JUnit report.
+		 *
+		 * @param value report XML
+		 * @return written report path
+		 * @throws IOException if the report cannot be written
+		 */
+		private Path write(String value) throws IOException
+		{
+			return Files.writeString(root.resolve("junit.xml"), value);
+		}
+		/**
+		 * Writes fixture content under the supplied name.
+		 *
+		 * @param name fixture filename
+		 * @param value report or baseline content
+		 * @return written file path
+		 * @throws IOException if the file cannot be written
+		 */
+		private Path write(String name, String value) throws IOException
+		{
+			return Files.writeString(root.resolve(name), value);
+		}
+		/**
+		 * Removes fixture files in reverse path order.
+		 *
+		 * @throws IOException if a fixture file cannot be deleted
+		 */
+		@Override public void close() throws IOException
+		{
+			try (java.util.stream.Stream<Path> files = Files.walk(root))
+			{
+				for (Path path : files.sorted(java.util.Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+			}
+		}
+	}
+}

@@ -17,10 +17,15 @@ import tools.jackson.databind.JsonNode;
  */
 public final class SourceInputSnapshots
 {
+	/** The JSON property naming the snapshot schema. */
 	static final String SCHEMA_VERSION = "schema_version";
+	/** The JSON property containing the source-file digests. */
 	static final String FILES = "files";
+	/** The JSON property containing the source-file timestamps. */
 	static final String MTIMES = "mtimes";
+	/** The current source-snapshot schema version. */
 	static final int CURRENT_SCHEMA = 1;
+	/** The diagnostic prefix used when prepared source inputs changed before recording. */
 	private static final String REFUSED_RECORDING =
 		"Source inputs changed during the build or were not prepared; refusing cache snapshot.";
 
@@ -145,7 +150,8 @@ public final class SourceInputSnapshots
 	 * @param current content whose effective timestamps will be persisted
 	 * @throws IOException if prepared inputs are missing, malformed or changed
 	 */
-	private static void verifyPrepared(ToolingScope scope, Path path, SourceInputInventory.Snapshot current) throws IOException
+	private static void verifyPrepared(ToolingScope scope, Path path, SourceInputInventory.Snapshot current)
+		throws IOException
 	{
 		Objects.requireNonNull(scope, "scope");
 		Objects.requireNonNull(path, "path");
@@ -182,7 +188,8 @@ public final class SourceInputSnapshots
 	 * Derives the pending-input filename beside the successful snapshot.
 	 *
 	 * @param snapshot the successful snapshot path
-	 * @return the sibling path with its final extension replaced by {@code .pending}, or {@code .pending} appended when no dot follows the first character
+	 * @return the sibling path with its final extension replaced by {@code .pending}, or {@code .pending} appended
+	 *  when no dot follows the first character
 	 * @throws NullPointerException if the snapshot is null
 	 */
 	public static Path pending(Path snapshot)

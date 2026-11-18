@@ -22,6 +22,7 @@ public final class UnixFileTimes
 
 	/**
 	 * Borrows the platform linker and resolves the immutable Unix timestamp binding.
+	 *
 	 * @param scope invocation-owned shared services, kept open until all operations finish
 	 */
 	UnixFileTimes(ToolingScope scope)
@@ -53,14 +54,22 @@ public final class UnixFileTimes
 	 */
 	private static final class Binding
 	{
+		/** The native linker used to resolve the timestamp function. */
 		private final Linker linker;
+		/** The native layout of a POSIX timespec structure. */
 		private final MemoryLayout timespec;
+		/** The native state captured by a downcall. */
 		private static final MemoryLayout STATE = Linker.Option.captureStateLayout();
+		/**
+		 * The byte offset of {@code errno} in the captured state.
+		 */
 		private static final long ERRNO_OFFSET = STATE.byteOffset(MemoryLayout.PathElement.groupElement("errno"));
+		/** The resolved native timestamp setter. */
 		private final Setter setter;
 
 		/**
 		 * Resolves signatures without acquiring a library or native handle lifetime.
+		 *
 		 * @param linker platform linker borrowed from the enclosing invocation scope
 		 */
 		private Binding(Linker linker)

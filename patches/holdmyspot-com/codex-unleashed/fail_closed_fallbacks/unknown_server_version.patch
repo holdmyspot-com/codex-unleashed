@@ -1,0 +1,380 @@
+From 826c4297c2f5196f0eff1824928bd8de5f8ecba8 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 14 Nov 2026 03:24:17 +0000
+Subject: [PATCH] bugfix: report unknown remote server versions
+
+diff --git a/codex-rs/tui/src/app/server_version_notice.rs b/codex-rs/tui/src/app/server_version_notice.rs
+index f90cf53..852d9e7 100644
+--- a/codex-rs/tui/src/app/server_version_notice.rs
++++ b/codex-rs/tui/src/app/server_version_notice.rs
+@@ -36,6 +36,14 @@ impl App {
+             client_version,
+             notice.as_ref().and(server_version),
+         );
++        let mut overview = self
++            .agents_overview
++            .view_state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if overview.server_version_notice.is_none() {
++            overview.server_version_notice = notice.clone();
++        }
+         notice
+     }
+ 
+diff --git a/codex-rs/tui/src/app/tests/startup.rs b/codex-rs/tui/src/app/tests/startup.rs
+index 316ae0e..17b45b7 100644
+--- a/codex-rs/tui/src/app/tests/startup.rs
++++ b/codex-rs/tui/src/app/tests/startup.rs
+@@ -1407,6 +1407,59 @@ async fn fresh_startup_notice_follows_session_attachment() {
+     assert_eq!(app.pending_server_version_notice, None);
+ }
+ 
++#[tokio::test]
++async fn unknown_server_version_notice_transitions_to_known_overview() {
++    let mut app = make_test_app().await;
++    app.app_server_target = AppServerTarget::Remote {
++        endpoint: crate::RemoteAppServerEndpoint::WebSocket {
++            websocket_url: "ws://127.0.0.1:4500".to_string(),
++            auth_token: None,
++        },
++    };
++    app.local_settings.tui.show_server_version_notice = true;
++
++    assert_eq!(
++        app.initialize_server_version_notice("0.153.0", None),
++        Some("The connected app-server did not provide a valid version. Its distribution and compatibility with this Codex CLI could not be verified.".to_string())
++    );
++    assert_eq!(
++        app.agents_overview
++            .view_state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .server_version_notice,
++        Some("The connected app-server did not provide a valid version. Its distribution and compatibility with this Codex CLI could not be verified.".to_string())
++    );
++    assert_eq!(
++        app.initialize_server_version_notice("0.153.0", Some("malformed server version")),
++        Some("The connected app-server did not provide a valid version. Its distribution and compatibility with this Codex CLI could not be verified.".to_string())
++    );
++    assert_eq!(
++        app.agents_overview
++            .view_state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .server_version_notice,
++        Some("The connected app-server did not provide a valid version. Its distribution and compatibility with this Codex CLI could not be verified.".to_string())
++    );
++
++    assert_eq!(
++        app.initialize_server_version_notice("0.153.0", Some("0.152.1")),
++        Some(
++            "A background Codex service is running v0.152.1, older than your Codex CLI v0.153.0."
++                .to_string()
++        )
++    );
++    assert_eq!(
++        app.agents_overview
++            .view_state
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .server_version_notice,
++        Some("Service v0.152.1 < Codex CLI v0.153.0".to_string())
++    );
++}
++
+ #[tokio::test]
+ async fn remote_overview_startup_hides_disabled_older_server_notice() -> Result<()> {
+     let mut app = make_test_app().await;
+diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
+index d89d01d..33efd36 100644
+--- a/codex-rs/tui/src/history_cell/tests.rs
++++ b/codex-rs/tui/src/history_cell/tests.rs
+@@ -63,6 +63,41 @@ fn connected_server_version_notice_snapshot() {
+     insta::assert_snapshot!(render_lines(&cell.transcript_lines(/*width*/ 100)).join("\n"));
+ }
+ 
++#[test]
++fn unknown_server_version_notice_renders_without_echoing_malformed_input() {
++    let target = crate::AppServerTarget::Remote {
++        endpoint: crate::RemoteAppServerEndpoint::UnixSocket {
++            socket_path: AbsolutePathBuf::from_absolute_path(
++                std::env::temp_dir().join("codex.sock"),
++            )
++            .expect("absolute socket path"),
++        },
++    };
++    let settings = codex_config::types::Tui {
++        show_server_version_notice: true,
++        ..Default::default()
++    };
++    let malformed = "not a semantic version";
++    let (notice, _) = crate::status::remote_connection::pending_server_version_notice(
++        &settings,
++        &target,
++        /*server_home*/ None,
++        "0.160.0+39",
++        Some(malformed),
++        /*last_shown*/ None,
++    )
++    .expect("malformed remote version should have a warning");
++    let rendered =
++        render_lines(&new_server_version_warning(notice).transcript_lines(/*width*/ 160))
++            .join("\n");
++
++    assert!(
++        rendered.contains("The connected app-server did not provide a valid version."),
++        "{rendered}"
++    );
++    assert!(!rendered.contains(malformed), "{rendered}");
++}
++
+ #[test]
+ fn local_daemon_version_notice_snapshot() {
+     let target = crate::AppServerTarget::LocalDaemon {
+diff --git a/codex-rs/tui/src/status/remote_connection.rs b/codex-rs/tui/src/status/remote_connection.rs
+index 201acd5..69e55d2 100644
+--- a/codex-rs/tui/src/status/remote_connection.rs
++++ b/codex-rs/tui/src/status/remote_connection.rs
+@@ -51,9 +51,14 @@ pub(crate) fn remote_connection_status_value(
+ }
+ 
+ pub(crate) fn server_version_notice(client: &str, server: Option<&str>) -> Option<String> {
+-    let server = server?;
+     let client_version = semver::Version::parse(client).ok()?;
+-    let server_version = semver::Version::parse(server).ok()?;
++    let Some((server, server_version)) = server.and_then(|server| {
++        semver::Version::parse(server)
++            .ok()
++            .map(|version| (server, version))
++    }) else {
++        return Some("The connected app-server did not provide a valid version. Its distribution and compatibility with this Codex CLI could not be verified.".to_string());
++    };
+     let client_build = client_version.build.as_str();
+     let client_is_unleashed = client_build == "dev"
+         || crate::update_versions::is_numeric_vendor_build(&client_version.build);
+@@ -105,8 +110,14 @@ pub(crate) fn server_version_notice_key(
+     client: &str,
+     server: Option<&str>,
+ ) -> Option<String> {
+-    let server = server?;
+-    server_version_notice(client, Some(server))?;
++    server_version_notice(client, server)?;
++    let version_key = match server {
++        Some(server) => match semver::Version::parse(server) {
++            Ok(_) => server.to_string(),
++            Err(_) => format!("invalid-{}", hex::encode(Sha256::digest(server.as_bytes()))),
++        },
++        None => "missing".to_string(),
++    };
+     let mut hasher = Sha256::new();
+     let endpoint = match target {
+         AppServerTarget::Embedded => None,
+@@ -162,7 +173,7 @@ pub(crate) fn server_version_notice_key(
+         None => hash_identity_part(&mut hasher, b"embedded:", b""),
+     }
+     Some(format!(
+-        "{}:{client}-{server}",
++        "{}:{client}-{version_key}",
+         hex::encode(hasher.finalize())
+     ))
+ }
+@@ -175,6 +186,9 @@ pub(crate) fn pending_server_version_notice(
+     server: Option<&str>,
+     last_shown: Option<&str>,
+ ) -> Option<(ServerVersionNotice, String)> {
++    if matches!(target, AppServerTarget::Embedded) {
++        return None;
++    }
+     let message = server_version_notice_for_tui(settings, client, server)?;
+     let notice = ServerVersionNotice {
+         message,
+@@ -235,8 +249,14 @@ mod tests {
+             server_version_notice("0.160.0+39", Some("0.160.0+39")),
+             None
+         );
+-        assert_eq!(server_version_notice("0.160.0+39", /*server*/ None), None);
+-        assert_eq!(server_version_notice("0.160.0+39", Some("unknown")), None);
++        assert_eq!(
++            server_version_notice("0.160.0+39", /*server*/ None),
++            Some("The connected app-server did not provide a valid version. Its distribution and compatibility with this Codex CLI could not be verified.".to_string())
++        );
++        assert_eq!(
++            server_version_notice("0.160.0+39", Some("unknown")),
++            Some("The connected app-server did not provide a valid version. Its distribution and compatibility with this Codex CLI could not be verified.".to_string())
++        );
+         assert!(
+             server_version_notice("0.160.0+dev", Some("0.160.0"))
+                 .unwrap()
+@@ -361,7 +381,10 @@ mod tests {
+             server_version_notice("0.0.0", Some("0.152.1")),
+             Some("A background Codex service is running v0.152.1, different from your Codex CLI v0.0.0.".to_string())
+         );
+-        assert_eq!(server_version_notice("0.153.0", /*server*/ None), None);
++        assert_eq!(
++            server_version_notice("0.153.0", /*server*/ None),
++            Some("The connected app-server did not provide a valid version. Its distribution and compatibility with this Codex CLI could not be verified.".to_string())
++        );
+         assert_eq!(
+             server_version_notice("0.153.0-alpha.10", Some("0.153.0-alpha.9")),
+             Some("A background Codex service is running v0.153.0-alpha.9, older than your Codex CLI v0.153.0-alpha.10.".to_string())
+@@ -378,6 +401,159 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn unknown_server_version_notice_reports_missing_or_malformed_versions() {
++        let expected = "The connected app-server did not provide a valid version. Its distribution and compatibility with this Codex CLI could not be verified.";
++        let malformed = "not a semantic version";
++
++        assert_eq!(
++            server_version_notice("0.160.0+39", None),
++            Some(expected.to_string())
++        );
++        let notice = server_version_notice("0.160.0+39", Some(malformed)).unwrap();
++        assert_eq!(notice, expected);
++        assert!(!notice.contains(malformed));
++    }
++
++    #[test]
++    fn unknown_server_version_notice_respects_settings_and_embedded_transport() -> anyhow::Result<()>
++    {
++        let endpoint = RemoteAppServerEndpoint::UnixSocket {
++            socket_path: AbsolutePathBuf::relative_to_current_dir("codex.sock")?,
++        };
++        let remote = AppServerTarget::Remote { endpoint };
++        let embedded = AppServerTarget::Embedded;
++        let settings = codex_config::types::Tui {
++            show_server_version_notice: true,
++            ..Default::default()
++        };
++        let malformed = Some("not a semantic version");
++
++        let (notice, _) = pending_server_version_notice(
++            &settings,
++            &remote,
++            Some("/server"),
++            "0.160.0+39",
++            None,
++            None,
++        )
++        .expect("missing remote version should produce a notice");
++        assert!(notice.message.contains("did not provide a valid version"));
++        assert!(!notice.offer_update);
++        assert!(
++            pending_server_version_notice(
++                &settings,
++                &remote,
++                Some("/server"),
++                "0.160.0+39",
++                malformed,
++                None,
++            )
++            .is_some()
++        );
++
++        let disabled = codex_config::types::Tui {
++            show_server_version_notice: false,
++            ..Default::default()
++        };
++        assert!(
++            pending_server_version_notice(
++                &disabled,
++                &remote,
++                Some("/server"),
++                "0.160.0+39",
++                malformed,
++                None,
++            )
++            .is_none()
++        );
++        assert!(
++            pending_server_version_notice(
++                &settings,
++                &embedded,
++                Some("/server"),
++                "0.160.0+39",
++                Some("0.159.0"),
++                None,
++            )
++            .is_none()
++        );
++        Ok(())
++    }
++
++    #[test]
++    fn unknown_server_version_notice_key_is_stable_and_preserves_connection_identity()
++    -> anyhow::Result<()> {
++        let socket = |path| -> anyhow::Result<RemoteAppServerEndpoint> {
++            Ok(RemoteAppServerEndpoint::UnixSocket {
++                socket_path: AbsolutePathBuf::from_absolute_path(path)?,
++            })
++        };
++        let target = AppServerTarget::Remote {
++            endpoint: socket("/server-a")?,
++        };
++        let other_endpoint = AppServerTarget::Remote {
++            endpoint: socket("/server-b")?,
++        };
++        let key = |target: &AppServerTarget, server_home, client, server| {
++            server_version_notice_key(target, server_home, client, server)
++        };
++        let absent = key(&target, Some("/home/a"), "0.160.0+39", None)
++            .expect("missing version should have a deduplication key");
++        let malformed_version = "not a semantic version";
++        let malformed = key(
++            &target,
++            Some("/home/a"),
++            "0.160.0+39",
++            Some(malformed_version),
++        )
++        .expect("malformed version should have a deduplication key");
++
++        assert_eq!(
++            malformed,
++            key(
++                &target,
++                Some("/home/a"),
++                "0.160.0+39",
++                Some(malformed_version),
++            )
++            .unwrap()
++        );
++        assert_ne!(absent, malformed);
++        assert!(!malformed.contains(malformed_version));
++        assert_ne!(
++            malformed,
++            key(
++                &other_endpoint,
++                Some("/home/a"),
++                "0.160.0+39",
++                Some(malformed_version)
++            )
++            .unwrap()
++        );
++        assert_ne!(
++            malformed,
++            key(
++                &target,
++                Some("/home/b"),
++                "0.160.0+39",
++                Some(malformed_version)
++            )
++            .unwrap()
++        );
++        assert_ne!(
++            malformed,
++            key(
++                &target,
++                Some("/home/a"),
++                "0.160.0+40",
++                Some(malformed_version)
++            )
++            .unwrap()
++        );
++        Ok(())
++    }
++
+     #[test]
+     fn update_command_is_only_suggested_for_implicit_local_daemon() -> color_eyre::Result<()> {
+         let endpoint = RemoteAppServerEndpoint::UnixSocket {

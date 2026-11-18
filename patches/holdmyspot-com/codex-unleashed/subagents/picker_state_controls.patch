@@ -1,0 +1,337 @@
+From 9af5c283dbed5c1375429ed06bb731bbcf3ec641 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 14 Nov 2026 09:32:02 -0500
+Subject: [PATCH] feature: support persistent picker controls with empty
+ results
+
+Subagent filters need to retain selection and query state and accept filter shortcuts even when no rows match. Add opt-in state callbacks and row-independent keyboard actions while preserving the existing picker defaults.
+---
+ .../src/bottom_pane/list_selection_view.rs    | 247 +++++++++++++++++-
+ 1 file changed, 234 insertions(+), 13 deletions(-)
+
+diff --git a/codex-rs/tui/src/bottom_pane/list_selection_view.rs b/codex-rs/tui/src/bottom_pane/list_selection_view.rs
+index 4397175..c583e8d 100644
+--- a/codex-rs/tui/src/bottom_pane/list_selection_view.rs
++++ b/codex-rs/tui/src/bottom_pane/list_selection_view.rs
+@@ -124,6 +124,11 @@ pub(crate) enum SelectionRowDisplay {
+ /// One selectable item in the generic selection list.
+ pub(crate) type SelectionAction = Box<dyn Fn(&AppEventSender) + Send + Sync>;
+ 
++pub(crate) struct SelectionViewAction {
++    pub key: KeyBinding,
++    pub action: SelectionAction,
++}
++
+ /// A second way to accept the highlighted row, sharing its dismissal behavior.
+ pub(crate) struct SelectionSecondaryAction {
+     pub key: KeyBinding,
+@@ -155,6 +160,9 @@ pub(crate) struct SelectionToggleState {
+ pub(crate) type OnSelectionChangedCallback =
+     Option<Box<dyn Fn(usize, &AppEventSender) + Send + Sync>>;
+ 
++pub(crate) type OnStateChangedCallback =
++    Option<Box<dyn Fn(&str, Option<usize>, &AppEventSender) + Send + Sync>>;
++
+ /// Callback invoked when the picker is dismissed without accepting (Esc or
+ /// Ctrl+C).  Used by the theme picker to restore the pre-open theme.
+ pub(crate) type OnCancelCallback = Option<Box<dyn Fn(&AppEventSender) + Send + Sync>>;
+@@ -274,6 +282,10 @@ pub(crate) struct SelectionViewParams {
+     /// Called when the highlighted item changes (navigation, filter, number-key).
+     /// Receives the *actual* item index, not the filtered/visible index.
+     pub on_selection_changed: OnSelectionChangedCallback,
++    /// Optional callback for the current query and actual selection after input.
++    pub on_state_changed: OnStateChangedCallback,
++    /// Optional actions that do not depend on a selected row.
++    pub key_actions: Vec<SelectionViewAction>,
+ 
+     /// Whether cancellation keys can dismiss the picker.
+     pub allow_cancel: bool,
+@@ -320,6 +332,8 @@ impl Default for SelectionViewParams {
+             stacked_side_content: None,
+             preserve_side_content_bg: false,
+             on_selection_changed: None,
++            on_state_changed: None,
++            key_actions: Vec::new(),
+             allow_cancel: true,
+             on_cancel: None,
+         }
+@@ -384,6 +398,8 @@ pub(crate) struct ListSelectionView {
+ 
+     /// Called when the highlighted item changes (navigation, filter, number-key).
+     on_selection_changed: OnSelectionChangedCallback,
++    on_state_changed: OnStateChangedCallback,
++    key_actions: Vec<SelectionViewAction>,
+ 
+     allow_cancel: bool,
+ 
+@@ -543,6 +559,8 @@ impl ListSelectionView {
+             stacked_side_content: params.stacked_side_content,
+             preserve_side_content_bg: params.preserve_side_content_bg,
+             on_selection_changed: params.on_selection_changed,
++            on_state_changed: params.on_state_changed,
++            key_actions: params.key_actions,
+             allow_cancel: params.allow_cancel,
+             on_cancel: params.on_cancel,
+             keymap,
+@@ -1273,20 +1291,18 @@ impl ListSelectionView {
+     }
+ }
+ 
+-impl BottomPaneView for ListSelectionView {
+-    fn presentation(&self) -> super::ViewPresentation {
+-        self.presentation
+-    }
+-
+-    fn keymap_contexts(&self) -> crate::keymap::KeymapContextSet {
+-        crate::keymap::KeymapContextSet::new(crate::keymap::KeymapContext::List)
+-    }
+-
+-    fn accepts_input_when_disconnected(&self) -> bool {
+-        self.allow_input_when_disconnected
++impl ListSelectionView {
++    fn notify_state_changed(&self) {
++        if let Some(callback) = &self.on_state_changed {
++            callback(
++                &self.search_query,
++                self.selected_actual_idx(),
++                &self.app_event_tx,
++            );
++        }
+     }
+ 
+-    fn handle_key_event(&mut self, key_event: KeyEvent) {
++    fn handle_key_event_inner(&mut self, key_event: KeyEvent) {
+         // An active search reserves printable keys for the query. On-demand search leaves the
+         // configured list bindings untouched until its shortcut is pressed.
+         let search_field_visible = self.search_field_visible();
+@@ -1445,7 +1461,7 @@ impl BottomPaneView for ListSelectionView {
+         }
+     }
+ 
+-    fn handle_paste(&mut self, pasted: String) -> bool {
++    fn handle_paste_inner(&mut self, pasted: String) -> bool {
+         if !self.search_field_visible() {
+             return false;
+         }
+@@ -1455,6 +1471,39 @@ impl BottomPaneView for ListSelectionView {
+         self.edit_search_query(|query| query.push_str(&pasted));
+         true
+     }
++}
++
++impl BottomPaneView for ListSelectionView {
++    fn presentation(&self) -> super::ViewPresentation {
++        self.presentation
++    }
++
++    fn keymap_contexts(&self) -> crate::keymap::KeymapContextSet {
++        crate::keymap::KeymapContextSet::new(crate::keymap::KeymapContext::List)
++    }
++
++    fn accepts_input_when_disconnected(&self) -> bool {
++        self.allow_input_when_disconnected
++    }
++
++    fn handle_key_event(&mut self, key_event: KeyEvent) {
++        if let Some(action) = self
++            .key_actions
++            .iter()
++            .find(|action| action.key.is_press(key_event))
++        {
++            (action.action)(&self.app_event_tx);
++        } else {
++            self.handle_key_event_inner(key_event);
++        }
++        self.notify_state_changed();
++    }
++
++    fn handle_paste(&mut self, pasted: String) -> bool {
++        let handled = self.handle_paste_inner(pasted);
++        self.notify_state_changed();
++        handled
++    }
+ 
+     fn is_complete(&self) -> bool {
+         self.completion.is_some()
+@@ -1931,6 +1980,178 @@ mod tests {
+     use ratatui::style::Style;
+     use tokio::sync::mpsc::unbounded_channel;
+ 
++    #[test]
++    fn agent_picker_state_default_configuration_preserves_list_key_behavior() {
++        let (tx_raw, mut rx) = unbounded_channel::<AppEvent>();
++        let mut view = ListSelectionView::new(
++            SelectionViewParams {
++                items: vec![
++                    SelectionItem {
++                        name: "First".to_string(),
++                        ..Default::default()
++                    },
++                    SelectionItem {
++                        name: "Second".to_string(),
++                        ..Default::default()
++                    },
++                ],
++                ..Default::default()
++            },
++            AppEventSender::new(tx_raw),
++            crate::keymap::RuntimeKeymap::defaults().list,
++        );
++        view.handle_key_event(KeyEvent::from(KeyCode::F(6)));
++        assert_eq!(view.selected_actual_idx(), Some(0));
++        assert!(rx.try_recv().is_err());
++        view.handle_key_event(KeyEvent::from(KeyCode::Down));
++        assert_eq!(view.selected_actual_idx(), Some(1));
++        assert!(rx.try_recv().is_err());
++    }
++
++    #[test]
++    fn agent_picker_state_callback_tracks_input_and_actual_filtered_selection() {
++        let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
++        let changes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
++        let changes_for_callback = std::sync::Arc::clone(&changes);
++        let mut view = ListSelectionView::new(
++            SelectionViewParams {
++                items: ["alpha", "beta", "gamma"]
++                    .into_iter()
++                    .map(|value| SelectionItem {
++                        name: value.to_string(),
++                        search_value: Some(value.to_string()),
++                        ..Default::default()
++                    })
++                    .collect(),
++                is_searchable: true,
++                on_state_changed: Some(Box::new(move |query, selected, _| {
++                    changes_for_callback
++                        .lock()
++                        .expect("state callback lock")
++                        .push((query.to_string(), selected));
++                })),
++                ..Default::default()
++            },
++            AppEventSender::new(tx_raw),
++            crate::keymap::RuntimeKeymap::defaults().list,
++        );
++
++        view.handle_key_event(KeyEvent::from(KeyCode::Char('b')));
++        assert_eq!(
++            changes.lock().expect("state callback lock").last(),
++            Some(&("b".to_string(), Some(1)))
++        );
++
++        assert!(view.handle_paste("eta".to_string()));
++        assert_eq!(
++            changes.lock().expect("state callback lock").last(),
++            Some(&("beta".to_string(), Some(1)))
++        );
++
++        for _ in 0..4 {
++            view.handle_key_event(KeyEvent::from(KeyCode::Backspace));
++        }
++        view.handle_key_event(KeyEvent::from(KeyCode::End));
++        assert_eq!(
++            changes.lock().expect("state callback lock").last(),
++            Some(&(String::new(), Some(2)))
++        );
++        assert_eq!(changes.lock().expect("state callback lock").len(), 7);
++    }
++
++    #[test]
++    fn agent_picker_state_callback_reports_final_accept_and_cancel_states() {
++        for key in [KeyCode::Enter, KeyCode::Esc] {
++            let (tx_raw, _rx) = unbounded_channel::<AppEvent>();
++            let changes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
++            let changes_for_callback = std::sync::Arc::clone(&changes);
++            let mut view = ListSelectionView::new(
++                SelectionViewParams {
++                    items: vec![SelectionItem {
++                        name: "Beta".to_string(),
++                        search_value: Some("beta".to_string()),
++                        ..Default::default()
++                    }],
++                    is_searchable: true,
++                    initial_search_query: Some("be".to_string()),
++                    on_state_changed: Some(Box::new(move |query, selected, _| {
++                        changes_for_callback
++                            .lock()
++                            .expect("state callback lock")
++                            .push((query.to_string(), selected));
++                    })),
++                    ..Default::default()
++                },
++                AppEventSender::new(tx_raw),
++                crate::keymap::RuntimeKeymap::defaults().list,
++            );
++
++            view.handle_key_event(KeyEvent::from(key));
++            assert_eq!(
++                changes.lock().expect("state callback lock").last(),
++                Some(&("be".to_string(), Some(0)))
++            );
++        }
++    }
++
++    #[test]
++    fn agent_picker_state_actions_work_without_rows_and_preserve_unmatched_keys() {
++        let (tx_raw, mut rx) = unbounded_channel::<AppEvent>();
++        let mut empty_view = ListSelectionView::new(
++            SelectionViewParams {
++                items: vec![SelectionItem {
++                    name: "Agent".to_string(),
++                    search_value: Some("agent".to_string()),
++                    ..Default::default()
++                }],
++                is_searchable: true,
++                initial_search_query: Some("no match".to_string()),
++                key_actions: vec![SelectionViewAction {
++                    key: crate::key_hint::plain(KeyCode::F(6)),
++                    action: Box::new(|tx| tx.send(AppEvent::OpenApprovalsPopup)),
++                }],
++                ..Default::default()
++            },
++            AppEventSender::new(tx_raw),
++            crate::keymap::RuntimeKeymap::defaults().list,
++        );
++
++        empty_view.handle_key_event(KeyEvent::from(KeyCode::F(6)));
++        assert!(matches!(rx.try_recv(), Ok(AppEvent::OpenApprovalsPopup)));
++        assert!(rx.try_recv().is_err());
++        assert_eq!(empty_view.selected_actual_idx(), None);
++
++        let (tx_raw, mut rx) = unbounded_channel::<AppEvent>();
++        let mut view = ListSelectionView::new(
++            SelectionViewParams {
++                items: vec![
++                    SelectionItem {
++                        name: "First".to_string(),
++                        ..Default::default()
++                    },
++                    SelectionItem {
++                        name: "Second".to_string(),
++                        ..Default::default()
++                    },
++                ],
++                key_actions: vec![SelectionViewAction {
++                    key: crate::key_hint::plain(KeyCode::F(6)),
++                    action: Box::new(|tx| tx.send(AppEvent::OpenApprovalsPopup)),
++                }],
++                ..Default::default()
++            },
++            AppEventSender::new(tx_raw),
++            crate::keymap::RuntimeKeymap::defaults().list,
++        );
++
++        view.handle_key_event(KeyEvent::from(KeyCode::Down));
++        assert_eq!(view.selected_actual_idx(), Some(1));
++        assert!(rx.try_recv().is_err());
++        view.handle_key_event(KeyEvent::from(KeyCode::F(6)));
++        assert!(matches!(rx.try_recv(), Ok(AppEvent::OpenApprovalsPopup)));
++        assert!(rx.try_recv().is_err());
++    }
++
+     struct MarkerRenderable {
+         marker: &'static str,
+         height: u16,
+-- 
+2.43.0
+

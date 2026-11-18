@@ -58,6 +58,18 @@ jobs:
           path: restart-metadata
           persist-credentials: false
 
+      - name: Select the maintained tooling JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Build the tooling runtime
+        shell: bash
+        env:
+          TOOLING_ROOT: restart-metadata
+        run: bash restart-metadata/.github/scripts/setup-tooling.sh
+
       - name: Preserve restart inputs outside the source checkout
         id: inputs
         env:
@@ -74,8 +86,6 @@ jobs:
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
-          cp restart-metadata/.github/scripts/reclaim-baseline-macos-xcodes.py "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py"
-          cp restart-metadata/.github/scripts/compare-test-baseline.py "$RUNNER_TEMP/compare-test-baseline.py"
           mkdir -p "$RUNNER_TEMP/test-baselines"
           if [[ -d restart-metadata/docs/test-baselines ]]; then cp -R restart-metadata/docs/test-baselines/. "$RUNNER_TEMP/test-baselines/"; fi
           cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh restart-metadata/.github/scripts/bazel-cc-disk-cache.sh "$RUNNER_TEMP/"
@@ -130,7 +140,7 @@ jobs:
 
       - name: Reclaim inactive Xcode versions and verify selected native tools
         run: |
-          python3 "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py" \
+          bash "$CODEX_TOOLING" reclaim-baseline-macos-xcodes \
             --evidence-directory "$RUNNER_TEMP/baseline-macos-bazel-evidence"
 
       - name: Record the native host and capacity
@@ -163,25 +173,7 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
           cargo metadata --format-version 1 --filter-platform "$TARGET" \
             --manifest-path codex-rs/Cargo.toml > "$RUNNER_TEMP/baseline-cargo-metadata.json"
-          python3 - <<'PYTHON'
-          import subprocess
-          import tomllib
-          from pathlib import Path
-
-          before = tomllib.loads(subprocess.check_output(["git", "show", "HEAD:codex-rs/Cargo.lock"], text=True))
-          after = tomllib.loads(Path("codex-rs/Cargo.lock").read_text())
-          before_header = {key: value for key, value in before.items() if key != "package"}
-          after_header = {key: value for key, value in after.items() if key != "package"}
-          assert before_header == after_header, "Cargo changed lockfile metadata beyond workspace versions"
-          before_external = [package for package in before["package"] if "source" in package]
-          after_external = [package for package in after["package"] if "source" in package]
-          assert before_external == after_external, "Cargo changed external dependency records"
-          version = tomllib.loads(Path("codex-rs/Cargo.toml").read_text())["workspace"]["package"]["version"]
-          expected_workspace = [dict(package, version=version) for package in before["package"] if "source" not in package]
-          actual_workspace = [package for package in after["package"] if "source" not in package]
-          assert expected_workspace == actual_workspace, "Cargo changed workspace records beyond their release version"
-          print(f"Verified {len(actual_workspace)} workspace versions; external dependencies unchanged")
-          PYTHON
+          bash "$CODEX_TOOLING" verify-workspace-lock-versions "$GITHUB_WORKSPACE"
           git diff --check
           git diff -- codex-rs/Cargo.lock > "$evidence/workspace-version-lock.diff"
           git diff --binary > "$evidence/source-before.diff"
@@ -203,29 +195,10 @@ jobs:
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
           .github/scripts/run-bazel-query-ci.sh --output=label -- '//...' > "$evidence/candidate-targets.txt"
-          python3 - <<'PYTHON'
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-
-          evidence = Path(os.environ["RUNNER_TEMP"]) / "baseline-macos-bazel-evidence"
-          labels = (evidence / "candidate-targets.txt").read_text().splitlines()
-          packages = sorted({label.rsplit(":", 1)[0] for label in labels})
-          shard_count = int(os.environ["BAZEL_TEST_SHARD_COUNT"])
-          shard = int(os.environ["BAZEL_TEST_SHARD"])
-          assignments = {
-              package: int.from_bytes(hashlib.sha256(package.encode()).digest(), "big") % shard_count + 1
-              for package in packages
-          }
-          selected = [f"{package}:all" for package in packages if assignments[package] == shard]
-          assert selected, f"No packages selected for shard {shard}"
-          (evidence / "selected-targets.txt").write_text("\n".join(selected) + "\n")
-          (evidence / "package-shards.json").write_text(json.dumps(assignments, indent=2) + "\n")
-          expression = "set(" + " ".join(f"{package}:all" for package in packages) + ")"
-          (evidence / "all-package-patterns.query").write_text(expression + "\n")
-          print(f"Selected {len(selected)} of {len(packages)} packages for shard {shard}/{shard_count}")
-          PYTHON
+          bash "$CODEX_TOOLING" select-bazel-packages \
+            --candidates "$evidence/candidate-targets.txt" \
+            --output-directory "$evidence" \
+            --shard "$BAZEL_TEST_SHARD" --shard-count "$BAZEL_TEST_SHARD_COUNT"
           .github/scripts/run-bazel-query-ci.sh --output=label -- "$(cat "$evidence/all-package-patterns.query")" \
             | LC_ALL=C sort > "$evidence/expanded-package-targets.txt"
           LC_ALL=C sort "$evidence/candidate-targets.txt" > "$evidence/expected-targets.txt"
@@ -276,6 +249,10 @@ jobs:
           while IFS= read -r target; do
             targets+=("$target")
           done < "$evidence/selected-targets.txt"
+          execution_targets=("${targets[@]}" -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests)
+          printf '%s\n' "${execution_targets[@]}" > "$evidence/execution-targets.txt"
+          bep="$evidence/bazel-tests.bep.json"
+          rm -f -- "$bep"
           (
             while true; do
               date -u +'%Y-%m-%dT%H:%M:%SZ'
@@ -303,14 +280,18 @@ jobs:
           set +e
           .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- \
             test "${cache_args[@]}" --test_tag_filters=-argument-comment-lint \
-            --test_verbose_timeout_warnings --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
+            --build_event_json_file="$bep" --test_verbose_timeout_warnings --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
             "${targets[@]}" -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests \
             2>&1 | tee "$evidence/bazel-tests.log"
           result=${PIPESTATUS[0]}
           set -e
           printf 'exit_code=%s\n' "$result" > "$evidence/bazel-tests.receipt"
+          bash "$CODEX_TOOLING" validate-bazel-test-evidence \
+            --bep "$bep" --expected-patterns "$evidence/execution-targets.txt" --bazel-exit-code "$result" \
+            > "$evidence/bazel-test-evidence.json"
           git diff --binary > "$evidence/source-after.diff"
           cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
+          printf 'bep-complete=true\n' >> "$GITHUB_OUTPUT"
           # Bazel exits 3 when tests failed and everything else built. The comparison with the unpatched baseline below
           # judges those failures (an unpatched run records that baseline), so they alone do not fail this step.
           # Any other failure, such as a build error, does.
@@ -338,7 +319,7 @@ jobs:
         # An unpatched run is pristine upstream, so its failures are the baseline that patched runs are compared with;
         # the evidence artifact carries the file for committing under docs/test-baselines. Shards are assigned by
         # package name, so a test never moves between shards and each shard is compared with its own baseline only.
-        if: ${{ !cancelled() && steps.bazel_tests.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.bazel_tests.outcome == 'success' && steps.bazel_tests.outputs['bep-complete'] == 'true' }}
         env:
           PATCHES: ${{ inputs.patches }}
         run: |
@@ -347,10 +328,10 @@ jobs:
           platform="macos-bazel-${BAZEL_ARCH}-shard-${BAZEL_TEST_SHARD}"
           common=(--runner bazel --platform "$platform" --upstream-commit "$(cat "$evidence/upstream-commit")")
           if [[ -z "${PATCHES// /}" ]]; then
-            python3 "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" --write-baseline \
+            bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" --write-baseline \
               --output "$evidence/$platform.json" "$(realpath bazel-testlogs)"
           else
-            python3 "$RUNNER_TEMP/compare-test-baseline.py" "${common[@]}" \
+            bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" \
               --baseline-dir "$RUNNER_TEMP/test-baselines" "$(realpath bazel-testlogs)" 2>&1 \
               | tee "$evidence/baseline-comparison.log"
             exit "${PIPESTATUS[0]}"
@@ -371,3 +352,8 @@ jobs:
           path: ${{ runner.temp }}/baseline-macos-bazel-evidence
           retention-days: 3
           if-no-files-found: warn
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"

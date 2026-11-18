@@ -1,0 +1,737 @@
+From c6ef86b146386e5f31fbe03fc0eb1a06c1ce63a9 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 14 Nov 2026 23:32:05 +0000
+Subject: [PATCH] bugfix: discover configured voice test executables
+
+Build the actual rust_test targets and query their configured executable
+providers so verification does not depend on nonexistent test-bin labels
+or assumed output paths. Preserve failures and complete evidence.
+
+Windows CRT staging rewrites runtime.json after the runtime stage copied it
+from Bazel's read-only output, so the write failed with a permission error.
+Make the manifest writable first, as sealing does, and write it with line
+feeds so the Windows interpreter does not translate them.
+---
+ .github/scripts/codex-voice-runtime.sh      | 152 ++++++++---
+ .github/scripts/test-codex-voice-runtime.sh | 282 +++++++++++++++-----
+ third_party/voice/test_windows_crt.py       |  89 ++++++
+ third_party/voice/windows_crt.py            |   5 +-
+ 4 files changed, 433 insertions(+), 95 deletions(-)
+ create mode 100644 third_party/voice/test_windows_crt.py
+
+diff --git a/.github/scripts/codex-voice-runtime.sh b/.github/scripts/codex-voice-runtime.sh
+index 4eb7530..4b0cc38 100755
+--- a/.github/scripts/codex-voice-runtime.sh
++++ b/.github/scripts/codex-voice-runtime.sh
+@@ -6,6 +6,11 @@ set -Eeuo pipefail
+ RESULT_DIR=
+ # This flag distinguishes a producer-owned result from a caller-owned preexisting path.
+ RESULT_CREATED=0
++# Upstream's Bazel CI wrapper relative to the upstream root, where every wrapper invocation starts.
++# The wrapper locates its Python runner from its own launch path and disables Git Bash argument conversion on Windows, so an
++# absolute POSIX launch path such as /d/a/work/.github/scripts reaches the native interpreter unconverted and resolves
++# against the current drive as D:\d\a\work. Upstream's own callers use this relative form.
++readonly BAZEL_WRAPPER=./.github/scripts/run-bazel-ci.sh
+ 
+ # Reports the command form and exits when an invocation cannot be used.
+ # Exit status:
+@@ -170,28 +175,18 @@ run_logged() {
+   fi
+ }
+ 
+-# Builds the four same-commit native voice outputs with the selected upstream Bazel wrapper.
+-# Arguments:
+-# - Absolute upstream checkout, output directory for retained build logs, Bazel runtime suffix, runner OS, Windows repository path, SystemRoot, and host architecture.
+-# Exit status:
+-# - 0 when Bazel builds the runtime, helper, and both native runtime tests; otherwise exits after retaining build logs.
+-run_native_build() {
+-  local upstream_root="$1"
+-  local evidence_root="$2"
+-  local runtime_suffix="$3"
+-  local runner_os="$4"
+-  local windows_tools_root="$5"
+-  local system_root="$6"
+-  local windows_architecture="$7"
+-  local run_bazel="$upstream_root/.github/scripts/run-bazel-ci.sh"
++# Builds identical Bazel configuration arguments for build and executable-provider queries.
++# Arguments: command, runner OS, Windows repository, SystemRoot, and host architecture.
++configure_bazel_arguments() {
++  local command="$1"
++  local runner_os="$2"
++  local windows_tools_root="$3"
++  local system_root="$4"
++  local windows_architecture="$5"
+   local status_command=./scripts/workspace-status.sh
+-  local helper_target=//codex-rs/voice-host:codex-voice-host
+-  local -a wrapper_args=(--remote-download-toplevel --print-failed-action-summary)
+-  local -a bazel_args=(build --config=release)
++  wrapper_args=(--remote-download-toplevel --print-failed-action-summary)
++  bazel_args=("$command" --config=release)
+ 
+-  if [[ ! -x "$run_bazel" ]]; then
+-    fail "upstream Bazel CI wrapper is missing or not executable: $run_bazel"
+-  fi
+   if [[ "$runner_os" == macOS ]]; then
+     bazel_args+=(--macos_minimum_os=14.0)
+   fi
+@@ -211,21 +206,114 @@ run_native_build() {
+       "--host_action_env=PROCESSOR_ARCHITECTURE=$windows_architecture"
+     )
+   fi
+-  bazel_args+=("--workspace_status_command=$status_command" --)
++  bazel_args+=("--workspace_status_command=$status_command")
++}
++
++# Builds the four same-commit native voice outputs with the selected upstream Bazel wrapper.
++# Arguments: upstream root, evidence directory, runtime suffix, runner OS and host-specific configuration.
++run_native_build() {
++  local upstream_root="$1"
++  local evidence_root="$2"
++  local runtime_suffix="$3"
++  local runner_os="$4"
++  local windows_tools_root="$5"
++  local system_root="$6"
++  local windows_architecture="$7"
++  local helper_target=//codex-rs/voice-host:codex-voice-host
++  local -a wrapper_args=()
++  local -a bazel_args=()
++
++  if [[ ! -x "$upstream_root/$BAZEL_WRAPPER" ]]; then
++    fail "upstream Bazel CI wrapper is missing or not executable: $upstream_root/$BAZEL_WRAPPER"
++  fi
++  configure_bazel_arguments build "$runner_os" "$windows_tools_root" "$system_root" "$windows_architecture"
++  bazel_args+=(--)
+   bazel_args+=(
+     "//third_party/voice:native_runtime_$runtime_suffix"
+     "$helper_target"
+-    //codex-rs/voice-host:voice-host-packaged_runtime-test-bin
+-    //codex-rs/voice-host:voice-host-installed_package_runtime-test-bin
++    //codex-rs/voice-host:voice-host-packaged_runtime-test
++    //codex-rs/voice-host:voice-host-installed_package_runtime-test
+   )
+ 
+   (
+     trap - EXIT
+     cd -- "$upstream_root"
+-    run_logged 'native voice Bazel build' "$evidence_root/build.stdout.log" "$evidence_root/build.stderr.log" "$run_bazel" "${wrapper_args[@]}" -- "${bazel_args[@]}"
++    run_logged 'native voice Bazel build' "$evidence_root/build.stdout.log" "$evidence_root/build.stderr.log" "$BAZEL_WRAPPER" "${wrapper_args[@]}" -- "${bazel_args[@]}"
+   )
+ }
+ 
++# Extracts the single executable path from a retained Bazel query output.
++# Arguments:
++# - Query standard-output log and the path file to write.
++# Side effects:
++# - Writes the path and one LF to the path file, without newline translation.
++# Exit status:
++# - 0 when the log holds exactly one nonempty line, with an optional CRLF ending from a Windows Bazel; otherwise 1 with a diagnostic on standard error.
++read_query_path() {
++  local stdout_log="$1"
++  local path_file="$2"
++  local line
++  local query_path=
++  local line_count=0
++
++  while IFS= read -r line || [[ -n "$line" ]]; do
++    line_count=$((line_count + 1))
++    if ((line_count == 1)); then
++      query_path="${line%$'\r'}"
++    fi
++  done < "$stdout_log"
++  if ((line_count != 1)) || [[ -z "$query_path" || "$query_path" == *$'\r'* ]]; then
++    printf 'query must return exactly one nonempty executable path line\n' >&2
++    return 1
++  fi
++  printf '%s\n' "$query_path" > "$path_file"
++}
++
++# Queries one built rust_test executable using the exact build configuration and preserves the provider result.
++query_native_executable() {
++  local upstream_root="$1"
++  local evidence_root="$2"
++  local runtime_suffix="$3"
++  local runner_os="$4"
++  local windows_tools_root="$5"
++  local system_root="$6"
++  local windows_architecture="$7"
++  local target_label="$8"
++  local output_name="$9"
++  local role="${10}"
++  local stdout_log="$evidence_root/$output_name.stdout.log"
++  local stderr_log="$evidence_root/$output_name.stderr.log"
++  local path_file="$evidence_root/$output_name.path"
++  local resolved_path
++  local -a wrapper_args=()
++  local -a bazel_args=()
++
++  configure_bazel_arguments cquery "$runner_os" "$windows_tools_root" "$system_root" "$windows_architecture"
++  bazel_args+=(
++    --output=starlark
++    "--starlark:expr=providers(target)['DefaultInfo'].files_to_run.executable.path"
++    --
++    "$target_label"
++  )
++  (
++    trap - EXIT
++    cd -- "$upstream_root"
++    run_logged "$role Bazel executable query" "$stdout_log" "$stderr_log" "$BAZEL_WRAPPER" "${wrapper_args[@]}" -- "${bazel_args[@]}"
++  )
++  read_query_path "$stdout_log" "$path_file" || fail "$role Bazel executable query returned an empty or multi-line path; see $stdout_log and $stderr_log"
++  IFS= read -r resolved_path < "$path_file"
++  # The line ends with a carriage return when a Windows tool wrote it.
++  resolved_path="${resolved_path%$'\r'}"
++  if [[ "$resolved_path" == /* ]]; then :; else
++    resolved_path="$upstream_root/$resolved_path"
++  fi
++  require_build_file "$resolved_path" "$role"
++  if [[ -x "$resolved_path" ]]; then :; else
++    fail "$role is not executable: $resolved_path"
++  fi
++  QUERY_EXECUTABLE="$resolved_path"
++}
++
+ # Requires a regular build output before any release files are staged.
+ # Arguments:
+ # - Build output path and its caller-readable role.
+@@ -466,24 +554,20 @@ main() {
+   helper_name="codex-voice-host$helper_extension"
+   helper_source="$upstream_root/bazel-bin/codex-rs/voice-host/$helper_name"
+   runtime_source="$upstream_root/bazel-bin/third_party/voice/native_runtime_$runtime_suffix"
+-  packaged_test_source="$upstream_root/bazel-bin/codex-rs/voice-host/voice-host-packaged_runtime-test-bin$helper_extension"
+-  installed_test_source="$upstream_root/bazel-bin/codex-rs/voice-host/voice-host-installed_package_runtime-test-bin$helper_extension"
++  query_native_executable "$upstream_root" "$evidence_root" "$runtime_suffix" "$runner_os" "$tools_root" "$system_root" "$windows_architecture" \
++    //codex-rs/voice-host:voice-host-packaged_runtime-test packaged-test-output 'packaged runtime test executable'
++  packaged_test_source="$QUERY_EXECUTABLE"
++  query_native_executable "$upstream_root" "$evidence_root" "$runtime_suffix" "$runner_os" "$tools_root" "$system_root" "$windows_architecture" \
++    //codex-rs/voice-host:voice-host-installed_package_runtime-test installed-test-output 'installed-package runtime test executable'
++  installed_test_source="$QUERY_EXECUTABLE"
+   require_build_file "$helper_source" 'voice-host helper'
+   require_build_file "$runtime_source/runtime.json" 'voice runtime receipt'
+   if [[ -d "$runtime_source" ]]; then :; else
+     fail "native build did not produce runtime directory: $runtime_source"
+   fi
+-  require_build_file "$packaged_test_source" 'packaged runtime test executable'
+-  require_build_file "$installed_test_source" 'installed-package runtime test executable'
+   if [[ -x "$helper_source" ]]; then :; else
+     fail "native voice-host helper is not executable: $helper_source"
+   fi
+-  if [[ -x "$packaged_test_source" ]]; then :; else
+-    fail "packaged runtime test is not executable: $packaged_test_source"
+-  fi
+-  if [[ -x "$installed_test_source" ]]; then :; else
+-    fail "installed-package runtime test is not executable: $installed_test_source"
+-  fi
+   if grep -Fq -- "\"sourceCommit\": \"$build_commit\"" "$runtime_source/runtime.json"; then :; else
+     fail "voice runtime receipt sourceCommit does not match $build_commit"
+   fi
+diff --git a/.github/scripts/test-codex-voice-runtime.sh b/.github/scripts/test-codex-voice-runtime.sh
+index c9e07f2..1c6ac2e 100755
+--- a/.github/scripts/test-codex-voice-runtime.sh
++++ b/.github/scripts/test-codex-voice-runtime.sh
+@@ -71,6 +71,15 @@ assert_build_argument() {
+   fi
+ }
+ 
++# Requires one exact argument to reach the executable-provider query as one value.
++assert_query_argument() {
++  local argument="$1"
++
++  if grep -Fxq -- "<$argument>" "$TEST_ROOT/query-arguments.txt"; then :; else
++    fail "Bazel cquery argument was missing or split: $argument"
++  fi
++}
++
+ # Creates a local upstream checkout and fake native tool boundaries for one case.
+ make_fixture() {
+   local case_name="$1"
+@@ -176,74 +185,155 @@ case "$script" in
+     ;;
+ esac
+ FAKE_PYTHON
++  cat > "$bin/python3" <<'FAKE_PYTHON3'
++#!/usr/bin/env bash
++# Behaves as the interpreter on Windows does: a text-mode write translates "\n" to the platform line ending "\r\n".
++set -euo pipefail
++exec /usr/bin/python3 -c '
++import pathlib, sys
++def write_text(self, data, encoding=None, errors=None, newline=None):
++    with open(self, "w", encoding=encoding, errors=errors, newline="\r\n") as stream:
++        return stream.write(data)
++pathlib.Path.write_text = write_text
++sys.argv = sys.argv[1:]
++exec(compile(sys.stdin.read(), "<stdin>", "exec"), {"__name__": "__main__"})
++' "$@"
++FAKE_PYTHON3
+   cat > "$root/.github/scripts/run-bazel-ci.sh" <<'FAKE_BUILD'
+ #!/usr/bin/env bash
+ set -euo pipefail
++# Git Bash passes an absolute script path such as /d/a/work/script.py to a native Windows interpreter unconverted when the
++# wrapper disables argument conversion, and that interpreter resolves it against the current drive as D:\d\a\work. Upstream
++# callers therefore launch this wrapper through a path relative to the checkout.
++if [[ "$0" == /* ]]; then
++  printf 'Bazel wrapper was launched through absolute POSIX path %s\n' "$0" >&2
++  exit 98
++fi
+ printf '<%s>\n' "$@" >> "$FAKE_BUILD_ARGUMENTS"
+-suffix=
+-targets=0
+-for argument in "$@"; do
+-  if [[ "$argument" == -- ]]; then targets=$((targets + 1)); fi
+-  case "$argument" in
+-    //third_party/voice:native_runtime_*) suffix="${argument#//third_party/voice:native_runtime_}" ;;
+-  esac
++args=("$@")
++separator=-1
++for index in "${!args[@]}"; do
++  if [[ "${args[$index]}" == -- ]]; then separator="$index"; break; fi
+ done
+-if [[ -n "${FAKE_CHANGE_COMMIT_AFTER_BUILD:-}" ]]; then
+-  : > "$FAKE_GIT_CHANGE_MARKER"
++if ((separator < 0)); then
++  printf 'outer Bazel wrapper separator was missing\n' >&2
++  exit 96
+ fi
+-if [[ -z "$suffix" ]]; then
+-  printf 'runtime target was not requested\n' >&2
+-  exit 93
+-fi
+-runtime="bazel-bin/third_party/voice/native_runtime_$suffix"
+-case "$suffix" in
+-  linux_x86_64) voice_target=x86_64-unknown-linux-gnu ;;
+-  linux_aarch64) voice_target=aarch64-unknown-linux-gnu ;;
+-  macos_x86_64) voice_target=x86_64-apple-darwin ;;
+-  macos_aarch64) voice_target=aarch64-apple-darwin ;;
+-  windows_x86_64) voice_target=x86_64-pc-windows-msvc ;;
+-  windows_aarch64) voice_target=aarch64-pc-windows-msvc ;;
+-  *) printf 'unknown fixture runtime suffix: %s\n' "$suffix" >&2; exit 95 ;;
+-esac
+-if [[ "$suffix" == windows_* ]]; then
+-  mkdir -p "$runtime/bin"
+-  printf 'fixture DLL\n' > "$runtime/bin/gstfixture.dll"
+-else
+-  mkdir -p "$runtime/lib"
+-  printf 'fixture shared library\n' > "$runtime/lib/libfixture.so"
+-fi
+-printf '{"target": "%s", "sourceCommit": "%s"}\n' "$voice_target" "$FAKE_GIT_COMMIT" > "$runtime/runtime.json"
+-mkdir -p bazel-bin/codex-rs/voice-host
+-extension=
+-if [[ "$suffix" == windows_* ]]; then extension=.exe; fi
+-if [[ "${FAKE_MISSING_RESOURCE:-}" != helper ]]; then
+-  if [[ "$suffix" == windows_* ]]; then helper=bazel-bin/codex-rs/voice-host/codex-voice-host.exe
+-  else helper=bazel-bin/codex-rs/voice-host/codex-voice-host; fi
+-  cat > "$helper" <<'HELPER'
++inner=("${args[@]:separator+1}")
++command="${inner[0]:-}"
++if [[ "$command" == build ]]; then
++  suffix=
++  packaged=0
++  installed=0
++  for argument in "${inner[@]}"; do
++    case "$argument" in
++      //third_party/voice:native_runtime_*) suffix="${argument#//third_party/voice:native_runtime_}" ;;
++      //codex-rs/voice-host:voice-host-packaged_runtime-test) packaged=1 ;;
++      //codex-rs/voice-host:voice-host-installed_package_runtime-test) installed=1 ;;
++      *-test-bin) printf 'nonexistent test-bin target requested: %s\n' "$argument" >&2; exit 97 ;;
++    esac
++  done
++  if [[ -z "$suffix" || "$packaged" != 1 || "$installed" != 1 ]]; then
++    printf 'build did not request runtime and both direct rust_test targets\n' >&2
++    exit 98
++  fi
++  if [[ -n "${FAKE_CHANGE_COMMIT_AFTER_BUILD:-}" ]]; then : > "$FAKE_GIT_CHANGE_MARKER"; fi
++  runtime="bazel-bin/third_party/voice/native_runtime_$suffix"
++  case "$suffix" in
++    linux_x86_64) voice_target=x86_64-unknown-linux-gnu ;;
++    linux_aarch64) voice_target=aarch64-unknown-linux-gnu ;;
++    macos_x86_64) voice_target=x86_64-apple-darwin ;;
++    macos_aarch64) voice_target=aarch64-apple-darwin ;;
++    windows_x86_64) voice_target=x86_64-pc-windows-msvc ;;
++    windows_aarch64) voice_target=aarch64-pc-windows-msvc ;;
++    *) printf 'unknown fixture runtime suffix: %s\n' "$suffix" >&2; exit 95 ;;
++  esac
++  if [[ "$suffix" == windows_* ]]; then
++    mkdir -p "$runtime/bin"
++    printf 'fixture DLL\n' > "$runtime/bin/gstfixture.dll"
++  else
++    mkdir -p "$runtime/lib"
++    printf 'fixture shared library\n' > "$runtime/lib/libfixture.so"
++  fi
++  printf '{"target": "%s", "sourceCommit": "%s"}\n' "$voice_target" "$FAKE_GIT_COMMIT" > "$runtime/runtime.json"
++  mkdir -p bazel-bin/codex-rs/voice-host
++  extension=
++  if [[ "$suffix" == windows_* ]]; then extension=.exe; fi
++  if [[ "${FAKE_MISSING_RESOURCE:-}" != helper ]]; then
++    if [[ "$suffix" == windows_* ]]; then helper=bazel-bin/codex-rs/voice-host/codex-voice-host.exe
++    else helper=bazel-bin/codex-rs/voice-host/codex-voice-host; fi
++    cat > "$helper" <<'HELPER'
+ #!/usr/bin/env bash
+ set -euo pipefail
+ if [[ "${1:-}" == --build-commit ]]; then printf '%s\n' "$FAKE_HELPER_COMMIT"; exit 0; fi
+ exit 94
+ HELPER
+-  chmod +x "$helper"
+-fi
+-if [[ "${FAKE_MISSING_RESOURCE:-}" != packaged-test ]]; then
+-  printf '#!/usr/bin/env bash\nexit 0\n' > "bazel-bin/codex-rs/voice-host/voice-host-packaged_runtime-test-bin$extension"
+-  chmod +x "bazel-bin/codex-rs/voice-host/voice-host-packaged_runtime-test-bin$extension"
+-fi
+-if [[ "${FAKE_MISSING_RESOURCE:-}" != installed-test ]]; then
+-  printf '#!/usr/bin/env bash\nexit 0\n' > "bazel-bin/codex-rs/voice-host/voice-host-installed_package_runtime-test-bin$extension"
+-  chmod +x "bazel-bin/codex-rs/voice-host/voice-host-installed_package_runtime-test-bin$extension"
+-fi
+-if [[ "${FAKE_MISSING_RESOURCE:-}" == runtime ]]; then
+-  rm -rf -- "$runtime"
++    chmod +x "$helper"
++  fi
++  if [[ "${FAKE_MISSING_RESOURCE:-}" == runtime ]]; then rm -rf -- "$runtime"; fi
++  if [[ "${FAKE_BUILD_STATUS:-0}" != 0 ]]; then
++    printf 'injected build failure\n' >&2
++    exit "$FAKE_BUILD_STATUS"
++  fi
++  exit 0
+ fi
+-if [[ "${FAKE_BUILD_STATUS:-0}" != 0 ]]; then
+-  printf 'injected build failure\n' >&2
+-  exit "$FAKE_BUILD_STATUS"
++if [[ "$command" == cquery ]]; then
++  printf '<%s>\n' "${args[@]}" >> "$FAKE_QUERY_ARGUMENTS"
++  expression="--starlark:expr=providers(target)['DefaultInfo'].files_to_run.executable.path"
++  if [[ "${inner[0]:-}" != cquery ]]; then
++    printf 'cquery command was missing\n' >&2
++    exit 99
++  fi
++  output_count=0
++  expression_count=0
++  separator_index=-1
++  for index in "${!inner[@]}"; do
++    case "${inner[$index]}" in
++      --output=starlark) output_count=$((output_count + 1)) ;;
++      "$expression") expression_count=$((expression_count + 1)) ;;
++      --) if ((index > 0)); then separator_index="$index"; fi ;;
++    esac
++  done
++  if [[ "$output_count" != 1 || "$expression_count" != 1 || "$separator_index" -lt 0 || "$(( ${#inner[@]} - separator_index ))" != 2 ]]; then
++    printf 'cquery argv did not match the executable provider contract\n' >&2
++    exit 99
++  fi
++  if [[ "${inner[separator_index-2]:-}" != --output=starlark || "${inner[separator_index-1]:-}" != "$expression" ]]; then
++    printf 'provider query output and expression argv order was incorrect\n' >&2
++    exit 99
++  fi
++  label="${inner[separator_index+1]}"
++  case "$label" in
++    //codex-rs/voice-host:voice-host-packaged_runtime-test) kind=packaged ;;
++    //codex-rs/voice-host:voice-host-installed_package_runtime-test) kind=installed ;;
++    *) printf 'unexpected cquery target: %s\n' "$label" >&2; exit 100 ;;
++  esac
++  mode="${FAKE_QUERY_MODE:-success}"
++  if [[ "${FAKE_QUERY_KIND:-}" != "$kind" && "$mode" != success ]]; then mode=success; fi
++  if [[ "$mode" == provider-failure ]]; then printf 'injected cquery failure\n' >&2; exit 72; fi
++  extension=
++  if [[ "$RUNNER_OS" == Windows ]]; then extension=.exe; fi
++  path="bazel-bin/codex-rs/voice-host/query\\ outputs/$kind runtime test$extension"
++  case "$mode" in
++    empty) exit 0 ;;
++    multiple) printf '%s\n%s\n' "$path" "bazel-bin/codex-rs/voice-host/second output$extension"; exit 0 ;;
++    missing) printf '%s\n' "$path"; exit 0 ;;
++    non-executable) mkdir -p "${path%/*}"; printf '#!/usr/bin/env bash\nexit 0\n' > "$path"; printf '%s\n' "$path"; exit 0 ;;
++    success) ;;
++    *) printf 'unknown fake cquery mode: %s\n' "$mode" >&2; exit 101 ;;
++  esac
++  mkdir -p "${path%/*}"
++  printf '#!/usr/bin/env bash\nexit 0\n' > "$path"
++  chmod +x "$path"
++  if [[ "${FAKE_QUERY_ABSOLUTE:-0}" == 1 ]]; then path="$(pwd -P)/$path"; fi
++  # Bazel on Windows ends its query output lines with CRLF.
++  if [[ "${FAKE_QUERY_LINE_ENDING:-lf}" == crlf ]]; then printf '%s\r\n' "$path"; else printf '%s\n' "$path"; fi
++  exit 0
+ fi
++printf 'unexpected Bazel command: %s\n' "$command" >&2
++exit 102
+ FAKE_BUILD
+-  chmod +x "$bin/git" "$bin/uname" "$bin/python" "$root/.github/scripts/run-bazel-ci.sh"
++  chmod +x "$bin/git" "$bin/uname" "$bin/python" "$bin/python3" "$root/.github/scripts/run-bazel-ci.sh"
+ }
+ 
+ # Runs the producer and prints its captured boundary output for retained evidence.
+@@ -271,6 +361,8 @@ run_producer() {
+   FAKE_CHANGED_COMMIT="$CHANGED_COMMIT" \
+   FAKE_HELPER_COMMIT="$commit" \
+   FAKE_BUILD_ARGUMENTS="$TEST_ROOT/build-arguments.txt" \
++  FAKE_QUERY_ARGUMENTS="$TEST_ROOT/query-arguments.txt" \
++  FAKE_QUERY_ABSOLUTE="${FAKE_QUERY_ABSOLUTE:-0}" \
+   FAKE_GIT_CHANGE_MARKER="$TEST_ROOT/git-changed" \
+   FAKE_WINDOWS_PACKAGES_OK="${FAKE_WINDOWS_PACKAGES_OK:-1}" \
+   SystemRoot="${SystemRoot:-/fixture/windows}" \
+@@ -320,7 +412,7 @@ check_target_mapping() {
+   fi
+   make_fixture "$name"
+   root="$FIXTURE_ROOT"
+-  rm -f -- "$TEST_ROOT/git-changed" "$TEST_ROOT/build-arguments.txt"
++  rm -f -- "$TEST_ROOT/git-changed" "$TEST_ROOT/build-arguments.txt" "$TEST_ROOT/query-arguments.txt"
+   if [[ "$runner_os" == Windows ]]; then
+     mkdir -p "$root/windows-tools/evidence" "$root/windows-tools/pkgconf-image" "$root/windows-tools/cygwin"
+     printf '{"target": "%s", "pkgconf_version": "3.0.6"}\n' "$target" > "$root/windows-tools/evidence/tools.json"
+@@ -364,27 +456,56 @@ check_target_mapping() {
+   fi
+   if [[ "$runner_os" == Windows ]]; then
+     assert_build_argument --windows-msvc-host-platform
++    assert_query_argument --windows-msvc-host-platform
+     assert_build_argument --platforms=//:local_windows_msvc
++    assert_query_argument --platforms=//:local_windows_msvc
+     assert_build_argument '--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows,//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain'
++    assert_query_argument '--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows,//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain'
+     assert_build_argument --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
++    assert_query_argument --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
+     assert_build_argument --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
++    assert_query_argument --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
+     assert_build_argument "--inject_repository=voice_windows_tools=$root/windows-tools"
++    assert_query_argument "--inject_repository=voice_windows_tools=$root/windows-tools"
+     assert_build_argument --//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools
++    assert_query_argument --//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools
+     assert_build_argument '--action_env=SystemRoot=/fixture/windows'
++    assert_query_argument '--action_env=SystemRoot=/fixture/windows'
+     assert_build_argument '--host_action_env=SystemRoot=/fixture/windows'
++    assert_query_argument '--host_action_env=SystemRoot=/fixture/windows'
+     assert_build_argument "--action_env=PROCESSOR_ARCHITECTURE=$processor_architecture"
++    assert_query_argument "--action_env=PROCESSOR_ARCHITECTURE=$processor_architecture"
+     assert_build_argument "--host_action_env=PROCESSOR_ARCHITECTURE=$processor_architecture"
++    assert_query_argument "--host_action_env=PROCESSOR_ARCHITECTURE=$processor_architecture"
+     assert_build_argument --workspace_status_command=./scripts/workspace-status.cmd
++    assert_query_argument --workspace_status_command=./scripts/workspace-status.cmd
+   fi
+   if [[ "$runner_os" == macOS ]]; then
+     assert_build_argument --macos_minimum_os=14.0
++    assert_query_argument --macos_minimum_os=14.0
+   fi
+   if [[ "$runner_os" == Linux ]]; then
+     assert_build_argument --workspace_status_command=./scripts/workspace-status.sh
++    assert_query_argument --workspace_status_command=./scripts/workspace-status.sh
+   fi
+   if grep -Fq -- "//third_party/voice:native_runtime_$expected_suffix" "$TEST_ROOT/build-arguments.txt"; then :; else
+     fail "Bazel runtime target mapping for $target"
+   fi
++  assert_build_argument //codex-rs/voice-host:voice-host-packaged_runtime-test
++  assert_build_argument //codex-rs/voice-host:voice-host-installed_package_runtime-test
++  assert_build_argument --remote-download-toplevel
++  assert_build_argument --print-failed-action-summary
++  assert_query_argument --remote-download-toplevel
++  assert_query_argument --print-failed-action-summary
++  assert_build_argument --config=release
++  assert_query_argument --config=release
++  assert_query_argument --output=starlark
++  assert_query_argument "--starlark:expr=providers(target)['DefaultInfo'].files_to_run.executable.path"
++  assert_query_argument //codex-rs/voice-host:voice-host-packaged_runtime-test
++  assert_query_argument //codex-rs/voice-host:voice-host-installed_package_runtime-test
++  if grep -Fq -- 'query\ outputs/' "$result/evidence/packaged-test-output.stdout.log"; then :; else
++    fail "query did not preserve a path containing spaces and a backslash for $target"
++  fi
+ }
+ 
+ # Runs a failure case and checks that its result directory contains evidence only.
+@@ -399,7 +520,7 @@ check_failed_case() {
+ 
+   make_fixture "$name"
+   root="$FIXTURE_ROOT"
+-  rm -f -- "$TEST_ROOT/git-changed" "$TEST_ROOT/build-arguments.txt"
++  rm -f -- "$TEST_ROOT/git-changed" "$TEST_ROOT/build-arguments.txt" "$TEST_ROOT/query-arguments.txt"
+   if run_producer "$root" "$target" "$runner_os" "$machine" "$EXPECTED_COMMIT" "$result" "$@"; then
+     fail "$name unexpectedly succeeded"
+   fi
+@@ -407,6 +528,16 @@ check_failed_case() {
+ }
+ 
+ # Runs a preflight failure and requires that no result directory is created.
++check_query_failure_case() {
++  local name="$1"
++  local mode="$2"
++  local result="$TEST_ROOT/$name result"
++
++  check_failed_case "$name" x86_64-unknown-linux-musl Linux x86_64 "FAKE_QUERY_KIND=packaged" "FAKE_QUERY_MODE=$mode"
++  assert_file "$result/evidence/packaged-test-output.stdout.log" "$name query stdout"
++  assert_file "$result/evidence/packaged-test-output.stderr.log" "$name query stderr"
++}
++
+ check_preflight_failure() {
+   local name="$1"
+   local target="$2"
+@@ -419,7 +550,7 @@ check_preflight_failure() {
+ 
+   make_fixture "$name"
+   root="$FIXTURE_ROOT"
+-  rm -f -- "$TEST_ROOT/git-changed" "$TEST_ROOT/build-arguments.txt"
++  rm -f -- "$TEST_ROOT/git-changed" "$TEST_ROOT/build-arguments.txt" "$TEST_ROOT/query-arguments.txt"
+   if run_producer "$root" "$target" "$runner_os" "$machine" "$commit" "$result" "$@"; then
+     fail "$name unexpectedly succeeded"
+   fi
+@@ -430,13 +561,39 @@ check_preflight_failure() {
+ }
+ 
+ # The producer command maps all six application targets to native runtime targets and host runners.
+-check_target_mapping x86_64-unknown-linux-musl Linux x86_64 x86_64-unknown-linux-gnu linux_x86_64 ubuntu-24.04 codex-voice-host
++FAKE_QUERY_ABSOLUTE=1 check_target_mapping x86_64-unknown-linux-musl Linux x86_64 x86_64-unknown-linux-gnu linux_x86_64 ubuntu-24.04 codex-voice-host
+ check_target_mapping aarch64-unknown-linux-musl Linux aarch64 aarch64-unknown-linux-gnu linux_aarch64 ubuntu-24.04-arm codex-voice-host
+ check_target_mapping x86_64-apple-darwin macOS x86_64 x86_64-apple-darwin macos_x86_64 macos-15-intel codex-voice-host
+ check_target_mapping aarch64-apple-darwin macOS arm64 aarch64-apple-darwin macos_aarch64 macos-15 codex-voice-host
+ check_target_mapping x86_64-pc-windows-msvc Windows x86_64 x86_64-pc-windows-msvc windows_x86_64 windows-2025 codex-voice-host.exe
+ check_target_mapping aarch64-pc-windows-msvc Windows aarch64 aarch64-pc-windows-msvc windows_aarch64 windows-11-arm codex-voice-host.exe
+ 
++# Windows Bazel ends its query line with CRLF and the Windows interpreter writes text files with CRLF, so a retained path
++# file must still hold exactly one LF-terminated path that the producer can open.
++check_windows_query_line_endings() {
++  local root
++  local result="$TEST_ROOT/crlf-query-output result"
++  local output_name
++  local path_file
++
++  make_fixture crlf-query-output
++  root="$FIXTURE_ROOT"
++  rm -f -- "$TEST_ROOT/git-changed" "$TEST_ROOT/build-arguments.txt" "$TEST_ROOT/query-arguments.txt" "$TEST_ROOT/query-runner-arguments.txt"
++  run_producer "$root" x86_64-unknown-linux-musl Linux x86_64 "$EXPECTED_COMMIT" "$result" FAKE_QUERY_LINE_ENDING=crlf \
++    || fail 'producer rejected CRLF executable query output'
++  assert_file "$result/completed" 'completed result for CRLF query output'
++  for output_name in packaged-test-output installed-test-output; do
++    path_file="$result/evidence/$output_name.path"
++    assert_file "$path_file" "retained $output_name path file"
++    if LC_ALL=C grep -q $'\r' "$path_file"; then
++      fail "$output_name path file contains a carriage return"
++    fi
++    assert_equal 1 "$(wc -l < "$path_file" | tr -d '[:space:]')" "$output_name path file line count"
++  done
++}
++
++check_windows_query_line_endings
++
+ # The producer rejects invalid targets and source identities before creating state or invoking Bazel.
+ check_preflight_failure unsupported-target x86_64-wasm32-wasi Linux x86_64 "$EXPECTED_COMMIT"
+ check_failed_case changed-source-before x86_64-unknown-linux-musl Linux x86_64 FAKE_GIT_COMMIT="$CHANGED_COMMIT"
+@@ -444,8 +601,13 @@ check_failed_case changed-source-before x86_64-unknown-linux-musl Linux x86_64 F
+ # The producer rejects missing helper, runtime, or native test outputs after a successful build.
+ check_failed_case missing-helper x86_64-unknown-linux-musl Linux x86_64 FAKE_MISSING_RESOURCE=helper
+ check_failed_case missing-runtime x86_64-unknown-linux-musl Linux x86_64 FAKE_MISSING_RESOURCE=runtime
+-check_failed_case missing-packaged-test x86_64-unknown-linux-musl Linux x86_64 FAKE_MISSING_RESOURCE=packaged-test
+-check_failed_case missing-installed-test x86_64-unknown-linux-musl Linux x86_64 FAKE_MISSING_RESOURCE=installed-test
++
++# Executable-provider query failures preserve both query streams and remove partial release output.
++check_query_failure_case failed-provider-query provider-failure
++check_query_failure_case empty-provider-output empty
++check_query_failure_case multiple-provider-output multiple
++check_query_failure_case missing-provider-executable missing
++check_query_failure_case non-executable-provider-output non-executable
+ 
+ # The producer removes partial build, stage, seal, and post-build identity results while keeping logs.
+ check_failed_case changed-source-after x86_64-unknown-linux-musl Linux x86_64 FAKE_CHANGE_COMMIT_AFTER_BUILD=1
+diff --git a/third_party/voice/test_windows_crt.py b/third_party/voice/test_windows_crt.py
+new file mode 100644
+index 0000000..d3ff440
+--- /dev/null
++++ b/third_party/voice/test_windows_crt.py
+@@ -0,0 +1,89 @@
++"""Exercise how Windows CRT staging rewrites the staged runtime manifest."""
++
++import hashlib
++import io
++import json
++from pathlib import Path
++import stat
++import tempfile
++import unittest
++from unittest.mock import MagicMock, patch
++import zipfile
++
++import windows_crt
++
++TARGET = "x86_64-pc-windows-msvc"
++MEMBER = "Contents/VC/Redist/vcruntime140.dll"
++DLL = b"fixture retail CRT"
++
++
++def windows_text_write(self, data, encoding=None, errors=None, newline=None):
++    """Writes as the Windows interpreter does: text mode translates "\\n" to "\\r\\n"."""
++    with open(self, "w", encoding=encoding, errors=errors, newline="\r\n") as stream:
++        return stream.write(data)
++
++
++class CrtStagingTests(unittest.TestCase):
++    def setUp(self):
++        temporary = tempfile.TemporaryDirectory(prefix="voice crt ")
++        self.addCleanup(temporary.cleanup)
++        base = Path(temporary.name)
++        archive = io.BytesIO()
++        with zipfile.ZipFile(archive, "w") as bundle:
++            bundle.writestr(MEMBER, DLL)
++        archive = archive.getvalue()
++        pins = base / "tool"
++        pins.mkdir()
++        (pins / "windows-crt.json").write_text(
++            json.dumps(
++                {
++                    TARGET: {
++                        "url": "https://example.invalid/crt.vsix",
++                        "sha256": hashlib.sha256(archive).hexdigest(),
++                        "member": MEMBER,
++                        "dllSha256": hashlib.sha256(DLL).hexdigest(),
++                    }
++                }
++            )
++        )
++        response = MagicMock()
++        response.__enter__.return_value.read.return_value = archive
++        self.root = base / "runtime"
++        (self.root / "bin").mkdir(parents=True)
++        self.helper = base / "helper.exe"
++        self.manifest = self.root / "runtime.json"
++        self.manifest.write_text(
++            json.dumps({"target": TARGET, "developmentOnly": True, "libraries": []})
++            + "\n"
++        )
++        # Bazel materializes its outputs read-only, and a copy keeps that mode.
++        self.manifest.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
++        for name, replacement in (
++            ("__file__", str(pins / "windows_crt.py")),
++            ("urllib", MagicMock(request=MagicMock(urlopen=lambda *a, **k: response))),
++            ("subprocess", MagicMock(run=lambda *a, **k: MagicMock(stdout=b""))),
++        ):
++            patcher = patch.object(windows_crt, name, replacement)
++            patcher.start()
++            self.addCleanup(patcher.stop)
++
++    def test_rewrites_a_read_only_manifest(self):
++        windows_crt.stage(self.root, TARGET, self.helper)
++
++        libraries = json.loads(self.manifest.read_text())["libraries"]
++        self.assertEqual(
++            [{"path": "bin/vcruntime140.dll", "sha256": hashlib.sha256(DLL).hexdigest()}],
++            libraries,
++        )
++
++    def test_writes_the_manifest_with_line_feeds_on_windows(self):
++        self.manifest.chmod(stat.S_IRUSR | stat.S_IWUSR)
++        with patch.object(Path, "write_text", windows_text_write):
++            windows_crt.stage(self.root, TARGET, self.helper)
++
++        self.assertNotIn(b"\r", self.manifest.read_bytes())
++        self.assertTrue(self.manifest.read_bytes().endswith(b"}\n"))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/third_party/voice/windows_crt.py b/third_party/voice/windows_crt.py
+index a927c1b..2263643 100644
+--- a/third_party/voice/windows_crt.py
++++ b/third_party/voice/windows_crt.py
+@@ -71,7 +71,10 @@ def stage(root: Path, target: str, helper: Path):
+     manifest["libraries"].append(
+         {"path": "bin/vcruntime140.dll", "sha256": pin["dllSha256"]}
+     )
+-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
++    # The copy that staged this manifest keeps Bazel's read-only mode, and a text-mode write would translate each
++    # line feed to a Windows line ending.
++    manifest_path.chmod(manifest_path.stat().st_mode | 0o200)
++    manifest_path.write_bytes((json.dumps(manifest, indent=2) + "\n").encode("utf-8"))
+ 
+ 
+ if __name__ == "__main__":
+-- 
+2.43.0
+

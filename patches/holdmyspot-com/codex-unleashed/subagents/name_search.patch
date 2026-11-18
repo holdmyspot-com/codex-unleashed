@@ -1,0 +1,257 @@
+diff --git a/codex-rs/tui/src/app/agent_picker.rs b/codex-rs/tui/src/app/agent_picker.rs
+index 55584ae..40f81fc 100644
+--- a/codex-rs/tui/src/app/agent_picker.rs
++++ b/codex-rs/tui/src/app/agent_picker.rs
+@@ -250,7 +250,12 @@ impl App {
+             .chat_widget
+             .selected_index_for_present_view(AGENT_PICKER_VIEW_ID)
+             .and_then(|index| self.agent_navigation.picker_row_ids.get(index).copied());
+-        let params = self.agent_picker_selection_view_params(selected);
++        let search_query = self
++            .chat_widget
++            .search_query_for_present_view(AGENT_PICKER_VIEW_ID)
++            .map(str::to_string);
++        let mut params = self.agent_picker_selection_view_params(selected);
++        params.initial_search_query = search_query;
+         self.chat_widget
+             .replace_selection_view_if_present(AGENT_PICKER_VIEW_ID, params)
+     }
+diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
+index 07df4f1..f67a555 100644
+--- a/codex-rs/tui/src/app/session_lifecycle.rs
++++ b/codex-rs/tui/src/app/session_lifecycle.rs
+@@ -191,20 +191,21 @@ impl App {
+                 }
+                 let name = self.thread_label(thread_id);
+                 let uuid = thread_id.to_string();
++                let display_name = if is_pending {
++                    format!("{name} (needs approval)")
++                } else {
++                    name
++                };
+                 SelectionItem {
+-                    name: if is_pending {
+-                        format!("{name} (needs approval)")
+-                    } else {
+-                        name.clone()
+-                    },
++                    name: display_name.clone(),
+                     name_prefix_spans: agent_picker_status_dot_spans(entry.is_closed),
+-                    description: Some(uuid.clone()),
++                    description: Some(uuid),
+                     is_current,
+                     actions: vec![Box::new(move |tx| {
+                         tx.send(AppEvent::SelectAgentThread(thread_id));
+                     })],
+                     dismiss_on_select: true,
+-                    search_value: Some(format!("{name} {uuid}")),
++                    search_value: Some(display_name),
+                     ..Default::default()
+                 }
+             })
+@@ -216,6 +217,8 @@ impl App {
+             title: Some("Subagents".to_string()),
+             subtitle: Some(AgentNavigationState::picker_subtitle()),
+             footer_hint: Some(standard_popup_hint_line()),
++            is_searchable: true,
++            search_placeholder: Some("Type to search subagents".to_string()),
+             items,
+             initial_selected_idx,
+             ..SelectionViewParams::picker()
+diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
+index 8377f62..1e0a388 100644
+--- a/codex-rs/tui/src/app/tests.rs
++++ b/codex-rs/tui/src/app/tests.rs
+@@ -2678,6 +2678,115 @@ async fn open_agent_picker_selects_path_backed_agent() -> Result<()> {
+     Ok(())
+ }
+ 
++#[tokio::test]
++async fn open_agent_picker_search_filters_case_insensitive_and_preserves_refresh_state()
++-> Result<()> {
++    let (mut app, mut app_event_rx, _op_rx) = Box::pin(make_test_app_with_channels()).await;
++    let mut app_server = Box::pin(crate::start_embedded_app_server_for_picker(
++        app.chat_widget.config_ref(),
++    ))
++    .await
++    .expect("embedded app server");
++    let main_thread_id = ThreadId::from_u128(/*value*/ 1);
++    let reviewer_thread_id = ThreadId::from_u128(/*value*/ 2);
++    let review_helper_thread_id = ThreadId::from_u128(/*value*/ 3);
++    let worker_thread_id = ThreadId::from_u128(/*value*/ 4);
++    app.enqueue_primary_thread_session(
++        test_thread_session(main_thread_id, test_path_buf("/tmp/project")),
++        Vec::new(),
++    )
++    .await?;
++    for (thread_id, agent_path) in [
++        (reviewer_thread_id, "/root/reviewer"),
++        (review_helper_thread_id, "/root/review-helper"),
++        (worker_thread_id, "/root/worker"),
++    ] {
++        app.agent_navigation
++            .record_sub_agent_activity(SubAgentActivityDisplay {
++                thread_id,
++                agent_path: agent_path.to_string(),
++                is_running_hint: false,
++            });
++    }
++
++    Box::pin(app.open_agent_picker(&mut app_server)).await;
++    let initially_unfiltered = render_bottom_popup(&app.chat_widget, /*width*/ 80);
++    assert!(initially_unfiltered.contains("/root/reviewer"));
++    assert!(initially_unfiltered.contains("/root/review-helper"));
++    assert!(initially_unfiltered.contains("/root/worker"));
++
++    for character in "VIEW".chars() {
++        app.chat_widget
++            .handle_key_event(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE));
++    }
++
++    let filtered = render_bottom_popup(&app.chat_widget, /*width*/ 80);
++    assert!(filtered.contains("VIEW"));
++    assert!(filtered.contains("/root/reviewer"));
++    assert!(filtered.contains("/root/review-helper"));
++    assert!(!filtered.contains("/root/worker"));
++
++    for character in "xyz".chars() {
++        app.chat_widget
++            .handle_key_event(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE));
++    }
++    let no_matches = render_bottom_popup(&app.chat_widget, /*width*/ 80);
++    assert!(no_matches.contains("no matches"));
++    assert!(!no_matches.contains("/root/reviewer"));
++
++    for _ in 0..7 {
++        app.chat_widget
++            .handle_key_event(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
++    }
++    let cleared = render_bottom_popup(&app.chat_widget, /*width*/ 80);
++    assert!(!cleared.contains("no matches"));
++    assert!(cleared.contains("/root/reviewer"));
++    assert!(cleared.contains("/root/worker"));
++
++    for character in "VIEW".chars() {
++        app.chat_widget
++            .handle_key_event(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE));
++    }
++    app.chat_widget
++        .handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
++    app.chat_widget.show_selection_view(SelectionViewParams {
++        title: Some("Agent details".to_string()),
++        items: vec![SelectionItem {
++            name: "Temporary child".to_string(),
++            ..Default::default()
++        }],
++        ..SelectionViewParams::picker()
++    });
++    let newly_discovered_thread_id = ThreadId::from_u128(/*value*/ 5);
++    app.agent_navigation
++        .record_sub_agent_activity(SubAgentActivityDisplay {
++            thread_id: newly_discovered_thread_id,
++            agent_path: "/root/review-added".to_string(),
++            is_running_hint: false,
++        });
++    app.refresh_agent_picker();
++    assert!(render_bottom_popup(&app.chat_widget, /*width*/ 80).contains("Temporary child"));
++    app.chat_widget
++        .handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
++    let refreshed = render_bottom_popup(&app.chat_widget, /*width*/ 80);
++    assert!(refreshed.contains("VIEW"));
++    assert!(refreshed.contains("/root/reviewer"));
++    assert!(refreshed.contains("/root/review-helper"));
++    assert!(refreshed.contains("/root/review-added"));
++    assert!(!refreshed.contains("/root/worker"));
++
++    while app_event_rx.try_recv().is_ok() {}
++    app.chat_widget
++        .handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
++    assert_matches!(
++        app_event_rx.try_recv(),
++        Ok(AppEvent::SelectAgentThread(selected_thread_id))
++            if selected_thread_id == review_helper_thread_id
++    );
++    app_server.shutdown().await?;
++    Ok(())
++}
++
+ #[tokio::test]
+ async fn open_agent_picker_refreshes_replay_only_path_backed_liveness() -> Result<()> {
+     let mut app = Box::pin(make_test_app()).await;
+diff --git a/codex-rs/tui/src/bottom_pane/mod.rs b/codex-rs/tui/src/bottom_pane/mod.rs
+index aef7c53..b9af1c7 100644
+--- a/codex-rs/tui/src/bottom_pane/mod.rs
++++ b/codex-rs/tui/src/bottom_pane/mod.rs
+@@ -1689,6 +1689,13 @@ impl BottomPane {
+             .and_then(|view| view.selected_index())
+     }
+ 
++    pub(crate) fn search_query_for_present_view(&self, view_id: &'static str) -> Option<&str> {
++        self.view_stack
++            .iter()
++            .rfind(|view| view.view_id() == Some(view_id))
++            .and_then(|view| view.search_query())
++    }
++
+     pub(crate) fn active_tab_id_for_active_view(&self, view_id: &'static str) -> Option<&str> {
+         self.view_stack
+             .last()
+diff --git a/codex-rs/tui/src/chatwidget/interaction.rs b/codex-rs/tui/src/chatwidget/interaction.rs
+index 617253a..1408a76 100644
+--- a/codex-rs/tui/src/chatwidget/interaction.rs
++++ b/codex-rs/tui/src/chatwidget/interaction.rs
+@@ -396,6 +396,10 @@ impl ChatWidget {
+         self.bottom_pane.selected_index_for_present_view(view_id)
+     }
+ 
++    pub(crate) fn search_query_for_present_view(&self, view_id: &'static str) -> Option<&str> {
++        self.bottom_pane.search_query_for_present_view(view_id)
++    }
++
+     pub(crate) fn selected_index_for_active_view(&self, view_id: &'static str) -> Option<usize> {
+         self.bottom_pane.selected_index_for_active_view(view_id)
+     }
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__app__tests__path_backed_agent_picker.snap b/codex-rs/tui/src/snapshots/codex_tui__app__tests__path_backed_agent_picker.snap
+index 3638434..8bda40c 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__app__tests__path_backed_agent_picker.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__app__tests__path_backed_agent_picker.snap
+@@ -5,9 +5,10 @@ expression: "render_bottom_popup(&app.chat_widget, 80)"
+   Subagents
+   Select an agent to watch. ⌥← previous, ⌥→ next.
+ 
++  Type to search subagents
+ 
+-› 1. • /root/review (needs approval)  00000000-0000-0000-0000-000000000002
+-  2. • /root/worker (needs approval)  00000000-0000-0000-0000-000000000123
+-  3. • Main [default] (current)       00000000-0000-0000-0000-000000000001
++› • /root/review (needs approval)  00000000-0000-0000-0000-000000000002
++  • /root/worker (needs approval)  00000000-0000-0000-0000-000000000123
++  • Main [default] (current)       00000000-0000-0000-0000-000000000001
+ 
+   enter select · esc back
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__app__tests__untracked_thread_notifications_agent_picker.snap b/codex-rs/tui/src/snapshots/codex_tui__app__tests__untracked_thread_notifications_agent_picker.snap
+index f2cd3c5..e8c2ac8 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__app__tests__untracked_thread_notifications_agent_picker.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__app__tests__untracked_thread_notifications_agent_picker.snap
+@@ -6,16 +6,18 @@ Archived:
+   Subagents
+   Select an agent to watch. ⌥← previous, ⌥→ next.
+ 
++  Type to search subagents
+ 
+-› 1. • Main [default] (current)  00000000-0000-0000-0000-000000000123
++› • Main [default] (current)  00000000-0000-0000-0000-000000000123
+ 
+   enter select · esc back
+ Unarchived:
+   Subagents
+   Select an agent to watch. ⌥← previous, ⌥→ next.
+ 
++  Type to search subagents
+ 
+-› 1. • Main [default] (current)  00000000-0000-0000-0000-000000000123
+-  2. • Missed archive [worker]   [archived]
++› • Main [default] (current)  00000000-0000-0000-0000-000000000123
++  • Missed archive [worker]   [archived]
+ 
+   enter select · esc back

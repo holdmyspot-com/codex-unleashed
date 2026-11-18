@@ -20,6 +20,10 @@ public final class DistributionMain
 	 * Command entry point executed by the bundled tooling launcher.
 	 */
 	private static final String TOOLING_MAIN = TOOLING_MODULE + ".Main";
+	/**
+	 * JVM property through which the wrapper supplies its absolute path for tooling re-execution.
+	 */
+	private static final String LAUNCHER_PROPERTY = "codex.tooling.launcher";
 
 	/**
 	 * Prevents construction.
@@ -76,13 +80,16 @@ public final class DistributionMain
 			set -eu
 			LAUNCHER=$0
 			%sDIR=$(CDPATH= cd -- "${LAUNCHER%%/*}" && pwd)
+			JAVA_LAUNCHER="$DIR/codex-tooling"
 			JAVA_TEMP=${TMPDIR:-/tmp}
 			if command -v cygpath >/dev/null 2>&1; then
 				JAVA_TEMP=$(cygpath -m "$JAVA_TEMP")
+				JAVA_LAUNCHER=$(cygpath -m "$JAVA_LAUNCHER")
 			fi
-			exec "$DIR/java" "-Djava.io.tmpdir=$JAVA_TEMP" -Xlog:all=off:stdout -Xlog:all=warning:stderr \
+			exec "$DIR/java" "-Djava.io.tmpdir=$JAVA_TEMP" "-D%s=$JAVA_LAUNCHER" \
+				-Xlog:all=off:stdout -Xlog:all=warning:stderr \
 				-Djdk.lang.Process.allowAmbiguousCommands=true --enable-native-access=%s -m %s/%s "$@"
-			""".formatted(normalizeLauncher, TOOLING_MODULE, TOOLING_MODULE, TOOLING_MAIN);
+			""".formatted(normalizeLauncher, LAUNCHER_PROPERTY, TOOLING_MODULE, TOOLING_MODULE, TOOLING_MAIN);
 		Files.writeString(output.resolve("bin/codex-tooling"), launcher);
 		Files.createFile(output.resolve(".complete"));
 	}

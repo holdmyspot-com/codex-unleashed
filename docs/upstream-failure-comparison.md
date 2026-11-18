@@ -420,7 +420,7 @@ How the release package job treats it. Upstream's `build-codex-packages` action 
 failure fails the step. The package jobs of `upstream-auto-release.yml` and `baseline-package-smoke.yml` now let that step continue on error. When it
 fails, `.github/scripts/package-smoke-baseline.sh` requires every package and symbols archive (a build failure still fails the job), reruns the smoke
 tests with JUnit reports, once per compression, and compares the failing test IDs with
-`docs/test-baselines/<upstream commit>/package-smoke-<target>.json` through `compare-test-baseline.py`, the same way the nextest and Bazel baselines
+`docs/test-baselines/<upstream commit>/package-smoke-<target>.json` through the Java `compare-test-baseline` command, the same way the nextest and Bazel baselines
 work. A failure absent from the baseline fails the job; a baseline failure does not; with no baseline file any failure is new. An unpatched dispatch of
 `baseline-package-smoke.yml` records the baseline (artifact `package-smoke-baseline-<target>`), and a patched dispatch compares. A new upstream version
 whose package smoke tests fail therefore blocks the release until its baseline is recorded from an unpatched run.
@@ -584,7 +584,7 @@ The fix was checked with a stress run of both cases, ten iterations each, with e
 
 ### Patched round 3 against the 0.0.0 baselines (2026-11-12)
 
-The patched runs of round 3 applied the 57-patch queue and compared themselves with the earlier baselines. Compared again with the baselines re-recorded at `0.0.0`, with test-case numbers removed from the IDs as `compare-test-baseline.py` does, the failures outside the baselines are:
+The patched runs of round 3 applied the 57-patch queue and compared themselves with the earlier baselines. Compared again with the baselines re-recorded at `0.0.0`, with test-case numbers removed from the IDs as the Java `compare-test-baseline` command does, the failures outside the baselines are:
 
 - Linux `43155074619`, local and remote lanes: only `local_compaction_retries_preserve_instructions_and_tool_metadata::metadata_enabled`, which `compaction-request-parsing.patch` (patch 38) addresses.
 - Windows x86_64 `43155077454`: the compaction test's `metadata_disabled_after_capture` case, and timeouts at 60 s of `codex-exec` `cyber_access_program_is_selected_per_turn` and `daybreak::exec_resolves_daybreak_for_api_keys_and_allows_an_off_override`. In the unpatched run, `43155036766`, on the same image (`windows-2025-vs2026` `20261103.298.1`, nextest 0.9.103), the first passed in 59.6 s and the second timed out once and then passed in 54.3 s. Across the 2,716 tests that passed in both runs and took at least 1 s, the median patched/unpatched duration ratio is 0.94, and 1.02 for the 26 such `codex-exec::all` tests.

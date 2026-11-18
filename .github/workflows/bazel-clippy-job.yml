@@ -57,6 +57,18 @@ jobs:
           path: restart-metadata
           persist-credentials: false
 
+      - name: Select the maintained tooling JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Build the tooling runtime
+        shell: bash
+        env:
+          TOOLING_ROOT: restart-metadata
+        run: bash restart-metadata/.github/scripts/setup-tooling.sh
+
       - name: Preserve restart inputs outside the source checkout
         id: inputs
         run: |
@@ -64,8 +76,6 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-bazel-lint-evidence"
           mkdir -p "$evidence"
           cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
-          cp restart-metadata/.github/scripts/reclaim-baseline-macos-xcodes.py "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py"
-          cp restart-metadata/.github/scripts/apt-install-with-fallback.py "$RUNNER_TEMP/apt-install-with-fallback.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           cp restart-metadata/.github/cargo-cache-package "$evidence/cargo-cache-package"
@@ -158,7 +168,7 @@ jobs:
       - name: Reclaim inactive Xcode versions and verify selected native tools
         if: runner.os == 'macOS' && steps.shared.outputs.exists != 'true'
         run: |
-          python3 "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py" \
+          bash "$CODEX_TOOLING" reclaim-baseline-macos-xcodes \
             --evidence-directory "$RUNNER_TEMP/baseline-bazel-lint-evidence"
 
       - name: Set up Python for upstream's Windows voice prerequisites
@@ -201,7 +211,7 @@ jobs:
           done
           df -k / "$RUNNER_TEMP" > "$evidence/disk-after.txt"
           # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
-          sudo python3 -I "$RUNNER_TEMP/apt-install-with-fallback.py" build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex
+          sudo bash "$CODEX_TOOLING" apt-install-with-fallback build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex
 
       - name: Resolve upstream's compatibility releases on Linux
         if: runner.os == 'Linux' && steps.shared.outputs.exists != 'true'
@@ -231,25 +241,7 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-bazel-lint-evidence"
           cargo metadata --format-version 1 --filter-platform "$TARGET" \
             --manifest-path codex-rs/Cargo.toml > "$RUNNER_TEMP/baseline-cargo-metadata.json"
-          python3 - <<'PYTHON'
-          import subprocess
-          import tomllib
-          from pathlib import Path
-
-          before = tomllib.loads(subprocess.check_output(["git", "show", "HEAD:codex-rs/Cargo.lock"], text=True))
-          after = tomllib.loads(Path("codex-rs/Cargo.lock").read_text())
-          before_header = {key: value for key, value in before.items() if key != "package"}
-          after_header = {key: value for key, value in after.items() if key != "package"}
-          assert before_header == after_header, "Cargo changed lockfile metadata beyond workspace versions"
-          before_external = [package for package in before["package"] if "source" in package]
-          after_external = [package for package in after["package"] if "source" in package]
-          assert before_external == after_external, "Cargo changed external dependency records"
-          version = tomllib.loads(Path("codex-rs/Cargo.toml").read_text())["workspace"]["package"]["version"]
-          expected_workspace = [dict(package, version=version) for package in before["package"] if "source" not in package]
-          actual_workspace = [package for package in after["package"] if "source" not in package]
-          assert expected_workspace == actual_workspace, "Cargo changed workspace records beyond their release version"
-          print(f"Verified {len(actual_workspace)} workspace versions; external dependencies unchanged")
-          PYTHON
+          bash "$CODEX_TOOLING" verify-workspace-lock-versions "$GITHUB_WORKSPACE"
           git diff --check
           git diff -- codex-rs/Cargo.lock > "$evidence/workspace-version-lock.diff"
           git diff --binary > "$evidence/source-before.diff"
@@ -336,36 +328,11 @@ jobs:
           cp "$evidence/clippy-targets.txt" "$evidence/selected-targets.txt"
           if [[ -n "$BAZEL_CLIPPY_SHARD" ]]; then
             .github/scripts/run-bazel-query-ci.sh --output=label -- '//codex-rs/...' > "$evidence/candidate-targets.txt"
-            python3 - <<'PYTHON'
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-
-          evidence = Path(os.environ["RUNNER_TEMP"]) / "baseline-bazel-lint-evidence"
-          patterns = (evidence / "clippy-targets.txt").read_text().splitlines()
-          assert patterns[:2] == ["//codex-rs/...", "-//codex-rs/v8-poc:all"], "Maintained Clippy scope changed"
-          explicit = patterns[2:]
-          assert all(pattern.startswith("//") and ":" in pattern for pattern in explicit), "Unexpected manual Clippy pattern"
-          labels = (evidence / "candidate-targets.txt").read_text().splitlines()
-          packages = sorted({label.rsplit(":", 1)[0] for label in labels})
-          shard_count = 2
-          assignments = {
-              package: (int.from_bytes(hashlib.sha256(package.encode()).digest(), "big") % shard_count) + 1
-              for package in packages
-          }
-          assert all(label.rsplit(":", 1)[0] in assignments for label in explicit), "Manual Clippy target outside package selection"
-          shard = int(os.environ["BAZEL_CLIPPY_SHARD"])
-          selected = [f"{package}:all" for package in packages if assignments[package] == shard]
-          assert selected, f"No Clippy packages selected for shard {shard}"
-          selected += [label for label in explicit if assignments[label.rsplit(":", 1)[0]] == shard]
-          selected.append(patterns[1])
-          (evidence / "selected-targets.txt").write_text("\n".join(selected) + "\n")
-          (evidence / "package-shards.json").write_text(json.dumps(assignments, indent=2) + "\n")
-          expression = "set(" + " ".join(f"{package}:all" for package in packages) + ")"
-          (evidence / "all-package-patterns.query").write_text(expression + "\n")
-          print(f"Selected {len(selected)} Clippy patterns for package shard {shard}/{shard_count}")
-          PYTHON
+            bash "$CODEX_TOOLING" select-bazel-packages \
+              --candidates "$evidence/candidate-targets.txt" \
+              --output-directory "$evidence" \
+              --clippy-targets "$evidence/clippy-targets.txt" \
+              --shard "$BAZEL_CLIPPY_SHARD" --shard-count 2
             .github/scripts/run-bazel-query-ci.sh --output=label -- "$(cat "$evidence/all-package-patterns.query")" \
               | LC_ALL=C sort > "$evidence/expanded-package-targets.txt"
             LC_ALL=C sort "$evidence/candidate-targets.txt" > "$evidence/expected-targets.txt"
@@ -436,3 +403,8 @@ jobs:
           path: ${{ runner.temp }}/baseline-bazel-lint-evidence
           retention-days: 3
           if-no-files-found: warn
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"

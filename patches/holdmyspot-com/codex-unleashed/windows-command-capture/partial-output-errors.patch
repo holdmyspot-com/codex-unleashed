@@ -1,0 +1,1557 @@
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 15 Nov 2026 02:59:58 +0000
+Subject: [PATCH] bugfix: preserve Windows command output on capture failure
+
+Retain partial output and report capture failures through the execution
+and protocol boundaries instead of silently losing command results.
+
+---
+diff --git a/codex-rs/core/src/exec.rs b/codex-rs/core/src/exec.rs
+index f72396e..1ec1c67 100644
+--- a/codex-rs/core/src/exec.rs
++++ b/codex-rs/core/src/exec.rs
+@@ -729,26 +729,75 @@ async fn exec_windows_sandbox(
+     })
+     .await;
+ 
+-    let capture = match spawn_res {
+-        Ok(Ok(v)) => v,
+-        Ok(Err(err)) => {
+-            record_windows_sandbox_spawn_failure(
+-                command_path.as_deref(),
+-                sandbox_level,
+-                &err.to_string(),
+-            );
+-            return Err(CodexErr::Io(io::Error::other(format!(
+-                "windows sandbox: {err}"
+-            ))));
+-        }
++    let capture_result = match spawn_res {
++        Ok(capture_result) => capture_result,
+         Err(join_err) => {
+             return Err(CodexErr::Io(io::Error::other(format!(
+                 "windows sandbox join error: {join_err}"
+             ))));
+         }
+     };
++    let capture = windows_capture_output(capture_result, capture_policy).map_err(|err| {
++        record_windows_sandbox_spawn_failure(
++            command_path.as_deref(),
++            sandbox_level,
++            &err.to_string(),
++        );
++        CodexErr::Io(io::Error::other(format!("windows sandbox: {err}")))
++    })?;
+ 
+-    let exit_status = synthetic_exit_status(capture.exit_code);
++    Ok(capture)
++}
++
++#[cfg(any(test, target_os = "windows"))]
++fn windows_capture_output(
++    capture_result: anyhow::Result<codex_windows_sandbox::CaptureResult>,
++    capture_policy: ExecCapturePolicy,
++) -> anyhow::Result<RawExecToolCallOutput> {
++    let capture = match capture_result {
++        Ok(capture) => capture,
++        Err(error) => {
++            let failure = error.downcast::<codex_windows_sandbox::CaptureFailure>()?;
++            let diagnostic = failure.to_string();
++            let capture = failure.output;
++            let exit_status = synthetic_exit_status_for_code(capture.exit_code);
++            let mut stdout_text = capture.stdout;
++            let cap = capture_policy.retained_bytes_cap();
++            if let Some(max_bytes) = cap {
++                stdout_text.truncate(max_bytes);
++            }
++            let mut stderr_text = capture.stderr;
++            if let Some(max_bytes) = cap {
++                stderr_text.truncate(max_bytes);
++            }
++            let stdout = StreamOutput {
++                text: stdout_text,
++                truncated_after_lines: None,
++            };
++            let stderr = StreamOutput {
++                text: stderr_text,
++                truncated_after_lines: None,
++            };
++            let mut aggregate = format!("{diagnostic}\npartial output:\n").into_bytes();
++            aggregate.extend_from_slice(&stdout.text);
++            aggregate.extend_from_slice(&stderr.text);
++            if let Some(max_bytes) = cap {
++                aggregate.truncate(max_bytes);
++            }
++            return Ok(RawExecToolCallOutput {
++                exit_status,
++                stdout,
++                stderr,
++                aggregated_output: StreamOutput {
++                    text: aggregate,
++                    truncated_after_lines: None,
++                },
++                timed_out: capture.timed_out,
++                capture_failure: Some(diagnostic),
++            });
++        }
++    };
++    let exit_status = synthetic_exit_status_for_code(capture.exit_code);
+     let mut stdout_text = capture.stdout;
+     if let Some(max_bytes) = capture_policy.retained_bytes_cap()
+         && stdout_text.len() > max_bytes
+@@ -777,6 +826,7 @@ async fn exec_windows_sandbox(
+         stderr,
+         aggregated_output,
+         timed_out: capture.timed_out,
++        capture_failure: None,
+     })
+ }
+ 
+@@ -803,13 +853,31 @@ fn finalize_exec_result(
+             }
+ 
+             let mut exit_code = raw_output.exit_status.code().unwrap_or(-1);
++            if raw_output.capture_failure.is_some() && exit_code == 0 {
++                exit_code = 1;
++            }
+             if timed_out {
+                 exit_code = EXEC_TIMEOUT_EXIT_CODE;
+             }
+ 
+             let stdout = raw_output.stdout.from_utf8_lossy();
+             let stderr = raw_output.stderr.from_utf8_lossy();
+-            let aggregated_output = raw_output.aggregated_output.from_utf8_lossy();
++            let mut aggregated_output = raw_output.aggregated_output.from_utf8_lossy();
++            if let Some(message) = raw_output.capture_failure.as_deref()
++                && !aggregated_output.text.contains("partial output")
++            {
++                let mut diagnostic = format!("{message}\npartial output:\n");
++                let mut partial_output = format!("{}{}", stdout.text, stderr.text);
++                if let Some(max_bytes) = capture_policy.retained_bytes_cap() {
++                    truncate_utf8_to_bytes(&mut diagnostic, max_bytes);
++                    truncate_utf8_to_bytes(
++                        &mut partial_output,
++                        max_bytes.saturating_sub(diagnostic.len()),
++                    );
++                }
++                diagnostic.push_str(&partial_output);
++                aggregated_output.text = diagnostic;
++            }
+             let exec_output = ExecToolCallOutput {
+                 exit_code,
+                 stdout,
+@@ -819,6 +887,13 @@ fn finalize_exec_result(
+                 timed_out,
+             };
+ 
++            if let Some(message) = raw_output.capture_failure {
++                return Err(CodexErr::Sandbox(SandboxErr::Capture {
++                    output: Box::new(exec_output),
++                    message,
++                }));
++            }
++
+             if timed_out {
+                 return Err(CodexErr::Sandbox(SandboxErr::Timeout {
+                     output: Box::new(exec_output),
+@@ -844,6 +919,17 @@ fn finalize_exec_result(
+     }
+ }
+ 
++fn truncate_utf8_to_bytes(value: &mut String, max_bytes: usize) {
++    if value.len() <= max_bytes {
++        return;
++    }
++    let mut end = max_bytes;
++    while !value.is_char_boundary(end) {
++        end -= 1;
++    }
++    value.truncate(end);
++}
++
+ #[derive(Debug)]
+ struct RawExecToolCallOutput {
+     pub exit_status: ExitStatus,
+@@ -851,6 +937,7 @@ struct RawExecToolCallOutput {
+     pub stderr: StreamOutput<Vec<u8>>,
+     pub aggregated_output: StreamOutput<Vec<u8>>,
+     pub timed_out: bool,
++    pub capture_failure: Option<String>,
+ }
+ 
+ #[inline]
+@@ -1188,6 +1275,7 @@ async fn consume_output(
+         stderr,
+         aggregated_output,
+         timed_out,
++        capture_failure: None,
+     })
+ }
+ 
+diff --git a/codex-rs/core/src/exec_tests.rs b/codex-rs/core/src/exec_tests.rs
+index 98a542d..5d1ebf0 100644
+--- a/codex-rs/core/src/exec_tests.rs
++++ b/codex-rs/core/src/exec_tests.rs
+@@ -1,5 +1,6 @@
+ use super::*;
+ use codex_protocol::config_types::WindowsSandboxLevel;
++use codex_protocol::error::CodexErrorDetails;
+ use codex_protocol::models::PermissionProfile;
+ use codex_protocol::permissions::FileSystemAccessMode;
+ use codex_protocol::permissions::FileSystemPath;
+@@ -18,6 +19,294 @@ use test_case::test_case;
+ use tokio::io::AsyncWriteExt;
+ use tokio::time::timeout;
+ 
++#[test]
++fn windows_capture_conversion_preserves_success() {
++    let raw = windows_capture_output(
++        Ok(codex_windows_sandbox::CaptureResult {
++            exit_code: 7,
++            stdout: b"out".to_vec(),
++            stderr: b"err".to_vec(),
++            timed_out: true,
++        }),
++        ExecCapturePolicy::FullBuffer,
++    )
++    .expect("successful capture converts");
++    assert_eq!(raw.exit_status.code(), Some(7));
++    assert_eq!(raw.stdout.text, b"out");
++    assert_eq!(raw.stderr.text, b"err");
++    assert!(raw.timed_out);
++    assert!(raw.capture_failure.is_none());
++}
++
++#[test]
++fn windows_capture_conversion_preserves_ordinary_error() {
++    let error = anyhow::Error::new(std::io::Error::from_raw_os_error(5))
++        .context("capture-looking text: stdout peek failed");
++    let converted = windows_capture_output(Err(error), ExecCapturePolicy::FullBuffer)
++        .expect_err("ordinary capture error remains an error");
++    assert!(converted.to_string().contains("capture-looking text"));
++    assert_eq!(
++        converted
++            .downcast_ref::<std::io::Error>()
++            .unwrap()
++            .raw_os_error(),
++        Some(5)
++    );
++}
++
++#[test]
++fn windows_capture_conversion_recovers_partial_output() {
++    let output = codex_windows_sandbox::CaptureResult {
++        exit_code: 0,
++        stdout: b"prefix".to_vec(),
++        stderr: b"diagnostic".to_vec(),
++        timed_out: false,
++    };
++    let failure = codex_windows_sandbox::CaptureFailure::new(
++        output,
++        vec![codex_windows_sandbox::CaptureStreamFailure {
++            stream: codex_windows_sandbox::CaptureStream::Stderr,
++            operation: codex_windows_sandbox::CaptureOperation::Read,
++            error: Some(std::io::Error::from_raw_os_error(6)),
++        }],
++    );
++    let raw = windows_capture_output(
++        Err(anyhow::Error::new(failure)),
++        ExecCapturePolicy::FullBuffer,
++    )
++    .expect("typed capture failure returns partial output");
++    assert_eq!(raw.exit_status.code(), Some(0));
++    assert_eq!(raw.stdout.text, b"prefix");
++    assert_eq!(raw.stderr.text, b"diagnostic");
++    assert!(raw.capture_failure.unwrap().contains("Win32 error 6"));
++    assert!(
++        raw.aggregated_output
++            .text
++            .starts_with(b"stderr capture read failed")
++    );
++}
++
++#[test]
++fn windows_capture_conversion_obeys_output_caps() {
++    let cap = ExecCapturePolicy::ShellTool
++        .retained_bytes_cap()
++        .expect("shell output is capped");
++    let policies = [
++        ExecCapturePolicy::ShellTool,
++        ExecCapturePolicy::FullBuffer,
++        ExecCapturePolicy::FullBufferWithExpiration,
++        ExecCapturePolicy::SensitiveFullBuffer,
++    ];
++    for policy in policies {
++        for is_failure in [false, true] {
++            let capture = codex_windows_sandbox::CaptureResult {
++                exit_code: 2,
++                stdout: vec![b'o'; cap * 2],
++                stderr: vec![b'e'; cap * 2],
++                timed_out: false,
++            };
++            let result = if is_failure {
++                Err(anyhow::Error::new(
++                    codex_windows_sandbox::CaptureFailure::new(
++                        capture,
++                        vec![codex_windows_sandbox::CaptureStreamFailure {
++                            stream: codex_windows_sandbox::CaptureStream::Stdout,
++                            operation: codex_windows_sandbox::CaptureOperation::Peek,
++                            error: None,
++                        }],
++                    ),
++                ))
++            } else {
++                Ok(capture)
++            };
++            let raw = windows_capture_output(result, policy).expect("capture conversion");
++            let expected = if policy == ExecCapturePolicy::ShellTool {
++                cap
++            } else {
++                cap * 2
++            };
++            assert_eq!(raw.stdout.text.len(), expected);
++            assert_eq!(raw.stderr.text.len(), expected);
++        }
++    }
++}
++
++#[test]
++fn windows_capture_zero_exit_is_output_bearing_failure() {
++    let raw_output = RawExecToolCallOutput {
++        exit_status: synthetic_exit_status(0),
++        stdout: StreamOutput {
++            text: b"stdout prefix".to_vec(),
++            truncated_after_lines: None,
++        },
++        stderr: StreamOutput {
++            text: b"stderr prefix".to_vec(),
++            truncated_after_lines: None,
++        },
++        aggregated_output: StreamOutput {
++            text: b"stdout prefixstderr prefix".to_vec(),
++            truncated_after_lines: None,
++        },
++        timed_out: false,
++        capture_failure: Some(
++            "stdout capture peek failed (Win32 error 5); child exit code 0".into(),
++        ),
++    };
++
++    let error = finalize_exec_result(
++        Ok(raw_output),
++        SandboxType::WindowsRestrictedToken,
++        Duration::from_millis(5),
++        ExecCapturePolicy::FullBuffer,
++    )
++    .expect_err("capture failure must not be treated as successful exit");
++
++    let CodexErrorDetails::Sandbox(SandboxErr::Capture { output, message }) = error.details()
++    else {
++        panic!("expected output-bearing capture error, got {error}");
++    };
++    assert_eq!(output.exit_code, 1);
++    assert_eq!(output.stdout.text, "stdout prefix");
++    assert_eq!(output.stderr.text, "stderr prefix");
++    assert!(message.contains("child exit code 0"));
++    assert!(output.aggregated_output.text.contains("stdout prefix"));
++    assert!(output.aggregated_output.text.contains("stderr prefix"));
++}
++
++#[test]
++fn windows_capture_diagnostic_survives_empty_capped_streams() {
++    let raw_output = RawExecToolCallOutput {
++        exit_status: synthetic_exit_status(0),
++        stdout: StreamOutput {
++            text: Vec::new(),
++            truncated_after_lines: None,
++        },
++        stderr: StreamOutput {
++            text: Vec::new(),
++            truncated_after_lines: None,
++        },
++        aggregated_output: StreamOutput {
++            text: Vec::new(),
++            truncated_after_lines: None,
++        },
++        timed_out: false,
++        capture_failure: Some(
++            "stderr capture read failed (Win32 error 6); child exit code 0".into(),
++        ),
++    };
++
++    let error = finalize_exec_result(
++        Ok(raw_output),
++        SandboxType::WindowsRestrictedToken,
++        Duration::from_millis(5),
++        ExecCapturePolicy::FullBuffer,
++    )
++    .expect_err("empty capped output still has a capture failure");
++
++    let CodexErrorDetails::Sandbox(SandboxErr::Capture { output, message }) = error.details()
++    else {
++        panic!("expected output-bearing capture error, got {error}");
++    };
++    assert!(output.stdout.text.is_empty());
++    assert!(output.stderr.text.is_empty());
++    assert!(output.aggregated_output.text.contains("partial output"));
++    assert!(output.aggregated_output.text.contains(message));
++}
++
++#[test]
++fn windows_capture_finalization_preserves_failure_precedence() {
++    let raw_output = RawExecToolCallOutput {
++        exit_status: synthetic_exit_status(7),
++        stdout: StreamOutput {
++            text: b"Access is denied".to_vec(),
++            truncated_after_lines: None,
++        },
++        stderr: StreamOutput {
++            text: b"partial stderr".to_vec(),
++            truncated_after_lines: None,
++        },
++        aggregated_output: StreamOutput {
++            text: b"capture failure\npartial output:\nAccess is deniedpartial stderr".to_vec(),
++            truncated_after_lines: None,
++        },
++        timed_out: true,
++        capture_failure: Some("capture failure".to_string()),
++    };
++    let error = finalize_exec_result(
++        Ok(raw_output),
++        SandboxType::WindowsRestrictedToken,
++        Duration::from_millis(5),
++        ExecCapturePolicy::FullBuffer,
++    )
++    .expect_err("capture failure wins over timeout and denial classification");
++    let CodexErrorDetails::Sandbox(SandboxErr::Capture { output, message }) = error.details()
++    else {
++        panic!("expected capture error precedence, got {error}");
++    };
++    assert_eq!(output.exit_code, EXEC_TIMEOUT_EXIT_CODE);
++    assert!(output.timed_out);
++    assert_eq!(output.stdout.text, "Access is denied");
++    assert_eq!(output.stderr.text, "partial stderr");
++    assert_eq!(message, "capture failure");
++}
++
++#[test]
++fn windows_capture_finalization_keeps_ordinary_results() {
++    let raw_output = RawExecToolCallOutput {
++        exit_status: synthetic_exit_status(3),
++        stdout: StreamOutput {
++            text: b"ordinary output".to_vec(),
++            truncated_after_lines: None,
++        },
++        stderr: StreamOutput {
++            text: Vec::new(),
++            truncated_after_lines: None,
++        },
++        aggregated_output: StreamOutput {
++            text: b"ordinary output".to_vec(),
++            truncated_after_lines: None,
++        },
++        timed_out: false,
++        capture_failure: None,
++    };
++    let output = finalize_exec_result(
++        Ok(raw_output),
++        SandboxType::WindowsRestrictedToken,
++        Duration::from_millis(5),
++        ExecCapturePolicy::FullBuffer,
++    )
++    .expect("ordinary nonzero result remains an output result");
++    assert_eq!(output.exit_code, 3);
++    assert!(!output.timed_out);
++    assert_eq!(output.stdout.text, "ordinary output");
++}
++
++#[cfg(unix)]
++#[test]
++fn windows_capture_unix_signal_compatibility() {
++    use std::os::unix::process::ExitStatusExt;
++
++    let raw_output = RawExecToolCallOutput {
++        exit_status: std::process::ExitStatus::from_raw(9),
++        stdout: StreamOutput::default(),
++        stderr: StreamOutput::default(),
++        aggregated_output: StreamOutput::default(),
++        timed_out: false,
++        capture_failure: None,
++    };
++    let error = finalize_exec_result(
++        Ok(raw_output),
++        SandboxType::None,
++        Duration::from_millis(5),
++        ExecCapturePolicy::FullBuffer,
++    )
++    .expect_err("ordinary Unix signal remains a signal error");
++    assert!(matches!(
++        error.details(),
++        CodexErrorDetails::Sandbox(SandboxErr::Signal(9))
++    ));
++}
++
+ fn make_exec_output(
+     exit_code: i32,
+     stdout: &str,
+diff --git a/codex-rs/core/src/tools/events.rs b/codex-rs/core/src/tools/events.rs
+index 2d5262e..41fedd1 100644
+--- a/codex-rs/core/src/tools/events.rs
++++ b/codex-rs/core/src/tools/events.rs
+@@ -418,6 +418,13 @@ impl ToolEmitter {
+                     let result = Err(FunctionCallError::RespondToModel(response));
+                     (event, result)
+                 }
++                CodexErrorDetails::Sandbox(SandboxErr::Capture { output, .. }) => {
++                    let output = output.as_ref().clone();
++                    let response = self.format_exec_output_for_model(&output, ctx);
++                    let event = ToolEventStage::Failure(ToolEventFailure::Output(output));
++                    let result = Err(FunctionCallError::RespondToModel(response));
++                    (event, result)
++                }
+                 CodexErrorDetails::Sandbox(SandboxErr::Denied { output, .. }) => {
+                     let output = output.as_ref().clone();
+                     let response = self.format_exec_output_for_model(&output, ctx);
+@@ -659,6 +666,7 @@ mod tests {
+     use codex_protocol::error::CodexErr;
+     use codex_protocol::error::SandboxErr;
+     use codex_protocol::exec_output::ExecToolCallOutput;
++    use codex_protocol::exec_output::StreamOutput;
+     use codex_protocol::items::TurnItem;
+     use codex_protocol::protocol::PatchApplyStatus;
+     use codex_utils_path_uri::PathUri;
+@@ -749,6 +757,72 @@ mod tests {
+         .await;
+     }
+ 
++    #[tokio::test]
++    async fn windows_capture_failure_emits_partial_output_and_model_error() {
++        let (session, turn, rx_event) =
++            make_session_and_context_with_dynamic_tools_and_rx(Vec::new()).await;
++        let dir = tempdir().expect("tempdir");
++        let cwd = PathUri::from_host_native_path(dir.path()).expect("absolute cwd");
++        let output = ExecToolCallOutput {
++            exit_code: 1,
++            stdout: StreamOutput::new("stdout prefix".to_string()),
++            stderr: StreamOutput::new("stderr prefix".to_string()),
++            aggregated_output: StreamOutput::new(
++                "capture failed; partial output\nstdout prefix\nstderr prefix".to_string(),
++            ),
++            duration: Duration::from_millis(1),
++            timed_out: false,
++        };
++        let error = ToolError::Codex(CodexErr::Sandbox(SandboxErr::Capture {
++            output: Box::new(output),
++            message: "stderr capture read failed (Win32 error 6); child exit code 0".to_string(),
++        }));
++
++        let response = ToolEmitter::unified_exec(
++            &["cmd".to_string()],
++            cwd,
++            ExecCommandSource::UnifiedExecInteraction,
++            None,
++            None,
++        )
++        .finish(
++            ToolEventCtx::new(
++                session.as_ref(),
++                turn.as_ref(),
++                turn.model_info(),
++                "capture-call",
++                None,
++            ),
++            Err(error),
++            None,
++        )
++        .await
++        .expect_err("capture failure must be returned to the model");
++
++        let FunctionCallError::RespondToModel(response) = response else {
++            panic!("capture failure should use a model-facing response");
++        };
++        assert!(response.contains("capture failed"));
++        assert!(response.contains("stdout prefix"));
++        assert!(response.contains("stderr prefix"));
++        let completed = rx_event.recv().await.expect("failed command item");
++        assert!(matches!(
++            completed.msg,
++            EventMsg::ItemCompleted(event)
++                if matches!(
++                event.item,
++                TurnItem::CommandExecution(CommandExecutionItem {
++                    status: CommandExecutionStatus::Failed,
++                    exit_code: Some(1),
++                    duration: Some(duration),
++                    aggregated_output: Some(ref output),
++                    ..
++                }) if duration == Duration::from_millis(1)
++                    && output == "capture failed; partial output\nstdout prefix\nstderr prefix"
++            )
++        ));
++    }
++
+     #[tokio::test]
+     async fn rejected_apply_patch_tracks_committed_delta() {
+         assert_failed_apply_patch_tracks_committed_delta(
+diff --git a/codex-rs/protocol/src/error.rs b/codex-rs/protocol/src/error.rs
+index e48cf5a..19abd12 100644
+--- a/codex-rs/protocol/src/error.rs
++++ b/codex-rs/protocol/src/error.rs
+@@ -42,6 +42,13 @@ const ERROR_MESSAGE_UI_MAX_BYTES: usize = 2 * 1024;
+ 
+ #[derive(Error, Debug)]
+ pub enum SandboxErr {
++    /// Windows sandbox failed to capture one or more output streams.
++    #[error("{message}")]
++    Capture {
++        output: Box<ExecToolCallOutput>,
++        message: String,
++    },
++
+     /// Error from sandbox execution
+     #[error(
+         "sandbox denied exec error, exit code: {}, stdout: {}, stderr: {}",
+diff --git a/codex-rs/windows-sandbox-rs/src/capture.rs b/codex-rs/windows-sandbox-rs/src/capture.rs
+new file mode 100644
+index 0000000..2d32246
+--- /dev/null
++++ b/codex-rs/windows-sandbox-rs/src/capture.rs
+@@ -0,0 +1,277 @@
++use std::fmt;
++use std::io;
++use std::time::Duration;
++
++use crate::CaptureResult;
++
++const CAPTURE_BUFFER_SIZE: usize = 8192;
++const CAPTURE_POLL_INTERVAL: Duration = Duration::from_millis(5);
++
++/// Drains a capture pipe while preserving the legacy completion snapshot rule.
++///
++/// Errors intentionally stop the drain for now; the caller retains the prefix,
++/// matching the legacy capture behavior while the Win32 interaction is made
++/// independently testable.
++#[cfg(test)]
++pub(crate) fn drain_pipe(
++    mut is_finished: impl FnMut() -> bool,
++    mut peek_available: impl FnMut() -> io::Result<u32>,
++    mut read: impl FnMut(&mut [u8], u32) -> io::Result<usize>,
++    mut sleep: impl FnMut(Duration),
++) -> Vec<u8> {
++    let mut output = Vec::new();
++    let mut buffer = [0_u8; CAPTURE_BUFFER_SIZE];
++    let mut remaining = None;
++
++    loop {
++        let has_finished = is_finished();
++        let available = match peek_available() {
++            Ok(available) => available,
++            Err(_) => break,
++        };
++        if has_finished && remaining.is_none() {
++            remaining = Some(available);
++        }
++        let to_read = available.min(remaining.unwrap_or(available));
++        if to_read == 0 {
++            if has_finished {
++                break;
++            }
++            sleep(CAPTURE_POLL_INTERVAL);
++            continue;
++        }
++        let read_limit = to_read.min(buffer.len() as u32);
++        let read_bytes = match read(&mut buffer, read_limit) {
++            Ok(read_bytes) if read_bytes > 0 => read_bytes,
++            _ => break,
++        };
++        output.extend_from_slice(&buffer[..read_bytes]);
++        if let Some(remaining) = remaining.as_mut() {
++            *remaining -= read_bytes as u32;
++        }
++    }
++
++    output
++}
++
++pub(crate) fn drain_pipe_into(
++    output: &mut Vec<u8>,
++    mut is_finished: impl FnMut() -> bool,
++    mut peek_available: impl FnMut() -> io::Result<u32>,
++    mut read: impl FnMut(&mut [u8], u32) -> io::Result<usize>,
++    mut sleep: impl FnMut(Duration),
++    mut is_broken_pipe: impl FnMut(&io::Error) -> bool,
++) -> Result<(), CaptureReadError> {
++    let mut buffer = [0_u8; CAPTURE_BUFFER_SIZE];
++    let mut remaining = None;
++
++    loop {
++        let has_finished = is_finished();
++        let available = match peek_available() {
++            Ok(available) => available,
++            Err(error) if is_broken_pipe(&error) => return Ok(()),
++            Err(error) => {
++                return Err(CaptureReadError {
++                    operation: CaptureOperation::Peek,
++                    error,
++                });
++            }
++        };
++        if has_finished && remaining.is_none() {
++            remaining = Some(available);
++        }
++        let to_read = available.min(remaining.unwrap_or(available));
++        if to_read == 0 {
++            if has_finished {
++                break;
++            }
++            sleep(CAPTURE_POLL_INTERVAL);
++            continue;
++        }
++        let read_limit = to_read.min(buffer.len() as u32);
++        let read_bytes = match read(&mut buffer, read_limit) {
++            Ok(read_bytes) if read_bytes > 0 => read_bytes,
++            Ok(_) => continue,
++            Err(error) if is_broken_pipe(&error) => return Ok(()),
++            Err(error) => {
++                return Err(CaptureReadError {
++                    operation: CaptureOperation::Read,
++                    error,
++                });
++            }
++        };
++        output.extend_from_slice(&buffer[..read_bytes]);
++        if let Some(remaining) = remaining.as_mut() {
++            *remaining -= read_bytes as u32;
++        }
++    }
++
++    Ok(())
++}
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum CaptureStream {
++    Stdout,
++    Stderr,
++}
++
++impl fmt::Display for CaptureStream {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        f.write_str(match self {
++            Self::Stdout => "stdout",
++            Self::Stderr => "stderr",
++        })
++    }
++}
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum CaptureOperation {
++    Peek,
++    Read,
++    Panicked,
++}
++
++impl fmt::Display for CaptureOperation {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        f.write_str(match self {
++            Self::Peek => "peek",
++            Self::Read => "read",
++            Self::Panicked => "reader panicked",
++        })
++    }
++}
++
++pub struct CaptureStreamFailure {
++    pub stream: CaptureStream,
++    pub operation: CaptureOperation,
++    pub error: Option<io::Error>,
++}
++
++impl fmt::Debug for CaptureStreamFailure {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        let mut debug = f.debug_struct("CaptureStreamFailure");
++        debug.field("stream", &self.stream);
++        debug.field("operation", &self.operation);
++        if let Some(code) = self.error.as_ref().and_then(io::Error::raw_os_error) {
++            debug.field("win32_error_code", &code);
++        }
++        debug.finish()
++    }
++}
++
++pub struct CaptureFailure {
++    pub output: CaptureResult,
++    failures: Vec<CaptureStreamFailure>,
++}
++
++impl CaptureFailure {
++    /// Creates a capture failure for a process whose output readers did not all complete.
++    ///
++    /// # Panics
++    ///
++    /// Panics when `failures` is empty.
++    pub fn new(output: CaptureResult, failures: Vec<CaptureStreamFailure>) -> Self {
++        assert!(
++            !failures.is_empty(),
++            "a capture failure must contain at least one stream failure"
++        );
++        Self { output, failures }
++    }
++
++    pub fn failures(&self) -> &[CaptureStreamFailure] {
++        &self.failures
++    }
++}
++
++impl fmt::Debug for CaptureFailure {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        f.debug_struct("CaptureFailure")
++            .field("exit_code", &self.output.exit_code)
++            .field("timed_out", &self.output.timed_out)
++            .field("failures", &self.failures)
++            .finish()
++    }
++}
++
++impl fmt::Display for CaptureFailure {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        for (index, failure) in self.failures.iter().enumerate() {
++            if index > 0 {
++                f.write_str("; ")?;
++            }
++            write!(f, "{} capture {} failed", failure.stream, failure.operation)?;
++            if let Some(code) = failure.error.as_ref().and_then(io::Error::raw_os_error) {
++                write!(f, " (Win32 error {code})")?;
++            }
++        }
++        if self.output.timed_out {
++            write!(
++                f,
++                "; process timed out (reported exit code {})",
++                self.output.exit_code
++            )
++        } else {
++            write!(f, "; child exit code {}", self.output.exit_code)
++        }
++    }
++}
++
++impl std::error::Error for CaptureFailure {}
++
++pub(crate) struct CaptureReadError {
++    pub operation: CaptureOperation,
++    pub error: io::Error,
++}
++
++pub(crate) fn collect_output(
++    read_stdout: impl FnOnce(&mut Vec<u8>) -> Result<(), CaptureReadError> + Send,
++    read_stderr: impl FnOnce(&mut Vec<u8>) -> Result<(), CaptureReadError> + Send,
++    run_process: impl FnOnce() -> (i32, bool),
++) -> Result<CaptureResult, CaptureFailure> {
++    let mut stdout = Vec::new();
++    let mut stderr = Vec::new();
++    let ((exit_code, timed_out), stdout_result, stderr_result) = std::thread::scope(|scope| {
++        let stdout_reader = scope.spawn(|| read_stdout(&mut stdout));
++        let stderr_reader = scope.spawn(|| read_stderr(&mut stderr));
++        let process_result = run_process();
++        let stdout_result = stdout_reader.join();
++        let stderr_result = stderr_reader.join();
++        (process_result, stdout_result, stderr_result)
++    });
++
++    let output = CaptureResult {
++        exit_code,
++        stdout,
++        stderr,
++        timed_out,
++    };
++    let mut failures = Vec::new();
++    collect_failure(&mut failures, CaptureStream::Stdout, stdout_result);
++    collect_failure(&mut failures, CaptureStream::Stderr, stderr_result);
++    if failures.is_empty() {
++        Ok(output)
++    } else {
++        Err(CaptureFailure::new(output, failures))
++    }
++}
++
++fn collect_failure(
++    failures: &mut Vec<CaptureStreamFailure>,
++    stream: CaptureStream,
++    result: std::thread::Result<Result<(), CaptureReadError>>,
++) {
++    let failure = match result {
++        Ok(Ok(())) => return,
++        Ok(Err(CaptureReadError { operation, error })) => CaptureStreamFailure {
++            stream,
++            operation,
++            error: Some(error),
++        },
++        Err(_) => CaptureStreamFailure {
++            stream,
++            operation: CaptureOperation::Panicked,
++            error: None,
++        },
++    };
++    failures.push(failure);
++}
+diff --git a/codex-rs/windows-sandbox-rs/src/capture_tests.rs b/codex-rs/windows-sandbox-rs/src/capture_tests.rs
+new file mode 100644
+index 0000000..8702456
+--- /dev/null
++++ b/codex-rs/windows-sandbox-rs/src/capture_tests.rs
+@@ -0,0 +1,342 @@
++use std::cell::Cell;
++use std::cell::RefCell;
++use std::collections::VecDeque;
++use std::io;
++use std::time::Duration;
++
++use crate::CaptureFailure;
++use crate::CaptureResult;
++use crate::CaptureStreamFailure;
++use crate::capture::CaptureOperation;
++use crate::capture::CaptureReadError;
++use crate::capture::CaptureStream;
++use crate::capture::collect_output;
++use crate::capture::drain_pipe;
++
++fn read_error(operation: CaptureOperation, code: i32) -> CaptureReadError {
++    CaptureReadError {
++        operation,
++        error: io::Error::from_raw_os_error(code),
++    }
++}
++
++#[test]
++#[should_panic(expected = "a capture failure must contain at least one stream failure")]
++fn capture_output_failure_constructor_rejects_empty_failures() {
++    CaptureFailure::new(
++        CaptureResult {
++            exit_code: 0,
++            stdout: Vec::new(),
++            stderr: Vec::new(),
++            timed_out: false,
++        },
++        Vec::<CaptureStreamFailure>::new(),
++    );
++}
++
++#[test]
++fn capture_output_drain_preserves_prefix_after_peek_error() {
++    let available = RefCell::new(VecDeque::from([Ok(2), Err(io::Error::other("peek"))]));
++    let reads = Cell::new(0);
++    let output = drain_pipe(
++        || false,
++        || available.borrow_mut().pop_front().expect("peek outcome"),
++        |buffer, _| {
++            buffer[..2].copy_from_slice(b"ok");
++            reads.set(reads.get() + 1);
++            Ok(2)
++        },
++        |_| panic!("unfinished pipe should not sleep"),
++    );
++
++    assert_eq!(output, b"ok");
++    assert_eq!(reads.get(), 1);
++}
++
++#[test]
++fn capture_output_drain_stops_on_zero_byte_read() {
++    let available = Cell::new(1);
++    let reads = Cell::new(0);
++    let finished = Cell::new(false);
++    let output = drain_pipe(
++        || {
++            let was_finished = finished.get();
++            finished.set(true);
++            was_finished
++        },
++        || Ok(available.replace(0)),
++        |_, _| {
++            reads.set(reads.get() + 1);
++            Ok(0)
++        },
++        |_| panic!("available bytes should not sleep"),
++    );
++
++    assert!(output.is_empty());
++    assert_eq!(reads.get(), 1);
++}
++
++#[test]
++fn capture_output_zero_byte_read_then_more_bytes() {
++    let available = RefCell::new(VecDeque::from([1, 1, 0]));
++    let finished = Cell::new(false);
++    let reads = Cell::new(0);
++    let mut output = Vec::new();
++    let result = crate::capture::drain_pipe_into(
++        &mut output,
++        || finished.get(),
++        || Ok(available.borrow_mut().pop_front().expect("peek outcome")),
++        |buffer, _| {
++            if reads.replace(reads.get() + 1) == 0 {
++                finished.set(true);
++                Ok(0)
++            } else {
++                buffer[0] = b'x';
++                Ok(1)
++            }
++        },
++        |_| panic!("available bytes should not sleep"),
++        |_| false,
++    );
++
++    assert!(result.is_ok());
++    assert_eq!(output, b"x");
++}
++
++#[test]
++fn capture_output_drain_limits_completed_pipe_to_initial_snapshot() {
++    let available = RefCell::new(VecDeque::from([4, 8, 8]));
++    let finished = Cell::new(true);
++    let read_count = Cell::new(0);
++    let read_offset = Cell::new(0);
++    let output = drain_pipe(
++        || finished.get(),
++        || Ok(available.borrow_mut().pop_front().expect("peek outcome")),
++        |buffer, requested| {
++            read_count.set(read_count.get() + 1);
++            let count = requested.min(2) as usize;
++            let offset = read_offset.get();
++            buffer[..count].copy_from_slice(&b"abcdef"[offset..offset + count]);
++            read_offset.set(offset + count);
++            Ok(count)
++        },
++        |_| panic!("finished pipe should not sleep"),
++    );
++
++    assert_eq!(output, b"abcd");
++    assert_eq!(read_count.get(), 2);
++}
++
++#[test]
++fn capture_output_completed_empty_pipe_is_eof() {
++    let finished = Cell::new(true);
++    let output = drain_pipe(
++        || finished.get(),
++        || Ok(0),
++        |_, _| panic!("empty completed pipe should not read"),
++        |_| panic!("empty completed pipe should not sleep"),
++    );
++
++    assert!(output.is_empty());
++}
++
++#[test]
++fn capture_output_drain_waits_for_data_before_completion() {
++    let available = RefCell::new(VecDeque::from([0, 3, 0]));
++    let finished = Cell::new(false);
++    let sleeps = Cell::new(0);
++    let output = drain_pipe(
++        || {
++            if sleeps.get() > 0 {
++                finished.set(true);
++            }
++            finished.get()
++        },
++        || Ok(available.borrow_mut().pop_front().expect("peek outcome")),
++        |buffer, _| {
++            buffer[..3].copy_from_slice(b"hey");
++            Ok(3)
++        },
++        |duration: Duration| {
++            assert_eq!(duration, Duration::from_millis(5));
++            sleeps.set(sleeps.get() + 1);
++        },
++    );
++
++    assert_eq!(output, b"hey");
++    assert_eq!(sleeps.get(), 1);
++}
++
++#[test]
++fn capture_output_stdout_peek_failure_retains_both_prefixes() {
++    let failure = match collect_output(
++        |stdout| {
++            stdout.extend_from_slice(b"out-prefix");
++            Err(read_error(CaptureOperation::Peek, 5))
++        },
++        |stderr| {
++            stderr.extend_from_slice(b"err-prefix");
++            Ok(())
++        },
++        || (7, false),
++    ) {
++        Err(failure) => failure,
++        Ok(_) => panic!("stdout peek failure is preserved"),
++    };
++
++    assert_eq!(failure.output.exit_code, 7);
++    assert!(!failure.output.timed_out);
++    assert_eq!(failure.output.stdout, b"out-prefix");
++    assert_eq!(failure.output.stderr, b"err-prefix");
++    assert_eq!(failure.failures()[0].stream, CaptureStream::Stdout);
++    assert_eq!(failure.failures()[0].operation, CaptureOperation::Peek);
++}
++
++#[test]
++fn capture_output_stderr_peek_failure_retains_both_prefixes() {
++    let failure = match collect_output(
++        |stdout| {
++            stdout.extend_from_slice(b"out");
++            Ok(())
++        },
++        |stderr| {
++            stderr.extend_from_slice(b"err");
++            Err(read_error(CaptureOperation::Peek, 6))
++        },
++        || (0, false),
++    ) {
++        Err(failure) => failure,
++        Ok(_) => panic!("stderr peek failure is preserved"),
++    };
++
++    assert_eq!(failure.output.stdout, b"out");
++    assert_eq!(failure.output.stderr, b"err");
++    assert_eq!(failure.failures()[0].stream, CaptureStream::Stderr);
++    assert_eq!(failure.failures()[0].operation, CaptureOperation::Peek);
++}
++
++#[test]
++fn capture_output_stdout_read_failure_retains_both_prefixes() {
++    let failure = match collect_output(
++        |stdout| {
++            stdout.extend_from_slice(b"out");
++            Err(read_error(CaptureOperation::Read, 5))
++        },
++        |stderr| {
++            stderr.extend_from_slice(b"err");
++            Ok(())
++        },
++        || (0, false),
++    ) {
++        Err(failure) => failure,
++        Ok(_) => panic!("stdout read failure is preserved"),
++    };
++
++    assert_eq!(failure.output.stdout, b"out");
++    assert_eq!(failure.output.stderr, b"err");
++    assert_eq!(failure.failures()[0].stream, CaptureStream::Stdout);
++    assert_eq!(failure.failures()[0].operation, CaptureOperation::Read);
++}
++
++#[test]
++fn capture_output_stderr_read_failure_retains_both_prefixes() {
++    let failure = match collect_output(
++        |stdout| {
++            stdout.extend_from_slice(b"out");
++            Ok(())
++        },
++        |stderr| {
++            stderr.extend_from_slice(b"err");
++            Err(read_error(CaptureOperation::Read, 6))
++        },
++        || (0, false),
++    ) {
++        Err(failure) => failure,
++        Ok(_) => panic!("stderr read failure is preserved"),
++    };
++
++    assert_eq!(failure.output.stdout, b"out");
++    assert_eq!(failure.output.stderr, b"err");
++    assert_eq!(failure.failures()[0].stream, CaptureStream::Stderr);
++    assert_eq!(failure.failures()[0].operation, CaptureOperation::Read);
++}
++
++#[test]
++fn capture_output_panic_after_prefix_retains_both_streams() {
++    let failure = match collect_output(
++        |stdout| {
++            stdout.extend_from_slice(b"before panic");
++            panic!("private panic details");
++        },
++        |stderr| {
++            stderr.extend_from_slice(b"still joined");
++            Ok(())
++        },
++        || (9, false),
++    ) {
++        Err(failure) => failure,
++        Ok(_) => panic!("reader panic is preserved"),
++    };
++
++    assert_eq!(failure.output.stdout, b"before panic");
++    assert_eq!(failure.output.stderr, b"still joined");
++    assert_eq!(failure.failures()[0].stream, CaptureStream::Stdout);
++    assert_eq!(failure.failures()[0].operation, CaptureOperation::Panicked);
++    let diagnostic = format!("{failure}");
++    assert!(!diagnostic.contains("private panic details"));
++    let debug = format!("{failure:?}");
++    assert!(!debug.contains("before panic"));
++    assert!(!debug.contains("still joined"));
++    assert!(!debug.contains("private panic details"));
++}
++
++#[test]
++fn capture_output_both_reader_failures_are_collected() {
++    let failure = match collect_output(
++        |stdout| {
++            stdout.extend_from_slice(b"out");
++            Err(read_error(CaptureOperation::Peek, 5))
++        },
++        |stderr| {
++            stderr.extend_from_slice(b"err");
++            Err(read_error(CaptureOperation::Read, 6))
++        },
++        || (0, true),
++    ) {
++        Err(failure) => failure,
++        Ok(_) => panic!("both reader failures are preserved"),
++    };
++
++    assert_eq!(failure.output.stdout, b"out");
++    assert_eq!(failure.output.stderr, b"err");
++    assert!(failure.output.timed_out);
++    assert_eq!(failure.failures().len(), 2);
++    assert!(failure.failures().iter().any(|failure| {
++        failure.stream == CaptureStream::Stdout && failure.operation == CaptureOperation::Peek
++    }));
++    assert!(failure.failures().iter().any(|failure| {
++        failure.stream == CaptureStream::Stderr && failure.operation == CaptureOperation::Read
++    }));
++    assert!(format!("{failure}").contains("process timed out (reported exit code 0)"));
++}
++
++#[test]
++fn capture_output_success_preserves_exit_metadata_and_streams() {
++    let output = collect_output(
++        |stdout| {
++            stdout.extend_from_slice(b"out");
++            Ok(())
++        },
++        |stderr| {
++            stderr.extend_from_slice(b"err");
++            Ok(())
++        },
++        || (23, true),
++    )
++    .expect("successful readers remain successful");
++
++    assert_eq!(output.exit_code, 23);
++    assert!(output.timed_out);
++    assert_eq!(output.stdout, b"out");
++    assert_eq!(output.stderr, b"err");
++}
+diff --git a/codex-rs/windows-sandbox-rs/src/lib.rs b/codex-rs/windows-sandbox-rs/src/lib.rs
+index 895565b..699ec81 100644
+--- a/codex-rs/windows-sandbox-rs/src/lib.rs
++++ b/codex-rs/windows-sandbox-rs/src/lib.rs
+@@ -155,7 +155,14 @@ mod winutil;
+ #[cfg(target_os = "windows")]
+ mod workspace_acl;
+ 
++mod capture;
+ mod deny_read_resolver;
++pub use capture::CaptureFailure;
++pub use capture::CaptureOperation;
++pub use capture::CaptureStream;
++pub use capture::CaptureStreamFailure;
++#[cfg(test)]
++mod capture_tests;
+ #[cfg(target_os = "windows")]
+ mod uninstall_windows;
+ 
+@@ -595,60 +602,67 @@ mod windows_impl {
+ 
+     type PipeHandles = ((HANDLE, HANDLE), (HANDLE, HANDLE), (HANDLE, HANDLE));
+ 
+-    fn read_capture_pipe(pipe: OwnedHandle, finished: Arc<AtomicBool>) -> Vec<u8> {
++    #[cfg(test)]
++    pub(super) fn read_capture_pipe(pipe: OwnedHandle, finished: Arc<AtomicBool>) -> Vec<u8> {
+         let mut output = Vec::new();
+-        let mut buffer = [0u8; 8192];
+-        let mut remaining = None;
+-        loop {
+-            let has_finished = finished.load(Ordering::Acquire);
+-            let mut available = 0;
+-            let ok = unsafe {
+-                PeekNamedPipe(
+-                    pipe.as_raw_handle() as _,
+-                    ptr::null_mut(),
+-                    0,
+-                    ptr::null_mut(),
+-                    &mut available,
+-                    ptr::null_mut(),
+-                )
+-            };
+-            if ok == 0 {
+-                break;
+-            }
+-            if has_finished && remaining.is_none() {
+-                // Descendants may keep writing after root exit. Drain only the
+-                // bytes already pending when completion is first observed.
+-                remaining = Some(available);
+-            }
+-            let to_read = available.min(remaining.unwrap_or(available));
+-            if to_read == 0 {
+-                if has_finished {
+-                    break;
+-                }
+-                std::thread::sleep(Duration::from_millis(5));
+-                continue;
+-            }
+-            let mut read_bytes = 0;
+-            let ok = unsafe {
+-                ReadFile(
+-                    pipe.as_raw_handle() as _,
+-                    buffer.as_mut_ptr(),
+-                    to_read.min(buffer.len() as u32),
+-                    &mut read_bytes,
+-                    ptr::null_mut(),
+-                )
+-            };
+-            if ok == 0 || read_bytes == 0 {
+-                break;
+-            }
+-            output.extend_from_slice(&buffer[..read_bytes as usize]);
+-            if let Some(remaining) = remaining.as_mut() {
+-                *remaining -= read_bytes;
+-            }
+-        }
++        let _ = read_capture_pipe_into(pipe, finished, &mut output);
+         output
+     }
+ 
++    fn read_capture_pipe_into(
++        pipe: OwnedHandle,
++        finished: Arc<AtomicBool>,
++        output: &mut Vec<u8>,
++    ) -> Result<(), super::capture::CaptureReadError> {
++        use windows_sys::Win32::Foundation::ERROR_BROKEN_PIPE;
++
++        super::capture::drain_pipe_into(
++            output,
++            || finished.load(Ordering::Acquire),
++            || {
++                let mut available = 0;
++                let ok = unsafe {
++                    PeekNamedPipe(
++                        pipe.as_raw_handle() as _,
++                        ptr::null_mut(),
++                        0,
++                        ptr::null_mut(),
++                        &mut available,
++                        ptr::null_mut(),
++                    )
++                };
++                if ok == 0 {
++                    Err(io::Error::from_raw_os_error(
++                        unsafe { GetLastError() } as i32
++                    ))
++                } else {
++                    Ok(available)
++                }
++            },
++            |buffer, to_read| {
++                let mut read_bytes = 0;
++                let ok = unsafe {
++                    ReadFile(
++                        pipe.as_raw_handle() as _,
++                        buffer.as_mut_ptr(),
++                        to_read,
++                        &mut read_bytes,
++                        ptr::null_mut(),
++                    )
++                };
++                if ok == 0 {
++                    Err(io::Error::from_raw_os_error(
++                        unsafe { GetLastError() } as i32
++                    ))
++                } else {
++                    Ok(read_bytes as usize)
++                }
++            },
++            std::thread::sleep,
++            |error| error.raw_os_error() == Some(ERROR_BROKEN_PIPE as i32),
++        )
++    }
++
+     enum WaitOutcome {
+         Exited,
+         TimedOut,
+@@ -876,74 +890,73 @@ mod windows_impl {
+         let finished = Arc::new(AtomicBool::new(false));
+         let stdout_finished = Arc::clone(&finished);
+         let stderr_finished = Arc::clone(&finished);
+-        let t_out = std::thread::spawn(move || read_capture_pipe(out_r, stdout_finished));
+-        let t_err = std::thread::spawn(move || read_capture_pipe(err_r, stderr_finished));
+-
+-        let wait_outcome = wait_for_process(pi.hProcess, timeout_ms, cancellation.as_ref());
+-        let timed_out = matches!(wait_outcome, WaitOutcome::TimedOut);
+-        let cancelled = matches!(wait_outcome, WaitOutcome::Cancelled);
+-        let mut exit_code_u32: u32 = 1;
+-        if !timed_out && !cancelled {
+-            unsafe {
+-                GetExitCodeProcess(pi.hProcess, &mut exit_code_u32);
+-            }
+-        }
+-        if timed_out || cancelled {
+-            if let Err(job_err) = job.terminate() {
+-                log_note(
+-                    &format!("capture failed to terminate process tree: {job_err}"),
+-                    logs_base_dir,
+-                );
+-                let root_result = unsafe {
+-                    windows_sys::Win32::System::Threading::TerminateProcess(pi.hProcess, 1)
+-                };
+-                if root_result == 0 {
++        let capture_result = super::capture::collect_output(
++            move |stdout| read_capture_pipe_into(out_r, stdout_finished, stdout),
++            move |stderr| read_capture_pipe_into(err_r, stderr_finished, stderr),
++            || {
++                let wait_outcome = wait_for_process(pi.hProcess, timeout_ms, cancellation.as_ref());
++                let timed_out = matches!(wait_outcome, WaitOutcome::TimedOut);
++                let cancelled = matches!(wait_outcome, WaitOutcome::Cancelled);
++                let mut exit_code_u32: u32 = 1;
++                if !timed_out && !cancelled {
++                    unsafe {
++                        GetExitCodeProcess(pi.hProcess, &mut exit_code_u32);
++                    }
++                }
++                if timed_out || cancelled {
++                    if let Err(job_err) = job.terminate() {
++                        log_note(
++                            &format!("capture failed to terminate process tree: {job_err}"),
++                            logs_base_dir,
++                        );
++                        let root_result = unsafe {
++                            windows_sys::Win32::System::Threading::TerminateProcess(pi.hProcess, 1)
++                        };
++                        if root_result == 0 {
++                            log_note(
++                                &format!("capture failed to terminate root process: {}", unsafe {
++                                    GetLastError()
++                                }),
++                                logs_base_dir,
++                            );
++                        }
++                    }
++                } else if let Err(err) = job.preserve_descendants() {
+                     log_note(
+-                        &format!("capture failed to terminate root process: {}", unsafe {
+-                            GetLastError()
+-                        }),
++                        &format!("capture failed to preserve descendants after root exit: {err}"),
+                         logs_base_dir,
+                     );
+                 }
+-            }
+-        } else if let Err(err) = job.preserve_descendants() {
+-            log_note(
+-                &format!("capture failed to preserve descendants after root exit: {err}"),
+-                logs_base_dir,
+-            );
+-        }
+ 
+-        finished.store(true, Ordering::Release);
++                finished.store(true, Ordering::Release);
+ 
+-        unsafe {
+-            if !pi.hThread.is_null() {
+-                CloseHandle(pi.hThread);
+-            }
+-            if !pi.hProcess.is_null() {
+-                CloseHandle(pi.hProcess);
+-            }
+-            CloseHandle(security.h_token);
+-        }
+-        let stdout = t_out.join().unwrap_or_default();
+-        let stderr = t_err.join().unwrap_or_default();
+-        let exit_code = if timed_out {
+-            128 + 64
+-        } else {
+-            exit_code_u32 as i32
++                unsafe {
++                    if !pi.hThread.is_null() {
++                        CloseHandle(pi.hThread);
++                    }
++                    if !pi.hProcess.is_null() {
++                        CloseHandle(pi.hProcess);
++                    }
++                    CloseHandle(security.h_token);
++                }
++                let exit_code = if timed_out {
++                    128 + 64
++                } else {
++                    exit_code_u32 as i32
++                };
++                (exit_code, timed_out)
++            },
++        );
++        let exit_code = match &capture_result {
++            Ok(output) => output.exit_code,
++            Err(failure) => failure.output.exit_code,
+         };
+-
+         if exit_code == 0 {
+             log_success(&command, logs_base_dir);
+         } else {
+             log_failure(&command, &format!("exit code {exit_code}"), logs_base_dir);
+         }
+-
+-        Ok(CaptureResult {
+-            exit_code,
+-            stdout,
+-            stderr,
+-            timed_out,
+-        })
++        capture_result.map_err(anyhow::Error::new)
+     }
+ 
+     pub fn run_windows_sandbox_legacy_preflight(
+@@ -991,7 +1004,45 @@ mod windows_impl {
+         use codex_protocol::models::PermissionProfile;
+         use codex_protocol::permissions::NetworkSandboxPolicy;
+         use std::collections::HashMap;
++        use std::os::windows::io::AsRawHandle;
++        use std::os::windows::io::FromRawHandle;
++        use std::os::windows::io::OwnedHandle;
+         use std::path::Path;
++        use std::sync::Arc;
++        use std::sync::atomic::AtomicBool;
++        use windows_sys::Win32::Foundation::HANDLE;
++        use windows_sys::Win32::Storage::FileSystem::WriteFile;
++        use windows_sys::Win32::System::Pipes::CreatePipe;
++
++        #[test]
++        fn capture_pipe_writer_close_is_eof_after_captured_bytes() {
++            let mut read_handle: HANDLE = std::ptr::null_mut();
++            let mut write_handle: HANDLE = std::ptr::null_mut();
++            let created =
++                unsafe { CreatePipe(&mut read_handle, &mut write_handle, std::ptr::null(), 0) };
++            assert_ne!(created, 0, "create anonymous pipe");
++            let reader = unsafe { OwnedHandle::from_raw_handle(read_handle as _) };
++            let writer = unsafe { OwnedHandle::from_raw_handle(write_handle as _) };
++
++            let bytes = b"captured before writer close";
++            let mut written = 0;
++            let write_ok = unsafe {
++                WriteFile(
++                    writer.as_raw_handle() as _,
++                    bytes.as_ptr(),
++                    bytes.len() as u32,
++                    &mut written,
++                    std::ptr::null_mut(),
++                )
++            };
++            assert_ne!(write_ok, 0, "write anonymous pipe");
++            assert_eq!(written as usize, bytes.len());
++
++            // Closing the child-side writer lets the capture reader observe EOF.
++            drop(writer);
++            let output = super::read_capture_pipe(reader, Arc::new(AtomicBool::new(true)));
++            assert_eq!(output, bytes);
++        }
+ 
+         fn workspace_profile(network_policy: NetworkSandboxPolicy) -> PermissionProfile {
+             PermissionProfile::workspace_write_with(

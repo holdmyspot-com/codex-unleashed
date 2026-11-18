@@ -22,13 +22,16 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Build the tooling runtime
+        uses: ./.github/actions/setup-tooling
+
       - name: Prepare the signal observer
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/runner-signal-evidence"
           git rev-parse HEAD > "$RUNNER_TEMP/runner-signal-evidence/restart-commit"
           # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
-          sudo python3 -I .github/scripts/apt-install-with-fallback.py bpftrace
+          sudo bash "$CODEX_TOOLING" apt-install-with-fallback bpftrace
           sudo -n bpftrace --info 2>&1 | tee "$RUNNER_TEMP/runner-signal-evidence/bpftrace-info.txt"
 
       - name: Verify known signal sender and recipient
@@ -47,3 +50,8 @@ jobs:
           path: ${{ runner.temp }}/runner-signal-evidence
           retention-days: 3
           if-no-files-found: error
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"

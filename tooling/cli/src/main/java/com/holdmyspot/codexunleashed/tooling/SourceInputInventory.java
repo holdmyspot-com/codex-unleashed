@@ -4,11 +4,13 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -61,9 +63,15 @@ public final class SourceInputInventory
 
 	/**
 	 * Inventories regular files from the containing Git repository's tracked and nonignored untracked paths.
-	 * Compiled outputs are always excluded; Cargo-home paths are excluded only from untracked discovery.
-	 * If Git root discovery exits unsuccessfully, walks the workspace instead, without following directory links,
-	 * and prunes {@code .git}, {@code target}, {@code node_modules}, and the explicit cache directories.
+	 * Compiled outputs are always excluded; Cargo-home paths are excluded only from untracked discovery. If Git root
+	 * discovery reports status 128 with Git's specific no-repository diagnostic, walks the workspace instead, without
+	 * following directory links, and prunes {@code .git}, {@code target}, {@code node_modules}, and the explicit cache
+	 * directories. Other nonzero discovery results fail with an {@link IOException} containing the directory, status,
+	 * and diagnostic. The accepted ordinary diagnostic is {@code fatal: not a git repository (or any of the parent
+	 * directories): .git}; the filesystem-boundary form is {@code fatal: not a git repository (or any parent up to
+	 * mount point <absolute-path>)}, followed by {@code Stopping at filesystem boundary
+	 * (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).}. Git root discovery receives {@code LC_ALL=C}; subsequent listing
+	 * commands receive the caller's original environment overrides.
 	 *
 	 * @param scope borrowed shared native bindings, kept open through inventory
 	 * @param workspace the source workspace
@@ -74,7 +82,8 @@ public final class SourceInputInventory
 	 * @param commands external Git command execution
 	 * @return immutable digests and exact timestamps
 	 * @throws NullPointerException if any argument is null
-	 * @throws IOException if Git startup, inventory, hashing, timestamps, or capture cleanup fails
+	 * @throws IOException if Git discovery fails for a reason other than the recognized no-repository diagnostic, or
+	 *                     Git startup, inventory, hashing, timestamps, or capture cleanup fails
 	 */
 	public static Snapshot read(ToolingScope scope, Path workspace, Path targetDirectory, Optional<Path> cargoHome,
 		Path temporaryDirectory, Map<String, String> environment, SystemCommands.Capture commands) throws IOException
@@ -87,21 +96,66 @@ public final class SourceInputInventory
 		Objects.requireNonNull(commands, "commands");
 		Map<String, String> overrides = Map.copyOf(environment);
 		Path working = workspace.toRealPath();
+		Map<String, String> discoveryEnvironment = new HashMap<>(overrides);
+		discoveryEnvironment.put("LC_ALL", "C");
 		SystemCommands.Result discovery = commands.capture(List.of("git", "-C", working.toString(),
-			"rev-parse", "--show-toplevel"), working, temporaryDirectory, overrides);
+			"rev-parse", "--show-toplevel"), working, temporaryDirectory, discoveryEnvironment);
 		Path root = working;
-		if (discovery.status() == 0)
+		boolean gitRootFound = discovery.status() == 0;
+		if (gitRootFound)
 			root = Path.of(discovery.stdout().strip()).toRealPath();
+		else if (!isNoRepositoryDiagnostic(discovery.status(), discovery.stderr()))
+			throw new IOException("Git root discovery failed in " + working + " with status " + discovery.status() +
+				": " + discovery.stderr());
 		Set<Path> excluded = new LinkedHashSet<>();
 		excluded.add(SourceInputPaths.resolve(targetDirectory));
 		if (cargoHome.isPresent())
 			excluded.add(SourceInputPaths.resolve(cargoHome.orElseThrow()));
 		List<Path> paths;
-		if (discovery.status() == 0)
+		if (gitRootFound)
 			paths = gitPaths(root, excluded, temporaryDirectory, overrides, commands);
 		else
 			paths = fallbackPaths(root, excluded);
 		return snapshot(scope, root, paths, SourceInputPaths.resolve(targetDirectory));
+	}
+
+	/**
+	 * Recognizes only Git's status-128 English diagnostics for an absent repository or a filesystem boundary.
+	 *
+	 * @param status Git root-discovery status
+	 * @param stderr Git root-discovery diagnostic
+	 * @return whether filesystem inventory is the defined recovery
+	 */
+	private static boolean isNoRepositoryDiagnostic(int status, String stderr)
+	{
+		if (status != 128)
+			return false;
+		String diagnostic = stderr.replace("\r\n", "\n");
+		if (diagnostic.endsWith("\n"))
+			diagnostic = diagnostic.substring(0, diagnostic.length() - 1);
+		if (diagnostic.equals("fatal: not a git repository (or any of the parent directories): .git"))
+			return true;
+		String[] diagnosticLines = diagnostic.split("\n", -1);
+		if (diagnosticLines.length != 2)
+			return false;
+		String boundary = diagnosticLines[0];
+		String boundaryPrefix = "fatal: not a git repository (or any parent up to mount point ";
+		String boundarySuffix = ")";
+		String stoppedAtBoundary = diagnosticLines[1];
+		boolean hasFilesystemBoundaryDiagnostic = boundary.startsWith(boundaryPrefix) &&
+			boundary.endsWith(boundarySuffix) &&
+			stoppedAtBoundary.equals("Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).");
+		if (!hasFilesystemBoundaryDiagnostic)
+			return false;
+		String mountPoint = boundary.substring(boundaryPrefix.length(), boundary.length() - boundarySuffix.length());
+		try
+		{
+			return Path.of(mountPoint).isAbsolute();
+		}
+		catch (InvalidPathException _)
+		{
+			return false;
+		}
 	}
 
 	/**

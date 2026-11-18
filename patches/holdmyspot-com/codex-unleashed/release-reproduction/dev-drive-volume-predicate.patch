@@ -1,0 +1,483 @@
+From ef4f7ad7e89363c91dcbbc040c1718481fa43aec Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 15 Nov 2026 02:08:07 -0500
+Subject: [PATCH] Fix Dev Drive volume-state detection and reuse a provisioned
+ Dev Drive
+
+A second setup in the same job used to remove and recreate the owned VHD, which Windows refuses while the first setup's VHD is attached, so the second setup failed and the job stopped. The setup now reuses the Dev Drive that CI_BUILD_ROOT records, or that the attached owned VHD exposes, when it passes the Dev Drive test, and then removes and recreates nothing.
+---
+ .github/scripts/setup-dev-drive.ps1          | 172 ++++++++++++++++-
+ .github/scripts/test-setup-dev-drive-bfs.ps1 | 193 ++++++++++++++++++-
+ 2 files changed, 353 insertions(+), 12 deletions(-)
+
+diff --git a/.github/scripts/setup-dev-drive.ps1 b/.github/scripts/setup-dev-drive.ps1
+index d171231..157aa7a 100644
+--- a/.github/scripts/setup-dev-drive.ps1
++++ b/.github/scripts/setup-dev-drive.ps1
+@@ -5,11 +5,161 @@
+ # build directories where CI spends significant time doing I/O, so fail the
+ # job if no real Dev Drive is available.
+ 
++function Resolve-DevDriveVolumeStateType {
++    param([object[]]$EmittedTypes)
++
++    $matchingTypes = @(
++        foreach ($emittedType in $EmittedTypes) {
++            if (($emittedType -is [System.Type]) -and ($emittedType.FullName -ceq "Codex.DevDriveVolumeState")) {
++                $emittedType
++            }
++        }
++    )
++    if ($matchingTypes.Count -ne 1) {
++        throw "Add-Type must emit exactly one type named 'Codex.DevDriveVolumeState'; found $($matchingTypes.Count)."
++    }
++
++    return $matchingTypes[0]
++}
++
++$emittedDevDriveTypes = Add-Type -TypeDefinition @'
++using System;
++using System.ComponentModel;
++using System.IO;
++using System.Runtime.InteropServices;
++using Microsoft.Win32.SafeHandles;
++
++namespace Codex
++{
++    public static class DevDriveVolumeState
++    {
++        [StructLayout(LayoutKind.Sequential)]
++        private struct PersistentVolumeInformation
++        {
++            public uint VolumeFlags;
++            public uint FlagMask;
++            public uint Version;
++            public uint Reserved;
++        }
++
++        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "CreateFileW", SetLastError = true)]
++        private static extern SafeFileHandle CreateFile(
++            string fileName,
++            uint desiredAccess,
++            uint shareMode,
++            IntPtr securityAttributes,
++            uint creationDisposition,
++            uint flagsAndAttributes,
++            IntPtr templateFile);
++
++        [DllImport("kernel32.dll", SetLastError = true)]
++        private static extern bool DeviceIoControl(
++            SafeFileHandle device,
++            uint controlCode,
++            ref PersistentVolumeInformation input,
++            uint inputSize,
++            out PersistentVolumeInformation output,
++            uint outputSize,
++            out uint bytesReturned,
++            IntPtr overlapped);
++
++        public static string QueryFileSystem(string drive)
++        {
++            return new DriveInfo(drive + @"\").DriveFormat;
++        }
++
++        public static uint QueryVolumeFlags(string drive)
++        {
++            using (SafeFileHandle volume = CreateFile(drive + @"\", 0x00000080, 3, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero))
++            {
++                if (volume.IsInvalid)
++                {
++                    int nativeError = Marshal.GetLastWin32Error();
++                    throw new Win32Exception(nativeError, "Could not open volume " + drive + " (Win32 error " + nativeError + ").");
++                }
++
++                PersistentVolumeInformation input = new PersistentVolumeInformation();
++                input.FlagMask = 0x00002000;
++                input.Version = 1;
++                PersistentVolumeInformation output;
++                uint bytesReturned;
++                bool querySucceeded = DeviceIoControl(volume, 0x0009023c, ref input, 16, out output, 16, out bytesReturned, IntPtr.Zero);
++                if (!querySucceeded)
++                {
++                    int nativeError = Marshal.GetLastWin32Error();
++                    throw new Win32Exception(nativeError, "Could not query Dev Drive state for " + drive + " (Win32 error " + nativeError + ").");
++                }
++                if (bytesReturned < 16)
++                {
++                    throw new IOException("Dev Drive state query for " + drive + " returned only " + bytesReturned + " bytes.");
++                }
++
++                return output.VolumeFlags;
++            }
++        }
++    }
++}
++'@ -PassThru -ErrorAction Stop
++$script:DevDriveVolumeStateType = Resolve-DevDriveVolumeStateType -EmittedTypes $emittedDevDriveTypes
++
+ function Test-DevDrive {
+     param([string]$Drive)
+ 
+-    & fsutil devdrv query $Drive *> $null
+-    return $LASTEXITCODE -eq 0
++    # True means the typed state marks a ReFS volume as a Dev Drive; query failures propagate.
++    $fileSystem = $script:DevDriveVolumeStateType::QueryFileSystem($Drive)
++    $isReFs = [string]::Equals($fileSystem, "ReFS", [System.StringComparison]::OrdinalIgnoreCase)
++    if ($isReFs) {
++        $volumeFlags = $script:DevDriveVolumeStateType::QueryVolumeFlags($Drive)
++        $devVolumeMask = [uint32]0x00002000
++        $isDevVolume = ($volumeFlags -band $devVolumeMask) -gt 0
++        return $isDevVolume
++    }
++
++    return $false
++}
++
++function Get-RecordedDevDrive {
++    param([string]$BuildRoot)
++
++    # A setup that ran earlier in this job recorded its drive in CI_BUILD_ROOT. That drive is reusable only while it is a
++    # bare drive letter that is present and still passes the Dev Drive test; query failures propagate.
++    if ($BuildRoot -notmatch '^[A-Za-z]:$') {
++        return $null
++    }
++    if (-not (Test-Path "$BuildRoot\")) {
++        return $null
++    }
++    if (Test-DevDrive $BuildRoot) {
++        return $BuildRoot
++    }
++
++    return $null
++}
++
++function Get-AttachedDevDrive {
++    param([string]$VhdPath)
++
++    # An owned VHD that is already attached cannot be removed or recreated; its Dev Drive is the one to reuse.
++    if (-not (Test-Path $VhdPath)) {
++        return $null
++    }
++
++    $vhd = Get-VHD -Path $VhdPath -ErrorAction Stop
++    if (-not $vhd.Attached) {
++        return $null
++    }
++
++    foreach ($partition in @(Get-Partition -DiskNumber $vhd.DiskNumber -ErrorAction Stop)) {
++        $letter = [string]$partition.DriveLetter
++        if ($letter -match '^[A-Za-z]$') {
++            $drive = "${letter}:"
++            if (Test-DevDrive $drive) {
++                return $drive
++            }
++        }
++    }
++
++    throw "The owned VHD $VhdPath is already attached but exposes no Dev Drive volume."
+ }
+ 
+ function Invoke-BestEffort {
+@@ -26,9 +176,10 @@ function Invoke-BestEffort {
+ .SYNOPSIS
+ Creates and verifies a Dev Drive for Windows CI, then records its build root.
+ .DESCRIPTION
+-Uses an existing Dev Drive at D: when available. Otherwise creates a Dev Drive VHD in the supplied runner temporary
+-folder. Appends the selected drive to the supplied GitHub environment file. Provisioning failures throw before that
+-file is changed.
++Reuses the Dev Drive that an earlier setup in the same job recorded in CI_BUILD_ROOT, or that the already attached owned
++VHD exposes, so that running the setup again neither removes nor recreates anything. Otherwise uses an existing Dev Drive
++at D: when available, and otherwise creates a Dev Drive VHD in the supplied runner temporary folder. Appends the selected
++drive to the supplied GitHub environment file. Provisioning failures throw before that file is changed.
+ .PARAMETER RunnerTempPath
+ Runner-owned temporary directory used for the new Dev Drive VHD.
+ .PARAMETER GitHubEnvPath
+@@ -40,7 +191,15 @@ function Invoke-DevDriveSetup {
+         [string]$GitHubEnvPath
+     )
+ 
+-    if ((Test-Path "D:\") -and (Test-DevDrive "D:")) {
++    $VhdPath = Join-Path $RunnerTempPath "codex-dev-drive.vhdx"
++    $Drive = Get-RecordedDevDrive -BuildRoot $env:CI_BUILD_ROOT
++    if (-not $Drive) {
++        $Drive = Get-AttachedDevDrive -VhdPath $VhdPath
++    }
++
++    if ($Drive) {
++        Write-Output "Reusing the Dev Drive already provisioned at $Drive"
++    } elseif ((Test-Path "D:\") -and (Test-DevDrive "D:")) {
+         Write-Output "Using existing Dev Drive at D:"
+         $Drive = "D:"
+     } else {
+@@ -49,7 +208,6 @@ function Invoke-DevDriveSetup {
+         }
+ 
+         try {
+-            $VhdPath = Join-Path $RunnerTempPath "codex-dev-drive.vhdx"
+             $SizeBytes = 64GB
+ 
+             if (Test-Path $VhdPath) {
+diff --git a/.github/scripts/test-setup-dev-drive-bfs.ps1 b/.github/scripts/test-setup-dev-drive-bfs.ps1
+index f53e10e..15c9896 100644
+--- a/.github/scripts/test-setup-dev-drive-bfs.ps1
++++ b/.github/scripts/test-setup-dev-drive-bfs.ps1
+@@ -21,7 +21,15 @@ function Reset-TestState {
+     param([hashtable]$Overrides = @{})
+ 
+     $script:TestState = [ordered]@{
+-        ExistingDevDrive = $false
++        ExistingDrivePresent = $false
++        ExistingFileSystem = "NTFS"
++        ExistingVolumeFlags = [uint32]0
++        ExistingFileSystemFails = $false
++        ExistingVolumeFlagsFail = $false
++        NewFileSystem = "ReFS"
++        NewVolumeFlags = [uint32]0x00002000
++        NewVolumeFlagsFail = $false
++        AddTypeEmitsMultipleTypes = $false
+         ServiceExit = 1060
+         AllowlistExit = 0
+         FlTMcExit = 0
+@@ -30,6 +38,12 @@ function Reset-TestState {
+         RemountedUniqueId = "volume-original"
+         FailDismount = $false
+         FailRemount = $false
++        CiBuildRoot = $null
++        PresentDrives = @()
++        NonDevDrives = @()
++        VhdFilePresent = $false
++        VhdAttached = $false
++        AttachedPartitionLetters = @()
+         MountCount = 0
+         Calls = [System.Collections.Generic.List[string]]::new()
+         EnvironmentLines = [System.Collections.Generic.List[string]]::new()
+@@ -39,6 +53,7 @@ function Reset-TestState {
+         $script:TestState[$key] = $Overrides[$key]
+     }
+ 
++    Set-TestVolumeReaders
+     $global:LASTEXITCODE = 0
+ }
+ 
+@@ -91,10 +106,13 @@ function Invoke-SetupCase {
+ 
+     Reset-TestState $Overrides
+     $failure = $null
++    [Environment]::SetEnvironmentVariable("CI_BUILD_ROOT", $script:TestState.CiBuildRoot)
+     try {
+         . $script:SetupScriptPath | Out-Null
+     } catch {
+         $failure = $_
++    } finally {
++        [Environment]::SetEnvironmentVariable("CI_BUILD_ROOT", $null)
+     }
+ 
+     if ($ShouldFail) {
+@@ -113,12 +131,117 @@ function Invoke-SetupCase {
+ 
+ }
+ 
+-# Test-Path models whether the runner exposes an existing Dev Drive at D:.
++# The test-owned type models platform observations while setup retains the real bit decision.
++Microsoft.PowerShell.Utility\Add-Type -TypeDefinition @'
++using System;
++
++namespace Codex
++{
++    public static class DevDriveVolumeStateHelper
++    {
++    }
++
++    public static class DevDriveVolumeState
++    {
++        public static Func<string, string> FileSystemReader;
++        public static Func<string, uint> VolumeFlagsReader;
++
++        public static string QueryFileSystem(string drive)
++        {
++            return FileSystemReader(drive);
++        }
++
++        public static uint QueryVolumeFlags(string drive)
++        {
++            return VolumeFlagsReader(drive);
++        }
++    }
++}
++'@ -PassThru -ErrorAction Stop | Out-Null
++
++# Add-Type returns the test-owned type to production for same-process controlled observations.
++function Add-Type {
++    param(
++        [string]$TypeDefinition,
++        [switch]$PassThru,
++        [System.Management.Automation.ActionPreference]$ErrorAction
++    )
++    $script:TestState.Calls.Add("Add-Type")
++    if ($script:TestState.AddTypeEmitsMultipleTypes) {
++        return [System.Type[]]@([Codex.DevDriveVolumeStateHelper], [Codex.DevDriveVolumeState])
++    }
++    return [Codex.DevDriveVolumeState]
++}
++
++function Set-TestVolumeReaders {
++    [Codex.DevDriveVolumeState]::FileSystemReader = [System.Func[string, string]] {
++        param([string]$Drive)
++        $script:TestState.Calls.Add("QueryFileSystem $Drive")
++        if ($Drive -eq "D:" -and $script:TestState.ExistingFileSystemFails) {
++            throw [System.ComponentModel.Win32Exception]::new(5)
++        }
++        if ($Drive -eq "D:") {
++            return [string]$script:TestState.ExistingFileSystem
++        }
++        if ($script:TestState.NonDevDrives -contains $Drive) {
++            return "NTFS"
++        }
++        return [string]$script:TestState.NewFileSystem
++    }
++    [Codex.DevDriveVolumeState]::VolumeFlagsReader = [System.Func[string, uint32]] {
++        param([string]$Drive)
++        $script:TestState.Calls.Add("QueryVolumeFlags $Drive")
++        if ($Drive -eq "D:" -and $script:TestState.ExistingVolumeFlagsFail) {
++            throw [System.ComponentModel.Win32Exception]::new(5)
++        }
++        if ($Drive -eq "D:") {
++            return [uint32]$script:TestState.ExistingVolumeFlags
++        }
++        if ($script:TestState.NewVolumeFlagsFail) {
++            throw [System.ComponentModel.Win32Exception]::new(5)
++        }
++        return [uint32]$script:TestState.NewVolumeFlags
++    }
++}
++
++# Test-Path models whether the runner exposes an existing volume at D:, whether the owned VHD file exists, and whether another
++# volume root is present.
+ function Test-Path {
+     param([string]$Path)
+     $script:TestState.Calls.Add("Test-Path $Path")
+-    $isExistingDevDrive = $Path -eq "D:\" -and $script:TestState.ExistingDevDrive
+-    return $isExistingDevDrive
++    if ($Path -eq "D:\") {
++        return $script:TestState.ExistingDrivePresent
++    }
++    if ($Path -eq $script:ExpectedVhdPath) {
++        return $script:TestState.VhdFilePresent
++    }
++    return $script:TestState.PresentDrives -contains $Path
++}
++
++# Remove-Item models deleting the owned VHD file, which Windows refuses while the VHD is attached.
++function Remove-Item {
++    param([string]$Path, [switch]$Force)
++    $script:TestState.Calls.Add("Remove-Item $Path")
++    if ($script:TestState.VhdAttached) {
++        throw "The process cannot access the file '$Path' because it is being used by another process."
++    }
++}
++
++# Get-VHD models reading whether the owned VHD file is attached.
++function Get-VHD {
++    param([string]$Path)
++    $script:TestState.Calls.Add("Get-VHD $Path")
++    [pscustomobject]@{ Attached = $script:TestState.VhdAttached; DiskNumber = 7 }
++}
++
++# Get-Partition models listing the partitions of an attached VHD's disk, each with a drive letter or none.
++function Get-Partition {
++    param([int]$DiskNumber)
++    $script:TestState.Calls.Add("Get-Partition $DiskNumber")
++    [pscustomobject]@{ DriveLetter = [char]0 }
++    foreach ($letter in $script:TestState.AttachedPartitionLetters) {
++        [pscustomobject]@{ DriveLetter = [char]$letter }
++    }
+ }
+ 
+ # fsutil models Dev Drive verification, trust setup, and filter allowlisting with explicit exit statuses.
+@@ -128,6 +251,7 @@ function fsutil {
+     $isDevDriveQuery = $Arguments[0] -eq "devdrv" -and $Arguments[1] -eq "query"
+     if ($isDevDriveQuery) {
+         $global:LASTEXITCODE = 0
++        Write-Output "This is not a developer volume."
+     } elseif ($Arguments[1] -eq "setFiltersAllowed") {
+         $global:LASTEXITCODE = $script:TestState.AllowlistExit
+     } else {
+@@ -239,6 +363,35 @@ $script:ExpectedVhdPath = Join-Path "/runner/temp" "codex-dev-drive.vhdx"
+ Reset-TestState
+ $script:SetupScriptPath = Join-Path $PSScriptRoot "setup-dev-drive.ps1"
+ 
++Invoke-SetupCase -Name "existing ordinary D: provisions owned VHD" -Overrides @{ ExistingDrivePresent = $true; ExistingVolumeFlags = [uint32]0 } -ExpectedLine "CI_BUILD_ROOT=R:"
++Assert-Equal $true ($script:TestState.Calls -match "New-VHD") "existing ordinary D: provisions owned VHD"
++Assert-Equal $false ($script:TestState.Calls -match "fsutil devdrv trust D:|setFiltersAllowed /volume D:") "existing ordinary D: mutations"
++Assert-Equal $false ($script:TestState.Calls -match "QueryVolumeFlags D:") "existing NTFS D: skips state query"
++
++Invoke-SetupCase -Name "existing ReFS D: with clear Dev Volume bit provisions owned VHD" -Overrides @{ ExistingDrivePresent = $true; ExistingFileSystem = "ReFS"; ExistingVolumeFlags = [uint32]0 } -ExpectedLine "CI_BUILD_ROOT=R:"
++Assert-Equal $true ($script:TestState.Calls -match "New-VHD") "existing ReFS D: with clear Dev Volume bit provisions owned VHD"
++
++Invoke-SetupCase -Name "existing ReFS D: state query failure stops before provisioning" -Overrides @{ ExistingDrivePresent = $true; ExistingFileSystem = "ReFS"; ExistingVolumeFlagsFail = $true } -ShouldFail $true
++Assert-Equal $false ($script:TestState.Calls -match "New-VHD") "existing ReFS D: state query failure provisioning"
++
++Invoke-SetupCase -Name "existing D: filesystem query failure stops before provisioning" -Overrides @{ ExistingDrivePresent = $true; ExistingFileSystemFails = $true } -ShouldFail $true
++Assert-Equal $false ($script:TestState.Calls -match "New-VHD") "existing D: filesystem query failure provisioning"
++
++Invoke-SetupCase -Name "new volume with clear Dev Volume bit fails before publication" -Overrides @{ NewVolumeFlags = [uint32]0 } -ShouldFail $true
++Assert-Equal $false ($script:TestState.Calls -match "sc.exe query bfs|fsutil devdrv setFiltersAllowed|Dismount-VHD|fltmc.exe") "new volume without Dev Volume skips BFS"
++
++Invoke-SetupCase -Name "new volume state query failure stops before publication" -Overrides @{ NewVolumeFlagsFail = $true } -ShouldFail $true
++Assert-Equal $false ($script:TestState.Calls -match "sc.exe query bfs|fsutil devdrv setFiltersAllowed|Dismount-VHD|fltmc.exe") "new volume state query failure skips BFS"
++
++Invoke-SetupCase -Name "existing Dev Drive state 0x2000 bypasses owned-VHD provisioning" -Overrides @{ ExistingDrivePresent = $true; ExistingFileSystem = "ReFS"; ExistingVolumeFlags = [uint32]0x00002000 } -ExpectedLine "CI_BUILD_ROOT=D:"
++Assert-Equal $false ($script:TestState.Calls -match "New-VHD|sc.exe|setFiltersAllowed|Dismount-VHD|fltmc.exe") "existing Dev Drive state 0x2000 operations"
++
++Invoke-SetupCase -Name "existing trusted Dev Drive state 0x6000 bypasses owned-VHD provisioning" -Overrides @{ ExistingDrivePresent = $true; ExistingFileSystem = "ReFS"; ExistingVolumeFlags = [uint32]0x00006000 } -ExpectedLine "CI_BUILD_ROOT=D:"
++Assert-Equal $false ($script:TestState.Calls -match "New-VHD|sc.exe|setFiltersAllowed|Dismount-VHD|fltmc.exe") "existing trusted Dev Drive state 0x6000 operations"
++
++Invoke-SetupCase -Name "multiple Add-Type outputs select Dev Drive state Type by full name" -Overrides @{ ExistingDrivePresent = $true; ExistingFileSystem = "ReFS"; ExistingVolumeFlags = [uint32]0x00002000; AddTypeEmitsMultipleTypes = $true } -ExpectedLine "CI_BUILD_ROOT=D:"
++Assert-Equal $false ($script:TestState.Calls -match "New-VHD|sc.exe|setFiltersAllowed|Dismount-VHD|fltmc.exe") "multiple Add-Type outputs existing Dev Drive operations"
++
+ Invoke-SetupCase -Name "service absent leaves provisioning behavior unchanged" -Overrides @{ ServiceExit = 1060 } -ExpectedLine "CI_BUILD_ROOT=R:"
+ Assert-Equal $false ($script:TestState.Calls -match "fsutil devdrv setFiltersAllowed") "service absent BFS allowlist call"
+ Assert-Equal $false ($script:TestState.Calls -match "Dismount-VHD") "service absent remount call"
+@@ -272,8 +425,38 @@ Invoke-SetupCase -Name "empty remounted volume identity fails before build-root
+ Invoke-SetupCase -Name "filter query failure stops before build-root publication" -Overrides @{ ServiceExit = 0; FlTMcExit = 1 } -ShouldFail $true
+ Invoke-SetupCase -Name "missing exact BFS filter stops before build-root publication" -Overrides @{ ServiceExit = 0; FlTMcOutput = @("bfs-helper 0 1") } -ShouldFail $true
+ 
+-Invoke-SetupCase -Name "existing Dev Drive bypasses BFS mutation" -Overrides @{ ExistingDevDrive = $true } -ExpectedLine "CI_BUILD_ROOT=D:"
++Invoke-SetupCase -Name "existing Dev Drive bypasses BFS mutation" -Overrides @{ ExistingDrivePresent = $true; ExistingFileSystem = "ReFS"; ExistingVolumeFlags = [uint32]0x00002000 } -ExpectedLine "CI_BUILD_ROOT=D:"
+ Assert-Equal $false ($script:TestState.Calls -match "sc.exe") "existing Dev Drive service query"
+ Assert-Equal $false ($script:TestState.Calls -match "setFiltersAllowed|Dismount-VHD|fltmc.exe") "existing Dev Drive BFS operations"
+ 
++# A later setup in the same job must reuse the Dev Drive an earlier setup provisioned: the owned VHD is attached, so removing or
++# recreating it fails, and a changed build root would strand the earlier steps' build trees.
++$reuseOperations = "New-VHD|Remove-Item|Mount-VHD|Dismount-VHD|sc.exe|fsutil|fltmc.exe"
++
++Invoke-SetupCase -Name "second setup reuses the build root recorded by the first" -Overrides @{ ExistingDrivePresent = $true; CiBuildRoot = "R:"; PresentDrives = @("R:\"); VhdFilePresent = $true; VhdAttached = $true; AttachedPartitionLetters = @("R") } -ExpectedLine "CI_BUILD_ROOT=R:"
++Assert-Equal $false ($script:TestState.Calls -match $reuseOperations) "recorded build root reuse operations"
++
++Invoke-SetupCase -Name "setup reuses an attached owned VHD when no build root is recorded" -Overrides @{ ExistingDrivePresent = $true; VhdFilePresent = $true; VhdAttached = $true; AttachedPartitionLetters = @("R"); PresentDrives = @("R:\") } -ExpectedLine "CI_BUILD_ROOT=R:"
++Assert-Equal $false ($script:TestState.Calls -match $reuseOperations) "attached owned VHD reuse operations"
++
++Invoke-SetupCase -Name "setup reuses the recorded D: Dev Drive" -Overrides @{ ExistingDrivePresent = $true; ExistingFileSystem = "ReFS"; ExistingVolumeFlags = [uint32]0x00002000; CiBuildRoot = "D:" } -ExpectedLine "CI_BUILD_ROOT=D:"
++Assert-Equal $false ($script:TestState.Calls -match $reuseOperations) "recorded D: reuse operations"
++
++Invoke-SetupCase -Name "recorded build root that is not a Dev Drive is not reused" -Overrides @{ CiBuildRoot = "S:"; PresentDrives = @("S:\"); NonDevDrives = @("S:") } -ExpectedLine "CI_BUILD_ROOT=R:"
++Assert-Equal $true ($script:TestState.Calls -match "New-VHD") "non-Dev recorded build root provisions"
++
++Invoke-SetupCase -Name "recorded build root without a present volume is not reused" -Overrides @{ CiBuildRoot = "X:" } -ExpectedLine "CI_BUILD_ROOT=R:"
++Assert-Equal $false ($script:TestState.Calls -match "QueryFileSystem X:") "absent recorded build root is not queried"
++Assert-Equal $true ($script:TestState.Calls -match "New-VHD") "absent recorded build root provisions"
++
++Invoke-SetupCase -Name "recorded build root that is not a bare drive letter is not reused" -Overrides @{ CiBuildRoot = "R:\work"; PresentDrives = @("R:\work\") } -ExpectedLine "CI_BUILD_ROOT=R:"
++Assert-Equal $true ($script:TestState.Calls -match "New-VHD") "non-drive recorded build root provisions"
++
++Invoke-SetupCase -Name "unattached owned VHD file is replaced" -Overrides @{ VhdFilePresent = $true } -ExpectedLine "CI_BUILD_ROOT=R:"
++Assert-Equal $true ($script:TestState.Calls -match "Remove-Item") "unattached owned VHD removal"
++Assert-Equal $true ($script:TestState.Calls -match "New-VHD") "unattached owned VHD recreation"
++
++Invoke-SetupCase -Name "attached owned VHD without a Dev Drive fails without removal" -Overrides @{ VhdFilePresent = $true; VhdAttached = $true; AttachedPartitionLetters = @("S"); PresentDrives = @("S:\"); NonDevDrives = @("S:") } -ShouldFail $true
++Assert-Equal $false ($script:TestState.Calls -match "New-VHD|Remove-Item") "attached owned VHD without Dev Drive operations"
++
+ Write-Output "All Dev Drive BFS boundary cases passed."
+-- 
+2.43.0
+

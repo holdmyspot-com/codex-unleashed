@@ -222,6 +222,19 @@ jobs:
           path: restart-metadata
           persist-credentials: false
 
+      - name: Select the maintained tooling JDK
+        if: runner.os != 'Windows'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Build the tooling runtime
+        if: runner.os != 'Windows'
+        env:
+          TOOLING_ROOT: restart-metadata
+        run: bash restart-metadata/.github/scripts/setup-tooling.sh
+
       - name: Preserve restart inputs outside the source checkout
         id: inputs
         run: |
@@ -234,7 +247,6 @@ jobs:
           owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
           package="$(cat restart-metadata/.github/cargo-cache-package)"
           printf 'CARGO_CACHE_REPOSITORY=ghcr.io/%s/%s\n' "$owner" "$package" >> "$GITHUB_ENV"
-          cp restart-metadata/.github/scripts/apt-install-with-fallback.py "$RUNNER_TEMP/apt-install-with-fallback.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           if [[ -n "$UPSTREAM_COMMIT" ]]; then
             printf '%s\n' "$UPSTREAM_COMMIT" > "$evidence/upstream-commit"
@@ -247,7 +259,6 @@ jobs:
           cp restart-metadata/.github/scripts/checkpoint-upstream-release.sh "$RUNNER_TEMP/checkpoint-upstream-release.sh"
           chmod +x "$RUNNER_TEMP/checkpoint-upstream-release.sh"
           cp restart-metadata/.github/scripts/test-build-upstream-release.py "$RUNNER_TEMP/test-build-upstream-release.py"
-          cp restart-metadata/.github/scripts/verify-codex-cache-invalidation.py "$RUNNER_TEMP/verify-codex-cache-invalidation.py"
           cp restart-metadata/.github/scripts/test-ghcr-cargo-target-cache.sh "$RUNNER_TEMP/test-ghcr-cargo-target-cache.sh"
           cp restart-metadata/.github/scripts/test-codex-tooling-launch.py "$RUNNER_TEMP/test-codex-tooling-launch.py"
           cp restart-metadata/.github/scripts/build-upstream-release.sh "$RUNNER_TEMP/build-upstream-release.sh"
@@ -257,8 +268,6 @@ jobs:
             cp -R restart-metadata/.github/actions/debug-failed-runner "$RUNNER_TEMP/release-debug-action"
           fi
           cp restart-metadata/.github/scripts/probe-runner-signals.py "$RUNNER_TEMP/probe-runner-signals.py"
-          cp restart-metadata/.github/scripts/watch-quiet-build.py "$RUNNER_TEMP/watch-quiet-build.py"
-          cp restart-metadata/.github/scripts/macos-unwind-report.py "$RUNNER_TEMP/macos-unwind-report.py"
           sha256sum restart-metadata/.github/scripts/build-upstream-release.sh > "$evidence/build-command-inputs.sha256"
           sha256sum restart-metadata/.github/workflows/baseline-release-builds.yml \
             restart-metadata/.github/scripts/{ghcr-cargo-target-cache,checkpoint-upstream-release}.sh \
@@ -316,6 +325,12 @@ jobs:
             git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
           done
+          # An empty record means no patch applied, so the source stays pristine (macOS Bash 3.2 rejects an empty array here).
+          if [[ -s "$evidence/applied-patches.txt" ]]; then
+            # Upstream's release commit leaves the workspace packages at 0.0.0 in the lockfile, which a --locked build rejects.
+            # The command commits the alignment, as the release does, so the source stays clean.
+            bash "$CODEX_TOOLING" align-workspace-lock --source-root "$GITHUB_WORKSPACE"
+          fi
           # Later guards compare the build against the commit and lockfile it compiles, with or without patches.
           git show HEAD:codex-rs/Cargo.lock > "$evidence/source-Cargo.lock"
           git rev-parse HEAD > "$evidence/source-commit"
@@ -372,7 +387,7 @@ jobs:
         run: |
           set -euo pipefail
           # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
-          sudo python3 -I "$RUNNER_TEMP/apt-install-with-fallback.py" binutils pkg-config libcap-dev
+          sudo bash "$CODEX_TOOLING" apt-install-with-fallback binutils pkg-config libcap-dev
 
       - name: Read upstream's pinned Rust toolchain
         id: upstream-rust
@@ -694,13 +709,13 @@ jobs:
           fi
           quiet_stop=$(( QUIET_STOP_MINUTES * 60 ))
           quiet_report=$(( quiet_stop / 2 < 900 ? quiet_stop / 2 : 900 ))
-          release_command=(python3 -I "$RUNNER_TEMP/watch-quiet-build.py" --watch "$RUNNER_TEMP/baseline-evidence"
+          release_command=(bash "$CODEX_TOOLING" watch-quiet-build --watch "$RUNNER_TEMP/baseline-evidence"
             --report "$RUNNER_TEMP/baseline-evidence/quiet-build-report.log"
             --first-report "$quiet_report" --interval "$quiet_report" --stop-after "$quiet_stop" -- "${release_command[@]}")
 
           if [[ "$TRACE_SIGNALS" == true ]]; then
             # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
-            sudo python3 -I "$RUNNER_TEMP/apt-install-with-fallback.py" bpftrace
+            sudo bash "$CODEX_TOOLING" apt-install-with-fallback bpftrace
             cd "$RUNNER_TEMP/baseline-evidence"
             python3 "$RUNNER_TEMP/probe-runner-signals.py" \
               env --chdir="$GITHUB_WORKSPACE/codex-rs" "${release_command[@]}"
@@ -829,7 +844,7 @@ jobs:
         if: success() && runner.os == 'macOS' && matrix.bundle == 'primary' && !matrix.smoke-separately
         run: |
           set -euo pipefail
-          python3 -I "$RUNNER_TEMP/macos-unwind-report.py" "$CARGO_TARGET_DIR/$TARGET/release/codex" --version \
+          bash "$CODEX_TOOLING" macos-unwind-report "$CARGO_TARGET_DIR/$TARGET/release/codex" --version \
             | tee "$RUNNER_TEMP/baseline-evidence/macos-unwind-report.log"
 
       - name: Request a continuation of a build stopped by its time limit
@@ -864,7 +879,7 @@ jobs:
       - name: Verify changed CLI input without publishing diagnostic outputs
         if: success() && inputs.verify_invalidation && matrix.bundle == 'primary'
         working-directory: codex-rs
-        run: python3 "$RUNNER_TEMP/verify-codex-cache-invalidation.py"
+        run: bash "$CODEX_TOOLING" verify-codex-cache-invalidation
 
       - name: Preserve cache input comparison evidence
         if: always() && inputs.cache
@@ -906,6 +921,12 @@ jobs:
             ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings
           retention-days: 3
           if-no-files-found: warn
+
+
+      - name: Remove the job-owned tooling runtime
+        if: always() && runner.os != 'Windows'
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
 
   smoke:
     # Runs each cross-compiled executable on its native runner. The build job's source, dependency and cache checks

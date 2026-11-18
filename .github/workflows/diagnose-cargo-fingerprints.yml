@@ -31,6 +31,18 @@ jobs:
           ref: 1aa020539343840a47995c2fb77c98433829f0d9
           persist-credentials: false
 
+      - name: Retrieve the current workflow revision for tooling
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: tooling-metadata
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Build the tooling runtime
+        uses: ./tooling-metadata/.github/actions/setup-tooling
+        with:
+          tooling-root: ${{ github.workspace }}/tooling-metadata
+
       - name: Preserve restart inputs outside the source checkout
         id: inputs
         run: |
@@ -40,7 +52,6 @@ jobs:
           cargo_target_dir="$RUNNER_TEMP/baseline-target"
           mkdir -p "$evidence" "$cargo_home" "$cargo_target_dir"
           printf 'CARGO_HOME=%s\nCARGO_TARGET_DIR=%s\n' "$cargo_home" "$cargo_target_dir" >> "$GITHUB_ENV"
-          cp restart-metadata/.github/scripts/apt-install-with-fallback.py "$RUNNER_TEMP/apt-install-with-fallback.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
@@ -70,7 +81,7 @@ jobs:
         run: |
           set -euo pipefail
           # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
-          sudo python3 -I "$RUNNER_TEMP/apt-install-with-fallback.py" binutils pkg-config libcap-dev
+          sudo bash "$CODEX_TOOLING" apt-install-with-fallback binutils pkg-config libcap-dev
 
       - name: Read upstream's pinned Rust toolchain
         id: upstream-rust
@@ -262,3 +273,8 @@ jobs:
           path: ${{ runner.temp }}/baseline-evidence
           retention-days: 3
           if-no-files-found: error
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"

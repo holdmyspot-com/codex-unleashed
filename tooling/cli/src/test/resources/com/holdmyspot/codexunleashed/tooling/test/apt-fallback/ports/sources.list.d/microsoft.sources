@@ -1,0 +1,5 @@
+Types: deb
+URIs: https://packages.microsoft.com/ubuntu/24.04/prod
+Suites: noble
+Components: main
+Signed-By: /usr/share/keyrings/microsoft-prod.gpg

@@ -57,22 +57,27 @@ public final class SourceInputInventoryTest
 			Files.writeString(fixture.root.resolve("ignored"), "ignored input");
 			Git git = new Git(fixture.root, ".gitignore\0workspace/src/lib.rs\0", "included.rs\0");
 			Files.writeString(fixture.root.resolve(".gitignore"), "ignored\n");
-			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, source.getParent(), fixture.target,
-				Optional.of(fixture.cargo), fixture.temporary, fixture.environment(), git);
+			Map<String, String> originalEnvironment = Map.of("GIT_CEILING_DIRECTORIES", fixture.base.toString(), "LC_ALL",
+				"caller-locale");
+			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, source.getParent(),
+				fixture.target, Optional.of(fixture.cargo), fixture.temporary, originalEnvironment, git);
 			Path root = fixture.root.toRealPath();
 			requireThat(git.commands, "gitCommands").isEqualTo(List.of(
 				List.of("git", "-C", source.getParent().toRealPath().toString(), "rev-parse", "--show-toplevel"),
 				List.of("git", "-C", root.toString(), "ls-files", "--cached", "-z"),
 				List.of("git", "-C", root.toString(), "ls-files", "--others", "--exclude-standard", "-z", "--", ".",
 					":(exclude,literal)target", ":(exclude,literal)cargo")));
-			requireThat(git.environments, "gitEnvironments").isEqualTo(List.of(fixture.environment(),
-				fixture.environment(), fixture.environment()));
+			requireThat(git.environments, "gitEnvironments").isEqualTo(List.of(
+				Map.of("GIT_CEILING_DIRECTORIES", fixture.base.toString(), "LC_ALL", "C"), originalEnvironment,
+				originalEnvironment));
+			requireThat(originalEnvironment, "originalEnvironment").isEqualTo(Map.of(
+				"GIT_CEILING_DIRECTORIES", fixture.base.toString(), "LC_ALL", "caller-locale"));
 			requireThat(snapshot.root(), "snapshot.root()").isEqualTo(root);
-			requireThat(snapshot.files().keySet(), "snapshot.files().keySet()")
-				.isEqualTo(Set.of(".gitignore", "workspace/src/lib.rs", "included.rs"));
+			requireThat(snapshot.files().keySet(), "snapshot.files().keySet()").
+				isEqualTo(Set.of(".gitignore", "workspace/src/lib.rs", "included.rs"));
 			requireThat(snapshot.files().get("workspace/src/lib.rs"), "snapshot").isEqualTo(Sha256.digest(source));
-			requireThat(snapshot.mtimes().get("workspace/src/lib.rs"), "snapshot")
-				.isEqualTo(SourceInputTimes.nanos(NativeTimestampRange.expected(fixture.root, timestamp)));
+			requireThat(snapshot.mtimes().get("workspace/src/lib.rs"), "snapshot").
+				isEqualTo(SourceInputTimes.nanos(NativeTimestampRange.expected(fixture.root, timestamp)));
 			requireThat(snapshot.mtimes().containsKey("."), "snapshot").isTrue();
 			requireThat(snapshot.mtimes().containsKey("workspace/src"), "snapshot").isTrue();
 		}
@@ -125,6 +130,81 @@ public final class SourceInputInventoryTest
 	}
 
 	/**
+	 * Inventories filesystem-boundary workspaces only for Git's specific no-repository diagnostic.
+	 *
+	 * @throws IOException if fixture writing, inventory, or cleanup fails
+	 */
+	@Test
+	public void inventoriesAtGitFilesystemBoundary() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path source = Files.createDirectories(fixture.root.resolve("src")).resolve("lib.rs");
+			Files.writeString(source, "source");
+			String mountPoint = fixture.root.getRoot().toString();
+			String diagnostic = "fatal: not a git repository (or any parent up to mount point " + mountPoint + ")\n" +
+				"Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n";
+			Git git = new Git(fixture.root, null, null, new SystemCommands.Result(128, "", diagnostic));
+			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, fixture.root,
+				fixture.target, Optional.of(fixture.cargo), fixture.temporary, fixture.environment(), git);
+			requireThat(snapshot.files().keySet(), "snapshot.files().keySet()").isEqualTo(Set.of("src/lib.rs"));
+		}
+	}
+
+	/**
+	 * Rejects ownership, corrupt-repository, arbitrary status-128 and other discovery failures with their evidence.
+	 *
+	 * @throws IOException if fixture writing or cleanup fails
+	 */
+	@Test
+	public void rejectsUnrecognizedGitDiscoveryFailures() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			List<SystemCommands.Result> failures = List.of(
+				new SystemCommands.Result(128, "", "fatal: detected dubious ownership in repository"),
+				new SystemCommands.Result(128, "", "fatal: not a git repository: corrupt .git metadata"),
+				new SystemCommands.Result(128, "", "fatal: arbitrary repository text"),
+				new SystemCommands.Result(128, "", "fatal: not a git repository (or any parent up to mount point " +
+					"relative)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set)."),
+				new SystemCommands.Result(1, "", "git discovery failed"));
+			for (SystemCommands.Result failure : failures)
+			{
+				Git git = new Git(fixture.root, null, null, failure);
+				requireGitDiscoveryFailure(fixture, git, failure);
+			}
+		}
+	}
+
+	/**
+	 * Propagates the capture error when Git discovery cannot start or complete.
+	 *
+	 * @throws IOException if fixture writing or cleanup fails
+	 */
+	@Test
+	public void propagatesGitDiscoveryCaptureFailure() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			IOException expected = new IOException("Git startup failed");
+			SystemCommands.Capture capture = (command, directory, temporary, environment) ->
+			{
+				throw expected;
+			};
+			try
+			{
+				SourceInputInventory.read(fixture.scope, fixture.root, fixture.target, Optional.of(fixture.cargo),
+					fixture.temporary, fixture.environment(), capture);
+				throw new AssertionError("A Git discovery capture failure was accepted");
+			}
+			catch (IOException failure)
+			{
+				requireThat(failure, "failure").isEqualTo(expected);
+			}
+		}
+	}
+
+	/**
 	 * Retains explicitly tracked download paths while always excluding compiled output files.
 	 *
 	 * @throws IOException if inventory or cleanup fails
@@ -157,8 +237,32 @@ public final class SourceInputInventoryTest
 			SourceInputTimes.setTimes(fixture.scope, source, FileTime.from(required));
 			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.scope, fixture.root, fixture.target,
 				Optional.of(fixture.cargo), fixture.temporary, fixture.environment(), Git.ABSENT);
-			requireThat(snapshot.mtimes().get("source.rs"), "snapshot")
-				.isEqualTo(SourceInputTimes.nanos(NativeTimestampRange.expected(fixture.root, required)));
+			requireThat(snapshot.mtimes().get("source.rs"), "snapshot").
+				isEqualTo(SourceInputTimes.nanos(NativeTimestampRange.expected(fixture.root, required)));
+		}
+	}
+
+	/**
+	 * Requires discovery failures to identify their directory, status, and original diagnostic.
+	 *
+	 * @param fixture the owned inventory fixture
+	 * @param git the scripted discovery result
+	 * @param expected the status and diagnostic that must be preserved
+	 * @throws IOException if fixture inventory fails before reporting the expected diagnostic
+	 */
+	private static void requireGitDiscoveryFailure(Fixture fixture, Git git, SystemCommands.Result expected)
+		throws IOException
+	{
+		try
+		{
+			SourceInputInventory.read(fixture.scope, fixture.root, fixture.target, Optional.of(fixture.cargo),
+				fixture.temporary, fixture.environment(), git);
+			throw new AssertionError("An unrecognized Git discovery failure was accepted");
+		}
+		catch (IOException failure)
+		{
+				requireThat(failure.getMessage(), "message").isEqualTo("Git root discovery failed in " + fixture.root +
+					" with status " + expected.status() + ": " + expected.stderr());
 		}
 	}
 
@@ -167,18 +271,34 @@ public final class SourceInputInventoryTest
 	 */
 	private static final class Git implements SystemCommands.Capture
 	{
-		/** Reports that no Git repository contains the working directory. */
+		/**
+		 * Reports Git's ordinary no-repository diagnostic.
+		 */
 		private static final SystemCommands.Capture ABSENT = (command, directory, temporary, environment) ->
-			new SystemCommands.Result(128, "", "fatal: not a git repository");
-		/** The Git root that discovery reports. */
+			new SystemCommands.Result(128, "", "fatal: not a git repository (or any of the parent directories): .git");
+		/**
+		 * The repository root returned for successful scripted discovery.
+		 */
 		private final Path root;
-		/** NUL-separated tracked paths, or {@code null} if the listing fails. */
+		/**
+		 * NUL-separated tracked paths, or {@code null} if the listing fails.
+		 */
 		private final String tracked;
-		/** NUL-separated untracked, nonignored paths. */
+		/**
+		 * NUL-separated untracked, nonignored paths.
+		 */
 		private final String untracked;
-		/** The commands received, in order. */
+		/**
+		 * The scripted result of Git root discovery.
+		 */
+		private final SystemCommands.Result discovery;
+		/**
+		 * Git commands received, in order.
+		 */
 		private final List<List<String>> commands = new ArrayList<>();
-		/** The environment overrides received, in order. */
+		/**
+		 * Git environment overrides received, in order.
+		 */
 		private final List<Map<String, String>> environments = new ArrayList<>();
 
 		/**
@@ -190,9 +310,23 @@ public final class SourceInputInventoryTest
 		 */
 		private Git(Path root, String tracked, String untracked)
 		{
+			this(root, tracked, untracked, new SystemCommands.Result(0, "", ""));
+		}
+
+		/**
+		 * Creates a scripted Git result for root discovery and source listings.
+		 *
+		 * @param root the repository root
+		 * @param tracked NUL-separated tracked paths, or {@code null} to fail the listing
+		 * @param untracked NUL-separated untracked paths
+		 * @param discovery the scripted root-discovery result
+		 */
+		private Git(Path root, String tracked, String untracked, SystemCommands.Result discovery)
+		{
 			this.root = root;
 			this.tracked = tracked;
 			this.untracked = untracked;
+			this.discovery = discovery;
 		}
 
 		@Override
@@ -202,7 +336,11 @@ public final class SourceInputInventoryTest
 			commands.add(List.copyOf(command));
 			environments.add(Map.copyOf(environment));
 			if (command.contains("rev-parse"))
-				return new SystemCommands.Result(0, root.toRealPath() + "\n", "");
+			{
+				if (discovery.status() == 0)
+					return new SystemCommands.Result(0, root.toRealPath() + "\n", "");
+				return discovery;
+			}
 			if (command.contains("--cached"))
 			{
 				if (tracked == null)
@@ -220,10 +358,15 @@ public final class SourceInputInventoryTest
 	{
 		/** Shared native bindings owned until inventory and timestamp operations finish. */
 		private final ToolingScope scope = new DefaultToolingScope();
+		/** Temporary root removed when the fixture closes. */
 		private final Path base = Files.createTempDirectory("source-input-inventory-");
+		/** Workspace whose regular files become fallback inventory candidates. */
 		private final Path root = Files.createDirectory(base.resolve("checkout"));
+		/** Compiled outputs excluded from every inventory. */
 		private final Path target = Files.createDirectory(root.resolve("target"));
+		/** Download cache excluded from untracked and filesystem fallback inputs. */
 		private final Path cargo = Files.createDirectory(root.resolve("cargo"));
+		/** Existing parent for any subprocess capture files. */
 		private final Path temporary = Files.createDirectory(base.resolve("temporary"));
 
 		/**

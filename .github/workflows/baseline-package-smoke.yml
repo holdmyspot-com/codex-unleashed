@@ -38,6 +38,10 @@ jobs:
           path: restart-metadata
           persist-credentials: false
 
+      - uses: ./restart-metadata/.github/actions/setup-tooling
+        with:
+          tooling-root: restart-metadata
+
       - name: Read the pinned upstream commit and version
         id: source
         run: |
@@ -50,7 +54,7 @@ jobs:
           set -euo pipefail
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           mkdir -p "$RUNNER_TEMP/package-smoke-tools/test-baselines"
-          cp restart-metadata/.github/scripts/compare-test-baseline.py restart-metadata/.github/scripts/package-smoke-baseline.sh \
+          cp restart-metadata/.github/scripts/package-smoke-baseline.sh \
             restart-metadata/.github/scripts/fit-linux-build-memory.sh "$RUNNER_TEMP/package-smoke-tools/"
           if [[ -d restart-metadata/docs/test-baselines ]]; then
             cp -R restart-metadata/docs/test-baselines/. "$RUNNER_TEMP/package-smoke-tools/test-baselines/"
@@ -74,6 +78,10 @@ jobs:
             git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
           done
+          if (( ${#patch_paths[@]} > 0 )); then
+            # Upstream's release commit leaves the workspace packages at 0.0.0 in the lockfile; align and commit it as the release does.
+            bash "$CODEX_TOOLING" align-workspace-lock --source-root "$GITHUB_WORKSPACE"
+          fi
 
       - name: Read upstream's pinned Rust toolchain
         id: upstream-rust
@@ -129,18 +137,16 @@ jobs:
 
       - name: Build and smoke-test upstream's package archives
         id: package
-        continue-on-error: true
         uses: ./.github/actions/build-codex-packages
         with:
           target: ${{ inputs.target }}
           package-version: ${{ steps.source.outputs.version }}+smoke
           build-mode: release
 
-      # Upstream's action builds the archives and runs its smoke tests in one step, so a smoke-test failure fails the step.
-      # The step is allowed to fail; the next step then fails the job unless every failure is already in the baseline.
-      # Failed builds still fail the job: that step requires every archive.
-      - name: Judge the smoke-test failures against the unpatched baseline
-        if: steps.package.outcome == 'failure'
+      # A package build or smoke-test failure fails the job. Rerun only to collect diagnostic baseline evidence.
+      - name: Collect diagnostic smoke-test baseline evidence
+        if: failure() && steps.package.outcome == 'failure'
+        continue-on-error: true
         env:
           TARGET: ${{ inputs.target }}
           UPSTREAM_COMMIT: ${{ steps.source.outputs.commit }}

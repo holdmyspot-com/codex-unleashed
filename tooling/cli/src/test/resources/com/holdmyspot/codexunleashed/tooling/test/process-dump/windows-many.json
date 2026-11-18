@@ -1,0 +1,1 @@
+[{"pid":10,"ppid":4,"name":"cargo.exe","command":"cargo build","threads":4,"suspended":0},{"pid":11,"ppid":10,"name":"rustc.exe","command":"rustc --crate-name x","threads":3,"suspended":3},{"pid":12,"ppid":4,"name":"java.exe","command":null,"threads":30,"suspended":0}]

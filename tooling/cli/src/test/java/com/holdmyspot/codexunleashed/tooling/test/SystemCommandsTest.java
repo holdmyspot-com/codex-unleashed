@@ -22,14 +22,15 @@ public final class SystemCommandsTest
 	}
 
 	/**
-	 * A captured command reads end-of-input from standard input instead of the caller's standard input, so a child
-	 * that reads or probes standard input neither consumes the caller's input nor waits on it.
-	 * @throws IOException if the command cannot run or its capture cannot be cleaned up
+		 * A captured command reads end-of-input from standard input instead of the caller's standard input, so a child
+		 * that reads or probes standard input neither consumes the caller's input nor waits on it.
+		 *
+		 * @throws IOException if the command cannot run or its capture cannot be cleaned up
 	 */
 	@Test
 	public void captureSuppliesEmptyStandardInput() throws IOException
 	{
-		if (Path.of("/bin/sh").toFile().canExecute() == false)
+		if (!Path.of("/bin/sh").toFile().canExecute())
 			throw new SkipException("The fixture command requires a POSIX shell");
 		Path temporary = Files.createTempDirectory("system-commands-");
 		try
@@ -56,7 +57,7 @@ public final class SystemCommandsTest
 	@Test
 	public void runSuppliesEmptyStandardInput() throws IOException
 	{
-		if (Path.of("/bin/sh").toFile().canExecute() == false)
+		if (!Path.of("/bin/sh").toFile().canExecute())
 			throw new SkipException("The fixture command requires a POSIX shell");
 		String output = SystemCommands.run(
 			// -ef compares the device and inode that standard input refers to; readlink output differs by platform.

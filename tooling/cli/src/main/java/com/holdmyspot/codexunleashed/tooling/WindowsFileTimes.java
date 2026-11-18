@@ -35,6 +35,7 @@ public final class WindowsFileTimes
 
 	/**
 	 * Resolves shared native signatures while preserving the system library's existing process lifetime.
+	 *
 	 * @param scope invocation-owned platform services, kept open until all operations finish
 	 * @throws RuntimeException if library loading or signature binding fails
 	 */
@@ -125,6 +126,7 @@ public final class WindowsFileTimes
 
 		/**
 		 * Resolves signatures without changing the system library's process lifetime.
+		 *
 		 * @param linker platform service borrowed from the invocation scope
 		 */
 		private Binding(Linker linker)
@@ -181,7 +183,12 @@ public final class WindowsFileTimes
 			MethodHandle handle = function("CreateFileW", FunctionDescriptor.of(ValueLayout.ADDRESS,
 				ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
 				ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-			handle = MethodHandles.insertArguments(handle, 3, 7, MemorySegment.NULL, 3, 0x02000000 | (followLinks ? 0 : 0x00200000), MemorySegment.NULL);
+			int flags;
+			if (followLinks)
+				flags = 0x02000000;
+			else
+				flags = 0x02000000 | 0x00200000;
+			handle = MethodHandles.insertArguments(handle, 3, 7, MemorySegment.NULL, 3, flags, MemorySegment.NULL);
 			return MethodHandleProxies.asInterfaceInstance(Opener.class, handle);
 		}
 
@@ -332,7 +339,12 @@ public final class WindowsFileTimes
 					name = "\\\\?\\" + name;
 			}
 			MemorySegment filename = arena.allocateFrom(ValueLayout.JAVA_CHAR, (name + '\0').toCharArray());
-			value = (followLinks ? binding.open : binding.openNoFollow).invoke(state, filename, access);
+			Opener opener;
+			if (followLinks)
+				opener = binding.open;
+			else
+				opener = binding.openNoFollow;
+			value = opener.invoke(state, filename, access);
 			if (value.address() == -1L)
 				throw failure("CreateFileW");
 		}

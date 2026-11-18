@@ -1,0 +1,487 @@
+From 18ad984b2c308bbff83631d818f868727e16e194 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 18 Nov 2026 11:13:17 -0500
+Subject: [PATCH] bugfix: stop MXC sandboxes from moving the ancestors of
+ protected paths
+
+A writable root that contained a read-only or denied path let a sandboxed command rename or delete the directory
+that holds that path and so replace it. The launcher now grants such an ancestor read-only and grants each of its
+other children writable, so the protected path stays where it is while its siblings remain writable. Unreadable
+ancestors are still left ungranted, and a protected path that does not exist yet does not guard its ancestors.
+---
+ codex-rs/mxc-sandbox/src/policy.rs       | 118 +++++++++-
+ codex-rs/mxc-sandbox/src/policy_tests.rs | 261 ++++++++++++++++++++++-
+ 2 files changed, 369 insertions(+), 10 deletions(-)
+
+diff --git a/codex-rs/mxc-sandbox/src/policy.rs b/codex-rs/mxc-sandbox/src/policy.rs
+index 8e703e7..8d0ec51 100644
+--- a/codex-rs/mxc-sandbox/src/policy.rs
++++ b/codex-rs/mxc-sandbox/src/policy.rs
+@@ -60,6 +60,12 @@ pub enum PolicyError {
+         #[source]
+         source: std::io::Error,
+     },
++    #[error("enumerate guarded MXC directory {path}: {source}")]
++    EnumerateGuardedDirectory {
++        path: PathBuf,
++        #[source]
++        source: std::io::Error,
++    },
+     #[error(transparent)]
+     Path(#[from] std::io::Error),
+     #[error(transparent)]
+@@ -256,8 +262,22 @@ pub(super) fn build_request(
+     // and inaccessible deny paths before the native API can evaluate them.
+     // The hard-link and volume-root alias tradeoffs are intentional; see README.
+     // Read-only roots already grant recursive access; only expand writable roots.
+-    let mut write = expand_volume_roots(write, &volume_roots)?;
+-    write.retain(|key, _| !carveouts.contains_key(key) && !deny.contains_key(key));
++    let write = expand_volume_roots(write, &volume_roots)?;
++    let mut write = write
++        .into_iter()
++        .filter(|(key, _)| !carveouts.contains_key(key) && !deny.contains_key(key))
++        .collect::<NativePaths>();
++    // A recursive writable grant also authorizes renaming the directories inside it, which would
++    // move protected objects out of their protected names. Keep every such directory readable
++    // but not writable, and grant its other children individually.
++    let protected = carveouts
++        .iter()
++        .chain(deny.iter())
++        .map(|(key, path)| (key.clone(), path.clone()))
++        .collect::<NativePaths>();
++    let (guarded_write, guard_read) = guard_protected_ancestors(write, &protected)?;
++    write = guarded_write;
++    read.extend(guard_read);
+     // Resolve equal-path write overrides before reaching MXC so the native
+     // API receives one effective access mode for each path identity.
+     read.retain(|key, _| !write.contains_key(key) && !deny.contains_key(key));
+@@ -447,6 +467,100 @@ fn expand_volume_roots(
+     Ok(expanded)
+ }
+ 
++/// Split every writable grant that is an ancestor of an existing protected object (a denied path or
++/// a read-only carveout) so that no writable grant retains the right to rename a directory on the way
++/// to that object.
++///
++/// Returns the writable grants and the guarded directories. The guarded directories were writable,
++/// so they were readable; the caller grants them read access. Each guarded directory is replaced
++/// by a grant for every immediate child that is neither protected nor itself an ancestor of a
++/// protected object. Existing files therefore keep exact grants, and ancestors stay unwritable.
++/// A protected path that does not exist cannot be renamed, so it guards nothing; ancestors above
++/// the writable grants are left ungranted.
++pub(super) fn guard_protected_ancestors(
++    write: NativePaths,
++    protected: &NativePaths,
++) -> Result<(NativePaths, NativePaths), PolicyError> {
++    let mut existing = HashSet::new();
++    let mut ancestors = NativePaths::new();
++    for (key, path) in protected {
++        if std::fs::symlink_metadata(path).is_err() {
++            continue;
++        }
++        existing.insert(key.clone());
++        for ancestor in path
++            .ancestors()
++            .skip(1)
++            .filter(|ancestor| !ancestor.as_os_str().is_empty())
++        {
++            ancestors.insert(
++                PathUri::from_host_native_path(ancestor)?,
++                ancestor.to_path_buf(),
++            );
++        }
++    }
++    let mut guarded_write = NativePaths::new();
++    let mut guards = NativePaths::new();
++    for (key, path) in write {
++        if ancestors.contains_key(&key) {
++            partition_guarded_directory(
++                &path,
++                key,
++                &ancestors,
++                &existing,
++                &mut guarded_write,
++                &mut guards,
++            )?;
++        } else {
++            guarded_write.insert(key, path);
++        }
++    }
++    Ok((guarded_write, guards))
++}
++
++// Enumerate only the directories on the chains to protected objects; an unreadable chain fails
++// policy construction instead of falling back to a broader grant.
++pub(super) fn partition_guarded_directory(
++    directory: &Path,
++    key: PathUri,
++    ancestors: &NativePaths,
++    protected: &HashSet<PathUri>,
++    write: &mut NativePaths,
++    guards: &mut NativePaths,
++) -> Result<(), PolicyError> {
++    if guards.insert(key, directory.to_path_buf()).is_some() {
++        return Ok(());
++    }
++    let entries = std::fs::read_dir(directory)
++        .and_then(Iterator::collect::<std::io::Result<Vec<_>>>)
++        .map_err(|source| PolicyError::EnumerateGuardedDirectory {
++            path: directory.to_path_buf(),
++            source,
++        })?;
++    for entry in entries {
++        let child = entry.path();
++        if child.to_str().is_none() {
++            continue;
++        }
++        let child_key = PathUri::from_host_native_path(&child)?;
++        if protected.contains(&child_key) {
++            continue;
++        }
++        if ancestors.contains_key(&child_key) {
++            partition_guarded_directory(&child, child_key, ancestors, protected, write, guards)?;
++            continue;
++        }
++        // Only resolve links: broken targets prevent PSEC startup.
++        if entry.file_type().is_ok_and(|kind| kind.is_symlink())
++            && std::fs::metadata(&child).is_err()
++        {
++            continue;
++        }
++        write.insert(child_key, child);
++    }
++    Ok(())
++}
++
+ fn collect_paths(paths: impl IntoIterator<Item = PathBuf>) -> Result<NativePaths, PolicyError> {
+     paths
+         .into_iter()
+diff --git a/codex-rs/mxc-sandbox/src/policy_tests.rs b/codex-rs/mxc-sandbox/src/policy_tests.rs
+index 95ebeef..4578e2a 100644
+--- a/codex-rs/mxc-sandbox/src/policy_tests.rs
++++ b/codex-rs/mxc-sandbox/src/policy_tests.rs
+@@ -1,6 +1,7 @@
+ //! Portable policy and launcher regressions, with Windows identity coverage.
+ 
+ use std::collections::HashMap;
++use std::collections::HashSet;
+ use std::path::Path;
+ use std::path::PathBuf;
+ 
+@@ -30,6 +31,7 @@ use crate::create_command_args;
+ use crate::policy::PolicyError;
+ use crate::policy::build_request;
+ use crate::policy::materialize_volume_roots;
++use crate::policy::partition_guarded_directory;
+ 
+ #[test]
+ fn symbolic_root_precedence_is_independent_of_drive_and_cwd() -> Result<()> {
+@@ -250,6 +252,7 @@ fn native_grants_preserve_denies_and_read_only_carveouts() -> Result<()> {
+         PermissionProfile::from_runtime_permissions(&fs, NetworkSandboxPolicy::Restricted);
+     let request = build_request(&command(&profile, root), root, Vec::new(), &[], &[])?;
+     let mut expected_read = [
++        root.to_owned(),
+         root.join(".agents"),
+         root.join(".aws"),
+         root.join(".codex"),
+@@ -268,10 +271,8 @@ fn native_grants_preserve_denies_and_read_only_carveouts() -> Result<()> {
+             request.policy.denied_paths
+         ),
+         (
+-            vec![
+-                root.to_str().unwrap().to_owned(),
+-                writable_child.to_str().unwrap().to_owned()
+-            ],
++            // The existing .git file guards the root, which is readable but no longer writable.
++            vec![writable_child.to_str().unwrap().to_owned()],
+             expected_read
+                 .iter()
+                 .map(|path| path.to_str().unwrap().to_owned())
+@@ -308,9 +309,10 @@ fn volume_expansion_does_not_turn_read_only_child_writable() -> Result<()> {
+         &[root.to_owned()],
+         &[],
+     )?;
+-    let mut expected_write_paths = vec![root.to_str().unwrap(), writable.to_str().unwrap()];
++    // The existing read-only directory guards the root: only its other children stay writable.
++    let mut expected_write_paths = vec![writable.to_str().unwrap()];
+     if cfg!(windows) {
+-        expected_write_paths.insert(1, missing.to_str().unwrap());
++        expected_write_paths.insert(0, missing.to_str().unwrap());
+         assert!(denied.parent().unwrap().is_dir());
+         assert!(!denied.exists());
+         for directory in [&missing, &missing.join("parent")] {
+@@ -325,6 +327,7 @@ fn volume_expansion_does_not_turn_read_only_child_writable() -> Result<()> {
+     assert_eq!(
+         request.policy.readonly_paths,
+         vec![
++            root.to_str().unwrap(),
+             root.join(".agents").to_str().unwrap(),
+             root.join(".aws").to_str().unwrap(),
+             root.join(".codex").to_str().unwrap(),
+@@ -366,7 +369,6 @@ fn volume_expansion_skips_broken_links_and_preserves_other_grants() -> Result<()
+         (request.policy.readwrite_paths, request.policy.denied_paths),
+         (
+             vec![
+-                root.to_str().unwrap().to_owned(),
+                 alias.to_str().unwrap().to_owned(),
+                 readable.to_str().unwrap().to_owned()
+             ],
+@@ -540,7 +542,19 @@ fn deny_globs_expand_files_and_directories_before_launch() -> Result<()> {
+         assert!(missing.parent().unwrap().is_dir());
+         assert!(!missing.exists());
+     }
+-    assert_eq!(request.policy.readwrite_paths, vec![root.to_str().unwrap()]);
++    // The denied files guard root and nested, so only their other children stay writable.
++    let mut expected_write = vec![nested.join("allowed.txt")];
++    if cfg!(windows) {
++        expected_write.push(root.join("missing"));
++    }
++    expected_write.sort();
++    assert_eq!(
++        request.policy.readwrite_paths,
++        expected_write
++            .iter()
++            .map(|path| path.to_str().unwrap().to_owned())
++            .collect::<Vec<_>>()
++    );
+     let mut expected = [file, directory, missing];
+     expected.sort();
+     assert_eq!(
+@@ -997,3 +1011,234 @@ fn non_unicode_paths_fail_before_launch() -> Result<()> {
+     }
+     Ok(())
+ }
++
++fn sorted_strings(paths: &[&Path]) -> Vec<String> {
++    let mut paths = paths
++        .iter()
++        .map(|path| path.to_str().unwrap().to_owned())
++        .collect::<Vec<_>>();
++    paths.sort();
++    paths
++}
++
++fn metadata_carveouts(root: &Path) -> Vec<PathBuf> {
++    [".agents", ".aws", ".codex", ".git"]
++        .map(|name| root.join(name))
++        .to_vec()
++}
++
++#[test]
++fn writable_chain_to_denied_directory_is_partitioned_into_child_grants() -> Result<()> {
++    let temp = tempfile::tempdir()?;
++    let canonical = canonical_root(&temp)?;
++    let workspace = canonical.join("W");
++    let upper = workspace.join("Upper");
++    let inner = upper.join("Inner");
++    let denied = inner.join("A");
++    let sibling = inner.join("sibling.txt");
++    let allowed = workspace.join("Allowed");
++    std::fs::create_dir_all(&denied)?;
++    std::fs::create_dir_all(&allowed)?;
++    std::fs::write(denied.join("protected.txt"), "protected")?;
++    std::fs::write(&sibling, "sibling")?;
++    let fs = FileSystemSandboxPolicy::restricted(vec![
++        entry(&workspace, FileSystemAccessMode::Write)?,
++        entry(&denied, FileSystemAccessMode::Deny)?,
++    ]);
++    let profile =
++        PermissionProfile::from_runtime_permissions(&fs, NetworkSandboxPolicy::Restricted);
++    let request = build_request(
++        &command(&profile, &workspace),
++        &workspace,
++        Vec::new(),
++        &[],
++        &[],
++    )?;
++    let metadata = metadata_carveouts(&workspace);
++    let mut readonly = vec![workspace.as_path(), upper.as_path(), inner.as_path()];
++    readonly.extend(metadata.iter().map(PathBuf::as_path));
++    assert_eq!(
++        (
++            request.policy.readwrite_paths,
++            request.policy.readonly_paths,
++            request.policy.denied_paths
++        ),
++        (
++            sorted_strings(&[&allowed, &sibling]),
++            sorted_strings(&readonly),
++            sorted_strings(&[&denied]),
++        )
++    );
++    Ok(())
++}
++
++#[test]
++fn writable_chain_to_read_only_file_keeps_other_files_writable() -> Result<()> {
++    let temp = tempfile::tempdir()?;
++    let canonical = canonical_root(&temp)?;
++    let workspace = canonical.join("W");
++    let upper = workspace.join("Upper");
++    let inner = upper.join("Inner");
++    let directory = inner.join("A");
++    let protected = directory.join("protected.txt");
++    let neighbor = directory.join("neighbor.txt");
++    let sibling = inner.join("sibling.txt");
++    let allowed = workspace.join("Allowed");
++    std::fs::create_dir_all(&directory)?;
++    std::fs::create_dir_all(&allowed)?;
++    std::fs::write(&protected, "protected")?;
++    std::fs::write(&neighbor, "neighbor")?;
++    std::fs::write(&sibling, "sibling")?;
++    let fs = FileSystemSandboxPolicy::restricted(vec![
++        entry(&workspace, FileSystemAccessMode::Write)?,
++        entry(&protected, FileSystemAccessMode::Read)?,
++    ]);
++    let profile =
++        PermissionProfile::from_runtime_permissions(&fs, NetworkSandboxPolicy::Restricted);
++    let request = build_request(
++        &command(&profile, &workspace),
++        &workspace,
++        Vec::new(),
++        &[],
++        &[],
++    )?;
++    let metadata = metadata_carveouts(&workspace);
++    let mut readonly = vec![
++        workspace.as_path(),
++        upper.as_path(),
++        inner.as_path(),
++        directory.as_path(),
++        protected.as_path(),
++    ];
++    readonly.extend(metadata.iter().map(PathBuf::as_path));
++    assert_eq!(
++        (
++            request.policy.readwrite_paths,
++            request.policy.readonly_paths,
++            request.policy.denied_paths
++        ),
++        (
++            sorted_strings(&[&allowed, &neighbor, &sibling]),
++            sorted_strings(&readonly),
++            Vec::<String>::new(),
++        )
++    );
++    Ok(())
++}
++
++#[test]
++fn nested_writable_exception_in_read_only_peer_is_partitioned() -> Result<()> {
++    let temp = tempfile::tempdir()?;
++    let canonical = canonical_root(&temp)?;
++    let workspace = canonical.join("W");
++    let readonly_peer = workspace.join("RO");
++    let nested = readonly_peer.join("nested");
++    let denied_peer = readonly_peer.join("secret.txt");
++    let denied_nested = nested.join("D");
++    let sibling = nested.join("sibling.txt");
++    let free = nested.join("free");
++    let top_file = workspace.join("top.txt");
++    std::fs::create_dir_all(&denied_nested)?;
++    std::fs::create_dir_all(&free)?;
++    std::fs::write(readonly_peer.join("peer.txt"), "peer")?;
++    std::fs::write(&denied_peer, "secret")?;
++    std::fs::write(denied_nested.join("x.txt"), "x")?;
++    std::fs::write(&sibling, "sibling")?;
++    std::fs::write(&top_file, "top")?;
++    let fs = FileSystemSandboxPolicy::restricted(vec![
++        entry(&workspace, FileSystemAccessMode::Write)?,
++        entry(&readonly_peer, FileSystemAccessMode::Read)?,
++        entry(&nested, FileSystemAccessMode::Write)?,
++        entry(&denied_peer, FileSystemAccessMode::Deny)?,
++        entry(&denied_nested, FileSystemAccessMode::Deny)?,
++    ]);
++    let profile =
++        PermissionProfile::from_runtime_permissions(&fs, NetworkSandboxPolicy::Restricted);
++    let request = build_request(
++        &command(&profile, &workspace),
++        &workspace,
++        Vec::new(),
++        &[],
++        &[],
++    )?;
++    let workspace_metadata = metadata_carveouts(&workspace);
++    let nested_metadata = metadata_carveouts(&nested);
++    let mut readonly = vec![
++        workspace.as_path(),
++        readonly_peer.as_path(),
++        nested.as_path(),
++    ];
++    readonly.extend(workspace_metadata.iter().map(PathBuf::as_path));
++    readonly.extend(nested_metadata.iter().map(PathBuf::as_path));
++    assert_eq!(
++        (
++            request.policy.readwrite_paths,
++            request.policy.readonly_paths,
++            request.policy.denied_paths
++        ),
++        (
++            sorted_strings(&[&top_file, &sibling, &free]),
++            sorted_strings(&readonly),
++            sorted_strings(&[&denied_peer, &denied_nested]),
++        )
++    );
++    Ok(())
++}
++
++#[test]
++fn missing_protected_paths_do_not_guard_their_ancestors() -> Result<()> {
++    let temp = tempfile::tempdir()?;
++    let canonical = canonical_root(&temp)?;
++    let workspace = canonical.join("W");
++    let missing_read_only = workspace.join("Upper").join("absent.txt");
++    std::fs::create_dir_all(workspace.join("Upper"))?;
++    let fs = FileSystemSandboxPolicy::restricted(vec![
++        entry(&workspace, FileSystemAccessMode::Write)?,
++        entry(&missing_read_only, FileSystemAccessMode::Read)?,
++    ]);
++    let profile =
++        PermissionProfile::from_runtime_permissions(&fs, NetworkSandboxPolicy::Restricted);
++    let request = build_request(
++        &command(&profile, &workspace),
++        &workspace,
++        Vec::new(),
++        &[],
++        &[],
++    )?;
++    let metadata = metadata_carveouts(&workspace);
++    let mut readonly = vec![missing_read_only.as_path()];
++    readonly.extend(metadata.iter().map(PathBuf::as_path));
++    assert_eq!(
++        (
++            request.policy.readwrite_paths,
++            request.policy.readonly_paths,
++        ),
++        (sorted_strings(&[&workspace]), sorted_strings(&readonly))
++    );
++    Ok(())
++}
++
++#[test]
++fn guarded_directory_enumeration_failure_is_reported_with_its_path() -> Result<()> {
++    let temp = tempfile::tempdir()?;
++    let gone = canonical_root(&temp)?.join("gone");
++    let key = PathUri::from_host_native_path(&gone)?;
++    let error = partition_guarded_directory(
++        &gone,
++        key,
++        &HashMap::new(),
++        &HashSet::new(),
++        &mut HashMap::new(),
++        &mut HashMap::new(),
++    )
++    .unwrap_err();
++    assert!(matches!(
++        &error,
++        PolicyError::EnumerateGuardedDirectory { path, .. } if path == &gone
++    ));
++    assert!(error.to_string().starts_with(&format!(
++        "enumerate guarded MXC directory {}",
++        gone.display()
++    )));
++    Ok(())
++}
+-- 
+2.43.0
+

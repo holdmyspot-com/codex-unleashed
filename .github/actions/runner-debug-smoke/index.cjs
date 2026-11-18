@@ -2,8 +2,8 @@
  * Keep a retry marker until later actions, including remote debugging, finish.
  * Main writes completed-part to build-progress.txt, publishes RUNNER_DEBUG_SMOKE,
  * and records its directory for post cleanup. The remote client must append
- * incremental-retry followed by a newline. Post requires exactly those two lines
- * and attempts to remove the directory even when reading or checking fails.
+ * incremental-retry followed by a newline. Post reports an incomplete retry if
+ * only the initial marker remains, and removes storage after either valid state.
  * The marker checks retained state; no compiler build runs in this script.
  */
 const fs = require('node:fs');
@@ -28,23 +28,33 @@ function createRetryMarkerStorage(environment) {
 }
 
 /**
- * Require storage/build-progress.txt to contain exactly
- * "completed-part\nincremental-retry\n" and report success.
- * A missing/unreadable file or different contents fails the action. Attempt to
- * remove storage recursively in all cases; a removal failure also propagates.
+ * Report whether storage/build-progress.txt records an incomplete or completed
+ * retry. Missing/unreadable or unexpected marker contents fail the action.
+ * Attempt to remove storage recursively in all cases; removal failures propagate.
  */
-function verifyRetryMarkerAndRemoveStorage(storage) {
+function verifyRetryMarkerAndRemoveStorage(storage, output = console) {
   try {
     const actual = fs.readFileSync(path.join(storage, 'build-progress.txt'), 'utf8');
+    if (actual === 'completed-part\n') {
+      output.log('Same-runner retry incomplete; the existing workflow failure or cancellation remains in effect');
+      return;
+    }
     if (actual !== 'completed-part\nincremental-retry\n')
       throw new Error(`Unexpected retained build state: ${JSON.stringify(actual)}`);
-    console.log('Same-runner incremental retry preserved the completed part');
+    output.log('Same-runner incremental retry preserved the completed part');
   } finally {
     fs.rmSync(storage, { recursive: true, force: true });
   }
 }
 
-if (process.env.STATE_storage)
-  verifyRetryMarkerAndRemoveStorage(process.env.STATE_storage);
-else
-  createRetryMarkerStorage(process.env);
+function runAction(environment, output = console) {
+  if (environment.STATE_storage)
+    verifyRetryMarkerAndRemoveStorage(environment.STATE_storage, output);
+  else
+    createRetryMarkerStorage(environment);
+}
+
+if (require.main === module)
+  runAction(process.env, console);
+
+module.exports = { runAction };

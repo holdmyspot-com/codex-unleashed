@@ -1,0 +1,330 @@
+From 826c4297c2f5196f0eff1824928bd8de5f8ecba8 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 14 Nov 2026 03:24:17 +0000
+Subject: [PATCH] bugfix: reject unsupported command masking before startup
+
+diff --git a/codex-rs/core/tests/suite/unified_exec_launch_failure_tests.rs b/codex-rs/core/tests/suite/unified_exec_launch_failure_tests.rs
+index 120cdcb..9d8d17e 100644
+--- a/codex-rs/core/tests/suite/unified_exec_launch_failure_tests.rs
++++ b/codex-rs/core/tests/suite/unified_exec_launch_failure_tests.rs
+@@ -8,6 +8,8 @@ use anyhow::Result;
+ use codex_app_server_protocol::ThreadHistoryBuilder;
+ use codex_app_server_protocol::ThreadItemPayload;
+ use codex_app_server_protocol::TurnStatus;
++use codex_config::ConfigLayerSource;
++use codex_config::ConfigLayerStack;
+ use codex_config::Constrained;
+ use codex_config::test_support::CloudConfigBundleFixture;
+ use codex_core::TurnInputRequest;
+@@ -18,17 +20,22 @@ use codex_extension_api::ExtensionRegistryBuilder;
+ use codex_extension_api::TurnLifecycleContributor;
+ use codex_features::Feature;
+ use codex_history::RolloutItem;
++use codex_models_manager::bundled_models_response;
+ use codex_protocol::items::CommandExecutionStatus;
+ use codex_protocol::items::TurnItem;
+ use codex_protocol::models::PermissionProfile;
++use codex_protocol::openai_models::ToolMode;
+ use codex_protocol::protocol::AskForApproval;
+ use codex_protocol::protocol::EventMsg;
+ use codex_protocol::protocol::Op;
+ use codex_protocol::protocol::ThreadHistoryMode;
+ use codex_protocol::user_input::UserInput;
+ use codex_rollout::RolloutRecorder;
++use core_test_support::exec_server::ExecServerProcess;
++use core_test_support::managed_network_requirements_loader;
+ use core_test_support::responses;
+ use core_test_support::skip_if_no_network;
++use core_test_support::skip_if_sandbox;
+ use core_test_support::test_codex::test_codex;
+ use core_test_support::wait_for_event;
+ use pretty_assertions::assert_eq;
+@@ -38,6 +45,150 @@ use tokio::time::timeout;
+ 
+ const CALL_ID: &str = "interrupted-launch-failure";
+ 
++#[test_case::test_case(true; "rejects_unsupported_startup")]
++#[test_case::test_case(false; "launches_with_supported_startup")]
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn credential_masking_startup_boundary(unsupported_startup: bool) -> Result<()> {
++    skip_if_no_network!(Ok(()));
++    skip_if_sandbox!(Ok(()));
++
++    let shell = codex_core::shell::default_user_shell();
++    if shell.name() != "bash" {
++        eprintln!("skipping credential masking launch test: this scenario requires Bash");
++        return Ok(());
++    }
++    let home = Arc::new(tempfile::TempDir::new()?);
++    let mut executor_env = vec![
++        (
++            "OPENAI_API_KEY",
++            "sk-proj-executor-only-0000000000000000000000000000000000",
++        ),
++        ("OPENAI_BASE_URL", "https://api.openai.com/v1"),
++    ];
++    if unsupported_startup {
++        executor_env.push(("BASH_ENV", "/dev/null"));
++    }
++    let executor = ExecServerProcess::start_with_env(&executor_env).await?;
++    let server = responses::start_mock_server().await;
++    let test = test_codex()
++        .with_home(home)
++        .with_exec_server_url(executor.websocket_url.clone())
++        .with_cloud_config_bundle(managed_network_requirements_loader())
++        .with_pre_build_hook(|home| {
++            std::fs::write(
++                home.join("config.toml"),
++                r#"default_permissions = "brokered"
++
++[permissions.brokered]
++extends = ":workspace"
++
++[permissions.brokered.network]
++enabled = true
++mode = "full"
++allow_local_binding = true
++
++[shell_environment_policy]
++ignore_default_excludes = true
++include_only = ["HOME", "PATH", "BASH_ENV", "OPENAI_API_KEY", "OPENAI_BASE_URL"]
++
++[features]
++unified_exec = true
++credential_masking = true
++"#,
++            )
++            .expect("write credential masking config");
++        })
++        .with_config(|config| {
++            let stack = &config.config_layer_stack;
++            config.config_layer_stack = ConfigLayerStack::new(
++                stack
++                    .all_layers_low_to_high()
++                    .filter(|layer| !matches!(&layer.name, ConfigLayerSource::Project { .. }))
++                    .cloned()
++                    .collect(),
++                stack.requirements().clone(),
++                stack.requirements_toml().clone(),
++            )
++            .expect("fixture config layers")
++            .with_cloud_config_binding(stack.cloud_config_binding().cloned());
++            config.model_catalog = Some(bundled_models_response().expect("bundled model catalog"));
++            config.cloud_skill_enabled = false;
++            config.permissions.approval_policy = Constrained::allow_any(AskForApproval::Never);
++            config
++                .permissions
++                .set_permission_profile(PermissionProfile::workspace_write())
++                .expect("set workspace permission profile");
++        })
++        .with_model_info_override("gpt-5.5", |model| {
++            model.tool_mode = Some(ToolMode::Direct);
++            model.use_responses_lite = false;
++        })
++        .build(&server)
++        .await?;
++    const CALL_ID: &str = "credential-masking-command";
++    let request = responses::mount_sse_sequence(
++        &server,
++        vec![
++            responses::sse(vec![
++                responses::ev_response_created("credential-masking-launch"),
++                responses::ev_function_call(
++                    CALL_ID,
++                    "exec_command",
++                    &json!({
++                        "cmd": "test -n \"$OPENAI_API_KEY\" && printf credential-masking-command-ran",
++                        "workdir": test.cwd_path().display().to_string(),
++                        "environment_id": "remote",
++                        "login": false,
++                        "yield_time_ms": 1000,
++                    })
++                    .to_string(),
++                ),
++                responses::ev_completed("credential-masking-launch"),
++            ]),
++            responses::sse(vec![
++                responses::ev_response_created("credential-masking-follow-up"),
++                responses::ev_assistant_message("credential-masking-done", "Done."),
++                responses::ev_completed("credential-masking-follow-up"),
++            ]),
++        ],
++    )
++    .await;
++
++    test.codex
++        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
++            text: "Run the command with credential masking enabled.".to_string(),
++            text_elements: Vec::new(),
++        }]))
++        .await?;
++    wait_for_event(&test.codex, |event| {
++        matches!(event, EventMsg::TurnComplete(_))
++    })
++    .await;
++
++    let requests = request.requests();
++    assert_eq!(requests.len(), 2);
++    let output = requests[1]
++        .function_call_output_text(CALL_ID)
++        .context("model request should contain the command failure")?;
++    if unsupported_startup {
++        assert!(
++            !output.contains("credential-masking-command-ran"),
++            "{output}"
++        );
++        assert!(
++            output.to_ascii_lowercase().contains("credential masking"),
++            "{output}"
++        );
++    } else {
++        assert!(
++            output.contains("credential-masking-command-ran"),
++            "{output}"
++        );
++        assert!(output.contains("Process exited with code 0"), "{output}");
++    }
++    Ok(())
++}
++
+ #[derive(Default)]
+ struct PauseCommandCompletion {
+     entered: Notify,
+diff --git a/codex-rs/exec-server/src/process_sandbox.rs b/codex-rs/exec-server/src/process_sandbox.rs
+index 488b7c9..97c00e8 100644
+--- a/codex-rs/exec-server/src/process_sandbox.rs
++++ b/codex-rs/exec-server/src/process_sandbox.rs
+@@ -489,12 +489,10 @@ async fn prepare_managed_network(
+                 .handle_unmasked_credentials(&mut prepared.env, CREDENTIAL_MASKING_FAILURE_MODE)
+                 .map_err(|err| invalid_params(err.to_string()))?;
+         } else {
+-            tracing::warn!(
+-                "Credential masking is unavailable for this shell startup; preserving shell profiles and snapshots and running with unmasked credentials."
+-            );
+-            // Restore this child's environment without disabling translation of placeholders
+-            // issued to earlier commands in the same environment.
+-            proxy.restore_and_disable_brokered_credentials(&mut prepared.env, &mut []);
++            return Err(invalid_params(
++                "Credential masking is unavailable for this shell startup. The command was not launched."
++                    .to_string(),
++            ));
+         }
+     }
+     Ok((
+diff --git a/codex-rs/exec-server/src/process_sandbox_tests.rs b/codex-rs/exec-server/src/process_sandbox_tests.rs
+index d0cd735..f69a262 100644
+--- a/codex-rs/exec-server/src/process_sandbox_tests.rs
++++ b/codex-rs/exec-server/src/process_sandbox_tests.rs
+@@ -503,11 +503,12 @@ async fn native_request_preserves_native_launch_fields() {
+ }
+ 
+ #[test_case(false, None, &["-c", "true"]; "unmasked")]
++#[test_case(true, None, &["-c", "true"]; "masking_with_supported_startup")]
+ #[test_case(true, Some("BASH_ENV"), &["-c", "true"]; "masking_with_startup_hook")]
+ #[test_case(true, Some("SSH_CLIENT"), &["-c", "true"]; "masking_with_remote_shell_startup")]
+ #[test_case(true, None, &["-c", "-l", "true"]; "masking_with_extra_login_option")]
+ #[tokio::test]
+-async fn native_request_handles_remote_proxy_config_for_platform(
++async fn native_request_handles_credential_masking_for_platform(
+     credential_masking: bool,
+     startup_env: Option<&str>,
+     shell_args: &[&str],
+@@ -566,20 +567,40 @@ async fn native_request_handles_remote_proxy_config_for_platform(
+         env.insert(key.to_string(), "startup-hook".to_string());
+     }
+ 
+-    let prepared = prepare_exec_request(
++    let result = prepare_exec_request(
+         &params,
+         env.clone(),
+         /*runtime_paths*/ None,
+         /*network_policy_decider*/ None,
+         /*network_policy_audit_observer*/ None,
+     )
+-    .await
+-    .expect("prepare request with executor-local proxy");
++    .await;
++
++    let unsupported_startup = startup_env.is_some() || shell_args != ["-c", "true"];
++    if credential_masking && unsupported_startup {
++        let error = result
++            .err()
++            .expect("credential masking must reject unsupported startup before launch");
++        assert!(
++            error
++                .message
++                .to_ascii_lowercase()
++                .contains("credential masking")
++        );
++        return;
++    }
++    let prepared = result.expect("prepare request with executor-local proxy");
+ 
+     assert_eq!(prepared.command, params.argv);
+-    for key in ["PATH", "OPENAI_API_KEY"].into_iter().chain(startup_env) {
++    for key in ["PATH"].into_iter().chain(startup_env) {
+         assert_eq!(prepared.env.get(key), env.get(key), "{key}");
+     }
++    if !credential_masking {
++        assert_eq!(
++            prepared.env.get("OPENAI_API_KEY"),
++            env.get("OPENAI_API_KEY")
++        );
++    }
+ 
+     if cfg!(target_os = "windows") {
+         assert_eq!(prepared.env.get("HTTP_PROXY"), None);
+@@ -670,6 +691,53 @@ async fn disabled_remote_proxy_config_is_rejected_before_exporting_ports() {
+     );
+ }
+ 
++#[cfg(not(target_os = "windows"))]
++#[tokio::test]
++async fn credential_masking_rejects_unsupported_shell_startup() {
++    let cwd: AbsolutePathBuf = std::env::current_dir()
++        .expect("current directory")
++        .try_into()
++        .expect("absolute cwd");
++    let mut proxy_config = RemoteNetworkProxyConfig::from_effective_config(&NetworkProxyConfig {
++        enabled: true,
++        ..NetworkProxyConfig::default()
++    })
++    .expect("supported remote proxy config");
++    proxy_config.enable_credential_masking(Default::default());
++    let params = ExecParams {
++        metadata: Default::default(),
++        process_id: ProcessId::from("process-credential-masking-unsupported-startup"),
++        argv: vec![
++            "/bin/bash".to_string(),
++            "-c".to_string(),
++            "true".to_string(),
++        ],
++        cwd: PathUri::from_abs_path(&cwd),
++        shell_snapshot: None,
++        env_policy: None,
++        env: HashMap::new(),
++        tty: false,
++        pipe_stdin: false,
++        arg0: None,
++        sandbox: None,
++        enforce_managed_network: false,
++        managed_network: None,
++        network_proxy: Some(RemoteNetworkProxyLaunchConfig::new(proxy_config)),
++    };
++    let env = HashMap::from([("BASH_ENV".to_string(), "startup-hook".to_string())]);
++
++    let error = prepare_exec_request(
++        &params, env, /*runtime_paths*/ None, /*network_policy_decider*/ None,
++        /*network_policy_audit_observer*/ None,
++    )
++    .await
++    .err()
++    .expect("credential masking must reject an unsupported startup before launch");
++
++    assert!(error.message.contains("Credential masking"));
++    assert!(error.message.contains("startup"));
++}
++
+ #[cfg(windows)]
+ #[test_case(WindowsSandboxLevel::RestrictedToken ; "unelevated is rejected")]
+ #[test_case(WindowsSandboxLevel::Elevated ; "elevated is accepted")]

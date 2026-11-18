@@ -21,7 +21,8 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
 public final class DefaultToolingScope extends AbstractScope implements ToolingScope
 {
 	/** Platform service without independent native resource ownership. */
-	private final ConcurrentLazyFactory<Linker> nativeLinker = ConcurrentLazyFactory.create(Linker::nativeLinker, value -> {});
+	private final ConcurrentLazyFactory<Linker> nativeLinker = ConcurrentLazyFactory.create(
+		Linker::nativeLinker, value -> {});
 	/** Immutable Unix write bindings, resolved only for timestamps needing native precision. */
 	private final ConcurrentLazyFactory<UnixFileTimes> unixFileTimes = ConcurrentLazyFactory.create(
 		() -> new UnixFileTimes(this), value -> {});
@@ -128,7 +129,7 @@ public final class DefaultToolingScope extends AbstractScope implements ToolingS
 	@Override
 	public void close()
 	{
-		if (closed.compareAndSet(false, true) == false)
+		if (!closed.compareAndSet(false, true))
 			return;
 		Scopes.runAll(() -> children.shutdown(Duration.ZERO), stableReleaseTag::close, yaml::close,
 			artifactJson::close, retentionJson::close, windowsFileTimes::close, unixFileMetadata::close, unixFileTimes::close,

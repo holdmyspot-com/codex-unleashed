@@ -1,0 +1,8 @@
+Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free: 2.
+Pages inactive: 3.
+Pages speculative: 1.
+Swapins: 7.
+Swapouts: 8.
+Pageins: 9.
+Pages occupied by compressor: 4.

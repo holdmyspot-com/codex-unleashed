@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.testng.annotations.Test;
 import static com.holdmyspot.codexunleashed.tooling.test.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -22,13 +23,18 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /** Verifies exact native no-follow queries and existing follow semantics with independent real link fixtures. */
 public final class SourceInputTimesTest
 {
-    /** Creates independent method fixtures. */ public SourceInputTimesTest() {}
+    /** Creates independent method fixtures. */
+    public SourceInputTimesTest()
+    {
+    }
 
     /**
      * Keeps the original referenced-file operation distinct from the link's own timestamp.
+     *
      * @throws IOException if independent file or timestamp operations fail
      */
-    @Test public void preservesFollowingAndNoFollowingLiveLinks() throws IOException
+    @Test
+    public void preservesFollowAndNoFollowLiveLinks() throws IOException
     {
         try (Fixture f = new Fixture())
         {
@@ -38,7 +44,8 @@ public final class SourceInputTimesTest
             Instant link = Files.getLastModifiedTime(f.link, LinkOption.NOFOLLOW_LINKS).toInstant();
             requireThat(link.equals(target), "independentlyDifferentTimes").isFalse();
             requireThat(SourceInputTimes.lastModified(f.scope, f.link), "existingFollowResult").isEqualTo(target);
-            requireThat(SourceInputTimes.lastModified(f.scope, f.link, LinkOption.NOFOLLOW_LINKS), "noFollowResult").isEqualTo(link);
+            requireThat(SourceInputTimes.lastModified(f.scope, f.link, LinkOption.NOFOLLOW_LINKS), "noFollowResult").
+                isEqualTo(link);
             requireThat(f.nativeRead(f.link, true), "nativeFollowResult").isEqualTo(target);
             requireThat(f.nativeRead(f.link, false), "nativeNoFollowResult").isEqualTo(link);
             requireThat(Files.readString(f.target), "untouchedReferencedBytes").isEqualTo("referenced bytes");
@@ -47,17 +54,21 @@ public final class SourceInputTimesTest
 
     /**
      * Retains native fractional bits beyond long epoch nanoseconds without altering the referenced file.
+     *
      * @throws IOException if independent native setup, query or cleanup fails
      */
-    @Test public void readsNativeFarFutureLinkPrecisely() throws IOException
+    @Test
+    public void readsNativeFarFutureLinkPrecisely() throws IOException
     {
         try (Fixture f = new Fixture())
         {
             Instant target = Files.getLastModifiedTime(f.target).toInstant();
             BigInteger actual = f.nativeLinkTimestamp();
-            requireThat(SourceInputTimes.nanos(SourceInputTimes.lastModified(f.scope, f.link, LinkOption.NOFOLLOW_LINKS)),
-                "exactIndependentNativeLinkTime").isEqualTo(actual);
-            requireThat(SourceInputTimes.nanos(f.nativeRead(f.link, false)), "directNativeNoFollowTime").isEqualTo(actual);
+            Instant linkTime = SourceInputTimes.lastModified(f.scope, f.link, LinkOption.NOFOLLOW_LINKS);
+            requireThat(SourceInputTimes.nanos(linkTime), "exactIndependentNativeLinkTime").
+                isEqualTo(actual);
+            requireThat(SourceInputTimes.nanos(f.nativeRead(f.link, false)), "directNativeNoFollowTime").
+                isEqualTo(actual);
             requireThat(SourceInputTimes.lastModified(f.scope, f.link), "originalFollowTime").isEqualTo(target);
             requireThat(Files.getLastModifiedTime(f.target).toInstant(), "untouchedReferencedTime").isEqualTo(target);
         }
@@ -65,17 +76,21 @@ public final class SourceInputTimesTest
 
     /**
      * Reads a dangling link's exact native metadata while both following operations still refuse its missing target.
+     *
      * @throws IOException if independent link setup, query or cleanup fails
      */
-    @Test public void danglingLinkDoesNotRequireItsReferent() throws IOException
+    @Test
+    public void danglingLinkDoesNotRequireItsReferent() throws IOException
     {
         try (Fixture f = new Fixture())
         {
             Files.delete(f.target);
             BigInteger actual = f.nativeLinkTimestamp();
-            requireThat(SourceInputTimes.nanos(SourceInputTimes.lastModified(f.scope, f.link, LinkOption.NOFOLLOW_LINKS)),
-                "danglingNoFollowTime").isEqualTo(actual);
-            requireThat(SourceInputTimes.nanos(f.nativeRead(f.link, false)), "danglingDirectNativeTime").isEqualTo(actual);
+            Instant linkTime = SourceInputTimes.lastModified(f.scope, f.link, LinkOption.NOFOLLOW_LINKS);
+            requireThat(SourceInputTimes.nanos(linkTime), "danglingNoFollowTime").
+                isEqualTo(actual);
+            requireThat(SourceInputTimes.nanos(f.nativeRead(f.link, false)), "danglingDirectNativeTime").
+                isEqualTo(actual);
             requireException(IOException.class, () -> SourceInputTimes.lastModified(f.scope, f.link));
             requireException(IOException.class, () -> f.nativeRead(f.link, true));
             requireThat(Files.exists(f.target), "referentNeverCreated").isFalse();
@@ -84,15 +99,18 @@ public final class SourceInputTimesTest
 
     /**
      * Missing entries fail with their actual query error instead of fabricating a timestamp or following fallback.
+     *
      * @throws IOException if fixture allocation or cleanup fails
      */
-    @Test public void missingEntriesNeverProduceTimestamps() throws IOException
+    @Test
+    public void missingEntriesNeverProduceTimestamps() throws IOException
     {
         try (Fixture f = new Fixture())
         {
             Path missing = f.root.resolve("missing");
             requireException(IOException.class, () -> SourceInputTimes.lastModified(f.scope, missing));
-            requireException(IOException.class, () -> SourceInputTimes.lastModified(f.scope, missing, LinkOption.NOFOLLOW_LINKS));
+            requireException(IOException.class,
+                () -> SourceInputTimes.lastModified(f.scope, missing, LinkOption.NOFOLLOW_LINKS));
             requireException(IOException.class, () -> f.nativeRead(missing, true));
             requireException(IOException.class, () -> f.nativeRead(missing, false));
             requireThat(Files.exists(missing, LinkOption.NOFOLLOW_LINKS), "missingEntryNotCreated").isFalse();
@@ -109,6 +127,7 @@ public final class SourceInputTimesTest
 
         /**
          * Allocates the real referenced file and symbolic link without changing process-wide platform state.
+         *
          * @throws IOException if allocation or supported filesystem operations fail
          */
         private Fixture() throws IOException
@@ -128,7 +147,8 @@ public final class SourceInputTimesTest
             {
                 try (acquiredScope)
                 {
-                    if (acquiredRoot != null) deleteTree(acquiredRoot);
+                    if (acquiredRoot != null)
+                        deleteTree(acquiredRoot);
                 }
                 catch (IOException | RuntimeException | Error cleanupFailure)
                 {
@@ -142,6 +162,7 @@ public final class SourceInputTimesTest
          * Writes through Node and independently reads the actual link without following it.
          * Windows uses the JDK reader because Node's observed bigint timestamp wraps far-future seconds there.
          * Unix retains Node's native bigint reader. Both expectations describe the actual filesystem value.
+         *
          * @return native observed link modification time in exact epoch nanoseconds
          * @throws IOException if the independent setup or read fails
          */
@@ -152,7 +173,8 @@ public final class SourceInputTimesTest
                 "process.stdout.write(fs.lstatSync(p,{bigint:true}).mtimeNs.toString());";
             SystemCommands.Result result = SystemCommands.capture(List.of("node", "-e", script, link.toString()),
                 root, root, Map.of());
-            if (result.status() != 0) throw new IOException("Independent no-follow measurement failed: " + result.stderr());
+            if (result.status() != 0)
+                throw new IOException("Independent no-follow measurement failed: " + result.stderr());
             if (link.getFileSystem().getSeparator().equals("\\"))
             {
                 Instant actual = Files.getLastModifiedTime(link, LinkOption.NOFOLLOW_LINKS).toInstant();
@@ -164,6 +186,7 @@ public final class SourceInputTimesTest
 
         /**
          * Acquires the actual platform implementation through the owning Pouch scope.
+         *
          * @param path exact native path
          * @param followLinks true for referenced-file metadata, false for link metadata
          * @return precise native timestamp
@@ -178,9 +201,11 @@ public final class SourceInputTimesTest
 
         /**
          * Deletes only the method's tree, never following symbolic links, then releases its shared services.
+         *
          * @throws IOException if owned cleanup fails
          */
-        @Override public void close() throws IOException
+        @Override
+        public void close() throws IOException
         {
             try (scope)
             {
@@ -190,12 +215,13 @@ public final class SourceInputTimesTest
 
         /**
          * Removes a fully or partially constructed owned tree without following any symbolic links.
+         *
          * @param directory exclusively owned temporary root
          * @throws IOException if walking or deleting the owned tree fails
          */
         private static void deleteTree(Path directory) throws IOException
         {
-            try (var paths = Files.walk(directory))
+            try (Stream<Path> paths = Files.walk(directory))
             {
                 for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
             }

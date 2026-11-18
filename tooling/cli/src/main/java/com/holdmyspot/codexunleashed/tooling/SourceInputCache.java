@@ -15,6 +15,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Stream;
 import org.apache.commons.io.file.PathUtils;
 import org.apache.commons.io.file.StandardDeleteOption;
 import tools.jackson.databind.JsonNode;
@@ -88,7 +89,8 @@ public final class SourceInputCache
 		Map<String, String> environment, Clock clock, SystemCommands.Capture commands)
 	{
 		/**
-		 * Copies the environment, makes the working directory absolute, and resolves a relative temporary directory against it.
+		 * Copies the environment, makes the working directory absolute, and resolves a relative temporary directory
+		 * against it.
 		 *
 		 * @param scope borrowed shared values; the caller retains ownership through all operations
 		 * @param workingDirectory the caller directory
@@ -186,8 +188,8 @@ public final class SourceInputCache
 			return;
 		}
 
-		Set<String> changed = SourceInputChanges.apply(context.scope(), inputs.current(), previous.orElseThrow(), interrupted,
-			context.clock());
+		Set<String> changed = SourceInputChanges.apply(context.scope(), inputs.current(), previous.orElseThrow(),
+			interrupted, context.clock());
 		long unchanged = inputs.current().files().keySet().stream().filter(name -> !changed.contains(name)).count();
 		out.println("Source contents changed in " + changed.size() + " files; Cargo determines affected units; " +
 			unchanged + " unchanged files retained.");
@@ -211,7 +213,7 @@ public final class SourceInputCache
 		{
 			if (Files.isDirectory(release))
 			{
-				try (var outputs = Files.find(release, Integer.MAX_VALUE,
+				try (Stream<Path> outputs = Files.find(release, Integer.MAX_VALUE,
 					(path, attributes) -> attributes.isRegularFile() && attributes.lastModifiedTime().toInstant().isAfter(now)))
 				{
 					if (outputs.findAny().isPresent())
@@ -255,7 +257,8 @@ public final class SourceInputCache
 	}
 
 	/**
-	 * Records current inputs only when they match the prepared build, excluding paths named {@code Cargo.lock} at any depth.
+	 * Records current inputs only when they match the prepared build, excluding paths named {@code Cargo.lock} at
+	 * any depth.
 	 * The caller must invoke this only after successful compilation; this method checks input consistency,
 	 * not the build result. Binding state may be recorded before a later checkout-recording failure.
 	 *

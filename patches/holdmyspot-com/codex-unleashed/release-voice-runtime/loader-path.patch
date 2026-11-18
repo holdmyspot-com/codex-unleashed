@@ -1,0 +1,115 @@
+From 47081968f909fa32b48577945dd1672d1e665e21 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 15 Nov 2026 04:39:39 -0500
+Subject: [PATCH] Fix staged voice helper loader identity
+
+---
+ .github/scripts/codex-voice-runtime.sh      | 22 +++++++++++++++-
+ .github/scripts/test-codex-voice-runtime.sh | 29 +++++++++++++++++++--
+ 2 files changed, 48 insertions(+), 3 deletions(-)
+
+diff --git a/.github/scripts/codex-voice-runtime.sh b/.github/scripts/codex-voice-runtime.sh
+index d276b62..20a3522 100755
+--- a/.github/scripts/codex-voice-runtime.sh
++++ b/.github/scripts/codex-voice-runtime.sh
+@@ -422,6 +422,8 @@ main() {
+   local helper_commit
+   local helper_bytes
+   local helper_name
++  local helper_loader_variable
++  local helper_loader_directory
+   local argument
+ 
+   if [[ "$operation" == build ]]; then :; else
+@@ -575,7 +577,25 @@ main() {
+   fi
+   run_logged 'voice runtime sealing' "$evidence_root/seal.stdout.log" "$evidence_root/seal.stderr.log" \
+     python "$upstream_root/third_party/voice/release_runtime.py" seal --target "$voice_target" --output "$release_root/runtime"
+-  if "$release_root/$helper_name" --build-commit | head -c 129 > "$evidence_root/helper-build-commit.txt"; then :; else
++  case "$runner_os" in
++    Linux)
++      # Linux RUNPATH $ORIGIN/../lib resolves beside release/, while staging puts dependencies under release/runtime/lib.
++      helper_loader_variable=LD_LIBRARY_PATH
++      helper_loader_directory="$release_root/runtime/lib"
++      ;;
++    macOS)
++      helper_loader_variable=DYLD_LIBRARY_PATH
++      helper_loader_directory="$release_root/runtime/lib"
++      ;;
++    Windows)
++      helper_loader_variable=PATH
++      helper_loader_directory="$release_root/runtime/bin"
++      ;;
++    *)
++      fail "unsupported host operating system for staged voice-host helper loader: $runner_os"
++      ;;
++  esac
++  if env "$helper_loader_variable=$helper_loader_directory" "$release_root/$helper_name" --build-commit | head -c 129 > "$evidence_root/helper-build-commit.txt"; then :; else
+     fail 'staged voice-host helper failed its bounded --build-commit identity check'
+   fi
+   helper_bytes="$(wc -c < "$evidence_root/helper-build-commit.txt" | tr -d '[:space:]')"
+diff --git a/.github/scripts/test-codex-voice-runtime.sh b/.github/scripts/test-codex-voice-runtime.sh
+index 1c6a2e1..6f71e8d 100755
+--- a/.github/scripts/test-codex-voice-runtime.sh
++++ b/.github/scripts/test-codex-voice-runtime.sh
+@@ -245,9 +245,13 @@ if [[ "$command" == build ]]; then
+     if [[ "$suffix" == windows_* ]]; then helper=bazel-bin/codex-rs/voice-host/codex-voice-host.exe
+     else helper=bazel-bin/codex-rs/voice-host/codex-voice-host; fi
+     cat > "$helper" <<'HELPER'
+-#!/usr/bin/env bash
++#!/bin/bash
+ set -euo pipefail
+-if [[ "${1:-}" == --build-commit ]]; then printf '%s\n' "$FAKE_HELPER_COMMIT"; exit 0; fi
++if [[ "${1:-}" == --build-commit ]]; then
++  printf '%s\n' "${LD_LIBRARY_PATH-}" "${DYLD_LIBRARY_PATH-}" "$PATH" > "$FAKE_HELPER_LOADER_ENVIRONMENT"
++  printf '%s\n' "$FAKE_HELPER_COMMIT"
++  exit 0
++fi
+ exit 94
+ HELPER
+     chmod +x "$helper"
+@@ -341,6 +345,9 @@ run_producer() {
+   FAKE_GIT_COMMIT="$EXPECTED_COMMIT" \
+   FAKE_CHANGED_COMMIT="$CHANGED_COMMIT" \
+   FAKE_HELPER_COMMIT="$commit" \
++  FAKE_HELPER_LOADER_ENVIRONMENT="$TEST_ROOT/helper-loader-environment.txt" \
++  LD_LIBRARY_PATH="$root" \
++  DYLD_LIBRARY_PATH="$root" \
+   FAKE_BUILD_ARGUMENTS="$TEST_ROOT/build-arguments.txt" \
+   FAKE_QUERY_ARGUMENTS="$TEST_ROOT/query-arguments.txt" \
+   FAKE_QUERY_RUNNER_ARGUMENTS="$TEST_ROOT/query-runner-arguments.txt" \
+@@ -388,6 +395,7 @@ check_target_mapping() {
+   local name="mapping-${target}"
+   local root
+   local result="$TEST_ROOT/$name result"
++  local loader_search_path
+ 
+   if [[ "$machine" == aarch64 ]]; then
+     processor_architecture=ARM64
+@@ -405,6 +413,23 @@ check_target_mapping() {
+     unset VOICE_WINDOWS_BAZEL_REPOSITORY || true
+   fi
+   run_producer "$root" "$target" "$runner_os" "$machine" "$EXPECTED_COMMIT" "$result" || fail "producer rejected valid target $target"
++  assert_file "$TEST_ROOT/helper-loader-environment.txt" "captured staged helper loader environment for $target"
++  case "$runner_os" in
++    Linux)
++      assert_equal "$result/release/runtime/lib" "$(sed -n '1p' "$TEST_ROOT/helper-loader-environment.txt")" "Linux staged helper loader directory for $target"
++      assert_equal "$root" "$(sed -n '2p' "$TEST_ROOT/helper-loader-environment.txt")" "unselected macOS loader environment for $target"
++      ;;
++    macOS)
++      assert_equal "$root" "$(sed -n '1p' "$TEST_ROOT/helper-loader-environment.txt")" "unselected Linux loader environment for $target"
++      assert_equal "$result/release/runtime/lib" "$(sed -n '2p' "$TEST_ROOT/helper-loader-environment.txt")" "macOS staged helper loader directory for $target"
++      ;;
++    Windows)
++      loader_search_path="$(sed -n '3p' "$TEST_ROOT/helper-loader-environment.txt")"
++      assert_equal "$result/release/runtime/bin" "$loader_search_path" "Windows staged helper loader directory for $target"
++      assert_equal "$root" "$(sed -n '1p' "$TEST_ROOT/helper-loader-environment.txt")" "unselected Linux loader environment for $target"
++      assert_equal "$root" "$(sed -n '2p' "$TEST_ROOT/helper-loader-environment.txt")" "unselected macOS loader environment for $target"
++      ;;
++  esac
+   assert_file "$result/completed" "completed result for $target"
+   assert_equal "$target" "$(cat "$result/evidence/app_target.txt")" "application target for $target"
+   assert_equal "$expected_voice" "$(cat "$result/evidence/voice_target.txt")" "voice target for $target"
+-- 
+2.43.0
+

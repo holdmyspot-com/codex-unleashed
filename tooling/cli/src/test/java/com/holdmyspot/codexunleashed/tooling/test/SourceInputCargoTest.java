@@ -86,8 +86,8 @@ public final class SourceInputCargoTest
 			requireThat(fixture.artifactFresh(unchanged, "cache-demo", "bin"), "fixture").isTrue();
 			fixture.record(request);
 
-			requireThat(Files.readString(fixture.snapshot()), "Files.readString(fixture.snapshot())")
-				.isEqualTo(releaseSnapshot);
+			requireThat(Files.readString(fixture.snapshot()), "Files.readString(fixture.snapshot())").
+				isEqualTo(releaseSnapshot);
 			requireThat(Sha256.digest(fixture.binary()), "Sha256.digest(fixture.binary())").isEqualTo(releaseDigest);
 		}
 	}
@@ -113,7 +113,9 @@ public final class SourceInputCargoTest
 			try (Stream<Path> outputs = Files.list(dependencies))
 			{
 				requireThat(outputs.anyMatch(path -> path.getFileName().toString().startsWith("libcache_demo-") &&
-					path.toString().endsWith(".rlib")), "actual").withContext("library compilation must finish before the controlled failure", "diagnostic").isTrue();
+					path.toString().endsWith(".rlib")), "actual").
+					withContext("library compilation must finish before the controlled failure", "diagnostic").
+					isTrue();
 			}
 			requireThat(Files.exists(fixture.snapshot()), "Files.exists(fixture.snapshot())").isFalse();
 
@@ -122,12 +124,12 @@ public final class SourceInputCargoTest
 			FileTime before = Files.getLastModifiedTime(librarySource);
 			Files.setLastModifiedTime(librarySource, FileTime.from(before.toInstant().plusSeconds(100)));
 			fixture.prepare();
-			requireThat(fixture.libraryFresh(fixture.build()), "fixture.libraryFresh(fixture.build())")
-				.withContext("retry must retain unaffected partial library work", "diagnostic")
-				.isTrue();
-			requireThat(Files.exists(fixture.snapshot()), "Files.exists(fixture.snapshot())")
-				.withContext("resumption must not claim successful recording", "diagnostic")
-				.isFalse();
+			requireThat(fixture.libraryFresh(fixture.build()), "fixture.libraryFresh(fixture.build())").
+				withContext("retry must retain unaffected partial library work", "diagnostic").
+				isTrue();
+			requireThat(Files.exists(fixture.snapshot()), "Files.exists(fixture.snapshot())").
+				withContext("resumption must not claim successful recording", "diagnostic").
+				isFalse();
 			fixture.record();
 			requireThat(Files.isRegularFile(fixture.snapshot()), "Files.isRegularFile(fixture.snapshot())").isTrue();
 		}
@@ -170,11 +172,12 @@ public final class SourceInputCargoTest
 			FileTime scriptTime = Files.getLastModifiedTime(script);
 			Files.writeString(script, "fn main() { println!(\"cargo:rustc-env=CACHE_VALUE=9\"); }\n");
 			Files.setLastModifiedTime(script, scriptTime);
-			SourceInputCache.Context context = new SourceInputCache.Context(fixture.scope, fixture.workspace, fixture.temporary,
-				fixture.environment, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), SystemCommands::capture);
+			SourceInputCache.Context context = new SourceInputCache.Context(fixture.scope, fixture.workspace,
+				fixture.temporary, fixture.environment, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), SystemCommands::capture);
 			String preparation = fixture.prepare(fixture.request(), context);
-			requireThat(fixture.artifactFresh(fixture.build(), "cache-demo", "bin"), "fixture")
-				.withContext("clock rollback must rebuild the executable: " + preparation, "diagnostic").isFalse();
+			requireThat(fixture.artifactFresh(fixture.build(), "cache-demo", "bin"), "fixture").
+				withContext("clock rollback must rebuild the executable: " + preparation, "diagnostic").
+				isFalse();
 			requireThat(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "fixture").isEqualTo("11");
 			fixture.record();
 			fixture.prepare();
@@ -255,8 +258,9 @@ public final class SourceInputCargoTest
 			fixture.prepare();
 			SystemCommands.Result failed = fixture.capture(fixture.buildArguments());
 			requireThat(failed.status(), "failed.status()").isNotEqualTo(0);
-			requireThat(fixture.libraryFresh(failed.stdout(), "side_demo"), "fixture")
-				.withContext("the failed build must have completed the changed dependency", "diagnostic").isFalse();
+			requireThat(fixture.libraryFresh(failed.stdout(), "side_demo"), "fixture").
+				withContext("the failed build must have completed the changed dependency", "diagnostic").
+				isFalse();
 			Files.writeString(side, sideText);
 			Files.setLastModifiedTime(side, sideTime);
 			Files.writeString(root, rootText);
@@ -373,15 +377,25 @@ public final class SourceInputCargoTest
 	 */
 	private static final class Fixture implements AutoCloseable
 	{
+		/** The scope sharing the fixture's filesystem and Cargo operations. */
 		private final ToolingScope scope = new DefaultToolingScope();
+		/** The monotonic start time used to report fixture operation durations. */
 		private final long createdNanos = System.nanoTime();
+		/** The operation-duration records retained for failure diagnostics. */
 		private final List<String> operationTimes = new ArrayList<>();
+		/** The test name associated with this fixture. */
 		private final String test;
+		/** The root of the fixture's temporary files. */
 		private final Path base;
+		/** The Cargo workspace owned by this fixture. */
 		private final Path workspace;
+		/** The temporary directory used for captured subprocess data. */
 		private final Path temporary;
+		/** The child process environment for the fixture's Cargo commands. */
 		private final Map<String, String> environment;
+		/** The Cargo target directory, set when the fixture configures a build. */
 		private String target;
+		/** The sibling executable name used by the platform-specific fixture. */
 		private String siblingBinary = "side_demo";
 
 		/**
@@ -489,6 +503,7 @@ public final class SourceInputCargoTest
 
 		/**
 		 * Adds the workspace dependency library needed by recovery and sibling-output checks.
+		 *
 		 * @throws IOException if writing fails
 		 */
 		private void addWorkspaceLibrary() throws IOException
@@ -794,7 +809,7 @@ public final class SourceInputCargoTest
 		@Override
 		public void close() throws IOException
 		{
-			StringBuilder report = new StringBuilder();
+			StringBuilder report = new StringBuilder(128);
 			report.append("SourceInputCargoTest.").append(test).append(" operation times, ").
 				append(Duration.ofNanos(System.nanoTime() - createdNanos).toMillis()).append(" ms in total:\n");
 			for (String line : operationTimes)

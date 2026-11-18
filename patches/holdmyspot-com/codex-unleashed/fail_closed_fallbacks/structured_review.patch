@@ -1,0 +1,339 @@
+From 826c4297c2f5196f0eff1824928bd8de5f8ecba8 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 14 Nov 2026 03:24:17 +0000
+Subject: [PATCH] bugfix: report review failures instead of empty findings
+
+---
+ codex-rs/core/src/tasks/review.rs             | 87 ++++++++++++++-----
+ codex-rs/core/tests/suite/review.rs           | 81 ++++++++++++-----
+ .../exec/tests/suite/server_error_exit.rs     | 29 +++++++
+ 3 files changed, 151 insertions(+), 46 deletions(-)
+
+diff --git a/codex-rs/core/src/tasks/review.rs b/codex-rs/core/src/tasks/review.rs
+index 7d9bf76..2c55b96 100644
+--- a/codex-rs/core/src/tasks/review.rs
++++ b/codex-rs/core/src/tasks/review.rs
+@@ -4,6 +4,8 @@ use codex_prompts::render_review_exit_interrupted;
+ use codex_prompts::render_review_exit_success;
+ use codex_protocol::ResponseItemId;
+ use codex_protocol::config_types::WebSearchMode;
++use codex_protocol::error::CodexErr;
++use codex_protocol::error::Result as CodexResult;
+ use codex_protocol::items::ExitedReviewModeItem;
+ use codex_protocol::items::TurnItem;
+ use codex_protocol::models::BaseInstructionsProvenance;
+@@ -82,11 +84,13 @@ impl SessionTask for ReviewTask {
+         )
+         .await
+         {
+-            Some(receiver) => process_review_events(session.clone(), ctx.clone(), receiver).await,
+-            None => None,
++            Ok(receiver) => process_review_events(session.clone(), ctx.clone(), receiver).await,
++            Err(err) => Err(err),
+         };
+         if !cancellation_token.is_cancelled() {
+-            exit_review_mode(Arc::clone(&session), output.clone(), ctx.clone()).await;
++            let review_output = output.as_ref().ok().cloned().flatten();
++            exit_review_mode(Arc::clone(&session), review_output, ctx.clone()).await;
++            return output.map(|_| None);
+         }
+         Ok(None)
+     }
+@@ -101,7 +105,7 @@ async fn start_review_conversation(
+     ctx: Arc<TurnContext>,
+     input: Vec<UserInput>,
+     cancellation_token: CancellationToken,
+-) -> Option<async_channel::Receiver<Event>> {
++) -> CodexResult<async_channel::Receiver<Event>> {
+     let config = ctx.config.clone();
+     let mut sub_agent_config = config.as_ref().clone();
+     // Carry over review-only feature restrictions so the delegate cannot
+@@ -138,7 +142,6 @@ async fn start_review_conversation(
+         /*initial_history*/ None,
+     )
+     .await)
+-        .ok()
+         .map(|(_session, io)| io.rx_event)
+ }
+ 
+@@ -146,8 +149,9 @@ async fn process_review_events(
+     session: Arc<Session>,
+     ctx: Arc<TurnContext>,
+     receiver: async_channel::Receiver<Event>,
+-) -> Option<ReviewOutputEvent> {
++) -> CodexResult<Option<ReviewOutputEvent>> {
+     let mut prev_agent_message: Option<Event> = None;
++    let mut delegate_error_reported = false;
+     while let Ok(event) = receiver.recv().await {
+         match event.clone().msg {
+             EventMsg::AgentMessage(_) => {
+@@ -164,47 +168,82 @@ async fn process_review_events(
+                 ..
+             })
+             | EventMsg::AgentMessageContentDelta(AgentMessageContentDeltaEvent { .. }) => {}
++            EventMsg::Error(error) => {
++                session
++                    .send_event(ctx.as_ref(), EventMsg::Error(error))
++                    .await;
++                delegate_error_reported = true;
++            }
+             EventMsg::TurnComplete(task_complete) => {
+-                // Parse review output from the last agent message (if present).
+-                let out = task_complete
+-                    .last_agent_message
+-                    .as_deref()
+-                    .map(parse_review_output_event);
+-                return out;
++                if delegate_error_reported {
++                    return Ok(None);
++                }
++
++                let text = task_complete.last_agent_message.ok_or_else(|| {
++                    CodexErr::Fatal(
++                        "Review completed without a final result. Re-run /review to obtain structured findings."
++                            .to_string(),
++                    )
++                })?;
++                if let Some(output) = parse_review_output_event(&text) {
++                    return Ok(Some(output));
++                }
++
++                session
++                    .record_response_item_and_emit_turn_item(
++                        ctx.as_ref(),
++                        ctx.model_info(),
++                        ResponseItem::Message {
++                            status: None,
++                            encrypted_content: None,
++                            id: Some(ResponseItemId::new("msg")),
++                            role: "assistant".to_string(),
++                            content: vec![ContentItem::OutputText {
++                                annotations: None,
++                                logprobs: None,
++                                text,
++                            }],
++                            phase: None,
++                            internal_chat_message_metadata_passthrough: None,
++                        },
++                    )
++                    .await;
++                return Err(CodexErr::Fatal(
++                    "Review completed without valid structured findings. The reviewer's text was preserved; re-run /review to obtain a review result."
++                        .to_string(),
++                ));
+             }
+             EventMsg::TurnAborted(_) => {
+                 // Cancellation or abort: consumer will finalize with None.
+-                return None;
++                return Ok(None);
+             }
+             other => {
+                 session.send_event(ctx.as_ref(), other).await;
+             }
+         }
+     }
+-    // Channel closed without TurnComplete: treat as interrupted.
+-    None
++    Err(CodexErr::Fatal(
++        "Review event stream closed before completion. Re-run /review to obtain a complete result."
++            .to_string(),
++    ))
+ }
+ 
+ /// Parse a ReviewOutputEvent from a text blob returned by the reviewer model.
+ /// If the text is valid JSON matching ReviewOutputEvent, deserialize it.
+ /// Otherwise, attempt to extract the first JSON object substring and parse it.
+-/// If parsing still fails, return a structured fallback carrying the plain text
+-/// in `overall_explanation`.
+-fn parse_review_output_event(text: &str) -> ReviewOutputEvent {
++/// Returns None when neither form contains a structured review result.
++fn parse_review_output_event(text: &str) -> Option<ReviewOutputEvent> {
+     if let Ok(ev) = serde_json::from_str::<ReviewOutputEvent>(text) {
+-        return ev;
++        return Some(ev);
+     }
+     if let (Some(start), Some(end)) = (text.find('{'), text.rfind('}'))
+         && start < end
+         && let Some(slice) = text.get(start..=end)
+         && let Ok(ev) = serde_json::from_str::<ReviewOutputEvent>(slice)
+     {
+-        return ev;
+-    }
+-    ReviewOutputEvent {
+-        overall_explanation: text.to_string(),
+-        ..Default::default()
++        return Some(ev);
+     }
++    None
+ }
+ 
+ /// Emits ExitedReviewMode item lifecycle with optional ReviewOutput,
+diff --git a/codex-rs/core/tests/suite/review.rs b/codex-rs/core/tests/suite/review.rs
+index 36372c7..40c182a 100644
+--- a/codex-rs/core/tests/suite/review.rs
++++ b/codex-rs/core/tests/suite/review.rs
+@@ -432,18 +432,17 @@ async fn cancelled_review_does_not_forward_delegate_mcp_startup() {
+     server.verify().await;
+ }
+ 
+-/// When the model returns plain text that is not JSON, ensure the child
+-/// lifecycle still occurs and the plain text is surfaced via
+-/// ExitedReviewMode(Some(..)) as the overall_explanation.
++/// A review with no structured result fails, preserves the reviewer's plain text,
++/// and completes its lifecycle without inventing successful review findings.
+ // Windows CI only: bump to 4 workers to prevent SSE/event starvation and test timeouts.
+ #[cfg_attr(windows, tokio::test(flavor = "multi_thread", worker_threads = 4))]
+ #[cfg_attr(not(windows), tokio::test(flavor = "multi_thread", worker_threads = 2))]
+-async fn review_op_with_plain_text_emits_review_fallback() {
++async fn review_op_with_plain_text_fails_and_preserves_output() {
+     skip_if_no_network!();
+ 
+-    let (server, _request_log) = start_responses_server_with_sse(
++    let (server, request_log) = start_responses_server_with_sse(
+         assistant_message_sse("just plain text"),
+-        /*expected_requests*/ 1,
++        /*expected_requests*/ 2,
+     )
+     .await;
+     let codex_home = Arc::new(TempDir::new().unwrap());
+@@ -462,21 +461,52 @@ async fn review_op_with_plain_text_emits_review_fallback() {
+         .unwrap();
+ 
+     let _entered = wait_for_event(&codex, |ev| matches!(ev, EventMsg::EnteredReviewMode(_))).await;
+-    let closed = wait_for_event(&codex, |ev| matches!(ev, EventMsg::ExitedReviewMode(_))).await;
+-    let review = match closed {
+-        EventMsg::ExitedReviewMode(ev) => ev
+-            .review_output
+-            .expect("expected ExitedReviewMode with Some(review_output)"),
+-        other => panic!("expected ExitedReviewMode(..), got {other:?}"),
+-    };
++    let mut saw_review_exit = false;
++    let mut saw_plain_text = false;
++    let mut saw_error = false;
++    tokio::time::timeout(Duration::from_secs(30), async {
++        loop {
++            match codex.next_event().await.unwrap().msg {
++                EventMsg::ExitedReviewMode(event) => {
++                    assert_eq!(event.review_output, None);
++                    saw_review_exit = true;
++                }
++                EventMsg::AgentMessage(event) => {
++                    saw_plain_text |= event.message.contains("just plain text");
++                }
++                EventMsg::Error(_) => saw_error = true,
++                EventMsg::TurnComplete(_) => break,
++                _ => {}
++            }
++        }
++    })
++    .await
++    .expect("review must finish after reporting its unavailable structured result");
++    assert!(saw_review_exit, "review exit lifecycle was missing");
++    assert!(saw_plain_text, "the reviewer's plain text was lost");
++    assert!(
++        saw_error,
++        "an unavailable structured review must report failure"
++    );
+ 
+-    // Expect a structured fallback carrying the plain text.
+-    let expected = ReviewOutputEvent {
+-        overall_explanation: "just plain text".to_string(),
+-        ..Default::default()
+-    };
+-    assert_eq!(expected, review);
++    codex
++        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
++            text: "back to parent".to_string(),
++            text_elements: Vec::new(),
++        }]))
++        .await
++        .unwrap();
+     let _complete = wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
++    let requests = request_log.requests();
++    assert_eq!(requests.len(), 2);
++    let body = requests[1].body_json();
++    let input = body["input"].as_array().expect("parent input array");
++    assert!(
++        input.iter().any(|message| {
++            message["role"] == "assistant" && message["content"][0]["text"] == "just plain text"
++        }),
++        "the reviewer's plain text was lost from parent history"
++    );
+ 
+     let _codex_home_guard = codex_home;
+     server.verify().await;
+@@ -1312,8 +1342,15 @@ async fn review_input_isolated_from_parent_history() {
+ async fn review_history_surfaces_in_parent_session() {
+     skip_if_no_network!();
+ 
++    let review_json = serde_json::json!({
++        "findings": [],
++        "overall_correctness": "good",
++        "overall_explanation": "review assistant output",
++        "overall_confidence_score": 0.8
++    })
++    .to_string();
+     let (server, request_log) = start_responses_server_with_sse(
+-        assistant_message_sse("review assistant output"),
++        assistant_message_sse(&review_json),
+         /*expected_requests*/ 2,
+     )
+     .await;
+@@ -1345,7 +1382,7 @@ async fn review_history_surfaces_in_parent_session() {
+     .await;
+     let _complete = wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
+ 
+-    // 2) Continue in the parent session; request input must not include any review items.
++    // 2) Continue in the parent session with the completed review in its history.
+     let followup = "back to parent".to_string();
+     codex
+         .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+@@ -1358,7 +1395,7 @@ async fn review_history_surfaces_in_parent_session() {
+ 
+     // Inspect the second request (parent turn) input contents.
+     // Parent turns include session initial messages (user_instructions, environment_context).
+-    // Critically, no messages from the review thread should appear.
++    // The review summary must be available to the next parent turn.
+     let requests = request_log.requests();
+     assert_eq!(requests.len(), 2);
+     for request in &requests {
+diff --git a/codex-rs/exec/tests/suite/server_error_exit.rs b/codex-rs/exec/tests/suite/server_error_exit.rs
+index bd0fad6..a97d66a 100644
+--- a/codex-rs/exec/tests/suite/server_error_exit.rs
++++ b/codex-rs/exec/tests/suite/server_error_exit.rs
+@@ -31,3 +31,32 @@ async fn exits_non_zero_when_server_reports_error() -> anyhow::Result<()> {
+ 
+     Ok(())
+ }
++
++/// A completed review with an invalid result reaches automation as a failed command.
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn review_exits_non_zero_without_structured_findings() -> anyhow::Result<()> {
++    let test = test_codex_exec();
++    let server = responses::start_mock_server().await;
++    let body = responses::sse(vec![
++        responses::ev_assistant_message("review-result", "just plain text"),
++        responses::ev_completed("review-response"),
++    ]);
++    responses::mount_sse_once(&server, body).await;
++
++    let output = test
++        .cmd_with_server(&server)
++        .arg("--skip-git-repo-check")
++        .arg("review")
++        .arg("Review the supplied changes")
++        .assert()
++        .code(1)
++        .get_output()
++        .clone();
++    let stderr = String::from_utf8_lossy(&output.stderr);
++    assert!(
++        stderr.contains("Review completed without valid structured findings"),
++        "missing review failure diagnostic: {stderr}"
++    );
++
++    Ok(())
++}
+-- 
+2.43.0
+

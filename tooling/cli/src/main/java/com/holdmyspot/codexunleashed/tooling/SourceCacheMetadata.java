@@ -18,7 +18,9 @@ import tools.jackson.databind.JsonNode;
  */
 public final class SourceCacheMetadata
 {
+	/** Cargo target kinds that produce loadable library artifacts. */
 	private static final Set<String> LIBRARY_KINDS = Set.of("lib", "rlib", "dylib", "cdylib", "staticlib", "proc-macro");
+	/** The parsed Cargo metadata document. */
 	private final JsonNode document;
 
 	/**

@@ -6,6 +6,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -20,11 +21,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class CargoCacheKeysTest
 {
     /** Creates independent method fixtures. */
-    public CargoCacheKeysTest() {}
+    public CargoCacheKeysTest()
+    {
+    }
 
     /**
      * Retains exact input byte order, including binary bytes and line endings, in the exact tag. The compatible tag
      * hashes only the cache format version and the compiler inputs, so upstream, wrapper and helper changes keep it.
+     *
      * @throws IOException if fixture storage fails
      * @throws NoSuchAlgorithmException if SHA-256 is unavailable
      */
@@ -32,31 +36,44 @@ public final class CargoCacheKeysTest
     {
         try (Fixture fixture = new Fixture())
         {
-            byte[][] bytes = {new byte[]{65, 0, 13, 10}, "wrapper\n".getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                "helper\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8), "compiler λ".getBytes(java.nio.charset.StandardCharsets.UTF_8)};
+            byte[][] bytes = {
+                new byte[] {65, 0, 13, 10},
+                "wrapper\n".getBytes(StandardCharsets.UTF_8),
+                "helper\r\n".getBytes(StandardCharsets.UTF_8),
+                "compiler λ".getBytes(StandardCharsets.UTF_8)
+            };
             for (int i = 0; i < bytes.length; ++i) Files.write(fixture.inputs.get(i), bytes[i]);
             requireThat(fixture.run("target"), "publicStatus").isEqualTo(0);
-            MessageDigest exact = MessageDigest.getInstance("SHA-256"); MessageDigest seed = MessageDigest.getInstance("SHA-256");
+            MessageDigest exact = MessageDigest.getInstance("SHA-256");
+            MessageDigest seed = MessageDigest.getInstance("SHA-256");
             for (byte[] value : bytes) exact.update(value);
-            seed.update(("cargo-cache-format=" + CargoCacheKeys.FORMAT_VERSION + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            seed.update(("cargo-cache-format=" + CargoCacheKeys.FORMAT_VERSION + "\n").getBytes(
+                StandardCharsets.UTF_8));
             seed.update(bytes[3]);
-            requireThat(fixture.output.toString(), "orderedIdentityBytes").isEqualTo("tag=cargo-v3-target-" + HexFormat.of().formatHex(exact.digest()) +
-                "\nseed_tag=cargo-seed-v2-target-" + HexFormat.of().formatHex(seed.digest()) + "\n");
-            String originalSeed = fixture.output.toString().lines().toList().getLast();
+            requireThat(fixture.output.toString(StandardCharsets.UTF_8), "orderedIdentityBytes").isEqualTo(
+                "tag=cargo-v3-target-" + HexFormat.of().formatHex(exact.digest()) +
+                    "\nseed_tag=cargo-seed-v2-target-" + HexFormat.of().formatHex(seed.digest()) + "\n");
+            String originalSeed = fixture.output.toString(StandardCharsets.UTF_8).lines().toList().getLast();
             for (int changed = 0; changed < 3; ++changed)
             {
-                fixture.output.reset(); Files.writeString(fixture.inputs.get(changed), "changed " + changed);
+                fixture.output.reset();
+                Files.writeString(fixture.inputs.get(changed), "changed " + changed, StandardCharsets.UTF_8);
                 requireThat(fixture.run("target"), "changedStatus").isEqualTo(0);
-                requireThat(fixture.output.toString().lines().toList().getLast(), "compilerOnlySeed").isEqualTo(originalSeed);
+                requireThat(fixture.output.toString(StandardCharsets.UTF_8).lines().toList().getLast(),
+                    "compilerOnlySeed").isEqualTo(originalSeed);
             }
-            fixture.output.reset(); Files.writeString(fixture.inputs.get(3), "new compiler"); fixture.run("target");
-            requireThat(fixture.output.toString().lines().toList().getLast().equals(originalSeed), "compilerPartitionsSeed").isFalse();
+            fixture.output.reset();
+            Files.writeString(fixture.inputs.get(3), "new compiler", StandardCharsets.UTF_8);
+            fixture.run("target");
+            requireThat(fixture.output.toString(StandardCharsets.UTF_8).lines().toList().getLast().equals(originalSeed),
+                "compilerPartitionsSeed").isFalse();
         }
     }
 
     /**
      * An empty applied-patch record keeps the pristine tags, and applied patches partition only the exact tag, so a
      * patched build seeds from pristine outputs without ever matching them exactly.
+     *
      * @throws IOException if fixture storage fails
      */
     @Test public void appliedPatchesPartitionOnlyExactTags() throws IOException
@@ -64,17 +81,18 @@ public final class CargoCacheKeysTest
         try (Fixture fixture = new Fixture())
         {
             requireThat(fixture.run("target"), "pristineStatus").isEqualTo(0);
-            List<String> pristine = fixture.output.toString().lines().toList();
+            List<String> pristine = fixture.output.toString(StandardCharsets.UTF_8).lines().toList();
             Path patches = fixture.root.resolve("patches");
-            Files.writeString(patches, "");
+            Files.writeString(patches, "", StandardCharsets.UTF_8);
             fixture.output.reset();
             requireThat(fixture.run("target", patches), "emptyPatchesStatus").isEqualTo(0);
-            requireThat(fixture.output.toString().lines().toList(), "emptyPatchesTags").isEqualTo(pristine);
+            requireThat(fixture.output.toString(StandardCharsets.UTF_8).lines().toList(), "emptyPatchesTags").
+                isEqualTo(pristine);
 
-            Files.writeString(patches, "0123  patches/one.patch\n");
+            Files.writeString(patches, "0123  patches/one.patch\n", StandardCharsets.UTF_8);
             fixture.output.reset();
             requireThat(fixture.run("target", patches), "patchedStatus").isEqualTo(0);
-            List<String> patched = fixture.output.toString().lines().toList();
+            List<String> patched = fixture.output.toString(StandardCharsets.UTF_8).lines().toList();
             requireThat(patched.getFirst(), "patchedExactTag").isNotEqualTo(pristine.getFirst());
             requireThat(patched.getLast(), "sharedSeedTag").isEqualTo(pristine.getLast());
         }
@@ -82,6 +100,7 @@ public final class CargoCacheKeysTest
 
     /**
      * Invalid targets and unreadable inputs return two without publishing partial tags.
+     *
      * @throws IOException if fixture storage fails
      */
     @Test public void invalidInputsPublishNoTags() throws IOException
@@ -99,15 +118,17 @@ public final class CargoCacheKeysTest
     /**
      * A registry tag holds at most 128 characters, and the longest derived tag is the compatible tag plus the
      * {@code -parts-v2-partial} suffix. A target that would exceed it returns two before publishing any tag.
+     *
      * @throws IOException if fixture storage fails
      */
-    @Test public void targetsLongerThanTheTagLimitPublishNoTags() throws IOException
+    @Test public void tooLongTargetPublishesNoTags() throws IOException
     {
         try (Fixture fixture = new Fixture())
         {
             String longest = "a".repeat(128 - "cargo-seed-v2-".length() - 1 - 64 - "-parts-v2-partial".length());
             requireThat(fixture.run(longest), "longestStatus").isEqualTo(0);
-            String seed = fixture.output.toString().lines().toList().getLast().substring("seed_tag=".length());
+            String seed = fixture.output.toString(StandardCharsets.UTF_8).lines().toList().getLast().substring(
+                "seed_tag=".length());
             requireThat((seed + "-parts-v2-partial").length(), "longestTag").isEqualTo(128);
             fixture.output.reset();
             requireThat(fixture.run(longest + "a"), "tooLongStatus").isEqualTo(2);
@@ -115,43 +136,56 @@ public final class CargoCacheKeysTest
         }
     }
 
-    /** Owns independent original recorded bytes and borrowed command output. */
+    /** Owns independent recorded input bytes and borrowed command output. */
     private static final class Fixture implements AutoCloseable
     {
         /** Owned source root. */ private final Path root;
         /** Exact input files. */ private final List<Path> inputs = new ArrayList<>();
         /** Public command output. */ private final ByteArrayOutputStream output = new ByteArrayOutputStream();
-        /** Borrowed output wrapper. */ private final PrintStream out = new PrintStream(output);
-        /** Independent diagnostics. */ private final PrintStream err = new PrintStream(new ByteArrayOutputStream());
+        /** Borrowed output wrapper. */
+        private final PrintStream out = new PrintStream(output, true, StandardCharsets.UTF_8);
+        /** Independent diagnostics. */
+        private final PrintStream err = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
         /**
          * Writes four independent source records.
+         *
          * @throws IOException if storage fails
          */
         private Fixture() throws IOException
         {
             root = Files.createTempDirectory("keys-");
             for (String name : List.of("upstream", "wrappers", "helper", "compiler"))
-            { Path file = root.resolve(name); Files.writeString(file, name); inputs.add(file); }
+            {
+                Path file = root.resolve(name);
+                Files.writeString(file, name, StandardCharsets.UTF_8);
+                inputs.add(file);
+            }
         }
         /**
          * Invokes the actual public command without closing borrowed streams.
+         *
          * @param target supplied target name
          * @param extra optional trailing input paths
          * @return public status
          */
         private int run(String target, Path... extra)
         {
-            List<String> args = new ArrayList<>(List.of("cargo-cache-keys", target)); inputs.forEach(path -> args.add(path.toString()));
+            List<String> args = new ArrayList<>(List.of("cargo-cache-keys", target));
+            inputs.forEach(path -> args.add(path.toString()));
             for (Path path : extra) args.add(path.toString());
             return Main.run(args.toArray(String[]::new), new ByteArrayInputStream(new byte[0]), out, err);
         }
         /**
          * Deletes only the owned fixture.
+         *
          * @throws IOException if deletion fails
          */
         @Override public void close() throws IOException
         {
-            out.close(); err.close(); for (Path input : inputs) Files.deleteIfExists(input);
+            out.close();
+            err.close();
+            for (Path input : inputs)
+                Files.deleteIfExists(input);
             Files.deleteIfExists(root.resolve("patches")); Files.delete(root);
         }
     }

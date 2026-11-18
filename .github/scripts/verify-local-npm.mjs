@@ -8,12 +8,13 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertVersionBanner } from './codex-version-banner.mjs';
 import { parseArgs } from 'node:util';
 
 /** The owner-selected release platforms and npm's corresponding OS/CPU selectors. */
@@ -29,6 +30,8 @@ export const platforms = [
 export const packageName = '@holdmyspot/codex-unleashed';
 /** Upstream's canonical native package metadata filename. */
 const nativeMetadataName = 'codex-package.json';
+/** The package-relative directory whose complete file inventory must survive npm installation. */
+const voiceResourcesDirectory = 'codex-resources/voice';
 /** npm's manifest filename. */
 const npmMetadataName = 'package.json';
 /** Maintained legal documents accompanying the product license in every npm package. */
@@ -60,9 +63,9 @@ export function validatePackages(metadata) {
   return version;
 }
 
-/** Requires the exact trimmed `codex-cli VERSION` line for the expected package version; throws on a mismatch. */
+/** Requires the patched CLI's exact two-line banner for the expected package version; throws on a mismatch. */
 export function validateVersionOutput(output, version) {
-  assert.equal(output.trim(), `codex-cli ${version}`, `Installed CLI did not report the exact package version ${version}`);
+  assertVersionBanner(output, version);
 }
 
 /** Hashes a file without loading the native binary into memory. */
@@ -70,6 +73,86 @@ async function sha256(filename) {
   const hash = createHash('sha256');
   for await (const chunk of createReadStream(filename)) hash.update(chunk);
   return hash.digest('hex');
+}
+
+/** Inventories every regular file below a voice resource directory without following symbolic links. */
+async function voiceFileInventory(root, target) {
+  const rootStats = await lstat(root);
+  const isVoiceDirectory = rootStats.isDirectory() && !rootStats.isSymbolicLink();
+  assert(isVoiceDirectory, `${target}: voice resource root must be a nonsymlink directory`);
+  const files = new Map();
+
+  async function visit(directory, relativeDirectory = '') {
+    const entries = await readdir(directory);
+    entries.sort();
+    for (const entry of entries) {
+      const relativePath = path.join(relativeDirectory, entry);
+      const filename = path.join(directory, entry);
+      const stats = await lstat(filename);
+      const resourceName = path.posix.join(voiceResourcesDirectory, relativePath.split(path.sep).join('/'));
+      const isSymbolicLink = stats.isSymbolicLink();
+      assert(!isSymbolicLink, `${target}: symbolic link in voice resources: ${resourceName}`);
+      if (stats.isDirectory()) {
+        await visit(filename, relativePath);
+      } else if (stats.isFile()) {
+        files.set(relativePath.split(path.sep).join('/'), {
+          sha256: await sha256(filename),
+          executable: (stats.mode & 0o111) !== 0
+        });
+      } else {
+        assert.fail(`${target}: unsupported voice resource entry: ${resourceName}`);
+      }
+    }
+  }
+
+  await visit(root);
+  return files;
+}
+
+/** Requires the complete installed voice tree to match its source package's file bytes and Unix executable roles. */
+async function verifyVoiceResources(sourceRoot, installedRoot, target, operatingSystem) {
+  const sourceFiles = await voiceFileInventory(sourceRoot, target);
+  const installedFiles = await voiceFileInventory(installedRoot, target);
+  const names = [...new Set([...sourceFiles.keys(), ...installedFiles.keys()])].sort();
+  for (const name of names) {
+    const resourceName = path.posix.join(voiceResourcesDirectory, name);
+    const sourceFile = sourceFiles.get(name);
+    const installedFile = installedFiles.get(name);
+    assert(sourceFile, `${target}: unexpected installed voice resource: ${resourceName}`);
+    assert(installedFile, `${target}: installed voice resource is missing: ${resourceName}`);
+    assert.equal(installedFile.sha256, sourceFile.sha256,
+      `${target}: installed voice resource bytes differ: ${resourceName}`);
+    if (operatingSystem !== 'win32') {
+      assert.equal(installedFile.executable, sourceFile.executable,
+        `${target}: installed voice resource executable role differs: ${resourceName}`);
+    }
+  }
+}
+
+/** Rejects a caller destination that already exists, including a symbolic link. */
+async function requireUnusedOutput(output) {
+  try {
+    await lstat(output);
+  } catch (error) {
+    if (error.code === 'ENOENT') return;
+    throw error;
+  }
+  assert.fail(`Installed package output already exists: ${output}`);
+}
+
+/** Exclusively copies the complete installed canonical package and removes its partial copy if any entry fails. */
+async function copyInstalledPackage(source, output) {
+  await mkdir(output);
+  try {
+    for (const entry of await readdir(source)) {
+      await cp(path.join(source, entry), path.join(output, entry), {
+        recursive: true, errorOnExist: true, force: false
+      });
+    }
+  } catch (error) {
+    await rm(output, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 /** Runs one command without a shell and retains at most 1 MiB of combined output in its evidence log. */
@@ -138,6 +221,9 @@ export async function assemble(packageRoot, staging, version, registry, legalRoo
 
 /** Owns one local registry's lifecycle, package publication, fresh install and actual installed executable smoke. */
 async function verify(options, env, host) {
+  const installedPackageOutput = path.resolve(options['installed-package-output']);
+  await requireUnusedOutput(installedPackageOutput);
+
   const packageRoot = path.resolve(options['package-root']);
   const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
   const releaseMatrix = JSON.parse(await readFile(path.join(repository, '.github', 'release-matrix.json'), 'utf8'));
@@ -154,6 +240,8 @@ async function verify(options, env, host) {
   await mkdir(evidence);
   const scratch = await mkdtemp(path.join(path.resolve(options['scratch-root']), 'local-npm-'));
   let server;
+  let outputOwned = false;
+  let resultEmitted = false;
   try {
     const storage = path.join(scratch, 'storage');
     const require = createRequire(path.join(path.resolve(options.tools), npmMetadataName));
@@ -208,25 +296,38 @@ async function verify(options, env, host) {
     const output = await run(host.node, [...consumerCommand, '--version'], consumer, commandEnv, path.join(evidence, 'version.log'));
     validateVersionOutput(output, version);
     await run(host.node, [...consumerCommand, '--help'], consumer, commandEnv, path.join(evidence, 'help.log'));
+
+    await verifyVoiceResources(
+      path.join(packageRoot, target, voiceResourcesDirectory),
+      path.join(nativeRoot, voiceResourcesDirectory),
+      target,
+      operatingSystem
+    );
+    await copyInstalledPackage(nativeRoot, installedPackageOutput);
+    outputOwned = true;
     await writeFile(path.join(evidence, 'result.json'), `${JSON.stringify({
       format_version: 1, result: 'passed', target, package_version: version, npm_version: npmVersion(version),
-      native_sha256: sourceHash, packages_published: directories.length, registry: 'loopback_verdaccio'
+      native_sha256: sourceHash, packages_published: directories.length, registry: 'loopback_verdaccio',
+      voice_resources: 'verified'
     }, null, 2)}\n`);
+    resultEmitted = true;
   } finally {
     if (server) {
       server.closeAllConnections();
       await new Promise(resolve => server.close(resolve));
     }
     await rm(scratch, { recursive: true, force: true });
+    if (outputOwned && !resultEmitted) await rm(installedPackageOutput, { recursive: true, force: true });
   }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values } = parseArgs({ options: {
     'package-root': { type: 'string' }, tools: { type: 'string' }, 'npm-cli': { type: 'string' },
-    'scratch-root': { type: 'string' }, 'evidence-dir': { type: 'string' }
+    'scratch-root': { type: 'string' }, 'evidence-dir': { type: 'string' },
+    'installed-package-output': { type: 'string' }
   } });
-  for (const name of ['package-root', 'tools', 'npm-cli', 'scratch-root', 'evidence-dir']) {
+  for (const name of ['package-root', 'tools', 'npm-cli', 'scratch-root', 'evidence-dir', 'installed-package-output']) {
     assert(values[name], `Missing required --${name}; see docs/local-npm-verification.md`);
   }
   await verify(values, process.env, { platform: process.platform, arch: process.arch, node: process.execPath });

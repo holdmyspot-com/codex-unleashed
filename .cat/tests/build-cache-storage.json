@@ -3,15 +3,15 @@
   "response": "Read the guidance and identify the storage path, invocation settings, and artifact cleanup required for each case.",
   "cases": [
     {
-      "input": "Run Rust patch verification from a separate upstream worktree; existing Cargo caches are in the user's home cache directory.",
-      "acceptance": "Set CARGO_TARGET_DIR (separate per checkout) and CARGO_HOME explicitly and confirm they are beneath the project's .cat/work/temp/build-caches; keep any task-managed RUSTUP_HOME there too. Do not reuse home caches or another checkout's compiler outputs, or claim existing unowned outputs."
+      "input": "A request asks to run a Rust native build locally, but the current build plan places that work remotely.",
+      "acceptance": "Read the Fixed constraints section of the current plan and follow its remote placement requirement. Do not create local compiler outputs or build caches for the excluded work."
     },
     {
       "input": "Run a uv-backed formatting command from an upstream checkout and require an isolated verification cache.",
       "acceptance": "Explicitly set UV_CACHE_DIR beneath the project's .cat/work/temp/build-caches using an absolute path and a separate verification subdirectory. Configure any other participating tool caches there and confirm effective paths."
     },
     {
-      "input": "A local Rust build and its emitted-patch verification finish successfully. No process or follow-up needs the task's target directory, downloaded tools, or dependency cache.",
+      "input": "Permitted local Java or portable verification and its required follow-up finish successfully. No process or follow-up needs the task's outputs, downloaded tools, or dependency cache.",
       "acceptance": "Remove the task-owned build outputs, downloads, extractions, and caches in terminal cleanup and verify their absence. Do not retain them for hypothetical future reuse."
     },
     {

@@ -9,6 +9,7 @@ module com.holdmyspot.codexunleashed.tooling.test
 	requires tools.jackson.dataformat.toml;
 	requires tools.jackson.dataformat.yaml;
 	requires org.apache.commons.io;
+	requires org.apache.commons.compress;
 
 	exports com.holdmyspot.codexunleashed.tooling.test to org.testng;
 	exports com.holdmyspot.codexunleashed.distribution.test to org.testng;

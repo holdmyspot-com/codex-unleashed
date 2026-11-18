@@ -23,7 +23,7 @@ Raises the direct requirements to their latest stable major releases under Rust 
 
   These migrations change generated schema and TypeScript output, not wire data. schemars keeps draft-07 output and the published 0.8 names for generic types, single-value enums and schema shapes that generated clients depend on. schemars 1 identifies schemas by type, so the hosted image-generation and web-search items get names apart from the extension's types. ts-rs 12's map types drop the optional `?` for non-enum keys.
 
-test-case 3.4 names each generated case `test_case_<n>_<name>`, where 3.3 named it `<name>`, keeping a leading underscore when the name began with one. The test IDs therefore change; `.github/scripts/compare-test-baseline.py` matches IDs without that prefix, so baselines recorded on unpatched upstream still match.
+test-case 3.4 names each generated case `test_case_<n>_<name>`, where 3.3 named it `<name>`, keeping a leading underscore when the name began with one. The test IDs therefore change; the Java `compare-test-baseline` command matches IDs without that prefix, so baselines recorded on unpatched upstream still match.
 
 The upgrade moves 148 direct dependencies, which forces 177 transitive packages to new versions, adds 24 and removes 14. None of the 177 can return to its old version: each reverted alone fails cargo's resolver with a "required by package" constraint from an upgraded package.
 

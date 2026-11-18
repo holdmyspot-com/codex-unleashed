@@ -36,18 +36,20 @@ public final class SourceCacheMetadataTest
 		try (ToolingScope scope = new DefaultToolingScope())
 		{
 			Path workspace = Path.of("workspace");
-			requireThat(SourceCacheMetadata.parse(scope, "{}").targetDirectory(workspace, Map.of()), "SourceCacheMetadata")
-				.isEqualTo(workspace.resolve("target"));
+			requireThat(SourceCacheMetadata.parse(scope, "{}").targetDirectory(workspace, Map.of()),
+				"SourceCacheMetadata").isEqualTo(workspace.resolve("target"));
 			requireThat(SourceCacheMetadata.parse(scope, "{}").targetDirectory(workspace,
 				Map.of("CARGO_TARGET_DIR", "relative")), "actual").isEqualTo(Path.of("relative"));
 			requireThat(SourceCacheMetadata.parse(scope, "{}").targetDirectory(workspace,
 				Map.of("CARGO_TARGET_DIR", "")), "actual").isEqualTo(Path.of(""));
-			requireThat(SourceCacheMetadata.parse(scope, "{\"target_directory\":\"\"}").targetDirectory(workspace,
-				Map.of("CARGO_TARGET_DIR", "ignored")), "actual").isEqualTo(Path.of(""));
+			requireThat(SourceCacheMetadata.parse(scope, "{\"target_directory\":\"\"}").
+				targetDirectory(workspace, Map.of("CARGO_TARGET_DIR", "ignored")), "actual").isEqualTo(Path.of(""));
 			for (String value : List.of("null", "false", "42", "[]"))
 			{
-				SourceCacheMetadata metadata = SourceCacheMetadata.parse(scope, "{\"target_directory\":" + value + "}");
-				requireException(IOException.class, () -> metadata.targetDirectory(workspace, Map.of("CARGO_TARGET_DIR", "fallback")));
+				SourceCacheMetadata metadata = SourceCacheMetadata.parse(scope,
+					"{\"target_directory\":" + value + "}");
+				requireException(IOException.class,
+					() -> metadata.targetDirectory(workspace, Map.of("CARGO_TARGET_DIR", "fallback")));
 			}
 		}
 	}
@@ -70,11 +72,11 @@ public final class SourceCacheMetadataTest
 				 {"id":"a-id","name":"alpha","targets":[{"name":"helper","kind":["bin"]}]}
 				 ]}
 				""");
-			requireThat(metadata.binaryOwners(Set.of("codex", "helper", "absent")), "metadata")
-				.isEqualTo(Map.of("codex", "zebra", "helper", "alpha"));
+			requireThat(metadata.binaryOwners(Set.of("codex", "helper", "absent")), "metadata").
+				isEqualTo(Map.of("codex", "zebra", "helper", "alpha"));
 			requireThat(metadata.libraryOwners(), "metadata.libraryOwners()").isEqualTo(Set.of("zebra", "cached-external"));
-			requireThat(metadata.workspacePackageNames(), "metadata.workspacePackageNames()")
-				.isEqualTo(List.of("alpha", "zebra"));
+			requireThat(metadata.workspacePackageNames(), "metadata.workspacePackageNames()").
+				isEqualTo(List.of("alpha", "zebra"));
 		}
 	}
 

@@ -1,0 +1,158 @@
+From 6528a17f9ead7ad3939730f0b2de8560f74b4109 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 13 Nov 2026 19:53:53 -0500
+Subject: [PATCH] bugfix: preserve unknown model limits and summary
+ capabilities
+
+Synthetic metadata must not invent context limits or advertise unsupported reasoning summaries. Retain explicit user limits and normal default-model selection.
+---
+ codex-rs/models-manager/src/manager_tests.rs  | 29 ++++++++++++
+ codex-rs/models-manager/src/model_info.rs     |  8 ++--
+ .../models-manager/src/model_info_tests.rs    | 45 +++++++++++++++++++
+ 3 files changed, 78 insertions(+), 4 deletions(-)
+
+diff --git a/codex-rs/models-manager/src/manager_tests.rs b/codex-rs/models-manager/src/manager_tests.rs
+index 8c64277..73b8196 100644
+--- a/codex-rs/models-manager/src/manager_tests.rs
++++ b/codex-rs/models-manager/src/manager_tests.rs
+@@ -16,6 +16,7 @@ use codex_login::ExternalAuth;
+ use codex_login::ExternalAuthRefreshContext;
+ use codex_login::TokenData;
+ use codex_protocol::auth::AuthMode;
++use codex_protocol::config_types::ReasoningSummary;
+ use codex_protocol::error::CodexErr;
+ use codex_protocol::openai_models::ModelAccessPrograms;
+ use codex_protocol::openai_models::ModelOrigin;
+@@ -796,6 +797,10 @@ async fn get_model_info_tracks_metadata_origin() {
+         .await;
+     assert_eq!(unknown.origin, ModelOrigin::Synthetic);
+     assert_eq!(unknown.slug, "model-that-does-not-exist");
++    assert_eq!(unknown.context_window, None);
++    assert_eq!(unknown.max_context_window, None);
++    assert!(!unknown.supports_reasoning_summary_parameter);
++    assert_eq!(unknown.default_reasoning_summary, ReasoningSummary::None);
+     assert_eq!(
+         unknown
+             .model_messages
+@@ -805,6 +810,30 @@ async fn get_model_info_tracks_metadata_origin() {
+     );
+ }
+ 
++#[tokio::test]
++async fn static_manager_uses_default_when_no_model_is_requested_regardless_of_fallback_policy() {
++    let manager = static_manager_for_tests(ModelsResponse {
++        models: vec![
++            remote_model("provider-default", "Default", /*priority*/ 0),
++            remote_model("provider-supported", "Supported", /*priority*/ 1),
++        ],
++    });
++    let requested_model = None;
++
++    for allow_provider_model_fallback in [false, true] {
++        let model = manager
++            .get_default_model(
++                &requested_model,
++                allow_provider_model_fallback,
++                RefreshStrategy::Offline,
++                DEFAULT_HTTP_CLIENT_FACTORY,
++            )
++            .await;
++
++        assert_eq!(model, "provider-default");
++    }
++}
++
+ #[tokio::test]
+ async fn get_model_info_applies_long_context_override_to_bundled_gpt_5_6_models() {
+     let codex_home = tempdir().expect("temp dir");
+diff --git a/codex-rs/models-manager/src/model_info.rs b/codex-rs/models-manager/src/model_info.rs
+index f7e6f5b..e4ff31f 100644
+--- a/codex-rs/models-manager/src/model_info.rs
++++ b/codex-rs/models-manager/src/model_info.rs
+@@ -117,16 +117,16 @@ pub fn model_info_from_slug(slug: &str) -> ModelInfo {
+         include_skills_usage_instructions: false,
+         include_plugin_usage_instructions: false,
+         include_apps_usage_instructions: false,
+-        supports_reasoning_summary_parameter: true,
+-        default_reasoning_summary: ReasoningSummary::Auto,
++        supports_reasoning_summary_parameter: false,
++        default_reasoning_summary: ReasoningSummary::None,
+         support_verbosity: false,
+         default_verbosity: None,
+         apply_patch_tool_type: None,
+         web_search_tool_type: WebSearchToolType::Text,
+         truncation_policy: TruncationPolicyConfig::bytes(/*limit*/ 10_000),
+         supports_image_detail_original: false,
+-        context_window: Some(272_000),
+-        max_context_window: Some(272_000),
++        context_window: None,
++        max_context_window: None,
+         auto_compact_token_limit: None,
+         comp_hash: None,
+         effective_context_window_percent: 95,
+diff --git a/codex-rs/models-manager/src/model_info_tests.rs b/codex-rs/models-manager/src/model_info_tests.rs
+index dc061cc..81cc9e8 100644
+--- a/codex-rs/models-manager/src/model_info_tests.rs
++++ b/codex-rs/models-manager/src/model_info_tests.rs
+@@ -2,6 +2,7 @@ use super::*;
+ use crate::ModelsManagerConfig;
+ use codex_prompts::render_model_instructions;
+ use codex_protocol::config_types::Personality;
++use codex_protocol::config_types::ReasoningSummary;
+ use codex_protocol::openai_models::ApprovalMessages;
+ use codex_protocol::openai_models::AppsMessages;
+ use codex_protocol::openai_models::AutoReviewMessages;
+@@ -250,6 +251,50 @@ fn unknown_model_uses_builtin_instruction_template() {
+     assert_eq!(render_model_instructions(&model), BASE_INSTRUCTIONS);
+ }
+ 
++#[test]
++fn synthetic_model_does_not_invent_context_limits_or_reasoning_summary_support() {
++    let model = model_info_from_slug("vendor/custom-model");
++
++    assert_eq!(model.slug, "vendor/custom-model");
++    assert_eq!(model.context_window, None);
++    assert_eq!(model.max_context_window, None);
++    assert_eq!(model.resolved_context_window(), None);
++    assert_eq!(model.usable_context_window(), None);
++    assert_eq!(model.auto_compact_token_limit(), None);
++    assert!(!model.supports_reasoning_summary_parameter);
++    assert_eq!(model.default_reasoning_summary, ReasoningSummary::None);
++}
++
++#[test]
++fn synthetic_model_keeps_an_explicit_auto_compact_threshold_without_context_metadata() {
++    let model = model_info_from_slug("vendor/custom-model");
++    let config = ModelsManagerConfig {
++        model_auto_compact_token_limit: Some(100_000),
++        ..Default::default()
++    };
++
++    let updated = with_config_overrides(model, &config);
++
++    assert_eq!(updated.context_window, None);
++    assert_eq!(updated.max_context_window, None);
++    assert_eq!(updated.auto_compact_token_limit(), Some(100_000));
++}
++
++#[test]
++fn synthetic_context_override_is_not_clamped_by_unknown_maximum() {
++    let model = model_info_from_slug("vendor/custom-model");
++    let config = ModelsManagerConfig {
++        model_context_window: Some(1_000_000),
++        ..Default::default()
++    };
++
++    let updated = with_config_overrides(model, &config);
++
++    assert_eq!(updated.slug, "vendor/custom-model");
++    assert_eq!(updated.max_context_window, None);
++    assert_eq!(updated.context_window, Some(1_000_000));
++}
++
+ #[test]
+ fn model_context_window_override_clamps_to_max_context_window() {
+     let mut model = model_info_from_slug("unknown-model");
+-- 
+2.43.0
+

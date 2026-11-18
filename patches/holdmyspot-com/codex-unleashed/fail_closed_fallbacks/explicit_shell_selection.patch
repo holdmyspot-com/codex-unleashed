@@ -1,0 +1,410 @@
+From f769ef7dfca8b281ee14e855b862dfe1afbef7e5 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 13 Nov 2026 19:53:04 -0500
+Subject: [PATCH] bugfix: reject unavailable explicit shell types before
+ execution
+
+An explicit shell requirement must not silently launch the default shell. Preserve ordinary discovery when shell is omitted and retain type-based lookup for supported explicit selections.
+---
+ .../core/src/tools/handlers/unified_exec.rs   |  35 +++-
+ .../src/tools/handlers/unified_exec_tests.rs  | 182 ++++++++++++++----
+ codex-rs/core/tests/suite/unified_exec.rs     |  81 ++++++++
+ 3 files changed, 254 insertions(+), 44 deletions(-)
+
+diff --git a/codex-rs/core/src/tools/handlers/unified_exec.rs b/codex-rs/core/src/tools/handlers/unified_exec.rs
+index ec7a7d2..ce4522c 100644
+--- a/codex-rs/core/src/tools/handlers/unified_exec.rs
++++ b/codex-rs/core/src/tools/handlers/unified_exec.rs
+@@ -3,7 +3,8 @@ use crate::sandboxing::SandboxPermissions;
+ use crate::session::turn_context::TurnEnvironment;
+ use crate::shell::Shell;
+ use crate::shell::ShellInvocation;
+-use crate::shell::get_shell_by_model_provided_path;
++use crate::shell::ShellType;
++use crate::shell::get_shell;
+ use crate::tools::context::ToolEnvironments;
+ use crate::tools::context::ToolInvocation;
+ use crate::tools::context::ToolOutput;
+@@ -16,7 +17,6 @@ use codex_protocol::models::AdditionalPermissionProfile;
+ use codex_utils_path_uri::PathUri;
+ use futures::future::BoxFuture;
+ use serde::Deserialize;
+-use std::path::PathBuf;
+ use std::sync::Arc;
+ 
+ mod exec_command;
+@@ -148,6 +148,24 @@ fn post_unified_exec_tool_use_payload(
+     })
+ }
+ 
++fn resolve_explicit_shell(
++    shell_path: &str,
++    shell_type: Option<ShellType>,
++    available_shell: Option<Shell>,
++) -> Result<Shell, String> {
++    let Some(shell_type) = shell_type else {
++        return Err(format!(
++            "The requested shell `{shell_path}` has an unsupported type. Use an installed supported shell or omit `shell` for default discovery."
++        ));
++    };
++
++    available_shell.ok_or_else(|| {
++        format!(
++            "The requested shell `{shell_path}` (type `{shell_type:?}`) is unavailable. Use an installed supported shell or omit `shell` for default discovery."
++        )
++    })
++}
++
+ pub(crate) fn get_command(
+     args: &ExecCommandArgs,
+     session_shell: Arc<Shell>,
+@@ -163,11 +181,14 @@ pub(crate) fn get_command(
+         None => allow_login_shell,
+     };
+ 
+-    let shell = args
+-        .shell
+-        .as_ref()
+-        .map(|shell_str| get_shell_by_model_provided_path(&PathBuf::from(shell_str)))
+-        .unwrap_or_else(|| session_shell.as_ref().clone());
++    let shell = match args.shell.as_deref() {
++        Some(shell_path) => {
++            let shell_type = codex_shell_command::shell_detect::detect_shell_type(shell_path);
++            let available_shell = shell_type.and_then(get_shell);
++            resolve_explicit_shell(shell_path, shell_type, available_shell)?
++        }
++        None => session_shell.as_ref().clone(),
++    };
+     Ok(ResolvedCommand {
+         command: shell.derive_exec_args(&args.cmd, use_login_shell),
+         shell: ShellInvocation {
+diff --git a/codex-rs/core/src/tools/handlers/unified_exec_tests.rs b/codex-rs/core/src/tools/handlers/unified_exec_tests.rs
+index 14dedbc..d78c039 100644
+--- a/codex-rs/core/src/tools/handlers/unified_exec_tests.rs
++++ b/codex-rs/core/src/tools/handlers/unified_exec_tests.rs
+@@ -7,6 +7,7 @@ use codex_exec_server::Environment;
+ use codex_utils_output_truncation::TruncationPolicy;
+ use codex_utils_path_uri::PathUri;
+ use pretty_assertions::assert_eq;
++use std::path::PathBuf;
+ use std::sync::Arc;
+ 
+ use crate::environment_selection::TurnEnvironmentState;
+@@ -55,14 +56,19 @@ fn test_get_command_uses_default_shell_when_unspecified() -> anyhow::Result<()>
+ 
+     assert!(args.shell.is_none());
+ 
++    let session_shell = Arc::new(Shell {
++        shell_type: ShellType::Sh,
++        shell_path: PathBuf::from("session-shell"),
++    });
+     let resolved = get_command(
+         &args,
+-        Arc::new(default_user_shell()),
++        Arc::clone(&session_shell),
+         /*allow_login_shell*/ true,
+     )
+     .map_err(anyhow::Error::msg)?;
+     let command = resolved.command;
+ 
++    assert_eq!(resolved.shell.shell, *session_shell);
+     assert_eq!(command.len(), 3);
+     assert_eq!(command[2], "echo hello");
+     Ok(())
+@@ -76,20 +82,33 @@ fn test_get_command_respects_explicit_bash_shell() -> anyhow::Result<()> {
+ 
+     assert_eq!(args.shell.as_deref(), Some("/bin/bash"));
+ 
+-    let resolved = get_command(
+-        &args,
+-        Arc::new(default_user_shell()),
+-        /*allow_login_shell*/ true,
+-    )
+-    .map_err(anyhow::Error::msg)?;
+-    let command = resolved.command;
+-
+-    assert_eq!(command.last(), Some(&"echo hello".to_string()));
+-    if command
+-        .iter()
+-        .any(|arg| arg.eq_ignore_ascii_case("-Command"))
+-    {
+-        assert!(command.contains(&"-NoProfile".to_string()));
++    match get_shell(ShellType::Bash) {
++        Some(_) => {
++            let resolved = get_command(
++                &args,
++                Arc::new(default_user_shell()),
++                /*allow_login_shell*/ true,
++            )
++            .map_err(anyhow::Error::msg)?;
++            let command = resolved.command;
++
++            assert_eq!(command.last(), Some(&"echo hello".to_string()));
++            if command
++                .iter()
++                .any(|arg| arg.eq_ignore_ascii_case("-Command"))
++            {
++                assert!(command.contains(&"-NoProfile".to_string()));
++            }
++        }
++        None => {
++            let err = get_command(
++                &args,
++                Arc::new(default_user_shell()),
++                /*allow_login_shell*/ true,
++            )
++            .expect_err("unavailable explicit Bash must be rejected");
++            assert!(err.contains("unavailable"), "{err}");
++        }
+     }
+     Ok(())
+ }
+@@ -253,6 +272,69 @@ fn test_get_command_does_not_change_nested_login_or_powershell() -> anyhow::Resu
+     Ok(())
+ }
+ 
++#[test]
++fn test_get_command_rejects_unavailable_explicit_shell_type_from_lookup_result()
++-> anyhow::Result<()> {
++    let err = resolve_explicit_shell("powershell", Some(ShellType::PowerShell), None)
++        .expect_err("a recognized but unavailable shell type must be rejected");
++
++    assert!(err.contains("powershell"), "{err}");
++    assert!(err.contains("PowerShell"), "{err}");
++    assert!(err.contains("unavailable"), "{err}");
++    assert!(
++        !err.contains("command contents"),
++        "command contents leaked into shell-selection error: {err}"
++    );
++    Ok(())
++}
++
++#[test]
++fn test_get_command_rejects_unknown_explicit_shell_without_command_contents() -> anyhow::Result<()>
++{
++    let args: ExecCommandArgs =
++        parse_arguments(r#"{"cmd":"sensitive command contents","shell":"fish"}"#)?;
++
++    let err = get_command(
++        &args,
++        Arc::new(default_user_shell()),
++        /*allow_login_shell*/ true,
++    )
++    .expect_err("unknown explicit shell must not use the default fallback");
++
++    assert!(err.contains("fish"), "{err}");
++    assert!(err.contains("supported shell"), "{err}");
++    assert!(
++        !err.contains("sensitive command contents"),
++        "command contents leaked into shell-selection error: {err}"
++    );
++    Ok(())
++}
++
++#[test]
++fn test_get_command_preserves_available_explicit_shell_type() -> anyhow::Result<()> {
++    let session_shell = Arc::new(default_user_shell());
++    let json = serde_json::json!({
++        "cmd": "echo available",
++        "shell": session_shell.shell_path.to_string_lossy(),
++    })
++    .to_string();
++    let args: ExecCommandArgs = parse_arguments(&json)?;
++
++    let resolved = get_command(
++        &args,
++        Arc::clone(&session_shell),
++        /*allow_login_shell*/ true,
++    )
++    .map_err(anyhow::Error::msg)?;
++
++    assert_eq!(resolved.shell.shell.shell_type, session_shell.shell_type);
++    assert_eq!(
++        resolved.command.last().map(String::as_str),
++        Some("echo available")
++    );
++    Ok(())
++}
++
+ #[test]
+ fn test_get_command_resolves_powershell_by_type() -> anyhow::Result<()> {
+     let temp_dir = tempfile::tempdir()?;
+@@ -275,19 +357,31 @@ fn test_get_command_resolves_powershell_by_type() -> anyhow::Result<()> {
+         Some(powershell_path.to_string_lossy().as_ref())
+     );
+ 
+-    let resolved = get_command(
+-        &args,
+-        Arc::new(default_user_shell()),
+-        /*allow_login_shell*/ true,
+-    )
+-    .map_err(anyhow::Error::msg)?;
+-    let expected_shell = get_shell(ShellType::PowerShell)
+-        .unwrap_or_else(|| codex_shell_command::shell_detect::ultimate_fallback_shell().into());
+-    assert_eq!(
+-        resolved.command,
+-        expected_shell.derive_exec_args("echo hello", /*use_login_shell*/ true)
+-    );
+-    assert_eq!(resolved.shell.shell, expected_shell);
++    match get_shell(ShellType::PowerShell) {
++        Some(expected_shell) => {
++            let resolved = get_command(
++                &args,
++                Arc::new(default_user_shell()),
++                /*allow_login_shell*/ true,
++            )
++            .map_err(anyhow::Error::msg)?;
++            assert_eq!(
++                resolved.command,
++                expected_shell.derive_exec_args("echo hello", /*use_login_shell*/ true)
++            );
++            assert_eq!(resolved.shell.shell, expected_shell);
++        }
++        None => {
++            let err = get_command(
++                &args,
++                Arc::new(default_user_shell()),
++                /*allow_login_shell*/ true,
++            )
++            .expect_err("unavailable explicit PowerShell must be rejected");
++            assert!(err.contains("PowerShell"), "{err}");
++            assert!(err.contains("unavailable"), "{err}");
++        }
++    }
+     Ok(())
+ }
+ 
+@@ -299,15 +393,29 @@ fn test_get_command_respects_explicit_cmd_shell() -> anyhow::Result<()> {
+ 
+     assert_eq!(args.shell.as_deref(), Some("cmd"));
+ 
+-    let resolved = get_command(
+-        &args,
+-        Arc::new(default_user_shell()),
+-        /*allow_login_shell*/ true,
+-    )
+-    .map_err(anyhow::Error::msg)?;
+-    let command = resolved.command;
+-
+-    assert_eq!(command[2], "echo hello");
++    match get_shell(ShellType::Cmd) {
++        Some(_) => {
++            let resolved = get_command(
++                &args,
++                Arc::new(default_user_shell()),
++                /*allow_login_shell*/ true,
++            )
++            .map_err(anyhow::Error::msg)?;
++            assert_eq!(
++                resolved.command.last().map(String::as_str),
++                Some("echo hello")
++            );
++        }
++        None => {
++            let err = get_command(
++                &args,
++                Arc::new(default_user_shell()),
++                /*allow_login_shell*/ true,
++            )
++            .expect_err("unavailable explicit cmd must be rejected");
++            assert!(err.contains("unavailable"), "{err}");
++        }
++    }
+     Ok(())
+ }
+ 
+diff --git a/codex-rs/core/tests/suite/unified_exec.rs b/codex-rs/core/tests/suite/unified_exec.rs
+index 63bc317..b3cb986 100644
+--- a/codex-rs/core/tests/suite/unified_exec.rs
++++ b/codex-rs/core/tests/suite/unified_exec.rs
+@@ -259,6 +259,87 @@ async fn create_workspace_directory(
+     Ok(abs_path.into_path_buf())
+ }
+ 
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn explicit_shell_rejects_unsupported_type_without_launch_and_runs_supported_type()
++-> Result<()> {
++    skip_if_no_network!(Ok(()));
++
++    let harness = TestCodexHarness::with_builder(test_codex()).await?;
++    let supported_shell = match core_test_support::test_target_os() {
++        core_test_support::TestTargetOs::Windows => "cmd",
++        core_test_support::TestTargetOs::Linux | core_test_support::TestTargetOs::MacOs => "sh",
++    };
++    let supported_command = "echo executed > explicit-shell-supported-marker";
++    let unsupported_arguments = json!({
++        "cmd": "echo executed > explicit-shell-unsupported-marker",
++        "shell": "fish",
++    });
++    let supported_arguments = json!({
++        "cmd": supported_command,
++        "shell": supported_shell,
++        "login": false,
++    });
++    mount_sse_sequence(
++        harness.server(),
++        vec![
++            sse(vec![
++                ev_response_created("explicit-shell-response"),
++                ev_function_call(
++                    "explicit-shell-unsupported",
++                    "exec_command",
++                    &serde_json::to_string(&unsupported_arguments)?,
++                ),
++                ev_function_call(
++                    "explicit-shell-supported",
++                    "exec_command",
++                    &serde_json::to_string(&supported_arguments)?,
++                ),
++                ev_completed("explicit-shell-response"),
++            ]),
++            sse(vec![
++                ev_assistant_message("explicit-shell-done", "done"),
++                ev_completed("explicit-shell-done"),
++            ]),
++        ],
++    )
++    .await;
++
++    harness
++        .submit_with_permission_profile(
++            "run both explicit shell commands",
++            PermissionProfile::Disabled,
++        )
++        .await?;
++
++    let unsupported_output = harness
++        .function_call_stdout("explicit-shell-unsupported")
++        .await;
++    assert!(unsupported_output.contains("fish"), "{unsupported_output}");
++    assert!(
++        !unsupported_output.contains("echo executed"),
++        "command contents leaked into the shell-selection error: {unsupported_output}"
++    );
++    assert!(
++        !harness
++            .path_exists("explicit-shell-unsupported-marker")
++            .await?,
++        "unsupported explicit shell launched its command"
++    );
++
++    let supported_output = parse_unified_exec_output(
++        &harness
++            .function_call_stdout("explicit-shell-supported")
++            .await,
++    )?;
++    assert_eq!(supported_output.exit_code, Some(0));
++    assert!(
++        harness
++            .path_exists("explicit-shell-supported-marker")
++            .await?
++    );
++    Ok(())
++}
++
+ #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+ async fn exec_command_rejects_login_when_disabled() -> Result<()> {
+     skip_if_no_network!(Ok(()));
+-- 
+2.43.0
+

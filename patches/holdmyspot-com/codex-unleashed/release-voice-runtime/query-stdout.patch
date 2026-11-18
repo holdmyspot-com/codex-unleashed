@@ -1,0 +1,325 @@
+From edc49da8c266aa3424f3f3b92c04f101b675b9b0 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 15 Nov 2026 02:17:17 -0500
+Subject: [PATCH] ci: keep voice cquery output machine-readable
+
+The voice runtime parser requires one executable path on stdout, but the shared runner merged BuildBuddy and Bazel diagnostics into that stream. Add an opt-in query mode that preserves the existing console log and failure reports while keeping ordinary runner callers unchanged.
+---
+ .github/scripts/codex-voice-runtime.sh        |  3 +
+ .github/scripts/run-bazel-ci.sh               | 79 +++++++++++++---
+ .github/scripts/test-codex-voice-runtime.sh   | 13 ++-
+ .../scripts/test_run_bazel_with_buildbuddy.py | 93 +++++++++++++++++++
+ 4 files changed, 173 insertions(+), 15 deletions(-)
+
+diff --git a/.github/scripts/codex-voice-runtime.sh b/.github/scripts/codex-voice-runtime.sh
+index e534dde..9ac5b43 100755
+--- a/.github/scripts/codex-voice-runtime.sh
++++ b/.github/scripts/codex-voice-runtime.sh
+@@ -259,7 +259,10 @@ query_native_executable() {
+   local -a bazel_args=()
+ 
+   configure_bazel_arguments cquery "$runner_os" "$windows_tools_root" "$system_root" "$windows_architecture"
++  wrapper_args+=(--query-stdout)
+   bazel_args+=(
++    --noshow_progress
++    --ui_event_filters=-info
+     --output=starlark
+     "--starlark:expr=providers(target)['DefaultInfo'].files_to_run.executable.path"
+     --
+diff --git a/.github/scripts/run-bazel-ci.sh b/.github/scripts/run-bazel-ci.sh
+index c250433..e7c979b 100755
+--- a/.github/scripts/run-bazel-ci.sh
++++ b/.github/scripts/run-bazel-ci.sh
+@@ -7,6 +7,10 @@ print_failed_bazel_action_summary=0
+ remote_download_toplevel=0
+ windows_msvc_host_platform=0
+ windows_cross_compile=0
++# Runner option selecting machine-readable Bazel query output.
++readonly QUERY_STDOUT_OPTION=--query-stdout
++# Enabled only when the caller passes QUERY_STDOUT_OPTION.
++query_stdout=0
+ 
+ while [[ $# -gt 0 ]]; do
+   case "$1" in
+@@ -30,6 +34,10 @@ while [[ $# -gt 0 ]]; do
+       windows_cross_compile=1
+       shift
+       ;;
++    "$QUERY_STDOUT_OPTION")
++      query_stdout=1
++      shift
++      ;;
+     --)
+       shift
+       break
+@@ -42,7 +50,7 @@ while [[ $# -gt 0 ]]; do
+ done
+ 
+ if [[ $# -eq 0 ]]; then
+-  echo "Usage: $0 [--print-failed-test-logs] [--print-failed-action-summary] [--remote-download-toplevel] [--windows-msvc-host-platform] [--windows-cross-compile] -- <bazel args> -- <targets>" >&2
++  echo "Usage: $0 [--print-failed-test-logs] [--print-failed-action-summary] [--remote-download-toplevel] [--windows-msvc-host-platform] [--windows-cross-compile] [$QUERY_STDOUT_OPTION] -- <bazel args> -- <targets>" >&2
+   exit 1
+ fi
+ 
+@@ -417,16 +425,26 @@ if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
+ fi
+ 
+ bazel_console_log="$(mktemp)"
+-trap 'rm -f "$bazel_console_log"' EXIT
++# Holds the query-mode FIFOs that separate Bazel output from diagnostics while both are logged.
++query_stream_dir=
++trap 'rm -f "$bazel_console_log"; if [[ -n "$query_stream_dir" ]]; then rm -rf -- "$query_stream_dir"; fi' EXIT
+ 
+ bazel_run_args=(
+   "${bazel_args[@]}"
+ )
+ if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
+-  echo "BuildBuddy API key is available; using remote Bazel configuration."
++  if [[ $query_stdout -eq 1 ]]; then
++    echo "BuildBuddy API key is available; using remote Bazel configuration." >&2
++  else
++    echo "BuildBuddy API key is available; using remote Bazel configuration."
++  fi
+   bazel_run_args+=("--config=${ci_config}")
+ else
+-  echo "BuildBuddy API key is not available; using local Bazel configuration."
++  if [[ $query_stdout -eq 1 ]]; then
++    echo "BuildBuddy API key is not available; using local Bazel configuration." >&2
++  else
++    echo "BuildBuddy API key is not available; using local Bazel configuration."
++  fi
+   if [[ "${bazel_args[0]}" == "test" ]]; then
+     bazel_run_args+=("--test_env=INSTA_UPDATE=no")
+   fi
+@@ -434,26 +452,61 @@ fi
+ if (( ${#post_config_bazel_args[@]} > 0 )); then
+   bazel_run_args+=("${post_config_bazel_args[@]}")
+ fi
++if [[ $query_stdout -eq 1 ]]; then
++  query_stream_dir="$(mktemp -d)"
++  # Caller-visible Bazel stdout enters the matching tee through this FIFO.
++  stdout_fifo="$query_stream_dir/stdout"
++  # Caller-visible diagnostics enter their matching tee through this FIFO.
++  stderr_fifo="$query_stream_dir/stderr"
++  mkfifo "$stdout_fifo" "$stderr_fifo"
++fi
+ set +e
+ # Work around Bazel 9 remote repo contents cache / overlay materialization
+ # failures seen in CI (for example "is not a symlink" or permission errors
+ # while materializing external repos such as rules_perl). This only disables
+ # the startup-level repo contents cache; keyed runs still use BuildBuddy.
+-run_bazel_with_startup_args \
+-  --noexperimental_remote_repo_contents_cache \
+-  "${bazel_run_args[@]}" \
+-  -- \
+-  "${bazel_targets[@]}" \
+-  2>&1 | tee "$bazel_console_log"
+-bazel_status=${PIPESTATUS[0]}
++if [[ $query_stdout -eq 1 ]]; then
++  # Each tee drains one child stream into the shared console log and its matching caller stream.
++  tee -a "$bazel_console_log" < "$stdout_fifo" &
++  # Process ID of the stdout tee, waited before failure details are read from the log.
++  stdout_tee_pid=$!
++  tee -a "$bazel_console_log" < "$stderr_fifo" >&2 &
++  # Process ID of the stderr tee, waited before failure details are read from the log.
++  stderr_tee_pid=$!
++  run_bazel_with_startup_args \
++    --noexperimental_remote_repo_contents_cache \
++    "${bazel_run_args[@]}" \
++    -- \
++    "${bazel_targets[@]}" \
++    > "$stdout_fifo" 2> "$stderr_fifo"
++  bazel_status=$?
++  wait "$stdout_tee_pid" || true
++  wait "$stderr_tee_pid" || true
++else
++  run_bazel_with_startup_args \
++    --noexperimental_remote_repo_contents_cache \
++    "${bazel_run_args[@]}" \
++    -- \
++    "${bazel_targets[@]}" \
++    2>&1 | tee "$bazel_console_log"
++  bazel_status=${PIPESTATUS[0]}
++fi
+ set -e
+ 
+ if [[ ${bazel_status:-0} -ne 0 ]]; then
+   if [[ $print_failed_bazel_action_summary -eq 1 ]]; then
+-    print_bazel_action_failure_summary "$bazel_console_log"
++    if [[ $query_stdout -eq 1 ]]; then
++      print_bazel_action_failure_summary "$bazel_console_log" >&2
++    else
++      print_bazel_action_failure_summary "$bazel_console_log"
++    fi
+   fi
+   if [[ $print_failed_bazel_test_logs -eq 1 ]]; then
+-    print_bazel_test_log_tails "$bazel_console_log"
++    if [[ $query_stdout -eq 1 ]]; then
++      print_bazel_test_log_tails "$bazel_console_log" >&2
++    else
++      print_bazel_test_log_tails "$bazel_console_log"
++    fi
+   fi
+   exit "$bazel_status"
+ fi
+diff --git a/.github/scripts/test-codex-voice-runtime.sh b/.github/scripts/test-codex-voice-runtime.sh
+index 62b36f1..28cb0b3 100755
+--- a/.github/scripts/test-codex-voice-runtime.sh
++++ b/.github/scripts/test-codex-voice-runtime.sh
+@@ -200,6 +200,9 @@ if ((separator < 0)); then
+ fi
+ inner=("${args[@]:separator+1}")
+ command="${inner[0]:-}"
++if [[ "$command" == cquery ]]; then
++  printf '<%s>\n' "${args[@]:0:separator}" >> "$FAKE_QUERY_RUNNER_ARGUMENTS"
++fi
+ if [[ "$command" == build ]]; then
+   suffix=
+   packaged=0
+@@ -340,6 +343,7 @@ run_producer() {
+   FAKE_HELPER_COMMIT="$commit" \
+   FAKE_BUILD_ARGUMENTS="$TEST_ROOT/build-arguments.txt" \
+   FAKE_QUERY_ARGUMENTS="$TEST_ROOT/query-arguments.txt" \
++  FAKE_QUERY_RUNNER_ARGUMENTS="$TEST_ROOT/query-runner-arguments.txt" \
+   FAKE_QUERY_ABSOLUTE="${FAKE_QUERY_ABSOLUTE:-0}" \
+   FAKE_GIT_CHANGE_MARKER="$TEST_ROOT/git-changed" \
+   FAKE_WINDOWS_PACKAGES_OK="${FAKE_WINDOWS_PACKAGES_OK:-1}" \
+@@ -390,7 +394,7 @@ check_target_mapping() {
+   fi
+   make_fixture "$name"
+   root="$FIXTURE_ROOT"
+-  rm -f -- "$TEST_ROOT/git-changed" "$TEST_ROOT/build-arguments.txt" "$TEST_ROOT/query-arguments.txt"
++  rm -f -- "$TEST_ROOT/git-changed" "$TEST_ROOT/build-arguments.txt" "$TEST_ROOT/query-arguments.txt" "$TEST_ROOT/query-runner-arguments.txt"
+   if [[ "$runner_os" == Windows ]]; then
+     mkdir -p "$root/windows-tools/evidence" "$root/windows-tools/pkgconf-image" "$root/windows-tools/cygwin"
+     printf '{"target": "%s", "pkgconf_version": "3.0.6"}\n' "$target" > "$root/windows-tools/evidence/tools.json"
+@@ -475,8 +479,13 @@ check_target_mapping() {
+   assert_build_argument --print-failed-action-summary
+   assert_query_argument --remote-download-toplevel
+   assert_query_argument --print-failed-action-summary
++  if grep -Fxq -- '<--query-stdout>' "$TEST_ROOT/query-runner-arguments.txt"; then :; else
++    fail "voice executable query did not select machine-readable runner output"
++  fi
+   assert_build_argument --config=release
+   assert_query_argument --config=release
++  assert_query_argument --noshow_progress
++  assert_query_argument --ui_event_filters=-info
+   assert_query_argument --output=starlark
+   assert_query_argument "--starlark:expr=providers(target)['DefaultInfo'].files_to_run.executable.path"
+   assert_query_argument //codex-rs/voice-host:voice-host-packaged_runtime-test
+@@ -498,7 +507,7 @@ check_failed_case() {
+ 
+   make_fixture "$name"
+   root="$FIXTURE_ROOT"
+-  rm -f -- "$TEST_ROOT/git-changed" "$TEST_ROOT/build-arguments.txt" "$TEST_ROOT/query-arguments.txt"
++  rm -f -- "$TEST_ROOT/git-changed" "$TEST_ROOT/build-arguments.txt" "$TEST_ROOT/query-arguments.txt" "$TEST_ROOT/query-runner-arguments.txt"
+   if run_producer "$root" "$target" "$runner_os" "$machine" "$EXPECTED_COMMIT" "$result" "$@"; then
+     fail "$name unexpectedly succeeded"
+   fi
+diff --git a/.github/scripts/test_run_bazel_with_buildbuddy.py b/.github/scripts/test_run_bazel_with_buildbuddy.py
+index 522c3a4..0738068 100644
+--- a/.github/scripts/test_run_bazel_with_buildbuddy.py
++++ b/.github/scripts/test_run_bazel_with_buildbuddy.py
+@@ -285,6 +285,99 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
+ 
+         self.assertEqual(result.returncode, 37, result.stderr)
+ 
++    def test_query_stdout_keeps_one_path_separate_from_diagnostics(self) -> None:
++        runner = Path(run_bazel_with_buildbuddy.__file__).with_name("run-bazel-ci.sh")
++        expected_path = "bazel-bin/codex-rs/voice-host/voice runtime test"
++
++        with TemporaryDirectory() as temp_dir:
++            fake_bazel = Path(temp_dir) / "fake-bazel"
++            fake_bazel.write_text(
++                "#!/usr/bin/env bash\n"
++                "set -euo pipefail\n"
++                "printf '%s\\n' \"$FAKE_QUERY_PATH\"\n"
++                "printf 'controlled child diagnostic\\n' >&2\n"
++                'if [[ "${FAKE_BAZEL_STATUS:-0}" != 0 ]]; then\n'
++                "  printf 'ERROR: //voice:runtime failed: controlled failure\\n' >&2\n"
++                '  exit "$FAKE_BAZEL_STATUS"\n'
++                "fi\n",
++                encoding="utf-8",
++            )
++            fake_bazel.chmod(0o755)
++
++            for child_status in (0, 37):
++                with self.subTest(child_status=child_status):
++                    env = os.environ.copy()
++                    env["CODEX_BAZEL_BIN"] = str(fake_bazel)
++                    env["FAKE_QUERY_PATH"] = expected_path
++                    env["FAKE_BAZEL_STATUS"] = str(child_status)
++                    env.pop("BUILDBUDDY_API_KEY", None)
++                    env.pop("GITHUB_ACTIONS", None)
++                    result = subprocess.run(
++                        [
++                            str(runner),
++                            "--query-stdout",
++                            "--print-failed-action-summary",
++                            "--",
++                            "cquery",
++                            "--output=starlark",
++                            "--",
++                            "//voice:runtime",
++                        ],
++                        env=env,
++                        check=False,
++                        capture_output=True,
++                        text=True,
++                    )
++
++                    self.assertEqual(result.returncode, child_status, result.stderr)
++                    self.assertEqual(result.stdout, expected_path + "\n")
++                    self.assertIn(
++                        "BuildBuddy API key is not available; using local Bazel configuration.",
++                        result.stderr,
++                    )
++                    self.assertIn(
++                        "BuildBuddy key unavailable; using local Bazel configuration.",
++                        result.stderr,
++                    )
++                    self.assertIn("controlled child diagnostic", result.stderr)
++                    if child_status != 0:
++                        self.assertIn("Bazel failed action diagnostics:", result.stderr)
++                        self.assertIn("controlled failure", result.stderr)
++
++            env = os.environ.copy()
++            env["CODEX_BAZEL_BIN"] = str(fake_bazel)
++            env["FAKE_QUERY_PATH"] = expected_path
++            env["FAKE_BAZEL_STATUS"] = "0"
++            env.pop("BUILDBUDDY_API_KEY", None)
++            env.pop("GITHUB_ACTIONS", None)
++            result = subprocess.run(
++                [
++                    str(runner),
++                    "--",
++                    "cquery",
++                    "--output=starlark",
++                    "--",
++                    "//voice:runtime",
++                ],
++                env=env,
++                check=False,
++                capture_output=True,
++                text=True,
++            )
++
++            self.assertEqual(result.returncode, 0, result.stderr)
++            self.assertEqual(result.stderr, "")
++            self.assertIn(expected_path + "\n", result.stdout)
++            self.assertIn("controlled child diagnostic", result.stdout)
++            self.assertIn(
++                "BuildBuddy API key is not available; using local Bazel configuration.",
++                result.stdout,
++            )
++            self.assertIn(
++                "BuildBuddy key unavailable; using local Bazel configuration.",
++                result.stdout,
++            )
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

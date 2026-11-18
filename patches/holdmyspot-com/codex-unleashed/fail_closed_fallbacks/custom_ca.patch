@@ -1,0 +1,1063 @@
+From 71f1abfe1acf3206e34832934f0cebd3ccbf59de Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 13 Nov 2026 19:51:57 -0500
+Subject: [PATCH] bugfix: reject invalid configured certificate trust before
+ requests
+
+Configured CA failures must not silently replace the selected trust roots. Propagate construction errors through route-aware, login, plugin, update, and local-provider clients while retaining their routing policies.
+---
+ codex-rs/cli/src/doctor.rs                    |   3 +-
+ codex-rs/codex-api/src/files.rs               |   1 -
+ .../src/startup_sync/http_client.rs           |   8 +-
+ codex-rs/core/src/session/session.rs          |   3 +-
+ codex-rs/core/src/session/tests.rs            |   6 +-
+ codex-rs/exec-server/src/remote.rs            |   2 +-
+ codex-rs/http-client/src/client_builder.rs    |  77 ------------
+ .../http-client/src/client_builder_tests.rs   |  99 +++++++--------
+ .../src/route_aware_client_pool.rs            |  62 +++-------
+ .../src/route_aware_client_pool_tests.rs      |  84 +++++++------
+ codex-rs/login/src/auth/default_client.rs     |  65 +++++-----
+ .../login/src/auth/default_client_tests.rs    | 116 ++++++++++++++++++
+ codex-rs/ollama/src/client.rs                 |  64 ++++------
+ codex-rs/tui/src/oss_selection.rs             |  40 +++---
+ codex-rs/tui/src/startup_orchestration.rs     |   2 +-
+ codex-rs/tui/src/updates.rs                   |   3 +-
+ 16 files changed, 316 insertions(+), 319 deletions(-)
+
+diff --git a/codex-rs/cli/src/doctor.rs b/codex-rs/cli/src/doctor.rs
+index af478a9..027ceed 100644
+--- a/codex-rs/cli/src/doctor.rs
++++ b/codex-rs/cli/src/doctor.rs
+@@ -2770,8 +2770,7 @@ async fn provider_reachability_check(plan: ReachabilityPlan) -> DoctorCheck {
+     let client = RouteAwareClientPool::with_chatgpt_cloudflare_cookies_without_request_logging(
+         plan.http_client_factory,
+         ClientRouteClass::Api,
+-    )
+-    .with_legacy_custom_ca_fallback();
++    );
+     let mut failures = Vec::new();
+     let mut optional_failures = Vec::new();
+     let mut route_failures = Vec::new();
+diff --git a/codex-rs/codex-api/src/files.rs b/codex-rs/codex-api/src/files.rs
+index 0a37b27..4f5e455 100644
+--- a/codex-rs/codex-api/src/files.rs
++++ b/codex-rs/codex-api/src/files.rs
+@@ -509,7 +509,6 @@ mod tests {
+             HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+             ClientRouteClass::Api,
+         )
+-        .with_legacy_custom_ca_fallback()
+     }
+ 
+     impl AuthProvider for ChatGptTestAuth {
+diff --git a/codex-rs/core-plugins/src/startup_sync/http_client.rs b/codex-rs/core-plugins/src/startup_sync/http_client.rs
+index 3debe0c..33e8aff 100644
+--- a/codex-rs/core-plugins/src/startup_sync/http_client.rs
++++ b/codex-rs/core-plugins/src/startup_sync/http_client.rs
+@@ -1,8 +1,7 @@
+ //! HTTP transport for curated plugin startup sync.
+ //!
+-//! Both proxy modes retain the supplied application network policy. The default proxy mode also
+-//! keeps the legacy fallback for invalid custom CA configuration; system-proxy mode fails closed.
+-//! Startup-sync request helpers apply the standard Codex headers.
++//! Both proxy modes retain the supplied application network policy and fail closed on HTTP client
++//! construction errors. Startup-sync request helpers apply the standard Codex headers.
+ 
+ use std::sync::Arc;
+ 
+@@ -21,8 +20,7 @@ impl StartupSyncHttpClient {
+             RouteAwareClientPool::with_chatgpt_cloudflare_cookies_without_request_logging(
+                 http_client_factory.clone(),
+                 ClientRouteClass::Api,
+-            )
+-            .with_legacy_custom_ca_fallback();
++            );
+         Self(Arc::new(http_clients))
+     }
+ 
+diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
+index c476098..749a60b 100644
+--- a/codex-rs/core/src/session/session.rs
++++ b/codex-rs/core/src/session/session.rs
+@@ -1802,8 +1802,7 @@ impl Session {
+                 openai_file_upload_client_pool: RouteAwareClientPool::new_without_request_logging(
+                     config.http_client_factory(),
+                     ClientRouteClass::Api,
+-                )
+-                .with_legacy_custom_ca_fallback(),
++                ),
+                 session_telemetry,
+                 models_manager: Arc::clone(&models_manager),
+                 git_root_discovery,
+diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
+index 903916e..d8dd110 100644
+--- a/codex-rs/core/src/session/tests.rs
++++ b/codex-rs/core/src/session/tests.rs
+@@ -7072,8 +7072,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+         openai_file_upload_client_pool: RouteAwareClientPool::new_without_request_logging(
+             config.http_client_factory(),
+             ClientRouteClass::Api,
+-        )
+-        .with_legacy_custom_ca_fallback(),
++        ),
+         session_telemetry: session_telemetry.clone(),
+         models_manager: Arc::clone(&models_manager),
+         git_root_discovery: Arc::default(),
+@@ -9396,8 +9395,7 @@ where
+         openai_file_upload_client_pool: RouteAwareClientPool::new_without_request_logging(
+             config.http_client_factory(),
+             ClientRouteClass::Api,
+-        )
+-        .with_legacy_custom_ca_fallback(),
++        ),
+         session_telemetry: session_telemetry.clone(),
+         models_manager: Arc::clone(&models_manager),
+         git_root_discovery: Arc::default(),
+diff --git a/codex-rs/exec-server/src/remote.rs b/codex-rs/exec-server/src/remote.rs
+index 84739cc..1739805 100644
+--- a/codex-rs/exec-server/src/remote.rs
++++ b/codex-rs/exec-server/src/remote.rs
+@@ -133,7 +133,7 @@ impl EnvironmentRegistryClient {
+                 http_client_factory,
+                 ClientRouteClass::Api,
+             )
+-            .with_legacy_direct_proxy_and_custom_ca_fallback(),
++            .with_direct_routing(),
+             connect_timeout: DEFAULT_REMOTE_EXEC_SERVER_CONNECT_TIMEOUT,
+             telemetry,
+         })
+diff --git a/codex-rs/http-client/src/client_builder.rs b/codex-rs/http-client/src/client_builder.rs
+index c60ab1a..0702f05 100644
+--- a/codex-rs/http-client/src/client_builder.rs
++++ b/codex-rs/http-client/src/client_builder.rs
+@@ -21,7 +21,6 @@ use crate::HttpClientFactory;
+ use crate::HttpClientTlsConfig;
+ use crate::OutboundProxyRoute;
+ use crate::chatgpt_cloudflare_cookies::ChatGptCookieStore;
+-use crate::client::HttpClientBackend;
+ use crate::client::RequestLogging;
+ use crate::client::TransportClient;
+ use crate::custom_ca::build_reqwest_client_with_custom_ca;
+@@ -276,41 +275,6 @@ impl HttpClientBuilder {
+         self.build_with_proxy_routing(ProxyRouting::Direct)
+     }
+ 
+-    /// Builds a transport-default client while preserving the legacy custom-CA fallback.
+-    ///
+-    /// # Legacy compatibility only
+-    ///
+-    /// This preserves call sites that historically logged a custom-CA error and continued with
+-    /// system roots. New product traffic must propagate construction errors through
+-    /// [`Self::build_respecting_outbound_proxy_policy`] or [`HttpClientFactory::build_client`].
+-    #[deprecated(
+-        note = "legacy custom-CA fallback only; use HttpClientFactory::build_client or build_respecting_outbound_proxy_policy"
+-    )]
+-    pub fn build_with_transport_default_proxy_and_custom_ca_fallback(self) -> HttpClient {
+-        HttpClient {
+-            backend: HttpClientBackend::Direct(
+-                self.build_with_custom_ca_fallback(ProxyRouting::TransportDefault),
+-            ),
+-        }
+-    }
+-
+-    /// Builds a direct client while preserving the legacy custom-CA fallback.
+-    ///
+-    /// # Legacy compatibility only
+-    ///
+-    /// This combines the exceptional proxy bypass described by [`Self::build_direct`] with the
+-    /// historical behavior of logging a custom-CA error and continuing with system roots.
+-    #[deprecated(
+-        note = "legacy custom-CA fallback only; use build_direct and propagate construction errors"
+-    )]
+-    pub fn build_direct_with_custom_ca_fallback(self) -> HttpClient {
+-        HttpClient {
+-            backend: HttpClientBackend::Direct(
+-                self.build_with_custom_ca_fallback(ProxyRouting::Direct),
+-            ),
+-        }
+-    }
+-
+     fn build_with_proxy_routing(
+         mut self,
+         proxy_routing: ProxyRouting,
+@@ -321,47 +285,6 @@ impl HttpClientBuilder {
+             .map(|inner| HttpClient::from_parts(inner, request_logging, default_headers))
+     }
+ 
+-    pub(crate) fn build_with_custom_ca_fallback(
+-        self,
+-        proxy_routing: ProxyRouting,
+-    ) -> TransportClient {
+-        self.build_with_custom_ca_fallback_using(proxy_routing, build_reqwest_client_with_custom_ca)
+-    }
+-
+-    fn build_with_custom_ca_fallback_using(
+-        mut self,
+-        proxy_routing: ProxyRouting,
+-        build_with_custom_ca: impl FnOnce(
+-            reqwest::ClientBuilder,
+-        )
+-            -> Result<reqwest::Client, BuildCustomCaTransportError>,
+-    ) -> TransportClient {
+-        let request_logging = self.request_logging;
+-        let default_headers = self.default_headers.take().unwrap_or_default();
+-        let inner = match build_with_custom_ca(self.clone().reqwest_builder(proxy_routing)) {
+-            Ok(inner) => inner,
+-            Err(error) => {
+-                tracing::event!(
+-                    target: "codex_otel.log_only",
+-                    tracing::Level::WARN,
+-                    event.name = "codex.http_client.custom_ca_fallback",
+-                    "HTTP client fell back to system root certificates"
+-                );
+-                tracing::warn!(error = %error, "failed to build HTTP client with custom CA");
+-                self.reqwest_builder(proxy_routing)
+-                    .build()
+-                    .unwrap_or_else(|fallback_error| {
+-                        tracing::warn!(
+-                            error = %fallback_error,
+-                            "failed to build fallback HTTP client"
+-                        );
+-                        reqwest::Client::new()
+-                    })
+-            }
+-        };
+-        TransportClient::new(inner, request_logging, default_headers)
+-    }
+-
+     fn into_reqwest_parts(mut self) -> (reqwest::ClientBuilder, RequestLogging, HeaderMap) {
+         let request_logging = self.request_logging;
+         let default_headers = self.default_headers.take().unwrap_or_default();
+diff --git a/codex-rs/http-client/src/client_builder_tests.rs b/codex-rs/http-client/src/client_builder_tests.rs
+index 8001ee2..9906156 100644
+--- a/codex-rs/http-client/src/client_builder_tests.rs
++++ b/codex-rs/http-client/src/client_builder_tests.rs
+@@ -1,58 +1,61 @@
+ use super::*;
+ use http::HeaderValue;
+-use std::io::Read;
+-use std::io::Write;
+-use std::path::PathBuf;
+ 
+-#[tokio::test]
+-async fn custom_ca_fallback_preserves_builder_configuration() {
+-    let listener =
+-        std::net::TcpListener::bind(("127.0.0.1", 0)).expect("HTTP listener should bind");
+-    let address = listener
+-        .local_addr()
+-        .expect("HTTP listener should have an address");
+-    let server = std::thread::spawn(move || {
+-        let (mut stream, _) = listener.accept().expect("HTTP listener should accept");
+-        let mut request = Vec::new();
+-        let mut chunk = [0_u8; 1024];
+-        while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+-            let bytes_read = stream.read(&mut chunk).expect("HTTP request should read");
+-            assert!(bytes_read > 0, "HTTP request should include headers");
+-            request.extend_from_slice(&chunk[..bytes_read]);
+-        }
+-        stream
+-            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+-            .expect("HTTP listener should write response");
+-        String::from_utf8(request).expect("HTTP request should be UTF-8")
+-    });
+-    let mut headers = HeaderMap::new();
+-    headers.insert("x-builder-test", HeaderValue::from_static("preserved"));
+-    let client = HttpClientBuilder::new()
+-        .default_headers(headers)
+-        .build_with_custom_ca_fallback_using(ProxyRouting::Direct, |_| {
+-            Err(BuildCustomCaTransportError::InvalidCaFile {
+-                source_env: "TEST_CA_ENV",
+-                path: PathBuf::from("invalid-test-ca.pem"),
+-                detail: "synthetic invalid CA".to_string(),
+-            })
+-        });
++#[test]
++fn invalid_custom_ca_errors_preserve_the_configured_source_and_path() {
++    const CHILD_ENV: &str = "CODEX_CLIENT_BUILDER_INVALID_CA_TEST_CHILD";
++    const CA_SOURCE_ENV: &str = "CODEX_CLIENT_BUILDER_INVALID_CA_TEST_SOURCE";
++    const CA_PATH_ENV: &str = "CODEX_CLIENT_BUILDER_INVALID_CA_TEST_PATH";
++
++    if std::env::var_os(CHILD_ENV).is_none() {
++        let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
++        let invalid_ca_path = temp_dir.path().join("invalid-ca.pem");
++        std::fs::write(&invalid_ca_path, "not a PEM certificate")
++            .expect("invalid CA fixture should be written");
+ 
+-    let client = HttpClient {
+-        backend: HttpClientBackend::Direct(client),
+-    };
++        for ca_env in ["CODEX_CA_CERTIFICATE", "SSL_CERT_FILE"] {
++            let output = std::process::Command::new(
++                std::env::current_exe().expect("test executable should be available"),
++            )
++            .arg("--exact")
++            .arg(
++                concat!(
++                    module_path!(),
++                    "::invalid_custom_ca_errors_preserve_the_configured_source_and_path"
++                )
++                .trim_start_matches("codex_http_client::"),
++            )
++            .arg("--nocapture")
++            .env_remove("CODEX_CA_CERTIFICATE")
++            .env_remove("SSL_CERT_FILE")
++            .env(ca_env, &invalid_ca_path)
++            .env(CA_SOURCE_ENV, ca_env)
++            .env(CA_PATH_ENV, &invalid_ca_path)
++            .env(CHILD_ENV, "1")
++            .output()
++            .expect("isolated CA subprocess should run");
++
++            assert!(
++                output.status.success(),
++                "strict client construction did not preserve invalid {ca_env}\nstdout:\n{}\nstderr:\n{}",
++                String::from_utf8_lossy(&output.stdout),
++                String::from_utf8_lossy(&output.stderr),
++            );
++        }
++        return;
++    }
+ 
+-    let response = client
+-        .get(format!("http://{address}/fallback"))
+-        .send()
+-        .await
+-        .expect("fallback client should send request");
+-    assert!(response.status().is_success());
+-    let request = server.join().expect("HTTP listener should finish");
++    let source = std::env::var(CA_SOURCE_ENV).expect("CA source should be set");
++    let path = std::env::var(CA_PATH_ENV).expect("CA path should be set");
++    let error = HttpClientBuilder::new()
++        .build_direct()
++        .expect_err("invalid configured CA must reject strict client construction");
++    let message = error.to_string();
+     assert!(
+-        request
+-            .lines()
+-            .any(|line| line.eq_ignore_ascii_case("x-builder-test: preserved"))
++        message.contains(&source),
++        "error omitted CA source: {message}"
+     );
++    assert!(message.contains(&path), "error omitted CA path: {message}");
+ }
+ 
+ /// A server cannot keep a connection reusable after the caller requests closure.
+diff --git a/codex-rs/http-client/src/route_aware_client_pool.rs b/codex-rs/http-client/src/route_aware_client_pool.rs
+index 122a982..42c4551 100644
+--- a/codex-rs/http-client/src/route_aware_client_pool.rs
++++ b/codex-rs/http-client/src/route_aware_client_pool.rs
+@@ -25,19 +25,10 @@ use crate::RequestBuilder;
+ use crate::RouteFailureClass;
+ use crate::client::HttpClientBackend;
+ use crate::client::TransportClient;
+-use crate::client_builder::ProxyRouting;
+ use crate::tls_backend_fallback::RustlsClientCache;
+ 
+ const MAX_CACHED_ROUTES: usize = 16;
+ 
+-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+-enum CustomCaFallback {
+-    LegacyDirect,
+-    #[default]
+-    Disabled,
+-    LegacyTransportDefault,
+-}
+-
+ #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+ enum SelectedTlsBackend {
+     TransportDefault,
+@@ -55,7 +46,7 @@ pub struct RouteAwareClientPool {
+     route_class: ClientRouteClass,
+     pub(crate) client_builder: HttpClientBuilder,
+     default_headers: HeaderMap,
+-    custom_ca_fallback: CustomCaFallback,
++    route_override: Option<OutboundProxyRoute>,
+     clients: Arc<Mutex<HashMap<OutboundProxyRoute, TransportClient>>>,
+     client_build: Arc<tokio::sync::Mutex<()>>,
+     rustls_clients: Option<RustlsClientCache>,
+@@ -288,7 +279,7 @@ impl RouteAwareClientPool {
+             route_class,
+             client_builder,
+             default_headers,
+-            custom_ca_fallback: CustomCaFallback::Disabled,
++            route_override: None,
+             clients: Arc::new(Mutex::new(HashMap::new())),
+             client_build: Arc::default(),
+             rustls_clients: None,
+@@ -348,18 +339,12 @@ impl RouteAwareClientPool {
+         )
+     }
+ 
+-    /// Preserves the legacy custom-CA fallback for transport-default proxy routes.
++    /// Uses strict direct routing for every request and redirect sent through this pool.
+     ///
+-    /// Use this only when migrating a client that already continued with system roots after a
+-    /// custom-CA construction failure. System-proxy routes still propagate construction errors.
+-    pub fn with_legacy_custom_ca_fallback(mut self) -> Self {
+-        self.custom_ca_fallback = CustomCaFallback::LegacyTransportDefault;
+-        self
+-    }
+-
+-    /// Preserves the legacy sandbox client's direct routing and custom-CA fallback.
+-    pub fn with_legacy_direct_proxy_and_custom_ca_fallback(mut self) -> Self {
+-        self.custom_ca_fallback = CustomCaFallback::LegacyDirect;
++    /// Construction errors, including invalid custom CA configuration, are returned by the
++    /// request before any network activity.
++    pub fn with_direct_routing(mut self) -> Self {
++        self.route_override = Some(OutboundProxyRoute::Direct);
+         self
+     }
+ 
+@@ -478,8 +463,8 @@ impl RouteAwareClientPool {
+         F: FnOnce(String) -> Fut,
+         Fut: Future<Output = io::Result<OutboundProxyRoute>>,
+     {
+-        let route = if self.custom_ca_fallback == CustomCaFallback::LegacyDirect {
+-            OutboundProxyRoute::Direct
++        let route = if let Some(route) = self.route_override.as_ref() {
++            route.clone()
+         } else {
+             resolve_route(request_url.to_string())
+                 .await
+@@ -519,30 +504,11 @@ impl RouteAwareClientPool {
+         let client = tokio::task::spawn_blocking(move || {
+             // A timed-out caller must not release the slot or discard a successful build.
+             let _build_permit = build_permit;
+-            let client = match (
+-                pool.http_client_factory.outbound_proxy_policy(),
+-                pool.custom_ca_fallback,
+-            ) {
+-                (_, CustomCaFallback::LegacyDirect) => {
+-                    Ok(client_builder.build_with_custom_ca_fallback(ProxyRouting::Direct))
+-                }
+-                (OutboundProxyPolicy::ReqwestDefault, CustomCaFallback::LegacyTransportDefault) => {
+-                    Ok(
+-                        client_builder
+-                            .build_with_custom_ca_fallback(ProxyRouting::TransportDefault),
+-                    )
+-                }
+-                (OutboundProxyPolicy::ReqwestDefault, CustomCaFallback::Disabled)
+-                | (OutboundProxyPolicy::RespectSystemProxy, CustomCaFallback::Disabled)
+-                | (
+-                    OutboundProxyPolicy::RespectSystemProxy,
+-                    CustomCaFallback::LegacyTransportDefault,
+-                ) => client_builder.build_for_resolved_route(
+-                    &pool.http_client_factory,
+-                    pool.route_class,
+-                    &build_route,
+-                ),
+-            }?;
++            let client = client_builder.build_for_resolved_route(
++                &pool.http_client_factory,
++                pool.route_class,
++                &build_route,
++            )?;
+             let mut clients = pool.clients.lock().unwrap_or_else(|error| {
+                 panic!("route-aware client cache lock should not be poisoned: {error}")
+             });
+diff --git a/codex-rs/http-client/src/route_aware_client_pool_tests.rs b/codex-rs/http-client/src/route_aware_client_pool_tests.rs
+index 5d6512a..dc67e50 100644
+--- a/codex-rs/http-client/src/route_aware_client_pool_tests.rs
++++ b/codex-rs/http-client/src/route_aware_client_pool_tests.rs
+@@ -367,8 +367,10 @@ async fn streams_request_bodies_without_exposing_reqwest_body() {
+ }
+ 
+ #[tokio::test]
+-async fn legacy_custom_ca_fallback_is_limited_to_reqwest_default() {
++async fn pooled_client_construction_rejects_invalid_custom_ca_without_sending() {
+     const CHILD_POLICY_ENV: &str = "CODEX_HTTP_CLIENT_POOL_INVALID_CA_TEST_POLICY";
++    const CHILD_ROUTE_ENV: &str = "CODEX_HTTP_CLIENT_POOL_INVALID_CA_TEST_ROUTE";
++    const CHILD_CA_SOURCE_ENV: &str = "CODEX_HTTP_CLIENT_POOL_INVALID_CA_TEST_SOURCE";
+ 
+     let Ok(policy_name) = std::env::var(CHILD_POLICY_ENV) else {
+         let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+@@ -377,23 +379,29 @@ async fn legacy_custom_ca_fallback_is_limited_to_reqwest_default() {
+             .expect("invalid CA fixture should be written");
+ 
+         for ca_env in ["CODEX_CA_CERTIFICATE", "SSL_CERT_FILE"] {
+-            for policy_name in ["reqwest-default", "respect-system-proxy"] {
++            for (policy_name, route_name) in [
++                ("reqwest-default", "resolved"),
++                ("respect-system-proxy", "resolved"),
++                ("reqwest-default", "direct"),
++            ] {
+                 let output = std::process::Command::new(
+                     std::env::current_exe().expect("test executable should be available"),
+                 )
+                 .arg("--exact")
+-                .arg("route_aware_client_pool::tests::legacy_custom_ca_fallback_is_limited_to_reqwest_default")
++                .arg("route_aware_client_pool::tests::pooled_client_construction_rejects_invalid_custom_ca_without_sending")
+                 .arg("--nocapture")
+                 .env_remove("CODEX_CA_CERTIFICATE")
+                 .env_remove("SSL_CERT_FILE")
+                 .env(ca_env, &invalid_ca_path)
+                 .env(CHILD_POLICY_ENV, policy_name)
++                .env(CHILD_ROUTE_ENV, route_name)
++                .env(CHILD_CA_SOURCE_ENV, ca_env)
+                 .output()
+                 .expect("isolated CA subprocess should run");
+ 
+                 assert!(
+                     output.status.success(),
+-                    "{policy_name} failed with invalid {ca_env}\nstdout:\n{}\nstderr:\n{}",
++                    "{policy_name}/{route_name} did not reject invalid {ca_env}\nstdout:\n{}\nstderr:\n{}",
+                     String::from_utf8_lossy(&output.stdout),
+                     String::from_utf8_lossy(&output.stderr),
+                 );
+@@ -402,43 +410,47 @@ async fn legacy_custom_ca_fallback_is_limited_to_reqwest_default() {
+         return;
+     };
+ 
+-    let outbound_proxy_policy = match policy_name.as_str() {
++    let policy = match policy_name.as_str() {
+         "reqwest-default" => OutboundProxyPolicy::ReqwestDefault,
+         "respect-system-proxy" => OutboundProxyPolicy::RespectSystemProxy,
+         _ => panic!("unexpected test proxy policy: {policy_name}"),
+     };
+-    let pool = RouteAwareClientPool::with_chatgpt_cloudflare_cookies(
+-        HttpClientFactory::new(outbound_proxy_policy),
+-        ClientRouteClass::Other,
+-    )
+-    .with_legacy_custom_ca_fallback();
+-
+-    match outbound_proxy_policy {
+-        OutboundProxyPolicy::ReqwestDefault => {
+-            let (address, server) = spawn_response_server(vec![
+-                "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string(),
+-            ]);
+-            let response = pool
+-                .get(format!("http://{address}/update"))
+-                .send()
+-                .await
+-                .expect("default-routed request should fall back to system roots");
+-
+-            assert_eq!(response.status(), StatusCode::OK);
+-            let requests = server.join().expect("response server should finish");
+-            assert_eq!(requests.len(), 1);
+-        }
+-        OutboundProxyPolicy::RespectSystemProxy => {
+-            let error = pool
+-                .client_for_url_with_resolver("http://127.0.0.1/update", |_| async {
+-                    Ok(OutboundProxyRoute::Direct)
+-                })
+-                .await
+-                .expect_err("system-proxy routes should reject invalid custom CAs");
+-
+-            assert!(matches!(error, RouteAwareClientPoolError::Build(_)));
+-        }
++    let mut pool =
++        RouteAwareClientPool::new(HttpClientFactory::new(policy), ClientRouteClass::Other);
++    if std::env::var(CHILD_ROUTE_ENV).as_deref() == Ok("direct") {
++        pool = pool.with_direct_routing();
+     }
++    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("request listener should bind");
++    let address = listener
++        .local_addr()
++        .expect("request listener should have an address");
++    listener
++        .set_nonblocking(true)
++        .expect("request listener should become nonblocking");
++    let ca_source = std::env::var(CHILD_CA_SOURCE_ENV).expect("CA source should be set");
++    for _ in 0..2 {
++        let error = pool
++            .get(format!("http://{address}"))
++            .send()
++            .await
++            .expect_err("invalid custom CA must fail before sending");
++        assert!(matches!(
++            &error,
++            RouteAwareRequestError::Route(RouteAwareClientPoolError::Build(_))
++        ));
++        let message = error.to_string();
++        assert!(
++            message.contains(&ca_source),
++            "error omitted {ca_source}: {message}"
++        );
++    }
++    assert!(
++        matches!(
++            listener.accept(),
++            Err(error) if error.kind() == io::ErrorKind::WouldBlock
++        ),
++        "invalid custom CA must fail before opening a connection"
++    );
+ }
+ 
+ #[tokio::test]
+diff --git a/codex-rs/login/src/auth/default_client.rs b/codex-rs/login/src/auth/default_client.rs
+index f231880..54b446e 100644
+--- a/codex-rs/login/src/auth/default_client.rs
++++ b/codex-rs/login/src/auth/default_client.rs
+@@ -237,20 +237,16 @@ pub fn create_client_with_chatgpt_cookies(http_client_factory: &HttpClientFactor
+         builder,
+     );
+     if is_sandboxed() {
+-        pool = pool.with_legacy_direct_proxy_and_custom_ca_fallback();
+-    } else if matches!(
+-        http_client_factory.outbound_proxy_policy(),
+-        OutboundProxyPolicy::ReqwestDefault
+-    ) {
+-        pool = pool.with_legacy_custom_ca_fallback();
++        pool = pool.with_direct_routing();
+     }
+     pool.into_client()
+ }
+ 
+ /// Create the default HTTP client without request URL or response-header diagnostics.
+ ///
+-/// This preserves the default client's legacy custom-CA fallback and transport proxy behavior while
+-/// avoiding diagnostics that could expose credentials embedded in request URLs or headers.
++/// This preserves the default client's transport proxy behavior while avoiding diagnostics that
++/// could expose credentials embedded in request URLs or headers. Construction errors surface on
++/// the first request.
+ pub fn create_client_without_request_logging() -> HttpClient {
+     build_default_client(default_http_client_builder().without_request_logging())
+ }
+@@ -288,12 +284,7 @@ fn create_client_for_route_with_builder(
+             builder,
+         );
+         if is_sandboxed() {
+-            pool = pool.with_legacy_direct_proxy_and_custom_ca_fallback();
+-        } else if matches!(
+-            http_client_factory.outbound_proxy_policy(),
+-            OutboundProxyPolicy::ReqwestDefault
+-        ) {
+-            pool = pool.with_legacy_custom_ca_fallback();
++            pool = pool.with_direct_routing();
+         }
+         return Ok(pool.into_client());
+     }
+@@ -301,12 +292,18 @@ fn create_client_for_route_with_builder(
+         http_client_factory.outbound_proxy_policy(),
+         OutboundProxyPolicy::ReqwestDefault
+     ) {
+-        return Ok(build_default_client(builder));
++        return builder.build_respecting_outbound_proxy_policy(
++            http_client_factory,
++            request_url,
++            route_class,
++        );
+     }
+     if is_sandboxed() {
+         // Preserve the sandbox's existing no-proxy policy; sandboxed command egress is routed
+         // separately through network-proxy.
+-        return Ok(build_default_client(builder));
++        return builder
++            .build_direct()
++            .map_err(BuildRouteAwareHttpClientError::from);
+     }
+ 
+     builder.build_respecting_outbound_proxy_policy(http_client_factory, request_url, route_class)
+@@ -402,7 +399,18 @@ pub async fn create_transport_for_routes_async(
+             && !http_client_factory.protects_sensitive_headers()
+             && (transport_default_proxy || sandboxed)
+         {
+-            return ReqwestTransport::from_http_client(create_client());
++            let builder = default_http_client_builder();
++            let client = if sandboxed {
++                builder.build_direct().map_err(std::io::Error::from)?
++            } else {
++                #[allow(deprecated)]
++                {
++                    builder
++                        .build_with_transport_default_proxy()
++                        .map_err(std::io::Error::from)?
++                }
++            };
++            return Ok(ReqwestTransport::from_http_client(client));
+         }
+ 
+         let mut pool = RouteAwareClientPool::with_builder(
+@@ -411,14 +419,12 @@ pub async fn create_transport_for_routes_async(
+             default_http_client_builder(),
+         );
+         if sandboxed {
+-            pool = pool.with_legacy_direct_proxy_and_custom_ca_fallback();
+-        } else if transport_default_proxy {
+-            pool = pool.with_legacy_custom_ca_fallback();
++            pool = pool.with_direct_routing();
+         }
+-        ReqwestTransport::from_route_aware_client_pool(pool)
++        Ok(ReqwestTransport::from_route_aware_client_pool(pool))
+     })
+     .await
+-    .map_err(std::io::Error::other)
++    .map_err(std::io::Error::other)?
+ }
+ 
+ fn default_http_client_builder() -> HttpClientBuilder {
+@@ -427,15 +433,18 @@ fn default_http_client_builder() -> HttpClientBuilder {
+         .with_chatgpt_cloudflare_cookie_store()
+ }
+ 
+-// These legacy constructors intentionally preserve the infallible behavior of `create_client`.
+-// New endpoint-aware call sites use `create_client_for_route` and propagate construction errors.
+-#[allow(deprecated)]
++// These legacy constructors retain their infallible signatures while returning strict lazy clients.
++// Construction errors surface on the first request, before it reaches the network.
+ fn build_default_client(builder: HttpClientBuilder) -> HttpClient {
++    let mut pool = RouteAwareClientPool::with_builder(
++        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
++        ClientRouteClass::Other,
++        builder,
++    );
+     if is_sandboxed() {
+-        builder.build_direct_with_custom_ca_fallback()
+-    } else {
+-        builder.build_with_transport_default_proxy_and_custom_ca_fallback()
++        pool = pool.with_direct_routing();
+     }
++    pool.into_client()
+ }
+ 
+ /// Builds an HTTP client for an auth endpoint without Codex default headers.
+diff --git a/codex-rs/login/src/auth/default_client_tests.rs b/codex-rs/login/src/auth/default_client_tests.rs
+index 6433526..5ae266d 100644
+--- a/codex-rs/login/src/auth/default_client_tests.rs
++++ b/codex-rs/login/src/auth/default_client_tests.rs
+@@ -128,6 +128,122 @@ fn is_first_party_chat_originator_matches_known_values() {
+     assert_eq!(is_first_party_chat_originator("codex_vscode"), false);
+ }
+ 
++#[tokio::test]
++async fn default_client_constructors_reject_invalid_custom_ca_before_sending() {
++    const CHILD_ENV: &str = "CODEX_DEFAULT_CLIENT_INVALID_CA_TEST_CHILD";
++    const CLIENT_KIND_ENV: &str = "CODEX_DEFAULT_CLIENT_INVALID_CA_TEST_KIND";
++    const CA_SOURCE_ENV: &str = "CODEX_DEFAULT_CLIENT_INVALID_CA_TEST_SOURCE";
++
++    if std::env::var_os(CHILD_ENV).is_none() {
++        let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
++        let invalid_ca_path = temp_dir.path().join("invalid-ca.pem");
++        std::fs::write(&invalid_ca_path, "not a PEM certificate")
++            .expect("invalid CA fixture should be written");
++
++        for ca_env in ["CODEX_CA_CERTIFICATE", "SSL_CERT_FILE"] {
++            for client_kind in ["default", "no-logging", "cookies", "endpoint", "transport"] {
++                let output = std::process::Command::new(
++                    std::env::current_exe().expect("test executable should be available"),
++                )
++                .arg("--exact")
++                .arg(
++                    concat!(
++                        module_path!(),
++                        "::default_client_constructors_reject_invalid_custom_ca_before_sending"
++                    )
++                    .trim_start_matches("codex_login::"),
++                )
++                .arg("--nocapture")
++                .env_remove("CODEX_CA_CERTIFICATE")
++                .env_remove("SSL_CERT_FILE")
++                .env(ca_env, &invalid_ca_path)
++                .env(CHILD_ENV, "1")
++                .env(CLIENT_KIND_ENV, client_kind)
++                .env(CA_SOURCE_ENV, ca_env)
++                .output()
++                .expect("isolated CA subprocess should run");
++
++                assert!(
++                    output.status.success(),
++                    "{client_kind} client failed with invalid {ca_env}\nstdout:\n{}\nstderr:\n{}",
++                    String::from_utf8_lossy(&output.stdout),
++                    String::from_utf8_lossy(&output.stderr),
++                );
++            }
++        }
++        return;
++    }
++
++    // This local server represents the outbound endpoint and records whether client construction
++    // failure still allows a request to be sent.
++    let server = wiremock::MockServer::start().await;
++    wiremock::Mock::given(wiremock::matchers::method("GET"))
++        .respond_with(wiremock::ResponseTemplate::new(200))
++        .expect(0)
++        .mount(&server)
++        .await;
++    let client_kind = std::env::var(CLIENT_KIND_ENV).expect("client kind should be supplied");
++    let url = server.uri();
++    let error = match client_kind.as_str() {
++        "default" => create_client()
++            .get(url.clone())
++            .send()
++            .await
++            .expect_err("invalid configured CA should reject client construction")
++            .to_string(),
++        "no-logging" => create_client_without_request_logging()
++            .get(url.clone())
++            .send()
++            .await
++            .expect_err("invalid configured CA should reject client construction")
++            .to_string(),
++        "cookies" => create_client_with_chatgpt_cookies(&HttpClientFactory::new(
++            OutboundProxyPolicy::ReqwestDefault,
++        ))
++        .get(url.clone())
++        .send()
++        .await
++        .expect_err("invalid configured CA should reject client construction")
++        .to_string(),
++        "endpoint" => match create_client_for_route(
++            &HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
++            &url,
++            ClientRouteClass::Api,
++            ClientRedirectPolicy::Default,
++        ) {
++            Err(error) => error.to_string(),
++            Ok(_) => panic!("invalid configured CA should reject endpoint client construction"),
++        },
++        "transport" => match create_transport_for_routes_async(
++            HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
++            ClientRouteClass::Api,
++        )
++        .await
++        {
++            Err(error) => error.to_string(),
++            Ok(_) => panic!("invalid configured CA should reject transport construction"),
++        },
++        _ => panic!("unexpected client kind: {client_kind}"),
++    };
++    let ca_source = std::env::var(CA_SOURCE_ENV).expect("CA source should be supplied");
++    assert!(
++        error.contains(&ca_source),
++        "error omitted {ca_source}: {error}"
++    );
++    assert!(
++        error.contains("invalid-ca.pem"),
++        "error omitted CA path: {error}"
++    );
++    assert!(
++        server
++            .received_requests()
++            .await
++            .expect("mock server should report received requests")
++            .is_empty(),
++        "client sent a request after custom CA construction failed"
++    );
++}
++
+ #[test]
+ fn add_originator_header_inserts_non_default_originator() {
+     let default_originator = originator();
+diff --git a/codex-rs/ollama/src/client.rs b/codex-rs/ollama/src/client.rs
+index 9c45a6e..66374f7 100644
+--- a/codex-rs/ollama/src/client.rs
++++ b/codex-rs/ollama/src/client.rs
+@@ -83,8 +83,7 @@ impl OllamaClient {
+             http_client_factory,
+             ClientRouteClass::Other,
+             OLLAMA_CONNECTION_TIMEOUT,
+-        )
+-        .with_legacy_custom_ca_fallback();
++        );
+         let client = Self {
+             client,
+             host_root,
+@@ -504,12 +503,12 @@ mod tests {
+     }
+ 
+     #[tokio::test]
+-    async fn test_try_from_provider_handles_invalid_custom_ca_by_proxy_policy() {
++    async fn test_try_from_provider_rejects_invalid_custom_ca_for_all_proxy_policies() {
+         const CHILD_POLICY_ENV: &str = "CODEX_OLLAMA_INVALID_CA_TEST_POLICY";
+ 
+         if std::env::var(codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR).is_ok() {
+             tracing::info!(
+-                "{} set; skipping test_try_from_provider_handles_invalid_custom_ca_by_proxy_policy",
++                "{} set; skipping test_try_from_provider_rejects_invalid_custom_ca_for_all_proxy_policies",
+                 codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR
+             );
+             return;
+@@ -529,7 +528,7 @@ mod tests {
+                         std::env::current_exe().expect("test executable should be available"),
+                     )
+                     .arg("--exact")
+-                    .arg("client::tests::test_try_from_provider_handles_invalid_custom_ca_by_proxy_policy")
++                    .arg("client::tests::test_try_from_provider_rejects_invalid_custom_ca_for_all_proxy_policies")
+                     .arg("--nocapture")
+                     .env_remove("CODEX_CA_CERTIFICATE")
+                     .env_remove("SSL_CERT_FILE")
+@@ -570,41 +569,26 @@ mod tests {
+         )
+         .await;
+ 
+-        match outbound_proxy_policy {
+-            OutboundProxyPolicy::ReqwestDefault => {
+-                result.expect("default-routed Ollama should fall back to system roots");
+-                assert_eq!(
+-                    server
+-                        .received_requests()
+-                        .await
+-                        .expect("mock server should report requests")
+-                        .len(),
+-                    1
+-                );
+-            }
+-            OutboundProxyPolicy::RespectSystemProxy => {
+-                let error = result
+-                    .err()
+-                    .expect("system-proxy Ollama should reject invalid custom CAs");
+-                let ca_env = if std::env::var_os("CODEX_CA_CERTIFICATE").is_some() {
+-                    "CODEX_CA_CERTIFICATE"
+-                } else {
+-                    "SSL_CERT_FILE"
+-                };
+-                assert!(
+-                    error.to_string().contains(ca_env),
+-                    "expected actionable {ca_env} error, got: {error}"
+-                );
+-                assert_ne!(error.to_string(), OLLAMA_CONNECTION_ERROR);
+-                assert!(
+-                    server
+-                        .received_requests()
+-                        .await
+-                        .expect("mock server should report requests")
+-                        .is_empty()
+-                );
+-            }
+-        }
++        let error = result
++            .err()
++            .expect("invalid custom CA must reject Ollama client construction");
++        let ca_env = if std::env::var_os("CODEX_CA_CERTIFICATE").is_some() {
++            "CODEX_CA_CERTIFICATE"
++        } else {
++            "SSL_CERT_FILE"
++        };
++        assert!(
++            error.to_string().contains(ca_env),
++            "expected actionable {ca_env} error, got: {error}"
++        );
++        assert_ne!(error.to_string(), OLLAMA_CONNECTION_ERROR);
++        assert!(
++            server
++                .received_requests()
++                .await
++                .expect("mock server should report requests")
++                .is_empty()
++        );
+     }
+ 
+     #[tokio::test]
+diff --git a/codex-rs/tui/src/oss_selection.rs b/codex-rs/tui/src/oss_selection.rs
+index 8589c73..e1191ef 100644
+--- a/codex-rs/tui/src/oss_selection.rs
++++ b/codex-rs/tui/src/oss_selection.rs
+@@ -285,19 +285,20 @@ pub(crate) enum OssProviderDetection {
+ }
+ 
+ /// Probe local providers without suspending the interactive startup composer.
+-pub(crate) async fn detect_oss_provider() -> OssProviderDetection {
++pub(crate) async fn detect_oss_provider() -> io::Result<OssProviderDetection> {
+     // These probes intentionally bypass proxy discovery because both targets are
+-    // hardcoded plaintext loopback endpoints. Preserve the legacy custom-CA fallback so an
+-    // invalid inherited certificate bundle cannot prevent best-effort provider detection.
+-    #[allow(deprecated)]
+-    let client = HttpClientBuilder::new().build_direct_with_custom_ca_fallback();
++    // hardcoded plaintext loopback endpoints. Invalid inherited trust configuration is a setup
++    // error and must be surfaced before either provider is probed.
++    let client = HttpClientBuilder::new()
++        .build_direct()
++        .map_err(io::Error::other)?;
+ 
+     // Check provider statuses first
+     let lmstudio_status = check_lmstudio_status(&client).await;
+     let ollama_status = check_ollama_status(&client).await;
+ 
+     // Autoselect if only one is running
+-    match (&lmstudio_status, &ollama_status) {
++    Ok(match (&lmstudio_status, &ollama_status) {
+         (ProviderStatus::Running, ProviderStatus::NotRunning) => {
+             let provider = LMSTUDIO_OSS_PROVIDER_ID.to_string();
+             OssProviderDetection::AutoSelected(OssProviderSelection {
+@@ -316,7 +317,7 @@ pub(crate) async fn detect_oss_provider() -> OssProviderDetection {
+             lmstudio_status,
+             ollama_status,
+         },
+-    }
++    })
+ }
+ 
+ /// Run the actionable provider picker after provider discovery requires a user decision.
+@@ -407,7 +408,7 @@ mod tests {
+     }
+ 
+     #[tokio::test]
+-    async fn localhost_probe_succeeds_with_invalid_inherited_ca_bundle() {
++    async fn provider_detection_rejects_invalid_inherited_ca_bundle() {
+         const CHILD_ENV: &str = "CODEX_OSS_SELECTION_INVALID_CA_TEST_CHILD";
+ 
+         if std::env::var_os(CHILD_ENV).is_none() {
+@@ -421,7 +422,7 @@ mod tests {
+                     std::env::current_exe().expect("test executable should be available"),
+                 )
+                 .arg("--exact")
+-                .arg("oss_selection::tests::localhost_probe_succeeds_with_invalid_inherited_ca_bundle")
++                .arg("oss_selection::tests::provider_detection_rejects_invalid_inherited_ca_bundle")
+                 .arg("--nocapture")
+                 .env_remove("CODEX_CA_CERTIFICATE")
+                 .env_remove("SSL_CERT_FILE")
+@@ -432,7 +433,7 @@ mod tests {
+ 
+                 assert!(
+                     output.status.success(),
+-                    "localhost probe failed with invalid {ca_env}\nstdout:\n{}\nstderr:\n{}",
++                    "provider detection did not reject invalid {ca_env}\nstdout:\n{}\nstderr:\n{}",
+                     String::from_utf8_lossy(&output.stdout),
+                     String::from_utf8_lossy(&output.stderr),
+                 );
+@@ -440,20 +441,11 @@ mod tests {
+             return;
+         }
+ 
+-        let server = wiremock::MockServer::start().await;
+-        wiremock::Mock::given(wiremock::matchers::method("GET"))
+-            .respond_with(wiremock::ResponseTemplate::new(200))
+-            .expect(1)
+-            .mount(&server)
+-            .await;
+-
+-        #[allow(deprecated)]
+-        let client = HttpClientBuilder::new().build_direct_with_custom_ca_fallback();
+-        assert!(
+-            check_port_status(&client, server.address().port())
+-                .await
+-                .expect("localhost provider probe should complete")
+-        );
++        let error = match detect_oss_provider().await {
++            Err(error) => error,
++            Ok(_) => panic!("invalid inherited CA must fail before provider probes"),
++        };
++        assert!(error.to_string().contains("invalid-ca.pem"));
+     }
+ }
+ 
+diff --git a/codex-rs/tui/src/startup_orchestration.rs b/codex-rs/tui/src/startup_orchestration.rs
+index 43331cd..61982df 100644
+--- a/codex-rs/tui/src/startup_orchestration.rs
++++ b/codex-rs/tui/src/startup_orchestration.rs
+@@ -439,7 +439,7 @@ pub(super) async fn run_main_inner(
+         } else {
+             let selection = match startup_draft
+                 .run_until(oss_selection::detect_oss_provider())
+-                .await?
++                .await??
+             {
+                 oss_selection::OssProviderDetection::AutoSelected(selection) => selection,
+                 oss_selection::OssProviderDetection::NeedsSelection {
+diff --git a/codex-rs/tui/src/updates.rs b/codex-rs/tui/src/updates.rs
+index 9bbdf31..9ee04e7 100644
+--- a/codex-rs/tui/src/updates.rs
++++ b/codex-rs/tui/src/updates.rs
+@@ -79,8 +79,7 @@ async fn check_for_update(
+     let client_pool = RouteAwareClientPool::with_chatgpt_cloudflare_cookies(
+         http_client_factory,
+         ClientRouteClass::Other,
+-    )
+-    .with_legacy_custom_ca_fallback();
++    );
+     let latest_version = match action {
+         Some(UpdateAction::Daemon(_)) => return Ok(()),
+         Some(UpdateAction::BrewUpgrade) => {
+-- 
+2.43.0
+

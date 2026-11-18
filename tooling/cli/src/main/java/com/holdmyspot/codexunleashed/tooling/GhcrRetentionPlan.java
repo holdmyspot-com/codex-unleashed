@@ -78,7 +78,8 @@ public final class GhcrRetentionPlan
 	 * @throws NullPointerException if an argument is null
 	 * @throws IOException if input cannot be read or does not satisfy the inventory contract
 	 */
-	public static int run(ToolingScope scope, String[] arguments, InputStream in, PrintStream out, PrintStream err) throws IOException
+	public static int run(ToolingScope scope, String[] arguments, InputStream in, PrintStream out, PrintStream err)
+		throws IOException
 	{
 		Objects.requireNonNull(scope, "scope may not be null");
 		Objects.requireNonNull(arguments, "arguments");
@@ -217,7 +218,8 @@ public final class GhcrRetentionPlan
 	 *
 	 * @param document complete inventory
 	 * @param stableTag shared immutable stable-release selector
-	 * @return up to three distinct stable tags in descending numeric version order, followed by additional protected references in inventory order
+	 * @return up to three distinct stable tags in descending numeric version order, followed by additional protected
+	 *  references in inventory order
 	 * @throws IOException if fields are malformed or no stable published release exists
 	 */
 	private static List<String> selectRetainedReferences(JsonNode document, Pattern stableTag) throws IOException
@@ -320,7 +322,11 @@ public final class GhcrRetentionPlan
 			{
 				if (tag.startsWith("cargo-release-"))
 					continue;
-				String line = tag.endsWith("-partial") ? tag.substring(0, tag.length() - "-partial".length()) : tag;
+				String line;
+				if (tag.endsWith("-partial"))
+					line = tag.substring(0, tag.length() - "-partial".length());
+				else
+					line = tag;
 				if (line.startsWith("cargo-seed-"))
 					return line;
 				cacheTags.add(line);

@@ -17,10 +17,13 @@ import tools.jackson.databind.node.ObjectNode;
 final class VerifyCargoLock
 {
     /** Prevents construction. */
-    private VerifyCargoLock() {}
+    private VerifyCargoLock()
+    {
+    }
 
     /**
      * Compares parsed TOML with scalar types intact and emits the sorted workspace update receipt.
+     *
      * @param scope borrowed shared JSON values
      * @param arguments original lockfile, current lockfile and actual Cargo metadata JSON paths
      * @param out borrowed receipt output
@@ -29,7 +32,11 @@ final class VerifyCargoLock
      */
     static int run(ToolingScope scope, String[] arguments, PrintStream out, PrintStream err)
     {
-        if (arguments.length != 3) { err.println("Expected original lockfile, current lockfile and workspace metadata paths"); return 2; }
+        if (arguments.length != 3)
+        {
+            err.println("Expected original lockfile, current lockfile and workspace metadata paths");
+            return 2;
+        }
         try
         {
             JsonNode expected = parse(scope, Path.of(arguments[0]));
@@ -43,7 +50,8 @@ final class VerifyCargoLock
                 if (members.contains(text(packageValue.get("id"))))
                     versions.put(text(packageValue.get("name")), text(packageValue.get("version")));
             }
-            if (versions.size() != members.size()) throw new IOException("Cargo metadata must identify each workspace package once");
+            if (versions.size() != members.size())
+                throw new IOException("Cargo metadata must identify each workspace package once");
             Map<String, String> replacements = new HashMap<>();
             Map<String, Object> updates = new TreeMap<>();
             for (JsonNode packageValue : array(expected, "package"))
@@ -51,7 +59,8 @@ final class VerifyCargoLock
                 String name = text(packageValue.get("name"));
                 if (!packageValue.has("source") && versions.containsKey(name))
                 {
-                    String previous = text(packageValue.get("version")); String desired = versions.get(name);
+                    String previous = text(packageValue.get("version"));
+                    String desired = versions.get(name);
                     if (!previous.equals(desired))
                     {
                         replacements.put(name + " " + previous, name + " " + desired);
@@ -68,20 +77,28 @@ final class VerifyCargoLock
                     for (int i = 0; i < dependencies.size(); ++i)
                     {
                         String before = text(dependencies.get(i));
-                        if (replacements.containsKey(before)) dependencies.set(i, scope.getJsonMapper().valueToTree(replacements.get(before)));
+                        if (replacements.containsKey(before))
+                            dependencies.set(i, scope.getJsonMapper().valueToTree(replacements.get(before)));
                     }
                 }
             }
-            if (!expected.equals(observed)) throw new IOException("Cargo.lock changed beyond workspace package versions; refusing cache snapshot");
+            if (!expected.equals(observed))
+                throw new IOException("Cargo.lock changed beyond workspace package versions; refusing cache snapshot");
             // The receipt is part of the cached evidence; write LF on every platform.
-            out.print(CargoCacheParts.json(scope, Map.of("result", "verified", "workspace_version_updates", updates), true, true) + "\n");
+            out.print(CargoCacheParts.json(scope,
+                Map.of("result", "verified", "workspace_version_updates", updates), true, true) + "\n");
             return 0;
         }
-        catch (IOException | RuntimeException failure) { err.println("Cargo.lock verification failed: " + failure.getMessage()); return 1; }
+        catch (IOException | RuntimeException failure)
+        {
+            err.println("Cargo.lock verification failed: " + failure.getMessage());
+            return 1;
+        }
     }
 
     /**
      * Parses actual TOML before applying cache acceptance semantics, preserving numeric and temporal types.
+     *
      * @param scope borrowed TOML parser
      * @param source immutable input document
      * @return parsed JSON-compatible value tree
@@ -90,8 +107,14 @@ final class VerifyCargoLock
     private static JsonNode parse(ToolingScope scope, Path source) throws IOException
     {
         JsonNode parsed;
-        try { parsed = scope.getTomlMapper().readTree(Files.readString(source)); }
-        catch (JacksonException failure) { throw new IOException("Invalid TOML: " + failure.getOriginalMessage(), failure); }
+        try
+        {
+            parsed = scope.getTomlMapper().readTree(Files.readString(source));
+        }
+        catch (JacksonException failure)
+        {
+            throw new IOException("Invalid TOML: " + failure.getOriginalMessage(), failure);
+        }
         validate(parsed);
         return parsed;
     }
@@ -99,6 +122,7 @@ final class VerifyCargoLock
     /**
      * Refuses temporal and nonfinite values that the original JSON comparison refused, and zero floats because the
      * TOML parser reports {@code -0.0} and {@code 0.0} identically, so their distinction cannot be verified.
+     *
      * @param value parsed TOML value
      * @throws IOException if a value cannot participate in the original comparison
      */
@@ -109,14 +133,17 @@ final class VerifyCargoLock
             for (JsonNode child : value.values()) validate(child);
             return;
         }
-        if (value.isFloatingPointNumber() && !Double.isFinite(value.doubleValue())) throw new IOException("Nonfinite lockfile number");
-        if (value.isFloatingPointNumber() && value.decimalValue().signum() == 0) throw new IOException("Unverifiable signed zero lockfile number");
+        if (value.isFloatingPointNumber() && !Double.isFinite(value.doubleValue()))
+            throw new IOException("Nonfinite lockfile number");
+        if (value.isFloatingPointNumber() && value.decimalValue().signum() == 0)
+            throw new IOException("Unverifiable signed zero lockfile number");
         if (value.isString() || value.isBoolean() || value.isIntegralNumber() || value.isFloatingPointNumber()) return;
         throw new IOException("Unsupported JSON comparison value: " + value);
     }
 
     /**
      * Reads a required array without scalar coercion.
+     *
      * @param parent containing parsed object
      * @param field required member
      * @return the exact parsed array
@@ -124,12 +151,14 @@ final class VerifyCargoLock
      */
     private static ArrayNode array(JsonNode parent, String field) throws IOException
     {
-        if (parent == null || !(parent.get(field) instanceof ArrayNode value)) throw new IOException("Required array: " + field);
+        if (parent == null || !(parent.get(field) instanceof ArrayNode value))
+            throw new IOException("Required array: " + field);
         return value;
     }
 
     /**
      * Reads a required textual identity without coercion.
+     *
      * @param value parsed member
      * @return its exact textual value
      * @throws IOException if missing or not textual

@@ -1,8 +1,8 @@
 # Deterministic release tar archives
 
-- Applies to: upstream `openai/codex` commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a` after the 68 patches selected before this patch.
-- Prerequisites: all 68 earlier patches in `patches/README.md`.
-- Patch: `deterministic-archives.patch` (queue entry 69).
+- Applies to: upstream `openai/codex` commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a` after the 69 patches selected before this patch.
+- Prerequisites: all 69 earlier patches in `patches/README.md`.
+- Patch: `deterministic-archives.patch` (queue entry 70).
 
 ## Intent
 
@@ -18,8 +18,8 @@ The focused tests compare gzip and zstd SHA-256 for separately staged equivalent
 
 ## Shared package operations
 
-- Applies after upstream commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`, the 68 earlier selected patches, and queue 69 (`deterministic-archives.patch`).
-- Patch: `shared-package-builder.patch` (queue entry 70).
+- Applies after upstream commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`, the 69 earlier selected patches, and queue 70 (`deterministic-archives.patch`).
+- Patch: `shared-package-builder.patch` (queue entry 71).
 
 The Cargo package action and package assembly action use `.github/scripts/codex-package-operations.sh` for binary selection, profile setup, Cargo builds, symbol/PDB preparation, and both package variants. The standalone caller can invoke the same operations and receives the same fixed binary list, ordered Cargo arguments, platform branches, and package arguments. Rust setup, platform tool setup, Bazel builds, Python/uv setup, and smoke tests remain in their existing action steps.
 
@@ -42,7 +42,7 @@ git diff --check
 
 ## Archive command
 
-`archive-command.patch` is queue entry 71 and requires entries 1–70. It exposes the existing package archive writer to release tooling through a module command. Archive creation uses the same gzip and zstd compression arguments and normalized tar bytes as direct calls to `write_archive`.
+`archive-command.patch` is queue entry 72 and requires entries 1–71. It exposes the existing package archive writer to release tooling through a module command. Archive creation uses the same gzip and zstd compression arguments and normalized tar bytes as direct calls to `write_archive`.
 
 From the patched upstream checkout, write a package archive:
 
@@ -67,3 +67,67 @@ The portable module tests compare direct and command-created gzip/zstd bytes, ve
 ```sh
 CODEX_REPO_ROOT="$PWD" python3 scripts/codex_package/test_archive.py ArchiveModuleCommandTest
 ```
+
+## Code-mode symbol validation
+
+`code-mode-symbol-validation.patch` is queue entry 88 and requires entries 1–87 on upstream commit
+`086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
+
+Before stripping `codex-code-mode-host` on Linux or macOS, the symbols archive command requires exactly one defined,
+exact demangled `codex_code_mode_host::main` symbol. A failed symbol-tool invocation stops packaging with its failure
+status. On macOS, the dSYM must also contain exactly one regular, nonempty DWARF file. Rejected symbols or DWARF
+members stop packaging before stripping. The Windows PDB path and packaging of other binaries retain their existing
+behavior.
+
+After applying the queue, run the focused shell-boundary fixtures and static checks from the patched upstream root:
+
+```sh
+python3 .github/scripts/test-code-mode-symbol-validation.py
+bash -n .github/scripts/archive-release-symbols-and-strip-binaries.sh
+shellcheck .github/scripts/archive-release-symbols-and-strip-binaries.sh
+git diff --check
+```
+
+The eight fixture tests cover tool invocation, validation decisions, failure propagation, and validation before
+stripping. Native Linux and macOS release checks must separately validate real symbol-tool output and the resulting
+symbol archives.
+
+## Dev Drive volume classification
+
+`dev-drive-volume-predicate.patch` is queue entry 97 and requires entries 1–96.
+The setup command classifies non-ReFS volumes as ordinary volumes. For ReFS, it opens the filesystem root
+and queries the Dev Volume flag through the Windows API; query failures stop setup. Trust status is separate
+from volume classification. The compiled helper must resolve to exactly one expected type.
+
+The command is safe to run again in one job. When `CI_BUILD_ROOT` names a bare drive letter whose volume passes
+the Dev Drive test, or when the owned `codex-dev-drive.vhdx` is already attached and one of its partitions passes it,
+the command exports that same build root and removes or recreates nothing. An attached owned VHD without a Dev Drive
+volume stops setup, because Windows refuses to remove an attached VHD file. A `CI_BUILD_ROOT` value that is not a bare
+drive letter, names no present volume or names a volume that is not a Dev Drive is not reused.
+
+The 29 controlled cases cover classification, query failures, helper type selection, the BFS boundary and reuse of a
+provisioned Dev Drive.
+The native Windows check additionally exercised real volume creation, BFS allowlisting and remounting,
+the exact attached BFS instance, and publication of one build-root entry while preserving the existing D: volume.
+
+## MSVC environment reuse
+
+`msvc-environment-reuse.patch` is queue entry 104 and requires entries 1–103.
+The Windows package job configures the Visual Studio developer environment in `prepare-bazel-ci`, in the MSVC setup
+step, and again when the Cargo package build repeats its setup. Every `VsDevCmd.bat` run prepends the same tool
+directories, about 2,100 characters, to `PATH`, and the next run passes that `PATH` to `cmd.exe`, which rejects a line
+longer than 8,191 characters. The third run failed with "The input line is too long" and never exported
+`VCToolsInstallDir`.
+
+The setup script now skips `VsDevCmd.bat` when `VCToolsInstallDir` is set and its `bin\Host<host>\<target>` directory
+is already on `PATH`. The comparison ignores case, slash style and trailing separators. It still derives the linker,
+builds the ARM64 wrapper when needed, and writes the linker variables, but it exports nothing else. A different host or
+target, an unset `VCToolsInstallDir` or a missing directory runs `VsDevCmd.bat` as before.
+
+The eight controlled cases in `.github/scripts/test-setup-msvc-env.ps1` model the 8,191-character limit with a fake
+`VsDevCmd.bat` and run under PowerShell on Linux or macOS. They cover a first run, reuse, case and separator variants,
+three runs in one job, another target, another host, an unset tools directory and a missing directory.
+
+## Workspace lockfile versions
+
+Earlier queues carried `workspace_package_versions.patch`, which changed 171 `version = "0.0.0"` lines in `codex-rs/Cargo.lock` to `0.167.0`. It fixed one release version and broke the test and lint workflows, which rewrite `workspace.package.version` to `0.0.0` before applying the queue. The patch is retired, and the release workflow performs the same edit after the last patch with `codex-tooling align-workspace-lock --source-root ROOT`, taking the version from `codex-rs/Cargo.toml`, and commits it with fixed author, message and dates so that the recorded source commit and tree are reproducible. It makes no commit when the lockfile already matches. For 0.167.0 the resulting lockfile is byte-identical to the one the retired patch produced. See [package identity](../../../../docs/package-identity.md).

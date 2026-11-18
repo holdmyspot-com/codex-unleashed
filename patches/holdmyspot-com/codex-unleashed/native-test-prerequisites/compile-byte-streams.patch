@@ -1,0 +1,39 @@
+From cf896648ede752dd665635839687edc83b9aad9b Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 15 Nov 2026 17:03:27 -0500
+Subject: [PATCH] test: construct byte streams to compile Unix signal coverage
+
+The raw execution result carries byte streams. Construct empty byte streams explicitly so the Unix signal compatibility test compiles while preserving its signal assertions.
+---
+ codex-rs/core/src/exec_tests.rs | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/codex-rs/core/src/exec_tests.rs b/codex-rs/core/src/exec_tests.rs
+index 5d1ebf0..afe2700 100644
+--- a/codex-rs/core/src/exec_tests.rs
++++ b/codex-rs/core/src/exec_tests.rs
+@@ -288,9 +288,18 @@ fn windows_capture_unix_signal_compatibility() {
+ 
+     let raw_output = RawExecToolCallOutput {
+         exit_status: std::process::ExitStatus::from_raw(9),
+-        stdout: StreamOutput::default(),
+-        stderr: StreamOutput::default(),
+-        aggregated_output: StreamOutput::default(),
++        stdout: StreamOutput {
++            text: Vec::new(),
++            truncated_after_lines: None,
++        },
++        stderr: StreamOutput {
++            text: Vec::new(),
++            truncated_after_lines: None,
++        },
++        aggregated_output: StreamOutput {
++            text: Vec::new(),
++            truncated_after_lines: None,
++        },
+         timed_out: false,
+         capture_failure: None,
+     };
+-- 
+2.43.0
+

@@ -1,0 +1,4 @@
+6322     1   501 T     6100      0   ??  -      git fetch origin
+6327  6322   501 S     6100      0   ??  -      git fetch origin
+  90     1     0 S       90      0   ??  -      /usr/sbin/syslogd
+  91     1  1000 S       91      0   ??  -      /opt/runtime/bin/java -jar application.jar
