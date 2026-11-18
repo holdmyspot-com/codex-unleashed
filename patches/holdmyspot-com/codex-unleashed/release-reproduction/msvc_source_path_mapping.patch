@@ -5,11 +5,14 @@ Native C and C++ actions expose their absolute Bazel execution root.
 Map that root to a relative path for target and host actions while keeping
 MSVC-only flags out of Cargo build-script environments.
 
+V8's native Windows build compiles with LLVM's clang-cl, which does not accept
+/pathmap, so its sources stay unmapped.
+
 diff --git a/.github/scripts/run-bazel-ci.sh b/.github/scripts/run-bazel-ci.sh
-index 07fa1ff..c250433 100755
+index 07fa1ff..c8cd10e 100755
 --- a/.github/scripts/run-bazel-ci.sh
 +++ b/.github/scripts/run-bazel-ci.sh
-@@ -279,6 +279,45 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; the
+@@ -279,6 +279,49 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; the
      # explicit `--platforms=...` flag.
      post_config_bazel_args+=("--host_platform=//:local_windows_msvc")
    fi
@@ -48,25 +51,30 @@ index 07fa1ff..c250433 100755
 +  execution_root="${execution_root//\\//}"
 +  execution_root="${execution_root//,/\\,}"
 +  msvc_pathmap_options="/experimental:deterministic,/pathmap:${execution_root}=."
++  # V8's native Windows build compiles with LLVM's clang-cl (third_party/v8/artifact_profile.bzl), which reads cl.exe's
++  # /pathmap as an input file name and fails every compile. A per-file filter cannot select a compiler, so exclude the
++  # sources of that build: V8's dependency, engine and libc++ repositories and the //third_party/v8 package.
++  msvc_pathmap_filter='.*,-.*\+dependencies\+v8_.*,-.*\+engine_repository\+v8.*,-.*\+git_repository\+rusty_v8_.*,-.*third_party/v8.*'
 +  post_config_bazel_args+=(
-+    "--per_file_copt=.*@${msvc_pathmap_options}"
-+    "--host_per_file_copt=.*@${msvc_pathmap_options}"
++    "--per_file_copt=${msvc_pathmap_filter}@${msvc_pathmap_options}"
++    "--host_per_file_copt=${msvc_pathmap_filter}@${msvc_pathmap_options}"
 +  )
  fi
  
  if [[ $remote_download_toplevel -eq 1 ]]; then
 diff --git a/.github/scripts/test_bazel_msvc_pathmap.py b/.github/scripts/test_bazel_msvc_pathmap.py
 new file mode 100644
-index 0000000..0e34952
+index 0000000..3f6af24
 --- /dev/null
 +++ b/.github/scripts/test_bazel_msvc_pathmap.py
-@@ -0,0 +1,409 @@
+@@ -0,0 +1,457 @@
 +#!/usr/bin/env python3
 +
 +"""End-to-end contract tests for local Windows MSVC source-path mapping."""
 +
 +import json
 +import os
++import re
 +import subprocess
 +import tempfile
 +import unittest
@@ -75,6 +83,12 @@ index 0000000..0e34952
 +
 +REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 +WRAPPER = REPOSITORY_ROOT / ".github/scripts/run-bazel-ci.sh"
++# Bazel's per-file filter: include every source, then exclude the sources of V8's native Windows build, which
++# LLVM's clang-cl compiles and which rejects cl.exe's /pathmap.
++PATHMAP_FILTER = (
++    r".*,-.*\+dependencies\+v8_.*,-.*\+engine_repository\+v8.*,"
++    r"-.*\+git_repository\+rusty_v8_.*,-.*third_party/v8.*"
++)
 +FAKE_BAZEL_SOURCE = r"""#!/usr/bin/env python3
 +import json
 +import os
@@ -275,11 +289,15 @@ index 0000000..0e34952
 +        ]
 +        self.assertEqual(
 +            target_options,
-+            [f"--per_file_copt=.*@/experimental:deterministic,{expected_mapping}"],
++            [
++                f"--per_file_copt={PATHMAP_FILTER}@/experimental:deterministic,{expected_mapping}"
++            ],
 +        )
 +        self.assertEqual(
 +            host_options,
-+            [f"--host_per_file_copt=.*@/experimental:deterministic,{expected_mapping}"],
++            [
++                f"--host_per_file_copt={PATHMAP_FILTER}@/experimental:deterministic,{expected_mapping}"
++            ],
 +        )
 +        self.assertGreater(
 +            build_args.index(target_options[0]),
@@ -358,7 +376,7 @@ index 0000000..0e34952
 +        self.assertNotIn("--host_platform=//:local_windows_msvc", args)
 +        self.assertEqual(
 +            args.count(
-+                "--per_file_copt=.*@/experimental:deterministic,/pathmap:D:/custom/root=."
++                f"--per_file_copt={PATHMAP_FILTER}@/experimental:deterministic,/pathmap:D:/custom/root=."
 +            ),
 +            1,
 +        )
@@ -418,6 +436,43 @@ index 0000000..0e34952
 +                    self.assertIn("--host_platform=//:rbe", args)
 +                    self.assertIn("--shell_executable=/bin/bash", args)
 +
++    def test_filter_keeps_clang_cl_sources_of_the_v8_build_unmapped(self) -> None:
++        def selected(source: str) -> bool:
++            patterns = PATHMAP_FILTER.split(",")
++            included = any(
++                re.fullmatch(pattern, source)
++                for pattern in patterns
++                if not pattern.startswith("-")
++            )
++            excluded = any(
++                re.fullmatch(pattern[1:], source)
++                for pattern in patterns
++                if pattern.startswith("-")
++            )
++            return included and not excluded
++
++        # The filter must exclude a source whether Bazel matches its label or its execution path.
++        for source in (
++            "external/+dependencies+v8_icu/source/i18n/alphaindex.cpp",
++            "@@+dependencies+v8_icu//:source/i18n/alphaindex.cpp",
++            "external/+dependencies+v8_abseil/absl/strings/str_cat.cc",
++            "external/+engine_repository+v8/src/base/platform/platform-win32.cc",
++            "@@+engine_repository+v8//:src/base/platform/platform-win32.cc",
++            "external/+git_repository+rusty_v8_libcxx/src/algorithm.cpp",
++            "bazel-out/x64_windows-opt-exec-ST-1/bin/third_party/v8/binding_152_2_0.cc",
++            "//third_party/v8:binding_152_2_0.cc",
++        ):
++            with self.subTest(source=source, selected=False):
++                self.assertFalse(selected(source))
++        for source in (
++            "external/+aws_lc+aws-lc/crypto/fipsmodule/bcm.c",
++            "@@+aws_lc+aws-lc//:crypto/fipsmodule/bcm.c",
++            "codex-rs/windows-sandbox-rs/src/native.c",
++            "third_party/voice/probe.c",
++        ):
++            with self.subTest(source=source, selected=True):
++                self.assertTrue(selected(source))
++
 +    def test_invalid_execution_roots_fail_before_build_or_test(self) -> None:
 +        invalid_roots = (
 +            "",
@@ -454,13 +509,13 @@ index 0000000..0e34952
 +        build_args = self.by_command(records, "build")[0]["argv"]
 +        self.assertEqual(
 +            build_args.count(
-+                "--per_file_copt=.*@/experimental:deterministic,/pathmap:D:/fixture/execroot=."
++                f"--per_file_copt={PATHMAP_FILTER}@/experimental:deterministic,/pathmap:D:/fixture/execroot=."
 +            ),
 +            1,
 +        )
 +        self.assertEqual(
 +            build_args.count(
-+                "--host_per_file_copt=.*@/experimental:deterministic,/pathmap:D:/fixture/execroot=."
++                f"--host_per_file_copt={PATHMAP_FILTER}@/experimental:deterministic,/pathmap:D:/fixture/execroot=."
 +            ),
 +            1,
 +        )

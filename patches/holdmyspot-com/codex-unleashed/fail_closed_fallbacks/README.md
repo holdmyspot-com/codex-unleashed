@@ -1,6 +1,6 @@
 # Explicit failures and unknown model metadata
 
-These patches apply after queue entry 72 on upstream `rust-v0.167.0`
+These patches apply after queue entry 75 on upstream `rust-v0.167.0`
 (`086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`). Apply them in the order listed
 in the [patch queue](../../../README.md).
 
@@ -40,7 +40,7 @@ missing or malformed findings as an error, and forwards delegate errors without
 adding a duplicate error. It passed the native CLI builds, 14 focused review
 cases, two focused execution cases, three additional focused cases, formatting,
 and `cargo clippy -p codex-core -p codex-exec --all-targets`. That Clippy gate
-did not use `-D warnings`. It applies cleanly after entries 72–74; combined
+did not use `-D warnings`. It applies cleanly after entries 75–77; combined
 runtime and release acceptance remain pending.
 
 The separate `masking_startup.patch` rejects unsupported explicitly enabled
@@ -54,5 +54,5 @@ candidate passed the eleven status cases, formatting, and
 `cargo clippy -p codex-tui --all-targets` without `-D warnings`.
 
 Both patches passed mailbox parsing with their source diffs preserved exactly.
-They occupy queue entries 76 and 77, respectively. Cumulative patch application,
+They occupy queue entries 79 and 80, respectively. Cumulative patch application,
 combined runtime checks, and release acceptance remain pending.

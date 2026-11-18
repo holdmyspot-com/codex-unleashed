@@ -6,16 +6,16 @@ Subject: [PATCH] ci: keep voice cquery output machine-readable
 The voice runtime parser requires one executable path on stdout, but the shared runner merged BuildBuddy and Bazel diagnostics into that stream. Add an opt-in query mode that preserves the existing console log and failure reports while keeping ordinary runner callers unchanged.
 ---
  .github/scripts/codex-voice-runtime.sh        |  3 +
- .github/scripts/run-bazel-ci.sh               | 79 +++++++++++++---
+ .github/scripts/run-bazel-ci.sh               | 79 ++++++++++++---
  .github/scripts/test-codex-voice-runtime.sh   | 13 ++-
- .../scripts/test_run_bazel_with_buildbuddy.py | 93 +++++++++++++++++++
- 4 files changed, 173 insertions(+), 15 deletions(-)
+ .../scripts/test_run_bazel_with_buildbuddy.py | 97 +++++++++++++++++++
+ 4 files changed, 177 insertions(+), 15 deletions(-)
 
 diff --git a/.github/scripts/codex-voice-runtime.sh b/.github/scripts/codex-voice-runtime.sh
-index e534dde..9ac5b43 100755
+index 4b0cc38..7151dad 100755
 --- a/.github/scripts/codex-voice-runtime.sh
 +++ b/.github/scripts/codex-voice-runtime.sh
-@@ -259,7 +259,10 @@ query_native_executable() {
+@@ -289,7 +289,10 @@ query_native_executable() {
    local -a bazel_args=()
  
    configure_bazel_arguments cquery "$runner_os" "$windows_tools_root" "$system_root" "$windows_architecture"
@@ -27,7 +27,7 @@ index e534dde..9ac5b43 100755
      "--starlark:expr=providers(target)['DefaultInfo'].files_to_run.executable.path"
      --
 diff --git a/.github/scripts/run-bazel-ci.sh b/.github/scripts/run-bazel-ci.sh
-index c250433..e7c979b 100755
+index c8cd10e..53047bc 100755
 --- a/.github/scripts/run-bazel-ci.sh
 +++ b/.github/scripts/run-bazel-ci.sh
 @@ -7,6 +7,10 @@ print_failed_bazel_action_summary=0
@@ -61,7 +61,7 @@ index c250433..e7c979b 100755
    exit 1
  fi
  
-@@ -417,16 +425,26 @@ if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
+@@ -421,16 +429,26 @@ if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
  fi
  
  bazel_console_log="$(mktemp)"
@@ -91,7 +91,7 @@ index c250433..e7c979b 100755
    if [[ "${bazel_args[0]}" == "test" ]]; then
      bazel_run_args+=("--test_env=INSTA_UPDATE=no")
    fi
-@@ -434,26 +452,61 @@ fi
+@@ -438,26 +456,61 @@ fi
  if (( ${#post_config_bazel_args[@]} > 0 )); then
    bazel_run_args+=("${post_config_bazel_args[@]}")
  fi
@@ -163,10 +163,10 @@ index c250433..e7c979b 100755
    exit "$bazel_status"
  fi
 diff --git a/.github/scripts/test-codex-voice-runtime.sh b/.github/scripts/test-codex-voice-runtime.sh
-index 62b36f1..28cb0b3 100755
+index 1c6ac2e..ce2d4b5 100755
 --- a/.github/scripts/test-codex-voice-runtime.sh
 +++ b/.github/scripts/test-codex-voice-runtime.sh
-@@ -200,6 +200,9 @@ if ((separator < 0)); then
+@@ -221,6 +221,9 @@ if ((separator < 0)); then
  fi
  inner=("${args[@]:separator+1}")
  command="${inner[0]:-}"
@@ -176,7 +176,7 @@ index 62b36f1..28cb0b3 100755
  if [[ "$command" == build ]]; then
    suffix=
    packaged=0
-@@ -340,6 +343,7 @@ run_producer() {
+@@ -362,6 +365,7 @@ run_producer() {
    FAKE_HELPER_COMMIT="$commit" \
    FAKE_BUILD_ARGUMENTS="$TEST_ROOT/build-arguments.txt" \
    FAKE_QUERY_ARGUMENTS="$TEST_ROOT/query-arguments.txt" \
@@ -184,7 +184,7 @@ index 62b36f1..28cb0b3 100755
    FAKE_QUERY_ABSOLUTE="${FAKE_QUERY_ABSOLUTE:-0}" \
    FAKE_GIT_CHANGE_MARKER="$TEST_ROOT/git-changed" \
    FAKE_WINDOWS_PACKAGES_OK="${FAKE_WINDOWS_PACKAGES_OK:-1}" \
-@@ -390,7 +394,7 @@ check_target_mapping() {
+@@ -412,7 +416,7 @@ check_target_mapping() {
    fi
    make_fixture "$name"
    root="$FIXTURE_ROOT"
@@ -193,7 +193,7 @@ index 62b36f1..28cb0b3 100755
    if [[ "$runner_os" == Windows ]]; then
      mkdir -p "$root/windows-tools/evidence" "$root/windows-tools/pkgconf-image" "$root/windows-tools/cygwin"
      printf '{"target": "%s", "pkgconf_version": "3.0.6"}\n' "$target" > "$root/windows-tools/evidence/tools.json"
-@@ -475,8 +479,13 @@ check_target_mapping() {
+@@ -497,8 +501,13 @@ check_target_mapping() {
    assert_build_argument --print-failed-action-summary
    assert_query_argument --remote-download-toplevel
    assert_query_argument --print-failed-action-summary
@@ -207,7 +207,7 @@ index 62b36f1..28cb0b3 100755
    assert_query_argument --output=starlark
    assert_query_argument "--starlark:expr=providers(target)['DefaultInfo'].files_to_run.executable.path"
    assert_query_argument //codex-rs/voice-host:voice-host-packaged_runtime-test
-@@ -498,7 +507,7 @@ check_failed_case() {
+@@ -520,7 +529,7 @@ check_failed_case() {
  
    make_fixture "$name"
    root="$FIXTURE_ROOT"
@@ -217,13 +217,17 @@ index 62b36f1..28cb0b3 100755
      fail "$name unexpectedly succeeded"
    fi
 diff --git a/.github/scripts/test_run_bazel_with_buildbuddy.py b/.github/scripts/test_run_bazel_with_buildbuddy.py
-index 522c3a4..0738068 100644
+index 522c3a4..beb0838 100644
 --- a/.github/scripts/test_run_bazel_with_buildbuddy.py
 +++ b/.github/scripts/test_run_bazel_with_buildbuddy.py
-@@ -285,6 +285,99 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
+@@ -285,6 +285,103 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
  
          self.assertEqual(result.returncode, 37, result.stderr)
  
++    @unittest.skipIf(
++        os.name != "posix",
++        "the fake Bazel script and the runner script need a POSIX host",
++    )
 +    def test_query_stdout_keeps_one_path_separate_from_diagnostics(self) -> None:
 +        runner = Path(run_bazel_with_buildbuddy.__file__).with_name("run-bazel-ci.sh")
 +        expected_path = "bazel-bin/codex-rs/voice-host/voice runtime test"

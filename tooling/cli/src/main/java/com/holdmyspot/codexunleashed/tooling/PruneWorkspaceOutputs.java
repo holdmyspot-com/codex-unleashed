@@ -33,8 +33,10 @@ public final class PruneWorkspaceOutputs
 	private static final Pattern HASHED_ENTRY = Pattern.compile("^(?:lib)?(?<owner>.+?)-[0-9a-f]{16}(?:\\..*)?$");
 	/** Profile directories that always contain outputs owned by the current workspace. */
 	private static final List<String> PROFILE_OUTPUT_DIRECTORIES = List.of("examples", "incremental");
-	/** Profile subdirectories that contain hash-named Cargo artifacts. */
+	/** Profile subdirectories that contain hash-named Cargo artifacts in the flat layout used before Cargo 1.100. */
 	private static final List<String> HASHED_OUTPUT_DIRECTORIES = List.of("deps", ".fingerprint", "build");
+	/** Matches the complete lowercase 16-digit hash that names a per-unit directory in the Cargo 1.100 layout. */
+	private static final Pattern UNIT_HASH = Pattern.compile("^[0-9a-f]{16}$");
 	/** Usage shown when the named options are invalid. */
 	private static final String USAGE = "Usage: prune-workspace-outputs --workspace-manifest-dir DIR " +
 		"--target-copy COPY --live-target LIVE";
@@ -320,15 +322,67 @@ public final class PruneWorkspaceOutputs
 		{
 			@Override
 			public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
+				throws IOException
 			{
-				if (Files.isDirectory(directory.resolve("deps"), LinkOption.NOFOLLOW_LINKS) &&
-					Files.isDirectory(directory.resolve(".fingerprint"), LinkOption.NOFOLLOW_LINKS))
+				if (isProfile(directory))
 					profiles.add(directory);
 				return FileVisitResult.CONTINUE;
 			}
 		});
 		profiles.sort(Comparator.comparing(Path::toString));
 		return List.copyOf(profiles);
+	}
+
+	/**
+	 * Determines whether a directory is a Cargo profile directory in either supported layout.
+	 * <p>
+	 * Cargo before 1.100 keeps {@code deps} and {@code .fingerprint} directly in the profile. Cargo 1.100 removes both
+	 * and keeps each unit's files in {@code build/<package>/<hash>/}.
+	 *
+	 * @param directory candidate directory
+	 * @return true if the directory has either layout
+	 * @throws IOException if the directory cannot be read
+	 */
+	private static boolean isProfile(Path directory) throws IOException
+	{
+		if (Files.isDirectory(directory.resolve("deps"), LinkOption.NOFOLLOW_LINKS) &&
+			Files.isDirectory(directory.resolve(".fingerprint"), LinkOption.NOFOLLOW_LINKS))
+			return true;
+		Path build = directory.resolve("build");
+		if (!Files.isDirectory(build, LinkOption.NOFOLLOW_LINKS))
+			return false;
+		try (Stream<Path> packages = Files.list(build))
+		{
+			for (Path packageDirectory : packages.toList())
+			{
+				if (hasUnitDirectory(packageDirectory))
+					return true;
+			}
+			return false;
+		}
+	}
+
+	/**
+	 * Determines whether a package directory under {@code build} contains a Cargo 1.100 per-unit directory.
+	 *
+	 * @param packageDirectory candidate package directory
+	 * @return true if it contains a hash-named directory holding a {@code fingerprint} directory
+	 * @throws IOException if the directory cannot be read
+	 */
+	private static boolean hasUnitDirectory(Path packageDirectory) throws IOException
+	{
+		if (!Files.isDirectory(packageDirectory, LinkOption.NOFOLLOW_LINKS))
+			return false;
+		try (Stream<Path> units = Files.list(packageDirectory))
+		{
+			for (Path unit : units.toList())
+			{
+				if (UNIT_HASH.matcher(unit.getFileName().toString()).matches() &&
+					Files.isDirectory(unit.resolve("fingerprint"), LinkOption.NOFOLLOW_LINKS))
+					return true;
+			}
+			return false;
+		}
 	}
 
 	/**
@@ -360,6 +414,7 @@ public final class PruneWorkspaceOutputs
 				}
 			}
 		}
+		removed += pruneUnitDirectories(profile.resolve("build"), names);
 		for (String subdirectory : PROFILE_OUTPUT_DIRECTORIES)
 		{
 			Path entry = profile.resolve(subdirectory);
@@ -376,6 +431,35 @@ public final class PruneWorkspaceOutputs
 				if (!entry.getFileName().toString().startsWith(".") && Files.isRegularFile(entry))
 				{
 					Files.delete(entry);
+					removed += 1;
+				}
+			}
+		}
+		return removed;
+	}
+
+	/**
+	 * Removes each workspace package's directory from the Cargo 1.100 {@code build/<package>/<hash>/} layout, which
+	 * holds that package's fingerprints, compiled outputs and build-script runs.
+	 *
+	 * @param build profile {@code build} directory, which may be absent
+	 * @param names workspace artifact owners
+	 * @return number of removed package directories
+	 * @throws IOException if a selected entry cannot be removed
+	 */
+	private static int pruneUnitDirectories(Path build, Set<String> names) throws IOException
+	{
+		if (!Files.isDirectory(build, LinkOption.NOFOLLOW_LINKS))
+			return 0;
+		int removed = 0;
+		try (Stream<Path> entries = Files.list(build))
+		{
+			for (Path entry : entries.toList())
+			{
+				String name = entry.getFileName().toString();
+				if (owner(name) == null && names.contains(normalize(name)) && hasUnitDirectory(entry))
+				{
+					deleteEntry(entry);
 					removed += 1;
 				}
 			}

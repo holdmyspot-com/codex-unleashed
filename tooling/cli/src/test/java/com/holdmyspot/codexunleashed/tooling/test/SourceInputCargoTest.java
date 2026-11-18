@@ -23,14 +23,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Stream;
 import org.apache.commons.io.file.PathUtils;
 import org.apache.commons.io.file.StandardDeleteOption;
 import org.apache.commons.io.function.IORunnable;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 
-import static com.holdmyspot.codexunleashed.tooling.test.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
@@ -108,15 +106,16 @@ public final class SourceInputCargoTest
 			String validExecutable = Files.readString(executableSource);
 			Files.writeString(executableSource, "compile_error!(\"controlled executable failure\");\nfn main() {}\n");
 			fixture.prepare();
-			requireException(IOException.class, fixture::build);
-			Path dependencies = fixture.base.resolve("target").resolve(fixture.target).resolve("release/deps");
-			try (Stream<Path> outputs = Files.list(dependencies))
-			{
-				requireThat(outputs.anyMatch(path -> path.getFileName().toString().startsWith("libcache_demo-") &&
-					path.toString().endsWith(".rlib")), "actual").
-					withContext("library compilation must finish before the controlled failure", "diagnostic").
-					isTrue();
-			}
+			SystemCommands.Result failure = fixture.capture(fixture.buildArguments());
+			requireThat(failure.status(), "failure.status()").
+				withContext(failure.stdout() + failure.stderr(), "diagnostic").isNotEqualTo(0);
+			// Cargo names the files it wrote, so the check does not depend on the target directory's layout, which
+			// differs between Cargo releases.
+			requireThat(fixture.libraryFiles(failure.stdout()).stream().
+				anyMatch(path -> path.toString().endsWith(".rlib") && Files.isRegularFile(path)), "actual").
+				withContext("library compilation must finish before the controlled failure: " + failure.stdout(),
+					"diagnostic").
+				isTrue();
 			requireThat(Files.exists(fixture.snapshot()), "Files.exists(fixture.snapshot())").isFalse();
 
 			Files.writeString(executableSource, validExecutable);
@@ -724,6 +723,36 @@ public final class SourceInputCargoTest
 		 */
 		private boolean artifactFresh(String output, String name, String kind) throws IOException
 		{
+			return selectArtifact(output, name, kind).path("fresh").booleanValue();
+		}
+
+		/**
+		 * Lists the files that Cargo reports for the {@code cache_demo} library artifact, including the output of a
+		 * failed build.
+		 *
+		 * @param output actual Cargo output
+		 * @return the reported absolute paths
+		 * @throws IOException if the library artifact is absent or repeated
+		 */
+		private List<Path> libraryFiles(String output) throws IOException
+		{
+			List<Path> files = new ArrayList<>();
+			for (JsonNode file : selectArtifact(output, "cache_demo", "lib").path("filenames"))
+				files.add(Path.of(file.asString()));
+			return files;
+		}
+
+		/**
+		 * Selects exactly one artifact by target name and its first target-kind entry.
+		 *
+		 * @param output actual Cargo output
+		 * @param name   the target name
+		 * @param kind   the target kind
+		 * @return the artifact message
+		 * @throws IOException if its artifact is absent or repeated
+		 */
+		private JsonNode selectArtifact(String output, String name, String kind) throws IOException
+		{
 			List<JsonNode> artifacts = new ArrayList<>();
 			for (String line : output.lines().toList())
 			{
@@ -735,7 +764,7 @@ public final class SourceInputCargoTest
 			}
 			if (artifacts.size() != 1)
 				throw new IOException("Cargo did not report exactly one " + name + " library artifact: " + output);
-			return artifacts.getFirst().path("fresh").booleanValue();
+			return artifacts.getFirst();
 		}
 
 		/**

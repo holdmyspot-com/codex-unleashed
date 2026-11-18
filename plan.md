@@ -3536,3 +3536,48 @@ them.
   (`status-journey-run2.tgz`, sha256 `833f7aef9ca36fff8493c0b3300b32fcfbcb1be9368ffaed07a935f2ce7d8ea2`). The worker
   job's cleanup check failed because the retry marker was not written before exit; no gate is affected. Queue
   registration waits for the search patch, which itself follows the three visibility patches.
+
+## Telemetry, feedback and update-check patches
+
+Server-side requirements for these patches are in `server.md`.
+
+- [ ] **Patch 106: hide `/feedback`, disable upstream telemetry, redirect the update check (in progress).**
+  - Remove `/feedback` from the slash-command list and popup.
+  - Every other feedback-upload entry point returns "feedback disabled in this build". Keep the code so that
+    re-enabling it is a small revert.
+  - The built-in Statsig metrics exporter (`ab.chatgpt.com`) sends nothing.
+  - Product analytics default to off for every client.
+  - The TUI update check queries `holdmyspot-com/codex-unleashed` releases, not OpenAI's Codex.
+  - The update action no longer runs `chatgpt.com/codex/install.sh`; it uses our install path or names our releases
+    page.
+  - Update the config schema text, `otel/README.md` and the affected snapshots.
+  - Acceptance:
+    - focused tests show `/feedback` is unlisted, the telemetry defaults are off, and the update check targets our
+      repository;
+    - the series replays cleanly on upstream;
+    - the touched crates pass `cargo check`, their tests, `cargo fmt` and Clippy.
+- [ ] **HoldMySpot sign-in token.**
+  - `/holdmyspot:login` stores a short-lived signed token issued by our server, with a refresh path.
+  - The token identifies an opaque HoldMySpot account ID. The email never leaves our server.
+  - Requests to our services send `Authorization: Bearer <holdmyspot token>` and `HoldMySpot-Account-ID: <id>`.
+  - Requests to our services never send `ChatGPT-Account-ID` or the ChatGPT token.
+  - Acceptance: tests for login, expiry, refresh and logout, and a check that no ChatGPT credential reaches our
+    endpoints.
+- [ ] **Feedback through our service (re-enables `/feedback`).**
+  - The client generates the Sentry `event_id` and sends the report to our feedback service, with the sign-in token.
+  - It never sends directly to Sentry, and no DSN ships in the client.
+  - Logs and attachments go in the same authenticated request, or a follow-up request bound to the `event_id`.
+  - The consent screen names our service, Sentry and B2 storage, and links our privacy notice.
+  - Without a sign-in, `/feedback` explains that sign-in is required.
+  - Acceptance:
+    - unit tests for request construction and for the consent text;
+    - an end-to-end test against a local mock service showing that no OpenAI or Sentry host is contacted.
+- [ ] **Analytics to our server (re-enables analytics, opt-in).**
+  - Add a dedicated analytics endpoint setting, defaulting to our server and independent of `chatgpt_base_url`.
+  - Send the existing `{"events":[...]}` payload with the HoldMySpot token and account ID, including the turn
+    events' per-turn token counts and the thread, session and turn IDs.
+  - Default off until the user opts in; the privacy notice describes the data collected.
+  - Upstream usage metrics stay disabled, and we do not run a metrics collector.
+  - Acceptance: tests for the endpoint setting, opt-in gating, headers, and that no event reaches `chatgpt.com`.
+- [ ] **Request metadata review (decision pending).** Decide whether to strip `workspaces` from
+  `x-codex-turn-metadata`. That field holds the absolute repository path, the remote host/org/repo and the HEAD SHA.

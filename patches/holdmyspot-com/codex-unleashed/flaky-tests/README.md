@@ -1,8 +1,8 @@
 # Flaky test fixes
 
-- Applies to: the queue through `rama-0.4/rama-0.4.patch` (patch 34), which sits on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
+- Applies to: the queue through `rama-0.4/rama-0.4.patch` (patch 36), which sits on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 - Prerequisites: every earlier patch in the queue, through `rama-0.4/rama-0.4.patch`. The patches below apply in this order and do not depend on each other.
-- Patches: `wine-pty-timeout.patch`, `rollout-trace.patch`, `otel-policy-export.patch`, `focus-palette.patch`, `compaction-request-parsing.patch`, `file-watcher-paused-time.patch` (patches 34–39), `subagent-stop-hook-wait.patch` (patch 60), `app-server-client-leak-timeout.patch` (patch 61), `startup-probe-da1-last.patch` (patch 62), `windows-slow-e2e-timeouts.patch` (patch 64), `feedback-upload-timeout.patch` (patch 65), `agents-overview-pin-refresh-race.patch` (patch 66), `windows-sandbox-helper-sharing-violation.patch` (patch 67) and `windows-arm64-load-timeouts.patch` (patch 68), which apply after every earlier patch.
+- Patches: `wine-pty-timeout.patch`, `rollout-trace.patch`, `otel-policy-export.patch`, `focus-palette.patch`, `compaction-request-parsing.patch`, `file-watcher-paused-time.patch` (patches 37–42), `subagent-stop-hook-wait.patch` (patch 63), `app-server-client-leak-timeout.patch` (patch 64), `startup-probe-da1-last.patch` (patch 65), `windows-slow-e2e-timeouts.patch` (patch 67), `feedback-upload-timeout.patch` (patch 68), `agents-overview-pin-refresh-race.patch` (patch 69), `windows-sandbox-helper-sharing-violation.patch` (patch 70) and `windows-arm64-load-timeouts.patch` (patch 71), which apply after every earlier patch.
 
 ## Intent
 

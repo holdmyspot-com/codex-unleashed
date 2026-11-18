@@ -27,10 +27,10 @@ index 27e57e99b..0e71611d9 100644
 -    { id = "RUSTSEC-2026-0410", reason = "zstd-safe 7.2.4 pulls in zstd-sys 2.0.16. Its allocator bug only affects wasm32, and Codex ships native binaries. Remove when the lockfile uses zstd-sys >=2.1.2." },
 -    # Reviewed 2026-10-29.
 -    { id = "RUSTSEC-2026-0418", reason = "libz-sys 1.1.29 via curl-sys/curl in codex-http-client is Windows-only and skips the affected probe; cc is locked to 1.2.55 (<1.6.0). Remove when libz-sys >=1.1.31; reassess if used on Unix with cc >=1.6.0." },
+     # Reviewed 2026-11-18.
+     { id = "RUSTSEC-2026-0543", reason = "chrono 0.4.45 is unmaintained and no patched release exists; it is upstream's shared date-time dependency. Accepted by the owner; remove when upstream replaces chrono." },
  ]
- # If this is true, then cargo deny will use the git executable to fetch advisory database.
- # If this is false, then it uses a built-in git library.
-@@ -138,9 +134,6 @@ allow = [
+@@ -140,9 +136,6 @@ allow = [
      # MPL-2.0 - https://www.mozilla.org/MPL/2.0/
      # Used by: nucleo-matcher
      "MPL-2.0",
@@ -40,7 +40,7 @@ index 27e57e99b..0e71611d9 100644
      # Unicode-3.0 - https://opensource.org/license/unicode
      # Used by: icu_decimal, icu_locale_core, icu_provider
      "Unicode-3.0",
-@@ -232,7 +225,6 @@ deny = [
+@@ -234,7 +227,6 @@ deny = [
      # Removing async-trait materially improves debug build times:
      # https://github.com/openai/codex/pull/27304
      { crate = "async-trait", wrappers = [
@@ -48,7 +48,7 @@ index 27e57e99b..0e71611d9 100644
          "opentelemetry-http",
          "pagable",
          "rmcp",
-@@ -258,8 +250,6 @@ deny = [
+@@ -260,8 +252,6 @@ deny = [
          "opentelemetry-http",
          "opentelemetry-otlp",
          "rmcp",
@@ -57,7 +57,7 @@ index 27e57e99b..0e71611d9 100644
      ], reason = "new direct reqwest dependencies must use codex-http-client; temporary wrappers track migration debt" },
  ]
  
-@@ -321,7 +311,6 @@ allow-git = [
+@@ -323,7 +313,6 @@ allow-git = [
      "https://github.com/helix-editor/nucleo.git",
      # CONNECT request handling needs this pinned H3 revision until released.
      "https://github.com/hyperium/h3",

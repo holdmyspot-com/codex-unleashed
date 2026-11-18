@@ -1,6 +1,6 @@
 # Rama 0.4 port
 
-- Applies to: the CP7 queue through `dependency-upgrades/transitive-updates.patch` (patch 33), which sits on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
+- Applies to: the CP7 queue through `dependency-upgrades/transitive-updates-bazel-lock-3.patch` (patch 35), which sits on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 - Prerequisites: every earlier patch in the queue, through `dependency-upgrades/transitive-updates.patch`.
 - Patches: `rama-0.4.patch`.
 

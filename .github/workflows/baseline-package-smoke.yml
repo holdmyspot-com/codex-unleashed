@@ -66,6 +66,17 @@ jobs:
           ref: ${{ steps.source.outputs.commit }}
           persist-credentials: false
 
+      # The upstream checkout cleaned the workspace, deleting restart-metadata that the local actions' post steps need at job
+      # end; check it out again beside the upstream source and keep it out of that source's untracked files.
+      - name: Restore restart inputs beside the upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Exclude restart inputs from the upstream source status
+        run: printf '/restart-metadata/\n' >> .git/info/exclude
+
       - name: Apply the patch queue
         env:
           PATCHES: ${{ inputs.patches }}

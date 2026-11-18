@@ -2,7 +2,7 @@
 
 - Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`. The
   patch changes only `codex-rs/mxc-sandbox/src/policy.rs` and `policy_tests.rs`, which no earlier queue entry changes,
-  so it applies after any prefix of the queue. It is queue entry 105 and is listed last.
+  so it applies after any prefix of the queue. It is queue entry 108 and is listed last.
 
 ## Intent
 

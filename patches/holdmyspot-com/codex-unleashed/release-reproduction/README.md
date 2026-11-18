@@ -1,8 +1,8 @@
 # Deterministic release tar archives
 
 - Applies to: upstream `openai/codex` commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a` after the 69 patches selected before this patch.
-- Prerequisites: all 69 earlier patches in `patches/README.md`.
-- Patch: `deterministic-archives.patch` (queue entry 70).
+- Prerequisites: all 72 earlier patches in `patches/README.md`.
+- Patch: `deterministic-archives.patch` (queue entry 73).
 
 ## Intent
 
@@ -18,8 +18,8 @@ The focused tests compare gzip and zstd SHA-256 for separately staged equivalent
 
 ## Shared package operations
 
-- Applies after upstream commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`, the 69 earlier selected patches, and queue 70 (`deterministic-archives.patch`).
-- Patch: `shared-package-builder.patch` (queue entry 71).
+- Applies after upstream commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`, the 72 earlier selected patches, and queue 73 (`deterministic-archives.patch`).
+- Patch: `shared-package-builder.patch` (queue entry 74).
 
 The Cargo package action and package assembly action use `.github/scripts/codex-package-operations.sh` for binary selection, profile setup, Cargo builds, symbol/PDB preparation, and both package variants. The standalone caller can invoke the same operations and receives the same fixed binary list, ordered Cargo arguments, platform branches, and package arguments. Rust setup, platform tool setup, Bazel builds, Python/uv setup, and smoke tests remain in their existing action steps.
 
@@ -42,7 +42,7 @@ git diff --check
 
 ## Archive command
 
-`archive-command.patch` is queue entry 72 and requires entries 1–71. It exposes the existing package archive writer to release tooling through a module command. Archive creation uses the same gzip and zstd compression arguments and normalized tar bytes as direct calls to `write_archive`.
+`archive-command.patch` is queue entry 75 and requires entries 1–74. It exposes the existing package archive writer to release tooling through a module command. Archive creation uses the same gzip and zstd compression arguments and normalized tar bytes as direct calls to `write_archive`.
 
 From the patched upstream checkout, write a package archive:
 
@@ -70,7 +70,7 @@ CODEX_REPO_ROOT="$PWD" python3 scripts/codex_package/test_archive.py ArchiveModu
 
 ## Code-mode symbol validation
 
-`code-mode-symbol-validation.patch` is queue entry 88 and requires entries 1–87 on upstream commit
+`code-mode-symbol-validation.patch` is queue entry 91 and requires entries 1–90 on upstream commit
 `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 
 Before stripping `codex-code-mode-host` on Linux or macOS, the symbols archive command requires exactly one defined,
@@ -94,7 +94,7 @@ symbol archives.
 
 ## Dev Drive volume classification
 
-`dev-drive-volume-predicate.patch` is queue entry 97 and requires entries 1–96.
+`dev-drive-volume-predicate.patch` is queue entry 100 and requires entries 1–99.
 The setup command classifies non-ReFS volumes as ordinary volumes. For ReFS, it opens the filesystem root
 and queries the Dev Volume flag through the Windows API; query failures stop setup. Trust status is separate
 from volume classification. The compiled helper must resolve to exactly one expected type.
@@ -112,7 +112,7 @@ the exact attached BFS instance, and publication of one build-root entry while p
 
 ## MSVC environment reuse
 
-`msvc-environment-reuse.patch` is queue entry 104 and requires entries 1–103.
+`msvc-environment-reuse.patch` is queue entry 107 and requires entries 1–106.
 The Windows package job configures the Visual Studio developer environment in `prepare-bazel-ci`, in the MSVC setup
 step, and again when the Cargo package build repeats its setup. Every `VsDevCmd.bat` run prepends the same tool
 directories, about 2,100 characters, to `PATH`, and the next run passes that `PATH` to `cmd.exe`, which rejects a line

@@ -130,6 +130,93 @@ public final class PruneWorkspaceOutputsTest
 	}
 
 	/**
+	 * Prunes the Cargo 1.100 layout, which has no {@code deps} or {@code .fingerprint} directory and keeps each unit
+	 * in {@code build/<package>/<hash>/}.
+	 *
+	 * @throws IOException if creating or removing the test's owned files fails
+	 */
+	@Test
+	public void pruneCargo100Layout() throws IOException
+	{
+		Path root = Files.createTempDirectory("prune-workspace-cargo-100-");
+		try
+		{
+			Path workspace = Files.createDirectory(root.resolve("workspace"));
+			Path liveTarget = Files.createDirectory(root.resolve("live-target"));
+			Path targetCopy = Files.createDirectory(root.resolve("target-copy"));
+			Path liveProfile = liveTarget.resolve("x86_64-unknown-linux-gnu/release");
+			Path copiedProfile = targetCopy.resolve("x86_64-unknown-linux-gnu/release");
+			String workspaceUnit = "build/foo-bar/0123456789abcdef";
+			Path liveWorkspaceLibrary = linkedFile(
+				liveProfile.resolve(workspaceUnit + "/out/libfoo_bar-0123456789abcdef.rlib"),
+				copiedProfile.resolve(workspaceUnit + "/out/libfoo_bar-0123456789abcdef.rlib"), "workspace library");
+			Path liveWorkspaceFingerprint = linkedFile(liveProfile.resolve(workspaceUnit + "/fingerprint/lib-foo_bar"),
+				copiedProfile.resolve(workspaceUnit + "/fingerprint/lib-foo_bar"), "workspace fingerprint");
+			String scriptUnit = "build/foo-bar/fedcba9876543210";
+			Path liveScriptRun = linkedFile(liveProfile.resolve(scriptUnit + "/run/stdout"),
+				copiedProfile.resolve(scriptUnit + "/run/stdout"), "build script run");
+			Files.createDirectories(copiedProfile.resolve(scriptUnit + "/fingerprint"));
+			String widgetUnit = "build/widget-bin/1111111111111111";
+			linkedFile(liveProfile.resolve(widgetUnit + "/fingerprint/bin-widget_bin"),
+				copiedProfile.resolve(widgetUnit + "/fingerprint/bin-widget_bin"), "workspace target fingerprint");
+			String thirdPartyUnit = "build/serde/2222222222222222";
+			Path thirdPartyLibrary = linkedFile(liveProfile.resolve(thirdPartyUnit + "/out/libserde-2222222222222222.rlib"),
+				copiedProfile.resolve(thirdPartyUnit + "/out/libserde-2222222222222222.rlib"), "third-party library");
+			Path thirdPartyFingerprint = linkedFile(liveProfile.resolve(thirdPartyUnit + "/fingerprint/lib-serde"),
+				copiedProfile.resolve(thirdPartyUnit + "/fingerprint/lib-serde"), "third-party fingerprint");
+			Path liveLibrary = linkedFile(liveProfile.resolve("libfoo_bar.rlib"), copiedProfile.resolve("libfoo_bar.rlib"),
+				"workspace top-level library");
+			Path liveDependencyFile = linkedFile(liveProfile.resolve("foo_bar.d"), copiedProfile.resolve("foo_bar.d"),
+				"workspace dependency file");
+			Path hiddenProfileFile = copiedProfile.resolve(".cargo-lock");
+			Files.writeString(hiddenProfileFile, "hidden profile file");
+			ByteArrayOutputStream stdoutBytes = new ByteArrayOutputStream();
+			ByteArrayOutputStream stderrBytes = new ByteArrayOutputStream();
+			String metadata = """
+				{"packages":[{"name":"foo-bar","targets":[{"name":"foo-bar"},{"name":"widget-bin"}]}]}
+				""";
+			SystemCommands.Capture metadataCommands = (command, workingDirectory, temporaryDirectory, environment) ->
+				new SystemCommands.Result(0, metadata, "");
+			String[] arguments = arguments(workspace, targetCopy, liveTarget);
+
+			try (ToolingScope scope = new DefaultToolingScope())
+			{
+				int status = PruneWorkspaceOutputs.run(scope, arguments,
+					new PrintStream(stdoutBytes, true, StandardCharsets.UTF_8),
+					new PrintStream(stderrBytes, true, StandardCharsets.UTF_8), metadataCommands);
+				requireThat(status, "status").isEqualTo(0);
+			}
+
+			requireThat(Files.exists(copiedProfile.resolve("build/foo-bar")), "workspacePackageExistsInCopy").isFalse();
+			requireThat(Files.exists(copiedProfile.resolve("build/widget-bin")), "workspaceTargetExistsInCopy").isFalse();
+			requireThat(Files.exists(copiedProfile.resolve("libfoo_bar.rlib")), "topLevelLibraryExistsInCopy").isFalse();
+			requireThat(Files.exists(copiedProfile.resolve("foo_bar.d")), "dependencyFileExistsInCopy").isFalse();
+			requireThat(Files.readString(copiedProfile.resolve(thirdPartyUnit + "/out/libserde-2222222222222222.rlib")),
+				"thirdPartyLibraryInCopy").isEqualTo("third-party library");
+			requireThat(Files.readString(copiedProfile.resolve(thirdPartyUnit + "/fingerprint/lib-serde")),
+				"thirdPartyFingerprintInCopy").isEqualTo("third-party fingerprint");
+			requireThat(Files.readString(hiddenProfileFile), "hiddenProfileFile").isEqualTo("hidden profile file");
+			requireThat(Files.readString(liveWorkspaceLibrary), "liveWorkspaceLibrary").isEqualTo("workspace library");
+			requireThat(Files.readString(liveWorkspaceFingerprint), "liveWorkspaceFingerprint").
+				isEqualTo("workspace fingerprint");
+			requireThat(Files.readString(liveScriptRun), "liveScriptRun").isEqualTo("build script run");
+			requireThat(Files.readString(thirdPartyLibrary), "liveThirdPartyLibrary").isEqualTo("third-party library");
+			requireThat(Files.readString(thirdPartyFingerprint), "liveThirdPartyFingerprint").
+				isEqualTo("third-party fingerprint");
+			requireThat(Files.readString(liveLibrary), "liveLibrary").isEqualTo("workspace top-level library");
+			requireThat(Files.readString(liveDependencyFile), "liveDependencyFile").isEqualTo("workspace dependency file");
+			requireThat(stderrBytes.toString(StandardCharsets.UTF_8), "stderr").isEmpty();
+			requireThat(stdoutBytes.toString(StandardCharsets.UTF_8), "stdout").
+				isEqualTo(copiedProfile + ": removed 4 workspace entries" + System.lineSeparator() +
+					"Pruned 4 entries for 2 workspace names." + System.lineSeparator());
+		}
+		finally
+		{
+			deleteTree(root);
+		}
+	}
+
+	/**
 	 * Leaves every target-copy entry intact when Cargo exits unsuccessfully or returns malformed metadata.
 	 *
 	 * @throws IOException if creating or removing the test's owned files fails

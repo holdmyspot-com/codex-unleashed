@@ -247,7 +247,25 @@ jobs:
             sw_vers
             sysctl -n hw.memsize hw.logicalcpu
             df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP"
+            echo "open-file limits before raising:"
+            sysctl kern.maxfiles kern.maxfilesperproc
+            launchctl limit maxfiles
+            ulimit -Hn
           } | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/host.txt"
+
+      # Upstream runs these tests on macos-15-xlarge. The standard runner's per-process limit is too low for
+      # codex-utils-pty's descriptor test, which must open descriptors at or above Darwin's OPEN_MAX (10240).
+      - name: Raise the open-file limits that upstream's descriptor tests need
+        run: |
+          set -euo pipefail
+          sudo sysctl -w kern.maxfiles=65536 kern.maxfilesperproc=32768
+          sudo launchctl limit maxfiles 32768 65536
+          {
+            echo "open-file limits after raising:"
+            sysctl kern.maxfiles kern.maxfilesperproc
+            launchctl limit maxfiles
+          } | tee -a "$RUNNER_TEMP/baseline-macos-nextest-evidence/host.txt"
+          test "$(sysctl -n kern.maxfilesperproc)" -ge 16384
 
       - name: Set up the compiled-state cache transport
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
