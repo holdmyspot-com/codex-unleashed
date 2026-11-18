@@ -217,8 +217,13 @@ public final class PackageZstdLookupTest
 			Path bin = Files.createDirectory(root.resolve("bin"));
 			executable(bin.resolve("dotslash" + SUFFIX));
 			requireThat(find(root, Map.of("PATH", "", "PATHEXT", ".EXE"), "zstd"), "emptyPath").isEqualTo(Optional.empty());
+			// Windows searches the current directory first, spelled with a leading dot and backslash, unless the process sets
+			// NoDefaultCurrentDirectoryInExePath, which is what NeedCurrentDirectoryForExePathW reports.
+			String emptyEntryResult = "zstd" + SUFFIX;
+			if (WINDOWS && System.getenv("NoDefaultCurrentDirectoryInExePath") == null)
+				emptyEntryResult = ".\\" + emptyEntryResult;
 			requireThat(find(root, Map.of("PATH", File.pathSeparator, "PATHEXT", ".EXE"), "zstd"), "emptyEntries").
-				isEqualTo(Optional.of("zstd" + SUFFIX));
+				isEqualTo(Optional.of(emptyEntryResult));
 			requireThat(find(root, Map.of("PATH", "bin" + File.separator, "PATHEXT", ".EXE"), "dotslash"), "relative").
 				isEqualTo(Optional.of("bin" + File.separator + "dotslash" + SUFFIX));
 		}

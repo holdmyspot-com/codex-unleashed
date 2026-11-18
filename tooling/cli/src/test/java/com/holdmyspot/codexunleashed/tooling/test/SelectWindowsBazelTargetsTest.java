@@ -430,13 +430,14 @@ public final class SelectWindowsBazelTargetsTest
 			requireThat(absent.status(), "status").isEqualTo(2);
 			requireThat(absent.stdout(), "stdout").isEmpty();
 			requireThat(absent.stderr(), "stderr").startsWith(USAGE).
-				endsWith(": error: [Errno 2] No such file or directory: '" + missing + "'\n");
+				endsWith(": error: [Errno 2] No such file or directory: '" + pythonEscaped(missing) + "'\n");
 
 			Path directory = fixture.createDirectories("table");
 			Result folder = runWith("A\n", directory, 1, 1);
 
 			requireThat(folder.status(), "status").isEqualTo(2);
-			requireThat(folder.stderr(), "stderr").endsWith(": error: [Errno 21] Is a directory: '" + directory + "'\n");
+			requireThat(folder.stderr(), "stderr").
+				endsWith(": error: [Errno 21] Is a directory: '" + pythonEscaped(directory) + "'\n");
 
 			Path table = fixture.write("durations.tsv", "A\tx\n");
 			String shown = fixture.getPath() + "/durations.tsv";
@@ -450,9 +451,21 @@ public final class SelectWindowsBazelTargetsTest
 			Result apostrophe = runWith("A\n", quoted.resolve("missing.tsv"), 1, 1);
 
 			requireThat(apostrophe.stderr(), "stderr").
-				endsWith(": error: [Errno 2] No such file or directory: \"" + quoted + "/missing.tsv\"\n");
+				endsWith(": error: [Errno 2] No such file or directory: \"" +
+					pythonEscaped(quoted.resolve("missing.tsv")) + "\"\n");
 			requireThat(Files.exists(table), "table_exists").isTrue();
 		}
+	}
+
+	/**
+	 * Spells a path the way Python's {@code repr} does inside quotes, which doubles each backslash of a Windows path.
+	 *
+	 * @param path the path to spell
+	 * @return the path text with every backslash doubled
+	 */
+	private static String pythonEscaped(Path path)
+	{
+		return path.toString().replace("\\", "\\\\");
 	}
 
 	/**

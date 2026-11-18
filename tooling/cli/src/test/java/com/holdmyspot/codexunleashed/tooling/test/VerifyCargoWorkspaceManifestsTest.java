@@ -341,7 +341,8 @@ public final class VerifyCargoWorkspaceManifestsTest
 			Result malformed = fixture.run();
 			requireThat(malformed.status(), "malformed_status").isEqualTo(1);
 			requireThat(malformed.out(), "malformed_report").isEmpty();
-			requireThat(malformed.err(), "malformed_diagnostic").contains("codex-rs/broken/Cargo.toml: invalid TOML");
+			requireThat(malformed.err(), "malformed_diagnostic").contains(
+				fixture.root().resolve("codex-rs/broken/Cargo.toml") + ": invalid TOML");
 			fixture.write("codex-rs/broken/Cargo.toml", "value = 1\nvalue = 2\n");
 			Result duplicate = fixture.run();
 			requireThat(duplicate.status(), "duplicate_status").isEqualTo(1);

@@ -84,7 +84,10 @@ public final class ReleaseManifestSourceIdentityTest
 			Path first = committedCheckout(fixture);
 			String queueHead = git(fixture, first, "rev-parse", "HEAD");
 			Path second = fixture.getPath().resolve("second");
-			git(fixture, fixture.getPath(), "clone", "-q", first.toString(), second.toString());
+			// A Windows runner's core.autocrlf=true would check the clone out with CRLF line endings, so the lockfile
+			// bytes, and their digest, would differ from the first checkout's.
+			git(fixture, fixture.getPath(), "-c", "core.autocrlf=false", "clone", "-q", first.toString(),
+				second.toString());
 
 			align(first);
 			align(second);

@@ -172,24 +172,33 @@ public final class VerifyReadmeCharactersTest
 		Path missing = directory.resolve("missing file.md");
 		Path unreadable = directory.resolve("unreadable.md");
 		Files.writeString(unreadable, "readable before chmod");
+		// A file that is unreadable by mode needs POSIX permissions; the directory and missing-file cases run everywhere.
+		boolean posix = Files.getFileStore(unreadable).supportsFileAttributeView("posix");
 		try
 		{
-			Files.setPosixFilePermissions(unreadable, Set.of());
+			if (posix)
+				Files.setPosixFilePermissions(unreadable, Set.of());
 			Result directoryResult = invoke(directory.toString());
 			Result missingResult = invoke(missing.toString());
-			Result unreadableResult = invoke(unreadable.toString());
 			requireThat(directoryResult.status, "directory_status").isEqualTo(1);
 			requireThat(directoryResult.err, "directory_read_failure").contains(directory.toString());
 			requireThat(missingResult.status, "missing_status").isEqualTo(1);
 			requireThat(missingResult.err, "missing_read_failure").contains(missing.toString());
-			requireThat(unreadableResult.status, "unreadable_status").isEqualTo(1);
-			requireThat(unreadableResult.err, "unreadable_read_failure").contains(unreadable.toString());
+			if (posix)
+			{
+				Result unreadableResult = invoke(unreadable.toString());
+				requireThat(unreadableResult.status, "unreadable_status").isEqualTo(1);
+				requireThat(unreadableResult.err, "unreadable_read_failure").contains(unreadable.toString());
+			}
 			requireThat(directoryResult.out, "policy_findings").isEmpty();
 		}
 		finally
 		{
-			Files.setPosixFilePermissions(unreadable,
-				Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+			if (posix)
+			{
+				Files.setPosixFilePermissions(unreadable,
+					Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+			}
 			Files.deleteIfExists(unreadable);
 			Files.deleteIfExists(directory);
 		}
@@ -206,7 +215,11 @@ public final class VerifyReadmeCharactersTest
 		try (Fixture fixture = new Fixture("bad\ttext"))
 		{
 			byte[] original = Files.readAllBytes(fixture.path);
-			Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(fixture.path);
+			// Windows has no POSIX attribute view: compare permissions only where the file system has one.
+			boolean posix = Files.getFileStore(fixture.path).supportsFileAttributeView("posix");
+			Set<PosixFilePermission> permissions = null;
+			if (posix)
+				permissions = Files.getPosixFilePermissions(fixture.path);
 			ByteArrayOutputStream outputBytes = new ByteArrayOutputStream();
 			ByteArrayOutputStream errorBytes = new ByteArrayOutputStream();
 			try (PrintStream out = new PrintStream(outputBytes, true, StandardCharsets.UTF_8);
@@ -221,7 +234,8 @@ public final class VerifyReadmeCharactersTest
 				requireThat(errorBytes.toString(StandardCharsets.UTF_8), "caller_diagnostics").isEqualTo("retained");
 			}
 			requireThat(Arrays.equals(Files.readAllBytes(fixture.path), original), "file_bytes").isEqualTo(true);
-			requireThat(Files.getPosixFilePermissions(fixture.path), "file_mode").isEqualTo(permissions);
+			if (posix)
+				requireThat(Files.getPosixFilePermissions(fixture.path), "file_mode").isEqualTo(permissions);
 		}
 	}
 

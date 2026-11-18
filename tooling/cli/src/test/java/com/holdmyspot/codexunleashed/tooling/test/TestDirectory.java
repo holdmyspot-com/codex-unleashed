@@ -5,10 +5,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
 import org.apache.commons.io.file.PathUtils;
+import org.apache.commons.io.file.StandardDeleteOption;
 
 /**
  * A temporary directory that belongs to one test and is deleted, with any symbolic links in it, when the test closes
- * it.
+ * it. Read-only files are deleted too: Git marks the files under {@code .git/objects} read-only, and Windows refuses
+ * to delete a read-only file.
  */
 public final class TestDirectory implements AutoCloseable
 {
@@ -72,6 +74,6 @@ public final class TestDirectory implements AutoCloseable
 	@Override
 	public void close() throws IOException
 	{
-		PathUtils.deleteDirectory(path);
+		PathUtils.deleteDirectory(path, StandardDeleteOption.OVERRIDE_READ_ONLY);
 	}
 }

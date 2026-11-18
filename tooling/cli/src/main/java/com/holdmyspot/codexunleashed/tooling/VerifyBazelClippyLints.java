@@ -108,8 +108,8 @@ public final class VerifyBazelClippyLints
 
 			if (missing.isEmpty() && extra.isEmpty() && mismatched.isEmpty())
 			{
-				out.println("Bazel clippy flags in " + displayPath(root, bazelrc) + " match " +
-					displayPath(root, cargo) + " [workspace.lints.clippy].");
+				out.print("Bazel clippy flags in " + displayPath(root, bazelrc) + " match " +
+					displayPath(root, cargo) + " [workspace.lints.clippy].\n");
 				return 0;
 			}
 
@@ -119,12 +119,12 @@ public final class VerifyBazelClippyLints
 		}
 		catch (PolicyInputException failure)
 		{
-			err.println(failure.getMessage());
+			err.print(failure.getMessage() + "\n");
 			return 1;
 		}
 		catch (IOException | InvalidPathException failure)
 		{
-			err.println("ERROR: " + failure.getMessage());
+			err.print("ERROR: " + failure.getMessage() + "\n");
 			return 1;
 		}
 	}
@@ -557,39 +557,39 @@ public final class VerifyBazelClippyLints
 	{
 		String cargoDisplay = displayPath(root, cargo);
 		String bazelDisplay = displayPath(root, bazelrc);
-		err.println("ERROR: Bazel clippy flags are out of sync with Cargo workspace clippy lints.");
-		err.println();
-		err.println("Cargo defines the source of truth in " + cargoDisplay + " [workspace.lints.clippy].");
+		err.print("ERROR: Bazel clippy flags are out of sync with Cargo workspace clippy lints.\n");
+		err.print("\n");
+		err.print("Cargo defines the source of truth in " + cargoDisplay + " [workspace.lints.clippy].\n");
 		if (example != null)
-		err.println("Cargo applies those lint levels to member crates that opt into `[lints] workspace = true`, " +
-				"for example " + example + ".");
-		err.println("Bazel clippy does not ingest Cargo lint levels automatically, and `clippy.toml` can configure " +
-		"lint behavior but cannot set allow/warn/deny/forbid.");
-		err.println("Update " + bazelDisplay + " so its `build:clippy` `clippy_flag` entries match Cargo.");
+		err.print("Cargo applies those lint levels to member crates that opt into `[lints] workspace = true`, " +
+				"for example " + example + ".\n");
+		err.print("Bazel clippy does not ingest Cargo lint levels automatically, and `clippy.toml` can configure " +
+		"lint behavior but cannot set allow/warn/deny/forbid.\n");
+		err.print("Update " + bazelDisplay + " so its `build:clippy` `clippy_flag` entries match Cargo.\n");
 		if (!missing.isEmpty())
 		{
-			err.println();
-			err.println("Missing Bazel entries:");
+			err.print("\n");
+			err.print("Missing Bazel entries:\n");
 			for (String lint : missing)
-				err.println("  " + BAZEL_PREFIX + "--" + cargoLints.get(lint) + "=clippy::" + lint);
+				err.print("  " + BAZEL_PREFIX + "--" + cargoLints.get(lint) + "=clippy::" + lint + "\n");
 		}
 		if (!mismatched.isEmpty())
 		{
-			err.println();
-			err.println("Mismatched lint levels:");
+			err.print("\n");
+			err.print("Mismatched lint levels:\n");
 			for (String lint : mismatched)
 			{
-				err.println("  clippy::" + lint + ": Cargo has " + cargoLints.get(lint) + ", Bazel has " +
-					bazelLints.get(lint));
-				err.println("    expected: " + BAZEL_PREFIX + "--" + cargoLints.get(lint) + "=clippy::" + lint);
+				err.print("  clippy::" + lint + ": Cargo has " + cargoLints.get(lint) + ", Bazel has " +
+					bazelLints.get(lint) + "\n");
+				err.print("    expected: " + BAZEL_PREFIX + "--" + cargoLints.get(lint) + "=clippy::" + lint + "\n");
 			}
 		}
 		if (!extra.isEmpty())
 		{
-			err.println();
-			err.println("Extra Bazel entries with no Cargo counterpart:");
+			err.print("\n");
+			err.print("Extra Bazel entries with no Cargo counterpart:\n");
 			for (String lint : extra)
-				err.println("  " + BAZEL_PREFIX + "--" + bazelLints.get(lint) + "=clippy::" + lint);
+				err.print("  " + BAZEL_PREFIX + "--" + bazelLints.get(lint) + "=clippy::" + lint + "\n");
 		}
 	}
 
@@ -743,7 +743,7 @@ public final class VerifyBazelClippyLints
 	 */
 	private static void usage(PrintStream err)
 	{
-		err.println("Usage: codex-tooling " + NAME + " <repository-root> [--cargo-toml PATH] [--bazelrc PATH]");
+		err.print("Usage: codex-tooling " + NAME + " <repository-root> [--cargo-toml PATH] [--bazelrc PATH]\n");
 	}
 
 	/**
@@ -753,17 +753,17 @@ public final class VerifyBazelClippyLints
 	 */
 	private static void printHelp(PrintStream out)
 	{
-		out.println("usage: codex-tooling " + NAME + " [-h] [--cargo-toml PATH] [--bazelrc PATH] <repository-root>");
-		out.println();
-		out.println("Verify that Bazel clippy flags match Cargo workspace lint levels.");
-		out.println();
-		out.println("positional arguments:");
-		out.println("  <repository-root>  Explicit repository root");
-		out.println();
-		out.println("options:");
-		out.println("  -h, --help          Show this help message and exit");
-		out.println("  --cargo-toml PATH   Workspace Cargo.toml (default: ROOT/codex-rs/Cargo.toml)");
-		out.println("  --bazelrc PATH      Bazel configuration (default: ROOT/.bazelrc)");
+		out.print("usage: codex-tooling " + NAME + " [-h] [--cargo-toml PATH] [--bazelrc PATH] <repository-root>\n");
+		out.print("\n");
+		out.print("Verify that Bazel clippy flags match Cargo workspace lint levels.\n");
+		out.print("\n");
+		out.print("positional arguments:\n");
+		out.print("  <repository-root>  Explicit repository root\n");
+		out.print("\n");
+		out.print("options:\n");
+		out.print("  -h, --help          Show this help message and exit\n");
+		out.print("  --cargo-toml PATH   Workspace Cargo.toml (default: ROOT/codex-rs/Cargo.toml)\n");
+		out.print("  --bazelrc PATH      Bazel configuration (default: ROOT/.bazelrc)\n");
 	}
 
 	/**

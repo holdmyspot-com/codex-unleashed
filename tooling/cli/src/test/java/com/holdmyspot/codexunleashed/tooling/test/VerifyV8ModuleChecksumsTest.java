@@ -17,6 +17,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -31,8 +33,11 @@ public final class VerifyV8ModuleChecksumsTest
 	private static final String COMMAND = "verify-v8-module-checksums";
 	/** Complete diagnostic for a wrong argument count. */
 	private static final String USAGE = "Usage: codex-tooling " + COMMAND + " <repository-root>\n";
-	/** Text that stands for the fixture root in expected output. */
-	private static final String PLACEHOLDER = "<fixture_root>";
+	/**
+	 * Matches the text that stands for the fixture root in expected output, with the {@code /}-separated relative path
+	 * that follows it, if any.
+	 */
+	private static final Pattern PLACEHOLDER = Pattern.compile("<fixture_root>(/[A-Za-z0-9_./-]*)?");
 	/** Repository-relative module path. */
 	private static final String MODULE_FILE = "MODULE.bazel";
 	/** Repository-relative lock path. */
@@ -1800,6 +1805,25 @@ public final class VerifyV8ModuleChecksumsTest
 	}
 
 	/**
+	 * Replaces each fixture-root placeholder, with the relative path that follows it, by the native spelling of that
+	 * path: the command prints paths with the platform's separator, while the expectations are written with {@code /}.
+	 *
+	 * @param template expected text that contains placeholders
+	 * @param root     fixture root
+	 * @return the expected text for this platform
+	 */
+	private static String expand(String template, Path root)
+	{
+		return PLACEHOLDER.matcher(template).replaceAll(match ->
+		{
+			String relative = match.group(1);
+			if (relative == null)
+				return Matcher.quoteReplacement(root.toString());
+			return Matcher.quoteReplacement(root.resolve(relative.substring(1)).toString());
+		});
+	}
+
+	/**
 	 * Runs one data row and compares its status, output and diagnostics.
 	 *
 	 * @param id label of the case
@@ -1815,13 +1839,12 @@ public final class VerifyV8ModuleChecksumsTest
 	{
 		try (Fixture fixture = new Fixture(files))
 		{
-			String root = fixture.root().toString();
 			requireThat(fixture.run(), id + "Status").isEqualTo(status);
-			requireThat(fixture.output(), id + "Output").isEqualTo(stdout.replace(PLACEHOLDER, root));
+			requireThat(fixture.output(), id + "Output").isEqualTo(expand(stdout, fixture.root()));
 			String errors = fixture.errors();
 			if (stderr != null)
 			{
-				requireThat(errors, id + "Errors").isEqualTo(stderr.replace(PLACEHOLDER, root));
+				requireThat(errors, id + "Errors").isEqualTo(expand(stderr, fixture.root()));
 				return;
 			}
 			requireThat(errors, id + "Path").contains(fixture.root().resolve(path).toString());

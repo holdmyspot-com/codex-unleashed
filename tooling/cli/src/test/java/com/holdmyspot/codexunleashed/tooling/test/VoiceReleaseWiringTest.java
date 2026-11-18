@@ -73,13 +73,50 @@ public final class VoiceReleaseWiringTest
 			requireThat(verifyBody, "installerHandoff").contains("verify-voice-installer.mjs");
 			requireThat(verifyBody, "installedRuntimeVerification").contains("--installed-package-output");
 			writeShellBlocks(temporary, buildBody, verifyBody);
-			verifyProducerBlock(buildBody, temporary, environment);
-			verifyArchiveBlock(verifyBody, temporary, environment);
 			requireActionInputs(steps.get("package"));
 			requireTargetMatrix(packageJob);
 			Path windowsWrapper = repository.resolve(".github/scripts/setup-baseline-windows-voice.ps1");
 			requireWindowsWrapper(windowsWrapper);
 			requireThat(environment.containsKey("PATH"), "actualEnvironment").isTrue();
+		}
+	}
+
+	/**
+	 * Runs the extracted producer and final-verification shell bodies against fake external command boundaries.
+	 * <p>
+	 * Skipped on Windows because the fixtures drive the bodies through {@code bash -c} and compare the paths that
+	 * Bash prints ({@code pwd -P}, such as {@code /d/a/_temp/...}) with native Windows paths ({@code D:\a\_temp\...}).
+	 * Java also does not escape the quotes in a multi-line {@code -c} argument on Windows, so Bash rejects the body
+	 * ({@code unexpected EOF while looking for matching}). Both are properties of this fixture, not of the workflow, which
+	 * runs the same bodies under Git Bash on Windows runners. The Windows-visible wiring contracts stay covered by
+	 * {@link #wiresAndVerifiesVoiceRelease()} and {@link #verifiesNativeWindowsVoiceWrapper()}.
+	 *
+	 * @throws IOException if the explicit context or workflow cannot be read
+	 */
+	@Test
+	public void runsVoiceShellBlocksAgainstFakeBoundaries() throws IOException
+	{
+		if (System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("windows"))
+		{
+			throw new SkipException("The Bash-body fixtures compare MSYS-style paths with native Windows paths and " +
+				"depend on POSIX quoting of the bash -c argument");
+		}
+		try (DefaultToolingScope scope = new DefaultToolingScope();
+			BufferedReader contextReader = Files.newBufferedReader(Path.of(contextPath())))
+		{
+			JsonNode context = scope.getJsonMapper().readTree(contextReader);
+			Path repository = Path.of(context.path("working_directory").asText()).toRealPath();
+			Path temporary = Path.of(context.path("temporary_directory").asText()).toRealPath();
+			Map<String, String> environment = new HashMap<>();
+			for (Map.Entry<String, JsonNode> entry : context.path("environment").properties())
+				environment.put(entry.getKey(), entry.getValue().asText());
+			Path workflow = repository.resolve(".github/workflows/upstream-auto-release.yml");
+			JsonNode document = scope.getYamlMapper().readTree(Files.readString(workflow));
+			Map<String, JsonNode> steps = packageSteps(document.path("jobs").path("package").path("steps"));
+			String buildBody = requiredRun(steps, "voice-build").path("run").asText();
+			String verifyBody = requiredRun(steps, "voice-final-verification").path("run").asText();
+			verifyProducerBlock(buildBody, temporary, environment);
+			verifyArchiveBlock(verifyBody, temporary, environment);
 		}
 	}
 
@@ -164,9 +201,16 @@ public final class VoiceReleaseWiringTest
 		String githubEnvironment = Files.readString(fixture.githubEnvironment());
 		requireThat(githubEnvironment, "actualSystemRootExport").
 			contains("VOICE_WINDOWS_SYSTEM_ROOT=" + environmentValue(inheritedEnvironment, "SystemRoot"));
-		String hostArchitecture = environmentValue(inheritedEnvironment, "PROCESSOR_ARCHITEW6432");
-		if (hostArchitecture == null || hostArchitecture.isBlank())
-			hostArchitecture = environmentValue(inheritedEnvironment, "PROCESSOR_ARCHITECTURE");
+		// The wrapper reports the architecture that PowerShell itself sees. The Bash environment that supplies the test
+		// context can differ (an x64 Git Bash on a Windows ARM64 runner reports AMD64), so ask PowerShell, under the same
+		// environment, for the value the wrapper is specified to read.
+		ProcessResult probe = runProcess(List.of("pwsh", "-NoProfile", "-Command",
+			"if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }"),
+			fixture.root(), fixture.environment());
+		requireThat(probe.status(), "hostArchitectureProbeStatus").withContext(probe.output(), "diagnostics").
+			isEqualTo(0);
+		String hostArchitecture = probe.output().strip();
+		requireThat(hostArchitecture, "hostArchitecture").isNotBlank();
 		requireThat(githubEnvironment, "actualHostArchitectureExport").
 			contains("VOICE_WINDOWS_HOST_ARCH=" + hostArchitecture);
 		requireThat(Files.exists(fixture.evidenceDirectory().resolve("cygwin-snapshot.json")),

@@ -14,9 +14,9 @@ feeds so the Windows interpreter does not translate them.
 ---
  .github/scripts/codex-voice-runtime.sh      | 152 ++++++++---
  .github/scripts/test-codex-voice-runtime.sh | 282 +++++++++++++++-----
- third_party/voice/test_windows_crt.py       |  89 ++++++
+ third_party/voice/test_windows_crt.py       |  94 ++++++
  third_party/voice/windows_crt.py            |   5 +-
- 4 files changed, 433 insertions(+), 95 deletions(-)
+ 4 files changed, 438 insertions(+), 95 deletions(-)
  create mode 100644 third_party/voice/test_windows_crt.py
 
 diff --git a/.github/scripts/codex-voice-runtime.sh b/.github/scripts/codex-voice-runtime.sh
@@ -626,7 +626,7 @@ new file mode 100644
 index 0000000..d3ff440
 --- /dev/null
 +++ b/third_party/voice/test_windows_crt.py
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,94 @@
 +"""Exercise how Windows CRT staging rewrites the staged runtime manifest."""
 +
 +import hashlib
@@ -701,7 +701,12 @@ index 0000000..d3ff440
 +
 +        libraries = json.loads(self.manifest.read_text())["libraries"]
 +        self.assertEqual(
-+            [{"path": "bin/vcruntime140.dll", "sha256": hashlib.sha256(DLL).hexdigest()}],
++            [
++                {
++                    "path": "bin/vcruntime140.dll",
++                    "sha256": hashlib.sha256(DLL).hexdigest(),
++                }
++            ],
 +            libraries,
 +        )
 +

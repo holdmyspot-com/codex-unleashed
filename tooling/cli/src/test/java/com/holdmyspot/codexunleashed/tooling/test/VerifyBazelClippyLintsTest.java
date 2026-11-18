@@ -50,8 +50,8 @@ public final class VerifyBazelClippyLintsTest
 			Result result = run(root.toString());
 			requireThat(result.status(), "status").isEqualTo(0);
 			requireThat(result.out(), "output").isEqualTo(
-				"Bazel clippy flags in .bazelrc match codex-rs/Cargo.toml [workspace.lints.clippy]." +
-					System.lineSeparator());
+				"Bazel clippy flags in .bazelrc match " + Path.of("codex-rs", "Cargo.toml") +
+					" [workspace.lints.clippy].\n");
 			requireThat(result.err(), "errors").isEmpty();
 		});
 	}
@@ -77,9 +77,10 @@ public final class VerifyBazelClippyLintsTest
 			requireThat(result.out(), "output").isEmpty();
 			requireThat(result.err(), "diagnostics").isEqualTo(
 				"ERROR: Bazel clippy flags are out of sync with Cargo workspace clippy lints.\n\n" +
-				"Cargo defines the source of truth in codex-rs/Cargo.toml [workspace.lints.clippy].\n" +
+				"Cargo defines the source of truth in " + Path.of("codex-rs", "Cargo.toml") +
+				" [workspace.lints.clippy].\n" +
 				"Cargo applies those lint levels to member crates that opt into `[lints] workspace = true`, " +
-				"for example codex-rs/members/z/Cargo.toml.\n" +
+				"for example " + Path.of("codex-rs", "members", "z", "Cargo.toml") + ".\n" +
 				"Bazel clippy does not ingest Cargo lint levels automatically, and `clippy.toml` can configure " +
 				"lint behavior but cannot set allow/warn/deny/forbid.\n" +
 				"Update .bazelrc so its `build:clippy` `clippy_flag` entries match Cargo.\n\n" +
@@ -184,8 +185,7 @@ public final class VerifyBazelClippyLintsTest
 			requireThat(result.status(), "status").isEqualTo(0);
 			requireThat(result.err(), "errors").isEmpty();
 			requireThat(result.out(), "output").isEqualTo(
-				"Bazel clippy flags in custom.bazelrc match custom.toml [workspace.lints.clippy]." +
-					System.lineSeparator());
+				"Bazel clippy flags in custom.bazelrc match custom.toml [workspace.lints.clippy].\n");
 			Result absolute = run("--cargo-toml", cargo.toString(), root.toString(), "--bazelrc=" + bazel);
 			requireThat(absolute.status(), "absolute_override_status").isEqualTo(0);
 			Result help = run("--help");
@@ -242,7 +242,7 @@ public final class VerifyBazelClippyLintsTest
 			Result result = run(root.toString());
 			requireThat(result.status(), "status").isEqualTo(1);
 			requireThat(result.err(), "first_example").contains(
-				"for example codex-rs/z/Cargo.toml.\n");
+				"for example " + Path.of("codex-rs", "z", "Cargo.toml") + ".\n");
 
 			writeManifest(root, "a/Cargo.toml", "[broken\n");
 			Result malformed = run(root.toString());
@@ -268,8 +268,15 @@ public final class VerifyBazelClippyLintsTest
 			Path bazel = root.resolve(".bazelrc");
 			byte[] cargoBytes = Files.readAllBytes(cargo);
 			byte[] bazelBytes = Files.readAllBytes(bazel);
-			Set<PosixFilePermission> cargoMode = Files.getPosixFilePermissions(cargo);
-			Set<PosixFilePermission> bazelMode = Files.getPosixFilePermissions(bazel);
+			// Windows has no POSIX attribute view: the permission checks apply only where the file system has one.
+			boolean posix = Files.getFileStore(cargo).supportsFileAttributeView("posix");
+			Set<PosixFilePermission> cargoMode = null;
+			Set<PosixFilePermission> bazelMode = null;
+			if (posix)
+			{
+				cargoMode = Files.getPosixFilePermissions(cargo);
+				bazelMode = Files.getPosixFilePermissions(bazel);
+			}
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			ByteArrayOutputStream errors = new ByteArrayOutputStream();
 			try (PrintStream out = new PrintStream(output, true, StandardCharsets.UTF_8);
@@ -296,8 +303,11 @@ public final class VerifyBazelClippyLintsTest
 				requireThat(errors.toString(StandardCharsets.UTF_8), "error_stream_remains_writable").endsWith("-after");
 				requireThat(Files.readAllBytes(cargo), "cargo_bytes").isEqualTo(cargoBytes);
 				requireThat(Files.readAllBytes(bazel), "bazel_bytes").isEqualTo(mismatchBytes);
-				requireThat(Files.getPosixFilePermissions(cargo), "cargo_mode").isEqualTo(cargoMode);
-				requireThat(Files.getPosixFilePermissions(bazel), "bazel_mode").isEqualTo(bazelMode);
+				if (posix)
+				{
+					requireThat(Files.getPosixFilePermissions(cargo), "cargo_mode").isEqualTo(cargoMode);
+					requireThat(Files.getPosixFilePermissions(bazel), "bazel_mode").isEqualTo(bazelMode);
+				}
 			}
 		});
 	}

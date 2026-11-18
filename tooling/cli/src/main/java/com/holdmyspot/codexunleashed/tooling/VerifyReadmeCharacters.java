@@ -45,7 +45,7 @@ public final class VerifyReadmeCharacters
 	{
 		if (arguments.length != 1 || arguments[0].startsWith("-"))
 		{
-			err.println("Usage: codex-tooling verify-readme-characters <file>");
+			err.print("Usage: codex-tooling verify-readme-characters <file>\n");
 			return 2;
 		}
 
@@ -57,7 +57,7 @@ public final class VerifyReadmeCharacters
 		}
 		catch (IOException failure)
 		{
-			err.printf("Error: failed to read %s: %s%n", arguments[0], failure.getMessage());
+			err.printf("Error: failed to read %s: %s\n", arguments[0], failure.getMessage());
 			return 1;
 		}
 
@@ -80,16 +80,16 @@ public final class VerifyReadmeCharacters
 				}
 			}
 			int column = offset - previousLineFeed;
-			out.println("UTF-8 decoding error:");
-			out.printf("  byte offset: %d%n", offset);
-			out.printf("  reason: %s%n", decodeReason(bytes, offset));
-			out.printf("  location: line %d, column %d%n", line, column);
+			out.print("UTF-8 decoding error:\n");
+			out.printf("  byte offset: %d\n", offset);
+			out.printf("  reason: %s\n", decodeReason(bytes, offset));
+			out.printf("  location: line %d, column %d\n", line, column);
 			return 1;
 		}
 		result = decoder.flush(decoded);
 		if (result.isError())
 		{
-			err.printf("Error: failed to decode %s: %s%n", arguments[0], result);
+			err.printf("Error: failed to decode %s: %s\n", arguments[0], result);
 			return 1;
 		}
 		decoded.flip();
@@ -103,7 +103,7 @@ public final class VerifyReadmeCharacters
 			if (!isAllowed(codePoint))
 			{
 				hasErrors = true;
-				out.printf("Invalid character at line %d, column %d: U+%04X (%s)%n", line, column, codePoint,
+				out.printf("Invalid character at line %d, column %d: U+%04X (%s)\n", line, column, codePoint,
 					pythonRepr(codePoint));
 			}
 			int nextIndex = index + Character.charCount(codePoint);

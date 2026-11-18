@@ -65,7 +65,7 @@ public final class VerifyReadmeToc
 	{
 		if (arguments.length != 1 || arguments[0].startsWith("-"))
 		{
-			err.println("Usage: codex-tooling verify-readme-toc <file>");
+			err.print("Usage: codex-tooling verify-readme-toc <file>\n");
 			return 2;
 		}
 
@@ -73,7 +73,7 @@ public final class VerifyReadmeToc
 		Path path = Path.of(arguments[0]);
 		if (!Files.isRegularFile(path))
 		{
-			err.printf("Error: file not found: %s%n", displayPath);
+			err.printf("Error: file not found: %s\n", displayPath);
 			return 1;
 		}
 
@@ -84,7 +84,7 @@ public final class VerifyReadmeToc
 		}
 		catch (IOException failure)
 		{
-			err.printf("Error: failed to read %s: %s%n", displayPath, failure.getMessage());
+			err.printf("Error: failed to read %s: %s\n", displayPath, failure.getMessage());
 			return 1;
 		}
 
@@ -96,7 +96,7 @@ public final class VerifyReadmeToc
 		if (result.isError())
 		{
 			// The decoder leaves the input position at the first malformed byte, which locates the failure for the user.
-			err.printf("Error: failed to decode %s: %s%n", displayPath,
+			err.printf("Error: failed to decode %s: %s\n", displayPath,
 				VerifyReadmeCharacters.describeMalformedInput(bytes, input.position(), result.length()));
 			return 1;
 		}
@@ -109,7 +109,7 @@ public final class VerifyReadmeToc
 		int endIndex = firstMarker(lines, END);
 		if (beginIndex < 0 || endIndex < 0)
 		{
-			out.printf("Note: Skipping ToC check; no markers found in %s.%n", displayPath);
+			out.printf("Note: Skipping ToC check; no markers found in %s.\n", displayPath);
 			return 0;
 		}
 
@@ -133,12 +133,12 @@ public final class VerifyReadmeToc
 			return 0;
 		}
 
-		out.println("ERROR: README ToC is out of date. Diff between existing and generated ToC:");
+		out.print("ERROR: README ToC is out of date. Diff between existing and generated ToC:\n");
 		List<String> unifiedDiff = UnifiedDiffUtils.generateUnifiedDiff("existing ToC", "generated ToC", current,
 			DiffUtils.diff(current, expected), 3);
 		for (String line : unifiedDiff)
 		{
-			out.println(line);
+			out.print(line + "\n");
 		}
 		return 1;
 	}
