@@ -1,0 +1,891 @@
+From f17d062279f3bb4e71303e130fcc857d93ee3aac Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 18 Nov 2026 20:14:14 -0500
+Subject: [PATCH] feature: turn off feedback and analytics by default and point
+ the update check at our releases
+
+This client must not send feedback or product analytics to OpenAI unless the user opts in, and its update
+check must not offer OpenAI's npm, bun, pnpm, Vite+ or Homebrew packages, which would replace this build with
+upstream's.
+
+Feedback and analytics already have upstream switches that every sender honours, so the patch changes the
+switches' defaults instead of adding gates. `feedback.enabled` and an unset `analytics.enabled` now resolve to
+false when the configuration loads, and `/feedback` is neither listed nor resolved because the command list
+cannot read the configuration. The built-in Statsig exporter follows `analytics.enabled`, so it sends nothing
+unless the user turns analytics on.
+
+The update check queries holdmyspot-com/codex-unleashed releases, and the installer commands and release links
+name that repository. Package-manager installs get no upgrade action. Release tags look like
+`rust-v0.167.0+<build>`, so the version comparison reads the numeric build after `+`; with no build it is 0.
+
+Tests that rely on the old defaults now enable feedback or analytics explicitly.
+---
+ codex-rs/app-server/tests/common/config.rs    | 12 ++++-
+ .../app-server/tests/suite/v2/analytics.rs    | 11 +++++
+ .../suite/v2/auth_storage_originator_tests.rs | 13 ++++-
+ .../tests/suite/v2/external_agent_config.rs   |  4 +-
+ .../app-server/tests/suite/v2/feedback.rs     |  2 +
+ .../tests/suite/v2/plugin_install.rs          |  9 +++-
+ .../tests/suite/v2/plugin_uninstall.rs        |  5 +-
+ .../tests/suite/v2/remote_control.rs          | 18 ++++---
+ codex-rs/cli/src/main.rs                      |  3 ++
+ codex-rs/cli/tests/doctor_path_safety.rs      |  8 ++-
+ codex-rs/config/src/config_toml.rs            |  4 +-
+ codex-rs/core/config.schema.json              |  4 +-
+ codex-rs/core/src/config/config_tests.rs      | 49 ++++++++++++++-----
+ codex-rs/core/src/config/mod.rs               | 13 +++--
+ codex-rs/core/src/guardian/tests.rs           |  2 +
+ codex-rs/core/tests/common/lib.rs             |  8 ++-
+ .../suite/guardian_subagent_authorization.rs  |  2 +
+ codex-rs/tui/src/app/tests.rs                 |  2 +
+ .../tests/terminal_size_telemetry_tests.rs    |  3 +-
+ .../chatwidget/tests/popups_and_settings.rs   |  2 +
+ codex-rs/tui/src/history_cell/notices.rs      |  9 ++--
+ ...pdate_available_history_cell_snapshot.snap | 14 +++---
+ ...pdate_available_history_cell_snapshot.snap |  7 +--
+ ...pdate_available_history_cell_snapshot.snap |  4 +-
+ codex-rs/tui/src/slash_command.rs             | 11 +++++
+ ...__tests__update_picker_selected_28x12.snap |  4 +-
+ ...te_prompt__tests__update_prompt_modal.snap |  3 +-
+ codex-rs/tui/src/update_action.rs             | 37 ++++++++------
+ codex-rs/tui/src/update_prompt.rs             |  2 +-
+ codex-rs/tui/src/update_versions.rs           | 30 ++++++++++--
+ codex-rs/tui/src/updates.rs                   |  3 +-
+ 31 files changed, 220 insertions(+), 78 deletions(-)
+
+diff --git a/codex-rs/app-server/tests/common/config.rs b/codex-rs/app-server/tests/common/config.rs
+index f359b40..940e2eb 100644
+--- a/codex-rs/app-server/tests/common/config.rs
++++ b/codex-rs/app-server/tests/common/config.rs
+@@ -113,6 +113,16 @@ impl MockResponsesConfig {
+         let root_config = root_config.join("\n");
+         let provider_config = provider_config.join("\n");
+         let extra_config = extra_config.join("\n");
++        // This build defaults analytics off. Tests that observe analytics events rely on the
++        // upstream default, so the harness turns them on unless the test configures analytics.
++        let analytics_config = if [&root_config, &provider_config, &extra_config]
++            .iter()
++            .any(|config| config.contains("analytics"))
++        {
++            ""
++        } else {
++            "\n[analytics]\nenabled = true\n"
++        };
+         let feature_entries = features
+             .into_iter()
+             .map(|(feature, enabled)| {
+@@ -150,7 +160,7 @@ stream_max_retries = 0
+ {provider_config}
+ 
+ {extra_config}
+-"#
++{analytics_config}"#
+             ),
+         )
+     }
+diff --git a/codex-rs/app-server/tests/suite/v2/analytics.rs b/codex-rs/app-server/tests/suite/v2/analytics.rs
+index 9a280c9..feb68fd 100644
+--- a/codex-rs/app-server/tests/suite/v2/analytics.rs
++++ b/codex-rs/app-server/tests/suite/v2/analytics.rs
+@@ -616,6 +616,17 @@ pub(crate) async fn mount_analytics_capture(server: &MockServer, codex_home: &Pa
+         AuthCredentialsStoreMode::File,
+     )?;
+ 
++    // This build defaults analytics off, so a test that captures events turns them on unless its
++    // config already says otherwise.
++    let config_path = codex_home.join("config.toml");
++    let config = std::fs::read_to_string(&config_path).unwrap_or_default();
++    if !config.contains("analytics") {
++        std::fs::write(
++            &config_path,
++            format!("{config}\n[analytics]\nenabled = true\n"),
++        )?;
++    }
++
+     app_test_support::mount_workspace_routing(server).await;
+     Ok(())
+ }
+diff --git a/codex-rs/app-server/tests/suite/v2/auth_storage_originator_tests.rs b/codex-rs/app-server/tests/suite/v2/auth_storage_originator_tests.rs
+index 86817d5..0d0c826 100644
+--- a/codex-rs/app-server/tests/suite/v2/auth_storage_originator_tests.rs
++++ b/codex-rs/app-server/tests/suite/v2/auth_storage_originator_tests.rs
+@@ -45,13 +45,22 @@ pub(super) async fn configure_collector(codex_home: &Path) -> Result<MockServer>
+         .mount(&collector)
+         .await;
+     let endpoint = format!("{}/v1/metrics", collector.uri());
++    let config_path = codex_home.join("config.toml");
++    // The shared fixture already enables analytics, and a second table would not parse.
++    let analytics = if std::fs::read_to_string(&config_path)
++        .is_ok_and(|config| config.contains("[analytics]"))
++    {
++        ""
++    } else {
++        "[analytics]\nenabled = true\n"
++    };
+     let mut config = std::fs::OpenOptions::new()
+         .create(true)
+         .append(true)
+-        .open(codex_home.join("config.toml"))?;
++        .open(config_path)?;
+     writeln!(
+         config,
+-        "\n[analytics]\nenabled = true\n[otel.metrics_exporter.otlp-http]\nendpoint = {endpoint:?}\nprotocol = \"json\""
++        "\n{analytics}[otel.metrics_exporter.otlp-http]\nendpoint = {endpoint:?}\nprotocol = \"json\""
+     )?;
+     Ok(collector)
+ }
+diff --git a/codex-rs/app-server/tests/suite/v2/external_agent_config.rs b/codex-rs/app-server/tests/suite/v2/external_agent_config.rs
+index e6a8d86..18b83b9 100644
+--- a/codex-rs/app-server/tests/suite/v2/external_agent_config.rs
++++ b/codex-rs/app-server/tests/suite/v2/external_agent_config.rs
+@@ -1329,6 +1329,8 @@ async fn external_agent_config_import_reports_failed_sync_import_in_completion()
+     let mut mcp = TestAppServer::builder()
+         .with_codex_home(codex_home.path())
+         .without_auto_env()
++        // The invalid config.toml cannot enable analytics, and this build defaults them off.
++        .with_args(&["-c", "analytics.enabled=true"])
+         .with_env_overrides(&[
+             ("HOME", Some(home_dir.as_str())),
+             (
+@@ -2749,6 +2751,6 @@ async fn external_agent_config_import_compacts_huge_session_before_first_follow_
+ fn write_analytics_config(codex_home: &std::path::Path, base_url: &str) -> std::io::Result<()> {
+     std::fs::write(
+         codex_home.join("config.toml"),
+-        format!("chatgpt_base_url = \"{base_url}\"\n"),
++        format!("chatgpt_base_url = \"{base_url}\"\n\n[analytics]\nenabled = true\n"),
+     )
+ }
+diff --git a/codex-rs/app-server/tests/suite/v2/feedback.rs b/codex-rs/app-server/tests/suite/v2/feedback.rs
+index 2bd9237..d96d3f0 100644
+--- a/codex-rs/app-server/tests/suite/v2/feedback.rs
++++ b/codex-rs/app-server/tests/suite/v2/feedback.rs
+@@ -16,6 +16,7 @@ async fn feedback_upload_limits_concurrency_and_releases_failed_uploads() -> Res
+     let proxy = TcpListener::bind("127.0.0.1:0").await?;
+     let proxy_uri = format!("http://{}", proxy.local_addr()?);
+     let mut app_server = TestAppServer::builder()
++        .with_args(&["-c", "feedback.enabled=true"])
+         .with_env_overrides(&[
+             ("HTTPS_PROXY", Some(proxy_uri.as_str())),
+             ("https_proxy", Some(proxy_uri.as_str())),
+@@ -251,6 +252,7 @@ async fn feedback_upload_recovers_persisted_evidence_and_reports_sqlite_failures
+     legacy_pool.close().await;
+     // This new process can recover review context only from SQLite.
+     let mut app_server = TestAppServer::builder()
++        .with_args(&["-c", "feedback.enabled=true"])
+         .with_codex_home(home.path())
+         .with_env_overrides(&[
+             ("HTTPS_PROXY", Some(proxy_uri.as_str())),
+diff --git a/codex-rs/app-server/tests/suite/v2/plugin_install.rs b/codex-rs/app-server/tests/suite/v2/plugin_install.rs
+index ae19ff3..1e434b3 100644
+--- a/codex-rs/app-server/tests/suite/v2/plugin_install.rs
++++ b/codex-rs/app-server/tests/suite/v2/plugin_install.rs
+@@ -2863,7 +2863,7 @@ connectors = true
+ fn write_analytics_config(codex_home: &std::path::Path, base_url: &str) -> std::io::Result<()> {
+     std::fs::write(
+         codex_home.join("config.toml"),
+-        format!("chatgpt_base_url = \"{base_url}\"\n"),
++        format!("chatgpt_base_url = \"{base_url}\"\n\n[analytics]\nenabled = true\n"),
+     )
+ }
+ 
+@@ -2967,6 +2967,13 @@ plugins = true
+ 
+ fn configure_remote_plugin_test(codex_home: &std::path::Path, server: &MockServer) -> Result<()> {
+     write_remote_plugin_catalog_config(codex_home, &format!("{}/backend-api/", server.uri()))?;
++    // This build defaults analytics off, and some tests here observe analytics events.
++    let config_path = codex_home.join("config.toml");
++    let config = std::fs::read_to_string(&config_path)?;
++    std::fs::write(
++        config_path,
++        format!("{config}\n[analytics]\nenabled = true\n"),
++    )?;
+     write_chatgpt_auth(
+         codex_home,
+         ChatGptAuthFixture::new("chatgpt-token")
+diff --git a/codex-rs/app-server/tests/suite/v2/plugin_uninstall.rs b/codex-rs/app-server/tests/suite/v2/plugin_uninstall.rs
+index 1e0d5d8..8069d68 100644
+--- a/codex-rs/app-server/tests/suite/v2/plugin_uninstall.rs
++++ b/codex-rs/app-server/tests/suite/v2/plugin_uninstall.rs
+@@ -71,7 +71,7 @@ async fn plugin_uninstall_tracks_analytics_event() -> Result<()> {
+     std::fs::write(
+         codex_home.path().join("config.toml"),
+         format!(
+-            "chatgpt_base_url = \"{}\"\n\n[features]\nplugins = true\n\n[plugins.\"sample-plugin@debug\"]\nenabled = true\n",
++            "chatgpt_base_url = \"{}\"\n\n[analytics]\nenabled = true\n\n[features]\nplugins = true\n\n[plugins.\"sample-plugin@debug\"]\nenabled = true\n",
+             analytics_server.uri()
+         ),
+     )?;
+@@ -594,6 +594,9 @@ fn write_remote_plugin_catalog_config(
+             r#"
+ chatgpt_base_url = "{base_url}"
+ 
++[analytics]
++enabled = true
++
+ [features]
+ plugins = true
+ "#
+diff --git a/codex-rs/app-server/tests/suite/v2/remote_control.rs b/codex-rs/app-server/tests/suite/v2/remote_control.rs
+index e3faed6..bd8b3fb 100644
+--- a/codex-rs/app-server/tests/suite/v2/remote_control.rs
++++ b/codex-rs/app-server/tests/suite/v2/remote_control.rs
+@@ -512,13 +512,17 @@ async fn stdio_eof_releases_thread_writer_with_pending_remote_control_enable() -
+         .context("fixture features should be a table")?;
+     features.insert("apps".to_string(), toml::Value::Boolean(false));
+     features.insert("remote_plugin".to_string(), toml::Value::Boolean(false));
+-    std::fs::write(
+-        config_path,
+-        format!(
+-            "{}\n[analytics]\nenabled = false\n",
+-            toml::to_string(&config)?
+-        ),
+-    )?;
++    config
++        .as_table_mut()
++        .context("fixture config should be a table")?
++        .insert(
++            "analytics".to_string(),
++            toml::Value::Table(toml::Table::from_iter([(
++                "enabled".to_string(),
++                toml::Value::Boolean(false),
++            )])),
++        );
++    std::fs::write(config_path, toml::to_string(&config)?)?;
+     let thread_id = create_fake_paginated_rollout(
+         codex_home.path(),
+         "2025-01-01T00-00-00",
+diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
+index f1c664a..1bf6c80 100644
+--- a/codex-rs/cli/src/main.rs
++++ b/codex-rs/cli/src/main.rs
+@@ -621,6 +621,9 @@ struct AppServerCommand {
+ 
+     /// Controls whether analytics are enabled by default.
+     ///
++    /// This build also turns analytics off when `analytics.enabled` is unset, so this flag no
++    /// longer enables them; only `analytics.enabled = true` in config.toml does.
++    ///
+     /// Analytics are disabled by default for app-server. Users have to explicitly opt in
+     /// via the `analytics` section in the config.toml file.
+     ///
+diff --git a/codex-rs/cli/tests/doctor_path_safety.rs b/codex-rs/cli/tests/doctor_path_safety.rs
+index 015fb06..a6b56eb 100644
+--- a/codex-rs/cli/tests/doctor_path_safety.rs
++++ b/codex-rs/cli/tests/doctor_path_safety.rs
+@@ -638,7 +638,13 @@ async fn feedback_with_logs_does_not_execute_path_helpers() -> Result<()> {
+         // The CLI does not accept the standalone app-server's test-only flag.
+         // Disable plugins through real config; their safety test joins a full sync.
+         .with_plugin_startup_tasks()
+-        .with_args(&["-c", "features.plugins=false", "app-server"])
++        .with_args(&[
++            "-c",
++            "features.plugins=false",
++            "-c",
++            "feedback.enabled=true",
++            "app-server",
++        ])
+         .with_env_overrides(&[
+             ("PATH", Some(path.as_ref())),
+             ("HOME", Some(home.as_ref())),
+diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
+index d0302eb..d7138fc 100644
+--- a/codex-rs/config/src/config_toml.rs
++++ b/codex-rs/config/src/config_toml.rs
+@@ -551,11 +551,11 @@ pub struct ConfigToml {
+ 
+     /// When `enabled` is `false`, disables OpenAI analytics across Codex product surfaces on this machine.
+     /// Custom OTLP metrics exporters are controlled by `otel.metrics_exporter`.
+-    /// When unset, the default depends on the client.
++    /// When unset, analytics are off.
+     pub analytics: Option<AnalyticsConfigToml>,
+ 
+     /// When `false`, disables feedback collection across Codex product surfaces.
+-    /// Defaults to `true`.
++    /// Defaults to `false`.
+     pub feedback: Option<FeedbackConfigToml>,
+ 
+     /// Settings for app-specific controls.
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index 13785e3..f96ae9a 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -7452,7 +7452,7 @@
+           "$ref": "#/definitions/AnalyticsConfigToml"
+         }
+       ],
+-      "description": "When `enabled` is `false`, disables OpenAI analytics across Codex product surfaces on this machine.\nCustom OTLP metrics exporters are controlled by `otel.metrics_exporter`.\nWhen unset, the default depends on the client."
++      "description": "When `enabled` is `false`, disables OpenAI analytics across Codex product surfaces on this machine.\nCustom OTLP metrics exporters are controlled by `otel.metrics_exporter`.\nWhen unset, analytics are off."
+     },
+     "approval_policy": {
+       "allOf": [
+@@ -8286,7 +8286,7 @@
+           "$ref": "#/definitions/FeedbackConfigToml"
+         }
+       ],
+-      "description": "When `false`, disables feedback collection across Codex product surfaces.\nDefaults to `true`."
++      "description": "When `false`, disables feedback collection across Codex product surfaces.\nDefaults to `false`."
+     },
+     "file_opener": {
+       "allOf": [
+diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
+index 862b92b..b8654c6 100644
+--- a/codex-rs/core/src/config/config_tests.rs
++++ b/codex-rs/core/src/config/config_tests.rs
+@@ -41,6 +41,7 @@ use codex_config::permissions_toml::NetworkToml;
+ use codex_config::permissions_toml::PermissionProfileToml;
+ use codex_config::permissions_toml::PermissionsToml;
+ use codex_config::permissions_toml::WorkspaceRootsToml;
++use codex_config::types::AnalyticsConfigToml;
+ use codex_config::types::AppToolApproval;
+ use codex_config::types::ApprovalsReviewer;
+ use codex_config::types::BundledSkillsConfig;
+@@ -6906,21 +6907,43 @@ fn local_dev_builds_force_file_mcp_oauth_store_modes() {
+ }
+ 
+ #[tokio::test]
+-async fn feedback_enabled_defaults_to_true() -> std::io::Result<()> {
++async fn feedback_and_analytics_default_to_off() -> std::io::Result<()> {
+     let codex_home = TempDir::new()?;
+-    let cfg = ConfigToml {
+-        feedback: Some(FeedbackConfigToml::default()),
+-        ..Default::default()
+-    };
+-
+-    let config = Config::load_from_base_config_with_overrides(
+-        cfg,
+-        ConfigOverrides::default(),
+-        codex_home.abs(),
+-    )
+-    .await?;
++    for (cfg, feedback, analytics) in [
++        (ConfigToml::default(), false, false),
++        (
++            ConfigToml {
++                feedback: Some(FeedbackConfigToml::default()),
++                analytics: Some(AnalyticsConfigToml::default()),
++                ..Default::default()
++            },
++            false,
++            false,
++        ),
++        (
++            ConfigToml {
++                feedback: Some(FeedbackConfigToml {
++                    enabled: Some(true),
++                }),
++                analytics: Some(AnalyticsConfigToml {
++                    enabled: Some(true),
++                }),
++                ..Default::default()
++            },
++            true,
++            true,
++        ),
++    ] {
++        let config = Config::load_from_base_config_with_overrides(
++            cfg,
++            ConfigOverrides::default(),
++            codex_home.abs(),
++        )
++        .await?;
+ 
+-    assert_eq!(config.feedback_enabled, true);
++        assert_eq!(config.feedback_enabled, feedback);
++        assert_eq!(config.analytics_enabled, Some(analytics));
++    }
+ 
+     Ok(())
+ }
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index e7ae30d..f6269a5 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -1201,11 +1201,11 @@ pub struct Config {
+ 
+     /// When `false`, disables OpenAI analytics across Codex product surfaces on this machine.
+     /// Custom OTLP metrics exporters are controlled by `otel.metrics_exporter`.
+-    /// Voluntarily left as Optional because the default value might depend on the client.
++    /// Loading a configuration resolves an unset value to `false` for every client.
+     pub analytics_enabled: Option<bool>,
+ 
+     /// When `false`, disables feedback uploads and background Guardian review retention. Explicit local exports remain available.
+-    /// Defaults to `true`.
++    /// Defaults to `false`.
+     pub feedback_enabled: bool,
+ 
+     /// Configured discoverable tools for tool suggestions.
+@@ -4761,12 +4761,17 @@ impl Config {
+                 .and_then(|tui| tui.disable_paste_burst)
+                 .or(cfg.disable_paste_burst)
+                 .unwrap_or(false),
+-            analytics_enabled: cfg.analytics.as_ref().and_then(|a| a.enabled),
++            analytics_enabled: Some(
++                cfg.analytics
++                    .as_ref()
++                    .and_then(|a| a.enabled)
++                    .unwrap_or(false),
++            ),
+             feedback_enabled: cfg
+                 .feedback
+                 .as_ref()
+                 .and_then(|feedback| feedback.enabled)
+-                .unwrap_or(true),
++                .unwrap_or(false),
+             tool_suggest,
+             tui_notifications: cfg
+                 .tui
+diff --git a/codex-rs/core/src/guardian/tests.rs b/codex-rs/core/src/guardian/tests.rs
+index 239a965..4298df7 100644
+--- a/codex-rs/core/src/guardian/tests.rs
++++ b/codex-rs/core/src/guardian/tests.rs
+@@ -288,6 +288,8 @@ async fn guardian_test_session_and_turn_with_base_url(
+     session.thread_id = fixed_guardian_parent_session_id();
+     let mut config = (*turn.config).clone();
+     config.model_provider.base_url = Some(format!("{base_url}/v1"));
++    // Failed reviews are retained only when feedback is enabled, which is off by default.
++    config.feedback_enabled = true;
+     let config = Arc::new(config);
+     let models_manager = test_support::models_manager_with_provider(
+         config.codex_home.to_path_buf(),
+diff --git a/codex-rs/core/tests/common/lib.rs b/codex-rs/core/tests/common/lib.rs
+index ce3a9a8..ebeb1bd 100644
+--- a/codex-rs/core/tests/common/lib.rs
++++ b/codex-rs/core/tests/common/lib.rs
+@@ -210,14 +210,18 @@ pub async fn load_default_config_for_test_with_cloud_config_bundle(
+     codex_home: &TempDir,
+     cloud_config_bundle: CloudConfigBundleLoader,
+ ) -> Config {
+-    ConfigBuilder::default()
++    let mut config = ConfigBuilder::default()
+         .loader_overrides(LoaderOverrides::without_managed_config_for_tests())
+         .codex_home(codex_home.path().to_path_buf())
+         .harness_overrides(default_test_overrides())
+         .cloud_config_bundle(cloud_config_bundle)
+         .build()
+         .await
+-        .expect("defaults for test should always succeed")
++        .expect("defaults for test should always succeed");
++    // This build defaults analytics off. Tests that observe analytics events rely on the upstream
++    // default, so the harness turns them on and each test opts out explicitly.
++    config.analytics_enabled = Some(true);
++    config
+ }
+ 
+ pub fn managed_network_requirements_loader() -> CloudConfigBundleLoader {
+diff --git a/codex-rs/core/tests/suite/guardian_subagent_authorization.rs b/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
+index 2783145..9f126d3 100644
+--- a/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
++++ b/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
+@@ -736,6 +736,8 @@ async fn run_guardian_subagent_review(
+                 .expect("write messaging rewrite hook");
+         })
+         .with_config(move |config| {
++            // Retained failed reviews are recorded only when feedback is enabled.
++            config.feedback_enabled = true;
+             config
+                 .features
+                 .disable(Feature::UnleashedBackgroundSubagents)
+diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
+index 8377f62..29fb219 100644
+--- a/codex-rs/tui/src/app/tests.rs
++++ b/codex-rs/tui/src/app/tests.rs
+@@ -7794,6 +7794,8 @@ async fn feedback_submission_stages_logs_cleans_up_and_emits_error_history_cell(
+     use tracing_subscriber::fmt::writer::MakeWriter;
+ 
+     let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
++    // The embedded app server reads this build's default, which refuses feedback uploads.
++    app.config.feedback_enabled = true;
+     let (server, requests, proxy) =
+         session_lifecycle_requests::start_recording_remote_app_server(&app.config).await?;
+     let diagnostic = "SQLITE LOG WRITE FAILURE: disk full\n";
+diff --git a/codex-rs/tui/src/app/tests/terminal_size_telemetry_tests.rs b/codex-rs/tui/src/app/tests/terminal_size_telemetry_tests.rs
+index 5075ba1..befcccb 100644
+--- a/codex-rs/tui/src/app/tests/terminal_size_telemetry_tests.rs
++++ b/codex-rs/tui/src/app/tests/terminal_size_telemetry_tests.rs
+@@ -10,6 +10,7 @@ async fn terminal_size_telemetry_respects_reloaded_exporter_and_consent() -> Res
+     let mut enabled = Vec::new();
+     for config in [
+         "[otel]\nmetrics_exporter = \"statsig\"\n",
++        "[otel]\nmetrics_exporter = \"statsig\"\n[analytics]\nenabled = true\n",
+         "[otel]\nmetrics_exporter = \"none\"\n",
+         "[otel]\nmetrics_exporter = \"statsig\"\n[analytics]\nenabled = false\n",
+         "analytics.enabled = false\n[otel.metrics_exporter.otlp-http]\nendpoint = \"http://127.0.0.1:4318/v1/metrics\"\nprotocol = \"json\"\n",
+@@ -25,6 +26,6 @@ async fn terminal_size_telemetry_respects_reloaded_exporter_and_consent() -> Res
+         app.local_settings = local_settings;
+         enabled.push(crate::terminal_size_telemetry::enabled(&app.config));
+     }
+-    assert_eq!(enabled, vec![true, false, false, true]);
++    assert_eq!(enabled, vec![false, true, false, false, true]);
+     Ok(())
+ }
+diff --git a/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs b/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs
+index 54e1f1f..3c4fe8c 100644
+--- a/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs
++++ b/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs
+@@ -4314,6 +4314,8 @@ async fn auto_model_advertising_advanced_effort_opens_reasoning_picker() {
+ #[tokio::test]
+ async fn feedback_selection_popup_snapshot() {
+     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
++    // Feedback is off by default in this build.
++    chat.config.feedback_enabled = true;
+ 
+     // Open the feedback category selection popup via slash command.
+     chat.dispatch_command(SlashCommand::Feedback);
+diff --git a/codex-rs/tui/src/history_cell/notices.rs b/codex-rs/tui/src/history_cell/notices.rs
+index 9f5e213..a922f63 100644
+--- a/codex-rs/tui/src/history_cell/notices.rs
++++ b/codex-rs/tui/src/history_cell/notices.rs
+@@ -39,7 +39,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
+         } else {
+             line![
+                 "See ",
+-                "https://github.com/openai/codex"
++                "https://github.com/holdmyspot-com/codex-unleashed"
+                     .fg(accent_color())
+                     .underlined(),
+                 " for installation options."
+@@ -56,7 +56,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
+             update_instruction,
+             "",
+             "See full release notes:",
+-            "https://github.com/openai/codex/releases/latest"
++            "https://github.com/holdmyspot-com/codex-unleashed/releases/latest"
+                 .fg(accent_color())
+                 .underlined(),
+         ];
+@@ -73,7 +73,8 @@ impl HistoryCell for UpdateAvailableHistoryCell {
+         let update_instruction = if let Some(update_action) = self.update_action {
+             format!("Run {} to update.", update_action.command_str())
+         } else {
+-            "See https://github.com/openai/codex for installation options.".to_string()
++            "See https://github.com/holdmyspot-com/codex-unleashed for installation options."
++                .to_string()
+         };
+         vec![
+             Line::from("Update available!"),
+@@ -81,7 +82,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
+             Line::from(update_instruction),
+             Line::from(""),
+             Line::from("See full release notes:"),
+-            Line::from("https://github.com/openai/codex/releases/latest"),
++            Line::from("https://github.com/holdmyspot-com/codex-unleashed/releases/latest"),
+         ]
+     }
+ 
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
+index 28aa335..8dec83d 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
+@@ -2,10 +2,10 @@
+ source: tui/src/history_cell/tests.rs
+ expression: rendered
+ ---
+-╭─────────────────────────────────────────────────╮
+-│ ✨ Update available! 0.0.0+dev -> 9.9.9         │
+-│ Run pnpm add -g @openai/codex to update.        │
+-│                                                 │
+-│ See full release notes:                         │
+-│ https://github.com/openai/codex/releases/latest │
+-╰─────────────────────────────────────────────────╯
++╭───────────────────────────────────────────────────────────────────╮
++│ ✨ Update available! 0.0.0+dev -> 9.9.9                           │
++│ Run pnpm add -g @openai/codex to update.                          │
++│                                                                   │
++│ See full release notes:                                           │
++│ https://github.com/holdmyspot-com/codex-unleashed/releases/latest │
++╰───────────────────────────────────────────────────────────────────╯
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
+index 913845c..5f09db9 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
+@@ -4,9 +4,10 @@ expression: rendered
+ ---
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ ✨ Update available! 0.0.0+dev -> 9.9.9                                                                    │
+-│ Run sh -c 's=$(curl -fsSL https://chatgpt.com/codex/install.sh) && CODEX_NON_INTERACTIVE=1 eval "$s"' to   │
+-│ update.                                                                                                    │
++│ Run sh -c 's=$(curl -fsSL                                                                                  │
++│ https://github.com/holdmyspot-com/codex-unleashed/releases/latest/download/install.sh) &&                  │
++│ CODEX_NON_INTERACTIVE=1 eval "$s"' to update.                                                              │
+ │                                                                                                            │
+ │ See full release notes:                                                                                    │
+-│ https://github.com/openai/codex/releases/latest                                                            │
++│ https://github.com/holdmyspot-com/codex-unleashed/releases/latest                                          │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
+index 52a497e..8841552 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
+@@ -5,8 +5,8 @@ expression: rendered
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ ✨ Update available! 0.0.0+dev -> 9.9.9                                                                    │
+ │ Run powershell -ExecutionPolicy Bypass -c '$env:CODEX_NON_INTERACTIVE=1; irm                               │
+-│ https://chatgpt.com/codex/install.ps1 | iex' to update.                                                    │
++│ https://github.com/holdmyspot-com/codex-unleashed/releases/latest/download/install.ps1 | iex' to update.   │
+ │                                                                                                            │
+ │ See full release notes:                                                                                    │
+-│ https://github.com/openai/codex/releases/latest                                                            │
++│ https://github.com/holdmyspot-com/codex-unleashed/releases/latest                                          │
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
+index dfd0538..d44c908 100644
+--- a/codex-rs/tui/src/slash_command.rs
++++ b/codex-rs/tui/src/slash_command.rs
+@@ -318,6 +318,8 @@ impl SlashCommand {
+             SlashCommand::Copy => !cfg!(target_os = "android"),
+             SlashCommand::App => cfg!(any(target_os = "macos", target_os = "windows")),
+             SlashCommand::Voice => true,
++            // This build uploads no feedback, so the command is neither listed nor resolved.
++            SlashCommand::Feedback => false,
+             SlashCommand::Rollout | SlashCommand::TestApproval => cfg!(debug_assertions),
+             _ => true,
+         }
+@@ -367,6 +369,15 @@ mod tests {
+         assert!(SlashCommand::App.available_during_task());
+     }
+ 
++    #[test]
++    fn feedback_command_is_not_listed() {
++        assert!(
++            !super::built_in_slash_commands()
++                .iter()
++                .any(|(_, command)| *command == SlashCommand::Feedback)
++        );
++    }
++
+     #[test]
+     fn auto_review_command_is_approve() {
+         assert_eq!(SlashCommand::AutoReview.command(), "approve");
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
+index 53c8053..7f283d8 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
+@@ -6,8 +6,8 @@ expression: rendered
+   Update available · 0.0.0
+   → 9.9.9
+   Release notes:
+-  https://github.com/opena
+-  i/codex/releases/latest
++  https://github.com/holdm
++  yspot-com/codex-unleashe
+ ↑
+ › 3. Skip until next version
+ 
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
+index b547642..0ee815f 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
+@@ -4,7 +4,8 @@ expression: terminal.backend()
+ ---
+ 
+   Update available · 0.0.0 → 9.9.9
+-  Release notes: https://github.com/openai/codex/releases/latest
++  Release notes:
++  https://github.com/holdmyspot-com/codex-unleashed/releases/latest
+ 
+ › 1. Update now (runs `npm install -g @openai/codex`)                           
+   2. Skip
+diff --git a/codex-rs/tui/src/update_action.rs b/codex-rs/tui/src/update_action.rs
+index 7b3433e..c7f27cf 100644
+--- a/codex-rs/tui/src/update_action.rs
++++ b/codex-rs/tui/src/update_action.rs
+@@ -22,7 +22,7 @@ pub enum UpdateAction {
+     BrewUpgrade,
+     /// Update via the standalone Unix installer.
+     StandaloneUnix,
+-    /// Update via `$env:CODEX_NON_INTERACTIVE=1; irm https://chatgpt.com/codex/install.ps1 | iex`.
++    /// Update via `$env:CODEX_NON_INTERACTIVE=1; irm https://github.com/holdmyspot-com/codex-unleashed/releases/latest/download/install.ps1 | iex`.
+     StandaloneWindows,
+ }
+ 
+@@ -30,11 +30,13 @@ impl UpdateAction {
+     #[cfg(any(not(debug_assertions), test))]
+     pub(crate) fn from_install_context(context: &InstallContext) -> Option<Self> {
+         match &context.method {
+-            InstallMethod::Npm => Some(UpdateAction::NpmGlobalLatest),
+-            InstallMethod::Bun => Some(UpdateAction::BunGlobalLatest),
+-            InstallMethod::VitePlus => Some(UpdateAction::VitePlusGlobalLatest),
+-            InstallMethod::Pnpm => Some(UpdateAction::PnpmGlobalLatest),
+-            InstallMethod::Brew => Some(UpdateAction::BrewUpgrade),
++            // Those packages and the Homebrew cask are OpenAI's, so upgrading through them would
++            // replace this build with OpenAI's.
++            InstallMethod::Npm
++            | InstallMethod::Bun
++            | InstallMethod::VitePlus
++            | InstallMethod::Pnpm
++            | InstallMethod::Brew => None,
+             InstallMethod::Standalone { platform, .. } => Some(match platform {
+                 StandalonePlatform::Unix => UpdateAction::StandaloneUnix,
+                 StandalonePlatform::Windows => UpdateAction::StandaloneWindows,
+@@ -56,7 +58,7 @@ impl UpdateAction {
+                 "sh",
+                 &[
+                     "-c",
+-                    r#"s=$(curl -fsSL https://chatgpt.com/codex/install.sh) && CODEX_NON_INTERACTIVE=1 eval "$s""#,
++                    r#"s=$(curl -fsSL https://github.com/holdmyspot-com/codex-unleashed/releases/latest/download/install.sh) && CODEX_NON_INTERACTIVE=1 eval "$s""#,
+                 ],
+             ),
+             UpdateAction::StandaloneWindows => (
+@@ -65,7 +67,7 @@ impl UpdateAction {
+                     "-ExecutionPolicy",
+                     "Bypass",
+                     "-c",
+-                    "$env:CODEX_NON_INTERACTIVE=1; irm https://chatgpt.com/codex/install.ps1 | iex",
++                    "$env:CODEX_NON_INTERACTIVE=1; irm https://github.com/holdmyspot-com/codex-unleashed/releases/latest/download/install.ps1 | iex",
+                 ],
+             ),
+         }
+@@ -108,28 +110,35 @@ mod tests {
+                 method: InstallMethod::Npm,
+                 package_layout: None,
+             }),
+-            Some(UpdateAction::NpmGlobalLatest)
++            None
+         );
+         assert_eq!(
+             UpdateAction::from_install_context(&InstallContext {
+                 method: InstallMethod::Bun,
+                 package_layout: None,
+             }),
+-            Some(UpdateAction::BunGlobalLatest)
++            None
+         );
+         assert_eq!(
+             UpdateAction::from_install_context(&InstallContext {
+                 method: InstallMethod::Pnpm,
+                 package_layout: None,
+             }),
+-            Some(UpdateAction::PnpmGlobalLatest)
++            None
++        );
++        assert_eq!(
++            UpdateAction::from_install_context(&InstallContext {
++                method: InstallMethod::VitePlus,
++                package_layout: None,
++            }),
++            None
+         );
+         assert_eq!(
+             UpdateAction::from_install_context(&InstallContext {
+                 method: InstallMethod::Brew,
+                 package_layout: None,
+             }),
+-            Some(UpdateAction::BrewUpgrade)
++            None
+         );
+         assert_eq!(
+             UpdateAction::from_install_context(&InstallContext {
+@@ -165,7 +174,7 @@ mod tests {
+                     "-ExecutionPolicy",
+                     "Bypass",
+                     "-c",
+-                    "$env:CODEX_NON_INTERACTIVE=1; irm https://chatgpt.com/codex/install.ps1 | iex"
++                    "$env:CODEX_NON_INTERACTIVE=1; irm https://github.com/holdmyspot-com/codex-unleashed/releases/latest/download/install.ps1 | iex"
+                 ][..],
+             )
+         );
+@@ -175,7 +184,7 @@ mod tests {
+     #[test]
+     fn standalone_unix_update_fails_when_installer_download_fails() {
+         let (command, args) = UpdateAction::StandaloneUnix.command_args();
+-        let offline_command = args[1].replace("https://chatgpt.com", "file:///dev/null");
++        let offline_command = args[1].replace("https://github.com", "file:///dev/null");
+         assert_ne!(offline_command, args[1], "installer URL must be replaced");
+         let output = std::process::Command::new(command)
+             .args([args[0], &offline_command])
+diff --git a/codex-rs/tui/src/update_prompt.rs b/codex-rs/tui/src/update_prompt.rs
+index 30e948d..102f711 100644
+--- a/codex-rs/tui/src/update_prompt.rs
++++ b/codex-rs/tui/src/update_prompt.rs
+@@ -39,7 +39,7 @@ use ratatui::widgets::Wrap;
+ #[cfg(not(debug_assertions))]
+ use tokio_stream::StreamExt;
+ 
+-const RELEASE_NOTES_URL: &str = "https://github.com/openai/codex/releases/latest";
++const RELEASE_NOTES_URL: &str = "https://github.com/holdmyspot-com/codex-unleashed/releases/latest";
+ 
+ #[cfg(not(debug_assertions))]
+ pub(crate) enum UpdatePromptOutcome {
+diff --git a/codex-rs/tui/src/update_versions.rs b/codex-rs/tui/src/update_versions.rs
+index d338802..5cc7b65 100644
+--- a/codex-rs/tui/src/update_versions.rs
++++ b/codex-rs/tui/src/update_versions.rs
+@@ -16,7 +16,7 @@ pub(crate) fn extract_version_from_latest_tag(latest_tag_name: &str) -> anyhow::
+ 
+ #[cfg(any(not(debug_assertions), test))]
+ pub(crate) fn is_source_build_version(version: &str) -> bool {
+-    parse_version(version) == Some((0, 0, 0))
++    matches!(parse_version(version), Some((0, 0, 0, _)))
+ }
+ 
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+@@ -66,12 +66,17 @@ pub(crate) fn is_numeric_vendor_build(build: &semver::BuildMetadata) -> bool {
+ }
+ 
+ #[cfg(any(not(debug_assertions), test))]
+-fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
+-    let mut iter = v.trim().split('.');
++fn parse_version(v: &str) -> Option<(u64, u64, u64, u64)> {
++    // Release tags carry a numeric build, as in `rust-v0.167.0+1`; no build sorts before build 1.
++    let (release, build) = match v.trim().split_once('+') {
++        Some((release, build)) => (release, build.parse::<u64>().ok()?),
++        None => (v.trim(), 0),
++    };
++    let mut iter = release.split('.');
+     let maj = iter.next()?.parse::<u64>().ok()?;
+     let min = iter.next()?.parse::<u64>().ok()?;
+     let pat = iter.next()?.parse::<u64>().ok()?;
+-    Some((maj, min, pat))
++    Some((maj, min, pat, build))
+ }
+ 
+ #[cfg(test)]
+@@ -145,15 +150,30 @@ mod tests {
+         assert_eq!(is_newer("0.9.9", "1.0.0"), Some(false));
+     }
+ 
++    #[test]
++    fn release_builds_compare_by_build_number() {
++        assert_eq!(is_newer("0.167.0+2", "0.167.0+1"), Some(true));
++        assert_eq!(is_newer("0.167.0+1", "0.167.0+2"), Some(false));
++        assert_eq!(is_newer("0.167.0+1", "0.167.0"), Some(true));
++        assert_eq!(is_newer("0.167.0+9", "0.168.0+1"), Some(false));
++        assert_eq!(is_newer("0.167.0+1", "0.167.0+1"), Some(false));
++        assert_eq!(is_newer("0.167.0+dev", "0.167.0+1"), None);
++        assert_eq!(
++            extract_version_from_latest_tag("rust-v0.167.0+1").expect("failed to parse version"),
++            "0.167.0+1"
++        );
++    }
++
+     #[test]
+     fn source_build_version_is_not_checked() {
+         assert!(is_source_build_version("0.0.0"));
++        assert!(is_source_build_version("0.0.0+1"));
+         assert!(!is_source_build_version("0.1.0"));
+     }
+ 
+     #[test]
+     fn whitespace_is_ignored() {
+-        assert_eq!(parse_version(" 1.2.3 \n"), Some((1, 2, 3)));
++        assert_eq!(parse_version(" 1.2.3 \n"), Some((1, 2, 3, 0)));
+         assert_eq!(is_newer(" 1.2.3 ", "1.2.2"), Some(true));
+     }
+ 
+diff --git a/codex-rs/tui/src/updates.rs b/codex-rs/tui/src/updates.rs
+index 9ee04e7..9ebf3fb 100644
+--- a/codex-rs/tui/src/updates.rs
++++ b/codex-rs/tui/src/updates.rs
+@@ -59,7 +59,8 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {
+ 
+ // We use the latest version from the cask if installation is via homebrew - homebrew does not immediately pick up the latest release and can lag behind.
+ const HOMEBREW_CASK_API_URL: &str = "https://formulae.brew.sh/api/cask/codex.json";
+-const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/openai/codex/releases/latest";
++const LATEST_RELEASE_URL: &str =
++    "https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases/latest";
+ 
+ #[derive(Deserialize, Debug, Clone)]
+ struct ReleaseInfo {
+-- 
+2.43.0
+

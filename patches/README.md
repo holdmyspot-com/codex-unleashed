@@ -118,3 +118,4 @@ The release applies these patches in this order:
 106. [native-test-prerequisites/windows-shell-snapshot-test-imports.patch](holdmyspot-com/codex-unleashed/native-test-prerequisites/windows-shell-snapshot-test-imports.patch)
 107. [release-reproduction/msvc-environment-reuse.patch](holdmyspot-com/codex-unleashed/release-reproduction/msvc-environment-reuse.patch)
 108. [mxc-ancestor-guard/guard-protected-ancestors.patch](holdmyspot-com/codex-unleashed/mxc-ancestor-guard/guard-protected-ancestors.patch)
+109. [telemetry-off/telemetry-off.patch](holdmyspot-com/codex-unleashed/telemetry-off/telemetry-off.patch)
