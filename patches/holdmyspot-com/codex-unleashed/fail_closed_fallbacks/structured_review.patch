@@ -4,11 +4,28 @@ Date: Sat, 14 Nov 2026 03:24:17 +0000
 Subject: [PATCH] bugfix: report review failures instead of empty findings
 
 ---
+ .../suite/v2/guardian_sync_session_tests.rs   |  5 +-
  codex-rs/core/src/tasks/review.rs             | 87 ++++++++++++++-----
  codex-rs/core/tests/suite/review.rs           | 81 ++++++++++++-----
  .../exec/tests/suite/server_error_exit.rs     | 29 +++++++
- 3 files changed, 151 insertions(+), 46 deletions(-)
+ 4 files changed, 155 insertions(+), 47 deletions(-)
 
+diff --git a/codex-rs/app-server/tests/suite/v2/guardian_sync_session_tests.rs b/codex-rs/app-server/tests/suite/v2/guardian_sync_session_tests.rs
+index 3a689ef..33017c3 100644
+--- a/codex-rs/app-server/tests/suite/v2/guardian_sync_session_tests.rs
++++ b/codex-rs/app-server/tests/suite/v2/guardian_sync_session_tests.rs
+@@ -647,7 +647,10 @@ async fn inline_review_delegate_runs_strict_guardian_assessment() -> Result<()>
+         vec![
+             tool_response("node_repl", "js", &["inline-tool"]),
+             assistant_response(ALLOW)?,
+-            assistant_response(r#"{"findings":[]}"#)?,
++            // A review result must be complete structured output; partial findings are an error.
++            assistant_response(
++                r#"{"findings":[],"overall_correctness":"good","overall_explanation":"Done","overall_confidence_score":0.5}"#,
++            )?,
+         ],
+     )
+     .await;
 diff --git a/codex-rs/core/src/tasks/review.rs b/codex-rs/core/src/tasks/review.rs
 index 7d9bf76..2c55b96 100644
 --- a/codex-rs/core/src/tasks/review.rs

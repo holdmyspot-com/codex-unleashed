@@ -9,7 +9,8 @@ Protected execution must stop when snapshot capture, credential filtering or tra
  codex-rs/exec-server/src/shell_snapshot.rs    |  97 ++++++--
  .../src/shell_snapshot_credentials.rs         |  24 +-
  .../exec-server/src/shell_snapshot_tests.rs   | 234 ++++++++++++++++++
- 4 files changed, 391 insertions(+), 40 deletions(-)
+ codex-rs/exec-server/tests/exec_process.rs    |  61 +++--
+ 5 files changed, 419 insertions(+), 73 deletions(-)
 
 diff --git a/codex-rs/exec-server/src/local_process.rs b/codex-rs/exec-server/src/local_process.rs
 index 854043b..61848f7 100644
@@ -566,6 +567,123 @@ index b6b39ee..46e8e31 100644
  
  #[test_case(1, CapturePurpose::Execution; "succeeds_on_first_attempt")]
  #[test_case(2, CapturePurpose::Execution; "recovers_on_second_attempt")]
+diff --git a/codex-rs/exec-server/tests/exec_process.rs b/codex-rs/exec-server/tests/exec_process.rs
+index 316a1a6..9a89f63 100644
+--- a/codex-rs/exec-server/tests/exec_process.rs
++++ b/codex-rs/exec-server/tests/exec_process.rs
+@@ -513,16 +513,21 @@ enum CredentialStartup {
+ #[cfg(unix)]
+ const UNSUPPORTED_STARTUP_REJECTION: &str =
+     "Credential masking is unavailable for this shell startup. The command was not launched.";
++#[cfg(unix)]
++const UNSAFE_SNAPSHOT_REJECTION: &str = "shell snapshot cannot safely replay credentials";
+ 
+-/// Masked commands whose startup cannot be protected are rejected instead of run with raw credentials.
++/// Masked commands whose startup or shell snapshot cannot be protected are rejected before launch;
++/// the rejection expected by a case is the first `-lc` request.
++/// The `Profile` scenario's second request clears a credential that the profile exports again, so
++/// its snapshot is rejected the same way.
+ #[cfg(unix)]
+ #[test_case(false, "bash", &["-lc", "-lc"], CredentialStartup::Inherited, None; "unmasked")]
+-#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "bash", &["-c", "-c", "-lc"], CredentialStartup::Inherited, None; "masked_bash"))]
++#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "bash", &["-c", "-c", "-lc"], CredentialStartup::Inherited, Some(UNSUPPORTED_STARTUP_REJECTION); "masked_bash"))]
+ #[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "bash", &["-lc", "-lc"], CredentialStartup::Inherited, Some(UNSUPPORTED_STARTUP_REJECTION); "bash_profile_rejection"))]
+ #[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "zsh", &["-lc", "-lc"], CredentialStartup::OrdinaryLogin, Some(UNSUPPORTED_STARTUP_REJECTION); "zsh_profile_gateway_rejection"))]
+ #[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "zsh", &["-lc", "-lc"], CredentialStartup::Inherited, None; "masked_zsh_inherited_credentials"))]
+ #[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "zsh", &["-lc", "-lc"], CredentialStartup::Profile, None; "masked_zsh_profile_credentials"))]
+-#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "zsh", &["-lc", "-lc"], CredentialStartup::UnsupportedProfile, None; "zsh_unsupported_profile_fallback"))]
++#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "zsh", &["-lc", "-lc"], CredentialStartup::UnsupportedProfile, Some(UNSAFE_SNAPSHOT_REJECTION); "zsh_unsupported_profile_rejection"))]
+ #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+ #[serial_test::serial(remote_exec_server)]
+ async fn shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context(
+@@ -560,13 +565,19 @@ async fn shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context(
+         eprintln!("skipping sandbox test: {warning}");
+         return Ok(());
+     }
++    let rejected_attempt = if expected_rejection.is_some() {
++        shell_args.iter().position(|flag| *flag == "-lc")
++    } else if matches!(credential_startup, CredentialStartup::Profile) {
++        Some(1)
++    } else {
++        None
++    };
++    let proxied_attempts = rejected_attempt.unwrap_or(shell_args.len());
+     let upstream = credential_masking
+         .then(|| {
+-            tls_proxy::TlsInterceptingProxy::start(if expected_rejection.is_some() {
+-                0
+-            } else {
+-                shell_args.len() * if unset_destinations { 2 } else { 1 }
+-            })
++            tls_proxy::TlsInterceptingProxy::start(
++                proxied_attempts * if unset_destinations { 2 } else { 1 },
++            )
+         })
+         .transpose()?;
+     let mut executor_env = vec![("OPENAI_API_KEY", API_KEY.to_string())];
+@@ -736,12 +747,8 @@ async fn shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context(
+     for (attempt, &shell_args) in shell_args.iter().enumerate() {
+         let use_snapshot =
+             shell_args == "-lc" && !matches!(credential_startup, CredentialStartup::OrdinaryLogin);
+-        let expect_snapshot_fallback =
+-            matches!(credential_startup, CredentialStartup::UnsupportedProfile)
+-                || matches!(credential_startup, CredentialStartup::Profile) && attempt == 1;
+         let expect_masking = credential_masking
+-            && (shell_name == "bash" && !use_snapshot
+-                || shell_name == "zsh" && use_snapshot && !expect_snapshot_fallback);
++            && (shell_name == "bash" && !use_snapshot || shell_name == "zsh" && use_snapshot);
+         let expect_profile = use_snapshot || shell_name == "zsh";
+         let request_foo = if attempt == 0 { "request" } else { "" };
+         let mut env = HashMap::from([("FOO".to_string(), request_foo.to_string())]);
+@@ -846,7 +853,8 @@ async fn shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context(
+             }),
+         )
+         .await?;
+-        if let Some(message) = expected_rejection {
++        if rejected_attempt == Some(attempt) {
++            let message = expected_rejection.unwrap_or(UNSAFE_SNAPSHOT_REJECTION);
+             let error = started
+                 .err()
+                 .context("unprotectable credential masking must reject the command")?;
+@@ -860,15 +868,7 @@ async fn shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context(
+         let started = started?;
+         let (stdout, stderr, status, closed) =
+             collect_process_output_from_events(started.process).await?;
+-        let expected_stderr = if expect_snapshot_fallback {
+-            "Credential masking is unavailable for this shell snapshot; running with unmasked credentials.\n"
+-        } else {
+-            ""
+-        };
+-        assert_eq!(
+-            (stderr.as_str(), status, closed),
+-            (expected_stderr, Some(0), true)
+-        );
++        assert_eq!((stderr.as_str(), status, closed), ("", Some(0), true));
+         let prefix = if expect_profile {
+             "helper|profile|1|"
+         } else {
+@@ -938,16 +938,11 @@ async fn shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context(
+         assert!(proxy_address.starts_with("http://127.0.0.1:"));
+     }
+ 
+-    let expected_capture_count =
+-        if matches!(credential_startup, CredentialStartup::UnsupportedProfile) {
+-            Some(shell_args.len() * 2)
+-        } else if matches!(credential_startup, CredentialStartup::Profile) {
+-            Some(shell_args.len() + 1)
+-        } else if shell_name == "zsh" {
+-            Some(shell_args.len())
+-        } else {
+-            shell_args.iter().position(|flag| *flag == "-lc").map(|_| 1)
+-        };
++    let expected_capture_count = if shell_name == "zsh" {
++        Some(shell_args.len())
++    } else {
++        shell_args.iter().position(|flag| *flag == "-lc").map(|_| 1)
++    };
+     if let Some(expected_capture_count) = expected_capture_count {
+         // Capture and replay can have different proxy ports in separate Linux namespaces.
+         let captures = std::fs::read_to_string(home.path().join("captures"))?;
 -- 
 2.43.0
 

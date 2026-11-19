@@ -3,6 +3,84 @@ From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 14 Nov 2026 03:24:17 +0000
 Subject: [PATCH] bugfix: reject unsupported command masking before startup
 
+
+diff --git a/codex-rs/core/tests/suite/scenarios_credential_masking.rs b/codex-rs/core/tests/suite/scenarios_credential_masking.rs
+index 9bf8fd1..13456a7 100644
+--- a/codex-rs/core/tests/suite/scenarios_credential_masking.rs
++++ b/codex-rs/core/tests/suite/scenarios_credential_masking.rs
+@@ -12,8 +12,8 @@ use pretty_assertions::assert_ne;
+ 
+ #[test_case::test_case(false, false, None; "builtin_providers")]
+ #[test_case::test_case(true, false, None; "configured_provider")]
+-#[test_case::test_case(true, true, None; "configured_provider_login_fallback")]
+-#[test_case::test_case(true, false, Some("BASH_ENV"); "configured_provider_executor_startup_fallback")]
++#[test_case::test_case(true, true, None; "configured_provider_login_rejection")]
++#[test_case::test_case(true, false, Some("BASH_ENV"); "configured_provider_executor_startup_rejection")]
+ #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+ async fn remote_credential_masking_request_history(
+     configured_provider: bool,
+@@ -27,7 +27,9 @@ async fn remote_credential_masking_request_history(
+         eprintln!("skipping credential masking: this scenario requires a Bash or Zsh executor");
+         return Ok(());
+     }
+-    let expect_masking = !use_login_shell && executor_startup_env.is_none();
++    // The executor rejects a startup it cannot mask instead of running with raw credentials.
++    let expect_rejection = use_login_shell || executor_startup_env.is_some();
++    let expect_masking = !expect_rejection;
+     let use_zsh_snapshot = shell.name() == "zsh" && expect_masking;
+     let home = Arc::new(TempDir::new()?);
+     if let Some(warning) =
+@@ -113,12 +115,8 @@ credential_masking = true
+         })
+         .build(&server)
+         .await?;
+-    let mut command = if !expect_masking {
+-        // Keep the real credential out of the model-visible command text.
+-        fs::write(test.workspace_path("expected-api-key"), credential)?;
+-        format!(
+-            "test \"${credential_env}\" = \"$(<expected-api-key)\" && printf 'unmasked fallback'"
+-        )
++    let mut command = if expect_rejection {
++        "touch command-ran".to_string()
+     } else {
+         format!("printf '%s' \"${credential_env}\"")
+     };
+@@ -157,16 +155,6 @@ credential_masking = true
+             "Print {credential_env} from the executor environment.",
+         ))]))
+         .await?;
+-    if use_login_shell || shell.name() == "zsh" && !use_zsh_snapshot {
+-        let warning = wait_for_event(&test.codex, |event| {
+-            matches!(event, EventMsg::Warning(warning) if warning.message.starts_with("Credential masking is unavailable"))
+-        })
+-        .await;
+-        let EventMsg::Warning(warning) = warning else {
+-            unreachable!("waited for a credential masking warning")
+-        };
+-        insta::assert_snapshot!(warning.message, @"Credential masking is unavailable for this shell startup on environment `remote`. This command will run with unmasked credentials.");
+-    }
+     wait_for_event(&test.codex, |event| {
+         matches!(event, EventMsg::TurnComplete(_))
+     })
+@@ -180,11 +168,15 @@ credential_masking = true
+     let output = requests[1]
+         .function_call_output_text(CALL_ID)
+         .context("model follow-up should include the executor output")?;
+-    assert!(output.contains("Process exited with code 0"), "{output}");
+-    if !expect_masking {
+-        assert!(output.ends_with("Output:\nunmasked fallback"), "{output}");
++    if expect_rejection {
++        assert!(
++            output.to_ascii_lowercase().contains("credential masking"),
++            "{output}"
++        );
++        assert!(!test.workspace_path("command-ran").exists());
+         return Ok(());
+     }
++    assert!(output.contains("Process exited with code 0"), "{output}");
+     let (_, placeholder) = output
+         .split_once("Output:\n")
+         .context("executor output should contain a credential placeholder")?;
 diff --git a/codex-rs/core/tests/suite/unified_exec_launch_failure_tests.rs b/codex-rs/core/tests/suite/unified_exec_launch_failure_tests.rs
 index 120cdcb..9d8d17e 100644
 --- a/codex-rs/core/tests/suite/unified_exec_launch_failure_tests.rs
@@ -328,3 +406,80 @@ index d0cd735..f69a262 100644
  #[cfg(windows)]
  #[test_case(WindowsSandboxLevel::RestrictedToken ; "unelevated is rejected")]
  #[test_case(WindowsSandboxLevel::Elevated ; "elevated is accepted")]
+diff --git a/codex-rs/exec-server/tests/exec_process.rs b/codex-rs/exec-server/tests/exec_process.rs
+index 77583a7..1ca91bc 100644
+--- a/codex-rs/exec-server/tests/exec_process.rs
++++ b/codex-rs/exec-server/tests/exec_process.rs
+@@ -511,13 +511,18 @@ enum CredentialStartup {
+ }
+ 
+ #[cfg(unix)]
+-#[test_case(false, "bash", &["-lc", "-lc"], CredentialStartup::Inherited; "unmasked")]
+-#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "bash", &["-c", "-c", "-lc"], CredentialStartup::Inherited; "masked_bash"))]
+-#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "bash", &["-lc", "-lc"], CredentialStartup::Inherited; "bash_profile_fallback"))]
+-#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "zsh", &["-lc", "-lc"], CredentialStartup::OrdinaryLogin; "zsh_profile_gateway_fallback"))]
+-#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "zsh", &["-lc", "-lc"], CredentialStartup::Inherited; "masked_zsh_inherited_credentials"))]
+-#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "zsh", &["-lc", "-lc"], CredentialStartup::Profile; "masked_zsh_profile_credentials"))]
+-#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "zsh", &["-lc", "-lc"], CredentialStartup::UnsupportedProfile; "zsh_unsupported_profile_fallback"))]
++const UNSUPPORTED_STARTUP_REJECTION: &str =
++    "Credential masking is unavailable for this shell startup. The command was not launched.";
++
++/// Masked commands whose startup cannot be protected are rejected instead of run with raw credentials.
++#[cfg(unix)]
++#[test_case(false, "bash", &["-lc", "-lc"], CredentialStartup::Inherited, None; "unmasked")]
++#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "bash", &["-c", "-c", "-lc"], CredentialStartup::Inherited, None; "masked_bash"))]
++#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "bash", &["-lc", "-lc"], CredentialStartup::Inherited, Some(UNSUPPORTED_STARTUP_REJECTION); "bash_profile_rejection"))]
++#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "zsh", &["-lc", "-lc"], CredentialStartup::OrdinaryLogin, Some(UNSUPPORTED_STARTUP_REJECTION); "zsh_profile_gateway_rejection"))]
++#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "zsh", &["-lc", "-lc"], CredentialStartup::Inherited, None; "masked_zsh_inherited_credentials"))]
++#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "zsh", &["-lc", "-lc"], CredentialStartup::Profile, None; "masked_zsh_profile_credentials"))]
++#[cfg_attr(any(target_os = "linux", target_os = "macos"), test_case(true, "zsh", &["-lc", "-lc"], CredentialStartup::UnsupportedProfile, None; "zsh_unsupported_profile_fallback"))]
+ #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+ #[serial_test::serial(remote_exec_server)]
+ async fn shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context(
+@@ -525,6 +530,7 @@ async fn shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context(
+     shell_name: &str,
+     shell_args: &[&str],
+     credential_startup: CredentialStartup,
++    expected_rejection: Option<&str>,
+ ) -> Result<()> {
+     const API_KEY: &str = "sk-proj-executor-only-0000000000000000000000000000000000";
+     const PROFILE_GH_TOKEN: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+@@ -556,9 +562,11 @@ async fn shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context(
+     }
+     let upstream = credential_masking
+         .then(|| {
+-            tls_proxy::TlsInterceptingProxy::start(
+-                shell_args.len() * if unset_destinations { 2 } else { 1 },
+-            )
++            tls_proxy::TlsInterceptingProxy::start(if expected_rejection.is_some() {
++                0
++            } else {
++                shell_args.len() * if unset_destinations { 2 } else { 1 }
++            })
+         })
+         .transpose()?;
+     let mut executor_env = vec![("OPENAI_API_KEY", API_KEY.to_string())];
+@@ -842,7 +850,19 @@ async fn shell_snapshot_v2_remote_managed_proxy_uses_prepared_execution_context(
+                 ),
+             }),
+         )
+-        .await??;
++        .await?;
++        if let Some(message) = expected_rejection {
++            let error = started
++                .err()
++                .context("unprotectable credential masking must reject the command")?;
++            assert!(error.to_string().contains(message), "{error}");
++            if let Some(upstream) = upstream {
++                upstream.finish()?;
++            }
++            server.shutdown().await?;
++            return Ok(());
++        }
++        let started = started?;
+         let (stdout, stderr, status, closed) =
+             collect_process_output_from_events(started.process).await?;
+         let expected_stderr = if expect_snapshot_fallback {
+-- 
+2.43.0
+

@@ -7,6 +7,7 @@ Subject: [PATCH] bugfix: reject invalid configured certificate trust before
 Configured CA failures must not silently replace the selected trust roots. Propagate construction errors through route-aware, login, plugin, update, and local-provider clients while retaining their routing policies.
 ---
  codex-rs/cli/src/doctor.rs                    |   3 +-
+ .../cli/tests/doctor_enterprise_network.rs    |  14 ++-
  codex-rs/codex-api/src/files.rs               |   1 -
  .../src/startup_sync/http_client.rs           |   8 +-
  codex-rs/core/src/session/session.rs          |   3 +-
@@ -22,7 +23,7 @@ Configured CA failures must not silently replace the selected trust roots. Propa
  codex-rs/tui/src/oss_selection.rs             |  40 +++---
  codex-rs/tui/src/startup_orchestration.rs     |   2 +-
  codex-rs/tui/src/updates.rs                   |   3 +-
- 16 files changed, 316 insertions(+), 319 deletions(-)
+ 17 files changed, 326 insertions(+), 323 deletions(-)
 
 diff --git a/codex-rs/cli/src/doctor.rs b/codex-rs/cli/src/doctor.rs
 index af478a9..027ceed 100644
@@ -38,6 +39,45 @@ index af478a9..027ceed 100644
      let mut failures = Vec::new();
      let mut optional_failures = Vec::new();
      let mut route_failures = Vec::new();
+diff --git a/codex-rs/cli/tests/doctor_enterprise_network.rs b/codex-rs/cli/tests/doctor_enterprise_network.rs
+index 018359f..352529a 100644
+--- a/codex-rs/cli/tests/doctor_enterprise_network.rs
++++ b/codex-rs/cli/tests/doctor_enterprise_network.rs
+@@ -366,13 +366,14 @@ trust_level = "trusted"
+ }
+ 
+ #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+-async fn invalid_custom_ca_falls_back_to_system_roots() -> Result<()> {
++async fn invalid_custom_ca_fails_provider_reachability_without_requests() -> Result<()> {
+     let server = MockServer::start().await;
++    // A configured CA that cannot be loaded must not silently fall back to system roots.
+     for (request_method, request_path) in [("HEAD", "/v1/responses"), ("GET", "/v1/models")] {
+         Mock::given(method(request_method))
+             .and(path(request_path))
+             .respond_with(ResponseTemplate::new(200))
+-            .expect(2)
++            .expect(0)
+             .mount(&server)
+             .await;
+     }
+@@ -413,10 +414,15 @@ async fn invalid_custom_ca_falls_back_to_system_roots() -> Result<()> {
+             .context("failed to run the doctor with an invalid custom CA")?;
+         let report: Value = serde_json::from_slice(&output.stdout)?;
+ 
++        let check = &report["checks"]["network.provider_reachability"];
++        assert_eq!(check["status"], "fail", "{check:#}");
+         assert!(
+-            report["checks"]["network.provider_reachability"]["details"]["local API inference URL"]
++            check["details"]["local API inference URL"]
+                 .as_str()
+-                .is_some_and(|detail| detail.ends_with("reachable (HTTP 200)"))
++                .is_some_and(
++                    |detail| detail.ends_with("(required)") && !detail.contains("(HTTP 200)")
++                ),
++            "{check:#}"
+         );
+     }
+     server.verify().await;
 diff --git a/codex-rs/codex-api/src/files.rs b/codex-rs/codex-api/src/files.rs
 index 0a37b27..4f5e455 100644
 --- a/codex-rs/codex-api/src/files.rs
