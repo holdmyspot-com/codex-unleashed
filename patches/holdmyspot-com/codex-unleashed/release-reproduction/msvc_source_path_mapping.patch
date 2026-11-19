@@ -54,7 +54,7 @@ index 07fa1ff..c8cd10e 100755
 +  # V8's native Windows build compiles with LLVM's clang-cl (third_party/v8/artifact_profile.bzl), which reads cl.exe's
 +  # /pathmap as an input file name and fails every compile. A per-file filter cannot select a compiler, so exclude the
 +  # sources of that build: V8's dependency, engine and libc++ repositories and the //third_party/v8 package.
-+  msvc_pathmap_filter='.*,-.*\+dependencies\+v8_.*,-.*\+engine_repository\+v8.*,-.*\+git_repository\+rusty_v8_.*,-.*third_party/v8.*'
++  msvc_pathmap_filter='.*,-.*\+dependencies\+v8_.*,-.*\+engine_repository\+v8.*,-.*\+git_repository\+rusty_v8_.*,-.*\+new_local_repository\+v8_targets.*,-.*third_party/v8.*'
 +  post_config_bazel_args+=(
 +    "--per_file_copt=${msvc_pathmap_filter}@${msvc_pathmap_options}"
 +    "--host_per_file_copt=${msvc_pathmap_filter}@${msvc_pathmap_options}"
@@ -67,7 +67,7 @@ new file mode 100644
 index 0000000..3f6af24
 --- /dev/null
 +++ b/.github/scripts/test_bazel_msvc_pathmap.py
-@@ -0,0 +1,457 @@
+@@ -0,0 +1,458 @@
 +#!/usr/bin/env python3
 +
 +"""End-to-end contract tests for local Windows MSVC source-path mapping."""
@@ -87,7 +87,7 @@ index 0000000..3f6af24
 +# LLVM's clang-cl compiles and which rejects cl.exe's /pathmap.
 +PATHMAP_FILTER = (
 +    r".*,-.*\+dependencies\+v8_.*,-.*\+engine_repository\+v8.*,"
-+    r"-.*\+git_repository\+rusty_v8_.*,-.*third_party/v8.*"
++    r"-.*\+git_repository\+rusty_v8_.*,-.*\+new_local_repository\+v8_targets.*,-.*third_party/v8.*"
 +)
 +FAKE_BAZEL_SOURCE = r"""#!/usr/bin/env python3
 +import json
@@ -461,6 +461,7 @@ index 0000000..3f6af24
 +            "external/+git_repository+rusty_v8_libcxx/src/algorithm.cpp",
 +            "bazel-out/x64_windows-opt-exec-ST-1/bin/third_party/v8/binding_152_2_0.cc",
 +            "//third_party/v8:binding_152_2_0.cc",
++            "external/+new_local_repository+v8_targets/crdtp_binding_152_2_0.cc",
 +        ):
 +            with self.subTest(source=source, selected=False):
 +                self.assertFalse(selected(source))
