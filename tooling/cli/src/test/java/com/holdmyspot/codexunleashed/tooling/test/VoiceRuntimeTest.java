@@ -626,6 +626,11 @@ public final class VoiceRuntimeTest
 					"installed_package_initializes_closes_and_rejects_duplicate_initialization")).
 				toList();
 			requireThat(installedRuns.size(), "installedInvocations").isEqualTo(2);
+			for (Invocation invocation : process.invocations.stream().
+				filter(invocation -> invocation.command().contains("--list") || invocation.command().contains("--nocapture")).
+				toList())
+				requireThat(invocation.environment().get("LD_LIBRARY_PATH"), "testLoaderPath").
+					isEqualTo(fixture.packageRoot.resolve("codex-resources/voice/lib").toString());
 			for (Invocation invocation : installedRuns)
 			{
 				requireThat(invocation.workingDirectory().getFileName().toString(), "inputWorkingDirectory").

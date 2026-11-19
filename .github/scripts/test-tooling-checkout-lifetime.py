@@ -1,4 +1,4 @@
-"""Verify tooling setup arguments and launcher exports with fake build tools."""
+"""Verify tooling setup arguments, Maven resolution retries and launcher exports with fake build tools."""
 
 from __future__ import annotations
 
@@ -42,6 +42,17 @@ record = {
     "temp": os.environ.get("TEMP"),
 }
 Path(os.environ["FAKE_MAVEN_LOG"]).write_text(json.dumps(record), encoding="utf-8")
+counter = Path(os.environ["FAKE_MAVEN_COUNTER"])
+calls = int(counter.read_text(encoding="utf-8")) if counter.exists() else 0
+counter.write_text(str(calls + 1), encoding="utf-8")
+repository = Path(next(value for value in arguments if value.startswith("-Dmaven.repo.local=")).split("=", 1)[1])
+if calls < int(os.environ["FAKE_MAVEN_RESOLUTION_FAILURES"]):
+    # A failed lookup leaves a negative-cache marker that the next attempt must not inherit.
+    (repository / "stale.lastUpdated").write_text("negative cache", encoding="utf-8")
+    print("[ERROR] Could not find artifact org.apache.maven.plugins:maven-clean-plugin:jar:3.5.0 in central", file=sys.stderr)
+    raise SystemExit(1)
+if (repository / "stale.lastUpdated").exists():
+    raise SystemExit("a retry reused the failed attempt's repository")
 build_argument = next(value for value in arguments if value.startswith("-Dtooling.build.directory="))
 build_root = Path(build_argument.split("=", 1)[1])
 launcher = build_root / os.environ["FAKE_LAUNCHER_RELATIVE"]
@@ -82,8 +93,12 @@ print(converted)
     )
 
 
-def run_case(script: Path, operating_system: str, maven_status: int = 0) -> None:
-    """Run the setup script with controlled paths and fake external tools."""
+def run_case(script: Path, operating_system: str, maven_status: int = 0, resolution_failures: int = 0,
+             expected_calls: int = 1) -> None:
+    """Run the setup script with controlled paths and fake external tools.
+
+    The first ``resolution_failures`` Maven calls fail with an artifact-resolution error; later calls exit with
+    ``maven_status``. ``expected_calls`` is the number of Maven calls the script must make."""
     with tempfile.TemporaryDirectory(prefix="tooling setup fixture with spaces ") as directory:
         fixture_root = Path(directory)
         runner_temp = fixture_root / "runner temp with spaces"
@@ -119,6 +134,9 @@ def run_case(script: Path, operating_system: str, maven_status: int = 0) -> None
             "FAKE_MAVEN_LOG": str(maven_log),
             "FAKE_CYGPATH_LOG": str(cygpath_log),
             "FAKE_MAVEN_STATUS": str(maven_status),
+            "FAKE_MAVEN_COUNTER": str(fixture_root / "maven calls"),
+            "FAKE_MAVEN_RESOLUTION_FAILURES": str(resolution_failures),
+            "MAVEN_RETRY_DELAY_SECONDS": "0",
             "FAKE_LAUNCHER_RELATIVE": str(TOOLING_LAUNCHER_RELATIVE),
             "FAKE_BASH_PATH": bash_path,
             "FAKE_WINDOWS_TOOLING_INPUT": WINDOWS_TOOLING_INPUT,
@@ -149,6 +167,7 @@ def run_case(script: Path, operating_system: str, maven_status: int = 0) -> None
             "-q",
             "-B",
             "-ntp",
+            "-U",
             "-f",
             str(expected_maven_pom),
             "-Pruntime",
@@ -163,6 +182,9 @@ def run_case(script: Path, operating_system: str, maven_status: int = 0) -> None
                 f"{operating_system} setup did not invoke Maven: exit={completed.returncode}; "
                 f"stdout={completed.stdout!r}; stderr={completed.stderr!r}"
             )
+        call_count = int((fixture_root / "maven calls").read_text(encoding="utf-8"))
+        if call_count != expected_calls:
+            raise AssertionError(f"{operating_system} setup ran Maven {call_count} times, expected {expected_calls}")
         maven_record = json.loads(maven_log.read_text(encoding="utf-8"))
         expected_tmp = str(expected_root / "tmp")
         if maven_record != {
@@ -181,7 +203,7 @@ def run_case(script: Path, operating_system: str, maven_status: int = 0) -> None
                 )
             if github_environment.read_text(encoding="utf-8"):
                 raise AssertionError("launcher exports were written after Maven failed")
-            print(f"PASS {operating_system} Maven failure propagation: exit={completed.returncode}")
+            print(f"PASS {operating_system} Maven failure propagation: exit={completed.returncode}, calls={call_count}")
             return
 
         if completed.returncode != 0:
@@ -223,7 +245,7 @@ def run_case(script: Path, operating_system: str, maven_status: int = 0) -> None
 
 
 def main() -> None:
-    """Verify successful Linux and simulated Windows setup plus Maven failure propagation."""
+    """Verify successful Linux and simulated Windows setup, Maven failure propagation and resolution retries."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--script", type=Path, default=DEFAULT_SCRIPT)
     arguments = parser.parse_args()
@@ -233,6 +255,8 @@ def main() -> None:
     run_case(script, "Linux")
     run_case(script, "Windows")
     run_case(script, "Linux", maven_status=23)
+    run_case(script, "Linux", resolution_failures=2, expected_calls=3)
+    run_case(script, "Linux", maven_status=1, resolution_failures=3, expected_calls=3)
 
 
 if __name__ == "__main__":

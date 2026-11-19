@@ -345,7 +345,8 @@ public final class VoiceRuntime
 	 * @param packageRoot supplied packageRoot value
 	 * @param voiceRoot supplied voiceRoot value
 	 * @param options selected command options
-	 * @param parentEnvironment supplied parentEnvironment value
+	 * @param parentEnvironment supplied parentEnvironment value; its loader search path is replaced by the package's
+	 *                          runtime library directory
 	 * @param processes supplied processes value
 	 * @param workingDirectory supplied workingDirectory value
 	 * @return the runNativeTest result
@@ -362,7 +363,11 @@ public final class VoiceRuntime
 		Path listErr = evidence.resolve(prefix + "-list.stderr");
 		Path out = evidence.resolve(prefix + ".stdout");
 		Path err = evidence.resolve(prefix + ".stderr");
-		Map<String, String> additions = new HashMap<>(parentEnvironment);
+		// The test binary runs from its verification directory, where its runpath (@loader_path/../lib on macOS,
+		// $ORIGIN/../lib on Linux) and its application directory (Windows) reach none of the package's libraries.
+		// Point the loader at the package's own libraries, as the helper identity query does.
+		Map<String, String> additions = new HashMap<>(stagedLoaderEnvironment(parentEnvironment, options.target(),
+			stagedLoaderDirectory(voiceRoot, options.target())));
 		Path childWorkingDirectory = packageRoot;
 		if (index == 0)
 		{

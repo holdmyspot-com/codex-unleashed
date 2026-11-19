@@ -851,6 +851,10 @@ jobs:
           UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
         run: |
           set -euo pipefail
+          # The package action leaves symbols-dist/ in the checkout, and the manifest tool rejects any untracked file. Upstream
+          # ignores dist/ but not symbols-dist/; exclude both output directories and keep the tool's clean check strict.
+          printf '/dist/\n/symbols-dist/\n' >> "$(git rev-parse --git-path info/exclude)"
+          git status --porcelain --untracked-files=normal
           bash "$CODEX_TOOLING" release-manifest receipt \
             --source "$GITHUB_WORKSPACE" --patch-repo "$RUNNER_TEMP/manifest-patch-repo" \
             --target "$TARGET" --version "$VERSION+$BUILD" --build-number "$BUILD" \
