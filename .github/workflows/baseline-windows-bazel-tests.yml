@@ -129,16 +129,21 @@ jobs:
           python .github/scripts/test_run_bazel_with_buildbuddy.py
           exit $LASTEXITCODE
 
-      - name: Add a page file on the runner-temp drive
+      - name: Add a page file
         # Four native MSVC test targets failed with "The paging file is too small" (os error 1455): rustc commits several
         # times the memory it touches, and the runner's commit limit is its 16 GB of memory plus a 3 GB page file.
-        # bazel-clippy-job.yml adds the same page file for the same failure. It runs before the Dev Drive is sized, so
-        # the sizing sees the drive space that remains.
+        # bazel-clippy-job.yml adds the same page file for the same failure. On D: the page file took the space the Dev
+        # Drive needed (a 94 GB Dev Drive filled with os error 112), so it goes on C: when C: has room for it. The page
+        # file step runs before the Dev Drive is sized, so the sizing sees the space that remains on D:.
         if: matrix.target == 'x86_64-pc-windows-msvc'
         shell: pwsh
         run: |
+          $freeC = [math]::Floor((Get-PSDrive -Name C).Free / 1GB)
+          $freeD = [math]::Floor((Get-PSDrive -Name D).Free / 1GB)
+          $drive = if ($freeC -ge 64) { 'C' } else { 'D' }
+          Write-Output "C: has $freeC GB free and D: has $freeD GB free; the page file goes on ${drive}:."
           & "$env:RUNNER_TEMP/add-windows-page-file.ps1" `
-            -Path D:\pagefile-bazel.sys -MinimumMiB 32768 -MaximumMiB 49152
+            -Path "${drive}:\pagefile-bazel.sys" -MinimumMiB 32768 -MaximumMiB 49152
 
       - name: Size the Dev Drive for the Bazel output
         if: runner.os == 'Windows'
