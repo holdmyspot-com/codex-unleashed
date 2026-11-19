@@ -1,4 +1,4 @@
-From 6528a17f9ead7ad3939730f0b2de8560f74b4109 Mon Sep 17 00:00:00 2001
+From 531e310292dc872e1a1b21d586f500380d3e5dd2 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Fri, 13 Nov 2026 19:53:53 -0500
 Subject: [PATCH] bugfix: preserve unknown model limits and summary
@@ -6,11 +6,62 @@ Subject: [PATCH] bugfix: preserve unknown model limits and summary
 
 Synthetic metadata must not invent context limits or advertise unsupported reasoning summaries. Retain explicit user limits and normal default-model selection.
 ---
+ .../tests/suite/v2/history_notes_extension.rs |  2 +
+ .../tests/suite/v2/thread_sample.rs           |  4 ++
+ codex-rs/core/src/session/tests.rs            |  2 +
  codex-rs/models-manager/src/manager_tests.rs  | 29 ++++++++++++
  codex-rs/models-manager/src/model_info.rs     |  8 ++--
  .../models-manager/src/model_info_tests.rs    | 45 +++++++++++++++++++
- 3 files changed, 78 insertions(+), 4 deletions(-)
+ 6 files changed, 86 insertions(+), 4 deletions(-)
 
+diff --git a/codex-rs/app-server/tests/suite/v2/history_notes_extension.rs b/codex-rs/app-server/tests/suite/v2/history_notes_extension.rs
+index bc12a8b..d8dfc18 100644
+--- a/codex-rs/app-server/tests/suite/v2/history_notes_extension.rs
++++ b/codex-rs/app-server/tests/suite/v2/history_notes_extension.rs
+@@ -118,6 +118,8 @@ async fn app_server_uses_configured_notes_backend_for_context_window_hints(
+     let config = load_default_config_for_test(&codex_home).await;
+     let mut model = codex_core::test_support::construct_model_info_offline("mock-model", &config);
+     model.supports_experimental_context = supports_experimental_context;
++    // The offline fallback invents no context window, which the context-window message needs.
++    model.context_window = Some(272_000);
+     let catalog_path = codex_home.path().join("models.json");
+     std::fs::write(
+         &catalog_path,
+diff --git a/codex-rs/app-server/tests/suite/v2/thread_sample.rs b/codex-rs/app-server/tests/suite/v2/thread_sample.rs
+index 0d72d34..92d5b9b 100644
+--- a/codex-rs/app-server/tests/suite/v2/thread_sample.rs
++++ b/codex-rs/app-server/tests/suite/v2/thread_sample.rs
+@@ -30,6 +30,7 @@ use codex_core::test_support::construct_model_info_offline;
+ use codex_features::Feature;
+ use codex_protocol::config_types::CollaborationMode;
+ use codex_protocol::config_types::ModeKind;
++use codex_protocol::config_types::ReasoningSummary;
+ use codex_protocol::config_types::Settings;
+ use codex_protocol::openai_models::ModelServiceTier;
+ use codex_protocol::openai_models::ReasoningEffort;
+@@ -81,6 +82,9 @@ async fn client_with_effort_updates(
+     let mut model = construct_model_info_offline("gpt-5.4", &config);
+     model.supports_reasoning_effort_updates = matches!(effort_updates, EffortUpdates::Supported);
+     model.use_responses_lite = true;
++    // The offline fallback no longer advertises reasoning summaries; the snapshots expect them.
++    model.supports_reasoning_summary_parameter = true;
++    model.default_reasoning_summary = ReasoningSummary::Auto;
+     model.service_tiers = vec![ModelServiceTier {
+         id: "priority".to_string(),
+         name: "Fast".to_string(),
+diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
+index d8dd110..852ee55 100644
+--- a/codex-rs/core/src/session/tests.rs
++++ b/codex-rs/core/src/session/tests.rs
+@@ -10970,6 +10970,8 @@ async fn make_multi_agent_v2_usage_hint_test_session(
+             if enable_multi_agent_v2 {
+                 let _ = config.features.enable(Feature::MultiAgentV2);
+             }
++            // Without a model context window, the context-window message is omitted.
++            config.model_context_window = Some(272_000);
+             config.multi_agent_v2.root_agent_usage_hint_text = Some("Root guidance.".to_string());
+             config.multi_agent_v2.subagent_usage_hint_text = Some("Subagent guidance.".to_string());
+         },
 diff --git a/codex-rs/models-manager/src/manager_tests.rs b/codex-rs/models-manager/src/manager_tests.rs
 index 8c64277..73b8196 100644
 --- a/codex-rs/models-manager/src/manager_tests.rs
