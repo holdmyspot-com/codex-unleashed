@@ -3441,21 +3441,27 @@ Retained artifacts and remote caches need explicit ownership, effective paths, l
 
 ## Fallback behavior
 
-Apply the approved fallback recommendations across inherited product behavior, fork patches, and release tooling.
+Apply the approved fallback recommendations to the fork's own code: the new features that its patches add, and its
+release tooling. The rule does not apply to inherited upstream Codex behavior; a patch does not change an existing
+upstream behavior only because of this rule.
+Patches 76-83 (`fail_closed_fallbacks`), 93 (`windows-command-capture/partial-output-errors`) and 106
+(`native-test-prerequisites/windows-shell-snapshot-test-imports`) were reverted for this reason, at the owner's
+decision on 2026-11-19; the patch numbers are those of the queue before the revert. Patch 93 was then reworked rather
+than reverted, at the owner's later decision on the same date: a Windows command whose captured output is truncated by
+a pipe read error returns the partial output and fails with exit code 253 (`EXEC_OUTPUT_TRUNCATED_EXIT_CODE`), or with
+its own exit code when that is already non-zero.
 These changes remain pending until their focused behavior checks, patch replay, and applicable cumulative gates pass.
 
-- Preserve explicitly enabled credential masking and configured certificate trust. If those requirements cannot be
-  enforced, fail the affected operation with an actionable error before executing a command or sending a request.
-- Report command-output capture failures, unavailable structured review results, and failed child-result delivery
-  explicitly. Preserve recoverable output and completed child results; incomplete evidence cannot establish success.
+- Report command-output capture failures and failed child-result delivery explicitly. Preserve recoverable output and
+  completed child results; incomplete evidence cannot establish success.
 - Preserve an original package smoke failure when a diagnostic rerun passes. Require independent test-selection and
   completion evidence for platform gates, and reject skips caused by missing required setup or transient resource
   collisions.
 - Restrict filesystem source discovery to supported non-Git workspaces; propagate unexpected Git failures. Treat failed
   CPU monitoring as unknown activity rather than observed inactivity.
-- Make unknown connected-server identity visible. Honor explicit model, interpreter, proxy, credential-store, and
-  identity requirements; retain alternate behavior when the caller explicitly authorizes it or the supported policy
-  permits it. Check callers before changing a conditional fallback.
+- In the fork's own code, honor explicit proxy, credential-store, and identity requirements; retain alternate behavior
+  when the caller explicitly authorizes it or the supported policy permits it. Check callers before changing a
+  conditional fallback.
 - Retain equivalent transport recovery, conservative rebuilds, cache misses, ordinary history recovery, optional
   warmup recovery followed by successful discovery, and explicitly selected alternate modes. Optional diagnostics must
   preserve the original operation's status.

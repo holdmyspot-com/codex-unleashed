@@ -873,7 +873,7 @@ index d338802..5cc7b65 100644
      }
  
 diff --git a/codex-rs/tui/src/updates.rs b/codex-rs/tui/src/updates.rs
-index 9ee04e7..9ebf3fb 100644
+index 9bbdf31..f1c2650 100644
 --- a/codex-rs/tui/src/updates.rs
 +++ b/codex-rs/tui/src/updates.rs
 @@ -59,7 +59,8 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {

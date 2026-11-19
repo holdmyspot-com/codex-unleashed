@@ -70,7 +70,7 @@ CODEX_REPO_ROOT="$PWD" python3 scripts/codex_package/test_archive.py ArchiveModu
 
 ## Code-mode symbol validation
 
-`code-mode-symbol-validation.patch` is queue entry 91 and requires entries 1–90 on upstream commit
+`code-mode-symbol-validation.patch` is queue entry 83 and requires entries 1–82 on upstream commit
 `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 
 Before stripping `codex-code-mode-host` on Linux or macOS, the symbols archive command requires exactly one defined,
@@ -94,7 +94,7 @@ symbol archives.
 
 ## Dev Drive volume classification
 
-`dev-drive-volume-predicate.patch` is queue entry 100 and requires entries 1–99.
+`dev-drive-volume-predicate.patch` is queue entry 92 and requires entries 1–91.
 The setup command classifies non-ReFS volumes as ordinary volumes. For ReFS, it opens the filesystem root
 and queries the Dev Volume flag through the Windows API; query failures stop setup. Trust status is separate
 from volume classification. The compiled helper must resolve to exactly one expected type.
@@ -112,7 +112,7 @@ the exact attached BFS instance, and publication of one build-root entry while p
 
 ## MSVC environment reuse
 
-`msvc-environment-reuse.patch` is queue entry 107 and requires entries 1–106.
+`msvc-environment-reuse.patch` is queue entry 98 and requires entries 1–97.
 The Windows package job configures the Visual Studio developer environment in `prepare-bazel-ci`, in the MSVC setup
 step, and again when the Cargo package build repeats its setup. Every `VsDevCmd.bat` run prepends the same tool
 directories, about 2,100 characters, to `PATH`, and the next run passes that `PATH` to `cmd.exe`, which rejects a line

@@ -1,7 +1,7 @@
 # Turn feedback and analytics off by default and point the update check at our releases
 
 - Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`. It is
-  queue entry 109 and is listed last. It changes `codex-rs/core`, `config`, `cli`, `tui` and the `app-server`, `cli`
+  queue entry 100 and is listed last. It changes `codex-rs/core`, `config`, `cli`, `tui` and the `app-server`, `cli`
   and `core` tests, and no earlier entry's changes conflict with it.
 
 ## Intent
@@ -38,7 +38,7 @@ The new and changed tests cover the three defaults (`feedback_and_analytics_defa
 `/feedback`, the build-number comparison, and the update actions for each install method. Tests that observed
 feedback uploads or analytics events now enable them explicitly.
 
-On a Linux machine without the V8 artifact, the same suites fail on upstream plus entries 1-108 and on the tree with
+On a Linux machine without the V8 artifact, the same suites fail on upstream plus entries 1-99 and on the tree with
 this patch, with the same failing tests apart from timing flakes: `codex-tui` library 27 failures before and after,
 `codex-core` library 9 and 9, `codex-core` integration tests 295 and 293, and `codex-app-server` integration tests
 46 and 46. Those failures need the `codex-code-mode-host` binary, which cannot be built here, or are

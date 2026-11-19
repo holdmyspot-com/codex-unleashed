@@ -9,10 +9,10 @@ The raw execution result carries byte streams. Construct empty byte streams expl
  1 file changed, 12 insertions(+), 3 deletions(-)
 
 diff --git a/codex-rs/core/src/exec_tests.rs b/codex-rs/core/src/exec_tests.rs
-index 5d1ebf0..afe2700 100644
+index 5c24b2f..13c42e2 100644
 --- a/codex-rs/core/src/exec_tests.rs
 +++ b/codex-rs/core/src/exec_tests.rs
-@@ -288,9 +288,18 @@ fn windows_capture_unix_signal_compatibility() {
+@@ -377,9 +377,18 @@ fn windows_capture_unix_signal_compatibility() {
  
      let raw_output = RawExecToolCallOutput {
          exit_status: std::process::ExitStatus::from_raw(9),

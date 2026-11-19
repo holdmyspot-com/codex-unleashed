@@ -4,13 +4,32 @@ Date: Sun, 15 Nov 2026 02:59:58 +0000
 Subject: [PATCH] bugfix: preserve Windows command output on capture failure
 
 Retain partial output and report capture failures through the execution
-and protocol boundaries instead of silently losing command results.
+and protocol boundaries instead of silently losing command results. A command
+that exited with 0 but whose output was truncated by a pipe read error is
+reported with exit code 253 (`EXEC_OUTPUT_TRUNCATED_EXIT_CODE`); a non-zero exit
+code of the command itself is kept.
 
 diff --git a/codex-rs/core/src/exec.rs b/codex-rs/core/src/exec.rs
-index f72396e..1ec1c67 100644
+index f72396e..4828912 100644
 --- a/codex-rs/core/src/exec.rs
 +++ b/codex-rs/core/src/exec.rs
-@@ -729,26 +729,75 @@ async fn exec_windows_sandbox(
+@@ -68,6 +68,15 @@ const SIGKILL_CODE: i32 = 9;
+ const TIMEOUT_CODE: i32 = 64;
+ const EXIT_CODE_SIGNAL_BASE: i32 = 128; // conventional shell: 128 + signal
+ const EXEC_TIMEOUT_EXIT_CODE: i32 = 124; // conventional timeout exit code
++/// Exit code reported when Windows output capture failed and the command itself exited with 0.
++///
++/// The partial output captured before the failure is still returned. 253 avoids the codes that
++/// shells, `timeout` and Codex assign meaning to: 124 (timeout), 125-127 (`timeout`/shell launch
++/// failures), 128-192 (128 + signal) and 255 (generic failure and `-1` wrapped to a byte). When
++/// the command's own exit code is already non-zero, that code is kept: it is the more specific
++/// failure information, and the capture failure is still reported through the diagnostic and
++/// `SandboxErr::Capture`.
++const EXEC_OUTPUT_TRUNCATED_EXIT_CODE: i32 = 253;
+ const CANCELLATION_TERMINATION_GRACE_PERIOD: Duration = Duration::from_millis(50);
+ 
+ // I/O buffer sizing
+@@ -729,26 +738,81 @@ async fn exec_windows_sandbox(
      })
      .await;
  
@@ -58,7 +77,13 @@ index f72396e..1ec1c67 100644
 +            let failure = error.downcast::<codex_windows_sandbox::CaptureFailure>()?;
 +            let diagnostic = failure.to_string();
 +            let capture = failure.output;
-+            let exit_status = synthetic_exit_status_for_code(capture.exit_code);
++            let reported_exit_code = capture_failure_exit_code(capture.exit_code);
++            let diagnostic = if reported_exit_code == capture.exit_code {
++                diagnostic
++            } else {
++                format!("{diagnostic}; output truncated (reported exit code {reported_exit_code})")
++            };
++            let exit_status = synthetic_exit_status_for_code(reported_exit_code);
 +            let mut stdout_text = capture.stdout;
 +            let cap = capture_policy.retained_bytes_cap();
 +            if let Some(max_bytes) = cap {
@@ -99,7 +124,7 @@ index f72396e..1ec1c67 100644
      let mut stdout_text = capture.stdout;
      if let Some(max_bytes) = capture_policy.retained_bytes_cap()
          && stdout_text.len() > max_bytes
-@@ -777,6 +826,7 @@ async fn exec_windows_sandbox(
+@@ -777,6 +841,7 @@ async fn exec_windows_sandbox(
          stderr,
          aggregated_output,
          timed_out: capture.timed_out,
@@ -107,12 +132,12 @@ index f72396e..1ec1c67 100644
      })
  }
  
-@@ -803,13 +853,31 @@ fn finalize_exec_result(
+@@ -803,13 +868,31 @@ fn finalize_exec_result(
              }
  
              let mut exit_code = raw_output.exit_status.code().unwrap_or(-1);
-+            if raw_output.capture_failure.is_some() && exit_code == 0 {
-+                exit_code = 1;
++            if raw_output.capture_failure.is_some() {
++                exit_code = capture_failure_exit_code(exit_code);
 +            }
              if timed_out {
                  exit_code = EXEC_TIMEOUT_EXIT_CODE;
@@ -140,7 +165,7 @@ index f72396e..1ec1c67 100644
              let exec_output = ExecToolCallOutput {
                  exit_code,
                  stdout,
-@@ -819,6 +887,13 @@ fn finalize_exec_result(
+@@ -819,6 +902,13 @@ fn finalize_exec_result(
                  timed_out,
              };
  
@@ -154,10 +179,20 @@ index f72396e..1ec1c67 100644
              if timed_out {
                  return Err(CodexErr::Sandbox(SandboxErr::Timeout {
                      output: Box::new(exec_output),
-@@ -844,6 +919,17 @@ fn finalize_exec_result(
+@@ -844,6 +934,27 @@ fn finalize_exec_result(
      }
  }
  
++/// Returns the exit code to report for a command whose output capture failed: its own non-zero
++/// exit code, or [`EXEC_OUTPUT_TRUNCATED_EXIT_CODE`] when it exited with 0.
++fn capture_failure_exit_code(exit_code: i32) -> i32 {
++    if exit_code == 0 {
++        EXEC_OUTPUT_TRUNCATED_EXIT_CODE
++    } else {
++        exit_code
++    }
++}
++
 +fn truncate_utf8_to_bytes(value: &mut String, max_bytes: usize) {
 +    if value.len() <= max_bytes {
 +        return;
@@ -172,7 +207,7 @@ index f72396e..1ec1c67 100644
  #[derive(Debug)]
  struct RawExecToolCallOutput {
      pub exit_status: ExitStatus,
-@@ -851,6 +937,7 @@ struct RawExecToolCallOutput {
+@@ -851,6 +962,7 @@ struct RawExecToolCallOutput {
      pub stderr: StreamOutput<Vec<u8>>,
      pub aggregated_output: StreamOutput<Vec<u8>>,
      pub timed_out: bool,
@@ -180,7 +215,7 @@ index f72396e..1ec1c67 100644
  }
  
  #[inline]
-@@ -1188,6 +1275,7 @@ async fn consume_output(
+@@ -1188,6 +1300,7 @@ async fn consume_output(
          stderr,
          aggregated_output,
          timed_out,
@@ -189,7 +224,7 @@ index f72396e..1ec1c67 100644
  }
  
 diff --git a/codex-rs/core/src/exec_tests.rs b/codex-rs/core/src/exec_tests.rs
-index 98a542d..e854a03 100644
+index 98a542d..5c24b2f 100644
 --- a/codex-rs/core/src/exec_tests.rs
 +++ b/codex-rs/core/src/exec_tests.rs
 @@ -1,5 +1,6 @@
@@ -199,7 +234,7 @@ index 98a542d..e854a03 100644
  use codex_protocol::models::PermissionProfile;
  use codex_protocol::permissions::FileSystemAccessMode;
  use codex_protocol::permissions::FileSystemPath;
-@@ -18,6 +19,294 @@ use test_case::test_case;
+@@ -18,6 +19,383 @@ use test_case::test_case;
  use tokio::io::AsyncWriteExt;
  use tokio::time::timeout;
  
@@ -259,15 +294,67 @@ index 98a542d..e854a03 100644
 +        ExecCapturePolicy::FullBuffer,
 +    )
 +    .expect("typed capture failure returns partial output");
-+    assert_eq!(raw.exit_status.code(), Some(0));
++    assert_eq!(
++        raw.exit_status.code(),
++        Some(EXEC_OUTPUT_TRUNCATED_EXIT_CODE)
++    );
 +    assert_eq!(raw.stdout.text, b"prefix");
 +    assert_eq!(raw.stderr.text, b"diagnostic");
-+    assert!(raw.capture_failure.unwrap().contains("Win32 error 6"));
++    let diagnostic = raw.capture_failure.unwrap();
++    assert!(diagnostic.contains("Win32 error 6"));
++    assert!(diagnostic.contains("child exit code 0"));
++    assert!(diagnostic.contains("output truncated"));
 +    assert!(
 +        raw.aggregated_output
 +            .text
 +            .starts_with(b"stderr capture read failed")
 +    );
++}
++
++#[test]
++fn windows_capture_conversion_keeps_nonzero_exit_code_on_truncation() {
++    let failure = codex_windows_sandbox::CaptureFailure::new(
++        codex_windows_sandbox::CaptureResult {
++            exit_code: 7,
++            stdout: b"prefix".to_vec(),
++            stderr: Vec::new(),
++            timed_out: false,
++        },
++        vec![codex_windows_sandbox::CaptureStreamFailure {
++            stream: codex_windows_sandbox::CaptureStream::Stdout,
++            operation: codex_windows_sandbox::CaptureOperation::Read,
++            error: Some(std::io::Error::from_raw_os_error(6)),
++        }],
++    );
++    let raw = windows_capture_output(
++        Err(anyhow::Error::new(failure)),
++        ExecCapturePolicy::FullBuffer,
++    )
++    .expect("typed capture failure returns partial output");
++    assert_eq!(raw.exit_status.code(), Some(7));
++    assert_eq!(raw.stdout.text, b"prefix");
++    let diagnostic = raw.capture_failure.unwrap();
++    assert!(diagnostic.contains("child exit code 7"));
++    assert!(!diagnostic.contains("output truncated"));
++}
++
++#[test]
++fn windows_capture_truncation_code_avoids_reserved_exit_codes() {
++    let reserved = [
++        0,
++        1,
++        SIGKILL_CODE,
++        TIMEOUT_CODE,
++        EXEC_TIMEOUT_EXIT_CODE,
++        EXIT_CODE_SIGNAL_BASE + SIGKILL_CODE,
++        255,
++    ];
++    assert!(!reserved.contains(&EXEC_OUTPUT_TRUNCATED_EXIT_CODE));
++    // Above the 128 + signal range of shells and below the byte-wrapped -1.
++    const {
++        assert!(EXEC_OUTPUT_TRUNCATED_EXIT_CODE > EXIT_CODE_SIGNAL_BASE + 64);
++        assert!(EXEC_OUTPUT_TRUNCATED_EXIT_CODE < 255);
++    }
 +}
 +
 +#[test]
@@ -349,7 +436,7 @@ index 98a542d..e854a03 100644
 +    else {
 +        panic!("expected output-bearing capture error, got {error}");
 +    };
-+    assert_eq!(output.exit_code, 1);
++    assert_eq!(output.exit_code, EXEC_OUTPUT_TRUNCATED_EXIT_CODE);
 +    assert_eq!(output.stdout.text, "stdout prefix");
 +    assert_eq!(output.stderr.text, "stderr prefix");
 +    assert!(message.contains("child exit code 0"));
@@ -432,6 +519,43 @@ index 98a542d..e854a03 100644
 +    assert_eq!(output.stdout.text, "Access is denied");
 +    assert_eq!(output.stderr.text, "partial stderr");
 +    assert_eq!(message, "capture failure");
++}
++
++#[test]
++fn windows_capture_nonzero_exit_keeps_its_code_on_truncation() {
++    let raw_output = RawExecToolCallOutput {
++        exit_status: synthetic_exit_status_for_code(7),
++        stdout: StreamOutput {
++            text: b"stdout prefix".to_vec(),
++            truncated_after_lines: None,
++        },
++        stderr: StreamOutput {
++            text: Vec::new(),
++            truncated_after_lines: None,
++        },
++        aggregated_output: StreamOutput {
++            text: b"stdout prefix".to_vec(),
++            truncated_after_lines: None,
++        },
++        timed_out: false,
++        capture_failure: Some(
++            "stdout capture read failed (Win32 error 6); child exit code 7".into(),
++        ),
++    };
++
++    let error = finalize_exec_result(
++        Ok(raw_output),
++        SandboxType::WindowsRestrictedToken,
++        Duration::from_millis(5),
++        ExecCapturePolicy::FullBuffer,
++    )
++    .expect_err("truncated output is reported as a failure");
++
++    let CodexErrorDetails::Sandbox(SandboxErr::Capture { output, .. }) = error.details() else {
++        panic!("expected output-bearing capture error, got {error}");
++    };
++    assert_eq!(output.exit_code, 7);
++    assert_eq!(output.stdout.text, "stdout prefix");
 +}
 +
 +#[test]

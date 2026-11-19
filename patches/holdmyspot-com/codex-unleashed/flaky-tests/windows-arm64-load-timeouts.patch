@@ -14,9 +14,9 @@ diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
 index 50e5ef037..e09bc0f27 100644
 --- a/codex-rs/.config/nextest.toml
 +++ b/codex-rs/.config/nextest.toml
-@@ -134,6 +134,22 @@ slow-timeout = { period = "30s", terminate-after = 4 }
+@@ -134,6 +134,22 @@ slow-timeout = { period = "30s", terminate-after = 8 }
  filter = 'package(codex-feedback) & test(=tests::feedback_upload_delivers_large_files_intact)'
- slow-timeout = { period = "30s", terminate-after = 4 }
+ slow-timeout = { period = "30s", terminate-after = 8 }
  
 +[[profile.default.overrides]]
 +# These cases take 5 to 50 seconds alone on a loaded Windows ARM64 runner, but more than 90 seconds
