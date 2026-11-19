@@ -20,6 +20,8 @@ on:
       - .github/scripts/test-ghcr-cargo-target-cache.sh
       - .github/scripts/release-debug-session.sh
       - .github/scripts/test-release-debug-session.py
+      - .github/scripts/maven-retry.sh
+      - .github/scripts/test-maven-retry.py
       - .github/workflows/baseline-release-builds.yml
       - .github/release-matrix.json
   workflow_dispatch:
@@ -146,6 +148,8 @@ jobs:
           if [[ "$RUNNER_OS" == Linux ]]; then
             python3 .github/scripts/test-release-debug-session.py \
               2>&1 | tee "$RUNNER_TEMP/checkpoint-evidence/debug-session.log"
+            python3 .github/scripts/test-maven-retry.py \
+              2>&1 | tee "$RUNNER_TEMP/checkpoint-evidence/maven-retry.log"
           fi
       - name: Preserve checkpoint verification evidence
         if: always()

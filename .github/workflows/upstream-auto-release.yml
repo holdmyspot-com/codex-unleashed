@@ -851,9 +851,13 @@ jobs:
           UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
         run: |
           set -euo pipefail
-          # The package action leaves symbols-dist/ in the checkout, and the manifest tool rejects any untracked file. Upstream
-          # ignores dist/ but not symbols-dist/; exclude both output directories and keep the tool's clean check strict.
-          printf '/dist/\n/symbols-dist/\n' >> "$(git rev-parse --git-path info/exclude)"
+          # The manifest tool rejects any untracked file. The package build writes four directories into the checkout that
+          # upstream's .gitignore does not cover: symbols-dist/ and dist/ (package actions), .cargo-home/ (upstream's
+          # build-cargo-package-binaries action hard-codes it as the Linux Cargo home) and .zig-cache/ (zig cc, which
+          # writes it under the working directory of whichever compile runs, so it is excluded at any depth). Every other
+          # path it writes is already ignored upstream (codex-rs/target, bazel-*, __pycache__, .venv). Excluding exactly
+          # these directories keeps the tool's clean check strict for source files.
+          printf '/dist/\n/symbols-dist/\n/.cargo-home/\n.zig-cache/\n' >> "$(git rev-parse --git-path info/exclude)"
           git status --porcelain --untracked-files=normal
           bash "$CODEX_TOOLING" release-manifest receipt \
             --source "$GITHUB_WORKSPACE" --patch-repo "$RUNNER_TEMP/manifest-patch-repo" \

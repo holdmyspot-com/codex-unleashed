@@ -57,21 +57,21 @@ public final class WorkspaceLockAlignment
 	 */
 	private static final String SOURCE_PREFIX = "source = ";
 	/**
-	 * Names the lockfile relative to the checkout, as Git addresses it.
+	 * Names the lockfile relative to the checkout, as Git addresses it. The only path that the alignment commit changes.
 	 */
-	private static final String LOCK_PATH = "codex-rs/Cargo.lock";
+	static final String LOCK_PATH = "codex-rs/Cargo.lock";
 	/**
 	 * Names the author and committer of the alignment commit, which is the identity that applies the patch queue.
 	 */
-	private static final String COMMIT_NAME = "Gili Tzabari";
+	static final String COMMIT_NAME = "Gili Tzabari";
 	/**
 	 * Gives the email address of the author and committer of the alignment commit.
 	 */
-	private static final String COMMIT_EMAIL = "cowwoc2020@gmail.com";
+	static final String COMMIT_EMAIL = "cowwoc2020@gmail.com";
 	/**
 	 * The message of the alignment commit.
 	 */
-	private static final String COMMIT_MESSAGE = "Align workspace package versions in Cargo.lock with the release version";
+	static final String COMMIT_MESSAGE = "Align workspace package versions in Cargo.lock with the release version";
 
 	/**
 	 * Prevents construction.

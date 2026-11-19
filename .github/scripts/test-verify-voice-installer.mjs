@@ -1,7 +1,7 @@
 /** Exercises the public installer command with a local installer fixture and real curl/tar boundaries. */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { access, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -28,9 +28,9 @@ const HOST_TARGET = HOST_TARGETS[`${process.platform}/${process.arch}`];
 const DRIVER_PATH = fileURLToPath(new URL('./verify-voice-installer.mjs', import.meta.url));
 
 /** Supplies only stable system executable locations to child commands. */
-function testEnvironment(root) {
+function testEnvironment(root, pathPrefix = []) {
   return {
-    PATH: [path.dirname(process.execPath), '/usr/bin', '/bin'].join(path.delimiter),
+    PATH: [...pathPrefix, path.dirname(process.execPath), '/usr/bin', '/bin'].join(path.delimiter),
     HOME: path.join(root, 'fixture home'),
     TMPDIR: root,
     TEMP: root,
@@ -128,7 +128,7 @@ async function createFixture(options = {}) {
   const archiveDigest = createHash('sha256').update(await readFile(archivePath)).digest('hex');
   const checksumDigest = options.badChecksum ? '0'.repeat(64) : archiveDigest;
   await writeFile(checksumPath, `${checksumDigest}  ${archiveName}\n`);
-  return { root, sourceRoot, assetsRoot, scratchRoot, packageRoot, evidencePath, outputPath, target, packageVersion, archivePath, archiveDigest };
+  return { root, sourceRoot, assetsRoot, scratchRoot, packageRoot, evidencePath, outputPath, target, packageVersion, archivePath, archiveName, archiveDigest };
 }
 
 /** Invokes the public operation with explicit paths, identity, and a controlled child environment. */
@@ -146,7 +146,7 @@ function invoke(fixture, values = {}) {
     '--evidence-dir', fixture.evidencePath
   ];
   const result = spawnSync(process.execPath, argumentsList, {
-    cwd: fixture.root, env: testEnvironment(fixture.root), encoding: 'utf8'
+    cwd: fixture.root, env: testEnvironment(fixture.root, values.pathPrefix), encoding: 'utf8'
   });
   return result;
 }
@@ -315,5 +315,26 @@ test('preexisting output and evidence paths are preserved and rejected before in
         await removeFixture(fixture);
       }
     });
+  }
+});
+
+test('the reference extraction names its archive by bare filename so GNU tar cannot read a drive path as host:path', {
+  skip: process.platform === 'win32' ? 'This fixture exercises the Unix installer and curl facade' : false
+}, async () => {
+  const fixture = await createFixture();
+  try {
+    const shimRoot = path.join(fixture.root, 'tar shim');
+    const callLog = path.join(fixture.root, 'tar calls.log');
+    await mkdir(shimRoot);
+    await writeFile(path.join(shimRoot, 'tar'),
+      `#!/bin/sh\nprintf '%s\\n' \"$PWD\" >> ${shellQuote(callLog)}\nprintf '%s\\n' \"$*\" >> ${shellQuote(callLog)}\nexec /usr/bin/tar \"$@\"\n`,
+      { mode: 0o755 });
+    const result = invoke(fixture, { pathPrefix: [shimRoot] });
+    assert.equal(result.status, 0, result.stderr);
+    const [workingDirectory, argumentsLine] = (await readFile(callLog, 'utf8')).split('\n');
+    assert.equal(workingDirectory, await realpath(fixture.assetsRoot));
+    assert.match(argumentsLine, new RegExp(`^-xzf ${fixture.archiveName.replaceAll('.', '\\.')} -C `));
+  } finally {
+    await removeFixture(fixture);
   }
 });

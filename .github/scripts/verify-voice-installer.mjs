@@ -412,12 +412,19 @@ async function terminateChild(child, platform) {
   }
 }
 
-/** Runs the real archive extractor to create the independent package copy used for byte comparison. */
+/**
+ * Runs the real archive extractor to create the independent package copy used for byte comparison.
+ *
+ * GNU tar reads an archive operand of the form {@code name:path} as {@code host:path} and tries to open a remote
+ * archive, which is what a Windows drive path such as {@code C:\work\package.tar.gz} looks like. The archive is
+ * therefore named by its bare filename from the directory that holds it, a form that GNU tar, bsdtar and Windows tar
+ * all read as a local file. The destination follows {@code -C}, which tar never reads as a remote name.
+ */
 async function extractReferencePackage(archivePath, destination, evidence, environment, runtime, abortSignal) {
   const tar = await findExecutable('tar', environment, runtime.platform);
   await mkdir(destination);
-  return runCommand(tar, ['-xzf', archivePath, '-C', destination], {
-    cwd: destination,
+  return runCommand(tar, ['-xzf', path.basename(archivePath), '-C', destination], {
+    cwd: path.dirname(archivePath),
     environment,
     platform: runtime.platform,
     abortSignal,

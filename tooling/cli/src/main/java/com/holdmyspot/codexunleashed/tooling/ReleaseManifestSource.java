@@ -116,7 +116,8 @@ public final class ReleaseManifestSource
 	}
 
 	/**
-	 * Verifies exact checkout identities and independently reconstructs the declared tree from raw patches.
+	 * Verifies exact checkout identities and independently reconstructs the declared tree from raw patches, followed
+	 * by the lockfile alignment when the source's HEAD is that commit (see {@link WorkspaceLockAlignment}).
 	 *
 	 * @param value           schema-validated receipt or manifest
 	 * @param patchRepository supplied pinned fork checkout
@@ -134,8 +135,12 @@ public final class ReleaseManifestSource
 		require(git(source, "rev-parse", tag + "^{commit}").equals(upstream),
 			"Upstream tag differs from pinned commit");
 		git(source, "merge-base", "--is-ancestor", upstream, "HEAD");
-		String count = git(source, "rev-list", "--count", upstream + "..HEAD");
-		require(new BigInteger(count).equals(BigInteger.valueOf(value.get("patches").size())),
+		BigInteger count = new BigInteger(git(source, "rev-list", "--count", upstream + "..HEAD"));
+		BigInteger extraCommits = count.subtract(BigInteger.valueOf(value.get("patches").size()));
+		// The release commits the lockfile alignment after the queue, but only when the lockfile needed it, so the
+		// ancestry holds the patches alone or the patches followed by exactly that commit.
+		boolean aligned = extraCommits.equals(BigInteger.ONE);
+		require(extraCommits.signum() == 0 || aligned && isAlignmentCommit(source),
 			"Source ancestry differs from ordered patch count");
 		Path temporary = Files.createTempDirectory(environment.temporaryDirectory(), "release-source-");
 		try
@@ -149,6 +154,12 @@ public final class ReleaseManifestSource
 				Path path = patchRepository.resolve(text(patch.get("path"))).toRealPath();
 				git(reconstructed, "-c", "core.longpaths=true", "apply", "--index", path.toString());
 			}
+			if (aligned)
+			{
+				// The alignment commit changes only the lockfile, so its tree effect is that same edit on the patched tree.
+				WorkspaceLockAlignment.align(scope, reconstructed);
+				git(reconstructed, "add", "--", WorkspaceLockAlignment.LOCK_PATH);
+			}
 			require(git(reconstructed, "write-tree").equals(text(value.get("source").get("tree"))),
 				"Source tree is not pinned upstream plus the ordered raw patches");
 		}
@@ -157,6 +168,26 @@ public final class ReleaseManifestSource
 			PathUtils.deleteDirectory(temporary, new LinkOption[]{LinkOption.NOFOLLOW_LINKS},
 				StandardDeleteOption.OVERRIDE_READ_ONLY);
 		}
+	}
+
+	/**
+	 * Recognizes the commit that {@link WorkspaceLockAlignment} makes: the checkout's HEAD must carry that command's
+	 * fixed author, committer and message and change no path other than the lockfile. An unrelated extra commit does
+	 * not qualify, and the content of the lockfile edit is checked by the caller's tree replay.
+	 *
+	 * @param source supplied upstream source checkout
+	 * @return {@code true} if HEAD is an alignment commit
+	 * @throws IOException if a Git operation cannot be run
+	 * @throws IllegalArgumentException if Git reports failure
+	 */
+	private boolean isAlignmentCommit(Path source) throws IOException
+	{
+		String identity = WorkspaceLockAlignment.COMMIT_NAME + " <" + WorkspaceLockAlignment.COMMIT_EMAIL + ">";
+		return git(source, "log", "-1", "--format=%an <%ae>", "HEAD").equals(identity) &&
+			git(source, "log", "-1", "--format=%cn <%ce>", "HEAD").equals(identity) &&
+			git(source, "log", "-1", "--format=%B", "HEAD").equals(WorkspaceLockAlignment.COMMIT_MESSAGE) &&
+			git(source, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").
+				equals(WorkspaceLockAlignment.LOCK_PATH);
 	}
 
 	/**
