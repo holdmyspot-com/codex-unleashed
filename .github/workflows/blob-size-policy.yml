@@ -34,8 +34,12 @@ jobs:
         run: |
           set -euo pipefail
           # A new branch's push has an all-zero base; check only what it adds to the default branch.
+          # A force-push's base may no longer exist on the remote; fall back to the default branch as well.
           if [[ "$BASE_REVISION" =~ ^0+$ ]]; then
             BASE_REVISION="$(git rev-parse --verify "refs/remotes/origin/$DEFAULT_BRANCH^{commit}")"
             echo "New branch: checking commits not on $DEFAULT_BRANCH ($BASE_REVISION)"
+          elif ! git rev-parse --verify --quiet "$BASE_REVISION^{commit}" > /dev/null; then
+            BASE_REVISION="$(git rev-parse --verify "refs/remotes/origin/$DEFAULT_BRANCH^{commit}")"
+            echo "Force-push base is unreachable: checking commits not on $DEFAULT_BRANCH ($BASE_REVISION)"
           fi
           "$CODEX_TOOLING_BASH" "$CODEX_TOOLING" check-blob-size --base "$BASE_REVISION" --head "$HEAD_REVISION"
