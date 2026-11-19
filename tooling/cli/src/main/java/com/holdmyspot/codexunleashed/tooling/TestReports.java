@@ -224,6 +224,11 @@ public final class TestReports
 			reader.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
 			reader.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
 			reader.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+			// A whole-workspace nextest report exceeds the 100,000-byte entity size limits that some JDK builds
+			// (Zulu 27 on macOS) apply by default. Lifting them is safe: DOCTYPE is disallowed, so no entity can be
+			// declared or expanded.
+			reader.setProperty("jdk.xml.maxGeneralEntitySizeLimit", "0");
+			reader.setProperty("jdk.xml.totalEntitySizeLimit", "0");
 			ReportHandler handler = new ReportHandler(path, label, bazel, executed, failed, timedOut, streams);
 			reader.setContentHandler(handler);
 			reader.setErrorHandler(handler);

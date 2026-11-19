@@ -66,6 +66,39 @@ public final class TestReportsTest
 	}
 
 	/**
+	 * Parses a report larger than the JDK's default 100,000-byte entity size limits, as a whole-workspace nextest run
+	 * writes. The limits are set explicitly because JDK distributions differ: Zulu 27 on macOS applies them by
+	 * default, other builds leave them unlimited.
+	 *
+	 * @throws IOException if fixture XML cannot be written or parsed
+	 */
+	@Test public void parsesReportLargerThanDefaultEntityLimits() throws IOException
+	{
+		String[] limits = {"jdk.xml.maxGeneralEntitySizeLimit", "jdk.xml.totalEntitySizeLimit"};
+		String[] previous = new String[limits.length];
+		for (int i = 0; i < limits.length; ++i)
+			previous[i] = System.setProperty(limits[i], "100000");
+		try (Fixture fixture = new Fixture())
+		{
+			String output = "x".repeat(300_000);
+			Path xml = fixture.write("junit.xml",
+				"<testsuites><testsuite name='suite'><testcase name='pass' classname='bin'>" +
+				"<system-out>" + output + "</system-out></testcase></testsuite></testsuites>");
+			TestReports.Report report = TestReports.collect(List.of(xml), TestReports.Runner.NEXTEST);
+			requireThat(report.executed(), "executed").isEqualTo(java.util.Set.of("bin pass"));
+			requireThat(report.streams().getFirst().text().length(), "streamLength").isEqualTo(output.length());
+		}
+		finally
+		{
+			for (int i = 0; i < limits.length; ++i)
+				if (previous[i] == null)
+					System.clearProperty(limits[i]);
+				else
+					System.setProperty(limits[i], previous[i]);
+		}
+	}
+
+	/**
 	 * Derives stable target IDs across shard directories and preserves ANSI-stripped libtest cases separately.
 	 *
 	 * @throws IOException if the Bazel report fixtures cannot be read or written
