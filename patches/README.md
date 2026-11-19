@@ -119,3 +119,4 @@ The release applies these patches in this order:
 107. [release-reproduction/msvc-environment-reuse.patch](holdmyspot-com/codex-unleashed/release-reproduction/msvc-environment-reuse.patch)
 108. [mxc-ancestor-guard/guard-protected-ancestors.patch](holdmyspot-com/codex-unleashed/mxc-ancestor-guard/guard-protected-ancestors.patch)
 109. [telemetry-off/telemetry-off.patch](holdmyspot-com/codex-unleashed/telemetry-off/telemetry-off.patch)
+110. [windows-read-acl-helper/inherit-no-handles.patch](holdmyspot-com/codex-unleashed/windows-read-acl-helper/inherit-no-handles.patch)

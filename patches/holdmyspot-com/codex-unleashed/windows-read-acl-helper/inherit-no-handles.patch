@@ -1,0 +1,364 @@
+From 81b029e7dbee5c463ea6ff3cea5a85bcce779835 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 19 Nov 2026 05:15:12 -0500
+Subject: [PATCH] bugfix: stop the background Windows read-ACL helper from
+ holding its launchers' pipes open
+
+The first elevated Windows sandbox setup starts a read-ACL helper that keeps running after setup returns. It
+inherited every inheritable handle of the setup helper, including the sandbox wrapper's stderr pipe that the
+exec-server reads. The exec-server's read of that pipe then did not end, and the pending blocking read kept
+`codex-exec-server --listen stdio` from exiting after its stdin closed until the helper finished. The helper now
+starts with no inherited handle except a NUL device for its standard I/O.
+---
+ .../windows-sandbox-rs/src/setup_launch.rs    | 124 ++++++++++++++++++
+ .../src/setup_launch_tests.rs                 | 112 +++++++++++++++-
+ .../src/setup_provisioning.rs                 |  11 +-
+ 3 files changed, 238 insertions(+), 9 deletions(-)
+
+diff --git a/codex-rs/windows-sandbox-rs/src/setup_launch.rs b/codex-rs/windows-sandbox-rs/src/setup_launch.rs
+index 7384c5f..722173a 100644
+--- a/codex-rs/windows-sandbox-rs/src/setup_launch.rs
++++ b/codex-rs/windows-sandbox-rs/src/setup_launch.rs
+@@ -1,21 +1,39 @@
+ //! Starts provisioning helpers only after their retained directory handles are installed.
+ //! The child owns its duplicates until exit, independently of the service lifetime.
++//! Detached helpers that outlive their launcher inherit no handles from it.
+ 
++use crate::proc_thread_attr::ProcThreadAttributeList;
++use crate::winutil::argv_to_command_line;
++use crate::winutil::to_wide;
++use std::ffi::OsStr;
++use std::ffi::OsString;
+ use std::io;
++use std::os::windows::ffi::OsStrExt;
+ use std::os::windows::io::AsRawHandle;
+ use std::os::windows::io::BorrowedHandle;
++use std::os::windows::io::FromRawHandle;
++use std::os::windows::io::OwnedHandle;
+ use std::os::windows::process::CommandExt;
+ use std::process::Child;
+ use std::process::Command;
+ use std::process::Stdio;
++use windows_sys::Win32::Foundation::CloseHandle;
+ use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
+ use windows_sys::Win32::Foundation::DuplicateHandle;
+ use windows_sys::Win32::Foundation::HANDLE;
++use windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT;
+ use windows_sys::Win32::Foundation::NTSTATUS;
+ use windows_sys::Win32::Foundation::RtlNtStatusToDosError;
++use windows_sys::Win32::Foundation::SetHandleInformation;
+ use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+ use windows_sys::Win32::System::Threading::CREATE_SUSPENDED;
++use windows_sys::Win32::System::Threading::CREATE_UNICODE_ENVIRONMENT;
++use windows_sys::Win32::System::Threading::CreateProcessW;
++use windows_sys::Win32::System::Threading::EXTENDED_STARTUPINFO_PRESENT;
+ use windows_sys::Win32::System::Threading::GetCurrentProcess;
++use windows_sys::Win32::System::Threading::PROCESS_INFORMATION;
++use windows_sys::Win32::System::Threading::STARTF_USESTDHANDLES;
++use windows_sys::Win32::System::Threading::STARTUPINFOEXW;
+ 
+ #[link(name = "ntdll")]
+ unsafe extern "system" {
+@@ -70,6 +88,112 @@ pub(super) fn spawn_with_retained_handles(
+     Ok(child)
+ }
+ 
++/// Starts `command` without a console window as a process that inherits no handle except a
++/// `NUL` device for its standard input, output and error, and returns the process handle.
++///
++/// `std::process::Command` lets a child inherit every inheritable handle of this process,
++/// including pipe ends that this process itself inherited. A helper that outlives its launcher
++/// would keep such a pipe open, so a reader waiting for its end-of-file waits until the helper
++/// exits. The program, arguments, environment changes and working directory of `command` apply;
++/// its standard I/O and creation flags do not. The program must be a path: it is not searched for
++/// on `PATH`.
++///
++/// Returns an error of kind [`io::ErrorKind::InvalidInput`] if the program or an argument is not
++/// valid Unicode, or the operating system error if the process cannot be created.
++pub(super) fn spawn_without_inherited_handles(command: &Command) -> io::Result<OwnedHandle> {
++    let mut argv = vec![unicode_argument(command.get_program())?];
++    for argument in command.get_args() {
++        argv.push(unicode_argument(argument)?);
++    }
++    let mut command_line = to_wide(argv_to_command_line(&argv));
++    let program = to_wide(command.get_program());
++    let environment = environment_block(command);
++    let current_dir = command.get_current_dir().map(to_wide);
++
++    let null_device = std::fs::OpenOptions::new()
++        .read(true)
++        .write(true)
++        .open("NUL")?;
++    let null_handle = null_device.as_raw_handle() as HANDLE;
++    // The handle list admits only inheritable handles; it is the child's sole inherited handle.
++    if unsafe { SetHandleInformation(null_handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) } == 0 {
++        return Err(io::Error::last_os_error());
++    }
++    let mut attributes = ProcThreadAttributeList::new(/*attr_count*/ 1)?;
++    attributes.set_handle_list(vec![null_handle])?;
++    let mut startup_info: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
++    startup_info.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
++    startup_info.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
++    startup_info.StartupInfo.hStdInput = null_handle;
++    startup_info.StartupInfo.hStdOutput = null_handle;
++    startup_info.StartupInfo.hStdError = null_handle;
++    startup_info.lpAttributeList = attributes.as_mut_ptr();
++
++    let mut process_info: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
++    let created = unsafe {
++        CreateProcessW(
++            program.as_ptr(),
++            command_line.as_mut_ptr(),
++            std::ptr::null(),
++            std::ptr::null(),
++            /*binherithandles*/ 1,
++            CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
++            environment.as_ptr().cast(),
++            current_dir.as_ref().map_or(std::ptr::null(), Vec::as_ptr),
++            &startup_info.StartupInfo,
++            &mut process_info,
++        )
++    };
++    if created == 0 {
++        return Err(io::Error::last_os_error());
++    }
++    unsafe {
++        CloseHandle(process_info.hThread);
++    }
++    // SAFETY: CreateProcessW returned a process handle that nothing else owns.
++    Ok(unsafe { OwnedHandle::from_raw_handle(process_info.hProcess.cast()) })
++}
++
++fn unicode_argument(argument: &OsStr) -> io::Result<String> {
++    argument.to_str().map(str::to_owned).ok_or_else(|| {
++        io::Error::new(
++            io::ErrorKind::InvalidInput,
++            format!("process argument is not valid Unicode: {argument:?}"),
++        )
++    })
++}
++
++/// Builds the environment that `std::process::Command` would pass: this process's variables with
++/// the command's changes applied, sorted by name without regard to case as Windows requires.
++fn environment_block(command: &Command) -> Vec<u16> {
++    let mut variables: Vec<(OsString, OsString)> = std::env::vars_os().collect();
++    for (key, value) in command.get_envs() {
++        let folded_key = fold_case(key);
++        variables.retain(|(existing, _)| fold_case(existing) != folded_key);
++        if let Some(value) = value {
++            variables.push((key.to_owned(), value.to_owned()));
++        }
++    }
++    variables.sort_by_cached_key(|(key, _)| fold_case(key));
++
++    let mut block = Vec::new();
++    for (key, value) in &variables {
++        block.extend(key.encode_wide());
++        block.push(u16::from(b'='));
++        block.extend(value.encode_wide());
++        block.push(0);
++    }
++    if variables.is_empty() {
++        block.push(0);
++    }
++    block.push(0);
++    block
++}
++
++fn fold_case(key: &OsStr) -> String {
++    key.to_string_lossy().to_uppercase()
++}
++
+ #[cfg(test)]
+ #[path = "setup_launch_tests.rs"]
+ mod tests;
+diff --git a/codex-rs/windows-sandbox-rs/src/setup_launch_tests.rs b/codex-rs/windows-sandbox-rs/src/setup_launch_tests.rs
+index 21968f1..ef85201 100644
+--- a/codex-rs/windows-sandbox-rs/src/setup_launch_tests.rs
++++ b/codex-rs/windows-sandbox-rs/src/setup_launch_tests.rs
+@@ -2,24 +2,37 @@
+ 
+ use std::fs;
+ use std::io;
++use std::io::Read;
+ use std::io::Write;
+ use std::os::windows::fs::OpenOptionsExt;
+ use std::os::windows::io::AsHandle;
++use std::os::windows::io::AsRawHandle;
++use std::os::windows::io::OwnedHandle;
+ use std::path::PathBuf;
+ use std::process::Child;
+ use std::process::Command;
++use std::sync::mpsc;
+ use std::time::Duration;
+ use std::time::Instant;
+ 
+ use pretty_assertions::assert_eq;
++use windows_sys::Win32::Foundation::HANDLE;
++use windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT;
++use windows_sys::Win32::Foundation::SetHandleInformation;
++use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
++use windows_sys::Win32::Foundation::WAIT_TIMEOUT;
+ use windows_sys::Win32::Storage::FileSystem::DELETE;
+ use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS;
+ use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_DELETE_ON_CLOSE;
+ use windows_sys::Win32::Storage::FileSystem::FILE_READ_DATA;
+ use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+ use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_WRITE;
++use windows_sys::Win32::System::Threading::GetExitCodeProcess;
++use windows_sys::Win32::System::Threading::TerminateProcess;
++use windows_sys::Win32::System::Threading::WaitForSingleObject;
+ 
+ use super::spawn_with_retained_handles;
++use super::spawn_without_inherited_handles;
+ 
+ const CHILD_TEST: &str = "setup_launch::tests::retained_handles_child";
+ const CHILD_DIRECTORY_ENV: &str = "CODEX_TEST_SETUP_LAUNCH_DIRECTORY";
+@@ -35,6 +48,37 @@ impl Drop for ChildGuard {
+     }
+ }
+ 
++struct ProcessGuard(OwnedHandle);
++
++impl ProcessGuard {
++    /// Returns the exit code once the process exits within `timeout`, or `None` if it still runs.
++    fn wait(&self, timeout: Duration) -> io::Result<Option<u32>> {
++        let handle = self.0.as_raw_handle() as HANDLE;
++        let millis = u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX);
++        match unsafe { WaitForSingleObject(handle, millis) } {
++            WAIT_OBJECT_0 => {
++                let mut exit_code = 0;
++                if unsafe { GetExitCodeProcess(handle, &mut exit_code) } == 0 {
++                    return Err(io::Error::last_os_error());
++                }
++                Ok(Some(exit_code))
++            }
++            WAIT_TIMEOUT => Ok(None),
++            _ => Err(io::Error::last_os_error()),
++        }
++    }
++}
++
++impl Drop for ProcessGuard {
++    fn drop(&mut self) {
++        let handle = self.0.as_raw_handle() as HANDLE;
++        unsafe {
++            TerminateProcess(handle, /*exit_code*/ 1);
++            WaitForSingleObject(handle, /*milliseconds*/ 10_000);
++        }
++    }
++}
++
+ #[test]
+ fn child_retains_directory_pin_until_exit() -> io::Result<()> {
+     let temporary = tempfile::tempdir()?;
+@@ -118,7 +162,73 @@ fn missing_executable_returns_spawn_error_without_closing_retained_handles() ->
+ }
+ 
+ #[test]
+-#[ignore = "child process for child_retains_directory_pin_until_exit"]
++fn isolated_child_does_not_keep_inheritable_pipe_open() -> io::Result<()> {
++    let temporary = tempfile::tempdir()?;
++    // Stands in for a pipe end that the launcher inherited from its own parent.
++    let (mut reader, writer) = io::pipe()?;
++    let writer_handle = writer.as_raw_handle() as HANDLE;
++    if unsafe { SetHandleInformation(writer_handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) } == 0
++    {
++        return Err(io::Error::last_os_error());
++    }
++    let mut command = Command::new(std::env::current_exe()?);
++    command
++        .args(["--exact", CHILD_TEST, "--ignored"])
++        .env(CHILD_DIRECTORY_ENV, temporary.path());
++    let child = ProcessGuard(spawn_without_inherited_handles(&command)?);
++    drop(writer);
++
++    let started = Instant::now();
++    while !temporary.path().join("ready").exists() {
++        assert_eq!(
++            child.wait(Duration::ZERO)?,
++            None,
++            "child exited before becoming ready"
++        );
++        assert!(
++            started.elapsed() < CHILD_TIMEOUT,
++            "child did not become ready"
++        );
++        std::thread::sleep(POLL_INTERVAL);
++    }
++    let (sender, receiver) = mpsc::channel();
++    std::thread::spawn(move || {
++        let mut output = Vec::new();
++        let _ = sender.send(reader.read_to_end(&mut output));
++    });
++    let bytes_read = receiver
++        .recv_timeout(CHILD_TIMEOUT)
++        .expect("a running child must not keep the parent's inheritable pipe open")?;
++    assert_eq!(bytes_read, 0);
++    assert_eq!(
++        child.wait(Duration::ZERO)?,
++        None,
++        "end-of-file must arrive while the child still runs"
++    );
++
++    fs::write(temporary.path().join("release"), b"")?;
++    assert_eq!(
++        child.wait(CHILD_TIMEOUT)?,
++        Some(0),
++        "child did not exit cleanly"
++    );
++    Ok(())
++}
++
++#[test]
++fn isolated_spawn_of_missing_executable_returns_not_found() -> io::Result<()> {
++    let temporary = tempfile::tempdir()?;
++    let command = Command::new(temporary.path().join("missing.exe"));
++
++    let error = spawn_without_inherited_handles(&command)
++        .expect_err("missing executable must fail to spawn");
++
++    assert_eq!(error.kind(), io::ErrorKind::NotFound);
++    Ok(())
++}
++
++#[test]
++#[ignore = "child process for the tests that start this binary as a ready/release child"]
+ fn retained_handles_child() -> io::Result<()> {
+     let Some(directory) = std::env::var_os(CHILD_DIRECTORY_ENV).map(PathBuf::from) else {
+         return Ok(());
+diff --git a/codex-rs/windows-sandbox-rs/src/setup_provisioning.rs b/codex-rs/windows-sandbox-rs/src/setup_provisioning.rs
+index d455768..8cc7eae 100644
+--- a/codex-rs/windows-sandbox-rs/src/setup_provisioning.rs
++++ b/codex-rs/windows-sandbox-rs/src/setup_provisioning.rs
+@@ -55,11 +55,9 @@ use std::ffi::OsStr;
+ use std::ffi::c_void;
+ use std::io::Write;
+ use std::os::windows::io::AsRawHandle;
+-use std::os::windows::process::CommandExt;
+ use std::path::Path;
+ use std::path::PathBuf;
+ use std::process::Command;
+-use std::process::Stdio;
+ use std::sync::mpsc;
+ use windows_sys::Win32::Foundation::GetLastError;
+ use windows_sys::Win32::Foundation::HLOCAL;
+@@ -218,12 +216,9 @@ fn spawn_read_acl_helper(payload: &Payload, _log: &mut dyn Write) -> Result<()>
+     let exe = std::env::current_exe().context("locate setup helper")?;
+     let mut command = Command::new(&exe);
+     crate::launch_environment::configure_command(&mut command, &payload_b64)?;
+-    command
+-        .stdin(Stdio::null())
+-        .stdout(Stdio::null())
+-        .stderr(Stdio::null())
+-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+-        .spawn()
++    // The helper outlives this setup run. Inherited pipe ends would keep its launchers' readers
++    // waiting for end-of-file until the helper finishes.
++    crate::setup_launch::spawn_without_inherited_handles(&command)
+         .context("spawn read ACL helper")?;
+     Ok(())
+ }
+-- 
+2.43.0
+
