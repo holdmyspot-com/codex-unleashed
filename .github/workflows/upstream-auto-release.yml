@@ -741,7 +741,7 @@ jobs:
           }
           trap cleanup_voice_packages EXIT
           mkdir "$gzip_package" "$zstd_package"
-          tar -xzf "$GITHUB_WORKSPACE/dist/$TARGET/codex-package-$TARGET.tar.gz" -C "$gzip_package"
+          tar -xzf - -C "$gzip_package" < "$GITHUB_WORKSPACE/dist/$TARGET/codex-package-$TARGET.tar.gz"
           resolver_scratch="$(mktemp -d "$native_temp/voice-zstd-argv-$TARGET.XXXXXX")"
           resolver_json="$resolver_scratch/argv.json"
           resolver_nul="$resolver_scratch/argv.nul"
@@ -838,7 +838,7 @@ jobs:
           native_temp="$(cd "$RUNNER_TEMP" && pwd)"
           proof_package="$(mktemp -d "$native_temp/package-identity.XXXXXX")"
           trap 'rm -rf -- "$proof_package"' EXIT
-          tar -xzf "$native_temp/assets/codex-package-$TARGET.tar.gz" -C "$proof_package"
+          tar -xzf - -C "$proof_package" < "$native_temp/assets/codex-package-$TARGET.tar.gz"
           bash "$CODEX_TOOLING" package-identity binary \
             --package-dir "$proof_package" --version "$VERSION" --build "$BUILD" \
             --output "$RUNNER_TEMP/assets/codex-version-$TARGET.txt"
@@ -1076,7 +1076,7 @@ jobs:
           archive_root="$native_temp/npm-release-archives"
           while IFS= read -r target; do
             mkdir "$scratch/packages/$target"
-            tar -xzf "$archive_root/codex-package-$target.tar.gz" -C "$scratch/packages/$target"
+            tar -xzf - -C "$scratch/packages/$target" < "$archive_root/codex-package-$target.tar.gz"
           done < <(node -e 'for (const entry of JSON.parse(require("node:fs").readFileSync(".github/release-matrix.json", "utf8"))) console.log(entry.target)')
           node .github/scripts/verify-local-npm.mjs \
             --package-root "$scratch/packages" --tools "$scratch/tools" \
