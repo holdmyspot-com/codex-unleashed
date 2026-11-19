@@ -58,10 +58,9 @@ jobs:
             }
             $env:JAVA_TOOL_OPTIONS = "$originalJavaOptions -XX:StartFlightRecording=filename=$recordings,settings=profile,dumponexit=true"
             $env:GIT_TRACE2_PERF = Join-Path $caseEvidence 'git-trace.perf'
-            mvn -B -ntp -f tooling/cli/pom.xml `
+            & "$env:ProgramFiles\Git\bin\bash.exe" .github/scripts/maven-retry.sh "$env:RUNNER_TEMP/helper-inventory-maven" -f tooling/cli/pom.xml `
               '-Dtest=SourceInputInventoryTest#inventoriesWithoutGitRepository' `
               "-Dtooling.build.directory=$env:RUNNER_TEMP/helper-inventory-build" `
-              "-Dmaven.repo.local=$env:RUNNER_TEMP/helper-inventory-maven" `
               "-Djava.io.tmpdir=$temporary" test 2>&1 | Tee-Object (Join-Path $caseEvidence 'inventory-test.log')
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }

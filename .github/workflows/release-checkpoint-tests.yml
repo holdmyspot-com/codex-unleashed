@@ -91,9 +91,8 @@ jobs:
             --arg temporary_directory "$TMPDIR" \
             '{format_version: 1, working_directory: $working_directory,
               temporary_directory: $temporary_directory, environment: env}' > "$test_context"
-          mvn -q -B -ntp -f tooling/cli/pom.xml -Pruntime \
+          bash .github/scripts/maven-retry.sh "$RUNNER_TEMP/checkpoint-tests/maven" -q -f tooling/cli/pom.xml -Pruntime \
             "-Dtooling.build.directory=$RUNNER_TEMP/checkpoint-tests/build" \
-            "-Dmaven.repo.local=$RUNNER_TEMP/checkpoint-tests/maven" \
             "-Djava.io.tmpdir=$TMPDIR" \
             "-Dquiet.build.test.context=$test_context" verify \
             2>&1 | tee "$RUNNER_TEMP/checkpoint-evidence/helper-build.log"
@@ -116,9 +115,8 @@ jobs:
             '{format_version: 1, working_directory: $working_directory,
               temporary_directory: $temporary_directory, environment: env}' > "$boundary_context"
           maven_status=0
-          mvn -q -B -ntp -f tooling/cli/pom.xml \
+          bash .github/scripts/maven-retry.sh "$RUNNER_TEMP/checkpoint-tests/maven" -q -f tooling/cli/pom.xml \
             "-Dtooling.build.directory=$boundary_build" \
-            "-Dmaven.repo.local=$RUNNER_TEMP/checkpoint-tests/maven" \
             "-Djava.io.tmpdir=$boundary_temp" \
             "-Dquiet.build.runtime=$RUNNER_TEMP/checkpoint-tests/build/runtime" \
             "-Dquiet.build.test.context=$boundary_context" \

@@ -164,16 +164,16 @@ def run_case(script: Path, operating_system: str, maven_status: int = 0, resolut
             else tooling_root
         ) / "tooling/cli/pom.xml"
         expected_maven_arguments = [
-            "-q",
             "-B",
             "-ntp",
             "-U",
+            f"-Dmaven.repo.local={expected_root}/maven",
+            "-q",
             "-f",
             str(expected_maven_pom),
             "-Pruntime",
             "-DskipTests",
             f"-Dtooling.build.directory={expected_root}/build",
-            f"-Dmaven.repo.local={expected_root}/maven",
             f"-Djava.io.tmpdir={expected_root}/tmp",
             "package",
         ]

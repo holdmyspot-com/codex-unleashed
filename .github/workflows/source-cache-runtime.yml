@@ -112,9 +112,8 @@ jobs:
           evidence="$RUNNER_TEMP/source-cache-evidence"
           java -version 2> "$evidence/java-version.txt"
           mvn -version > "$evidence/maven-version.txt"
-          mvn -B -ntp -f tooling/cli/pom.xml -Pruntime \
+          bash .github/scripts/maven-retry.sh "$RUNNER_TEMP/source-cache-maven" -f tooling/cli/pom.xml -Pruntime \
             "-Dtooling.build.directory=$RUNNER_TEMP/source-cache-build" \
-            "-Dmaven.repo.local=$RUNNER_TEMP/source-cache-maven" \
             "-Djava.io.tmpdir=$TMPDIR" verify 2>&1 | tee "$evidence/verify.log"
 
       - name: Set up private partial-cache transport

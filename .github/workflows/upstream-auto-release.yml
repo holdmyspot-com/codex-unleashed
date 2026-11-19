@@ -75,7 +75,7 @@ jobs:
           mkdir -p "$tooling_test_root/build" "$tooling_test_root/tmp"
           export TMPDIR="$tooling_test_root/tmp" TMP="$tooling_test_root/tmp" TEMP="$tooling_test_root/tmp"
           export JAVA_TOOL_OPTIONS="-Djava.io.tmpdir=$tooling_test_root/tmp"
-          mvn -q -B -ntp -f tooling/cli/pom.xml \
+          bash .github/scripts/maven-retry.sh "$tooling_test_root/maven" -q -f tooling/cli/pom.xml \
             "-Dtooling.build.directory=$tooling_test_root/build" \
             -Dtest=UpstreamAutoReleaseTest,PackageLicenseTest,PackageIdentityTest,ReleaseManifestTest,ReleaseManifestNativeInputsTest,MainTest,BlobSizeCommandTest,BlobSizePolicyTest test
 

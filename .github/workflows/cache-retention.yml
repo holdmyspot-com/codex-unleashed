@@ -99,9 +99,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/retention-helper-temp"
-          mvn -B -ntp -q -f tooling/cli/pom.xml -Pruntime \
+          bash .github/scripts/maven-retry.sh "$RUNNER_TEMP/retention-helper-maven" -q -f tooling/cli/pom.xml -Pruntime \
             "-Dtooling.build.directory=$RUNNER_TEMP/retention-helper" \
-            "-Dmaven.repo.local=$RUNNER_TEMP/retention-helper-maven" \
             "-Djava.io.tmpdir=$RUNNER_TEMP/retention-helper-temp" verify \
             2>&1 | tee "$RUNNER_TEMP/cache-retention/helper-verify.log"
 

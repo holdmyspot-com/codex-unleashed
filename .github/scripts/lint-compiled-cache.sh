@@ -63,7 +63,7 @@ preserve() {
   command -v sha256sum > /dev/null 2>&1 || hasher=(shasum -a 256)
   mkdir -p "$cache_root" "$TMPDIR"
   cp "$restart/.github/scripts/ghcr-cargo-target-cache.sh" "$restart/.github/scripts/lint-compiled-cache.sh" \
-    "$restart/.github/cargo-cache-package" "$cache_root/"
+    "$restart/.github/scripts/maven-retry.sh" "$restart/.github/cargo-cache-package" "$cache_root/"
   cp -R "$restart/tooling/cli" "$cache_root/source-cache-helper"
   (
     cd "$restart"
@@ -79,8 +79,8 @@ preserve() {
 
 build_helper() {
   [[ -e "$helper_tool" ]] && return 0
-  mvn -B -ntp -f "$cache_root/source-cache-helper/pom.xml" -Pruntime -DskipTests \
-    "-Dtooling.build.directory=$cache_root/build" "-Dmaven.repo.local=$cache_root/maven" \
+  bash "$cache_root/maven-retry.sh" "$cache_root/maven" -f "$cache_root/source-cache-helper/pom.xml" -Pruntime -DskipTests \
+    "-Dtooling.build.directory=$cache_root/build" \
     "-Djava.io.tmpdir=$TMPDIR" package > "$cache_root/helper-build.log" 2>&1 || {
     tail -n 60 "$cache_root/helper-build.log" >&2
     return 1
