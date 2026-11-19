@@ -1,4 +1,4 @@
-From 531e310292dc872e1a1b21d586f500380d3e5dd2 Mon Sep 17 00:00:00 2001
+From 6cb8ee1473e4296e8cbd050acdd5a38e7dae6a8a Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Fri, 13 Nov 2026 19:53:53 -0500
 Subject: [PATCH] bugfix: preserve unknown model limits and summary
@@ -9,10 +9,18 @@ Synthetic metadata must not invent context limits or advertise unsupported reaso
  .../tests/suite/v2/history_notes_extension.rs |  2 +
  .../tests/suite/v2/thread_sample.rs           |  4 ++
  codex-rs/core/src/session/tests.rs            |  2 +
+ codex-rs/core/tests/responses_headers.rs      |  4 +-
+ .../core/tests/suite/client_websockets.rs     |  4 +-
+ .../core/tests/suite/injected_models_cache.rs |  2 +
+ .../core/tests/suite/permissions_messages.rs  |  6 +++
+ ...ios_catalog_approval_instructions_tests.rs |  3 ++
+ .../suite/scenarios_model_instructions.rs     |  6 +++
  codex-rs/models-manager/src/manager_tests.rs  | 29 ++++++++++++
  codex-rs/models-manager/src/model_info.rs     |  8 ++--
  .../models-manager/src/model_info_tests.rs    | 45 +++++++++++++++++++
- 6 files changed, 86 insertions(+), 4 deletions(-)
+ ...ests__managed_worktree_model_creation.snap |  2 +-
+ codex-rs/tui/src/status/tests.rs              |  6 ++-
+ 14 files changed, 114 insertions(+), 9 deletions(-)
 
 diff --git a/codex-rs/app-server/tests/suite/v2/history_notes_extension.rs b/codex-rs/app-server/tests/suite/v2/history_notes_extension.rs
 index bc12a8b..d8dfc18 100644
@@ -62,6 +70,112 @@ index d8dd110..852ee55 100644
              config.multi_agent_v2.root_agent_usage_hint_text = Some("Root guidance.".to_string());
              config.multi_agent_v2.subagent_usage_hint_text = Some("Subagent guidance.".to_string());
          },
+diff --git a/codex-rs/core/tests/responses_headers.rs b/codex-rs/core/tests/responses_headers.rs
+index ef01023..7f65865 100644
+--- a/codex-rs/core/tests/responses_headers.rs
++++ b/codex-rs/core/tests/responses_headers.rs
+@@ -398,8 +398,10 @@ async fn responses_respects_model_info_overrides_from_config() {
+             .map(TelemetryAuthMode::from);
+     let session_source =
+         SessionSource::SubAgent(SubAgentSource::Other("override-check".to_string()));
+-    let model_info =
++    let mut model_info =
+         codex_core::test_support::construct_model_info_offline(model.as_str(), &config);
++    // The offline fallback no longer advertises reasoning summaries; the config enables them.
++    model_info.supports_reasoning_summary_parameter = true;
+     let session_telemetry = SessionTelemetry::new(
+         thread_id,
+         model.as_str(),
+diff --git a/codex-rs/core/tests/suite/client_websockets.rs b/codex-rs/core/tests/suite/client_websockets.rs
+index c48ae76..5f12408 100755
+--- a/codex-rs/core/tests/suite/client_websockets.rs
++++ b/codex-rs/core/tests/suite/client_websockets.rs
+@@ -2834,7 +2834,9 @@ async fn websocket_harness_with_provider_options_and_auth(
+     let http_client_factory = config.http_client_factory();
+     let outbound_proxy_policy = http_client_factory.outbound_proxy_policy();
+     let config = Arc::new(config);
+-    let model_info = codex_core::test_support::construct_model_info_offline(MODEL, &config);
++    let mut model_info = codex_core::test_support::construct_model_info_offline(MODEL, &config);
++    // The offline fallback no longer advertises reasoning summaries; these requests carry them.
++    model_info.supports_reasoning_summary_parameter = true;
+     let thread_id = ThreadId::new();
+     let session_id = SessionId::new();
+     let client_auth_manager = auth.map(|auth| {
+diff --git a/codex-rs/core/tests/suite/injected_models_cache.rs b/codex-rs/core/tests/suite/injected_models_cache.rs
+index e206437..74be11e 100644
+--- a/codex-rs/core/tests/suite/injected_models_cache.rs
++++ b/codex-rs/core/tests/suite/injected_models_cache.rs
+@@ -172,6 +172,8 @@ impl ModelsEndpointClient for TestModelsEndpoint {
+ fn remote_model(slug: &str) -> ModelInfo {
+     ModelInfo {
+         visibility: ModelVisibility::List,
++        // Catalog models support reasoning summaries; only synthetic fallbacks do not.
++        supports_reasoning_summary_parameter: true,
+         ..model_info_from_slug(slug)
+     }
+ }
+diff --git a/codex-rs/core/tests/suite/permissions_messages.rs b/codex-rs/core/tests/suite/permissions_messages.rs
+index 620630c..e0dd8b8 100644
+--- a/codex-rs/core/tests/suite/permissions_messages.rs
++++ b/codex-rs/core/tests/suite/permissions_messages.rs
+@@ -88,6 +88,9 @@ fn model_with_approval_messages(
+     on_request_auto_review: &str,
+ ) -> codex_protocol::openai_models::ModelInfo {
+     let mut model = model_info_from_slug(slug);
++    // Catalog models support reasoning summaries; only synthetic fallbacks do not.
++    model.supports_reasoning_summary_parameter = true;
++    model.default_reasoning_summary = codex_protocol::config_types::ReasoningSummary::Auto;
+     model.model_messages = Some(ModelMessages {
+         approvals: Some(ApprovalMessages {
+             on_request: Some(on_request.to_string()),
+@@ -104,6 +107,9 @@ fn model_with_permission_messages(
+     permissions: PermissionMessages,
+ ) -> codex_protocol::openai_models::ModelInfo {
+     let mut model = model_info_from_slug(slug);
++    // Catalog models support reasoning summaries; only synthetic fallbacks do not.
++    model.supports_reasoning_summary_parameter = true;
++    model.default_reasoning_summary = codex_protocol::config_types::ReasoningSummary::Auto;
+     model.model_messages = Some(ModelMessages {
+         permissions: Some(permissions),
+         ..Default::default()
+diff --git a/codex-rs/core/tests/suite/scenarios_catalog_approval_instructions_tests.rs b/codex-rs/core/tests/suite/scenarios_catalog_approval_instructions_tests.rs
+index 774fd89..ffd6de5 100644
+--- a/codex-rs/core/tests/suite/scenarios_catalog_approval_instructions_tests.rs
++++ b/codex-rs/core/tests/suite/scenarios_catalog_approval_instructions_tests.rs
+@@ -43,6 +43,9 @@ async fn catalog_approval_headings_follow_selected_model() -> Result<()> {
+         .into_iter()
+         .map(|(slug, label)| {
+             let mut model = model_info_from_slug(slug);
++            // Catalog models support reasoning summaries; only synthetic fallbacks do not.
++            model.supports_reasoning_summary_parameter = true;
++            model.default_reasoning_summary = codex_protocol::config_types::ReasoningSummary::Auto;
+             model.use_responses_lite = true;
+             model.model_messages = Some(ModelMessages {
+                 approvals: Some(ApprovalMessages {
+diff --git a/codex-rs/core/tests/suite/scenarios_model_instructions.rs b/codex-rs/core/tests/suite/scenarios_model_instructions.rs
+index 15dce41..a6018c3 100644
+--- a/codex-rs/core/tests/suite/scenarios_model_instructions.rs
++++ b/codex-rs/core/tests/suite/scenarios_model_instructions.rs
+@@ -25,6 +25,9 @@ async fn originator_catalogs_control_turn_instructions_and_tools() -> Result<()>
+         ("chatgpt_cca", "Chat catalog instructions.", None),
+     ] {
+         let mut model = model_info_from_slug("gpt-5.5");
++        // Catalog models support reasoning summaries; only synthetic fallbacks do not.
++        model.supports_reasoning_summary_parameter = true;
++        model.default_reasoning_summary = codex_protocol::config_types::ReasoningSummary::Auto;
+         model.visibility = ModelVisibility::List;
+         model.use_responses_lite = false;
+         model.tool_mode = Some(ToolMode::Direct);
+@@ -129,6 +132,9 @@ async fn catalog_refresh_replaces_instructions_and_compaction_installs_latest_ba
+ 
+     let server = wiremock::MockServer::start().await;
+     let mut model = model_info_from_slug("gpt-5.4");
++    // Catalog models support reasoning summaries; only synthetic fallbacks do not.
++    model.supports_reasoning_summary_parameter = true;
++    model.default_reasoning_summary = codex_protocol::config_types::ReasoningSummary::Auto;
+     model.use_responses_lite = true;
+     model.visibility = ModelVisibility::List;
+     model
 diff --git a/codex-rs/models-manager/src/manager_tests.rs b/codex-rs/models-manager/src/manager_tests.rs
 index 8c64277..73b8196 100644
 --- a/codex-rs/models-manager/src/manager_tests.rs
@@ -204,6 +318,37 @@ index dc061cc..81cc9e8 100644
  #[test]
  fn model_context_window_override_clamps_to_max_context_window() {
      let mut model = model_info_from_slug("unknown-model");
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__managed_worktree_tools__tests__model_tests__managed_worktree_model_creation.snap b/codex-rs/tui/src/snapshots/codex_tui__managed_worktree_tools__tests__model_tests__managed_worktree_model_creation.snap
+index 556cf37..d326f7a 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__managed_worktree_tools__tests__model_tests__managed_worktree_model_creation.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__managed_worktree_tools__tests__model_tests__managed_worktree_model_creation.snap
+@@ -10,7 +10,7 @@ Settings:
+   model: "mock-model"
+   parallel_tool_calls: true
+   prompt_cache_key: "<PROMPT_CACHE_KEY 1>"
+-  reasoning: {"summary":"auto"}
++  reasoning: {}
+   store: false
+   stream: true
+   tool_choice: "auto"
+diff --git a/codex-rs/tui/src/status/tests.rs b/codex-rs/tui/src/status/tests.rs
+index d7b8a83..d6f09b7 100644
+--- a/codex-rs/tui/src/status/tests.rs
++++ b/codex-rs/tui/src/status/tests.rs
+@@ -163,9 +163,11 @@ fn test_status_account_display() -> Option<StatusAccountDisplay> {
+ }
+ 
+ fn token_info_for(model_slug: &str, config: &Config, usage: &TokenUsage) -> TokenUsageInfo {
++    // Unknown model slugs have no context limit of their own, so state the limit the snapshots show.
++    let mut models_config = config.to_models_manager_config();
++    models_config.model_context_window.get_or_insert(272_000);
+     let context_window =
+-        construct_model_info_offline_for_tests(model_slug, &config.to_models_manager_config())
+-            .context_window;
++        construct_model_info_offline_for_tests(model_slug, &models_config).context_window;
+     TokenUsageInfo {
+         total_token_usage: usage.clone(),
+         last_token_usage: usage.clone(),
 -- 
 2.43.0
 

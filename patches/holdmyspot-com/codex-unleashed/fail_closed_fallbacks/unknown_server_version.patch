@@ -1,7 +1,16 @@
-From 826c4297c2f5196f0eff1824928bd8de5f8ecba8 Mon Sep 17 00:00:00 2001
+From 5bfec879a75f2776f926a66ba331f45575937534 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 14 Nov 2026 03:24:17 +0000
 Subject: [PATCH] bugfix: report unknown remote server versions
+
+---
+ codex-rs/tui/src/app/server_version_notice.rs |   8 +
+ .../app/tests/session_lifecycle_requests.rs   |   2 +-
+ codex-rs/tui/src/app/tests/startup.rs         |  53 +++++
+ codex-rs/tui/src/history_cell/tests.rs        |  35 ++++
+ codex-rs/tui/src/status/remote_connection.rs  | 192 +++++++++++++++++-
+ codex-rs/tui/tests/suite/directory_trust.rs   |   4 +-
+ 6 files changed, 284 insertions(+), 10 deletions(-)
 
 diff --git a/codex-rs/tui/src/app/server_version_notice.rs b/codex-rs/tui/src/app/server_version_notice.rs
 index f90cf53..852d9e7 100644
@@ -22,6 +31,19 @@ index f90cf53..852d9e7 100644
          notice
      }
  
+diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
+index 38a8a53..564ef81 100644
+--- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
++++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
+@@ -5351,7 +5351,7 @@ async fn command_center_read_only_open_requests_and_failure_preservation() -> Re
+         let (mut app, _codex_home) = Box::pin(make_history_test_app()).await?;
+         std::fs::write(
+             app.config.codex_home.join("config.toml"),
+-            "[tui]\nresume_cwd = \"current\"\n",
++            "[tui]\nresume_cwd = \"current\"\nshow_server_version_notice = false\n",
+         )?;
+         for cwd in [test_path_buf("/"), app.config.cwd.to_path_buf()] {
+             crate::legacy_core::config::set_project_trust_level(
 diff --git a/codex-rs/tui/src/app/tests/startup.rs b/codex-rs/tui/src/app/tests/startup.rs
 index 316ae0e..17b45b7 100644
 --- a/codex-rs/tui/src/app/tests/startup.rs
@@ -133,7 +155,7 @@ index d89d01d..33efd36 100644
  fn local_daemon_version_notice_snapshot() {
      let target = crate::AppServerTarget::LocalDaemon {
 diff --git a/codex-rs/tui/src/status/remote_connection.rs b/codex-rs/tui/src/status/remote_connection.rs
-index 201acd5..69e55d2 100644
+index 201acd5..a14818c 100644
 --- a/codex-rs/tui/src/status/remote_connection.rs
 +++ b/codex-rs/tui/src/status/remote_connection.rs
 @@ -51,9 +51,14 @@ pub(crate) fn remote_connection_status_value(
@@ -378,3 +400,21 @@ index 201acd5..69e55d2 100644
      #[test]
      fn update_command_is_only_suggested_for_implicit_local_daemon() -> color_eyre::Result<()> {
          let endpoint = RemoteAppServerEndpoint::UnixSocket {
+diff --git a/codex-rs/tui/tests/suite/directory_trust.rs b/codex-rs/tui/tests/suite/directory_trust.rs
+index 0cfbfc2..726a21f 100644
+--- a/codex-rs/tui/tests/suite/directory_trust.rs
++++ b/codex-rs/tui/tests/suite/directory_trust.rs
+@@ -31,7 +31,9 @@ async fn connected_trust_cancellation_and_acceptance_control_task_creation() ->
+         let config = std::fs::read_to_string(&config_path)?;
+         std::fs::write(
+             config_path,
+-            format!("{config}\n[tui]\nresume_cwd = \"current\"\n"),
++            format!(
++                "{config}\n[tui]\nresume_cwd = \"current\"\nshow_server_version_notice = false\n"
++            ),
+         )?;
+         let socket = codex_app_server_client::app_server_control_socket_path(codex_home.path())?;
+         std::fs::create_dir_all(socket.parent().unwrap())?;
+-- 
+2.43.0
+
