@@ -7,6 +7,9 @@ inputs:
   idle-timeout-minutes:
     description: Positive whole minutes allowed before joining or while waiting at an idle shell prompt
     default: '10'
+  artifact-suffix:
+    description: Optional leading-hyphen suffix that distinguishes connection artifacts for jobs in the same matrix
+    default: ''
 outputs:
   ssh-command:
     description: SSH command for the owned live debug session
@@ -55,7 +58,7 @@ runs:
     - name: Publish connection details while the runner stays alive
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
       with:
-        name: runner-debug-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ github.run_attempt }}
+        name: runner-debug-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ github.run_attempt }}${{ inputs.artifact-suffix }}
         path: ${{ steps.key.outputs.storage }}/connection.json
         retention-days: 3
         if-no-files-found: error

@@ -7,6 +7,10 @@ on:
         description: Space-separated repository paths of downstream patches to apply with git am, in order; empty tests pristine upstream and records its failures as the baseline
         type: string
         default: ""
+      public_key:
+        description: Optional SSH public key; connect to each Windows worker before starting its Bazel checks
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -33,6 +37,7 @@ jobs:
             shard: 1
             shard_count: 1
     runs-on: windows-2025
+    timeout-minutes: 360
     env:
       TARGET: ${{ matrix.target }}
       BAZEL_TEST_SHARD: ${{ matrix.shard }}
@@ -75,6 +80,13 @@ jobs:
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
+      - name: Stage the retained runner helper
+        if: inputs.public_key != ''
+        run: |
+          set -euo pipefail
+          cp restart-metadata/.github/scripts/release-debug-session.sh "$RUNNER_TEMP/"
+          cp -R restart-metadata/.github/actions/debug-failed-runner "$RUNNER_TEMP/windows-bazel-debug-action"
+
       - name: Retrieve the exact stable upstream source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -116,6 +128,25 @@ jobs:
               am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
           done
           printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare retained Windows Bazel worker
+        if: inputs.public_key != ''
+        run: |
+          bash "$RUNNER_TEMP/release-debug-session.sh" prepare \
+            "$RUNNER_TEMP/windows-bazel-debug-action" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-windows-bazel-evidence"
+
+      - name: Open authenticated Windows Bazel worker
+        id: bazel-debug
+        if: inputs.public_key != ''
+        uses: ./.github/actions/debug-failed-runner
+        with:
+          public-key: ${{ inputs.public_key }}
+          idle-timeout-minutes: '10'
+          artifact-suffix: -${{ matrix.target }}-${{ matrix.shard }}
+
+      - name: Wait for connected Windows Bazel client
+        if: steps.bazel-debug.outcome == 'success'
+        run: bash "$RUNNER_TEMP/release-debug-session.sh" wait-for-client "$RUNNER_TEMP/baseline-windows-bazel-evidence"
 
       - name: Set up Python for the maintained Windows checks and metadata
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
