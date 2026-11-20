@@ -318,7 +318,7 @@ test('preexisting output and evidence paths are preserved and rejected before in
   }
 });
 
-test('the reference extraction names its archive by bare filename so GNU tar cannot read a drive path as host:path', {
+test('the reference extractor receives archive bytes on stdin and uses its working directory as the destination', {
   skip: process.platform === 'win32' ? 'This fixture exercises the Unix installer and curl facade' : false
 }, async () => {
   const fixture = await createFixture();
@@ -332,8 +332,8 @@ test('the reference extraction names its archive by bare filename so GNU tar can
     const result = invoke(fixture, { pathPrefix: [shimRoot] });
     assert.equal(result.status, 0, result.stderr);
     const [workingDirectory, argumentsLine] = (await readFile(callLog, 'utf8')).split('\n');
-    assert.equal(workingDirectory, await realpath(fixture.assetsRoot));
-    assert.match(argumentsLine, new RegExp(`^-xzf ${fixture.archiveName.replaceAll('.', '\\.')} -C `));
+    assert.equal(path.basename(workingDirectory), 'verified-primary-package');
+    assert.equal(argumentsLine, '-xzf -');
   } finally {
     await removeFixture(fixture);
   }

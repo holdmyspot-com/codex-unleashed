@@ -7,7 +7,7 @@
 import { createHash } from 'node:crypto';
 import { constants as fsConstants, createReadStream, createWriteStream, appendFileSync } from 'node:fs';
 import {
-  access, cp, lstat, mkdir, mkdtemp, readFile, realpath, readdir, rename, rm, stat, writeFile
+  access, cp, lstat, mkdir, mkdtemp, open, readFile, realpath, readdir, rename, rm, stat, writeFile
 } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
@@ -357,7 +357,7 @@ async function runCommand(command, argumentsList, options) {
   const child = spawn(command, argumentsList, {
     cwd: options.cwd,
     env: options.environment,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: [options.stdinFd ?? 'ignore', 'pipe', 'pipe'],
     detached: options.platform !== 'win32',
     windowsHide: true
   });
@@ -415,25 +415,29 @@ async function terminateChild(child, platform) {
 /**
  * Runs the real archive extractor to create the independent package copy used for byte comparison.
  *
- * GNU tar reads an archive operand of the form {@code name:path} as {@code host:path} and tries to open a remote
- * archive, which is what a Windows drive path such as {@code C:\work\package.tar.gz} looks like. The archive is
- * therefore named by its bare filename from the directory that holds it, a form that GNU tar, bsdtar and Windows tar
- * all read as a local file. The destination follows {@code -C}, which tar never reads as a remote name.
+ * Give tar the archive on standard input and set its working directory to the destination. Node resolves both paths
+ * so the extractor can run with either native Windows or MSYS path handling.
  */
 async function extractReferencePackage(archivePath, destination, evidence, environment, runtime, abortSignal) {
   const tar = await findExecutable('tar', environment, runtime.platform);
   await mkdir(destination);
-  return runCommand(tar, ['-xzf', path.basename(archivePath), '-C', destination], {
-    cwd: path.dirname(archivePath),
-    environment,
-    platform: runtime.platform,
-    abortSignal,
-    commandName: 'reference package extraction',
-    stdoutPath: path.join(evidence, 'reference-extract.stdout.log'),
-    stderrPath: path.join(evidence, 'reference-extract.stderr.log'),
-    statusPath: path.join(evidence, 'reference-extract.status.json'),
-    onChild: runtime.onChild
-  });
+  const archive = await open(archivePath, 'r');
+  try {
+    return await runCommand(tar, ['-xzf', '-'], {
+      cwd: destination,
+      stdinFd: archive.fd,
+      environment,
+      platform: runtime.platform,
+      abortSignal,
+      commandName: 'reference package extraction',
+      stdoutPath: path.join(evidence, 'reference-extract.stdout.log'),
+      stderrPath: path.join(evidence, 'reference-extract.stderr.log'),
+      statusPath: path.join(evidence, 'reference-extract.status.json'),
+      onChild: runtime.onChild
+    });
+  } finally {
+    await archive.close();
+  }
 }
 
 /** Parses the canonical package metadata and checks the selected release identity. */
