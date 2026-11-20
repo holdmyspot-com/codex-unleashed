@@ -137,7 +137,23 @@ bash "$cache" pull-partial "$repository" "$tag" "$fixture/restored target" rust-
 cmp "$release/deps/libfixture.rlib" "$fixture/restored target/$target/release/deps/libfixture.rlib"
 cmp "$release/codex" "$fixture/restored target/$target/release/codex"
 
+# Model credential and configuration files kept outside the release job's target tree.
+mkdir -p "$fixture/cargo home" "$fixture/registry config" "$fixture/workspace"
+printf 'inert Cargo credential fixture\n' > "$fixture/cargo home/credentials.toml"
+printf 'inert registry configuration fixture\n' > "$fixture/registry config/config.json"
+printf 'inert workspace configuration fixture\n' > "$fixture/workspace/config.toml"
+
 bash "$cache" push "$repository" "$tag" "$fixture/source target" rust-v0.164.0
+verified_target="$fixture/verified target"
+bash "$cache" pull "$repository" "$tag" "$verified_target" rust-v0.164.0
+cmp "$release/codex" "$verified_target/$target/release/codex"
+restored_sentinels="$(find "$verified_target" \
+  \( -name credentials.toml -o -name config.json -o -name config.toml \) -print)"
+if [[ -n "$restored_sentinels" ]]; then
+  printf 'Cache restored sibling credential or configuration fixtures:\n%s\n' "$restored_sentinels" >&2
+  exit 1
+fi
+printf 'PASS: restored executable without sibling credential or configuration fixtures\n'
 bash "$cache" pull "$repository" "$tag" "$fixture/restored target" rust-v0.164.0
 restored="$fixture/restored target/$target/release"
 cmp "$release/deps/libfixture.rlib" "$restored/deps/libfixture.rlib"

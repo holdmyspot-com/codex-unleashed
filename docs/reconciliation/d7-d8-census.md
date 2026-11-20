@@ -46,7 +46,9 @@ The Linux ARM64 app-server evidence artifact expires three days after upload, wi
 [Scheduled prune](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/44561965574) · [Prune receipt](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/44561965574/artifacts/14548294161) · [ARM64 evidence artifact](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/44765249193/artifacts/14647892479)
 
 The checkpoint 2 receipts cover native private-cache reuse and the handoff to a separate runner. The Linux ARM64 job
-also saved verified compiled outputs using authenticated GHCR access. D8 still needs a current private cache archive
-entry manifest to verify that credentials and configuration containing secrets stay outside the archive. The hosted
+also saved verified compiled outputs using authenticated GHCR access. The native cache transport fixture restores
+the executable into a fresh target and verifies that the sibling Cargo credential, registry configuration and
+workspace configuration files stay outside the archive. A current hosted private-cache entry receipt is still open.
+The hosted
 Bazel workflow runs without a BuildBuddy key, so BuildBuddy execution and snapshot handoff remain unverified.
 [Checkpoint 2 acceptance](../evidence/checkpoint-2-acceptance.json) · [Stable cache consumer](../evidence/focused-runtime-cache-stable-consumer.json) · [Hosted Bazel workflow](../../.github/workflows/baseline-bazel-tests.yml)
