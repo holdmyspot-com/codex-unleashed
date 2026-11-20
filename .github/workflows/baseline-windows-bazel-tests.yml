@@ -1,10 +1,13 @@
 name: Stable upstream Windows Bazel tests
 
+# EXPERIMENT variant: runs only //codex-rs/windows-sandbox-rs:windows-sandbox-rs-unit-tests on one MSVC and one
+# gnullvm job, to find why legacy_workspace_write_delete_is_limited_to_writable_roots and
+# profile_cleanup_preserves_account_until_profile_can_be_deleted fail on our runners.
 on:
   workflow_dispatch:
     inputs:
       patches:
-        description: Space-separated repository paths of downstream patches to apply with git am, in order; empty tests pristine upstream and records its failures as the baseline
+        description: Unused in this experiment variant; always pristine upstream
         type: string
         default: ""
 
@@ -18,25 +21,10 @@ jobs:
       matrix:
         include:
           - target: x86_64-pc-windows-gnullvm
-            shard: 1
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 2
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 3
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 4
-            shard_count: 4
           - target: x86_64-pc-windows-msvc
-            shard: 1
-            shard_count: 1
     runs-on: windows-2025
     env:
       TARGET: ${{ matrix.target }}
-      BAZEL_TEST_SHARD: ${{ matrix.shard }}
-      BAZEL_TEST_SHARD_COUNT: ${{ matrix.shard_count }}
     defaults:
       run:
         shell: bash
@@ -47,33 +35,15 @@ jobs:
           path: restart-metadata
           persist-credentials: false
 
-      - name: Select the maintained tooling JDK
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
-        with:
-          distribution: zulu
-          java-version: 27.0.1
-
-      - name: Build the tooling runtime
-        shell: bash
-        env:
-          TOOLING_ROOT: restart-metadata
-        run: bash restart-metadata/.github/scripts/setup-tooling.sh
-
       - name: Preserve restart inputs outside the source checkout
         id: inputs
         run: |
           set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
+          evidence="$RUNNER_TEMP/sandbox-acl-evidence"
           mkdir -p "$evidence"
           cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
-          cp restart-metadata/.github/scripts/add-windows-page-file.ps1 "$RUNNER_TEMP/add-windows-page-file.ps1"
-          mkdir -p "$RUNNER_TEMP/test-baselines"
-          if [[ -d restart-metadata/docs/test-baselines ]]; then cp -R restart-metadata/docs/test-baselines/. "$RUNNER_TEMP/test-baselines/"; fi
-          cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
-          cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
-          cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
-          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
-          printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+          cp restart-metadata/.github/scripts/sandbox-acl-probe.ps1 "$RUNNER_TEMP/sandbox-acl-probe.ps1"
+          printf 'commit=%s\n' "$(cat restart-metadata/.github/upstream-commit)" >> "$GITHUB_OUTPUT"
 
       - name: Retrieve the exact stable upstream source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -82,77 +52,14 @@ jobs:
           ref: ${{ steps.inputs.outputs.commit }}
           persist-credentials: false
 
-      - name: Verify pristine upstream source identity
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
-          test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
-          test -z "$(git status --porcelain)"
-          git diff --check
-          git diff --binary > "$evidence/pristine-source.diff"
-
-      - name: Apply the selected downstream patches
-        id: patched
-        env:
-          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
-          : > "$evidence/applied-patches.txt"
-          read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
-          # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
-          printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"
-          # Upstream's CI tests main, whose workspace version is 0.0.0; a stable tag's release commit changes only that
-          # version. Test the same source, so version strings in snapshots and fixtures match what upstream tested.
-          perl -pi -e '$w = /^\[workspace\.package\]\r?$/ ? 1 : /^\[/ ? 0 : $w;' \
-            -e 's/^version = "[^"]+"(\r?)$/version = "0.0.0"$1/ if $w' codex-rs/Cargo.toml
-          if ! git diff --quiet -- codex-rs/Cargo.toml; then
-            git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
-              commit -q -m "Test with upstream's development version 0.0.0" -- codex-rs/Cargo.toml
-          fi
-          for patch in "${patch_paths[@]}"; do
-            printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
-            git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
-              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
-          done
-          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Python for the maintained Windows checks and metadata
+      - name: Set up Python for upstream's Bazel wrapper
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: '3.12'
 
-      - name: Check upstream's Windows wrapper
-        if: matrix.target == 'x86_64-pc-windows-gnullvm' && matrix.shard == 1
-        shell: pwsh
-        run: |
-          python .github/scripts/test_run_bazel_with_buildbuddy.py
-          exit $LASTEXITCODE
-
-      - name: Add a page file
-        # Four native MSVC test targets failed with "The paging file is too small" (os error 1455): rustc commits several
-        # times the memory it touches, and the runner's commit limit is its 16 GB of memory plus a 3 GB page file.
-        # bazel-clippy-job.yml adds the same page file for the same failure. On D: the page file took the space the Dev
-        # Drive needed (a 94 GB Dev Drive filled with os error 112), so it goes on C: when C: has room for it. The page
-        # file step runs before the Dev Drive is sized, so the sizing sees the space that remains on D:.
-        if: matrix.target == 'x86_64-pc-windows-msvc'
-        shell: pwsh
-        run: |
-          $freeC = [math]::Floor((Get-PSDrive -Name C).Free / 1GB)
-          $freeD = [math]::Floor((Get-PSDrive -Name D).Free / 1GB)
-          $drive = if ($freeC -ge 64) { 'C' } else { 'D' }
-          Write-Output "C: has $freeC GB free and D: has $freeD GB free; the page file goes on ${drive}:."
-          & "$env:RUNNER_TEMP/add-windows-page-file.ps1" `
-            -Path "${drive}:\pagefile-bazel.sys" -MinimumMiB 32768 -MaximumMiB 49152
-
       - name: Size the Dev Drive for the Bazel output
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Upstream's setup-dev-drive.ps1 provisions a fixed 64 GB Dev Drive when D: is not one. The native MSVC job's
-          # 523 targets filled it ("LLVM ERROR: no space on device"), and gnullvm shard 3 did too. Upstream runs this
-          # job on a larger runner whose D: is already a Dev Drive. The VHD is dynamic and lives on the runner-temp
-          # drive (D:, about 150 GB free on windows-2025), so size it from that drive's free space instead.
           $freeGb = [math]::Floor((Get-Item -LiteralPath $env:RUNNER_TEMP).PSDrive.Free / 1GB)
           $sizeGb = [math]::Min([math]::Max($freeGb - 20, 64), 240)
           Write-Output "The runner-temp drive has $freeGb GB free; a provisioned Dev Drive will be $sizeGb GB."
@@ -164,252 +71,143 @@ jobs:
       - name: Prepare upstream's Bazel host and toolchain
         uses: ./.github/actions/prepare-bazel-ci
         with:
-          cache-scope: baseline-windows-tests-${{ matrix.shard }}
+          cache-scope: sandbox-acl-experiment
           target: ${{ matrix.target }}
 
       - name: Prepare upstream's native Windows voice tools
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          & "$env:RUNNER_TEMP/setup-baseline-windows-voice.ps1" -EvidenceDirectory "$env:RUNNER_TEMP/baseline-windows-bazel-evidence/voice-tools"
+          & "$env:RUNNER_TEMP/setup-baseline-windows-voice.ps1" -EvidenceDirectory "$env:RUNNER_TEMP/sandbox-acl-evidence/voice-tools"
 
-      - name: Record the native host and capacity
+      - name: Dump identity, volumes and ACLs
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP/sandbox-acl-probe.ps1" -Mode Dump -Evidence "$env:RUNNER_TEMP/sandbox-acl-evidence" -Checkout $env:GITHUB_WORKSPACE *>&1 |
+            Tee-Object -FilePath "$env:RUNNER_TEMP/sandbox-acl-evidence/acl-dump.txt"
+
+      - name: Define the Bazel invocation
         run: |
           set -euo pipefail
-          test "$RUNNER_ENVIRONMENT" = github-hosted
-          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
-          {
-            uname -a
-            printf 'runner_os=%s\ntarget=%s\n' "$RUNNER_OS" "$TARGET"
-            df -k "$CI_BUILD_ROOT/" "$RUNNER_TEMP"
-            bazel --version
-          } | tee "$evidence/host.txt"
-          test "$(cat .bazelversion)" = 9.2.0
-
-      - name: Read upstream's pinned Rust toolchain
-        id: upstream-rust
-        shell: bash
-        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
-
-      - name: Set up upstream's Rust toolchain for workspace metadata
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
-        with:
-          toolchain: ${{ steps.upstream-rust.outputs.channel }}
-          targets: ${{ matrix.target }}
-
-      - name: Synchronize release workspace versions without dependency upgrades
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
-          cargo metadata --format-version 1 --filter-platform "$TARGET" \
-            --manifest-path codex-rs/Cargo.toml > "$RUNNER_TEMP/baseline-cargo-metadata.json"
-          bash "$CODEX_TOOLING" verify-workspace-lock-versions "$GITHUB_WORKSPACE"
-          git diff --check
-          git diff -- codex-rs/Cargo.lock > "$evidence/workspace-version-lock.diff"
-          git diff --binary > "$evidence/source-before.diff"
-
-      - name: Run the maintained Windows Bazel test selection
-        id: bazel_tests
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
-          export CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR="$evidence/execution-logs"
-          mkdir -p "$CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR"
+          cat > "$RUNNER_TEMP/bz.sh" <<'BZ'
+          evidence="$RUNNER_TEMP/sandbox-acl-evidence"
           wrapper_args=()
-          # tui-unit-tests exceeds Bazel's 300 s "moderate" timeout on a 4-vCPU runner (24/24 attempts at
-          # 302 s) and did the same in upstream's native main job on its larger runner (run 41103447384, 304
-          # s). Bazel has no per-target command-line timeout, and the workflow may not edit upstream's BUILD
-          # files, so raise the whole "moderate" category to 900 s; -1 keeps the short, long and eternal
-          # defaults. Every target without an explicit timeout is "moderate", so a hung test now holds a job
-          # for 900 s per attempt instead of 300 s.
           test_args=(test --config=ci-windows --workspace_status_command=./scripts/workspace-status.cmd --disk_cache= --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 --test_tag_filters=-argument-comment-lint --test_verbose_timeout_warnings "--test_timeout=-1,900,-1,-1")
-          targets=()
+          targets=(//codex-rs/windows-sandbox-rs:windows-sandbox-rs-unit-tests)
           if [[ "$TARGET" == x86_64-pc-windows-gnullvm ]]; then
             wrapper_args+=(--windows-cross-compile --remote-download-toplevel)
-            test_args+=(--skip_incompatible_explicit_targets --build_metadata="TAG_windows_test_shard=$BAZEL_TEST_SHARD")
-            # Without a BuildBuddy key the wrapper cannot apply upstream's --config=ci-windows-cross,
-            # which needs remote execution, and falls back to --config=ci-windows with an MSVC host
-            # platform. These shards then build and test MSVC-target binaries on this runner's 4 vCPUs,
-            # compiling locally while tests run (--keep_going). Upstream's ci-windows-cross also sets
-            # --local_test_jobs=8 and --test_env=RUST_TEST_THREADS=1, but it sets them for gnullvm
-            # binaries built remotely, where the runner carries only the tests. Upstream's own ci-windows
-            # jobs, the config this fallback uses, set neither, so Bazel sizes local test concurrency from
-            # the detected cores and libtest from available_parallelism. Copying the two cross-only limits
-            # here ran 8 test jobs on 4 cores and serialised each test binary, the probable cause of the
-            # thread-store, daemon_startup and worktree timeouts that upstream's runners do not show (not
-            # yet measured). Pass only the skip list that replaces the Windows one: it adds the PowerShell
-            # parser tests, which hang in cross-built gnullvm binaries and are covered by the native MSVC
-            # job.
-            test_args+=(
-              "--test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::,suite::code_mode::code_mode_can_call_hidden_dynamic_tools,tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child"
-            )
-            query='tests(//...) except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...))'
-            .github/scripts/run-bazel-query-ci.sh --output=label -- "$query" \
-              | LC_ALL=C sort > "$evidence/candidate-targets.txt"
-            bash "$CODEX_TOOLING" select-windows-bazel-targets \
-              --shard "$BAZEL_TEST_SHARD" --shard-count "$BAZEL_TEST_SHARD_COUNT" \
-              --durations "$GITHUB_WORKSPACE/.github/scripts/windows_bazel_test_durations.tsv" \
-              < "$evidence/candidate-targets.txt" > "$evidence/selected-targets.txt"
-            test -s "$evidence/selected-targets.txt"
-            while IFS= read -r target; do
-              targets+=("$target")
-            done < "$evidence/selected-targets.txt"
+            test_args+=(--skip_incompatible_explicit_targets "--test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::,suite::code_mode::code_mode_can_call_hidden_dynamic_tools,tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child")
           else
             wrapper_args+=(--windows-msvc-host-platform)
             test_args+=(--config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --build_metadata=TAG_windows_native_main=true)
-            targets=(//... -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests)
-            printf '%s\n' "${targets[@]}" > "$evidence/selected-targets.txt"
           fi
-          if [[ "$RUNNER_OS" == Windows ]]; then
-            test_args+=(
-              "--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows,//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain"
-              --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
-              # Bazel's local Windows C++ toolchain defaults _WIN32_WINNT to 0x0601 (Windows 7) while V8's build defines
-              # 0x0A00 (Windows 10), so every V8 compile warned that the macro was redefined. Rust's MSVC targets need
-              # Windows 10, and the release packages are built with Cargo, so this changes only the Bazel jobs.
-              # rules_cc passes the value to cl.exe as the whole flag, so it must include /D_WIN32_WINNT=.
-              --repo_env=BAZEL_WIN32_WINNT=/D_WIN32_WINNT=0x0A00
-              --inject_repository="voice_windows_tools=$VOICE_WINDOWS_BAZEL_REPOSITORY"
-              --//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools
-              --action_env="SystemRoot=$VOICE_WINDOWS_SYSTEM_ROOT"
-              --host_action_env="SystemRoot=$VOICE_WINDOWS_SYSTEM_ROOT"
-              --action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH"
-              --host_action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH"
-            )
-          fi
-          printf '%s\n' "${targets[@]}" > "$evidence/execution-targets.txt"
-          bep="$evidence/bazel-tests.bep.json"
-          rm -f -- "$bep"
-          test_args+=("--build_event_json_file=$bep")
-          printf 'shard=%s\nshard_count=%s\n' "$BAZEL_TEST_SHARD" "$BAZEL_TEST_SHARD_COUNT" > "$evidence/shard.txt"
-          (
-            while true; do
-              date -u +'%Y-%m-%dT%H:%M:%SZ'
-              df -k "$CI_BUILD_ROOT/" "$RUNNER_TEMP"
-              if du -k -d 3 "$CI_BUILD_ROOT/" | sort -nr | sed -n '1,30p'; then
-                :
-              else
-                printf 'directory_sample_exit=%s\n' "$?"
-              fi
-              sleep 60
-            done
-          ) >> "$evidence/disk-usage.log" 2>&1 &
-          disk_monitor=$!
-          trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
-          set +e
-          .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs "${wrapper_args[@]}" -- \
-            "${test_args[@]}" --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
-            "${targets[@]}" 2>&1 | tee "$evidence/bazel-tests.log"
-          result=${PIPESTATUS[0]}
-          set -e
-          printf 'exit_code=%s\n' "$result" > "$evidence/bazel-tests.receipt"
-          bash "$CODEX_TOOLING" validate-bazel-test-evidence \
-            --bep "$bep" --expected-patterns "$evidence/execution-targets.txt" --bazel-exit-code "$result" \
-            > "$evidence/bazel-test-evidence.json"
-          git diff --binary > "$evidence/source-after.diff"
-          cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
-          printf 'bep-complete=true\n' >> "$GITHUB_OUTPUT"
-          # Bazel exits 3 when tests failed and everything else built. The comparison with the unpatched baseline below
-          # judges those failures (an unpatched run records that baseline), so they alone do not fail this step.
-          # Any other failure, such as a build error, does.
-          if [[ "$result" == 3 ]]; then
-            printf 'Bazel reported failing tests; the baseline comparison decides the outcome.\n'
-            exit 0
-          fi
-          exit "$result"
+          test_args+=(
+            "--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows,//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain"
+            --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
+            --repo_env=BAZEL_WIN32_WINNT=/D_WIN32_WINNT=0x0A00
+            --inject_repository="voice_windows_tools=$VOICE_WINDOWS_BAZEL_REPOSITORY"
+            --//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools
+            --action_env="SystemRoot=$VOICE_WINDOWS_SYSTEM_ROOT"
+            --host_action_env="SystemRoot=$VOICE_WINDOWS_SYSTEM_ROOT"
+            --action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH"
+            --host_action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH"
+          )
+          # bz NAME [extra bazel test args...]: runs the unit-test target and keeps its logs.
+          bz() {
+            local name=$1; shift
+            set +e
+            .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs "${wrapper_args[@]}" -- \
+              "${test_args[@]}" "$@" -- "${targets[@]}" 2>&1 | tee "$evidence/bazel-$name.log"
+            local result=${PIPESTATUS[0]}
+            set -e
+            printf 'BAZEL_RESULT name=%s exit=%s\n' "$name" "$result"
+            mkdir -p "$evidence/testlogs-$name"
+            cp -R "$(realpath bazel-testlogs)/codex-rs/windows-sandbox-rs/windows-sandbox-rs-unit-tests/." "$evidence/testlogs-$name/" || true
+            return 0
+          }
+          BZ
 
-      - name: Record native Opus install links and CMake inputs
-        if: always() && env.BAZEL_OUTPUT_BASE != ''
+      - name: Arm 0 - the test target as the baseline workflow runs it
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/bz.sh"
+          bz ci-as-is --cache_test_results=no
+
+      - name: Locate the built test binary
+        id: bin
+        run: |
+          set -euo pipefail
+          exe=$(ls -t "$(realpath bazel-out)"/*/bin/codex-rs/windows-sandbox-rs/windows-sandbox-rs-unit-tests-bin.exe | head -n 1)
+          printf 'Test binary: %s\n' "$exe"
+          printf 'exe=%s\n' "$(cygpath -w "$exe")" >> "$GITHUB_OUTPUT"
+
+      - name: Arms D - the failing test run directly on differently placed and ACLed roots
+        if: always() && steps.bin.outputs.exe != ''
         shell: pwsh
         run: |
-          $base = (Resolve-Path -LiteralPath $env:BAZEL_OUTPUT_BASE).ProviderPath
-          $evidence = Join-Path $env:RUNNER_TEMP 'baseline-windows-bazel-evidence/opus-install'
-          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
-          $records = [System.Collections.Generic.List[object]]::new()
-          $pattern = Join-Path $base 'execroot/_main/bazel-out/*/bin/external/*opusic-sys*/_bs.out_dir'
-          foreach ($output in @(Get-Item -Path $pattern -Force -ErrorAction SilentlyContinue | Sort-Object FullName)) {
-            $includeDirectory = Join-Path $output.FullName 'include/opus'
-            if (Test-Path -LiteralPath $includeDirectory) {
-              foreach ($header in @(Get-ChildItem -LiteralPath $includeDirectory -Filter '*.h' -Force | Sort-Object Name)) {
-                $target = $null
-                if ($header.LinkType -eq 'SymbolicLink') { $target = @($header.Target)[0] }
-                $records.Add([ordered]@{
-                  path = [System.IO.Path]::GetRelativePath($base, $header.FullName).Replace('\', '/')
-                  exists = Test-Path -LiteralPath $header.FullName
-                  symlink = $header.LinkType -eq 'SymbolicLink'
-                  link_target = $target
-                  file_attributes = [int]$header.Attributes
-                  link_type = $header.LinkType
-                })
-              }
-            }
-            foreach ($name in 'CMakeCache.txt', 'cmake_install.cmake', 'install_manifest.txt') {
-              foreach ($source in @(Get-ChildItem -LiteralPath $output.FullName -Recurse -Force -File -Filter $name | Sort-Object FullName)) {
-                $destination = Join-Path $evidence ([System.IO.Path]::GetRelativePath($base, $source.FullName))
-                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
-                Copy-Item -LiteralPath $source.FullName -Destination $destination
-              }
-            }
-          }
-          $json = [ordered]@{ path_base = 'BAZEL_OUTPUT_BASE'; headers = @($records) } | ConvertTo-Json -Depth 5
-          [System.IO.File]::WriteAllText((Join-Path $evidence 'headers.json'), $json + "`n", [System.Text.UTF8Encoding]::new($false))
-          Write-Output "Recorded $($records.Count) installed Opus headers"
+          & "$env:RUNNER_TEMP/sandbox-acl-probe.ps1" -Mode Arms -Evidence "$env:RUNNER_TEMP/sandbox-acl-evidence" -Checkout $env:GITHUB_WORKSPACE -TestExe '${{ steps.bin.outputs.exe }}' *>&1 |
+            Tee-Object -FilePath "$env:RUNNER_TEMP/sandbox-acl-evidence/arms-direct.txt"
 
-      - name: Fail on skips caused by missing test setup
-        if: ${{ !cancelled() && steps.bazel_tests.outcome != 'skipped' }}
+      - name: Arm F1 - Bazel test with the Everyone ACE removed from the checkout
+        if: always()
+        shell: pwsh
         run: |
-          set -euo pipefail
-          bash "$CODEX_TOOLING" check-test-skips --platform windows --runner bazel "$(realpath bazel-testlogs)" \
-            2>&1 | tee "$RUNNER_TEMP/baseline-windows-bazel-evidence/skip-check.log"
+          $root = Join-Path $env:GITHUB_WORKSPACE 'codex-rs'
+          icacls $root /inheritance:d
+          icacls $root /remove:g '*S-1-1-0'
+          icacls $root
+          & bash -c 'set -euo pipefail; source "$RUNNER_TEMP/bz.sh"; bz fix-no-everyone --cache_test_results=no --test_filter=legacy_workspace_write_delete_is_limited_to_writable_roots'
 
-      - name: Record or compare this shard's failures
-        # An unpatched run is pristine upstream, so its failures are the baseline that patched runs are compared with;
-        # the evidence artifact carries the file for committing under docs/test-baselines.
-        if: ${{ !cancelled() && steps.bazel_tests.outcome == 'success' && steps.bazel_tests.outputs['bep-complete'] == 'true' }}
-        env:
-          PATCHES: ${{ inputs.patches }}
+      - name: Arm F2 - Bazel test with every inherited ACE removed from the checkout
+        if: always()
+        shell: pwsh
         run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
-          commit="${{ steps.inputs.outputs.commit }}"
-          platform="windows-bazel-${TARGET##*-}-shard-${BAZEL_TEST_SHARD}"
-          common=(--runner bazel --platform "$platform" --upstream-commit "$commit")
-          # select-windows-bazel-targets balances targets across shards by estimated duration, so a target that the
-          # patches add can move others into a different shard; the other shards' failures are known failures here.
-          related=()
-          for ((other = 1; other <= BAZEL_TEST_SHARD_COUNT; other++)); do
-            if ((other != BAZEL_TEST_SHARD)); then
-              related+=(--related-platform "windows-bazel-${TARGET##*-}-shard-$other")
-            fi
-          done
-          if [[ -z "${PATCHES// /}" ]]; then
-            bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" --write-baseline \
-              --output "$evidence/$platform.json" "$(realpath bazel-testlogs)"
-          else
-            bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" "${related[@]}" \
-              --baseline-dir "$RUNNER_TEMP/test-baselines" "$(realpath bazel-testlogs)" 2>&1 \
-              | tee "$evidence/baseline-comparison.log"
-            exit "${PIPESTATUS[0]}"
-          fi
+          $root = Join-Path $env:GITHUB_WORKSPACE 'codex-rs'
+          icacls $root /inheritance:r
+          icacls $root /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F'
+          icacls $root
+          & bash -c 'set -euo pipefail; source "$RUNNER_TEMP/bz.sh"; bz fix-stripped --cache_test_results=no --test_filter=legacy_workspace_write_delete_is_limited_to_writable_roots'
 
-      - name: Verify upstream source and tests remain unmodified
+      - name: Profile cleanup, isolated - 20 runs of the one test, one at a time
         if: always()
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
-          # The Dev Drive sizing step edits setup-dev-drive.ps1 in place; no other tracked file may differ.
-          git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock' ':(exclude).github/scripts/setup-dev-drive.ps1'
+          source "$RUNNER_TEMP/bz.sh"
+          bz profile-isolated --cache_test_results=no --runs_per_test=20 --local_test_jobs=1 \
+            --test_filter=profile_cleanup_preserves_account_until_profile_can_be_deleted
 
-      - name: Retain test evidence for one day
+      - name: Profile cleanup, whole target with libtest's default threads - 6 runs
+        if: always()
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/bz.sh"
+          bz profile-whole-default --cache_test_results=no --runs_per_test=6 --local_test_jobs=1
+
+      - name: Profile cleanup, whole target with RUST_TEST_THREADS=1 - 6 runs
+        if: always()
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/bz.sh"
+          bz profile-whole-serial --cache_test_results=no --runs_per_test=6 --local_test_jobs=1 --test_env=RUST_TEST_THREADS=1
+
+      - name: Summarize the case results
+        if: always()
+        run: |
+          set -uo pipefail
+          cd "$RUNNER_TEMP/sandbox-acl-evidence"
+          for dir in testlogs-*; do
+            printf '== %s\n' "$dir"
+            find "$dir" -name test.log | sort | while read -r log; do
+              printf '%s: ' "$log"
+              grep -E "^test (uninstall_windows::principals::tests::profile_cleanup|unified_exec::tests::legacy_workspace_write_delete)" "$log" | tr '\n' ' '
+              printf '\n'
+            done
+          done | tee case-summary.txt
+
+      - name: Retain experiment evidence
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: baseline-windows-bazel-tests-${{ matrix.target }}-shard-${{ matrix.shard }}
-          path: ${{ runner.temp }}/baseline-windows-bazel-evidence
+          name: sandbox-acl-${{ matrix.target }}
+          path: ${{ runner.temp }}/sandbox-acl-evidence
           retention-days: 3
           if-no-files-found: warn
-
-      - name: Remove the job-owned tooling runtime
-        if: always()
-        shell: bash
-        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
