@@ -252,8 +252,11 @@ public final class QuietBuildCpu
 	{
 		if (!row.isObject())
 			throw new IOException("Windows process row must be an object");
-		long pid = requiredInteger(row, "ProcessId", true);
-		long parent = requiredInteger(row, "ParentProcessId", false);
+		long pid = requiredNonnegativeInteger(row, "ProcessId");
+		// Win32_Process includes PID 0, the system idle process, outside any build tree.
+		if (pid == 0)
+			return;
+		long parent = requiredNonnegativeInteger(row, "ParentProcessId");
 		BigInteger kernel = optionalTicks(row, "KernelModeTime");
 		BigInteger user = optionalTicks(row, "UserModeTime");
 		Duration cpu = durationFromTicks(kernel.add(user));
@@ -268,11 +271,10 @@ public final class QuietBuildCpu
 	 *
 	 * @param row current process object
 	 * @param name required integer field
-	 * @param positive whether zero is outside the allowed range
 	 * @return the validated field value
 	 * @throws IOException if the field is missing, malformed or out of range
 	 */
-	private static long requiredInteger(JsonNode row, String name, boolean positive) throws IOException
+	private static long requiredNonnegativeInteger(JsonNode row, String name) throws IOException
 	{
 		JsonNode value = row.get(name);
 		if (value == null || !value.isIntegralNumber())
@@ -286,7 +288,7 @@ public final class QuietBuildCpu
 		{
 			throw new IOException("Invalid Windows process field " + name, exception);
 		}
-		if ((positive && number <= 0) || (!positive && number < 0))
+		if (number < 0)
 			throw new IOException("Out-of-range Windows process field " + name);
 		return number;
 	}

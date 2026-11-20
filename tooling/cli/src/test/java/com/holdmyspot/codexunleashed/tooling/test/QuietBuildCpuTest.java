@@ -81,6 +81,7 @@ public final class QuietBuildCpuTest
 		throws IOException
 	{
 		String listing = "[" +
+			"{\"ProcessId\":0,\"ParentProcessId\":0,\"KernelModeTime\":0,\"UserModeTime\":0}," +
 			"{\"ProcessId\":10,\"ParentProcessId\":20,\"KernelModeTime\":null,\"UserModeTime\":20000000}," +
 			"{\"ProcessId\":11,\"ParentProcessId\":10,\"KernelModeTime\":1000000,\"UserModeTime\":0}," +
 			"{\"ProcessId\":20,\"ParentProcessId\":10,\"KernelModeTime\":10000000,\"UserModeTime\":null}," +
