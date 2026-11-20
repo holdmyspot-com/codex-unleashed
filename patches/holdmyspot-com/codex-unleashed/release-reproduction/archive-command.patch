@@ -7,8 +7,27 @@ Release tooling needs a direct process boundary to the existing archive writer s
 ---
  scripts/codex_package/archive.py      |  61 +++++++++++++
  scripts/codex_package/test_archive.py | 127 ++++++++++++++++++++++++++
- 2 files changed, 188 insertions(+)
+ .../archive-release-symbols-and-strip-binaries.sh | 11 ++---------
+ 3 files changed, 190 insertions(+), 9 deletions(-)
 
+diff --git a/.github/scripts/archive-release-symbols-and-strip-binaries.sh b/.github/scripts/archive-release-symbols-and-strip-binaries.sh
+index b3c00c0..4f0d0cb 100755
+--- a/.github/scripts/archive-release-symbols-and-strip-binaries.sh
++++ b/.github/scripts/archive-release-symbols-and-strip-binaries.sh
+@@ -119,11 +119,4 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+ PYTHONPATH="${repo_root}/scripts${PYTHONPATH:+:${PYTHONPATH}}" \
+ CODEX_REPO_ROOT="$repo_root" \
+-python3 - "$symbols_root" "$archive_path" <<'PY'
+-import sys
+-from pathlib import Path
+-
+-from codex_package.archive import write_archive
+-
+-
+-write_archive(Path(sys.argv[1]), Path(sys.argv[2]), force=True)
+-PY
++python3 -m codex_package.archive write \
++  --package-dir "$symbols_root" --archive-output "$archive_path" --force
 diff --git a/scripts/codex_package/archive.py b/scripts/codex_package/archive.py
 index 50b771d..60ef6ff 100644
 --- a/scripts/codex_package/archive.py
