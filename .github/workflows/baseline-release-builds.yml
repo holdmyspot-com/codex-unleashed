@@ -274,6 +274,10 @@ jobs:
         run: |
           set -euo pipefail
           cp -R restart-metadata/tooling/cli "$RUNNER_TEMP/source-cache-helper"
+          # The wiring tests read downstream scripts and workflow fixtures after the upstream checkout.
+          test_inputs="$RUNNER_TEMP/source-cache-test-inputs"
+          mkdir -p "$test_inputs"
+          git -C restart-metadata archive HEAD | tar -xf - -C "$(cd "$test_inputs" && pwd)"
           cp restart-metadata/.github/scripts/maven-retry.sh "$RUNNER_TEMP/maven-retry.sh"
           mkdir -p "$RUNNER_TEMP/source-cache-temp"
           printf 'TMPDIR=%s\n' "$RUNNER_TEMP/source-cache-temp" >> "$GITHUB_ENV"
@@ -317,6 +321,27 @@ jobs:
       - name: Wait for connected release client
         if: inputs.public_key != ''
         run: bash "$RUNNER_TEMP/release-debug-session.sh" wait-for-client "$RUNNER_TEMP/baseline-evidence"
+
+      - name: Build and verify the bundled cache helper
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-evidence"
+          java -version 2> "$evidence/cache-helper-java-version.txt"
+          mvn -version > "$evidence/cache-helper-maven-version.txt"
+          test_context="$RUNNER_TEMP/source-cache-test-context.json"
+          context_workspace="$RUNNER_TEMP/source-cache-test-inputs"
+          context_temp="$TMPDIR"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            context_workspace="$(cygpath -w "$context_workspace")"
+            context_temp="$(cygpath -w "$context_temp")"
+          fi
+          jq -n --arg working_directory "$context_workspace" --arg temporary_directory "$context_temp" \
+            '{format_version: 1, working_directory: $working_directory,
+              temporary_directory: $temporary_directory, environment: env}' > "$test_context"
+          bash "$RUNNER_TEMP/maven-retry.sh" "$RUNNER_TEMP/source-cache-maven" -e -f "$RUNNER_TEMP/source-cache-helper/pom.xml" -Pruntime \
+            "-Dtooling.build.directory=$RUNNER_TEMP/source-cache-build" \
+            "-Djava.io.tmpdir=$TMPDIR" "-Dquiet.build.test.context=$test_context" verify 2>&1 | tee "$evidence/cache-helper-build.log"
+          printf 'CODEX_SOURCE_CACHE_TOOL=%s\n' "$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling" >> "$GITHUB_ENV"
 
       - name: Apply the selected downstream patches
         id: source
@@ -474,23 +499,6 @@ jobs:
       - name: Build every macOS binary for macOS 14
         if: runner.os == 'macOS'
         run: echo 'MACOSX_DEPLOYMENT_TARGET=14.0' >> "$GITHUB_ENV"
-
-      - name: Set up the cache helper's native JDK
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
-        with:
-          distribution: zulu
-          java-version: 27.0.1
-
-      - name: Build and verify the bundled cache helper
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-evidence"
-          java -version 2> "$evidence/cache-helper-java-version.txt"
-          mvn -version > "$evidence/cache-helper-maven-version.txt"
-          bash "$RUNNER_TEMP/maven-retry.sh" "$RUNNER_TEMP/source-cache-maven" -e -f "$RUNNER_TEMP/source-cache-helper/pom.xml" -Pruntime \
-            "-Dtooling.build.directory=$RUNNER_TEMP/source-cache-build" \
-            "-Djava.io.tmpdir=$TMPDIR" verify 2>&1 | tee "$evidence/cache-helper-build.log"
-          printf 'CODEX_SOURCE_CACHE_TOOL=%s\n' "$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling" >> "$GITHUB_ENV"
 
       - name: Select the declared Node version for cache transport checks
         if: inputs.cache
