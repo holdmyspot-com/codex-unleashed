@@ -272,7 +272,7 @@ async function writePowerShellWrapper(filename, installer, routes) {
   const routeData = JSON.stringify(routes.map(route => ({ original_uri: route.originalUri, local_path: route.localPath })));
   const script = String.raw`
 $ErrorActionPreference = 'Stop'
-$routes = @(${psQuote(routeData)} | ConvertFrom-Json)
+$routes = ${psQuote(routeData)} | ConvertFrom-Json
 $pathWasSet = Test-Path Env:PATH
 $originalPath = $env:PATH
 
@@ -338,6 +338,8 @@ function Invoke-WebRequest {
 }
 
 try {
+    # Use native Windows commands when the verifier is launched from Git Bash.
+    $env:PATH = [Environment]::SystemDirectory + ';' + $originalPath
     & ${psQuote(installer)}
 } finally {
     if ($pathWasSet) { $env:PATH = $originalPath } else { Remove-Item Env:PATH -ErrorAction SilentlyContinue }
@@ -729,7 +731,7 @@ async function verify(options, inheritedEnvironment, runtime) {
     if (runtime.platform === 'win32') {
       const wrapperPath = path.join(scratch, 'invoke-installer.ps1');
       await writePowerShellWrapper(wrapperPath, installerPath, activeRoutes);
-      command = await findExecutable('powershell.exe', childEnvironment, runtime.platform);
+      command = await findExecutable('powershell', childEnvironment, runtime.platform);
       commandArguments = ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', wrapperPath];
     } else {
       const realCurl = await findExecutable('curl', inheritedEnvironment, runtime.platform);
@@ -745,8 +747,10 @@ async function verify(options, inheritedEnvironment, runtime) {
 
     const installerEnvironment = { ...childEnvironment };
     if (runtime.platform === 'win32') {
-      installerEnvironment.TEMP = scratch;
-      installerEnvironment.TMP = scratch;
+      const installerTemp = path.join(scratch, 'temp');
+      await mkdir(installerTemp);
+      installerEnvironment.TEMP = installerTemp;
+      installerEnvironment.TMP = installerTemp;
     }
     await runCommand(command, commandArguments, {
       cwd: sourceRoot,
