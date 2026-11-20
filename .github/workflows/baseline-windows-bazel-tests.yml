@@ -130,35 +130,66 @@ jobs:
           exit $LASTEXITCODE
 
       - name: Add a page file
+        id: bazel-page-file
         # Four native MSVC test targets failed with "The paging file is too small" (os error 1455): rustc commits several
         # times the memory it touches, and the runner's commit limit is its 16 GB of memory plus a 3 GB page file.
         # bazel-clippy-job.yml adds the same page file for the same failure. On D: the page file took the space the Dev
         # Drive needed (a 94 GB Dev Drive filled with os error 112), so it goes on C: when C: has room for it. The page
-        # file step runs before the Dev Drive is sized, so the sizing sees the space that remains on D:.
+        # file step runs before the Dev Drive is sized. The sizing also reserves space for page file growth.
         if: matrix.target == 'x86_64-pc-windows-msvc'
         shell: pwsh
         run: |
-          $freeC = [math]::Floor((Get-PSDrive -Name C).Free / 1GB)
-          $freeD = [math]::Floor((Get-PSDrive -Name D).Free / 1GB)
-          $drive = if ($freeC -ge 64) { 'C' } else { 'D' }
-          Write-Output "C: has $freeC GB free and D: has $freeD GB free; the page file goes on ${drive}:."
+          $systemDrive = Get-PSDrive -Name C
+          $secondaryDrive = Get-PSDrive -Name D -ErrorAction SilentlyContinue
+          $freeC = [math]::Floor($systemDrive.Free / 1GB)
+          $minimumMiB = 32768
+          $maximumMiB = 49152
+          $drive = if ($freeC -ge 64 -or $null -eq $secondaryDrive) { $systemDrive } else { $secondaryDrive }
+          $freeGb = [math]::Floor($drive.Free / 1GB)
+          $driveName = $drive.Name
+          Write-Output "The page file goes on ${driveName}: with $freeGb GB free."
           & "$env:RUNNER_TEMP/add-windows-page-file.ps1" `
-            -Path "${drive}:\pagefile-bazel.sys" -MinimumMiB 32768 -MaximumMiB 49152
+            -Path "${driveName}:\pagefile-bazel.sys" -MinimumMiB $minimumMiB -MaximumMiB $maximumMiB
+          "drive=$driveName" >> $env:GITHUB_OUTPUT
+          "growth-gib=$(($maximumMiB - $minimumMiB) / 1024)" >> $env:GITHUB_OUTPUT
 
       - name: Size the Dev Drive for the Bazel output
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          BAZEL_PAGE_FILE_DRIVE: ${{ steps.bazel-page-file.outputs.drive }}
+          BAZEL_PAGE_FILE_GROWTH_GIB: ${{ steps.bazel-page-file.outputs.growth-gib }}
         run: |
           # Upstream's setup-dev-drive.ps1 provisions a fixed 64 GB Dev Drive when D: is not one. The native MSVC job's
           # 523 targets filled it ("LLVM ERROR: no space on device"), and gnullvm shard 3 did too. Upstream runs this
           # job on a larger runner whose D: is already a Dev Drive. The VHD is dynamic and lives on the runner-temp
           # drive (D:, about 150 GB free on windows-2025), so size it from that drive's free space instead.
-          $freeGb = [math]::Floor((Get-Item -LiteralPath $env:RUNNER_TEMP).PSDrive.Free / 1GB)
-          $sizeGb = [math]::Min([math]::Max($freeGb - 20, 64), 240)
-          Write-Output "The runner-temp drive has $freeGb GB free; a provisioned Dev Drive will be $sizeGb GB."
+          $tempDrive = (Get-Item -LiteralPath $env:RUNNER_TEMP).PSDrive
+          $freeGb = [math]::Floor($tempDrive.Free / 1GB)
+          $pageFileGrowthGb = if ($tempDrive.Name -eq $env:BAZEL_PAGE_FILE_DRIVE) {
+            [int]$env:BAZEL_PAGE_FILE_GROWTH_GIB
+          } else { 0 }
+          $availableGb = $freeGb - 20 - $pageFileGrowthGb
+          $sizeGb = [math]::Min($availableGb, 240)
+          Write-Output "The runner-temp drive has $freeGb GB free with $pageFileGrowthGb GB reserved for page file growth."
+          if ($sizeGb -lt 1) { throw 'Insufficient runner-temp space to provision a Dev Drive.' }
+          Write-Output "A provisioned Dev Drive will be $sizeGb GB."
           $script = Join-Path $PWD '.github/scripts/setup-dev-drive.ps1'
           $text = [System.IO.File]::ReadAllText($script)
           if ($text -notmatch '\$SizeBytes = 64GB') { throw 'upstream setup-dev-drive.ps1 no longer sets a 64GB size' }
+          # On this Windows runner fsutil returns zero even for a regular volume.
+          $oldProbe = '(?m)^    & fsutil devdrv query \$Drive \*> \$null\r?\n    return \$LASTEXITCODE -eq 0\r?$'
+          if ([regex]::Matches($text, $oldProbe).Count -ne 1) {
+            throw 'upstream setup-dev-drive.ps1 no longer contains the expected Dev Drive probe'
+          }
+          $newProbe = @'
+          $state = & fsutil devdrv query $Drive 2>$null
+          return ($LASTEXITCODE -eq 0) -and [bool]($state -match '^This is a (?:(?:un)?trusted )?developer volume\.$')
+          '@
+          $text = [regex]::Replace($text, $oldProbe, [System.Text.RegularExpressions.MatchEvaluator]{
+            param($match)
+            ($newProbe -split '\r?\n' | ForEach-Object { '    ' + $_ }) -join "`n"
+          })
           [System.IO.File]::WriteAllText($script, ($text -replace '\$SizeBytes = 64GB', "`$SizeBytes = ${sizeGb}GB"))
 
       - name: Prepare upstream's Bazel host and toolchain
