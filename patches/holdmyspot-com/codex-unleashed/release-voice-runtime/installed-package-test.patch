@@ -11,7 +11,7 @@ new file mode 100644
 index 0000000..9762b98
 --- /dev/null
 +++ b/codex-rs/voice-host/tests/installed_package_runtime.rs
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,98 @@
 +//! Exercise initialization using a physical installed package supplied by its caller.
 +
 +use std::fs;
@@ -82,9 +82,14 @@ index 0000000..9762b98
 +    let package = install_context
 +        .package_layout
 +        .context("installed package has no primary package layout")?;
++    // The layout's directory is lexical (Windows verbatim prefixes removed), while canonicalize
++    // returns the verbatim form, so compare both in canonical form.
++    let layout_package_dir = fs::canonicalize(package.package_dir.as_path())?;
 +    ensure!(
-+        package.package_dir.as_path() == package_path.as_path(),
-+        "installed package path is not the primary package root"
++        layout_package_dir == package_path,
++        "installed package path {} is not the primary package root {}",
++        package_path.display(),
++        layout_package_dir.display()
 +    );
 +
 +    timeout(DEADLINE, async {
