@@ -38,6 +38,10 @@ on:
         description: Dry runs only; skip the gate workflows, for rehearsing the package build alone
         type: boolean
         default: false
+      package_public_key:
+        description: Optional SSH public key for dry-run package workers; connect to each selected worker before packaging
+        type: string
+        default: ""
 
 # One run at a time per requested release and mode. The publish job adds a per-version group and re-checks the fork's
 # releases, because the version a scheduled run resolves is unknown until detection has run.
@@ -539,6 +543,32 @@ jobs:
             git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
           done
+
+      - name: Prepare retained package worker
+        if: needs.detect.outputs.live != 'true' && inputs.package_public_key != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          metadata="$RUNNER_TEMP/manifest-patch-repo/.github"
+          evidence="$RUNNER_TEMP/package-debug-evidence"
+          mkdir "$evidence"
+          bash "$metadata/scripts/release-debug-session.sh" prepare \
+            "$metadata/actions/debug-failed-runner" "$GITHUB_WORKSPACE" "$evidence"
+
+      - name: Open authenticated package worker
+        id: package-debug
+        if: needs.detect.outputs.live != 'true' && inputs.package_public_key != ''
+        uses: ./.github/actions/debug-failed-runner
+        with:
+          public-key: ${{ inputs.package_public_key }}
+          idle-timeout-minutes: '10'
+
+      - name: Wait for connected package client
+        if: steps.package-debug.outcome == 'success'
+        shell: bash
+        run: |
+          bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/release-debug-session.sh" \
+            wait-for-client "$RUNNER_TEMP/package-debug-evidence"
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
