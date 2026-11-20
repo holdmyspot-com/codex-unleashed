@@ -222,18 +222,10 @@ jobs:
           path: restart-metadata
           persist-credentials: false
 
-      - name: Select the maintained tooling JDK
-        if: runner.os != 'Windows'
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
-        with:
-          distribution: zulu
-          java-version: 27.0.1
-
       - name: Build the tooling runtime
-        if: runner.os != 'Windows'
-        env:
-          TOOLING_ROOT: restart-metadata
-        run: bash restart-metadata/.github/scripts/setup-tooling.sh
+        uses: ./restart-metadata/.github/actions/setup-tooling
+        with:
+          tooling-root: restart-metadata
 
       - name: Preserve restart inputs outside the source checkout
         id: inputs
@@ -924,7 +916,7 @@ jobs:
 
 
       - name: Remove the job-owned tooling runtime
-        if: always() && runner.os != 'Windows'
+        if: always()
         shell: bash
         run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
 
