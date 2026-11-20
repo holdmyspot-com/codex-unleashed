@@ -222,10 +222,17 @@ jobs:
           path: restart-metadata
           persist-credentials: false
 
-      - name: Build the tooling runtime
-        uses: ./restart-metadata/.github/actions/setup-tooling
+      # The upstream checkout removes restart-metadata before the JDK action's post step.
+      - name: Select the maintained tooling JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
-          tooling-root: restart-metadata
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Build the tooling runtime
+        env:
+          TOOLING_ROOT: restart-metadata
+        run: bash restart-metadata/.github/scripts/setup-tooling.sh
 
       - name: Preserve restart inputs outside the source checkout
         id: inputs
