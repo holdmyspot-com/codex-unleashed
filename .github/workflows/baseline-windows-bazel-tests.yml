@@ -12,23 +12,45 @@ permissions:
   contents: read
 
 jobs:
+  probe:
+    # EXPERIMENT baseline3: cheap probes of how the disputed tests resolve executables on a hosted runner.
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+      - name: Probe executable resolution
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Write-Output "PATHEXT=$env:PATHEXT"
+          foreach ($n in 'python3', 'python', 'git', 'rg') {
+            Write-Output "== where $n"; cmd /c "where $n 2>&1"
+          }
+          Get-ChildItem (Split-Path (Get-Command python).Source) -Filter 'python*.exe' | ForEach-Object { Write-Output $_.FullName }
+          New-Item -ItemType Directory -Force -Path probe/src | Out-Null
+          Set-Content probe/Cargo.toml "[package]`nname = 'probe'`nversion = '0.0.0'`nedition = '2021'`n[dependencies]`nwhich = '=8.0.0'`n"
+          Set-Content probe/src/main.rs 'fn main() { for n in ["git", "python3", "python"] { println!("{n}: {:?}", which::which(n)); } }'
+          cargo build --manifest-path probe/Cargo.toml
+          $exe = (Resolve-Path probe/target/debug/probe.exe).Path
+          Write-Output '== which 8.0.0 with PATHEXT set'
+          & $exe
+          Write-Output '== which 8.0.0 with PATHEXT unset (Bazel test environment)'
+          $saved = $env:PATHEXT; Remove-Item Env:PATHEXT
+          & $exe
+          $env:PATHEXT = $saved
+          Write-Output '== python3 by the hook command line, PATHEXT unset, via cmd'
+          Remove-Item Env:PATHEXT
+          cmd /c "python3 --version 2>&1"
+          Write-Output "python3 exit=$LASTEXITCODE"
+
   test:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-pc-windows-gnullvm
-            shard: 1
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 2
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 3
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 4
-            shard_count: 4
           - target: x86_64-pc-windows-msvc
             shard: 1
             shard_count: 1
@@ -257,7 +279,8 @@ jobs:
           else
             wrapper_args+=(--windows-msvc-host-platform)
             test_args+=(--config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --build_metadata=TAG_windows_native_main=true)
-            targets=(//... -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests)
+            # EXPERIMENT baseline3: only the three disputed tests.
+            targets=(//codex-rs/cli:cli-doctor_path_safety-test //codex-rs/ext/queue:queue-queue_service-test //codex-rs/ext/multi-env-copy-file:multi-env-copy-file-copy_file-test)
             printf '%s\n' "${targets[@]}" > "$evidence/selected-targets.txt"
           fi
           if [[ "$RUNNER_OS" == Windows ]]; then
@@ -302,6 +325,33 @@ jobs:
             "${targets[@]}" 2>&1 | tee "$evidence/bazel-tests.log"
           result=${PIPESTATUS[0]}
           set -e
+          # EXPERIMENT baseline3: rerun the tests (cached build) with candidate environment fixes.
+          run_arm() {
+            local name=$1; shift
+            local arm_targets=("${targets[@]}")
+            if [[ -n "${ARM_TARGETS+set}" ]]; then arm_targets=("${ARM_TARGETS[@]}"); fi
+            mkdir -p "$evidence/arm-$name"
+            set +e
+            .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs "${wrapper_args[@]}" -- \
+              "${test_args[@]}" --cache_test_results=no "--build_event_json_file=$evidence/arm-$name/bep.json" "$@" \
+              --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
+              "${arm_targets[@]}" > "$evidence/arm-$name/bazel.log" 2>&1
+            local arm_rc=$?
+            printf 'arm %s exit_code=%s\n' "$name" "$arm_rc" | tee -a "$evidence/arms.txt"
+            set -e
+            grep -E "^(//|PASSED|FAILED|Executed)|FAILED|PASSED" "$evidence/arm-$name/bazel.log" | tail -20 || true
+            cp -R "$(realpath bazel-testlogs)/codex-rs" "$evidence/arm-$name/testlogs" || true
+          }
+          # arm 0 is the main invocation above: no PATHEXT, no python3.
+          cp -R "$(realpath bazel-testlogs)/codex-rs" "$evidence/arm-0-testlogs" || true
+          run_arm 1-pathext --test_env=PATHEXT
+          pydir="$(dirname "$(command -v python)")"
+          cp "$pydir/python.exe" "$pydir/python3.exe"
+          where_out="$(cmd //c "where python3" 2>&1 || true)"; printf 'where python3: %s\n' "$where_out" | tee -a "$evidence/arms.txt"
+          run_arm 2-pathext-python3 --test_env=PATHEXT
+          ARM_TARGETS=(//codex-rs/ext/multi-env-copy-file:multi-env-copy-file-copy_file-test)
+          run_arm 3-copyfile-debug --test_env=PATHEXT --test_env=RUST_LOG=debug --test_env=RUST_BACKTRACE=1 \
+            --test_output=all --test_arg=--nocapture --test_arg=copy_file_uses_each_environments_permissions
           printf 'exit_code=%s\n' "$result" > "$evidence/bazel-tests.receipt"
           bash "$CODEX_TOOLING" validate-bazel-test-evidence \
             --bep "$bep" --expected-patterns "$evidence/execution-targets.txt" --bazel-exit-code "$result" \
@@ -356,7 +406,7 @@ jobs:
           Write-Output "Recorded $($records.Count) installed Opus headers"
 
       - name: Fail on skips caused by missing test setup
-        if: ${{ !cancelled() && steps.bazel_tests.outcome != 'skipped' }}
+        if: ${{ inputs.patches == 'experiment-disabled' }}
         run: |
           set -euo pipefail
           bash "$CODEX_TOOLING" check-test-skips --platform windows --runner bazel "$(realpath bazel-testlogs)" \
@@ -365,7 +415,7 @@ jobs:
       - name: Record or compare this shard's failures
         # An unpatched run is pristine upstream, so its failures are the baseline that patched runs are compared with;
         # the evidence artifact carries the file for committing under docs/test-baselines.
-        if: ${{ !cancelled() && steps.bazel_tests.outcome == 'success' && steps.bazel_tests.outputs['bep-complete'] == 'true' }}
+        if: ${{ inputs.patches == 'experiment-disabled' }}
         env:
           PATCHES: ${{ inputs.patches }}
         run: |
