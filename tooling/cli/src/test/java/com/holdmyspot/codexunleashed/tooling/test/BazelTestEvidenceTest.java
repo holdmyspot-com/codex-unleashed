@@ -303,17 +303,19 @@ public final class BazelTestEvidenceTest
 	}
 
 	/**
-	 * Allows repeatable environment options while requiring an unambiguous test selection.
+	 * Allows repeatable environment and toolchain options while requiring an unambiguous test selection.
 	 *
 	 * @throws IOException if the fixture files cannot be created or removed
 	 */
 	@Test
-	public void acceptsRepeatedEnvironmentOptions() throws IOException
+	public void acceptsRepeatedCommandOptions() throws IOException
 	{
 		String tagFilter = "{\"optionName\":\"test_tag_filters\",\"optionValue\":\"-argument-comment-lint\"}";
 		String twoVariables = "{\"optionName\":\"test_env\",\"optionValue\":\"ONE=1\"}," +
 			"{\"optionName\":\"test_env\",\"optionValue\":\"TWO=2\"}";
-		String invocation = BASE.replace(tagFilter, tagFilter + "," + twoVariables);
+		String twoToolchains = "{\"optionName\":\"extra_toolchains\",\"optionValue\":\"//:toolchain_one\"}," +
+			"{\"optionName\":\"extra_toolchains\",\"optionValue\":\"//:toolchain_two\"}";
+		String invocation = BASE.replace(tagFilter, tagFilter + "," + twoVariables + "," + twoToolchains);
 		try (Fixture fixture = new Fixture())
 		{
 			Result result = invoke(fixture, invocation, "//:pass\n", "0");
@@ -539,6 +541,38 @@ public final class BazelTestEvidenceTest
 			Result result = invoke(fixture, invocation, "//:pass\n//:cross\n", "0");
 			requireThat(result.status, "status").isEqualTo(1);
 			requireThat(result.output, "report").contains("\"failure_code\":\"incomplete_graph\"");
+		}
+	}
+
+	/**
+	 * Counts Bazel's compatibility skip for a target selected by a wildcard.
+	 *
+	 * @throws IOException if the fixture files cannot be created or removed
+	 */
+	@Test
+	public void acceptsWildcardIncompatibleTargetSkip() throws IOException
+	{
+		String selected = addConfiguredTest(BASE, "//:cross", "no-sandbox");
+		String configured = event("""
+			{"id":{"targetConfigured":{"label":"//:cross"}},"configured":{"targetKind":"cc_test rule",
+			 "testSize":"SMALL","tag":["no-sandbox"]}}
+			""");
+		String completedId = event("""
+			{"targetCompleted":{"label":"//:cross","configuration":{"id":"cfg"}}}
+			""");
+		String completion = "{\"id\":" + completedId + ",\"aborted\":{\"reason\":\"SKIPPED\"," +
+			"\"description\":\"Target //:cross build was skipped.\"}}";
+		String invocation = selected.replace(configured, configured.substring(0, configured.length() - 1) +
+			",\"children\":[" + completedId + "]}\n" + completion).
+			replace("\"pattern\":[\"//:pass\",\"//:cross\"]", "\"pattern\":[\"//...\"]").
+			replace("\"chunk\":[\"//:pass\",\"//:cross\"]", "\"chunk\":[\"//...\"]");
+		try (Fixture fixture = new Fixture())
+		{
+			Result result = invoke(fixture, invocation, "//...\n", "0");
+			requireThat(result.output, "report").
+				contains("\"completed_test_count\":1").
+				contains("\"filtered_test_count\":1");
+			requireThat(result.status, "status").isEqualTo(0);
 		}
 	}
 

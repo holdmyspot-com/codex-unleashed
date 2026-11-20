@@ -24,7 +24,8 @@ public final class BazelTestEvidence
 	private static final String TAG_FILTER = "-argument-comment-lint";
 	/** Repeatable canonical options that do not determine the target selection. */
 	private static final Set<String> REPEATABLE_OPTIONS = Set.of("action_env", "build_metadata", "client_env",
-		"config", "default_override", "flag_alias", "host_action_env", "rc_source", "repo_env", "test_env");
+		"config", "default_override", "extra_toolchains", "flag_alias", "host_action_env", "rc_source", "repo_env",
+		"test_env");
 	/** Usage text and status meanings. */
 	private static final String HELP = "Usage: codex-tooling " + NAME +
 		" --bep PATH --expected-patterns PATH --bazel-exit-code INTEGER [--interrupted]\n" +
@@ -342,7 +343,8 @@ public final class BazelTestEvidence
 			{
 				String config = text(completion.path("id").path("targetCompleted").path("configuration"), "id");
 				String pair = label + "\u0000" + config;
-				if (tagged || (skipIncompatible && isIncompatibleSkip(completion, label, config)))
+				boolean maySkipIncompatible = skipIncompatible || !expected.contains(label);
+				if (tagged || (maySkipIncompatible && isIncompatibleSkip(completion, label, config)))
 				{
 					filtered += 1;
 					continue;
