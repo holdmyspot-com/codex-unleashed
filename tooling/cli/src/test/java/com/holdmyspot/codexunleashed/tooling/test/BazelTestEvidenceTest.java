@@ -252,6 +252,100 @@ public final class BazelTestEvidenceTest
 	}
 
 	/**
+	 * Accepts the absent protobuf default shard count when evidence accounts for a single unsharded test.
+	 *
+	 * @throws IOException if the fixture files cannot be created or removed
+	 */
+	@Test
+	public void acceptsUnshardedSummary() throws IOException
+	{
+		String unsharded = BASE.replace(",\"shardCount\":1", "");
+		try (Fixture fixture = new Fixture())
+		{
+			Result result = invoke(fixture, unsharded, "//:pass\n", "0");
+			requireThat(result.output, "report").contains("\"completed_test_count\":1");
+			requireThat(result.status, "status").isEqualTo(0);
+		}
+	}
+
+	/**
+	 * Rejects a string shard count that would otherwise be coerced into an unsharded value.
+	 *
+	 * @throws IOException if the fixture files cannot be created or removed
+	 */
+	@Test
+	public void rejectsStringShardCount() throws IOException
+	{
+		String malformed = BASE.replace("\"shardCount\":1", "\"shardCount\":\"0\"");
+		try (Fixture fixture = new Fixture())
+		{
+			Result result = invoke(fixture, malformed, "//:pass\n", "0");
+			requireThat(result.output, "report").contains("\"failure_code\":\"incomplete_execution\"");
+			requireThat(result.status, "status").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Rejects a claimed retry that follows an already passing attempt.
+	 *
+	 * @throws IOException if the fixture files cannot be created or removed
+	 */
+	@Test
+	public void rejectsRetryAfterPass() throws IOException
+	{
+		String malformed = addRetryAttempt(BASE, "PASSED").replace("\"status\":\"FAILED\"", "\"status\":\"PASSED\"");
+		try (Fixture fixture = new Fixture())
+		{
+			Result result = invoke(fixture, malformed, "//:pass\n", "0");
+			requireThat(result.output, "report").contains("\"failure_code\":\"incomplete_execution\"");
+			requireThat(result.status, "status").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Allows repeatable environment options while requiring an unambiguous test selection.
+	 *
+	 * @throws IOException if the fixture files cannot be created or removed
+	 */
+	@Test
+	public void acceptsRepeatedEnvironmentOptions() throws IOException
+	{
+		String tagFilter = "{\"optionName\":\"test_tag_filters\",\"optionValue\":\"-argument-comment-lint\"}";
+		String twoVariables = "{\"optionName\":\"test_env\",\"optionValue\":\"ONE=1\"}," +
+			"{\"optionName\":\"test_env\",\"optionValue\":\"TWO=2\"}";
+		String invocation = BASE.replace(tagFilter, tagFilter + "," + twoVariables);
+		try (Fixture fixture = new Fixture())
+		{
+			Result result = invoke(fixture, invocation, "//:pass\n", "0");
+			requireThat(result.output, "report").contains("\"coverage\":\"complete\"");
+			requireThat(result.status, "status").isEqualTo(0);
+		}
+	}
+
+	/**
+	 * Counts a repeated, identical fetch event once in the evidence graph.
+	 *
+	 * @throws IOException if the fixture files cannot be created or removed
+	 */
+	@Test
+	public void acceptsIdenticalFetchRepetition() throws IOException
+	{
+		String fetch = event("""
+			{"id":{"fetch":{"url":"https://example.com/config.json","downloader":"HTTP"}},
+			 "fetch":{"success":true}}
+			""");
+		String invocation = BASE.replaceFirst("\"children\":\\[",
+			"\"children\":[{\"fetch\":{\"url\":\"https://example.com/config.json\",\"downloader\":\"HTTP\"}},") +
+			fetch + "\n" + fetch + "\n";
+		try (Fixture fixture = new Fixture())
+		{
+			Result result = invoke(fixture, invocation, "//:pass\n", "0");
+			requireThat(result.status, "status").isEqualTo(0);
+			requireThat(result.output, "report").contains("\"coverage\":\"complete\"");
+		}
+	}
+
+	/**
 	 * Keeps completed failing tests in complete coverage for baseline comparison.
 	 *
 	 * @throws IOException if the fixture files cannot be created or removed
@@ -270,6 +364,35 @@ public final class BazelTestEvidenceTest
 			requireThat(result.output, "report").
 				contains("\"coverage\":\"complete\"").
 				contains("\"nonpassing_test_count\":1");
+		}
+	}
+
+	/**
+	 * Keeps a terminal shard failure visible when another shard of the same test passed.
+	 *
+	 * @throws IOException if the fixture files cannot be created or removed
+	 */
+	@Test
+	public void preservesTerminalShardFailure() throws IOException
+	{
+		String firstShard = testResultId("//:pass", "configuration-1", 1, 1, 1);
+		String secondShard = testResultId("//:pass", "configuration-1", 1, 2, 1);
+		String firstResult = "{\"id\":" + firstShard + ",\"testResult\":{\"status\":\"PASSED\"}}";
+		String secondResult = "{\"id\":" + secondShard + ",\"testResult\":{\"status\":\"FAILED\"}}";
+		String failed = BASE.replace("\"children\":[" + firstShard,
+			"\"children\":[" + firstShard + "," + secondShard).
+			replace(firstResult, firstResult + "\n" + secondResult).
+			replace("\"shardCount\":1", "\"shardCount\":2").
+			replace("\"totalRunCount\":1", "\"totalRunCount\":2").
+			replace("\"overallStatus\":\"PASSED\"", "\"overallStatus\":\"FAILED\"").
+			replace("\"code\":0", "\"code\":3");
+		try (Fixture fixture = new Fixture())
+		{
+			Result result = invoke(fixture, failed, "//:pass\n", "3");
+			requireThat(result.output, "report").
+				contains("\"coverage\":\"complete\"").
+				contains("\"nonpassing_test_count\":1");
+			requireThat(result.status, "status").isEqualTo(0);
 		}
 	}
 
@@ -376,6 +499,46 @@ public final class BazelTestEvidenceTest
 			requireThat(result.output, "report").
 				contains("\"expected_test_count\":1").
 				contains("\"filtered_test_count\":1");
+		}
+	}
+
+	/**
+	 * Counts an explicitly reported incompatible target as filtered while requiring other selected tests to run.
+	 *
+	 * @throws IOException if the fixture files cannot be created or removed
+	 */
+	@Test
+	public void acceptsIncompatibleTargetSkip() throws IOException
+	{
+		String selected = addConfiguredTest(BASE, "//:cross", "no-sandbox");
+		String configured = event("""
+			{"id":{"targetConfigured":{"label":"//:cross"}},"configured":{"targetKind":"cc_test rule",
+			 "testSize":"SMALL","tag":["no-sandbox"]}}
+			""");
+		String completedId = event("""
+			{"targetCompleted":{"label":"//:cross","configuration":{"id":"cfg"}}}
+			""");
+		String completion = "{\"id\":" + completedId + ",\"aborted\":{\"reason\":\"SKIPPED\"," +
+			"\"description\":\"Target //:cross build was skipped.\"}}";
+		String invocation = selected.replace(configured, configured.substring(0, configured.length() - 1) +
+			",\"children\":[" + completedId + "]}\n" + completion);
+		String incompatibleOption = "{\"optionName\":\"skip_incompatible_explicit_targets\",\"optionValue\":\"1\"},";
+		String enabled = invocation.replace("{\"optionName\":\"test_tag_filters\"",
+			incompatibleOption + "{\"optionName\":\"test_tag_filters\"");
+		try (Fixture fixture = new Fixture())
+		{
+			Result result = invoke(fixture, enabled, "//:pass\n//:cross\n", "0");
+			requireThat(result.output, "report").
+				contains("\"coverage\":\"complete\"").
+				contains("\"completed_test_count\":1").
+				contains("\"filtered_test_count\":1");
+			requireThat(result.status, "status").isEqualTo(0);
+		}
+		try (Fixture fixture = new Fixture())
+		{
+			Result result = invoke(fixture, invocation, "//:pass\n//:cross\n", "0");
+			requireThat(result.status, "status").isEqualTo(1);
+			requireThat(result.output, "report").contains("\"failure_code\":\"incomplete_graph\"");
 		}
 	}
 

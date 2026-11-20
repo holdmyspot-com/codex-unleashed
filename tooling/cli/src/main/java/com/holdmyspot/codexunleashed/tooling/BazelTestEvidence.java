@@ -22,6 +22,9 @@ public final class BazelTestEvidence
 	public static final String NAME = "validate-bazel-test-evidence";
 	/** Exact supported nondefault tag filter. */
 	private static final String TAG_FILTER = "-argument-comment-lint";
+	/** Repeatable canonical options that do not determine the target selection. */
+	private static final Set<String> REPEATABLE_OPTIONS = Set.of("action_env", "build_metadata", "client_env",
+		"config", "default_override", "flag_alias", "host_action_env", "rc_source", "repo_env", "test_env");
 	/** Usage text and status meanings. */
 	private static final String HELP = "Usage: codex-tooling " + NAME +
 		" --bep PATH --expected-patterns PATH --bazel-exit-code INTEGER [--interrupted]\n" +
@@ -252,8 +255,12 @@ public final class BazelTestEvidence
 		{
 			JsonNode event = events.get(index);
 			String id = scope.getArtifactJsonMapper().writeValueAsString(event.path("id"));
-			if (byId.putIfAbsent(id, event) != null)
+			JsonNode previous = byId.putIfAbsent(id, event);
+			if (previous != null)
 			{
+				JsonNode eventId = event.path("id");
+				if (eventId.size() == 1 && eventId.has("fetch") && previous.equals(event))
+					continue;
 				report.reject("invalid_bep", "duplicate_id", index + 1);
 				return;
 			}
@@ -288,6 +295,7 @@ public final class BazelTestEvidence
 			report.reject("unsupported_selection", "structuredCommandLine", null);
 			return;
 		}
+		boolean skipIncompatible = skipsIncompatibleExplicitTargets(canonical);
 		for (JsonNode event : events)
 		{
 			if (!event.path("id").has("targetConfigured"))
@@ -334,7 +342,7 @@ public final class BazelTestEvidence
 			{
 				String config = text(completion.path("id").path("targetCompleted").path("configuration"), "id");
 				String pair = label + "\u0000" + config;
-				if (tagged)
+				if (tagged || (skipIncompatible && isIncompatibleSkip(completion, label, config)))
 				{
 					filtered += 1;
 					continue;
@@ -369,7 +377,7 @@ public final class BazelTestEvidence
 			report.reject("unsupported_selection", "test_selection", null);
 			return;
 		}
-		if (!isClosed(scope, events, byId, root))
+		if (!isClosed(scope, byId, root))
 		{
 			report.reject("incomplete_graph", "children", null);
 			return;
@@ -437,8 +445,13 @@ public final class BazelTestEvidence
 			}
 			if (label.equals("command options"))
 				for (JsonNode option : section.path("optionList").path("option"))
-					if (options.putIfAbsent(text(option, "optionName"), text(option, "optionValue")) != null)
+				{
+					String name = text(option, "optionName");
+					if (REPEATABLE_OPTIONS.contains(name))
+						continue;
+					if (options.putIfAbsent(name, text(option, "optionValue")) != null)
 						duplicateOption = true;
+				}
 		}
 		return test && !duplicateOption && TAG_FILTER.equals(options.get("test_tag_filters")) &&
 			options.getOrDefault("test_size_filters", "").isEmpty() &&
@@ -450,6 +463,40 @@ public final class BazelTestEvidence
 			options.getOrDefault("compile_one_dependency", "false").equals("false") &&
 			options.getOrDefault("expand_test_suites", "true").equals("true") &&
 			!options.containsKey("test_filter") && !options.containsKey("target_pattern_file");
+	}
+
+	/**
+	 * Tests whether the validated canonical command enabled platform compatibility filtering.
+	 *
+	 * @param canonical canonical command-line event
+	 * @return whether Bazel may skip explicitly requested incompatible targets
+	 */
+	private static boolean skipsIncompatibleExplicitTargets(JsonNode canonical)
+	{
+		for (JsonNode section : canonical.path("structuredCommandLine").path("sections"))
+			if (text(section, "sectionLabel").equals("command options"))
+				for (JsonNode option : section.path("optionList").path("option"))
+					if (text(option, "optionName").equals("skip_incompatible_explicit_targets"))
+						return text(option, "optionValue").equals("1");
+		return false;
+	}
+
+	/**
+	 * Identifies Bazel's terminal event for a target excluded by platform compatibility.
+	 *
+	 * @param completion announced target completion
+	 * @param label selected test label
+	 * @param configuration selected configuration ID
+	 * @return whether analysis explicitly skipped this target and configuration
+	 */
+	private static boolean isIncompatibleSkip(JsonNode completion, String label, String configuration)
+	{
+		JsonNode aborted = completion.path("aborted");
+		return !label.isEmpty() && !configuration.isEmpty() &&
+			label.equals(text(completion.path("id").path("targetCompleted"), "label")) &&
+			!completion.has("completed") && completion.path("children").isEmpty() &&
+			text(aborted, "reason").equals("SKIPPED") &&
+			text(aborted, "description").equals("Target " + label + " build was skipped.");
 	}
 
 	/**
@@ -544,15 +591,19 @@ public final class BazelTestEvidence
 		List<JsonNode> children = new ArrayList<>();
 		for (JsonNode child : event.path("children"))
 		{
-			if (!child.has("testResult"))
+			JsonNode retryIdentity = child.path("testResult");
+			if (!retryIdentity.path("run").equals(identity.path("run")) ||
+				!retryIdentity.path("shard").equals(identity.path("shard")))
 				return false;
 			JsonNode retry = byId.get(scope.getArtifactJsonMapper().writeValueAsString(child));
 			if (retry == null)
 				return false;
 			children.add(retry);
 		}
-		return children.size() <= 1 && (children.isEmpty() || collectAttemptChain(scope, children.getFirst(), label,
-			configuration, attempt + 1, byId, attempts));
+		if (children.isEmpty())
+			return true;
+		return children.size() == 1 && text(event.path("testResult"), "status").equals("FAILED") &&
+			collectAttemptChain(scope, children.getFirst(), label, configuration, attempt + 1, byId, attempts);
 	}
 
 	/**
@@ -568,9 +619,9 @@ public final class BazelTestEvidence
 		Set<Integer> shards = new HashSet<>();
 		Map<Integer, Set<Integer>> shardsByRun = new HashMap<>();
 		Map<String, Set<Integer>> attemptsByRunAndShard = new HashMap<>();
-		Map<Integer, Integer> highestAttemptByRun = new HashMap<>();
-		boolean hasPassed = false;
-		boolean hasFailed = false;
+		Map<Integer, Integer> attemptsByShard = new HashMap<>();
+		boolean hasRetry = false;
+		boolean hasTerminalFailure = false;
 		for (JsonNode result : results)
 		{
 			JsonNode identity = result.path("id").path("testResult");
@@ -583,10 +634,11 @@ public final class BazelTestEvidence
 			String runAndShard = run + ":" + shard;
 			if (!attemptsByRunAndShard.computeIfAbsent(runAndShard, _ -> new HashSet<>()).add(attempt))
 				return false;
-			highestAttemptByRun.merge(run, attempt, Math::max);
+			attemptsByShard.merge(shard, 1, Integer::sum);
 			String status = text(result.path("testResult"), "status");
-			hasPassed |= status.equals("PASSED");
-			hasFailed |= status.equals("FAILED");
+			boolean terminal = result.path("children").isEmpty();
+			hasRetry |= attempt > 1;
+			hasTerminalFailure |= terminal && status.equals("FAILED");
 		}
 		if (shardsByRun.values().stream().distinct().count() != 1 ||
 			runs.stream().mapToInt(Integer::intValue).max().orElse(0) != runs.size() ||
@@ -594,16 +646,17 @@ public final class BazelTestEvidence
 			attemptsByRunAndShard.values().stream().anyMatch(attempts ->
 				attempts.size() != attempts.stream().mapToInt(Integer::intValue).max().orElse(0)))
 			return false;
-		int announcedAttemptCount = highestAttemptByRun.values().stream().mapToInt(Integer::intValue).sum();
-		String expectedStatus = "PASSED";
-		if (hasFailed)
-		{
+		int announcedAttemptCount = attemptsByShard.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+		String expectedStatus = hasRetry ? "FLAKY" : "PASSED";
+		if (hasTerminalFailure)
 			expectedStatus = "FAILED";
-			if (hasPassed)
-				expectedStatus = "FLAKY";
-		}
+		JsonNode shardCount = summary.path("shardCount");
+		if (!shardCount.isMissingNode() && (!shardCount.isIntegralNumber() || !shardCount.canConvertToInt()))
+			return false;
+		int reportedShards = shardCount.asInt(0);
+		int expectedShards = reportedShards == 0 ? 1 : reportedShards;
 		return summary.path("runCount").asInt(-1) == runs.size() &&
-			summary.path("shardCount").asInt(-1) == shards.size() &&
+			expectedShards == shards.size() &&
 			summary.path("attemptCount").asInt(-1) == announcedAttemptCount &&
 			summary.path("totalRunCount").asInt(-1) == results.size() &&
 			expectedStatus.equals(text(summary, "overallStatus"));
@@ -636,14 +689,12 @@ public final class BazelTestEvidence
 	 * Requires every event to be reachable through declared child IDs.
 	 *
 	 * @param scope mapper owner for stable identity serialization
-	 * @param events all parsed events
 	 * @param byId event lookup
 	 * @param root started event
 	 * @return whether graph traversal resolves and visits every event
 	 * @throws IOException if identity serialization fails
 	 */
-	private static boolean isClosed(ToolingScope scope, List<JsonNode> events, Map<String, JsonNode> byId,
-		JsonNode root) throws IOException
+	private static boolean isClosed(ToolingScope scope, Map<String, JsonNode> byId, JsonNode root) throws IOException
 	{
 		Set<JsonNode> visited = new HashSet<>();
 		List<JsonNode> pending = new ArrayList<>();
@@ -661,7 +712,7 @@ public final class BazelTestEvidence
 				pending.add(target);
 			}
 		}
-		return visited.size() == events.size();
+		return visited.size() == byId.size();
 	}
 
 	/**
