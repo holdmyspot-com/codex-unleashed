@@ -5,12 +5,16 @@ on:
     paths:
       - tooling/cli/**
       - .github/actions/setup-tooling/**
+      - .github/scripts/setup-tooling.sh
+      - .github/scripts/maven-retry.sh
       - .github/scripts/test-tooling-consumers.py
       - .github/workflows/tooling-ci.yml
   pull_request:
     paths:
       - tooling/cli/**
       - .github/actions/setup-tooling/**
+      - .github/scripts/setup-tooling.sh
+      - .github/scripts/maven-retry.sh
       - .github/scripts/test-tooling-consumers.py
       - .github/workflows/tooling-ci.yml
   workflow_dispatch:
