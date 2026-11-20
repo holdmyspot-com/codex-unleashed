@@ -1,6 +1,9 @@
 # Patch files are consumed by git apply and must remain byte-stable.
 *.patch text eol=lf
 
+# Release receipts compare the checked-out patch queue to the Git blob.
+/patches/README.md text eol=lf
+
 # Keep build and patching scripts portable across hosted runners.
 *.sh text eol=lf
 *.py text eol=lf
