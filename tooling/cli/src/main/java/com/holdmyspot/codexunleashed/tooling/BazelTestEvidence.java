@@ -25,7 +25,7 @@ public final class BazelTestEvidence
 	/** Repeatable canonical options that do not determine the target selection. */
 	private static final Set<String> REPEATABLE_OPTIONS = Set.of("action_env", "build_metadata", "client_env",
 		"config", "default_override", "extra_toolchains", "flag_alias", "host_action_env", "rc_source", "repo_env",
-		"test_env");
+		"strategy", "test_env");
 	/** Usage text and status meanings. */
 	private static final String HELP = "Usage: codex-tooling " + NAME +
 		" --bep PATH --expected-patterns PATH --bazel-exit-code INTEGER [--interrupted]\n" +

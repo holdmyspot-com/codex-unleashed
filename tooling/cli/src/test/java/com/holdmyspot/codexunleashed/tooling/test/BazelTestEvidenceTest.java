@@ -315,7 +315,10 @@ public final class BazelTestEvidenceTest
 			"{\"optionName\":\"test_env\",\"optionValue\":\"TWO=2\"}";
 		String twoToolchains = "{\"optionName\":\"extra_toolchains\",\"optionValue\":\"//:toolchain_one\"}," +
 			"{\"optionName\":\"extra_toolchains\",\"optionValue\":\"//:toolchain_two\"}";
-		String invocation = BASE.replace(tagFilter, tagFilter + "," + twoVariables + "," + twoToolchains);
+		String twoStrategies = "{\"optionName\":\"strategy\",\"optionValue\":\"CppCompile=local\"}," +
+			"{\"optionName\":\"strategy\",\"optionValue\":\"CppLink=local\"}";
+		String invocation = BASE.replace(tagFilter, tagFilter + "," + twoVariables + "," + twoToolchains + "," +
+			twoStrategies);
 		try (Fixture fixture = new Fixture())
 		{
 			Result result = invoke(fixture, invocation, "//:pass\n", "0");
