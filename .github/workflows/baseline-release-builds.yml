@@ -328,7 +328,9 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-evidence"
           java -version 2> "$evidence/cache-helper-java-version.txt"
           mvn -version > "$evidence/cache-helper-maven-version.txt"
-          test_context="$RUNNER_TEMP/source-cache-test-context.json"
+          verification_root="$RUNNER_TEMP/source-cache-verification"
+          mkdir -p "$verification_root"
+          test_context="$verification_root/test_context.json"
           context_workspace="$RUNNER_TEMP/source-cache-test-inputs"
           context_temp="$TMPDIR"
           if [[ "$RUNNER_OS" == Windows ]]; then
@@ -339,9 +341,9 @@ jobs:
             '{format_version: 1, working_directory: $working_directory,
               temporary_directory: $temporary_directory, environment: env}' > "$test_context"
           bash "$RUNNER_TEMP/maven-retry.sh" "$RUNNER_TEMP/source-cache-maven" -e -f "$RUNNER_TEMP/source-cache-helper/pom.xml" -Pruntime \
-            "-Dtooling.build.directory=$RUNNER_TEMP/source-cache-build" \
+            "-Dtooling.build.directory=$RUNNER_TEMP/source-cache-verification/build" \
             "-Djava.io.tmpdir=$TMPDIR" "-Dquiet.build.test.context=$test_context" verify 2>&1 | tee "$evidence/cache-helper-build.log"
-          printf 'CODEX_SOURCE_CACHE_TOOL=%s\n' "$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling" >> "$GITHUB_ENV"
+          printf 'CODEX_SOURCE_CACHE_TOOL=%s\n' "$RUNNER_TEMP/source-cache-verification/build/runtime/bin/codex-tooling" >> "$GITHUB_ENV"
 
       - name: Apply the selected downstream patches
         id: source
@@ -537,9 +539,9 @@ jobs:
           run_codex_tooling() {
             # Linux packages a native launcher; other runners package a Bash launcher.
             if [[ "$RUNNER_OS" == Linux ]]; then
-              "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+              "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-verification/build/runtime/bin/codex-tooling}" "$@"
             else
-              bash "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+              bash "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-verification/build/runtime/bin/codex-tooling}" "$@"
             fi
           }
           evidence="$RUNNER_TEMP/baseline-evidence"
@@ -632,9 +634,9 @@ jobs:
           run_codex_tooling() {
             # Linux packages a native launcher; other runners package a Bash launcher.
             if [[ "$RUNNER_OS" == Linux ]]; then
-              "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+              "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-verification/build/runtime/bin/codex-tooling}" "$@"
             else
-              bash "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+              bash "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-verification/build/runtime/bin/codex-tooling}" "$@"
             fi
           }
           if [[ "$RELEASE_BUNDLE" == app-server ]]; then
@@ -788,9 +790,9 @@ jobs:
           run_codex_tooling() {
             # Linux packages a native launcher; other runners package a Bash launcher.
             if [[ "$RUNNER_OS" == Linux ]]; then
-              "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+              "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-verification/build/runtime/bin/codex-tooling}" "$@"
             else
-              bash "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+              bash "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-verification/build/runtime/bin/codex-tooling}" "$@"
             fi
           }
           evidence="$RUNNER_TEMP/baseline-evidence"
@@ -807,9 +809,9 @@ jobs:
           run_codex_tooling() {
             # Linux packages a native launcher; other runners package a Bash launcher.
             if [[ "$RUNNER_OS" == Linux ]]; then
-              "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+              "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-verification/build/runtime/bin/codex-tooling}" "$@"
             else
-              bash "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling}" "$@"
+              bash "${CODEX_SOURCE_CACHE_TOOL:-$RUNNER_TEMP/source-cache-verification/build/runtime/bin/codex-tooling}" "$@"
             fi
           }
           run_codex_tooling \
