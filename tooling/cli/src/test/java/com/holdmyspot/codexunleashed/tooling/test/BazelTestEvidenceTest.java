@@ -241,7 +241,8 @@ public final class BazelTestEvidenceTest
 	{
 		try (Fixture fixture = new Fixture())
 		{
-			Result result = invoke(fixture, BASE, "//:pass\n", "0");
+			String omittedZero = BASE.replace("\"exitCode\":{\"code\":0,", "\"overallSuccess\":true,\"exitCode\":{");
+			Result result = invoke(fixture, omittedZero, "//:pass\n", "0");
 			requireThat(result.status, "status").isEqualTo(0);
 			requireThat(result.output, "report").
 				contains("\"coverage\":\"complete\"").

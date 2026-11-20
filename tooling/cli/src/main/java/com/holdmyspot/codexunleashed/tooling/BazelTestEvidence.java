@@ -389,7 +389,16 @@ public final class BazelTestEvidence
 			report.reject("incomplete_execution", "testResult_or_testSummary", null);
 			return;
 		}
-		int actualExit = finished.getFirst().path("finished").path("exitCode").path("code").asInt(-1);
+		JsonNode result = finished.getFirst().path("finished");
+		JsonNode exitCode = result.path("exitCode");
+		JsonNode code = exitCode.path("code");
+		boolean omittedSuccessCode = code.isMissingNode() && "SUCCESS".equals(exitCode.path("name").textValue()) &&
+			result.path("overallSuccess").booleanValue();
+		int actualExit = -1;
+		if (omittedSuccessCode)
+			actualExit = 0;
+		else if (code.isIntegralNumber() && code.canConvertToInt())
+			actualExit = code.intValue();
 		if (actualExit != arguments.exitCode)
 		{
 			report.reject("command_failed", "buildFinished", null);
