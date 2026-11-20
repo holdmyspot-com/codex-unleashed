@@ -52,6 +52,15 @@ jobs:
           ref: ${{ steps.inputs.outputs.commit }}
           persist-credentials: false
 
+      - name: Test with upstream's development version 0.0.0
+        run: |
+          set -euo pipefail
+          # A stable tag's release commit changes only the workspace version; Cargo.lock still records 0.0.0, and
+          # rules_rs rejects the mismatch. Upstream's CI tests main, whose version is 0.0.0.
+          perl -pi -e '$w = /^\[workspace\.package\]\r?$/ ? 1 : /^\[/ ? 0 : $w;' \
+            -e 's/^version = "[^"]+"(\r?)$/version = "0.0.0"$1/ if $w' codex-rs/Cargo.toml
+          git diff --stat
+
       - name: Set up Python for upstream's Bazel wrapper
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
@@ -122,7 +131,8 @@ jobs:
             printf 'BAZEL_RESULT name=%s exit=%s\n' "$name" "$result"
             mkdir -p "$evidence/testlogs-$name"
             cp -R "$(realpath bazel-testlogs)/codex-rs/windows-sandbox-rs/windows-sandbox-rs-unit-tests/." "$evidence/testlogs-$name/" || true
-            return 0
+            # Bazel exits 3 when only tests failed, which these experiments expect; anything else is a build failure.
+            [[ $result == 0 || $result == 3 ]]
           }
           BZ
 
