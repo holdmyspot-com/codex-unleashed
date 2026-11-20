@@ -300,6 +300,24 @@ jobs:
           git diff --binary > "$evidence/pristine-source.diff"
           git show HEAD:codex-rs/Cargo.lock > "$evidence/upstream-Cargo.lock"
 
+      - name: Prepare retained release worker
+        if: inputs.public_key != ''
+        run: |
+          bash "$RUNNER_TEMP/release-debug-session.sh" prepare \
+            "$RUNNER_TEMP/release-debug-action" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-evidence"
+
+      - name: Open authenticated release worker
+        if: inputs.public_key != ''
+        uses: ./.github/actions/debug-failed-runner
+        with:
+          public-key: ${{ inputs.public_key }}
+          idle-timeout-minutes: '10'
+          artifact-suffix: -${{ matrix.target }}-${{ matrix.bundle }}
+
+      - name: Wait for connected release client
+        if: inputs.public_key != ''
+        run: bash "$RUNNER_TEMP/release-debug-session.sh" wait-for-client "$RUNNER_TEMP/baseline-evidence"
+
       - name: Apply the selected downstream patches
         id: source
         env:
@@ -328,22 +346,6 @@ jobs:
           git show HEAD:codex-rs/Cargo.lock > "$evidence/source-Cargo.lock"
           git rev-parse HEAD > "$evidence/source-commit"
           printf 'commit=%s\n' "$(cat "$evidence/source-commit")" >> "$GITHUB_OUTPUT"
-
-      - name: Prepare retained release worker
-        if: inputs.public_key != ''
-        run: |
-          bash "$RUNNER_TEMP/release-debug-session.sh" prepare \
-            "$RUNNER_TEMP/release-debug-action" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-evidence"
-
-      - name: Open authenticated release worker
-        if: inputs.public_key != ''
-        uses: ./.github/actions/debug-failed-runner
-        with:
-          public-key: ${{ inputs.public_key }}
-
-      - name: Wait for connected release client
-        if: inputs.public_key != ''
-        run: bash "$RUNNER_TEMP/release-debug-session.sh" wait-for-client "$RUNNER_TEMP/baseline-evidence"
 
       - name: Record Linux runner capacity
         if: runner.os == 'Linux'
