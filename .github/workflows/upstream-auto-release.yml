@@ -768,7 +768,10 @@ jobs:
           mkdir "$installer_assets"
           primary_archive="$GITHUB_WORKSPACE/dist/$TARGET/codex-package-$TARGET.tar.gz"
           cp "$primary_archive" "$installer_assets/"
-          (cd "$installer_assets" && sha256sum "$(basename "$primary_archive")" > SHA256SUMS)
+          # GNU sha256sum on Windows writes binary-mode entries ("<digest> *<name>"). The release's SHA256SUMS uses
+          # text-mode entries, which the installer expects, so write that form on every platform.
+          primary_digest=$(sha256sum < "$primary_archive" | cut -d ' ' -f 1)
+          printf '%s  %s\n' "$primary_digest" "$(basename "$primary_archive")" > "$installer_assets/SHA256SUMS"
           installed_package="$native_temp/installed voice package $TARGET"
           installer_evidence="$native_temp/voice-installer-evidence-$TARGET"
           node "$VOICE_METADATA/verify-voice-installer.mjs" --upstream-root "$physical_source" \
