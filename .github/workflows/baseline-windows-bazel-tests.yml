@@ -19,19 +19,12 @@ jobs:
         include:
           - target: x86_64-pc-windows-gnullvm
             shard: 1
-            shard_count: 4
+            shard_count: 1
+            test_jobs: 1
           - target: x86_64-pc-windows-gnullvm
-            shard: 2
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 3
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 4
-            shard_count: 4
-          - target: x86_64-pc-windows-msvc
             shard: 1
             shard_count: 1
+            test_jobs: 4
     runs-on: windows-2025
     env:
       TARGET: ${{ matrix.target }}
@@ -122,13 +115,6 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Check upstream's Windows wrapper
-        if: matrix.target == 'x86_64-pc-windows-gnullvm' && matrix.shard == 1
-        shell: pwsh
-        run: |
-          python .github/scripts/test_run_bazel_with_buildbuddy.py
-          exit $LASTEXITCODE
-
       - name: Add a page file
         # Four native MSVC test targets failed with "The paging file is too small" (os error 1455): rustc commits several
         # times the memory it touches, and the runner's commit limit is its 16 GB of memory plus a 3 GB page file.
@@ -164,7 +150,7 @@ jobs:
       - name: Prepare upstream's Bazel host and toolchain
         uses: ./.github/actions/prepare-bazel-ci
         with:
-          cache-scope: baseline-windows-tests-${{ matrix.shard }}
+          cache-scope: exp-cmh-grpc
           target: ${{ matrix.target }}
 
       - name: Prepare upstream's native Windows voice tools
@@ -243,17 +229,9 @@ jobs:
             test_args+=(
               "--test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::,suite::code_mode::code_mode_can_call_hidden_dynamic_tools,tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child"
             )
-            query='tests(//...) except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...))'
-            .github/scripts/run-bazel-query-ci.sh --output=label -- "$query" \
-              | LC_ALL=C sort > "$evidence/candidate-targets.txt"
-            bash "$CODEX_TOOLING" select-windows-bazel-targets \
-              --shard "$BAZEL_TEST_SHARD" --shard-count "$BAZEL_TEST_SHARD_COUNT" \
-              --durations "$GITHUB_WORKSPACE/.github/scripts/windows_bazel_test_durations.tsv" \
-              < "$evidence/candidate-targets.txt" > "$evidence/selected-targets.txt"
-            test -s "$evidence/selected-targets.txt"
-            while IFS= read -r target; do
-              targets+=("$target")
-            done < "$evidence/selected-targets.txt"
+            targets=(//codex-rs/code-mode-host:code-mode-host-grpc-test)
+            test_args+=(--runs_per_test=20 --test_output=errors "--local_test_jobs=${{ matrix.test_jobs }}")
+            printf '%s\n' "${targets[@]}" > "$evidence/selected-targets.txt"
           else
             wrapper_args+=(--windows-msvc-host-platform)
             test_args+=(--config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --build_metadata=TAG_windows_native_main=true)
@@ -303,9 +281,6 @@ jobs:
           result=${PIPESTATUS[0]}
           set -e
           printf 'exit_code=%s\n' "$result" > "$evidence/bazel-tests.receipt"
-          bash "$CODEX_TOOLING" validate-bazel-test-evidence \
-            --bep "$bep" --expected-patterns "$evidence/execution-targets.txt" --bazel-exit-code "$result" \
-            > "$evidence/bazel-test-evidence.json"
           git diff --binary > "$evidence/source-after.diff"
           cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
           printf 'bep-complete=true\n' >> "$GITHUB_OUTPUT"
@@ -355,42 +330,28 @@ jobs:
           [System.IO.File]::WriteAllText((Join-Path $evidence 'headers.json'), $json + "`n", [System.Text.UTF8Encoding]::new($false))
           Write-Output "Recorded $($records.Count) installed Opus headers"
 
-      - name: Fail on skips caused by missing test setup
-        if: ${{ !cancelled() && steps.bazel_tests.outcome != 'skipped' }}
-        run: |
-          set -euo pipefail
-          bash "$CODEX_TOOLING" check-test-skips --platform windows --runner bazel "$(realpath bazel-testlogs)" \
-            2>&1 | tee "$RUNNER_TEMP/baseline-windows-bazel-evidence/skip-check.log"
-
-      - name: Record or compare this shard's failures
-        # An unpatched run is pristine upstream, so its failures are the baseline that patched runs are compared with;
-        # the evidence artifact carries the file for committing under docs/test-baselines.
-        if: ${{ !cancelled() && steps.bazel_tests.outcome == 'success' && steps.bazel_tests.outputs['bep-complete'] == 'true' }}
-        env:
-          PATCHES: ${{ inputs.patches }}
+      - name: Count the per-run outcomes of the experiment target
+        if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
-          commit="${{ steps.inputs.outputs.commit }}"
-          platform="windows-bazel-${TARGET##*-}-shard-${BAZEL_TEST_SHARD}"
-          common=(--runner bazel --platform "$platform" --upstream-commit "$commit")
-          # select-windows-bazel-targets balances targets across shards by estimated duration, so a target that the
-          # patches add can move others into a different shard; the other shards' failures are known failures here.
-          related=()
-          for ((other = 1; other <= BAZEL_TEST_SHARD_COUNT; other++)); do
-            if ((other != BAZEL_TEST_SHARD)); then
-              related+=(--related-platform "windows-bazel-${TARGET##*-}-shard-$other")
-            fi
-          done
-          if [[ -z "${PATCHES// /}" ]]; then
-            bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" --write-baseline \
-              --output "$evidence/$platform.json" "$(realpath bazel-testlogs)"
-          else
-            bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" "${related[@]}" \
-              --baseline-dir "$RUNNER_TEMP/test-baselines" "$(realpath bazel-testlogs)" 2>&1 \
-              | tee "$evidence/baseline-comparison.log"
-            exit "${PIPESTATUS[0]}"
-          fi
+          python3 - "$evidence/bazel-tests.bep.json" <<'PY' | tee "$evidence/run-outcomes.txt"
+          import json, sys
+          outcomes = {}
+          with open(sys.argv[1], encoding='utf-8') as bep:
+              for line in bep:
+                  event = json.loads(line)
+                  result = event.get('id', {}).get('testResult')
+                  if result is None:
+                      continue
+                  status = event.get('testResult', {}).get('status')
+                  outcomes[(result['label'], result['run'], result['attempt'])] = status
+          counts = {}
+          for key, status in sorted(outcomes.items()):
+              print(key[0], 'run', key[1], 'attempt', key[2], status)
+              counts[status] = counts.get(status, 0) + 1
+          print('summary', json.dumps(counts, sort_keys=True))
+          PY
 
       - name: Verify upstream source and tests remain unmodified
         if: always()
@@ -404,7 +365,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: baseline-windows-bazel-tests-${{ matrix.target }}-shard-${{ matrix.shard }}
+          name: exp-cmh-grpc-${{ github.run_id }}-jobs-${{ matrix.test_jobs }}
           path: ${{ runner.temp }}/baseline-windows-bazel-evidence
           retention-days: 3
           if-no-files-found: warn
