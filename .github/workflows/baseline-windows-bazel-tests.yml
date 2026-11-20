@@ -7,6 +7,22 @@ on:
         description: Space-separated repository paths of downstream patches to apply with git am, in order; empty tests pristine upstream and records its failures as the baseline
         type: string
         default: ""
+      test_jobs:
+        description: Experiment; value for --local_test_jobs, empty leaves Bazel's default
+        type: string
+        default: ""
+      rebalance:
+        description: Experiment; weight the native test variants that run here instead of the skipped -windows-cross variants
+        type: boolean
+        default: false
+      probe:
+        description: Experiment; build the failing targets, then run only their cases alone and under load
+        type: boolean
+        default: false
+      matrix:
+        description: Experiment; JSON array of matrix entries to run
+        type: string
+        default: '[{"target":"x86_64-pc-windows-gnullvm","shard":1,"shard_count":4},{"target":"x86_64-pc-windows-gnullvm","shard":2,"shard_count":4},{"target":"x86_64-pc-windows-gnullvm","shard":3,"shard_count":4},{"target":"x86_64-pc-windows-gnullvm","shard":4,"shard_count":4},{"target":"x86_64-pc-windows-msvc","shard":1,"shard_count":1}]'
 
 permissions:
   contents: read
@@ -16,22 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: x86_64-pc-windows-gnullvm
-            shard: 1
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 2
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 3
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 4
-            shard_count: 4
-          - target: x86_64-pc-windows-msvc
-            shard: 1
-            shard_count: 1
+        include: ${{ fromJSON(inputs.matrix) }}
     runs-on: windows-2025
     env:
       TARGET: ${{ matrix.target }}
@@ -67,6 +68,7 @@ jobs:
           mkdir -p "$evidence"
           cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
           cp restart-metadata/.github/scripts/add-windows-page-file.ps1 "$RUNNER_TEMP/add-windows-page-file.ps1"
+          cp restart-metadata/.github/scripts/probe-failing-targets.sh "$RUNNER_TEMP/probe-failing-targets.sh"
           mkdir -p "$RUNNER_TEMP/test-baselines"
           if [[ -d restart-metadata/docs/test-baselines ]]; then cp -R restart-metadata/docs/test-baselines/. "$RUNNER_TEMP/test-baselines/"; fi
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
@@ -210,6 +212,10 @@ jobs:
 
       - name: Run the maintained Windows Bazel test selection
         id: bazel_tests
+        env:
+          TEST_JOBS: ${{ inputs.test_jobs }}
+          REBALANCE: ${{ inputs.rebalance }}
+          PROBE: ${{ inputs.probe }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
@@ -246,9 +252,15 @@ jobs:
             query='tests(//...) except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...))'
             .github/scripts/run-bazel-query-ci.sh --output=label -- "$query" \
               | LC_ALL=C sort > "$evidence/candidate-targets.txt"
+            durations="$GITHUB_WORKSPACE/.github/scripts/windows_bazel_test_durations.tsv"
+            if [[ "$REBALANCE" == true ]]; then
+              awk 'BEGIN { FS = OFS = "\t" } /^#/ { print; next } { sub(/-windows-cross$/, "", $1); print }' "$durations" \
+                > "$evidence/native-durations.tsv"
+              durations="$evidence/native-durations.tsv"
+            fi
             bash "$CODEX_TOOLING" select-windows-bazel-targets \
               --shard "$BAZEL_TEST_SHARD" --shard-count "$BAZEL_TEST_SHARD_COUNT" \
-              --durations "$GITHUB_WORKSPACE/.github/scripts/windows_bazel_test_durations.tsv" \
+              --durations "$durations" \
               < "$evidence/candidate-targets.txt" > "$evidence/selected-targets.txt"
             test -s "$evidence/selected-targets.txt"
             while IFS= read -r target; do
@@ -276,6 +288,14 @@ jobs:
               --action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH"
               --host_action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH"
             )
+          fi
+          if [[ -n "$TEST_JOBS" ]]; then
+            test_args+=("--local_test_jobs=$TEST_JOBS")
+          fi
+          if [[ "$PROBE" == true ]]; then
+            printf '%s\n' "${targets[@]}" > "$evidence/execution-targets.txt"
+            bash "$RUNNER_TEMP/probe-failing-targets.sh" "$evidence" "${wrapper_args[@]}" -- "${test_args[@]}"
+            exit 0
           fi
           printf '%s\n' "${targets[@]}" > "$evidence/execution-targets.txt"
           bep="$evidence/bazel-tests.bep.json"
@@ -356,7 +376,7 @@ jobs:
           Write-Output "Recorded $($records.Count) installed Opus headers"
 
       - name: Fail on skips caused by missing test setup
-        if: ${{ !cancelled() && steps.bazel_tests.outcome != 'skipped' }}
+        if: ${{ !cancelled() && steps.bazel_tests.outcome != 'skipped' && !inputs.probe }}
         run: |
           set -euo pipefail
           bash "$CODEX_TOOLING" check-test-skips --platform windows --runner bazel "$(realpath bazel-testlogs)" \
