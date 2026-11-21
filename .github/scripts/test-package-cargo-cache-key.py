@@ -13,6 +13,8 @@ import unittest
 TARGET = "x86_64-unknown-linux-musl"
 CACHE_SCRIPT = Path(__file__).with_name("package-cargo-cache.sh").resolve()
 COMPONENTS = ["source", "patches", "wrappers", "helper", "compiler", "v8", "musl", "voice"]
+COMPILER = ["compiler-context", "compiler-toolchain", "compiler-packages", "compiler-settings", "compiler-lockfiles"]
+VOICE = ["voice/codex-voice-host", "voice/runtime/lib/libfixture.so.1", "voice/runtime/runtime.json"]
 
 
 def write(path, text):
@@ -22,7 +24,7 @@ def write(path, text):
     return path
 
 
-@unittest.skipUnless(shutil.which("bash") and shutil.which("sha256sum"), "Linux command-line tools required")
+@unittest.skipUnless(all(shutil.which(tool) for tool in ("bash", "jq", "sha256sum")), "Linux command-line tools required")
 class PackageCargoCacheKeyTest(unittest.TestCase):
     """Check the format and contents retained for exact-key diagnostics."""
 
@@ -65,7 +67,9 @@ printf 'seed_tag=ignored\\n'
         write(openssl / "include/openssl.h", "header\n")
         write(openssl / "lib/libcrypto.a", "native\n")
         voice = self.root / "private-voice"
-        self.voice = write(voice / "helper", "sealed voice\n")
+        self.voice = write(voice / "codex-voice-host", "sealed voice\n")
+        write(voice / "runtime/runtime.json", '{"libraries":[{"path":"lib/libfixture.so.1"}]}\n')
+        write(voice / "runtime/lib/libfixture.so.1", "library bytes\n")
         self.receipt = runner / "package-cargo-cache-key.txt"
         self.output = self.root / "output"
         self.source = source
@@ -83,20 +87,23 @@ printf 'seed_tag=ignored\\n'
             "VOICE_RELEASE_DIR": str(voice), "CODEX_TOOLING": str(launcher), "GITHUB_OUTPUT": str(self.output),
         }
 
-    def run_inputs(self):
-        """Run the normal key command and return only the retained evidence."""
+    def execute_inputs(self):
+        """Invoke the key command with a fresh workflow step output."""
         self.output.write_text("")
-        result = subprocess.run(
+        return subprocess.run(
             ["bash", CACHE_SCRIPT, "inputs"], cwd=self.source, env=self.environment,
             capture_output=True, text=True, check=False,
         )
+    def run_inputs(self):
+        """Return the retained tag and labeled digests from a successful call."""
+        result = self.execute_inputs()
         self.assertEqual(result.returncode, 0, result.stderr)
         tag, *digests = self.receipt.read_text().splitlines()
         self.assertRegex(tag, rf"^tag=cargo-v3-{TARGET}-pkg-[0-9a-f]{{64}}$")
         self.assertEqual(self.output.read_text(), f"{tag}\n")
-        self.assertEqual(result.stdout.splitlines(), digests)
-        self.assertEqual([name for _, name in (line.split() for line in digests)], COMPONENTS)
-        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{64}  [a-z0-9]+", line) for line in digests))
+        self.assertEqual(result.stdout.splitlines(), digests[:len(COMPONENTS)])
+        self.assertEqual([name for _, name in (line.split() for line in digests)], COMPONENTS + COMPILER + VOICE)
+        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{64}  [a-z0-9/.-]+", line) for line in digests))
         return tag, {name: digest for digest, name in (line.split() for line in digests)}
 
     def test_records_only_the_exact_tag_and_component_digests(self):
@@ -110,7 +117,28 @@ printf 'seed_tag=ignored\\n'
         self.voice.write_text("changed sealed voice\n")
         key, components = self.run_inputs()
         self.assertNotEqual(initial_key, key)
-        self.assertEqual([name for name in COMPONENTS if initial_components[name] != components[name]], ["voice"])
+        names = COMPONENTS + COMPILER + VOICE
+        self.assertEqual([name for name in names if initial_components[name] != components[name]],
+                         ["voice", "voice/codex-voice-host"])
+
+    def test_locates_drift_in_the_compiler_context(self):
+        initial_key, initial_components = self.run_inputs()
+        self.environment["ImageVersion"] = "new-runner-image"
+        key, components = self.run_inputs()
+        self.assertNotEqual(initial_key, key)
+        names = COMPONENTS + COMPILER + VOICE
+        self.assertEqual([name for name in names if initial_components[name] != components[name]],
+                         ["compiler", "compiler-context"])
+
+    def test_rejects_unexpected_paths_without_publishing_them(self):
+        unexpected = self.voice.parent / "runtime/lib/libprivate-fixture.so"
+        write(unexpected, "unexpected file\n")
+        result = self.execute_inputs()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("do not match the runtime inventory", result.stderr)
+        self.assertNotIn(unexpected.name, result.stdout + result.stderr)
+        self.assertFalse(self.receipt.exists())
+        self.assertEqual(self.output.read_text(), "")
 
 
 if __name__ == "__main__":

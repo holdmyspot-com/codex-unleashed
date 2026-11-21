@@ -25,24 +25,55 @@ if [[ "$operation" == inputs ]]; then
   operations=.github/scripts/codex-package-operations.sh
   openssl_dir="$X86_64_UNKNOWN_LINUX_MUSL_OPENSSL_DIR"
   native_root="$RUNNER_TEMP/codex-musl-tools-$TARGET"
+  printf '%s\n' "$TARGET" "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:?}" "${ImageVersion:?}" \
+    "$GITHUB_WORKSPACE" "$CARGO_TARGET_DIR" "${SOURCE_DATE_EPOCH:?}" > "$inputs/compiler-context"
   {
-    printf '%s\n' "$TARGET" "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:?}" "${ImageVersion:?}" \
-      "$GITHUB_WORKSPACE" "$CARGO_TARGET_DIR" "${SOURCE_DATE_EPOCH:?}"
     rustc -vV
     cargo --version
     zig version
     sha256sum "$(command -v zig)" "$(command -v gcc)" "$(command -v clang)" "$(command -v strip)" \
       "$CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER" "$CC" "$CXX"
-    dpkg-query --showformat='${binary:Package}=${Version}\n' --show | LC_ALL=C sort
+  } > "$inputs/compiler-toolchain"
+  dpkg-query --showformat='${binary:Package}=${Version}\n' --show | LC_ALL=C sort > "$inputs/compiler-packages"
+  {
     bash "$operations" profile-env --target "$TARGET" --build-mode release
     bash "$operations" select-binaries --runner-os "$RUNNER_OS" --build-mode release --build-system cargo
     env | LC_ALL=C sort | grep -E '^(RUSTFLAGS|RUSTDOCFLAGS|RUSTC|RUSTC_WRAPPER|RUSTC_WORKSPACE_WRAPPER|RUSTUP_TOOLCHAIN|CARGO_INCREMENTAL|CARGO_BUILD_[A-Z_]+|CARGO_ENCODED_RUSTFLAGS|CARGO_PROFILE_RELEASE_[A-Z_]+|CARGO_TARGET_[A-Z0-9_]+_LINKER|CC(_[A-Za-z0-9_]+)?|CXX(_[A-Za-z0-9_]+)?|AR(_[A-Za-z0-9_]+)?|TARGET_CC|TARGET_CXX|CFLAGS(_[A-Za-z0-9_]+)?|CXXFLAGS(_[A-Za-z0-9_]+)?|CMAKE_(C_COMPILER|CXX_COMPILER|ARGS)|BORING_BSSL_SYSROOT[A-Za-z0-9_]*|([A-Z0-9_]+_)?OPENSSL_(DIR|NO_VENDOR|STATIC)|AWS_LC_SYS_NO_JITTER_ENTROPY[A-Za-z0-9_]*|PKG_CONFIG_[A-Za-z0-9_]+)='
-    sha256sum codex-rs/Cargo.lock codex-rs/rust-toolchain.toml
-  } > "$inputs/compiler"
+  } > "$inputs/compiler-settings"
+  sha256sum codex-rs/Cargo.lock codex-rs/rust-toolchain.toml > "$inputs/compiler-lockfiles"
+  compiler_components=(compiler-context compiler-toolchain compiler-packages compiler-settings compiler-lockfiles)
+  (cd "$inputs" && cat "${compiler_components[@]}") > "$inputs/compiler"
   sha256sum "$RUSTY_V8_ARCHIVE" "$RUSTY_V8_SRC_BINDING_PATH" > "$inputs/v8"
   find "$openssl_dir/include" "$openssl_dir/lib" "$native_root"/libcap-*/prefix \
     -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum > "$inputs/musl"
-  find "$VOICE_RELEASE_DIR" -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum > "$inputs/voice"
+  # The verified runtime lists the shipped libraries and plugins. Only those relative
+  # paths, runtime.json, and the helper may appear in the diagnostic receipt.
+  {
+    printf '%s\n' codex-voice-host runtime/runtime.json
+    if ! jq -er '.libraries[].path | "runtime/" + .' "$VOICE_RELEASE_DIR/runtime/runtime.json" 2>/dev/null; then
+      printf 'Cannot read sealed voice runtime inventory\n' >&2
+      exit 1
+    fi
+  } | LC_ALL=C sort > "$inputs/voice-expected"
+  find "$VOICE_RELEASE_DIR" -type f -printf '%P\0' | LC_ALL=C sort -z > "$inputs/voice-paths"
+  while IFS= read -r -d '' relative; do
+    if ! [[ "$relative" =~ ^(codex-voice-host|runtime/runtime\.json|runtime/lib/(gstreamer-1\.0/)?lib[A-Za-z0-9_+.-]+\.so(\.[0-9]+)*)$ ]]; then
+      printf 'Unexpected file layout in sealed voice release directory\n' >&2
+      exit 1
+    fi
+    printf '%s\n' "$relative"
+  done < "$inputs/voice-paths" > "$inputs/voice-observed"
+  if ! cmp -s "$inputs/voice-expected" "$inputs/voice-observed"; then
+    printf 'Sealed voice files do not match the runtime inventory\n' >&2
+    exit 1
+  fi
+  (
+    while IFS= read -r relative; do
+      checksum="$(sha256sum -- "$VOICE_RELEASE_DIR/$relative")"
+      printf '%s\n' "$checksum"
+      printf '%s  voice/%s\n' "${checksum%% *}" "$relative" >> "$inputs/voice-files"
+    done < "$inputs/voice-observed"
+  ) > "$inputs/voice"
   # Preserve only the key and fixed-name component digests, never the raw inputs.
   (cd "$inputs" && sha256sum source patches wrappers helper compiler v8 musl voice) > "$inputs/components"
   cat "$inputs/v8" "$inputs/musl" "$inputs/voice" >> "$inputs/compiler"
@@ -52,6 +83,8 @@ if [[ "$operation" == inputs ]]; then
   {
     printf 'tag=%s\n' "$tag"
     cat "$inputs/components"
+    (cd "$inputs" && sha256sum "${compiler_components[@]}")
+    cat "$inputs/voice-files"
   } > "$inputs/key-receipt"
   mv -- "$inputs/key-receipt" "$RUNNER_TEMP/package-cargo-cache-key.txt"
   cat "$inputs/components"
