@@ -8,6 +8,7 @@ set -euo pipefail
 # update their successful counterparts. A protected-release alias accompanies
 # every upload. Pull returns 3 for a miss and invalid arguments return 2; other
 # failures retain the tool status. RUNNER_TEMP owns transient archive storage.
+# CARGO_CACHE_REGISTRY_CONFIG selects a scoped ORAS credential file for full archive operations.
 # CARGO_CACHE_PARTS=1 selects build-step groups under -parts-v2 tags, reading
 # earlier -parts-v1 groups or legacy archives on a miss. CARGO_CACHE_STAGE names
 # the step owning new outputs; an unset stage defaults to bootstrap. It requires
@@ -78,6 +79,10 @@ esac
 case "$OSTYPE" in
   msys*|cygwin*) target_directory="$(cygpath -u -- "$target_directory")" ;;
 esac
+registry_config=()
+if [[ -n "${CARGO_CACHE_REGISTRY_CONFIG:-}" ]]; then
+  registry_config=(--registry-config "$CARGO_CACHE_REGISTRY_CONFIG")
+fi
 archive_tar=tar
 if command -v gtar >/dev/null 2>&1; then
   archive_tar=gtar
@@ -111,7 +116,7 @@ case "$operation" in
       exit 3
     fi
     set +e
-    digest="$(oras resolve "$reference" 2> "$archive_directory/resolve.stderr")"
+    digest="$(oras resolve "${registry_config[@]}" "$reference" 2> "$archive_directory/resolve.stderr")"
     result=$?
     set -e
     if [[ "$result" != 0 ]]; then
@@ -122,7 +127,7 @@ case "$operation" in
       fi
       exit "$result"
     fi
-    oras pull "$repository@$digest" --output "$archive_directory"
+    oras pull "${registry_config[@]}" "$repository@$digest" --output "$archive_directory"
     du -sk "$archive"
     "$archive_tar" --zstd -xf - -C "$target_directory" < "$archive"
     printf 'cache_result=hit digest=%s\n' "$digest"
@@ -146,7 +151,7 @@ case "$operation" in
       if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
         run_codex_tooling cargo-cache-parts push "$repository" "$publication_reference" "$reference" "$target_directory" "$archive_directory" --reuse-reference "$repository:${seed_tag:-$tag}"
       else
-        oras push "$publication_reference" \
+        oras push "${registry_config[@]}" "$publication_reference" \
           --artifact-type application/vnd.codex-unleashed.cargo-target.v1 \
           'cargo-target.tar.zst:application/vnd.codex-unleashed.cargo-target.tar+zstd'
       fi
