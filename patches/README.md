@@ -10,7 +10,7 @@ After the last patch, the release sets the workspace packages in `codex-rs/Cargo
 
 The release applies these patches in this order:
 
-1. [issue-47/bash-snapshot-replay-startup.patch](holdmyspot-com/codex-unleashed/issue-47/bash-snapshot-replay-startup.patch)
+1. [cp9-verification/ordinary-unappliable.patch](cp9-verification/ordinary-unappliable.patch)
 2. [winget-daemon-fixture/create-codex-home.patch](holdmyspot-com/codex-unleashed/winget-daemon-fixture/create-codex-home.patch)
 3. [issue-49/descriptor-fallback-fixture.patch](holdmyspot-com/codex-unleashed/issue-49/descriptor-fallback-fixture.patch)
 4. [base-configuration/codex-unleashed-configuration.patch](holdmyspot-com/codex-unleashed/base-configuration/codex-unleashed-configuration.patch)

@@ -272,6 +272,21 @@ jobs:
           path: upstream
           persist-credentials: false
 
+      - name: Prepare retained patch worker
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/patch-rejection-evidence"
+          mkdir "$evidence"
+
+      - name: Open authenticated patch worker
+        uses: ./.github/actions/debug-failed-runner
+        with:
+          public-key: ${{ inputs.package_public_key }}
+          idle-timeout-minutes: '10'
+
+      - name: Wait for connected patch client
+        run: bash .github/scripts/release-debug-session.sh wait-for-client "$RUNNER_TEMP/patch-rejection-evidence"
+
       - name: Apply each patch with git am
         env:
           PATCHES: ${{ needs.detect.outputs.patches }}
@@ -279,6 +294,7 @@ jobs:
           LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
+          trap 'cp "$GITHUB_STEP_SUMMARY" "$RUNNER_TEMP/patch-rejection-evidence/step-summary.md"' EXIT
           read -r -a patch_paths <<< "$PATCHES"
           index=0
           # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
@@ -295,6 +311,14 @@ jobs:
             fi
           done
           printf 'Applied %s patches to %s.\n' "${#patch_paths[@]}" "$UPSTREAM_TAG"
+
+      - name: Retain patch rejection summary
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: cp9-patch-rejection-summary
+          path: ${{ runner.temp }}/patch-rejection-evidence/step-summary.md
+          if-no-files-found: error
 
   platform-lints:
     name: Platform lints
@@ -914,7 +938,7 @@ jobs:
   publish:
     name: Publish the release
     needs: [detect, package]
-    if: needs.detect.outputs.live == 'true' && inputs.dry_run != true
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     # One publisher per upstream version. A rerun of this job reuses the artifacts the package jobs built.

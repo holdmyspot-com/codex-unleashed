@@ -1,0 +1,15 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 1 Jan 2026 00:00:00 +0000
+Subject: [PATCH] Change an intentionally absent CP9 documentation fixture
+
+---
+ docs/cp9-nonexistent-verification-fixture.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/docs/cp9-nonexistent-verification-fixture.md b/docs/cp9-nonexistent-verification-fixture.md
+--- a/docs/cp9-nonexistent-verification-fixture.md
++++ b/docs/cp9-nonexistent-verification-fixture.md
+@@ -1 +1 @@
+-Old fixture text
++New fixture text
