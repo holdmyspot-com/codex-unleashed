@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 21 Nov 2026 00:00:00 +0000
+Subject: [PATCH] test: preserve MCP span capture during parallel tests
+
+Concurrent tests can initialize a shared tracing callsite before the scoped subscriber sees it. Maintain callsite interest so the cached MCP test counts the span produced by its turn.
+---
+ codex-rs/core/tests/suite/mcp_tool_cache.rs | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/codex-rs/core/tests/suite/mcp_tool_cache.rs b/codex-rs/core/tests/suite/mcp_tool_cache.rs
+index 109877c..c830ba3 100644
+--- a/codex-rs/core/tests/suite/mcp_tool_cache.rs
++++ b/codex-rs/core/tests/suite/mcp_tool_cache.rs
+@@ -636,9 +636,13 @@ async fn cached_mcp_startup_is_eager_for_root_and_lazy_for_subagents() -> anyhow
+     skip_if_no_network!(Ok(()));
+ 
+     let binding_captures = Arc::new(AtomicUsize::new(0));
++    // Keep shared callsites interested when another test reaches them first.
++    let _interest_cache_guard =
++        tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+     let _tracing = tracing_subscriber::registry()
+         .with(McpBindingCaptureCounter(Arc::clone(&binding_captures)))
+         .set_default();
++    tracing::callsite::rebuild_interest_cache();
+ 
+     let responses_server = responses::start_mock_server().await;
+     let command = remote_aware_stdio_server_bin()?;
