@@ -38,6 +38,10 @@ on:
         description: Dry runs only; skip the gate workflows, for rehearsing the package build alone
         type: boolean
         default: false
+      package_final_output_cache:
+        description: Reuse verified Linux x64 release executables during a package dry run
+        type: boolean
+        default: false
       package_public_key:
         description: Optional SSH public key for dry-run package workers; connect to each selected worker before packaging
         type: string
@@ -117,6 +121,8 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
           SKIP_GATES: ${{ inputs.skip_gates }}
           PACKAGE_TARGETS: ${{ inputs.package_targets }}
+          PACKAGE_DRY_RUN: ${{ inputs.package_dry_run }}
+          PACKAGE_FINAL_OUTPUT_CACHE: ${{ inputs.package_final_output_cache }}
         run: |
           set -euo pipefail
           live=false
@@ -140,6 +146,13 @@ jobs:
             test "$(jq 'length' <<< "$matrix")" = "$(jq -n --arg targets "$PACKAGE_TARGETS" '$targets | split(" ") | map(select(. != "")) | length')"
           else
             matrix="$(jq -c . <<< "$all")"
+          fi
+          if [[ "$PACKAGE_FINAL_OUTPUT_CACHE" == true ]]; then
+            if [[ "$live" == true || "$PACKAGE_DRY_RUN" != true ]] ||
+              ! jq -e 'any(.[]; .target == "x86_64-unknown-linux-musl")' <<< "$matrix" >/dev/null; then
+              printf '::error::package_final_output_cache requires a package dry run including Linux x64\n'
+              exit 1
+            fi
           fi
           printf 'live=%s\npackage_matrix=%s\n' "$live" "$matrix" >> "$GITHUB_OUTPUT"
 
@@ -455,6 +468,9 @@ jobs:
     # succeeded; skip_gates skips them, so the gate verdict is read from `report` instead.
     if: ${{ !cancelled() && needs.report.result == 'success' && needs.report.outputs.passed == 'true' && (needs.detect.outputs.live == 'true' || inputs.package_dry_run == true) }}
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
     timeout-minutes: 360
     strategy:
       fail-fast: false
@@ -462,6 +478,7 @@ jobs:
         include: ${{ fromJSON(needs.detect.outputs.package_matrix) }}
     env:
       TARGET: ${{ matrix.target }}
+      PACKAGE_FINAL_OUTPUT_CACHE: ${{ inputs.package_final_output_cache && matrix.target == 'x86_64-unknown-linux-musl' }}
       CODEX_UNLEASHED_BUILD_NUMBER: ${{ needs.detect.outputs.build }}
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       CARGO_INCREMENTAL: "0"
@@ -588,6 +605,14 @@ jobs:
       - name: Commit the lockfile's workspace package versions aligned with the release version
         run: bash "$CODEX_TOOLING" align-workspace-lock --source-root "$GITHUB_WORKSPACE"
 
+      - name: Set the reproducible package cache build epoch
+        if: env.PACKAGE_FINAL_OUTPUT_CACHE == 'true'
+        run: |
+          set -euo pipefail
+          # OpenSSL records the build time in libcrypto.a. Use the patched source's
+          # commit time so identical native inputs produce the same key.
+          printf 'SOURCE_DATE_EPOCH=%s\n' "$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
+
       - name: Read upstream's pinned Rust toolchain
         id: upstream-rust
         run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
@@ -603,11 +628,21 @@ jobs:
         with:
           version: 0.14.0
 
+      - name: Stage the verified Zig distribution for the package cache
+        id: final-output-cache-zig
+        if: env.PACKAGE_FINAL_OUTPUT_CACHE == 'true'
+        continue-on-error: true
+        run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-final-output-key.sh" stage-zig
+
       - name: Install upstream's musl build inputs
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
           bash .github/scripts/install-musl-build-tools.sh
+          if [[ -n "${CODEX_PACKAGE_CACHE_ZIG:-}" ]]; then
+            # Finish the package action's Linux package installation before keying.
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils make pkg-config libcap-dev
+          fi
           echo 'AWS_LC_SYS_NO_JITTER_ENTROPY=1' >> "$GITHUB_ENV"
           target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_$TARGET"
           printf '%s=1\n' "${target_no_jitter//-/_}" >> "$GITHUB_ENV"
@@ -668,6 +703,17 @@ jobs:
           # A voice helper identity query that fails keeps its stdout and stderr here; the evidence upload collects them.
           echo "CODEX_VOICE_DIAGNOSTICS_DIR=$RUNNER_TEMP/voice-helper-identity-$TARGET" >> "$GITHUB_ENV"
 
+      - name: Prepare the private Linux voice build mount
+        id: final-output-voice-root
+        if: env.PACKAGE_FINAL_OUTPUT_CACHE == 'true'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          sudo install -d -o root -g root -m 0755 /var/lib/codex-voice-build
+          scratch="$(mktemp -d "$RUNNER_TEMP/voice-native.XXXXXXXX")"
+          touch "$scratch/mount-ready"
+          echo "CODEX_VOICE_SANDBOX_SCRATCH=$scratch" >> "$GITHUB_ENV"
+
       - name: Build the sealed voice runtime for this patched source
         id: voice-build
         env:
@@ -714,6 +760,47 @@ jobs:
           printf 'result_dir=%s\nrelease_dir=%s\nbuild_commit=%s\nverification_artifact=%s\ntooling_launcher=%s\n' \
             "$result_dir" "$release_dir" "$build_commit" "$verification_artifact" "$CODEX_TOOLING" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare the package executable cache transport
+        id: final-output-cache-transport
+        if: steps.final-output-cache-zig.outcome == 'success' && steps.final-output-voice-root.outcome == 'success'
+        continue-on-error: true
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          version: 1.3.1
+
+      - name: Identify the exact package executable cache inputs
+        id: final-output-cache-inputs
+        if: steps.final-output-cache-transport.outcome == 'success'
+        continue-on-error: true
+        env:
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+          UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
+          VERSION: ${{ needs.detect.outputs.version }}
+          PATCHES: ${{ needs.detect.outputs.patches }}
+          VOICE_RELEASE_DIR: ${{ steps.voice-build.outputs.release_dir }}
+          VOICE_BUILD_COMMIT: ${{ steps.voice-build.outputs.build_commit }}
+        run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-final-output-key.sh" inputs
+
+      - name: Retain the package cache key receipt
+        if: steps.final-output-cache-inputs.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: package-final-output-key-${{ matrix.target }}
+          path: ${{ runner.temp }}/package-final-output-key.txt
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Restore verified pre-strip executable outputs
+        id: package-final-output-restore
+        timeout-minutes: 20
+        if: steps.final-output-cache-inputs.outputs.tag != ''
+        continue-on-error: true
+        env:
+          CACHE_TAG: ${{ steps.final-output-cache-inputs.outputs.tag }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-final-output-cache.sh" restore
+
       - name: Build and smoke-test upstream's package archives
         id: package
         uses: ./.github/actions/build-codex-packages
@@ -721,6 +808,9 @@ jobs:
           target: ${{ matrix.target }}
           package-version: ${{ needs.detect.outputs.version }}+${{ needs.detect.outputs.build }}
           build-mode: release
+          prepared-musl-zig: ${{ env.CODEX_PACKAGE_CACHE_ZIG }}
+          restored-final-outputs: ${{ steps.package-final-output-restore.outputs.path }}
+          final-output-cache-tag: ${{ steps.final-output-cache-inputs.outputs.tag }}
           voice-release-dir: ${{ steps.voice-build.outputs.release_dir }}
           voice-build-commit: ${{ steps.voice-build.outputs.build_commit }}
           tooling-launcher: ${{ steps.voice-build.outputs.tooling_launcher }}
@@ -906,6 +996,26 @@ jobs:
           path: ${{ runner.temp }}/assets/*
           retention-days: 3
           if-no-files-found: error
+
+      - name: Retain restored executable provenance
+        if: env.CODEX_PACKAGE_FINAL_OUTPUT_REUSED == 'true' && steps.package-final-output-restore.outputs.result == 'hit'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: package-final-output-provenance-${{ matrix.target }}
+          path: ${{ steps.package-final-output-restore.outputs.path }}/provenance.json
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Save verified pre-strip executable outputs
+        timeout-minutes: 20
+        if: >-
+          env.PACKAGE_FINAL_OUTPUT_CACHE == 'true' && steps.package.outcome == 'success' &&
+          steps.final-output-cache-inputs.outputs.tag != '' && steps.package-final-output-restore.outputs.result != 'hit'
+        continue-on-error: true
+        env:
+          CACHE_TAG: ${{ steps.final-output-cache-inputs.outputs.tag }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-final-output-cache.sh" publish
 
       - name: Remove the tooling runtime
         if: always()
