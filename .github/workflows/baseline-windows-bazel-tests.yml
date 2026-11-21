@@ -11,41 +11,45 @@ on:
         description: Optional SSH public key; connect to each Windows worker before starting its Bazel checks
         type: string
         default: ""
+      ordinary_msvc_recovery:
+        description: Run only the explicit native MSVC recovery tests
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 jobs:
   test:
+    name: test (${{ matrix.target }}, ${{ matrix.shard }}, ${{ matrix.target == 'x86_64-pc-windows-msvc' && 1 || 4 }})
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: x86_64-pc-windows-gnullvm
-            shard: 1
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 2
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 3
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 4
-            shard_count: 4
+        target: ${{ fromJSON(inputs.ordinary_msvc_recovery && '["x86_64-pc-windows-msvc"]' || '["x86_64-pc-windows-gnullvm","x86_64-pc-windows-msvc"]') }}
+        shard: [1, 2, 3, 4]
+        exclude:
           - target: x86_64-pc-windows-msvc
-            shard: 1
-            shard_count: 1
+            shard: 2
+          - target: x86_64-pc-windows-msvc
+            shard: 3
+          - target: x86_64-pc-windows-msvc
+            shard: 4
     runs-on: windows-2025
-    timeout-minutes: 360
+    timeout-minutes: ${{ inputs.ordinary_msvc_recovery && 180 || 360 }}
     env:
       TARGET: ${{ matrix.target }}
       BAZEL_TEST_SHARD: ${{ matrix.shard }}
-      BAZEL_TEST_SHARD_COUNT: ${{ matrix.shard_count }}
+      BAZEL_TEST_SHARD_COUNT: ${{ matrix.target == 'x86_64-pc-windows-msvc' && 1 || 4 }}
     defaults:
       run:
         shell: bash
     steps:
+      - name: Require authenticated recovery worker
+        if: ${{ !inputs.ordinary_msvc_recovery || inputs.public_key == '' }}
+        run: |
+          echo 'Explicit MSVC recovery mode and an SSH public key are required.' >&2
+          exit 1
+
       - name: Retrieve restart inputs
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -274,8 +278,34 @@ jobs:
           git diff -- codex-rs/Cargo.lock > "$evidence/workspace-version-lock.diff"
           git diff --binary > "$evidence/source-before.diff"
 
+      - name: Check MSVC recovery disk headroom
+        if: inputs.ordinary_msvc_recovery
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'baseline-windows-bazel-evidence'
+          $output = Get-Item -LiteralPath ([IO.Path]::GetPathRoot($env:BAZEL_OUTPUT_BASE))
+          $cache = Get-Item -LiteralPath $env:RUNNER_TEMP
+          $outputFree = $output.PSDrive.Free
+          $cacheFree = $cache.PSDrive.Free
+          [ordered]@{
+            output_drive = $output.PSDrive.Name
+            output_free_bytes = $outputFree
+            runner_temp_drive = $cache.PSDrive.Name
+            runner_temp_free_bytes = $cacheFree
+            output_minimum_bytes = 64GB
+            runner_temp_reserve_bytes = 20GB
+          } | ConvertTo-Json | Set-Content (Join-Path $evidence 'msvc-recovery-disk.json')
+          # Local output is the immediate constraint. The earlier sizing step
+          # reserves the maximum additional page-file growth on the backing disk.
+          if ($outputFree -lt 64GB -or $cacheFree -lt 20GB) {
+            throw 'Insufficient free disk for the explicit MSVC recovery selection.'
+          }
+
       - name: Run the maintained Windows Bazel test selection
         id: bazel_tests
+        env:
+          ORDINARY_MSVC_RECOVERY: ${{ inputs.ordinary_msvc_recovery }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
@@ -323,7 +353,24 @@ jobs:
           else
             wrapper_args+=(--windows-msvc-host-platform)
             test_args+=(--config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --build_metadata=TAG_windows_native_main=true)
-            targets=(//... -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests)
+            if [[ "$ORDINARY_MSVC_RECOVERY" == true ]]; then
+              targets=(
+                //codex-rs/app-server-protocol:app-server-protocol-unit-tests
+                //codex-rs/app-server-transport:app-server-transport-unit-tests
+                //codex-rs/ext/history-notes:history-notes-unit-tests
+              )
+              cases=(
+                tests::precomputed_exports_tests::precomputed_exports_are_written_to_disk
+                websocket_compression::tests::response_header_selects_compression_or_plain_fallback
+                tools::tests::sparse_catalog_messages_preserve_defaults_and_explicit_empty_descriptions
+              )
+              test_args+=(--nocache_test_results --test_sharding_strategy=disabled --test_arg=--exact)
+              for test_case in "${cases[@]}"; do
+                test_args+=("--test_arg=$test_case")
+              done
+            else
+              targets=(//... -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests)
+            fi
             printf '%s\n' "${targets[@]}" > "$evidence/selected-targets.txt"
           fi
           if [[ "$RUNNER_OS" == Windows ]]; then
@@ -372,13 +419,24 @@ jobs:
           bash "$CODEX_TOOLING" validate-bazel-test-evidence \
             --bep "$bep" --expected-patterns "$evidence/execution-targets.txt" --bazel-exit-code "$result" \
             > "$evidence/bazel-test-evidence.json"
+          if [[ "$ORDINARY_MSVC_RECOVERY" == true && "$result" == 0 ]]; then
+            mkdir -p "$evidence/ordinary-case-logs"
+            printf '%s\n' "${cases[@]}" > "$evidence/ordinary-cases.txt"
+            for i in "${!targets[@]}"; do
+              target_path="${targets[$i]#//}"
+              log="bazel-testlogs/${target_path/:/\/}/test.log"
+              cp "$log" "$evidence/ordinary-case-logs/$i.log"
+              grep -Fx 'running 1 test' <(tr -d '\r' < "$log")
+              grep -Fx "test ${cases[$i]} ... ok" <(tr -d '\r' < "$log")
+            done
+          fi
           git diff --binary > "$evidence/source-after.diff"
           cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
           printf 'bep-complete=true\n' >> "$GITHUB_OUTPUT"
           # Bazel exits 3 when tests failed and everything else built. The comparison with the unpatched baseline below
           # judges those failures (an unpatched run records that baseline), so they alone do not fail this step.
           # Any other failure, such as a build error, does.
-          if [[ "$result" == 3 ]]; then
+          if [[ "$result" == 3 && "$ORDINARY_MSVC_RECOVERY" != true ]]; then
             printf 'Bazel reported failing tests; the baseline comparison decides the outcome.\n'
             exit 0
           fi
@@ -431,7 +489,7 @@ jobs:
       - name: Record or compare this shard's failures
         # An unpatched run is pristine upstream, so its failures are the baseline that patched runs are compared with;
         # the evidence artifact carries the file for committing under docs/test-baselines.
-        if: ${{ !cancelled() && steps.bazel_tests.outcome == 'success' && steps.bazel_tests.outputs['bep-complete'] == 'true' }}
+        if: ${{ !cancelled() && !inputs.ordinary_msvc_recovery && steps.bazel_tests.outcome == 'success' && steps.bazel_tests.outputs['bep-complete'] == 'true' }}
         env:
           PATCHES: ${{ inputs.patches }}
         run: |
