@@ -7,7 +7,8 @@ name: Automatic upstream release
 #
 # A dispatch with dry_run=true (the default) stops after the gates and publishes nothing: no tag, release, draft or
 # release asset. It builds no packages unless package_dry_run is set, which builds the selected targets' package archives
-# and installers into 3-day workflow artifacts only. skip_gates (dry runs only) skips the gate workflows so the package
+# and installers into 3-day workflow artifacts. The opt-in package_cargo_cache pilot reuses verified Cargo dependencies
+# for a one-target Linux x64 package dry run. skip_gates (dry runs only) skips the gate workflows so the package
 # build can be rehearsed alone on cheaper runners. Enabling the schedule below is the owner's step at acceptance.
 #
 # Gate coverage: Linux, Windows and macOS tests (the macOS one is the Bazel suite), lints on three platforms and the
@@ -36,6 +37,10 @@ on:
         default: ""
       skip_gates:
         description: Dry runs only; skip the gate workflows, for rehearsing the package build alone
+        type: boolean
+        default: false
+      package_cargo_cache:
+        description: Try the exact compiled Cargo cache during a package dry run for x86_64-unknown-linux-musl
         type: boolean
         default: false
       package_public_key:
@@ -117,6 +122,8 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
           SKIP_GATES: ${{ inputs.skip_gates }}
           PACKAGE_TARGETS: ${{ inputs.package_targets }}
+          PACKAGE_DRY_RUN: ${{ inputs.package_dry_run }}
+          PACKAGE_CARGO_CACHE: ${{ inputs.package_cargo_cache }}
         run: |
           set -euo pipefail
           live=false
@@ -125,6 +132,11 @@ jobs:
           fi
           if [[ "$live" == true && "$SKIP_GATES" == true ]]; then
             printf '::error::skip_gates is allowed only with dry_run=true\n'
+            exit 1
+          fi
+          if [[ "$PACKAGE_CARGO_CACHE" == true && ( "$live" == true || "$PACKAGE_DRY_RUN" != true ||
+            "$PACKAGE_TARGETS" != x86_64-unknown-linux-musl ) ]]; then
+            printf '::error::package_cargo_cache requires a package dry run for x86_64-unknown-linux-musl only\n'
             exit 1
           fi
           all='[{"runner":"ubuntu-24.04","target":"x86_64-unknown-linux-musl"},
@@ -455,6 +467,9 @@ jobs:
     # succeeded; skip_gates skips them, so the gate verdict is read from `report` instead.
     if: ${{ !cancelled() && needs.report.result == 'success' && needs.report.outputs.passed == 'true' && (needs.detect.outputs.live == 'true' || inputs.package_dry_run == true) }}
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
     timeout-minutes: 360
     strategy:
       fail-fast: false
@@ -714,6 +729,38 @@ jobs:
           printf 'result_dir=%s\nrelease_dir=%s\nbuild_commit=%s\nverification_artifact=%s\ntooling_launcher=%s\n' \
             "$result_dir" "$release_dir" "$build_commit" "$verification_artifact" "$CODEX_TOOLING" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare the package Cargo cache transport
+        id: package-cache-transport
+        if: inputs.package_cargo_cache
+        continue-on-error: true
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          version: 1.3.1
+
+      - name: Identify the exact package Cargo cache inputs
+        id: package-cache-inputs
+        if: steps.package-cache-transport.outcome == 'success'
+        continue-on-error: true
+        env:
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+          UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
+          VERSION: ${{ needs.detect.outputs.version }}
+          PATCHES: ${{ needs.detect.outputs.patches }}
+          VOICE_RELEASE_DIR: ${{ steps.voice-build.outputs.release_dir }}
+          VOICE_BUILD_COMMIT: ${{ steps.voice-build.outputs.build_commit }}
+        run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-cargo-cache.sh" inputs
+
+      - name: Restore the exact package Cargo cache
+        id: package-cache-restore
+        timeout-minutes: 20
+        if: steps.package-cache-inputs.outputs.tag != ''
+        continue-on-error: true
+        env:
+          CACHE_TAG: ${{ steps.package-cache-inputs.outputs.tag }}
+          GHCR_TOKEN: ${{ github.token }}
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+        run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-cargo-cache.sh" restore
+
       - name: Build and smoke-test upstream's package archives
         id: package
         uses: ./.github/actions/build-codex-packages
@@ -906,6 +953,16 @@ jobs:
           path: ${{ runner.temp }}/assets/*
           retention-days: 3
           if-no-files-found: error
+
+      - name: Save verified package Cargo dependencies
+        timeout-minutes: 20
+        if: steps.package-cache-inputs.outputs.tag != '' && steps.package-cache-restore.outputs.result != 'hit'
+        continue-on-error: true
+        env:
+          CACHE_TAG: ${{ steps.package-cache-inputs.outputs.tag }}
+          GHCR_TOKEN: ${{ github.token }}
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+        run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-cargo-cache.sh" save
 
       - name: Remove the tooling runtime
         if: always()
