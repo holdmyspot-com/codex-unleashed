@@ -22,20 +22,8 @@ jobs:
       matrix:
         include:
           - target: x86_64-pc-windows-gnullvm
-            shard: 1
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 2
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 3
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
             shard: 4
             shard_count: 4
-          - target: x86_64-pc-windows-msvc
-            shard: 1
-            shard_count: 1
     runs-on: windows-2025
     timeout-minutes: 360
     env:
