@@ -9,6 +9,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tarfile
 import tempfile
 
@@ -98,8 +99,9 @@ def package_voice_fixture(args, inputs, result, evidence):
     for binary in [result / name for name in (HELPER, *TEST_BINARIES)] + dylibs:
         require(output("xcrun", "lipo", "-archs", str(binary)) == architecture,
                 f"Unexpected native architecture for {binary}")
+    evidence.parent.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="voice-cache-native-fixture-", dir=os.environ["RUNNER_TEMP"]) as tmp:
-        package = Path(tmp) / "extracted-layout"
+        package = Path(tmp) / "staging"
         (package / "bin").mkdir(parents=True)
         (package / "codex-path").mkdir()
         for name in ("codex", "codex-exec-server"):
@@ -115,6 +117,17 @@ def package_voice_fixture(args, inputs, result, evidence):
                   "--build-commit", inputs["source_commit"], "--package-version", args.version]
         command = ["bash", os.environ["CODEX_TOOLING"], "voice-runtime"]
         subprocess.run(command + ["stage", "--release-dir", str(result / "release")] + common, check=True)
+        # The release archive writer normalizes executable modes. Exercise the
+        # same path so the relocated test sees the permissions of shipped files.
+        archive_path = Path(tmp) / "fixture.tar.gz"
+        build_env = {**os.environ, "PYTHONPATH": str(Path.cwd() / "scripts"), "CODEX_REPO_ROOT": str(Path.cwd())}
+        subprocess.run([sys.executable, "-m", "codex_package.archive", "write", "--package-dir", str(package),
+                        "--archive-output", str(archive_path)], check=True, env=build_env)
+        extracted = Path(tmp) / "extracted package"
+        extracted.mkdir()
+        with tarfile.open(archive_path, "r:gz") as archive:
+            archive.extractall(extracted, filter="data")
+        common[1] = str(extracted)
         subprocess.run(command + ["verify", "--test-binary", str(result / TEST_BINARIES[0]),
                                   "--installed-test-binary", str(result / TEST_BINARIES[1]),
                                   "--evidence-dir", str(evidence)] + common, check=True)
