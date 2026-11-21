@@ -146,6 +146,10 @@ if [[ "$operation" == inputs ]]; then
     cat "$inputs/components"
     (cd "$inputs" && sha256sum "${compiler_components[@]}")
     cat "$inputs/voice-files"
+    if [[ "$RUNNER_OS:$RUNNER_ARCH" == Windows:ARM64 ]]; then
+      grep -E '^(cargo_linker|wrapper_source|wrapper_compiler|real_linker|arm64_link_preflight)_sha256=[0-9a-f]{64}$' \
+        "$inputs/compiler-toolchain"
+    fi
   } > "$inputs/key-receipt"
   mv -- "$inputs/key-receipt" "$RUNNER_TEMP/package-cargo-cache-key.txt"
   cat "$inputs/components"

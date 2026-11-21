@@ -236,3 +236,6 @@ bash "$key_script" inputs >/dev/null
 test "$arm64_key" = "$(tail -n1 "$GITHUB_OUTPUT")"
 LIBSQLITE3_FLAGS='' bash "$key_script" inputs >/dev/null
 test "$arm64_key" != "$(tail -n1 "$GITHUB_OUTPUT")"
+for component in cargo_linker wrapper_source wrapper_compiler real_linker arm64_link_preflight; do
+  grep -Ex "${component}_sha256=[0-9a-f]{64}" "$RUNNER_TEMP/package-cargo-cache-key.txt"
+done
