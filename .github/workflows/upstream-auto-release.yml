@@ -62,8 +62,8 @@ concurrency:
   group: >-
     upstream-auto-release-${{ inputs.upstream_tag || 'latest' }}-${{
       (github.event_name == 'schedule' || !inputs.dry_run) && 'live' ||
-      (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_cache_key_only && inputs.package_targets == 'aarch64-pc-windows-msvc') &&
-        format('windows-arm64-package-cache-key-{0}', github.run_id) ||
+      (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_targets == 'aarch64-pc-windows-msvc') &&
+        (inputs.package_cache_key_only && format('windows-arm64-package-cache-key-{0}', github.run_id) || 'windows-arm64-package-cache-pilot') ||
       (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_targets == 'x86_64-pc-windows-msvc') &&
         (inputs.package_cache_key_only && format('windows-package-cache-key-{0}', github.run_id) || 'windows-package-cache-pilot') ||
       (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_cache_key_only) && 'package-cache-key' ||
@@ -156,13 +156,7 @@ jobs:
               exit 1
             fi
             case "$PACKAGE_TARGETS" in
-              x86_64-unknown-linux-musl|x86_64-pc-windows-msvc) ;;
-              aarch64-pc-windows-msvc)
-                if [[ "$PACKAGE_CACHE_KEY_ONLY" != true ]]; then
-                  printf '::error::Windows ARM64 package caching requires package_cache_key_only=true\n'
-                  exit 1
-                fi
-                ;;
+              x86_64-unknown-linux-musl|x86_64-pc-windows-msvc|aarch64-pc-windows-msvc) ;;
               *)
                 printf '::error::package_cargo_cache requires exactly one supported package target\n'
                 exit 1
@@ -794,7 +788,7 @@ jobs:
         id: package-cache-transport
         if: >-
           inputs.package_cargo_cache && !inputs.package_cache_key_only &&
-          (steps.package-cache-zig.outcome == 'success' || matrix.target == 'x86_64-pc-windows-msvc')
+          (steps.package-cache-zig.outcome == 'success' || runner.os == 'Windows')
         continue-on-error: true
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
         with:

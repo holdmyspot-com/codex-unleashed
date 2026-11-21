@@ -7,13 +7,7 @@ operation="${1:?Expected stage-zig, inputs, restore or save}"
 metadata="$RUNNER_TEMP/manifest-patch-repo"
 transport="$metadata/.github/scripts/ghcr-cargo-target-cache.sh"
 case "$RUNNER_OS:$RUNNER_ARCH:$TARGET" in
-  Linux:X64:x86_64-unknown-linux-musl|Windows:X64:x86_64-pc-windows-msvc) ;;
-  Windows:ARM64:aarch64-pc-windows-msvc)
-    if [[ "$operation" != inputs ]]; then
-      printf 'The Windows ARM64 package cache pilot supports key generation only\n' >&2
-      exit 2
-    fi
-    ;;
+  Linux:X64:x86_64-unknown-linux-musl|Windows:X64:x86_64-pc-windows-msvc|Windows:ARM64:aarch64-pc-windows-msvc) ;;
   *) printf 'Unsupported package cache host and target: %s/%s/%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$TARGET" >&2; exit 2 ;;
 esac
 windows_toolchain="$metadata/.github/scripts/windows-package-toolchain-inputs.sh"

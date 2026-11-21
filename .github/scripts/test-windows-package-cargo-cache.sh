@@ -27,7 +27,12 @@ fi
 TRANSPORT
 mkdir -p "$RUNNER_TEMP/source"
 cd "$RUNNER_TEMP/source"
-export PATH="$RUNNER_TEMP/bin:$PATH" RUNNER_OS=Windows RUNNER_ARCH=X64 TARGET=x86_64-pc-windows-msvc
+export PATH="$RUNNER_TEMP/bin:$PATH" RUNNER_OS=Windows
+case "${1:-X64}" in
+  X64) export RUNNER_ARCH=X64 TARGET=x86_64-pc-windows-msvc ;;
+  ARM64) export RUNNER_ARCH=ARM64 TARGET=aarch64-pc-windows-msvc ;;
+  *) exit 2 ;;
+esac
 export GITHUB_REPOSITORY_OWNER=fixture GITHUB_ACTOR=fixture GHCR_TOKEN=fixture UPSTREAM_TAG=rust-v0.167.0
 printf -v digest '%064d' 0
 export CACHE_TAG="cargo-v3-$TARGET-pkg-$digest"
