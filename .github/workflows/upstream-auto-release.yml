@@ -63,7 +63,7 @@ concurrency:
     upstream-auto-release-${{ inputs.upstream_tag || 'latest' }}-${{
       (github.event_name == 'schedule' || !inputs.dry_run) && 'live' ||
       (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_targets == 'aarch64-unknown-linux-musl') &&
-        (inputs.package_cache_key_only && 'package-cache-key-arm64' || 'package-cache-pilot-arm64') ||
+        (inputs.package_cache_key_only && format('package-cache-key-arm64-{0}', github.run_id) || 'package-cache-pilot-arm64') ||
       (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_cache_key_only) && 'package-cache-key' ||
       (inputs.package_dry_run && inputs.package_cargo_cache) && 'package-cache-pilot' ||
       'dry'
