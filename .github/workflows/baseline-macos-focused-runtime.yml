@@ -1,39 +1,41 @@
-name: Focused upstream macOS runtime
+name: Focused macOS deep-home readiness stress
 
 on:
   workflow_dispatch:
     inputs:
-      public_key:
-        description: Public SSH key for the client that connects before testing
+      patches:
+        description: The complete ordered patch queue from patches/README.md at this workflow revision
         required: true
         type: string
-      target:
-        description: Native macOS target from the existing free release matrix
-        type: choice
-        default: aarch64-apple-darwin
-        options: [aarch64-apple-darwin, x86_64-apple-darwin]
+      public_key:
+        description: Public SSH key for the authenticated client that connects before the test
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   test:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ${{ (inputs.target == 'x86_64-apple-darwin' && 'macos-15-intel') || 'macos-15' }}
+    name: deep-home readiness - ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
-    permissions:
-      contents: read
-      packages: write
     concurrency:
-      group: ${{ github.workflow }}-${{ inputs.target }}
+      group: ${{ github.workflow }}-${{ matrix.target }}
       cancel-in-progress: false
-      queue: max
     env:
-      TARGET: ${{ inputs.target }}
-      CODEX_CI_TARGET: ${{ inputs.target }}
-      CODEX_CI_PROFILE: ci-test
+      TARGET: ${{ matrix.target }}
+      PATCHES: ${{ inputs.patches }}
       CARGO_INCREMENTAL: '0'
-      CARGO_CACHE_PARTS: '1'
       RUST_BACKTRACE: '1'
       RUST_LIB_BACKTRACE: '0'
       RUST_MIN_STACK: '8388608'
@@ -46,14 +48,28 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Read exact source and runner selection
+      - name: Validate both native targets and the exact patch queue
         id: source
         run: |
           set -euo pipefail
-          node -e 'const m=require("./.github/release-matrix.json"); const runners={"aarch64-apple-darwin":"macos-15","x86_64-apple-darwin":"macos-15-intel"}; if (!m.some(x=>x.target===process.env.TARGET && x.runner===runners[process.env.TARGET])) throw Error("Target must use an existing free native macOS runner");'
+          node -e 'const m=require("./.github/release-matrix.json"); const expected={"aarch64-apple-darwin":"macos-15","x86_64-apple-darwin":"macos-15-intel"}; if (!m.some(x=>x.target===process.env.TARGET && x.runner===expected[process.env.TARGET])) throw Error("Target must use its existing native macOS runner");'
+          read -r -a patch_paths <<< "$PATCHES"
+          readme_paths=()
+          while IFS= read -r path; do readme_paths+=("$path"); done < <(
+            sed -nE 's/^[[:space:]]*[0-9]+\.[[:space:]]+\[[^]]+\]\(([^)]+\.patch)\).*/\1/p' patches/README.md
+          )
+          test "${#readme_paths[@]}" -gt 0
+          test "${#patch_paths[@]}" -eq "${#readme_paths[@]}"
+          for i in "${!readme_paths[@]}"; do
+            test "${patch_paths[$i]}" = "${readme_paths[$i]}"
+            test -f "patches/${patch_paths[$i]}"
+          done
+          printf '%s\n' "${patch_paths[@]}" > "$RUNNER_TEMP/patches.txt"
+          grep -Fqx 'holdmyspot-com/codex-unleashed/flaky-tests/macos-arm64-daemon-timeouts.patch' "$RUNNER_TEMP/patches.txt"
+          grep -Fqx 'holdmyspot-com/codex-unleashed/native-test-prerequisites/macos-arm64-deep-home-scheduling.patch' "$RUNNER_TEMP/patches.txt"
           printf 'commit=%s\n' "$(cat .github/upstream-commit)" >> "$GITHUB_OUTPUT"
 
-      - name: Retrieve pristine selected upstream
+      - name: Retrieve the exact stable upstream source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           repository: openai/codex
@@ -61,15 +77,14 @@ jobs:
           path: upstream
           persist-credentials: false
 
-      - name: Prepare upstream's native test host
+      - name: Prepare upstream native test host
         uses: ./upstream/.github/actions/setup-ci
 
-      - name: Own build state through later remote-session cleanup
+      - name: Own build and evidence storage through debug cleanup
         uses: ./.github/actions/focused-runtime-storage
 
       - name: Read upstream's pinned Rust toolchain
         id: upstream-rust
-        shell: bash
         run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' upstream/codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
 
       - name: Set up matching Rust
@@ -83,31 +98,36 @@ jobs:
         with:
           tool: nextest@0.9.103
 
-      - name: Cache Cargo downloads
-        uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a
-        with:
-          prefix-key: upstream-${{ steps.source.outputs.commit }}-downloads-v1
-          workspaces: upstream/codex-rs -> ${{ env.CARGO_TARGET_DIR }}
-          cache-targets: false
-          cache-bin: false
-          add-rust-environment-hash-key: false
-          shared-key: ${{ env.TARGET }}
-
-      - name: Set up existing private cache transport
-        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
-        with:
-          version: 1.3.1
-
-      - name: Authenticate private GHCR access
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify pristine source and apply the complete queue
+        id: patched
         run: |
           set -euo pipefail
-          printf '%s' "$GHCR_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
-          printf 'CARGO_CACHE_REPOSITORY=ghcr.io/%s/%s\n' "$owner" "$(cat .github/cargo-cache-package)" >> "$GITHUB_ENV"
+          evidence="$FOCUSED_RUNTIME/evidence"
+          printf '%s\n' "$TARGET" > "$evidence/target.txt"
+          printf '%s\n' "$(git rev-parse HEAD)" > "$evidence/restart-commit.txt"
+          printf '%s\n' "$(git -C upstream rev-parse HEAD)" > "$evidence/upstream-commit.txt"
+          queue_count="$(wc -l < "$RUNNER_TEMP/patches.txt" | tr -d ' ')"
+          test "$(git -C upstream rev-parse HEAD)" = "$(cat .github/upstream-commit)"
+          test -z "$(git -C upstream status --porcelain)"
+          perl -pi -e '$w = /^\[workspace\.package\]\r?$/ ? 1 : /^\[/ ? 0 : $w;' \
+            -e 's/^version = "[^"]+"(\r?)$/version = "0.0.0"$1/ if $w' upstream/codex-rs/Cargo.toml
+          if ! git -C upstream diff --quiet -- codex-rs/Cargo.toml; then
+            git -C upstream -c user.name='CP9 test harness' -c user.email='cp9-test-harness@example.invalid' \
+              commit -q -m "Test with upstream's development version 0.0.0" -- codex-rs/Cargo.toml
+          fi
+          while IFS= read -r patch; do
+            git -C upstream -c user.name='CP9 downstream patch' -c user.email='cp9-patches@example.invalid' \
+              am --whitespace=nowarn "$GITHUB_WORKSPACE/patches/$patch"
+          done < "$RUNNER_TEMP/patches.txt"
+          cp "$RUNNER_TEMP/patches.txt" "$evidence/patches.txt"
+          git -C upstream log -"$queue_count" --format='%H %s' > "$evidence/applied-patches.txt"
+          test "$(wc -l < "$evidence/applied-patches.txt" | tr -d ' ')" = "$queue_count"
+          grep -Fq 'test(=bootstrap_updater_is_ready_in_deep_codex_home)' upstream/codex-rs/.config/nextest.toml
+          grep -Fq 'threads-required = "num-test-threads"' upstream/codex-rs/.config/nextest.toml
+          grep -Fq 'slow-timeout = { period = "1m", terminate-after = 4 }' upstream/codex-rs/.config/nextest.toml
+          shasum -a 256 "$RUNNER_TEMP/patches.txt" > "$evidence/patch-queue.sha256"
 
-      - name: Connect before the changed remote commands
+      - name: Open authenticated debug session
         uses: ./.github/actions/debug-failed-runner
         with:
           public-key: ${{ inputs.public_key }}
@@ -124,182 +144,60 @@ jobs:
             sleep 2
           done
 
-      - name: Check the test's native prerequisite
-        id: prerequisite
+      - name: Build and verify exact ordinary test selection
+        id: selection
+        working-directory: upstream/codex-rs
         run: |
           set -euo pipefail
-          /usr/bin/sandbox-exec -p '(version 1)(allow default)' /usr/bin/true
-          sw_vers > "$FOCUSED_RUNTIME/evidence/platform.txt"
-          uname -m >> "$FOCUSED_RUNTIME/evidence/platform.txt"
-          df -h "$FOCUSED_RUNTIME" >> "$FOCUSED_RUNTIME/evidence/platform.txt"
-
-      - name: Prepare verified V8 and bundled freshness tooling
-        uses: ./.github/actions/focused-runtime-cache-setup
-
-      - name: Identify profile-specific compiled state
-        id: cache
-        run: |
-          set -euo pipefail
-          run_codex_tooling() {
-            # Linux packages a native launcher; other runners package a Bash launcher.
-            if [[ "$RUNNER_OS" == Linux ]]; then
-              "$CODEX_SOURCE_CACHE_TOOL" "$@"
-            else
-              bash "$CODEX_SOURCE_CACHE_TOOL" "$@"
-            fi
-          }
           evidence="$FOCUSED_RUNTIME/evidence"
-          cp .github/upstream-commit "$evidence/upstream-commit"
-          cp upstream/codex-rs/Cargo.lock "$evidence/upstream-Cargo.lock"
-          git -C upstream diff --exit-code HEAD
-          test -z "$(git -C upstream status --porcelain)"
-          shasum -a 256 .github/workflows/baseline-macos-focused-runtime.yml > "$evidence/wrappers.txt"
-          shasum -a 256 .github/scripts/ghcr-cargo-target-cache.sh \
-            tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/{Main,CargoCacheKeys,CargoCacheParts,VerifyCargoLock}.java \
-            > "$evidence/helpers-transport-only.txt"
-          cp "$evidence/helpers-transport-only.txt" "$evidence/helpers.txt"
-          git ls-files -z -- tooling/cli/pom.xml tooling/cli/src/main tooling/cli/src/build .github/actions/focused-runtime-cache-setup | LC_ALL=C sort -z | xargs -0 shasum -a 256 >> "$evidence/helpers.txt"
-          {
-            rustc -vV
-            cargo --version
-            cargo nextest --version
-            printf 'profile=ci-test\ntarget=%s\n' "$TARGET"
-            printf 'cargo nextest run --target %s --cargo-profile ci-test -p codex-cli --test sandbox_tty --no-fail-fast --success-output immediate -E test(=sandbox_blocks_terminal_input_injection)\n' "$TARGET"
-            printf '%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}" "${ImageVersion:-}"
-            env | LC_ALL=C sort | grep -E '^(RUSTFLAGS|RUSTDOCFLAGS|RUSTC|RUSTC_WRAPPER|CARGO_INCREMENTAL|CARGO_PROFILE_[A-Z0-9_]+|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CC|CXX|AR|CFLAGS|CXXFLAGS|SDKROOT|MACOSX_DEPLOYMENT_TARGET)='
-            shasum -a 256 upstream/codex-rs/Cargo.lock upstream/codex-rs/rust-toolchain.toml upstream/codex-rs/Cargo.toml
-          } > "$evidence/compiler.txt"
-          run_codex_tooling cargo-cache-keys "$TARGET" "$evidence/upstream-commit" "$evidence/wrappers.txt" "$evidence/helpers.txt" "$evidence/compiler.txt" | tee "$evidence/keys.txt" >> "$GITHUB_OUTPUT"
-          run_codex_tooling cargo-cache-keys "$TARGET" "$evidence/upstream-commit" "$evidence/wrappers.txt" "$evidence/helpers-transport-only.txt" "$evidence/compiler.txt" | sed -n 's/^seed_tag=/legacy_seed_tag=/p' >> "$GITHUB_OUTPUT"
+          cargo nextest list --target "$TARGET" --cargo-profile ci-test -p codex-cli --test app_server_daemon \
+            -E 'test(=bootstrap_updater_is_ready_in_deep_codex_home)' --message-format json \
+            > "$evidence/test-list.json"
+          selected_count="$(jq '[.["rust-suites"][] | select(."binary-name" == "app_server_daemon") | .testcases | to_entries[] | select(.key == "bootstrap_updater_is_ready_in_deep_codex_home") | select(.value.ignored == false) | select(.value["filter-match"].status == "matches")] | length' "$evidence/test-list.json")"
+          printf '%s\n' "$selected_count" > "$evidence/selected-test-count.txt"
+          test "$selected_count" = 1
+          workers="$(sysctl -n hw.logicalcpu)"
+          [[ "$workers" =~ ^[1-9][0-9]*$ ]]
+          printf 'CPU_LOAD_WORKERS=%s\n' "$workers" >> "$GITHUB_ENV"
+          jq -n --arg target "$TARGET" --arg test 'bootstrap_updater_is_ready_in_deep_codex_home' \
+            --argjson selected_count "$selected_count" --argjson stress_count 3 --argjson retries 0 \
+            --argjson cpu_load_workers "$workers" \
+            '{target:$target,test:$test,selected_count:$selected_count,stress_count:$stress_count,retries:$retries,cpu_load_workers:$cpu_load_workers}' \
+            > "$evidence/selection-inputs.json"
 
-      - name: Restore verified or partial compiled state
-        id: restore
-        env:
-          CACHE_TAG: ${{ steps.cache.outputs.tag }}
-          CACHE_SEED_TAG: ${{ steps.cache.outputs.seed_tag }}
-          LEGACY_CACHE_SEED_TAG: ${{ steps.cache.outputs.legacy_seed_tag }}
-        run: |
-          set -euo pipefail
-          for tag in "$CACHE_TAG" "$CACHE_SEED_TAG" "$LEGACY_CACHE_SEED_TAG"; do
-            for operation in pull pull-partial; do
-              set +e
-              bash .github/scripts/ghcr-cargo-target-cache.sh "$operation" "$CARGO_CACHE_REPOSITORY" "$tag" "$CARGO_TARGET_DIR" "$(cat .github/upstream-ref)" 2>&1 | tee -a "$FOCUSED_RUNTIME/evidence/restore.log"
-              result=${PIPESTATUS[0]}
-              set -e
-              case "$result" in
-                0) exit 0 ;;
-                3) ;;
-                *) exit "$result" ;;
-              esac
-            done
-          done
-          printf 'No profile-compatible state exists; this focused build starts cold.\n'
-
-      - name: Prepare restored test-profile inputs
-        id: prepare
-        run: |
-          set -euo pipefail
-          run_codex_tooling() {
-            # Linux packages a native launcher; other runners package a Bash launcher.
-            if [[ "$RUNNER_OS" == Linux ]]; then
-              "$CODEX_SOURCE_CACHE_TOOL" "$@"
-            else
-              bash "$CODEX_SOURCE_CACHE_TOOL" "$@"
-            fi
-          }
-          run_codex_tooling clean-cached-release-binaries --profile ci-test \
-            "$CODEX_REPO_ROOT/codex-rs" "$TARGET" codex codex-app-server 2>&1 | tee "$FOCUSED_RUNTIME/evidence/cache-prepare.log"
-
-      - name: Run only the unaccepted macOS case
+      - name: Stress only the exact readiness test three times under CPU load
         id: test
+        if: steps.selection.outcome == 'success'
         working-directory: upstream/codex-rs
         run: |
           set -uo pipefail
-          cargo nextest run --target "$TARGET" --cargo-profile ci-test -p codex-cli --test sandbox_tty --no-fail-fast --success-output immediate -E 'test(=sandbox_blocks_terminal_input_injection)' 2>&1 | tee "$FOCUSED_RUNTIME/evidence/test.log"
+          evidence="$FOCUSED_RUNTIME/evidence"
+          workers="$CPU_LOAD_WORKERS"
+          printf '%s\n' "$workers" > "$evidence/cpu-load-workers.txt"
+          load_pids=()
+          for _ in $(seq "$workers"); do yes > /dev/null & load_pids+=("$!"); done
+          # shellcheck disable=SC2317 # Called from the EXIT trap below.
+          stop_load() {
+            local pid
+            for pid in "${load_pids[@]}"; do kill "$pid" 2>/dev/null || true; done
+            for pid in "${load_pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+            printf 'workers_started=%s\nworkers_stopped=%s\n' \
+              "${#load_pids[@]}" "${#load_pids[@]}" > "$evidence/cpu-load-cleanup.txt"
+          }
+          trap stop_load EXIT
+          cargo nextest run --target "$TARGET" --cargo-profile ci-test -p codex-cli --test app_server_daemon \
+            --stress-count 3 --retries 0 --status-level all --final-status-level all \
+            -E 'test(=bootstrap_updater_is_ready_in_deep_codex_home)' \
+            2>&1 | tee "$evidence/test.log"
           result=${PIPESTATUS[0]}
-          if [[ "$result" == 0 ]] && grep -Fq 'skipping terminal injection test: nested Seatbelt is unavailable' "$FOCUSED_RUNTIME/evidence/test.log"; then
-            printf 'The test returned without exercising sandbox assertions; retain this as unaccepted.\n' >&2
-            result=78
-          fi
-          printf '%s\n' "$result" > "$FOCUSED_RUNTIME/evidence/test-exit"
+          printf '%s\n' "$result" > "$evidence/test-exit.txt"
           exit "$result"
 
-      - name: Verify source and dependency identity
-        id: guard
-        if: always() && steps.restore.outcome == 'success'
-        run: |
-          set -euo pipefail
-          run_codex_tooling() {
-            # Linux packages a native launcher; other runners package a Bash launcher.
-            if [[ "$RUNNER_OS" == Linux ]]; then
-              "$CODEX_SOURCE_CACHE_TOOL" "$@"
-            else
-              bash "$CODEX_SOURCE_CACHE_TOOL" "$@"
-            fi
-          }
-          evidence="$FOCUSED_RUNTIME/evidence"
-          test "$(git -C upstream rev-parse HEAD)" = "$(cat .github/upstream-commit)"
-          git -C upstream diff --binary > "$evidence/source.diff"
-          git -C upstream diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
-          git -C upstream status --porcelain=v1 --untracked-files=all > "$evidence/source-status.txt"
-          test -z "$(git -C upstream ls-files --others --exclude-standard)"
-          (cd upstream/codex-rs && cargo metadata --no-deps --format-version 1) > "$evidence/workspace.json"
-          run_codex_tooling verify-cargo-lock "$evidence/upstream-Cargo.lock" upstream/codex-rs/Cargo.lock "$evidence/workspace.json" | tee "$evidence/dependencies.json"
-
-      - name: Record successful test-profile inputs
-        id: record
-        if: steps.test.outcome == 'success' && steps.guard.outcome == 'success' && steps.prepare.outcome == 'success'
-        run: |
-          set -euo pipefail
-          run_codex_tooling() {
-            # Linux packages a native launcher; other runners package a Bash launcher.
-            if [[ "$RUNNER_OS" == Linux ]]; then
-              "$CODEX_SOURCE_CACHE_TOOL" "$@"
-            else
-              bash "$CODEX_SOURCE_CACHE_TOOL" "$@"
-            fi
-          }
-          run_codex_tooling clean-cached-release-binaries --record-source-inputs --profile ci-test \
-            "$CODEX_REPO_ROOT/codex-rs" "$TARGET" 2>&1 | tee "$FOCUSED_RUNTIME/evidence/cache-record.log"
-
-      - name: Save compiled outputs without changing the test result
-        id: save
-        if: always() && steps.guard.outcome == 'success' && steps.prepare.outcome == 'success'
-        env:
-          TEST_OUTCOME: ${{ steps.test.outcome }}
-          RECORD_OUTCOME: ${{ steps.record.outcome }}
-          CACHE_TAG: ${{ steps.cache.outputs.tag }}
-          CACHE_SEED_TAG: ${{ steps.cache.outputs.seed_tag }}
-          CARGO_CACHE_STAGE: codex
-        run: |
-          set -euo pipefail
-          operation=push-partial
-          if [[ "$TEST_OUTCOME" == success && "$RECORD_OUTCOME" == success ]]; then operation=push; fi
-          bash .github/scripts/ghcr-cargo-target-cache.sh "$operation" "$CARGO_CACHE_REPOSITORY" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat .github/upstream-ref)" "$CACHE_SEED_TAG" 2>&1 | tee "$FOCUSED_RUNTIME/evidence/save.log"
-
-      - name: Publish test and cache outcomes to the live client
-        if: always() && env.FOCUSED_RUNTIME != ''
-        env:
-          TEST_OUTCOME: ${{ steps.test.outcome }}
-          PREPARE_OUTCOME: ${{ steps.prepare.outcome }}
-          RECORD_OUTCOME: ${{ steps.record.outcome }}
-          GUARD_OUTCOME: ${{ steps.guard.outcome }}
-          SAVE_OUTCOME: ${{ steps.save.outcome }}
-        run: |
-          node - <<'JS'
-          const fs=require('node:fs'), path=require('node:path');
-          const output=path.join(process.env.FOCUSED_RUNTIME,'evidence','runtime-outcome.json');
-          fs.writeFileSync(`${output}.pending`, JSON.stringify({test:process.env.TEST_OUTCOME,prepare:process.env.PREPARE_OUTCOME,
-            record:process.env.RECORD_OUTCOME,
-            guard:process.env.GUARD_OUTCOME,save:process.env.SAVE_OUTCOME})+'\n');
-          fs.renameSync(`${output}.pending`,output);
-          JS
-
-      - name: Retain focused evidence for one day
+      - name: Retain exact test evidence for three days
         if: always() && env.FOCUSED_RUNTIME != ''
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: macos-${{ inputs.target }}-sandbox-tty-${{ github.run_attempt }}
+          name: macos-${{ matrix.target }}-deep-home-readiness-${{ github.run_attempt }}
           path: ${{ env.FOCUSED_RUNTIME }}/evidence
           retention-days: 3
           if-no-files-found: error
