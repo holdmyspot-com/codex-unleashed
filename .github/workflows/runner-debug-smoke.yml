@@ -29,7 +29,7 @@ on:
         required: true
         type: string
       public_key:
-        description: Public SSH key for the authenticated verification worker session
+        description: Public SSH key for retained installer verification workers
         required: true
         type: string
 
@@ -46,22 +46,17 @@ jobs:
   helper-tests:
     name: Verification helper tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
-        with:
-          node-version-file: .nvmrc
-      - name: Test the verification helpers
-        run: |
-          set -euo pipefail
-          node --test .github/scripts/test-verify-app-server-package.mjs .github/scripts/test-verify-voice-installer.mjs \
-            .github/scripts/test-verify-local-npm.mjs
+
+      - name: Prepare installer debug readiness
+        shell: bash
+        run: mkdir "$RUNNER_TEMP/package-debug-evidence"
 
       - name: Open authenticated installer verification worker
-        if: always() && !cancelled() && inputs.public_key != ''
         uses: ./.github/actions/debug-failed-runner
         env:
           GH_TOKEN: ''
@@ -71,11 +66,37 @@ jobs:
           idle-timeout-minutes: '10'
           artifact-suffix: -installer-helpers
 
+      - name: Wait for authenticated installer client
+        shell: bash
+        run: bash .github/scripts/release-debug-session.sh wait-for-client "$RUNNER_TEMP/package-debug-evidence"
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version-file: .nvmrc
+      - name: Test the verification helpers
+        run: |
+          set -euo pipefail
+          node --test .github/scripts/test-verify-app-server-package.mjs .github/scripts/test-verify-voice-installer.mjs \
+            .github/scripts/test-verify-local-npm.mjs
+
+      - name: Wait for installer debug client to release worker
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 600))
+          while [[ ! -f "$RUNNER_TEMP/package-debug-evidence/client-released" ]]; do
+            if (( SECONDS >= deadline )); then
+              echo '::error::Installer debug client did not release the worker within 600 seconds.'
+              exit 1
+            fi
+            sleep 1
+          done
+
   prepare:
     name: Assemble and verify the dry-run release
     needs: helper-tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 85
     outputs:
       version: ${{ steps.identity.outputs.version }}
       fork_commit: ${{ steps.identity.outputs.fork_commit }}
@@ -83,6 +104,24 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
+
+      - name: Prepare installer debug readiness
+        shell: bash
+        run: mkdir "$RUNNER_TEMP/package-debug-evidence"
+
+      - name: Open authenticated installer verification worker
+        uses: ./.github/actions/debug-failed-runner
+        env:
+          GH_TOKEN: ''
+          GITHUB_TOKEN: ''
+        with:
+          public-key: ${{ inputs.public_key }}
+          idle-timeout-minutes: '10'
+          artifact-suffix: -installer-prepare
+
+      - name: Wait for authenticated installer client
+        shell: bash
+        run: bash .github/scripts/release-debug-session.sh wait-for-client "$RUNNER_TEMP/package-debug-evidence"
       - uses: ./.github/actions/setup-tooling
 
       - name: Require a finished package dry run
@@ -180,25 +219,30 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
-      - name: Open authenticated installer verification worker
-        if: always() && !cancelled() && inputs.public_key != ''
-        uses: ./.github/actions/debug-failed-runner
-        env:
-          GH_TOKEN: ''
-          GITHUB_TOKEN: ''
-        with:
-          public-key: ${{ inputs.public_key }}
-          idle-timeout-minutes: '10'
-          artifact-suffix: -installer-prepare
+
+      - name: Wait for installer debug client to release worker
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 600))
+          while [[ ! -f "$RUNNER_TEMP/package-debug-evidence/client-released" ]]; do
+            if (( SECONDS >= deadline )); then
+              echo '::error::Installer debug client did not release the worker within 600 seconds.'
+              exit 1
+            fi
+            sleep 1
+          done
 
       - name: Remove independent verification inputs
+        if: always()
         run: rm -rf -- "$RUNNER_TEMP/dry-run-assets" "$RUNNER_TEMP/verified-fork" "$RUNNER_TEMP/verified-source"
 
   consume:
     name: Install and consume - ${{ matrix.target }}
     needs: prepare
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 55
+    timeout-minutes: 65
     strategy:
       fail-fast: false
       matrix:
@@ -220,6 +264,24 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
+
+      - name: Prepare installer debug readiness
+        shell: bash
+        run: mkdir "$RUNNER_TEMP/package-debug-evidence"
+
+      - name: Open authenticated installer verification worker
+        uses: ./.github/actions/debug-failed-runner
+        env:
+          GH_TOKEN: ''
+          GITHUB_TOKEN: ''
+        with:
+          public-key: ${{ inputs.public_key }}
+          idle-timeout-minutes: '10'
+          artifact-suffix: -installer-${{ matrix.target }}
+
+      - name: Wait for authenticated installer client
+        shell: bash
+        run: bash .github/scripts/release-debug-session.sh wait-for-client "$RUNNER_TEMP/package-debug-evidence"
 
       # The repository's legal documents at the dry run's commit, which the packaged copies must equal.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -322,18 +384,23 @@ jobs:
           retention-days: 3
           if-no-files-found: warn
 
-      - name: Open authenticated installer verification worker
-        if: always() && !cancelled() && inputs.public_key != ''
-        uses: ./.github/actions/debug-failed-runner
-        env:
-          GH_TOKEN: ''
-          GITHUB_TOKEN: ''
-        with:
-          public-key: ${{ inputs.public_key }}
-          idle-timeout-minutes: '10'
-          artifact-suffix: -installer-${{ matrix.target }}
+
+      - name: Wait for installer debug client to release worker
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 600))
+          while [[ ! -f "$RUNNER_TEMP/package-debug-evidence/client-released" ]]; do
+            if (( SECONDS >= deadline )); then
+              echo '::error::Installer debug client did not release the worker within 600 seconds.'
+              exit 1
+            fi
+            sleep 1
+          done
 
       - name: Remove the downloaded release inputs and installations
+        if: always()
         run: |
           rm -rf -- "$RUNNER_TEMP/dry-run-release" "$RUNNER_TEMP/dry-run-target-assets" "$RUNNER_TEMP/installer-source" \
             "$RUNNER_TEMP/npm-evidence" "$RUNNER_TEMP/installed installer package $TARGET"
