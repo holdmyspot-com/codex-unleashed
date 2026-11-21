@@ -40,11 +40,11 @@ on:
         type: boolean
         default: false
       package_cargo_cache:
-        description: Try the exact compiled Cargo cache during a package dry run for x86_64-unknown-linux-musl
+        description: Try the exact compiled Cargo cache during a package dry run for Linux x64 or one native macOS target
         type: boolean
         default: false
       package_cache_key_only:
-        description: Prepare the Linux package cache key and upload its digests without running the release Cargo build
+        description: Prepare the package cache key and upload its digests without running the release Cargo build
         type: boolean
         default: false
       package_public_key:
@@ -62,6 +62,8 @@ concurrency:
   group: >-
     upstream-auto-release-${{ inputs.upstream_tag || 'latest' }}-${{
       (github.event_name == 'schedule' || !inputs.dry_run) && 'live' ||
+      (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_cache_key_only &&
+        endsWith(inputs.package_targets, '-apple-darwin')) && format('macos-package-cache-key-{0}', github.run_id) ||
       (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_cache_key_only) && 'package-cache-key' ||
       (inputs.package_dry_run && inputs.package_cargo_cache) && 'package-cache-pilot' ||
       'dry'
@@ -136,6 +138,7 @@ jobs:
           PACKAGE_DRY_RUN: ${{ inputs.package_dry_run }}
           PACKAGE_CARGO_CACHE: ${{ inputs.package_cargo_cache }}
           PACKAGE_CACHE_KEY_ONLY: ${{ inputs.package_cache_key_only }}
+          PACKAGE_DEBUG_KEY: ${{ inputs.package_public_key }}
         run: |
           set -euo pipefail
           live=false
@@ -147,8 +150,14 @@ jobs:
             exit 1
           fi
           if [[ "$PACKAGE_CARGO_CACHE" == true && ( "$live" == true || "$PACKAGE_DRY_RUN" != true ||
-            "$PACKAGE_TARGETS" != x86_64-unknown-linux-musl ) ]]; then
-            printf '::error::package_cargo_cache requires a package dry run for x86_64-unknown-linux-musl only\n'
+            ( "$PACKAGE_TARGETS" != x86_64-unknown-linux-musl && "$PACKAGE_TARGETS" != aarch64-apple-darwin &&
+              "$PACKAGE_TARGETS" != x86_64-apple-darwin ) ) ]]; then
+            printf '::error::package_cargo_cache requires a package dry run for exactly one supported Linux x64 or native macOS target\n'
+            exit 1
+          fi
+          if [[ "$PACKAGE_CARGO_CACHE" == true && "$PACKAGE_TARGETS" == *-apple-darwin &&
+            ( "$PACKAGE_CACHE_KEY_ONLY" != true || -z "$PACKAGE_DEBUG_KEY" ) ]]; then
+            printf '::error::The macOS package cache preflight requires key-only mode and an authenticated debug key\n'
             exit 1
           fi
           if [[ "$PACKAGE_CACHE_KEY_ONLY" == true && ( "$PACKAGE_CARGO_CACHE" != true || "$SKIP_GATES" != true ) ]]; then
@@ -644,7 +653,7 @@ jobs:
 
       - name: Stage the verified Zig distribution for the package cache
         id: package-cache-zig
-        if: inputs.package_cargo_cache
+        if: inputs.package_cargo_cache && runner.os == 'Linux'
         continue-on-error: ${{ !inputs.package_cache_key_only }}
         run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-cargo-cache.sh" stage-zig
 
@@ -774,7 +783,7 @@ jobs:
 
       - name: Prepare the package Cargo cache transport
         id: package-cache-transport
-        if: steps.package-cache-zig.outcome == 'success' && !inputs.package_cache_key_only
+        if: inputs.package_cargo_cache && !inputs.package_cache_key_only && (runner.os == 'macOS' || steps.package-cache-zig.outcome == 'success')
         continue-on-error: true
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
         with:
@@ -791,7 +800,14 @@ jobs:
           PATCHES: ${{ needs.detect.outputs.patches }}
           VOICE_RELEASE_DIR: ${{ steps.voice-build.outputs.release_dir }}
           VOICE_BUILD_COMMIT: ${{ steps.voice-build.outputs.build_commit }}
-        run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-cargo-cache.sh" inputs
+        run: |
+          set -euo pipefail
+          scripts="$RUNNER_TEMP/manifest-patch-repo/.github/scripts"
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            bash "$scripts/macos-package-cargo-cache.sh" inputs
+          else
+            bash "$scripts/package-cargo-cache.sh" inputs
+          fi
 
       - name: Retain the package cache key receipt
         if: steps.package-cache-inputs.outcome == 'success'
@@ -812,7 +828,14 @@ jobs:
           CACHE_TAG: ${{ steps.package-cache-inputs.outputs.tag }}
           GHCR_TOKEN: ${{ github.token }}
           UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
-        run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-cargo-cache.sh" restore
+        run: |
+          set -euo pipefail
+          scripts="$RUNNER_TEMP/manifest-patch-repo/.github/scripts"
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            bash "$scripts/macos-package-cargo-cache.sh" restore
+          else
+            bash "$scripts/package-cargo-cache.sh" restore
+          fi
 
       - name: Build and smoke-test upstream's package archives
         id: package
@@ -1024,10 +1047,28 @@ jobs:
           CACHE_TAG: ${{ steps.package-cache-inputs.outputs.tag }}
           GHCR_TOKEN: ${{ github.token }}
           UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
-        run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-cargo-cache.sh" save
+        run: |
+          set -euo pipefail
+          scripts="$RUNNER_TEMP/manifest-patch-repo/.github/scripts"
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            bash "$scripts/macos-package-cargo-cache.sh" save
+          else
+            bash "$scripts/package-cargo-cache.sh" save
+          fi
+
+      - name: Wait for the macOS package debug client to exit
+        if: always() && runner.os == 'macOS' && inputs.package_cache_key_only && steps.package-debug.outcome == 'success'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/package-debug-evidence"
+          until [[ -f "$evidence/client-released" && ! -L "$evidence/client-released" ]]; do
+            sleep 2
+          done
 
       - name: Remove the tooling runtime
-        if: always()
+        # The macOS key-only worker retains its files through Upterm post cleanup.
+        if: always() && !(runner.os == 'macOS' && inputs.package_cache_key_only)
         run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
 
   publish:
