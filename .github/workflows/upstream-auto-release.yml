@@ -717,6 +717,15 @@ jobs:
           # A voice helper identity query that fails keeps its stdout and stderr here; the evidence upload collects them.
           echo "CODEX_VOICE_DIAGNOSTICS_DIR=$RUNNER_TEMP/voice-helper-identity-$TARGET" >> "$GITHUB_ENV"
 
+      - name: Prepare the private Linux voice build mount
+        if: inputs.package_cargo_cache && matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          set -euo pipefail
+          sudo install -d -o root -g root -m 0755 /var/lib/codex-voice-build
+          scratch="$(mktemp -d "$RUNNER_TEMP/voice-native.XXXXXXXX")"
+          touch "$scratch/mount-ready"
+          echo "CODEX_VOICE_SANDBOX_SCRATCH=$scratch" >> "$GITHUB_ENV"
+
       - name: Build the sealed voice runtime for this patched source
         id: voice-build
         env:
