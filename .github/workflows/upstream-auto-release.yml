@@ -613,6 +613,30 @@ jobs:
           bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/release-debug-session.sh" \
             wait-for-client "$RUNNER_TEMP/package-debug-evidence"
 
+      - name: Prepare the package Cargo cache transport on Windows ARM64
+        id: package-cache-arm64-transport
+        if: inputs.package_cargo_cache && !inputs.package_cache_key_only && matrix.target == 'aarch64-pc-windows-msvc'
+        continue-on-error: true
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # ORAS 1.3.1 ships only a Windows AMD64 client. Windows ARM64 runs it
+          # under emulation for registry transfer. Cargo and MSVC remain native.
+          $archive = Join-Path $env:RUNNER_TEMP 'oras-1.3.1-windows-amd64.zip'
+          $directory = Join-Path $env:RUNNER_TEMP 'package-cache-oras'
+          Invoke-WebRequest 'https://github.com/oras-project/oras/releases/download/v1.3.1/oras_1.3.1_windows_amd64.zip' -OutFile $archive
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne '8cf69e46f966e592ad36261c05b8f59c02125743b7261c03f6badc3919b40cb0') {
+            throw 'The ORAS Windows AMD64 archive SHA-256 did not match'
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $directory
+          & (Join-Path $directory 'oras.exe') version
+          if ($LASTEXITCODE -ne 0) {
+            throw "ORAS failed to start on Windows ARM64 with exit code $LASTEXITCODE"
+          }
+          Remove-Item -LiteralPath $archive
+          $directory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: '3.12'
@@ -788,7 +812,7 @@ jobs:
         id: package-cache-transport
         if: >-
           inputs.package_cargo_cache && !inputs.package_cache_key_only &&
-          (steps.package-cache-zig.outcome == 'success' || runner.os == 'Windows')
+          (steps.package-cache-zig.outcome == 'success' || matrix.target == 'x86_64-pc-windows-msvc')
         continue-on-error: true
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
         with:
@@ -796,7 +820,9 @@ jobs:
 
       - name: Identify the exact package Cargo cache inputs
         id: package-cache-inputs
-        if: inputs.package_cache_key_only || steps.package-cache-transport.outcome == 'success'
+        if: >-
+          inputs.package_cache_key_only || steps.package-cache-transport.outcome == 'success' ||
+          steps.package-cache-arm64-transport.outcome == 'success'
         continue-on-error: ${{ !inputs.package_cache_key_only }}
         env:
           UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
