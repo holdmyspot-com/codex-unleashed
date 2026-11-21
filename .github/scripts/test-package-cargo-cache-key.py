@@ -10,7 +10,8 @@ import tempfile
 import unittest
 
 
-TARGET = "x86_64-unknown-linux-musl"
+X64_TARGET = "x86_64-unknown-linux-musl"
+ARM64_TARGET = "aarch64-unknown-linux-musl"
 CACHE_SCRIPT = Path(__file__).with_name("package-cargo-cache.sh").resolve()
 COMPONENTS = ["source", "patches", "wrappers", "helper", "compiler", "v8", "musl", "voice"]
 COMPILER = ["compiler-context", "compiler-toolchain", "compiler-packages", "compiler-settings", "compiler-lockfiles"]
@@ -27,6 +28,9 @@ def write(path, text):
 @unittest.skipUnless(all(shutil.which(tool) for tool in ("bash", "jq", "sha256sum")), "Linux command-line tools required")
 class PackageCargoCacheKeyTest(unittest.TestCase):
     """Check the format and contents retained for exact-key diagnostics."""
+
+    target = X64_TARGET
+    runner_arch = "X64"
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="package-cache-key-test-")
@@ -59,13 +63,24 @@ printf 'seed_tag=ignored\\n'
         runner = self.root / "private-runner-temp"
         metadata = runner / "manifest-patch-repo/.github"
         write(metadata / "scripts/ghcr-cargo-target-cache.sh", "transport\n")
+        write(metadata / "cargo-cache-package", "fixture\n")
+        for name in ("install-musl-build-tools.sh", "install-musl-openssl.sh"):
+            write(source / ".github/scripts" / name, "installer fixture\n")
         write(metadata / "scripts/package-cargo-cache.sh", CACHE_SCRIPT.read_text())
         write(metadata / "workflows/upstream-auto-release.yml", "workflow\n")
         write(runner / "downstream-patches/fixture.patch", "fixed patch\n")
-        (runner / f"codex-musl-tools-{TARGET}/libcap-1/prefix").mkdir(parents=True)
-        openssl = self.root / "private-openssl"
-        write(openssl / "include/openssl.h", "header\n")
-        write(openssl / "lib/libcrypto.a", "native\n")
+        (runner / f"codex-musl-tools-{self.target}/libcap-1/prefix").mkdir(parents=True)
+        self.native_inputs = {}
+        for target in (X64_TARGET, ARM64_TARGET):
+            prefix = target.upper().replace("-", "_")
+            openssl = self.root / f"private-openssl-{target}"
+            write(openssl / "include/openssl.h", "header\n")
+            crypto = write(openssl / "lib/libcrypto.a", "native\n")
+            linker = write(self.root / f"linker-{target}", "linker\n")
+            self.native_inputs.update({
+                f"CARGO_TARGET_{prefix}_LINKER": str(linker),
+                f"{prefix}_OPENSSL_DIR": str(crypto.parent.parent),
+            })
         voice = self.root / "private-voice"
         self.voice = write(voice / "codex-voice-host", "sealed voice\n")
         write(voice / "runtime/runtime.json", '{"libraries":[{"path":"lib/libfixture.so.1"}]}\n')
@@ -78,14 +93,13 @@ printf 'seed_tag=ignored\\n'
         write(self.original_zig / "zig", "#!/bin/bash\nprintf '0.14.0\n'\n").chmod(0o755)
         write(self.original_zig / "lib/std/std.zig", "Zig standard library fixture\n")
         self.environment = {
-            **os.environ, "PATH": f"{tools}:{os.environ['PATH']}",
-            "RUNNER_TEMP": str(runner), "RUNNER_OS": "Linux", "RUNNER_ARCH": "X64", "TARGET": TARGET,
+            **os.environ, **self.native_inputs, "PATH": f"{tools}:{os.environ['PATH']}",
+            "RUNNER_TEMP": str(runner), "RUNNER_OS": "Linux", "RUNNER_ARCH": self.runner_arch, "TARGET": self.target,
             "UPSTREAM_COMMIT": "b" * 40, "UPSTREAM_TAG": "rust-v0.167.0", "VERSION": "0.167.0",
             "CODEX_UNLEASHED_BUILD_NUMBER": "1", "VOICE_BUILD_COMMIT": head, "PATCHES": "patches/fixture.patch",
             "ImageOS": "ubuntu24", "ImageVersion": "fixture", "GITHUB_WORKSPACE": str(source),
             "CARGO_TARGET_DIR": str(self.root / "private-cargo-target"), "SOURCE_DATE_EPOCH": "123",
-            "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER": str(tool), "CC": str(tool), "CXX": str(tool),
-            "RUSTFLAGS": "private-rustflag-fixture", "X86_64_UNKNOWN_LINUX_MUSL_OPENSSL_DIR": str(openssl),
+            "CC": str(tool), "CXX": str(tool), "RUSTFLAGS": "private-rustflag-fixture",
             "RUSTY_V8_ARCHIVE": str(write(self.root / "v8", "v8 archive\n")),
             "RUSTY_V8_SRC_BINDING_PATH": str(write(self.root / "v8.rs", "binding\n")),
             "VOICE_RELEASE_DIR": str(voice), "CODEX_TOOLING": str(launcher), "GITHUB_OUTPUT": str(self.output),
@@ -123,7 +137,7 @@ printf 'seed_tag=ignored\\n'
         result = self.execute_inputs()
         self.assertEqual(result.returncode, 0, result.stderr)
         tag, *digests = self.receipt.read_text().splitlines()
-        self.assertRegex(tag, rf"^tag=cargo-v3-{TARGET}-pkg-[0-9a-f]{{64}}$")
+        self.assertRegex(tag, rf"^tag=cargo-v3-{self.target}-pkg-[0-9a-f]{{64}}$")
         self.assertEqual(self.output.read_text(), f"{tag}\n")
         self.assertEqual(result.stdout.splitlines(), digests[:len(COMPONENTS)])
         self.assertEqual([name for _, name in (line.split() for line in digests)], COMPONENTS + COMPILER + VOICE)
@@ -178,6 +192,105 @@ printf 'seed_tag=ignored\\n'
         self.assertNotIn(unexpected.name, result.stdout + result.stderr)
         self.assertFalse(self.receipt.exists())
         self.assertEqual(self.output.read_text(), "")
+
+
+class Arm64PackageCargoCacheKeyTest(PackageCargoCacheKeyTest):
+    """Exercise the same receipts and staged tools on the native ARM64 path."""
+
+    target = ARM64_TARGET
+    runner_arch = "ARM64"
+
+    def test_uses_only_arm64_native_inputs(self):
+        initial_key, initial_components = self.run_inputs()
+        x64_linker = Path(self.native_inputs["CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER"])
+        x64_openssl = Path(self.native_inputs["X86_64_UNKNOWN_LINUX_MUSL_OPENSSL_DIR"])
+        x64_linker.write_text("different x64 linker")
+        (x64_openssl / "lib/libcrypto.a").write_text("different x64 OpenSSL")
+        self.assertEqual(self.run_inputs(), (initial_key, initial_components))
+
+        arm_linker = Path(self.native_inputs["CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER"])
+        arm_linker.write_text("different ARM64 linker")
+        linker_key, linker_components = self.run_inputs()
+        self.assertNotEqual(linker_key, initial_key)
+        self.assertNotEqual(linker_components["compiler-toolchain"], initial_components["compiler-toolchain"])
+
+        arm_openssl = Path(self.native_inputs["AARCH64_UNKNOWN_LINUX_MUSL_OPENSSL_DIR"])
+        (arm_openssl / "lib/libcrypto.a").write_text("different ARM64 OpenSSL")
+        openssl_key, openssl_components = self.run_inputs()
+        self.assertNotEqual(openssl_key, linker_key)
+        self.assertNotEqual(openssl_components["musl"], linker_components["musl"])
+
+    def test_restores_only_exact_arm64_cache_and_saves_dependencies(self):
+        runner = Path(self.environment["RUNNER_TEMP"])
+        write(self.root / "bin/oras", "#!/bin/bash\ncat >/dev/null\n").chmod(0o755)
+        write(runner / "manifest-patch-repo/.github/scripts/ghcr-cargo-target-cache.sh", """#!/bin/bash
+set -euo pipefail
+test "$3" = "$CACHE_TAG"
+test "$CARGO_CACHE_PARTS" = 0
+case "$1" in
+  pull)
+    if [[ "$FIXTURE_CACHE_MISS" == true ]]; then exit 3; fi
+    deps="$4/$TARGET/release/deps"
+    mkdir -p "$deps"
+    printf 'verified object' > "$deps/object.o"
+    ;;
+  push)
+    release="$4/$TARGET/release"
+    test -f "$release/deps/object.o"
+    test ! -e "$release/codex"
+    test ! -e "$release/deps/codex-link"
+    test ! -e "$release/bwrap"
+    ;;
+  *) exit 2 ;;
+esac
+""")
+        tag, _ = self.run_inputs()
+        cargo_target = Path(self.environment["CARGO_TARGET_DIR"])
+        cargo_target.mkdir()
+        result_dir = self.root / "package-build-result"
+        write(result_dir / "binaries", "codex\n")
+        summary = self.root / "summary"
+        self.environment.update({
+            "CACHE_TAG": tag.removeprefix("tag="), "GITHUB_ACTOR": "fixture",
+            "GHCR_TOKEN": "fixture-token", "GITHUB_REPOSITORY_OWNER": "fixture",
+            "GITHUB_STEP_SUMMARY": str(summary), "CODEX_PACKAGE_BUILD_RESULT": str(result_dir),
+        })
+
+        def run_cache(operation, expected, miss="false"):
+            self.output.write_text("")
+            result = subprocess.run(
+                ["bash", CACHE_SCRIPT, operation], cwd=self.source,
+                env={**self.environment, "FIXTURE_CACHE_MISS": miss},
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(self.output.read_text(), f"result={expected}\n")
+            self.assertIn(f"Package Cargo cache {operation}: {expected}", summary.read_text())
+
+        run_cache("restore", "miss", miss="true")
+        self.assertEqual(list(cargo_target.iterdir()), [])
+        run_cache("restore", "hit")
+        release = cargo_target / self.target / "release"
+        self.assertEqual((release / "deps/object.o").read_text(), "verified object")
+        binary = write(release / "codex", "built executable\n")
+        (release / "deps/codex-link").hardlink_to(binary)
+        write(release / "bwrap", "built helper\n")
+        run_cache("save", "saved")
+
+    def test_refuses_missing_native_inputs_or_mismatched_runner(self):
+        for name in ("AARCH64_UNKNOWN_LINUX_MUSL_OPENSSL_DIR", "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER"):
+            with self.subTest(name=name):
+                value = self.environment.pop(name)
+                result = self.execute_inputs()
+                self.environment[name] = value
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.output.read_text(), "")
+                self.assertFalse(self.receipt.exists())
+        self.environment["RUNNER_ARCH"] = "X64"
+        result = self.execute_inputs()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Unsupported native package Cargo cache target", result.stderr)
+        self.assertFalse(self.receipt.exists())
 
 
 if __name__ == "__main__":

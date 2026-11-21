@@ -6,7 +6,10 @@ set -euo pipefail
 operation="${1:?Expected stage-zig, inputs, restore or save}"
 metadata="$RUNNER_TEMP/manifest-patch-repo"
 transport="$metadata/.github/scripts/ghcr-cargo-target-cache.sh"
-test "$RUNNER_OS:$TARGET" = Linux:x86_64-unknown-linux-musl
+case "$RUNNER_OS:$RUNNER_ARCH:$TARGET" in
+  Linux:X64:x86_64-unknown-linux-musl | Linux:ARM64:aarch64-unknown-linux-musl) ;;
+  *) printf 'Unsupported native package Cargo cache target: %s\n' "$TARGET" >&2; exit 2 ;;
+esac
 
 stable_zig="$RUNNER_TEMP/package-cache-zig"
 if [[ "$operation" == stage-zig ]]; then
@@ -34,10 +37,16 @@ if [[ "$operation" == inputs ]]; then
     sha256sum "$RUNNER_TEMP/downstream-$patch"
   done > "$inputs/patches"
   sha256sum "$metadata/.github/workflows/upstream-auto-release.yml" \
-    "$metadata/.github/scripts/package-cargo-cache.sh" > "$inputs/wrappers"
+    "$metadata/.github/scripts/package-cargo-cache.sh" \
+    .github/scripts/install-musl-build-tools.sh .github/scripts/install-musl-openssl.sh > "$inputs/wrappers"
   sha256sum "$transport" > "$inputs/helper"
   operations=.github/scripts/codex-package-operations.sh
-  openssl_dir="$X86_64_UNKNOWN_LINUX_MUSL_OPENSSL_DIR"
+  target_variable="${TARGET^^}"
+  target_variable="${target_variable//-/_}"
+  openssl_variable="${target_variable}_OPENSSL_DIR"
+  linker_variable="CARGO_TARGET_${target_variable}_LINKER"
+  openssl_dir="${!openssl_variable:?Missing target OpenSSL directory}"
+  linker="${!linker_variable:?Missing target Cargo linker}"
   native_root="$RUNNER_TEMP/codex-musl-tools-$TARGET"
   printf '%s\n' "$TARGET" "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:?}" "${ImageVersion:?}" \
     "$GITHUB_WORKSPACE" "$CARGO_TARGET_DIR" "${SOURCE_DATE_EPOCH:?}" > "$inputs/compiler-context"
@@ -51,7 +60,7 @@ if [[ "$operation" == inputs ]]; then
     cargo --version
     zig version
     sha256sum "$(command -v gcc)" "$(command -v clang)" "$(command -v strip)" \
-      "$CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER" "$CC" "$CXX"
+      "$linker" "$CC" "$CXX"
     find "$stable_zig" -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum
     while IFS= read -r -d '' link; do
       resolved="$(realpath -e -- "$link")"
@@ -104,7 +113,7 @@ if [[ "$operation" == inputs ]]; then
   cat "$inputs/v8" "$inputs/musl" "$inputs/voice" >> "$inputs/compiler"
   tag="$(bash "$CODEX_TOOLING" cargo-cache-keys "$TARGET-pkg" "$inputs/source" "$inputs/wrappers" \
     "$inputs/helper" "$inputs/compiler" "$inputs/patches" | sed -n 's/^tag=//p')"
-  [[ "$tag" =~ ^cargo-v3-x86_64-unknown-linux-musl-pkg-[0-9a-f]{64}$ ]]
+  [[ "$tag" =~ ^cargo-v3-${TARGET}-pkg-[0-9a-f]{64}$ ]]
   {
     printf 'tag=%s\n' "$tag"
     cat "$inputs/components"
