@@ -56,12 +56,9 @@ if [[ "$operation" == inputs ]]; then
   shasum -a 256 "$RUSTY_V8_ARCHIVE" "$RUSTY_V8_SRC_BINDING_PATH" > "$inputs/v8"
   python3 "$tree" voice-inventory "$VOICE_RELEASE_DIR" > "$inputs/voice"
   compiler_components=(context apple tools settings lockfiles v8)
-  # On Intel, Cargo builds only the application executables. The separately
-  # built voice payload enters the archive step after compilation. Retain its
-  # digest as release evidence outside the compiled dependency key.
-  if [[ "$TARGET" != x86_64-apple-darwin ]]; then
-    compiler_components+=(voice)
-  fi
+  # Cargo builds the application executables on both native architectures.
+  # The separate voice payload first enters the archive step. Retain its digest
+  # as release evidence outside the compiled dependency key.
   (cd "$inputs" && cat "${compiler_components[@]}") > "$inputs/compiler"
   tag="$(bash "$CODEX_TOOLING" cargo-cache-keys "$TARGET-pkg" "$inputs/source" "$inputs/wrappers" \
     "$inputs/helper" "$inputs/compiler" "$inputs/patches" | sed -n 's/^tag=//p')"
