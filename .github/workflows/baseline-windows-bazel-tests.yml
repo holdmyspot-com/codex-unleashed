@@ -416,19 +416,79 @@ jobs:
           result=${PIPESTATUS[0]}
           set -e
           printf 'exit_code=%s\n' "$result" > "$evidence/bazel-tests.receipt"
-          bash "$CODEX_TOOLING" validate-bazel-test-evidence \
-            --bep "$bep" --expected-patterns "$evidence/execution-targets.txt" --bazel-exit-code "$result" \
-            > "$evidence/bazel-test-evidence.json"
-          if [[ "$ORDINARY_MSVC_RECOVERY" == true && "$result" == 0 ]]; then
+          if [[ "$ORDINARY_MSVC_RECOVERY" == true ]]; then
             mkdir -p "$evidence/ordinary-case-logs"
             printf '%s\n' "${cases[@]}" > "$evidence/ordinary-cases.txt"
             for i in "${!targets[@]}"; do
               target_path="${targets[$i]#//}"
               log="bazel-testlogs/${target_path/:/\/}/test.log"
-              cp "$log" "$evidence/ordinary-case-logs/$i.log"
-              grep -Fx 'running 1 test' <(tr -d '\r' < "$log")
-              grep -Fx "test ${cases[$i]} ... ok" <(tr -d '\r' < "$log")
+              if [[ -f "$log" ]]; then
+                cp "$log" "$evidence/ordinary-case-logs/$i.log"
+              fi
             done
+            python - "$evidence" > "$evidence/bazel-test-evidence.json" <<'PYTHON'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          evidence = Path(sys.argv[1])
+          targets = (evidence / "execution-targets.txt").read_text().splitlines()
+          cases = (evidence / "ordinary-cases.txt").read_text().splitlines()
+          def require(condition, message):
+              if not condition:
+                  sys.exit(message)
+
+          require(len(targets) == len(set(targets)) == len(cases) == len(set(cases)) == 3,
+                  "Expected three unique ordinary targets and cases")
+          require((evidence / "bazel-tests.receipt").read_text().splitlines() == ["exit_code=0"],
+                  "Bazel must exit successfully")
+          with (evidence / "bazel-tests.bep.json").open(encoding="utf-8") as stream:
+              events = [json.loads(line) for line in stream]
+
+          def matching(kind):
+              return [e for e in events if kind in e["id"]]
+
+          require([e["id"]["pattern"]["pattern"] for e in matching("pattern")] == [targets],
+                  "Bazel pattern differs from the ordinary target inventory")
+          options, = matching("optionsParsed")
+          cmd = options["optionsParsed"]["cmdLine"]
+          require([a for a in cmd if a.startswith("--test_arg=")] ==
+                  ["--test_arg=--exact", *[f"--test_arg={case}" for case in cases]],
+                  "Bazel exact Rust test selectors differ from the case inventory")
+          require([a for a in cmd if a.startswith("--cache_test_results=")][-1:] ==
+                  ["--cache_test_results=0"] and
+                  [a for a in cmd if a.startswith("--test_sharding_strategy=")][-1:] ==
+                  ["--test_sharding_strategy=disabled"],
+                  "Bazel must execute each test once without cached results")
+          for kind, status_key in (("testResult", "status"), ("testSummary", "overallStatus")):
+              records = matching(kind)
+              require(sorted(e["id"][kind]["label"] for e in records) == sorted(targets),
+                      f"Unexpected Bazel {kind} inventory")
+              for event in records:
+                  record = event[kind]
+                  require(record[status_key] == "PASSED", f"Unsuccessful Bazel {kind}")
+                  if kind == "testResult":
+                      identifiers = event["id"][kind]
+                      require(all(identifiers.get(key) == 1 for key in ("attempt", "run", "shard"))
+                              and not record.get("cachedLocally")
+                              and not record.get("executionInfo", {}).get("cachedRemotely"),
+                              "Expected a fresh single Bazel test execution")
+
+          finish, = matching("buildFinished")
+          require(finish["finished"]["exitCode"]["name"] == "SUCCESS", "Bazel did not finish successfully")
+          for index, case in enumerate(cases):
+              lines = (evidence / "ordinary-case-logs" / f"{index}.log").read_text(
+                  encoding="utf-8", errors="replace").splitlines()
+              require(lines.count("running 1 test") == lines.count(f"test {case} ... ok") == 1
+                      and any(re.match(r"test result: ok\. 1 passed; 0 failed; 0 ignored;", line) for line in lines),
+                      f"Missing single-case pass receipt for {case}")
+          print(json.dumps({"coverage": "focused", "passed": dict(zip(targets, cases))}, indent=2))
+          PYTHON
+          else
+            bash "$CODEX_TOOLING" validate-bazel-test-evidence \
+              --bep "$bep" --expected-patterns "$evidence/execution-targets.txt" --bazel-exit-code "$result" \
+              > "$evidence/bazel-test-evidence.json"
           fi
           git diff --binary > "$evidence/source-after.diff"
           cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
