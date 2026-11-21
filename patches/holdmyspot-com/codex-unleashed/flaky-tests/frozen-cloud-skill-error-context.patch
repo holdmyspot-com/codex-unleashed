@@ -1,0 +1,91 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 21 Nov 2026 00:00:00 +0000
+Subject: [PATCH] test: expose frozen cloud skill fixture failures
+
+Install the response expectation after fixture setup and make submission errors visible before wiremock verifies expectations during teardown.
+---
+ .../suite/scenarios_frozen_cloud_skills.rs    | 56 ++++++++++---------
+ 1 file changed, 29 insertions(+), 27 deletions(-)
+
+diff --git a/codex-rs/core/tests/suite/scenarios_frozen_cloud_skills.rs b/codex-rs/core/tests/suite/scenarios_frozen_cloud_skills.rs
+index 25d094c..68cd41e 100644
+--- a/codex-rs/core/tests/suite/scenarios_frozen_cloud_skills.rs
++++ b/codex-rs/core/tests/suite/scenarios_frozen_cloud_skills.rs
+@@ -44,6 +44,33 @@ async fn frozen_cloud_skills_with_named_executor_request_history() -> Result<()>
+         },
+     );
+     let server = start_mock_server().await;
++    let test = test_codex()
++        .with_model("gpt-6-astra")
++        .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
++        // Cloud parents start without the reserved local executor attachment.
++        .with_exec_server_url("none")
++        .with_extensions(Arc::new(extensions.build()))
++        .with_config(|config| {
++            configure_scenario_catalog(config);
++            config.cloud_skill_enabled = true;
++            config
++                .features
++                .enable(Feature::ExecutorCapabilityDiscoveryV2)
++                .unwrap();
++        })
++        .build(&server)
++        .await?;
++    let executor =
++        core_test_support::exec_server::ExecServerProcess::start_with_version("0.164.0").await?;
++    test.thread_manager
++        .environment_manager()
++        .upsert_environment(
++            "work-env".into(),
++            executor.websocket_url.clone(),
++            /*connect_timeout*/ None,
++        )?;
++    let cwd = PathUri::from_host_native_path(fs::canonicalize(workspace.path())?)?;
++
+     let mock = mount_sse_sequence(
+         &server,
+         vec![
+@@ -72,32 +99,6 @@ async fn frozen_cloud_skills_with_named_executor_request_history() -> Result<()>
+         ],
+     )
+     .await;
+-    let test = test_codex()
+-        .with_model("gpt-6-astra")
+-        .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
+-        // Cloud parents start without the reserved local executor attachment.
+-        .with_exec_server_url("none")
+-        .with_extensions(Arc::new(extensions.build()))
+-        .with_config(|config| {
+-            configure_scenario_catalog(config);
+-            config.cloud_skill_enabled = true;
+-            config
+-                .features
+-                .enable(Feature::ExecutorCapabilityDiscoveryV2)
+-                .unwrap();
+-        })
+-        .build(&server)
+-        .await?;
+-    let executor =
+-        core_test_support::exec_server::ExecServerProcess::start_with_version("0.164.0").await?;
+-    test.thread_manager
+-        .environment_manager()
+-        .upsert_environment(
+-            "work-env".into(),
+-            executor.websocket_url.clone(),
+-            /*connect_timeout*/ None,
+-        )?;
+-    let cwd = PathUri::from_host_native_path(fs::canonicalize(workspace.path())?)?;
+     test.submit_turn_with_environments(
+         "List the cloud skills, then read the work skill.",
+         Some(vec![TurnEnvironmentSelection {
+@@ -108,7 +109,8 @@ async fn frozen_cloud_skills_with_named_executor_request_history() -> Result<()>
+             config: EnvironmentConfigState::FromThread,
+         }]),
+     )
+-    .await?;
++    .await
++    .unwrap_or_else(|error| panic!("failed to submit the frozen cloud skill turn: {error:#}"));
+     let requests = mock.requests();
+     assert_eq!(requests.len(), 3);
+     let output: serde_json::Value = serde_json::from_str(
