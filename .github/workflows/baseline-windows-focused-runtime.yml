@@ -1,13 +1,12 @@
-name: Focused upstream Windows runtime
+name: Focused Windows prompt-prefix verification
 
 on:
   workflow_dispatch:
     inputs:
       public_key:
-        description: Optional public SSH key for a client that connects before testing
-        required: false
+        description: Public SSH key for the client that connects before testing
+        required: true
         type: string
-        default: ""
       patches:
         description: Space-separated repository paths of downstream patches to apply with git am, in order
         required: false
@@ -17,7 +16,7 @@ on:
         description: Native Windows target from the existing free release matrix
         type: choice
         default: x86_64-pc-windows-msvc
-        options: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
+        options: [x86_64-pc-windows-msvc]
 
 permissions:
   contents: read
@@ -29,11 +28,10 @@ jobs:
     timeout-minutes: 360
     permissions:
       contents: read
-      packages: write
+      packages: read
     concurrency:
       group: ${{ github.workflow }}-${{ inputs.target }}
       cancel-in-progress: false
-      queue: max
     env:
       TARGET: ${{ inputs.target }}
       CODEX_CI_TARGET: ${{ inputs.target }}
@@ -203,7 +201,7 @@ jobs:
           cp upstream/codex-rs/Cargo.lock "$evidence/upstream-Cargo.lock"
           git -C upstream diff --exit-code HEAD
           test -z "$(git -C upstream status --porcelain)"
-          sha256sum .github/workflows/baseline-windows-focused-runtime.yml .github/scripts/run-windows-runtime-standard-user.ps1 > "$evidence/wrappers.txt"
+          sha256sum .github/workflows/baseline-windows-focused-runtime.yml > "$evidence/wrappers.txt"
           cat "$evidence/applied-patches.txt" >> "$evidence/wrappers.txt"
           sha256sum .github/scripts/ghcr-cargo-target-cache.sh \
             tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/{Main,CargoCacheKeys,CargoCacheParts,VerifyCargoLock}.java \
@@ -215,7 +213,7 @@ jobs:
             cargo --version
             cargo nextest --version
             printf 'profile=ci-test\ntarget=%s\n' "$TARGET"
-            printf 'cargo nextest run --target %s --cargo-profile ci-test -p codex-cli --test app_server_daemon_windows --no-fail-fast --test-threads 8 --success-output immediate -E test(=winget_package_starts_and_reselects_daemon)\n' "$TARGET"
+            printf '%s\n' "cargo nextest run --locked --target $TARGET --cargo-profile ci-test -p codex-app-server --test prompt_prefix --success-output immediate -E test(=prompt_prefix_matches_release)"
             printf '%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}" "${ImageVersion:-}"
             env | LC_ALL=C sort | grep -E '^(RUSTFLAGS|RUSTDOCFLAGS|RUSTC|RUSTC_WRAPPER|CARGO_INCREMENTAL|CARGO_PROFILE_[A-Z0-9_]+|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CC|CXX|AR|CFLAGS|CXXFLAGS|LIBSQLITE3_FLAGS|INCLUDE|LIB|LIBPATH|WindowsSdkDir|WindowsSDKVersion|VCToolsInstallDir|VCToolsVersion)='
             sha256sum upstream/codex-rs/Cargo.lock upstream/codex-rs/rust-toolchain.toml upstream/codex-rs/Cargo.toml
@@ -261,19 +259,51 @@ jobs:
           run_codex_tooling clean-cached-release-binaries --profile ci-test \
             "$CODEX_REPO_ROOT/codex-rs" "$TARGET" codex codex-app-server 2>&1 | tee "$FOCUSED_RUNTIME/evidence/cache-prepare.log"
 
-      - name: Compile only the unaccepted Windows case and record reusable metadata
+      - name: Verify exact inputs and list only the named ordinary test
+        id: selection
         working-directory: upstream/codex-rs
         run: |
           set -euo pipefail
-          cargo nextest list --target "$TARGET" --cargo-profile ci-test -p codex-cli --test app_server_daemon_windows --list-type binaries-only --message-format json > "$FOCUSED_RUNTIME/evidence/binaries.json" 2> "$FOCUSED_RUNTIME/evidence/compile.log"
-          cargo metadata --format-version 1 > "$FOCUSED_RUNTIME/evidence/cargo.json"
+          evidence="$FOCUSED_RUNTIME/evidence"
+          test -z "${CONTRACT_EXECUTOR_BIN:-}"
+          test "$(git rev-parse 'HEAD^{tree}')" = 72f6617bcfc073f25f9cee7059ea3f6fe18b3a88
+          test "$(git rev-parse HEAD:codex-rs/app-server/tests/prompt_prefix.rs)" = 5d479409347097ddf9dc7cef56c7eeafda09ca75
+          test "$(git rev-parse HEAD:codex-rs/Cargo.lock)" = df3555d8e85ef26cfcd768215cfb05ed81c07486
+          test "$(git rev-parse HEAD:codex-rs/rust-toolchain.toml)" = d73899d67f8cef30354ae0b4f65576f425349927
+          git diff --exit-code HEAD -- app-server/tests/prompt_prefix.rs Cargo.lock rust-toolchain.toml
+          grep -F '.with_request_timeout(Duration::from_secs(60))' app-server/tests/prompt_prefix.rs > "$evidence/timeout-override.txt"
+          sha256sum "$RUSTY_V8_ARCHIVE" "$RUSTY_V8_SRC_BINDING_PATH" > "$evidence/v8-inputs.sha256"
+          cargo metadata --locked --filter-platform "$TARGET" --format-version 1 > "$evidence/cargo.json"
+          started=$(date +%s)
+          cargo nextest list --locked --target "$TARGET" --cargo-profile ci-test \
+            -p codex-app-server --test prompt_prefix --message-format json \
+            -E 'test(=prompt_prefix_matches_release)' > "$evidence/selection.json" 2> "$evidence/compile.log"
+          printf 'compile_and_list_seconds=%s\n' "$(( $(date +%s) - started ))" > "$evidence/timing.txt"
+          node - "$evidence/selection.json" <<'JS'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const matches = Object.values(report['rust-suites']).flatMap(suite =>
+            Object.entries(suite.testcases ?? {}).filter(([, test]) => test['filter-match'].status === 'matches'));
+          if (matches.length !== 1 || matches[0][0] !== 'prompt_prefix_matches_release') {
+            throw new Error('Expected exactly the ordinary prompt_prefix_matches_release test');
+          }
+          JS
 
-      - name: Run the compiled Windows case as a native standard user
+      - name: Run the named ordinary Windows prompt-prefix test
         id: test
-        shell: pwsh
+        working-directory: upstream/codex-rs
         run: |
-          & .github/scripts/run-windows-runtime-standard-user.ps1 -TestBinary app_server_daemon_windows -TestName winget_package_starts_and_reselects_daemon
-          exit $LASTEXITCODE
+          set -euo pipefail
+          evidence="$FOCUSED_RUNTIME/evidence"
+          started=$(date +%s)
+          set +e
+          cargo nextest run --locked --target "$TARGET" --cargo-profile ci-test \
+            -p codex-app-server --test prompt_prefix --success-output immediate \
+            --retries 0 -E 'test(=prompt_prefix_matches_release)' 2>&1 | tee "$evidence/prompt-prefix-test.log"
+          result=${PIPESTATUS[0]}
+          set -e
+          printf 'test_seconds=%s\nexit_code=%s\n' "$(( $(date +%s) - started ))" "$result" >> "$evidence/timing.txt"
+          exit "$result"
 
       - name: Verify source and dependency identity
         id: guard
@@ -297,52 +327,18 @@ jobs:
           (cd upstream/codex-rs && cargo metadata --no-deps --format-version 1) > "$evidence/workspace.json"
           run_codex_tooling verify-cargo-lock "$evidence/upstream-Cargo.lock" upstream/codex-rs/Cargo.lock "$evidence/workspace.json" | tee "$evidence/dependencies.json"
 
-      - name: Record successful test-profile inputs
-        id: record
-        if: steps.test.outcome == 'success' && steps.guard.outcome == 'success' && steps.prepare.outcome == 'success'
-        run: |
-          set -euo pipefail
-          run_codex_tooling() {
-            # Linux packages a native launcher; other runners package a Bash launcher.
-            if [[ "$RUNNER_OS" == Linux ]]; then
-              "$CODEX_SOURCE_CACHE_TOOL" "$@"
-            else
-              bash "$CODEX_SOURCE_CACHE_TOOL" "$@"
-            fi
-          }
-          run_codex_tooling clean-cached-release-binaries --record-source-inputs --profile ci-test \
-            "$CODEX_REPO_ROOT/codex-rs" "$TARGET" 2>&1 | tee "$FOCUSED_RUNTIME/evidence/cache-record.log"
-
-      - name: Save compiled outputs without changing the test result
-        id: save
-        if: always() && steps.guard.outcome == 'success' && steps.prepare.outcome == 'success'
-        env:
-          TEST_OUTCOME: ${{ steps.test.outcome }}
-          RECORD_OUTCOME: ${{ steps.record.outcome }}
-          CACHE_TAG: ${{ steps.cache.outputs.tag }}
-          CACHE_SEED_TAG: ${{ steps.cache.outputs.seed_tag }}
-          CARGO_CACHE_STAGE: codex
-        run: |
-          set -euo pipefail
-          operation=push-partial
-          if [[ "$TEST_OUTCOME" == success && "$RECORD_OUTCOME" == success ]]; then operation=push; fi
-          bash .github/scripts/ghcr-cargo-target-cache.sh "$operation" "$CARGO_CACHE_REPOSITORY" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat .github/upstream-ref)" "$CACHE_SEED_TAG" 2>&1 | tee "$FOCUSED_RUNTIME/evidence/save.log"
-
       - name: Publish test and cache outcomes to the live client
         if: always() && env.FOCUSED_RUNTIME != ''
         env:
           TEST_OUTCOME: ${{ steps.test.outcome }}
           PREPARE_OUTCOME: ${{ steps.prepare.outcome }}
-          RECORD_OUTCOME: ${{ steps.record.outcome }}
           GUARD_OUTCOME: ${{ steps.guard.outcome }}
-          SAVE_OUTCOME: ${{ steps.save.outcome }}
         run: |
           node - <<'JS'
           const fs=require('node:fs'), path=require('node:path');
           const output=path.join(process.env.FOCUSED_RUNTIME,'evidence','runtime-outcome.json');
           fs.writeFileSync(`${output}.pending`, JSON.stringify({test:process.env.TEST_OUTCOME,prepare:process.env.PREPARE_OUTCOME,
-            record:process.env.RECORD_OUTCOME,
-            guard:process.env.GUARD_OUTCOME,save:process.env.SAVE_OUTCOME})+'\n');
+            guard:process.env.GUARD_OUTCOME})+'\n');
           fs.renameSync(`${output}.pending`,output);
           JS
 
@@ -350,7 +346,7 @@ jobs:
         if: always() && env.FOCUSED_RUNTIME != ''
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: windows-${{ inputs.target }}-winget-daemon-${{ github.run_attempt }}
+          name: windows-${{ inputs.target }}-prompt-prefix-${{ github.run_attempt }}
           path: ${{ env.FOCUSED_RUNTIME }}/evidence
           retention-days: 3
           if-no-files-found: error
