@@ -191,7 +191,10 @@ jobs:
           git clone --filter=blob:none --no-checkout https://github.com/holdmyspot-com/codex-unleashed.git "$patch_repo"
           git -C "$patch_repo" fetch --depth=1 origin "$fork_commit"
           git -C "$patch_repo" checkout --detach FETCH_HEAD
-          git clone --filter=blob:none --no-checkout https://github.com/openai/codex.git "$source"
+          # The verifier clones this checkout locally. Fetch the pinned snapshot with its blobs so upload-pack does
+          # not need lazy fetches from a shallow partial repository.
+          git init -q "$source"
+          git -C "$source" remote add origin https://github.com/openai/codex.git
           git -C "$source" fetch --depth=1 origin "refs/tags/$upstream_tag:refs/tags/$upstream_tag"
           git -C "$source" checkout --detach "$upstream_commit"
           read -r -a patch_paths <<< "$(bash "$CODEX_TOOLING" upstream-auto-release patches --readme "$patch_repo/patches/README.md")"
