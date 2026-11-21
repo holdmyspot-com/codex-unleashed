@@ -51,6 +51,10 @@ on:
         description: Build the Linux voice payload twice for a key-only package diagnostic
         type: boolean
         default: false
+      package_voice_boundary_evidence:
+        description: Capture ELF boundary hashes from the normal Linux key-only build
+        type: boolean
+        default: false
       package_public_key:
         description: Optional SSH public key for dry-run package workers; connect to each selected worker before packaging
         type: string
@@ -66,6 +70,8 @@ concurrency:
   group: >-
     upstream-auto-release-${{ inputs.upstream_tag || 'latest' }}-${{
       (github.event_name == 'schedule' || !inputs.dry_run) && 'live' ||
+      (inputs.package_voice_boundary_evidence && inputs.package_cache_key_only) &&
+        format('voice-boundary-{0}', github.run_id) ||
       (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_cache_key_only) && 'package-cache-key' ||
       (inputs.package_dry_run && inputs.package_cargo_cache) && 'package-cache-pilot' ||
       'dry'
@@ -141,6 +147,7 @@ jobs:
           PACKAGE_CARGO_CACHE: ${{ inputs.package_cargo_cache }}
           PACKAGE_CACHE_KEY_ONLY: ${{ inputs.package_cache_key_only }}
           PACKAGE_VOICE_REPRODUCTION: ${{ inputs.package_voice_reproduction }}
+          PACKAGE_VOICE_BOUNDARY_EVIDENCE: ${{ inputs.package_voice_boundary_evidence }}
         run: |
           set -euo pipefail
           live=false
@@ -162,6 +169,11 @@ jobs:
           fi
           if [[ "$PACKAGE_VOICE_REPRODUCTION" == true && "$PACKAGE_CACHE_KEY_ONLY" != true ]]; then
             printf '::error::package_voice_reproduction requires package_cache_key_only=true\n'
+            exit 1
+          fi
+          if [[ "$PACKAGE_VOICE_BOUNDARY_EVIDENCE" == true && ( "$PACKAGE_CACHE_KEY_ONLY" != true ||
+            "$PACKAGE_VOICE_REPRODUCTION" == true ) ]]; then
+            printf '::error::package_voice_boundary_evidence requires the normal package_cache_key_only build\n'
             exit 1
           fi
           all='[{"runner":"ubuntu-24.04","target":"x86_64-unknown-linux-musl"},
@@ -788,6 +800,24 @@ jobs:
           printf '%s\n' "$build_commit" > "$verification_artifact/source-commit"
           printf 'result_dir=%s\nrelease_dir=%s\nbuild_commit=%s\nverification_artifact=%s\ntooling_launcher=%s\n' \
             "$result_dir" "$release_dir" "$build_commit" "$verification_artifact" "$CODEX_TOOLING" >> "$GITHUB_OUTPUT"
+
+      - name: Hash ELF sections from the normal voice build
+        if: inputs.package_voice_boundary_evidence
+        env:
+          VOICE_RELEASE_DIR: ${{ steps.voice-build.outputs.release_dir }}
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/voice-elf-reproduction-evidence.py" \
+            "$GITHUB_WORKSPACE/bazel-bin" "$VOICE_RELEASE_DIR" > "$RUNNER_TEMP/voice-boundaries.json"
+
+      - name: Retain normal Linux voice boundary evidence
+        if: inputs.package_voice_boundary_evidence
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: linux-voice-boundaries-${{ matrix.target }}
+          path: ${{ runner.temp }}/voice-boundaries.json
+          retention-days: 3
+          if-no-files-found: error
 
       - name: Prepare the package Cargo cache transport
         id: package-cache-transport
