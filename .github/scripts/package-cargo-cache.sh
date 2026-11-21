@@ -27,7 +27,7 @@ if [[ "$operation" == inputs ]]; then
   native_root="$RUNNER_TEMP/codex-musl-tools-$TARGET"
   {
     printf '%s\n' "$TARGET" "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:?}" "${ImageVersion:?}" \
-      "$GITHUB_WORKSPACE" "$CARGO_TARGET_DIR"
+      "$GITHUB_WORKSPACE" "$CARGO_TARGET_DIR" "${SOURCE_DATE_EPOCH:?}"
     rustc -vV
     cargo --version
     zig version
@@ -37,10 +37,15 @@ if [[ "$operation" == inputs ]]; then
     bash "$operations" profile-env --target "$TARGET" --build-mode release
     bash "$operations" select-binaries --runner-os "$RUNNER_OS" --build-mode release --build-system cargo
     env | LC_ALL=C sort | grep -E '^(RUSTFLAGS|RUSTDOCFLAGS|RUSTC|RUSTC_WRAPPER|RUSTC_WORKSPACE_WRAPPER|RUSTUP_TOOLCHAIN|CARGO_INCREMENTAL|CARGO_BUILD_[A-Z_]+|CARGO_ENCODED_RUSTFLAGS|CARGO_PROFILE_RELEASE_[A-Z_]+|CARGO_TARGET_[A-Z0-9_]+_LINKER|CC(_[A-Za-z0-9_]+)?|CXX(_[A-Za-z0-9_]+)?|AR(_[A-Za-z0-9_]+)?|TARGET_CC|TARGET_CXX|CFLAGS(_[A-Za-z0-9_]+)?|CXXFLAGS(_[A-Za-z0-9_]+)?|CMAKE_(C_COMPILER|CXX_COMPILER|ARGS)|BORING_BSSL_SYSROOT[A-Za-z0-9_]*|([A-Z0-9_]+_)?OPENSSL_(DIR|NO_VENDOR|STATIC)|AWS_LC_SYS_NO_JITTER_ENTROPY[A-Za-z0-9_]*|PKG_CONFIG_[A-Za-z0-9_]+)='
-    sha256sum codex-rs/Cargo.lock codex-rs/rust-toolchain.toml "$RUSTY_V8_ARCHIVE" "$RUSTY_V8_SRC_BINDING_PATH"
-    find "$openssl_dir/include" "$openssl_dir/lib" "$native_root"/libcap-*/prefix "$VOICE_RELEASE_DIR" \
-      -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum
+    sha256sum codex-rs/Cargo.lock codex-rs/rust-toolchain.toml
   } > "$inputs/compiler"
+  sha256sum "$RUSTY_V8_ARCHIVE" "$RUSTY_V8_SRC_BINDING_PATH" > "$inputs/v8"
+  find "$openssl_dir/include" "$openssl_dir/lib" "$native_root"/libcap-*/prefix \
+    -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum > "$inputs/musl"
+  find "$VOICE_RELEASE_DIR" -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum > "$inputs/voice"
+  # Print component digests so runs can diagnose a miss without exposing build environment values.
+  (cd "$inputs" && sha256sum source patches wrappers helper compiler v8 musl voice)
+  cat "$inputs/v8" "$inputs/musl" "$inputs/voice" >> "$inputs/compiler"
   bash "$CODEX_TOOLING" cargo-cache-keys "$TARGET-pkg" "$inputs/source" "$inputs/wrappers" \
     "$inputs/helper" "$inputs/compiler" "$inputs/patches" | sed -n '/^tag=/p' >> "$GITHUB_OUTPUT"
   exit

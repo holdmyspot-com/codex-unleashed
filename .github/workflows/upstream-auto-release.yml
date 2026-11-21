@@ -48,13 +48,19 @@ on:
         type: string
         default: ""
 
-# One run at a time per requested release and mode. The publish job adds a per-version group and re-checks the fork's
+# One run at a time per release and mode. The one-target cache pilot can run alongside a full dry run.
+# The publish job adds a per-version group and re-checks the fork's
 # releases, because the version a scheduled run resolves is unknown until detection has run.
 # Recover publication, installation or promotion by rerunning failed jobs (or the publish job) in the same run.
 # This reuses the verified package artifacts for three days. A full rerun restores the original identity, but rebuilds
 # packages and is not artifact-reusing recovery. A fresh dispatch performs normal release selection.
 concurrency:
-  group: upstream-auto-release-${{ inputs.upstream_tag || 'latest' }}-${{ (github.event_name == 'schedule' || !inputs.dry_run) && 'live' || 'dry' }}
+  group: >-
+    upstream-auto-release-${{ inputs.upstream_tag || 'latest' }}-${{
+      (github.event_name == 'schedule' || !inputs.dry_run) && 'live' ||
+      (inputs.package_dry_run && inputs.package_cargo_cache) && 'package-cache-pilot' ||
+      'dry'
+    }}
   cancel-in-progress: false
 
 permissions:
@@ -602,6 +608,14 @@ jobs:
       # would rewrite the lockfile during the build and dirty the checkout the release records, so the alignment is committed.
       - name: Commit the lockfile's workspace package versions aligned with the release version
         run: bash "$CODEX_TOOLING" align-workspace-lock --source-root "$GITHUB_WORKSPACE"
+
+      - name: Set the reproducible package cache build epoch
+        if: inputs.package_cargo_cache
+        run: |
+          set -euo pipefail
+          # OpenSSL records the build time in libcrypto.a. Use the patched source's
+          # commit time for the pilot so identical native inputs produce the same key.
+          printf 'SOURCE_DATE_EPOCH=%s\n' "$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
 
       - name: Read upstream's pinned Rust toolchain
         id: upstream-rust
