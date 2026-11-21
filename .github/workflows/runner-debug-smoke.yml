@@ -1,60 +1,219 @@
-name: Runner failure debugging smoke test
-run-name: ${{ inputs.session_id && format('Runner debugging - {0} - {1}', inputs.target, inputs.session_id) || 'Runner failure debugging smoke test' }}
+name: Verify dry-run release installs
+
+# Runs, before anything is published, the checks that upstream-auto-release.yml runs only after it publishes: release
+# verification (docs/release-verification.md), the platform installer, and the local npm consumer, on the six release
+# hosts. It adds an app-server package installation check, which no workflow runs today.
+#
+# Input: the run id of a finished `Automatic upstream release` dry run made with package_dry_run=true. Its `assets-*`
+# artifacts hold every release asset except the manifest and checksums, which this workflow assembles with the
+# release's own assembler. Nothing is published: no tag, release, draft, asset or attestation is written.
+#
+# What each check exercises:
+# - Release verification: `release-manifest assemble`, then `verify-release.sh` without attestations. It reconstructs the
+#   recorded source from the dry run's fork commit and the pinned upstream commit, applies the patch queue, and checks
+#   every asset, receipt, checksum, binary hash and the Git tree. GitHub attestations exist only for a published run.
+# - Installers: the installer files that the dry run shipped (install.sh, install.ps1) run unchanged against this
+#   release. The installers have no base-URL override, so verify-voice-installer.mjs, the loopback mechanism of the dry
+#   run's own installer check, serves the assets from 127.0.0.1 and maps only the three exact GitHub URLs that the
+#   installer requests. The installer runs from a file, not piped from curl or irm.
+# - npm consumer: verify-local-npm.mjs against the six verified archives, as in upstream-auto-release.yml.
+# - App-server: verify-app-server-package.mjs extracts the host's app-server archive and runs its executable.
+#
+# Dispatch: gh workflow run verify-dry-run-install.yml --ref <branch> -f run_id=<dry run id>
 
 on:
   workflow_dispatch:
     inputs:
-      session_id:
-        description: Unique client identifier to match this dispatch in the run list
-        type: string
-        default: ''
-      public_key:
-        description: Public SSH key for the debugging client
-        type: string
+      run_id:
+        description: Run id of an Automatic upstream release dry run made with package_dry_run=true
         required: true
-      idle_timeout_minutes:
-        description: Positive whole minutes before an unjoined or idle shell ends
         type: string
-        default: '10'
-      target:
-        description: Native target to verify; all exercises the release matrix
-        type: choice
-        default: x86_64-unknown-linux-musl
-        options: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl, x86_64-apple-darwin, aarch64-apple-darwin, x86_64-pc-windows-msvc, aarch64-pc-windows-msvc, remaining, all]
+      public_key:
+        description: Public SSH key for the authenticated verification worker session
+        required: true
+        type: string
+
+# One verification per dry run. The caller of workflow_call needs to grant actions: read.
+concurrency:
+  group: verify-dry-run-install-${{ inputs.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  select:
-    if: github.event_name == 'workflow_dispatch'
+  helper-tests:
+    name: Verification helper tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      matrix: ${{ steps.matrix.outputs.value }}
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
-      - id: matrix
-        env:
-          PROBE_TARGET: ${{ inputs.target }}
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version-file: .nvmrc
+      - name: Test the verification helpers
         run: |
-          printf 'value=%s\n' "$(jq --arg target "$PROBE_TARGET" -c '{include: [.[] | select(($target == "all") or (.target == $target) or (($target == "remaining") and (.target != "x86_64-unknown-linux-musl")))]}' .github/release-matrix.json)" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          node --test .github/scripts/test-verify-app-server-package.mjs .github/scripts/test-verify-voice-installer.mjs \
+            .github/scripts/test-verify-local-npm.mjs
 
-  probe:
-    needs: select
-    name: Debug - ${{ matrix.target }}
-    permissions:
-      contents: read
-      packages: write
+      - name: Open authenticated installer verification worker
+        if: always() && !cancelled() && inputs.public_key != ''
+        uses: ./.github/actions/debug-failed-runner
+        env:
+          GH_TOKEN: ''
+          GITHUB_TOKEN: ''
+        with:
+          public-key: ${{ inputs.public_key }}
+          idle-timeout-minutes: '10'
+          artifact-suffix: -installer-helpers
+
+  prepare:
+    name: Assemble and verify the dry-run release
+    needs: helper-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      fork_commit: ${{ steps.identity.outputs.fork_commit }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-tooling
+
+      - name: Require a finished package dry run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { printf '::error::run_id must be a number: %s\n' "$RUN_ID"; exit 1; }
+          gh run view "$RUN_ID" -R "$GITHUB_REPOSITORY" --json workflowName,status,conclusion,headSha,jobs > "$RUNNER_TEMP/dry-run.json"
+          jq -e '.workflowName == "Automatic upstream release" and .status == "completed" and .conclusion == "success"' \
+            "$RUNNER_TEMP/dry-run.json" > /dev/null || {
+            printf '::error::Run %s is not a successful Automatic upstream release run\n' "$RUN_ID"
+            exit 1
+          }
+          # A live run publishes; this workflow verifies only what a dry run has not published.
+          jq -e '[.jobs[] | select(.name == "Publish the release") | .conclusion] | all(. == "skipped")' \
+            "$RUNNER_TEMP/dry-run.json" > /dev/null || {
+            printf '::error::Run %s published a release; verify a dry run\n' "$RUN_ID"
+            exit 1
+          }
+          expected="$(jq -r '.[].target' .github/release-matrix.json | sort)"
+          packaged="$(jq -r '.jobs[] | select(.name | startswith("Package - ")) | select(.conclusion == "success") | .name | sub("^Package - "; "")' \
+            "$RUNNER_TEMP/dry-run.json" | sort)"
+          if [[ "$packaged" != "$expected" ]]; then
+            printf '::error::Run %s lacks a successful package job for every target. Expected:\n%s\nSucceeded:\n%s\n' \
+              "$RUN_ID" "$expected" "$packaged"
+            exit 1
+          fi
+          jq -r '.headSha' "$RUNNER_TEMP/dry-run.json" | tee "$RUNNER_TEMP/dry-run-head"
+
+      - name: Download the dry run's release assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: assets-*
+          path: ${{ runner.temp }}/dry-run-assets
+          merge-multiple: true
+          run-id: ${{ inputs.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+
+      - name: Assemble the release manifest and checksums
+        id: identity
+        run: |
+          set -euo pipefail
+          assets="$RUNNER_TEMP/dry-run-assets"
+          test -f "$assets/install.sh" -a -f "$assets/install.ps1"
+          bash "$CODEX_TOOLING" release-manifest assemble \
+            --receipts "$assets" --assets "$assets" --output "$assets/release-manifest.json"
+          manifest="$assets/release-manifest.json"
+          fork_commit="$(jq -er '.fork_commit | select(test("^[0-9a-f]{40}$"))' "$manifest")"
+          test "$fork_commit" = "$(cat "$RUNNER_TEMP/dry-run-head")"
+          {
+            printf 'version=%s\n' "$(jq -er '.release.version' "$manifest")"
+            printf 'fork_commit=%s\n' "$fork_commit"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Reconstruct the recorded source and verify every release asset
+        run: |
+          set -euo pipefail
+          manifest="$RUNNER_TEMP/dry-run-assets/release-manifest.json"
+          fork_commit="$(jq -er '.fork_commit | select(test("^[0-9a-f]{40}$"))' "$manifest")"
+          upstream_commit="$(jq -er '.upstream.commit | select(test("^[0-9a-f]{40}$"))' "$manifest")"
+          upstream_tag="$(jq -er '.upstream.tag | select(test("^rust-v[0-9]+\\.[0-9]+\\.[0-9]+$"))' "$manifest")"
+          patch_repo="$RUNNER_TEMP/verified-fork"
+          source="$RUNNER_TEMP/verified-source"
+          git clone --filter=blob:none --no-checkout https://github.com/holdmyspot-com/codex-unleashed.git "$patch_repo"
+          git -C "$patch_repo" fetch --depth=1 origin "$fork_commit"
+          git -C "$patch_repo" checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/openai/codex.git "$source"
+          git -C "$source" fetch --depth=1 origin "refs/tags/$upstream_tag:refs/tags/$upstream_tag"
+          git -C "$source" checkout --detach "$upstream_commit"
+          read -r -a patch_paths <<< "$(bash "$CODEX_TOOLING" upstream-auto-release patches --readme "$patch_repo/patches/README.md")"
+          printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git -C "$source" rev-parse --absolute-git-dir)/info/attributes"
+          for patch in "${patch_paths[@]}"; do
+            git -C "$source" -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$patch_repo/$patch"
+          done
+          bash "$CODEX_TOOLING" align-workspace-lock --source-root "$source"
+          # No attestation exists before publication, so --verify-attestations is not passed.
+          bash scripts/verify-release.sh "$RUNNER_TEMP/dry-run-assets" --patch-repo "$patch_repo" \
+            --upstream-source "$source"
+
+      - name: Hand off the verified archives to the native hosts
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: dry-run-verified-assets
+          path: |
+            ${{ runner.temp }}/dry-run-assets/codex-package-*.tar.gz
+            ${{ runner.temp }}/dry-run-assets/release-manifest.json
+            ${{ runner.temp }}/dry-run-assets/SHA256SUMS
+            ${{ runner.temp }}/dry-run-assets/install.sh
+            ${{ runner.temp }}/dry-run-assets/install.ps1
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Open authenticated installer verification worker
+        if: always() && !cancelled() && inputs.public_key != ''
+        uses: ./.github/actions/debug-failed-runner
+        env:
+          GH_TOKEN: ''
+          GITHUB_TOKEN: ''
+        with:
+          public-key: ${{ inputs.public_key }}
+          idle-timeout-minutes: '10'
+          artifact-suffix: -installer-prepare
+
+      - name: Remove independent verification inputs
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/dry-run-assets" "$RUNNER_TEMP/verified-fork" "$RUNNER_TEMP/verified-source"
+
+  consume:
+    name: Install and consume - ${{ matrix.target }}
+    needs: prepare
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 360
-    env:
-      GH_TOKEN: ${{ github.token }}
+    timeout-minutes: 55
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+      matrix:
+        include:
+          - {runner: ubuntu-24.04, target: x86_64-unknown-linux-musl}
+          - {runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl}
+          - {runner: macos-15, target: aarch64-apple-darwin}
+          - {runner: macos-15-intel, target: x86_64-apple-darwin}
+          - {runner: windows-2025, target: x86_64-pc-windows-msvc}
+          - {runner: windows-11-arm, target: aarch64-pc-windows-msvc}
+    env:
+      TARGET: ${{ matrix.target }}
+      PACKAGE_VERSION: ${{ needs.prepare.outputs.version }}
+      CODEX_NON_INTERACTIVE: "1"
     defaults:
       run:
         shell: bash
@@ -62,18 +221,121 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
-          sparse-checkout: .github/actions
 
-      - name: Create owned partial build state
-        uses: ./.github/actions/runner-debug-smoke
+      # The repository's legal documents at the dry run's commit, which the packaged copies must equal.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ needs.prepare.outputs.fork_commit }}
+          path: fork-source
+          persist-credentials: false
+          sparse-checkout: |
+            /LICENSE.md
+            /docs/LICENSE.html
+            /docs/terms.html
+            /docs/privacy.html
+          sparse-checkout-cone-mode: false
 
-      - name: Record the deliberate build failure
-        id: failure
-        run: exit 17
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version-file: .nvmrc
 
-      - name: Debug the original failed workspace
-        if: failure() && steps.failure.outcome == 'failure'
+      - name: Obtain the verified CLI archives, installers and checksums
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: dry-run-verified-assets
+          path: ${{ runner.temp }}/dry-run-release
+
+      - name: Obtain this host's app-server archive from the dry run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: assets-${{ matrix.target }}
+          path: ${{ runner.temp }}/dry-run-target-assets
+          run-id: ${{ inputs.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+
+      - name: Install with the shipped installer from a locally served copy of the dry-run release
+        run: |
+          set -euo pipefail
+          native_temp="$(cd "$RUNNER_TEMP" && pwd -P)"
+          release="$native_temp/dry-run-release"
+          source_root="$native_temp/installer-source"
+          mkdir -p "$source_root/scripts/install"
+          cp "$release/install.sh" "$release/install.ps1" "$source_root/scripts/install/"
+          node .github/scripts/verify-voice-installer.mjs --upstream-root "$source_root" \
+            --assets "$release" --target "$TARGET" --package-version "$PACKAGE_VERSION" \
+            --scratch-root "$native_temp" \
+            --installed-package-output "$native_temp/installed installer package $TARGET" \
+            --evidence-dir "$native_temp/installer-evidence-$TARGET"
+
+      - name: Install the exact npm release from an isolated local registry
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          native_temp="$PWD"
+          scratch="$(mktemp -d "$native_temp/npm-consumer.XXXXXX")"
+          trap 'rm -rf -- "$scratch"' EXIT
+          mkdir "$scratch/tools" "$scratch/cache" "$scratch/tmp" "$scratch/packages"
+          cd "$GITHUB_WORKSPACE"
+          cp .github/npm-verification/package.json .github/npm-verification/package-lock.json "$scratch/tools/"
+          export TMPDIR="$scratch/tmp"
+          if npm ci --prefix "$scratch/tools" --cache "$scratch/cache" --ignore-scripts --no-audit --no-fund \
+            --registry=https://registry.npmjs.org; then
+            :
+          else
+            npm ci --prefix "$scratch/tools" --cache "$scratch/cache" --ignore-scripts --no-audit --no-fund \
+              --registry=https://registry.npmmirror.com
+          fi
+
+          archive_root="$native_temp/dry-run-release"
+          while IFS= read -r target; do
+            mkdir "$scratch/packages/$target"
+            tar -xzf "$archive_root/codex-package-$target.tar.gz" -C "$scratch/packages/$target"
+          done < <(node -e 'for (const entry of JSON.parse(require("node:fs").readFileSync(".github/release-matrix.json", "utf8"))) console.log(entry.target)')
+          node .github/scripts/verify-local-npm.mjs \
+            --package-root "$scratch/packages" --tools "$scratch/tools" \
+            --npm-cli "$scratch/tools/node_modules/npm/bin/npm-cli.js" \
+            --scratch-root "$scratch" --evidence-dir "$RUNNER_TEMP/npm-evidence"
+
+      - name: Install and run the app-server package
+        run: |
+          set -euo pipefail
+          native_temp="$(cd "$RUNNER_TEMP" && pwd -P)"
+          node .github/scripts/verify-app-server-package.mjs \
+            --archive "$native_temp/dry-run-target-assets/codex-app-server-package-$TARGET.tar.gz" \
+            --sums "$native_temp/dry-run-release/SHA256SUMS" \
+            --target "$TARGET" --package-version "$PACKAGE_VERSION" \
+            --legal-source "$GITHUB_WORKSPACE/fork-source" \
+            --install-root "$native_temp/installed app-server $TARGET" \
+            --evidence-dir "$native_temp/app-server-evidence-$TARGET"
+
+      - name: Retain native installation evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: dry-run-install-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/installer-evidence-${{ matrix.target }}
+            ${{ runner.temp }}/npm-evidence
+            ${{ runner.temp }}/app-server-evidence-${{ matrix.target }}
+            ${{ runner.temp }}/dry-run-release/release-manifest.json
+            ${{ runner.temp }}/dry-run-release/SHA256SUMS
+          retention-days: 3
+          if-no-files-found: warn
+
+      - name: Open authenticated installer verification worker
+        if: always() && !cancelled() && inputs.public_key != ''
         uses: ./.github/actions/debug-failed-runner
+        env:
+          GH_TOKEN: ''
+          GITHUB_TOKEN: ''
         with:
           public-key: ${{ inputs.public_key }}
-          idle-timeout-minutes: ${{ inputs.idle_timeout_minutes }}
+          idle-timeout-minutes: '10'
+          artifact-suffix: -installer-${{ matrix.target }}
+
+      - name: Remove the downloaded release inputs and installations
+        if: always()
+        run: |
+          rm -rf -- "$RUNNER_TEMP/dry-run-release" "$RUNNER_TEMP/dry-run-target-assets" "$RUNNER_TEMP/installer-source" \
+            "$RUNNER_TEMP/npm-evidence" "$RUNNER_TEMP/installed installer package $TARGET"
