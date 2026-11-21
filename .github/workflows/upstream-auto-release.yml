@@ -47,6 +47,10 @@ on:
         description: Prepare the Linux package cache key and upload its digests without running the release Cargo build
         type: boolean
         default: false
+      package_voice_reproduction:
+        description: Build the Linux voice payload twice for a key-only package diagnostic
+        type: boolean
+        default: false
       package_public_key:
         description: Optional SSH public key for dry-run package workers; connect to each selected worker before packaging
         type: string
@@ -136,6 +140,7 @@ jobs:
           PACKAGE_DRY_RUN: ${{ inputs.package_dry_run }}
           PACKAGE_CARGO_CACHE: ${{ inputs.package_cargo_cache }}
           PACKAGE_CACHE_KEY_ONLY: ${{ inputs.package_cache_key_only }}
+          PACKAGE_VOICE_REPRODUCTION: ${{ inputs.package_voice_reproduction }}
         run: |
           set -euo pipefail
           live=false
@@ -153,6 +158,10 @@ jobs:
           fi
           if [[ "$PACKAGE_CACHE_KEY_ONLY" == true && ( "$PACKAGE_CARGO_CACHE" != true || "$SKIP_GATES" != true ) ]]; then
             printf '::error::package_cache_key_only requires package_cargo_cache=true and skip_gates=true\n'
+            exit 1
+          fi
+          if [[ "$PACKAGE_VOICE_REPRODUCTION" == true && "$PACKAGE_CACHE_KEY_ONLY" != true ]]; then
+            printf '::error::package_voice_reproduction requires package_cache_key_only=true\n'
             exit 1
           fi
           all='[{"runner":"ubuntu-24.04","target":"x86_64-unknown-linux-musl"},
@@ -717,8 +726,25 @@ jobs:
           # A voice helper identity query that fails keeps its stdout and stderr here; the evidence upload collects them.
           echo "CODEX_VOICE_DIAGNOSTICS_DIR=$RUNNER_TEMP/voice-helper-identity-$TARGET" >> "$GITHUB_ENV"
 
+      - name: Compare independent Linux voice builds on this worker
+        if: inputs.package_voice_reproduction
+        env:
+          RELEASE_VERSION: ${{ needs.detect.outputs.version }}
+          RELEASE_BUILD: ${{ needs.detect.outputs.build }}
+        run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/probe-linux-voice-reproduction.sh"
+
+      - name: Retain Linux voice reproduction evidence
+        if: ${{ !cancelled() && inputs.package_voice_reproduction }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: linux-voice-reproduction-${{ matrix.target }}
+          path: ${{ runner.temp }}/voice-reproduction-evidence/*.json
+          retention-days: 3
+          if-no-files-found: error
+
       - name: Build the sealed voice runtime for this patched source
         id: voice-build
+        if: ${{ !inputs.package_voice_reproduction }}
         env:
           SOURCE_ROOT: ${{ github.workspace }}
           VOICE_METADATA: ${{ runner.temp }}/voice-release-metadata
@@ -773,7 +799,7 @@ jobs:
 
       - name: Identify the exact package Cargo cache inputs
         id: package-cache-inputs
-        if: inputs.package_cache_key_only || steps.package-cache-transport.outcome == 'success'
+        if: ${{ !inputs.package_voice_reproduction && (inputs.package_cache_key_only || steps.package-cache-transport.outcome == 'success') }}
         continue-on-error: ${{ !inputs.package_cache_key_only }}
         env:
           UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
