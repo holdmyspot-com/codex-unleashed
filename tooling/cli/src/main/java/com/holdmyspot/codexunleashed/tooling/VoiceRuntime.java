@@ -222,7 +222,7 @@ public final class VoiceRuntime
 			manifest.put("appTarget", options.target());
 			manifest.put("voiceTarget", receipt.target());
 			manifest.put("appVersion", options.version());
-			manifest.put("sha256", inventory);
+			manifest.put("sha256", new TreeMap<>(inventory));
 			writeJsonExclusive(scope, voiceRoot.resolve("manifest.json"), manifest);
 			validateManifest(scope, packageRoot, voiceRoot, options, receipt);
 		}
