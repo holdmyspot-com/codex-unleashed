@@ -567,7 +567,8 @@ public final class BazelTestEvidence
 				return false;
 		List<JsonNode> results = new ArrayList<>(attempts.values());
 		if (results.isEmpty() || results.stream().anyMatch(result ->
-			!Set.of("PASSED", "FAILED").contains(text(result.path("testResult"), "status"))))
+			!Set.of("PASSED", "FAILED").contains(text(result.path("testResult"), "status")) &&
+			!(text(result.path("testResult"), "status").equals("TIMEOUT") && !result.path("children").isEmpty())))
 			return false;
 		return summaryCountsMatch(results, summary.path("testSummary"));
 	}
@@ -613,7 +614,7 @@ public final class BazelTestEvidence
 		}
 		if (children.isEmpty())
 			return true;
-		return children.size() == 1 && text(event.path("testResult"), "status").equals("FAILED") &&
+		return children.size() == 1 && Set.of("FAILED", "TIMEOUT").contains(text(event.path("testResult"), "status")) &&
 			collectAttemptChain(scope, children.getFirst(), label, configuration, attempt + 1, byId, attempts);
 	}
 

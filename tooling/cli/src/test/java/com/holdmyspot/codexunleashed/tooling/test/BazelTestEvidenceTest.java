@@ -598,7 +598,26 @@ public final class BazelTestEvidenceTest
 	}
 
 	/**
-	 * Rejects retry attempts whose result identities disagree with the summary's announced run count.
+	 * Counts a timed-out attempt when Bazel announces and records its retry.
+	 *
+	 * @throws IOException if the fixture files cannot be created or removed
+	 */
+	@Test
+	public void preservesTimeoutFollowedByRetry() throws IOException
+	{
+		String retry = addRetryAttempt(BASE, "PASSED").replace("\"status\":\"FAILED\"", "\"status\":\"TIMEOUT\"");
+		try (Fixture fixture = new Fixture())
+		{
+			Result result = invoke(fixture, retry, "//:pass\n", "0");
+			requireThat(result.status, "status").isEqualTo(0);
+			requireThat(result.output, "report").
+				contains("\"completed_test_count\":1").
+				contains("\"nonpassing_test_count\":1");
+		}
+	}
+
+	/**
+	 * Rejects a terminal timeout reported as an ordinary failure.
 	 *
 	 * @throws IOException if the fixture files cannot be created or removed
 	 */
