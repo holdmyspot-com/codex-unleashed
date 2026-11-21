@@ -40,11 +40,11 @@ on:
         type: boolean
         default: false
       package_cargo_cache:
-        description: Try the exact compiled Cargo cache during a package dry run for x86_64-unknown-linux-musl
+        description: Try the exact compiled Cargo cache during a package dry run for x86_64-unknown-linux-musl or x86_64-pc-windows-msvc
         type: boolean
         default: false
       package_cache_key_only:
-        description: Prepare the Linux package cache key and upload its digests without running the release Cargo build
+        description: Prepare the package cache key and upload its digests without running the release Cargo build
         type: boolean
         default: false
       package_public_key:
@@ -62,6 +62,8 @@ concurrency:
   group: >-
     upstream-auto-release-${{ inputs.upstream_tag || 'latest' }}-${{
       (github.event_name == 'schedule' || !inputs.dry_run) && 'live' ||
+      (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_targets == 'x86_64-pc-windows-msvc') &&
+        (inputs.package_cache_key_only && format('windows-package-cache-key-{0}', github.run_id) || 'windows-package-cache-pilot') ||
       (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_cache_key_only) && 'package-cache-key' ||
       (inputs.package_dry_run && inputs.package_cargo_cache) && 'package-cache-pilot' ||
       'dry'
@@ -147,8 +149,8 @@ jobs:
             exit 1
           fi
           if [[ "$PACKAGE_CARGO_CACHE" == true && ( "$live" == true || "$PACKAGE_DRY_RUN" != true ||
-            "$PACKAGE_TARGETS" != x86_64-unknown-linux-musl ) ]]; then
-            printf '::error::package_cargo_cache requires a package dry run for x86_64-unknown-linux-musl only\n'
+            ( "$PACKAGE_TARGETS" != x86_64-unknown-linux-musl && "$PACKAGE_TARGETS" != x86_64-pc-windows-msvc ) ) ]]; then
+            printf '::error::package_cargo_cache requires a package dry run for exactly one supported target (x86_64-unknown-linux-musl or x86_64-pc-windows-msvc)\n'
             exit 1
           fi
           if [[ "$PACKAGE_CACHE_KEY_ONLY" == true && ( "$PACKAGE_CARGO_CACHE" != true || "$SKIP_GATES" != true ) ]]; then
@@ -644,7 +646,7 @@ jobs:
 
       - name: Stage the verified Zig distribution for the package cache
         id: package-cache-zig
-        if: inputs.package_cargo_cache
+        if: inputs.package_cargo_cache && runner.os == 'Linux'
         continue-on-error: ${{ !inputs.package_cache_key_only }}
         run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-cargo-cache.sh" stage-zig
 
@@ -774,7 +776,9 @@ jobs:
 
       - name: Prepare the package Cargo cache transport
         id: package-cache-transport
-        if: steps.package-cache-zig.outcome == 'success' && !inputs.package_cache_key_only
+        if: >-
+          inputs.package_cargo_cache && !inputs.package_cache_key_only &&
+          (steps.package-cache-zig.outcome == 'success' || matrix.target == 'x86_64-pc-windows-msvc')
         continue-on-error: true
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
         with:
