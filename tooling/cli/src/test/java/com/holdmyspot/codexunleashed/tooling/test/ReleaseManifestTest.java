@@ -716,6 +716,8 @@ public final class ReleaseManifestTest
 			else
 			{
 				List<String> operation = command.subList(3, command.size());
+				if (operation.equals(List.of("cat-file", "blob", sourceCommit + ":codex-rs/Cargo.lock")))
+					return new SystemCommands.Result(0, Files.readString(source.resolve("codex-rs/Cargo.lock")), "");
 				output = switch (operation.getFirst())
 				{
 					case "rev-parse" ->
@@ -723,7 +725,7 @@ public final class ReleaseManifestTest
 						String query = operation.get(1);
 						if (query.contains(":patches/"))
 							yield patchHash;
-						if (query.equals("HEAD^{tree}"))
+						if (query.equals(sourceCommit + "^{tree}"))
 							yield sourceTree;
 						if (query.endsWith("^{commit}"))
 							yield UPSTREAM;

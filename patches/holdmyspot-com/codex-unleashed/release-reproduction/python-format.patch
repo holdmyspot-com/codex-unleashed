@@ -1,4 +1,5 @@
 From: Codex <codex@openai.com>
+Date: Wed, 18 Nov 2026 12:21:44 -0500
 Subject: [PATCH] scripts: format package archive sources
 
 Apply the pinned Ruff formatting to the two files flagged by the formatting gate.

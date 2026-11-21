@@ -71,7 +71,7 @@ public final class ReleaseManifestSourceIdentityTest
 
 	/**
 	 * Gives two independent checkouts of one HEAD the same recorded identity after each aligns and commits the
-	 * lockfile, and records the digest of the committed lockfile.
+	 * lockfile, even when a checkout converts line endings.
 	 *
 	 * @throws IOException if a fixture file or Git process fails
 	 */
@@ -84,9 +84,7 @@ public final class ReleaseManifestSourceIdentityTest
 			Path first = committedCheckout(fixture);
 			String queueHead = git(fixture, first, "rev-parse", "HEAD");
 			Path second = fixture.getPath().resolve("second");
-			// A Windows runner's core.autocrlf=true would check the clone out with CRLF line endings, so the lockfile
-			// bytes, and their digest, would differ from the first checkout's.
-			git(fixture, fixture.getPath(), "-c", "core.autocrlf=false", "clone", "-q", first.toString(),
+			git(fixture, fixture.getPath(), "clone", "-q", "-c", "core.autocrlf=true", first.toString(),
 				second.toString());
 
 			align(first);
@@ -98,6 +96,8 @@ public final class ReleaseManifestSourceIdentityTest
 			requireThat(firstIdentity.get("commit").asString(), "commit").isNotEqualTo(queueHead);
 			requireThat(firstIdentity.get("cargo_lock_sha256").asString(), "cargo_lock_sha256").
 				isEqualTo(Sha256.digest(first.resolve("codex-rs/Cargo.lock")));
+			requireThat(Sha256.digest(second.resolve("codex-rs/Cargo.lock")), "crlfLockfileDigest").
+				isNotEqualTo(firstIdentity.get("cargo_lock_sha256").asString());
 			requireThat(Files.readString(first.resolve("codex-rs/Cargo.lock")), "lock").contains("version = \"0.167.0\"");
 		}
 	}
@@ -117,6 +117,7 @@ public final class ReleaseManifestSourceIdentityTest
 		fixture.write("checkout/codex-rs/alpha/Cargo.toml", "[package]\nname = \"alpha\"\nversion.workspace = true\n");
 		fixture.write("checkout/codex-rs/Cargo.lock", "[[package]]\nname = \"alpha\"\nversion = \"0.0.0\"\n");
 		git(fixture, checkout, "init", "-q");
+		git(fixture, checkout, "config", "core.autocrlf", "false");
 		git(fixture, checkout, "add", "-A");
 		git(fixture, checkout, "-c", "user.name=Test", "-c", "user.email=test@example.com", "-c",
 			"commit.gpgsign=false", "commit", "-q", "-m", "fixture");

@@ -35,19 +35,39 @@ public final class Sha256
 	public static String digest(Path file) throws IOException
 	{
 		Objects.requireNonNull(file, "file");
-		MessageDigest digest;
-		try
-		{
-			digest = MessageDigest.getInstance("SHA-256");
-		}
-		catch (NoSuchAlgorithmException failure)
-		{
-			throw new IllegalStateException("Java platform does not supply SHA-256", failure);
-		}
+		MessageDigest digest = newDigest();
 		try (InputStream input = new DigestInputStream(Files.newInputStream(file), digest))
 		{
 			input.transferTo(OutputStream.nullOutputStream());
 		}
 		return HexFormat.of().formatHex(digest.digest());
+	}
+
+	/**
+	 * Hashes bytes already in memory.
+	 *
+	 * @param bytes the raw input
+	 * @return the lowercase hexadecimal digest
+	 */
+	public static String digest(byte[] bytes)
+	{
+		return HexFormat.of().formatHex(newDigest().digest(bytes));
+	}
+
+	/**
+	 * Creates a digest using the Java platform's SHA-256 implementation.
+	 *
+	 * @return the new digest
+	 */
+	private static MessageDigest newDigest()
+	{
+		try
+		{
+			return MessageDigest.getInstance("SHA-256");
+		}
+		catch (NoSuchAlgorithmException failure)
+		{
+			throw new IllegalStateException("Java platform does not supply SHA-256", failure);
+		}
 	}
 }

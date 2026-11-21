@@ -1,4 +1,5 @@
 From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 18 Nov 2026 12:21:44 -0500
 Subject: [PATCH] build: include voice runtime in release packages
 
 Stage verified voice resources in the primary release package.

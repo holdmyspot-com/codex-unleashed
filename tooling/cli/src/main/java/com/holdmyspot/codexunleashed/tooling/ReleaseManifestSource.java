@@ -8,6 +8,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.math.BigInteger;
@@ -96,8 +97,9 @@ public final class ReleaseManifestSource
 	}
 
 	/**
-	 * Reads clean source HEAD, tree, and Cargo.lock identities without modifying the checkout. The release commits its
-	 * lockfile alignment (see {@link WorkspaceLockAlignment}), so a modified lockfile is as unclean as any other change.
+	 * Reads clean source HEAD, tree, and committed Cargo.lock identities without modifying the checkout. The release
+	 * commits its lockfile alignment (see {@link WorkspaceLockAlignment}), so a modified lockfile is as unclean as any
+	 * other change. Hashing the Git blob makes the digest independent of the checkout's line endings.
 	 *
 	 * @param source supplied upstream source checkout
 	 * @return source commit, tree, and lockfile digest
@@ -108,10 +110,15 @@ public final class ReleaseManifestSource
 	{
 		String uncommitted = git(source, "status", "--porcelain", "--untracked-files=normal");
 		require(uncommitted.isEmpty(), "Source checkout must be clean before recording or verification");
+		require(Files.isRegularFile(source.resolve(WorkspaceLockAlignment.LOCK_PATH), LinkOption.NOFOLLOW_LINKS),
+			"Expected a regular file: Cargo.lock");
 		ObjectNode result = scope.getJsonMapper().createObjectNode();
-		result.put("commit", git(source, "rev-parse", "HEAD"));
-		result.put("tree", git(source, "rev-parse", "HEAD^{tree}"));
-		result.put("cargo_lock_sha256", digest(source.resolve("codex-rs/Cargo.lock")));
+		String commit = git(source, "rev-parse", "HEAD");
+		result.put("commit", commit);
+		result.put("tree", git(source, "rev-parse", commit + "^{tree}"));
+		String lockBlob = commit + ":" + WorkspaceLockAlignment.LOCK_PATH;
+		String lock = run(List.of("git", "-C", source.toString(), "cat-file", "blob", lockBlob));
+		result.put("cargo_lock_sha256", Sha256.digest(lock.getBytes(StandardCharsets.UTF_8)));
 		return result;
 	}
 
@@ -260,14 +267,14 @@ public final class ReleaseManifestSource
 	{
 		List<String> command = new ArrayList<>(List.of("git", "-C", repository.toString()));
 		command.addAll(Arrays.asList(arguments));
-		return run(command);
+		return strip(run(command));
 	}
 
 	/**
 	 * Captures Git output without publishing captured stderr or credential-bearing command arguments.
 	 *
 	 * @param command direct Git argument vector
-	 * @return stripped successful stdout
+	 * @return successful stdout, including its original whitespace
 	 * @throws IOException if process capture fails
 	 * @throws IllegalArgumentException if Git reports failure
 	 */
@@ -277,7 +284,7 @@ public final class ReleaseManifestSource
 			environment.temporaryDirectory(), environment.variables());
 		require(result.status() == 0, command.get(0) + " " + command.get(1) + " failed (exit " + result.status() +
 			"); inspect the supplied checkout or verifier");
-		return strip(result.stdout());
+		return result.stdout();
 	}
 
 	/**
