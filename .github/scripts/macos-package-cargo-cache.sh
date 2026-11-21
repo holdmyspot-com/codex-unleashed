@@ -10,7 +10,8 @@ esac
 metadata="$RUNNER_TEMP/manifest-patch-repo"
 scripts="$metadata/.github/scripts"
 transport="$scripts/ghcr-cargo-target-cache.sh"
-tree="$scripts/macos-package-cache-tree.py"
+tree="$scripts/macos-package-cache-tree.sh"
+tree_source="$scripts/MacosPackageCacheTree.java"
 test "$CARGO_TARGET_DIR" = "${CI_BUILD_ROOT:?}/cargo-target"
 
 if [[ "$operation" == inputs ]]; then
@@ -25,7 +26,7 @@ if [[ "$operation" == inputs ]]; then
     shasum -a 256 "$RUNNER_TEMP/downstream-$patch"
   done > "$inputs/patches"
   shasum -a 256 "$metadata/.github/workflows/upstream-auto-release.yml" \
-    "$scripts/macos-package-cargo-cache.sh" "$tree" "$scripts/macos-package-toolchain-inputs.sh" > "$inputs/wrappers"
+    "$scripts/macos-package-cargo-cache.sh" "$tree" "$tree_source" "$scripts/macos-package-toolchain-inputs.sh" > "$inputs/wrappers"
   shasum -a 256 "$transport" > "$inputs/helper"
   operations=.github/scripts/codex-package-operations.sh
   printf '%s\n' "$TARGET" "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:?}" "${ImageVersion:?}" \
@@ -54,7 +55,7 @@ if [[ "$operation" == inputs ]]; then
   } > "$inputs/settings"
   shasum -a 256 codex-rs/Cargo.lock codex-rs/rust-toolchain.toml > "$inputs/lockfiles"
   shasum -a 256 "$RUSTY_V8_ARCHIVE" "$RUSTY_V8_SRC_BINDING_PATH" > "$inputs/v8"
-  python3 "$tree" voice-inventory "$VOICE_RELEASE_DIR" > "$inputs/voice"
+  bash "$tree" voice-inventory "$VOICE_RELEASE_DIR" > "$inputs/voice"
   compiler_components=(context apple tools settings lockfiles v8)
   # Cargo builds the application executables on both native architectures.
   # The separate voice payload first enters the archive step. Retain its digest
@@ -104,14 +105,14 @@ unset GHCR_TOKEN
 if [[ "$operation" == restore ]]; then
   stage="$(mktemp -d "${CARGO_TARGET_DIR}.restore.XXXXXX")"
   if bash "$transport" pull "$repository" "$CACHE_TAG" "$stage" "$UPSTREAM_TAG"; then
-    python3 "$tree" install "$stage" "$CARGO_TARGET_DIR" "$TARGET"
+    bash "$tree" install "$stage" "$CARGO_TARGET_DIR" "$TARGET"
     status=hit
   else
     result="$?"
     if [[ "$result" == 3 ]]; then status=miss; fi
   fi
 else
-  python3 "$tree" prune "$CARGO_TARGET_DIR" "$TARGET"
+  bash "$tree" prune "$CARGO_TARGET_DIR" "$TARGET"
   if bash "$transport" push "$repository" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$UPSTREAM_TAG"; then
     status=saved
   fi
