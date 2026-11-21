@@ -3,64 +3,14 @@ name: Stable upstream Linux tests
 on:
   workflow_dispatch:
     inputs:
-      package:
-        description: Optional space-separated Cargo packages for an unmodified-source comparison
+      public_key:
+        description: SSH public key for the retained Linux worker
+        required: true
         type: string
-        default: ""
-      compare_upstream_image:
-        description: Compare one unchanged archive across the host and upstream image capabilities
-        type: boolean
-        default: false
-      trace_shell_startup:
-        description: Trace the selected failing remote shell cases after their untraced archive run
-        type: boolean
-        default: false
-      filter:
-        description: Optional nextest expression for an unmodified-source comparison
-        type: string
-        default: ""
       patches:
-        description: Space-separated repository paths of downstream patches to apply with git am, in order
+        description: Ordered integration patch paths for the second phase
+        required: true
         type: string
-        default: ""
-      red_restore:
-        description: Space-separated upstream paths to withhold for a red phase that must fail before the patched run
-        type: string
-        default: ""
-      red_patch_count:
-        description: Number of trailing patches under test; the red phase restores red_restore paths to their state before them
-        type: string
-        default: "1"
-      regenerate_app_server_schema:
-        description: Regenerate the precomputed stable app-server exports after applying the patches and record the binary diff
-        type: boolean
-        default: false
-      stress_count:
-        description: Optional repeat count; the run executes each selected test this many times under CPU load, with no retries, to measure flakiness
-        type: string
-        default: ""
-      accept_snapshots:
-        description: Let the patched run overwrite failing insta snapshots and record their diff, for folding into a patch
-        type: boolean
-        default: false
-      write_baseline:
-        description: Unpatched run only; record its failures as the baseline file for this upstream commit, saved in the evidence artifact
-        type: boolean
-        default: false
-      lanes:
-        description: "Space-separated test lanes: local (no remote environment) and remote (upstream's Docker exec-server). Empty runs both; snapshot, comparison and trace runs use local only"
-        type: string
-        default: ""
-  workflow_call:
-    inputs:
-      patches:
-        description: Space-separated repository paths of downstream patches to apply with git am, in order
-        type: string
-        default: ""
-      upstream_commit:
-        description: Optional upstream commit to test instead of .github/upstream-commit
-        type: string
-        default: ""
 
 permissions:
   contents: read
@@ -69,7 +19,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 360
     env:
       CARGO_INCREMENTAL: "0"
       # As upstream's rust-ci-full-nextest-platform.yml: debug symbols for hundreds of test binaries exhaust the disk
@@ -88,16 +38,10 @@ jobs:
         with:
           path: restart-metadata
           persist-credentials: false
-
-      - name: Set up the Java tooling runtime
-        uses: ./restart-metadata/.github/actions/setup-tooling
-        with:
-          tooling-root: ${{ github.workspace }}/restart-metadata
-
       - name: Preserve restart inputs outside the source checkout
         id: inputs
         env:
-          UPSTREAM_COMMIT: ${{ inputs.upstream_commit }}
+          UPSTREAM_COMMIT: ${{ '' }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-test-evidence"
@@ -116,23 +60,6 @@ jobs:
           if [[ -d restart-metadata/docs/test-baselines ]]; then cp -R restart-metadata/docs/test-baselines/. "$RUNNER_TEMP/test-baselines/"; fi
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
-
-      - name: Validate the focused process-trace request
-        if: inputs.trace_shell_startup
-        env:
-          TRACE_PACKAGE: ${{ inputs.package }}
-          TRACE_FILTER: ${{ inputs.filter }}
-        run: |
-          set -euo pipefail
-          test "$TRACE_PACKAGE" = codex-exec-server
-          case "$TRACE_FILTER" in
-            'test(shell_snapshot_v2_filters_profile_exports_and_stays_in_memory::remote_sandbox)' | \
-            'test(shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_tty_recovery)' | \
-            'test(shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path)' | \
-            'test(shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_) | test(shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path)') ;;
-            *) printf 'Unsupported focused process-trace filter: %s\n' "$TRACE_FILTER" >&2; exit 1 ;;
-          esac
-
       - name: Retrieve the exact stable upstream source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -147,10 +74,8 @@ jobs:
         with:
           path: restart-metadata
           persist-credentials: false
-
       - name: Exclude restart inputs from the upstream source status
         run: printf '/restart-metadata/\n' >> .git/info/exclude
-
       - name: Verify pristine upstream source identity
         run: |
           set -euo pipefail
@@ -158,12 +83,40 @@ jobs:
           test -z "$(git status --porcelain)"
           git diff --check
           git diff --binary > "$RUNNER_TEMP/baseline-test-evidence/pristine-source.diff"
+      - name: Open authenticated Linux test worker
+        uses: ./restart-metadata/.github/actions/debug-failed-runner
+        with:
+          public-key: ${{ inputs.public_key }}
+          idle-timeout-minutes: '10'
+      - name: Wait for connected Linux test client
+        run: |
+          bash "$GITHUB_WORKSPACE/restart-metadata/.github/scripts/release-debug-session.sh" \
+            wait-for-client "$RUNNER_TEMP/baseline-test-evidence"
+      - name: Set up the Java tooling runtime
+        uses: ./restart-metadata/.github/actions/setup-tooling
+        with:
+          tooling-root: ${{ github.workspace }}/restart-metadata
+      - name: Reclaim unused hosted-image toolchains and record capacity
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          df -h / "$RUNNER_TEMP" | tee "$evidence/disk-before.txt"
+          for unused in /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift /opt/ghc; do
+            if [[ -d "$unused" ]]; then
+              sudo du -sh "$unused" | tee -a "$evidence/reclaimed-toolchains.txt"
+              sudo rm -rf -- "$unused"
+            fi
+          done
+          df -h / "$RUNNER_TEMP" | tee "$evidence/disk-after.txt"
 
-      - name: Apply the selected downstream patches
-        id: patched
+      # Upstream's setup-ci action: Ubuntu 24.04's AppArmor blocks unprivileged user namespaces, which bubblewrap needs, so
+      # without this the sandbox tests that find the installed bwrap fail instead of exercising the sandbox.
+      - name: Unpatched | Apply the selected downstream patches
+        id: unpatched_patched
         env:
-          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
-          RED_RESTORE: ${{ inputs.red_restore }}
+          DOWNSTREAM_PATCHES: ${{ '' }}
+          RED_RESTORE: ${{ '' }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-test-evidence"
@@ -188,34 +141,15 @@ jobs:
               am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
           done
           printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Prepare upstream's native test host
+      - name: Unpatched | Prepare upstream's native test host
         uses: ./.github/actions/setup-ci
-
-      - name: Reclaim unused hosted-image toolchains and record capacity
-        run: |
-          set -euo pipefail
-          test "$RUNNER_ENVIRONMENT" = github-hosted
-          evidence="$RUNNER_TEMP/baseline-test-evidence"
-          df -h / "$RUNNER_TEMP" | tee "$evidence/disk-before.txt"
-          for unused in /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift /opt/ghc; do
-            if [[ -d "$unused" ]]; then
-              sudo du -sh "$unused" | tee -a "$evidence/reclaimed-toolchains.txt"
-              sudo rm -rf -- "$unused"
-            fi
-          done
-          df -h / "$RUNNER_TEMP" | tee "$evidence/disk-after.txt"
-
-      # Upstream's setup-ci action: Ubuntu 24.04's AppArmor blocks unprivileged user namespaces, which bubblewrap needs, so
-      # without this the sandbox tests that find the installed bwrap fail instead of exercising the sandbox.
-      - name: Enable unprivileged user namespaces
+      - name: Unpatched | Enable unprivileged user namespaces
         run: |
           sudo sysctl -w kernel.unprivileged_userns_clone=1
           if sudo sysctl -a 2>/dev/null | grep -q '^kernel.apparmor_restrict_unprivileged_userns'; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
-
-      - name: Install Linux development prerequisites
+      - name: Unpatched | Install Linux development prerequisites
         run: |
           set -euo pipefail
           # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
@@ -227,19 +161,27 @@ jobs:
           bwrap --version
           mkdir -p "$RUNNER_TEMP/baseline-test-cargo-home"
           printf 'CARGO_HOME=%s\n' "$RUNNER_TEMP/baseline-test-cargo-home" >> "$GITHUB_ENV"
-
-      - name: Read upstream's pinned Rust toolchain
-        id: upstream-rust
+      - name: Unpatched | Read upstream's pinned Rust toolchain
+        id: unpatched_upstream-rust
         shell: bash
         run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
-
-      - name: Set up upstream's Rust toolchain
+      - name: Unpatched | Set up upstream's Rust toolchain
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
         with:
-          toolchain: ${{ steps.upstream-rust.outputs.channel }}
+          toolchain: ${{ '1.99.1' == '1.99.1' && '1.99.1' || steps.unpatched_upstream-rust.outputs.channel }}
           targets: x86_64-unknown-linux-gnu
-
-      - name: Install upstream's nextest version
+      - name: Unpatched | Select and verify the dispatched Rust override
+        env:
+          REQUESTED_RUST_TOOLCHAIN: ${{ '1.99.1' }}
+        run: |
+          set -euo pipefail
+          export RUSTUP_TOOLCHAIN="$REQUESTED_RUST_TOOLCHAIN"
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          rustc --version --verbose | tee "$evidence/rustc-version.txt"
+          grep -Fx "release: $REQUESTED_RUST_TOOLCHAIN" "$evidence/rustc-version.txt"
+          env | grep -E '^(ImageOS|ImageVersion|RUNNER_ARCH)=' | sort | tee "$evidence/runner-image.txt"
+          printf 'RUSTUP_TOOLCHAIN=%s\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"
+      - name: Unpatched | Install upstream's nextest version
         uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
         with:
           tool: nextest@0.9.103
@@ -247,7 +189,7 @@ jobs:
       # Upstream's setup scripts call curl without -q, so they read this configuration through CURL_HOME. curl retries
       # timeouts and HTTP 408, 429, 500, 502, 503 and 504 responses, such as the 504s that GitHub release downloads and
       # the kernel.org mirror return at times, with growing delays. curl on Windows also looks for _curlrc.
-      - name: Retry transient download failures
+      - name: Unpatched | Retry transient download failures
         shell: bash
         run: |
           set -euo pipefail
@@ -256,13 +198,11 @@ jobs:
           printf '%s\n' 'retry = 8' 'retry-connrefused' 'retry-max-time = 900' > "$directory/.curlrc"
           cp "$directory/.curlrc" "$directory/_curlrc"
           printf 'CURL_HOME=%s\n' "$directory" >> "$GITHUB_ENV"
-
-      - name: Verify and configure upstream V8 artifacts
+      - name: Unpatched | Verify and configure upstream V8 artifacts
         uses: ./.github/actions/setup-rusty-v8
         with:
           target: x86_64-unknown-linux-gnu
-
-      - name: Supply the native voice prerequisites using upstream's recipe
+      - name: Unpatched | Supply the native voice prerequisites using upstream's recipe
         run: |
           set -euo pipefail
           native="$RUNNER_TEMP/baseline-test-native"
@@ -293,7 +233,7 @@ jobs:
       # Tests run curl and expect a refused or timed-out connection to fail at once. The retry configuration above
       # would make curl retry those attempts for up to 900 seconds, which exceeds nextest's timeout, so the build and
       # test steps point CURL_HOME at an empty configuration instead.
-      - name: Stop retrying curl for the build and test steps
+      - name: Unpatched | Stop retrying curl for the build and test steps
         shell: bash
         run: |
           set -euo pipefail
@@ -305,16 +245,15 @@ jobs:
       # Compiled third-party crates are restored from GHCR (the Actions cache is nearly full) under a key made from the
       # toolchain, Cargo.lock, the upstream commit, the applied patches, the build environment and the package scope.
       # Only dependency outputs are stored; the workspace crates are always rebuilt.
-      - name: Set up the GHCR cache transport
+      - name: Unpatched | Set up the GHCR cache transport
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
         with:
           version: 1.3.1
-
-      - name: Restore compiled dependencies
-        id: dependency-cache
+      - name: Unpatched | Restore compiled dependencies
+        id: unpatched_dependency-cache
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          CACHE_PACKAGES: ${{ inputs.package }}
+          CACHE_PACKAGES: ${{ '' }}
           GH_OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
@@ -347,8 +286,7 @@ jobs:
             *) exit "$status" ;;
           esac
           du -sh "$CARGO_TARGET_DIR" | tee -a "$evidence/dependency-cache-restore.log"
-
-      - name: Build the maintained Linux test helper and bundled executable
+      - name: Unpatched | Build the maintained Linux test helper and bundled executable
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -365,11 +303,11 @@ jobs:
       # environment, and its x86-64 nextest job (rust-ci-full's tests_linux_x64_remote) runs with the Docker one. The
       # tests built for one environment fail in the other (a local stdio MCP server needs a local environment that a
       # remote run does not register), so this job runs the archive twice, once per lane.
-      - name: Select the test lanes
-        id: lanes
+      - name: Unpatched | Select the test lanes
+        id: unpatched_lanes
         env:
-          REQUESTED_LANES: ${{ inputs.lanes }}
-          SINGLE_LANE_MODE: ${{ inputs.accept_snapshots || inputs.compare_upstream_image || inputs.trace_shell_startup }}
+          REQUESTED_LANES: ${{ 'local' }}
+          SINGLE_LANE_MODE: ${{ false || false || false }}
         run: |
           set -euo pipefail
           lanes="$REQUESTED_LANES"
@@ -397,33 +335,12 @@ jobs:
 
       # Mirrors upstream's rust-ci-full-nextest-platform.yml: the debug codex binary runs `codex exec-server` in a
       # privileged ubuntu container. The environment variables go into a file that only the remote lane sources.
-      - name: Set up the remote test environment (Docker)
-        if: steps.lanes.outputs.remote == 'true'
-        working-directory: codex-rs
-        run: |
-          set -euo pipefail
-          cargo build -p codex-cli --bin codex
-          export CODEX_TEST_REMOTE_ENV_CONTAINER_NAME="codex-remote-test-env-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          source "${GITHUB_WORKSPACE}/scripts/test-remote-env.sh"
-          {
-            printf 'export CODEX_TEST_ENVIRONMENT=%q\n' "${CODEX_TEST_ENVIRONMENT}"
-            printf 'export CODEX_TEST_REMOTE_ENV=%q\n' "${CODEX_TEST_REMOTE_ENV}"
-            printf 'export CODEX_TEST_REMOTE_ENV_CONTAINER_NAME=%q\n' "${CODEX_TEST_REMOTE_ENV_CONTAINER_NAME}"
-            printf 'export CODEX_TEST_REMOTE_EXEC_SERVER_URL=%q\n' "${CODEX_TEST_REMOTE_EXEC_SERVER_URL}"
-          } > "$RUNNER_TEMP/remote-test-env.sh"
-          # Only the codex binary inside the container is needed. The debug build of its dependency graph filled the
-          # runner's disk before the ci-test build of the test binaries, so drop it now.
-          rm -rf "$CARGO_TARGET_DIR/debug"
-          df -h / | tee -a "$RUNNER_TEMP/baseline-test-evidence/disk-after-remote-env.txt"
-
-      # Every run, whatever its mode, builds its test binaries once into this archive and runs from it. Stress and
-      # comparison runs reuse it instead of compiling again.
-      - name: Build the nextest archive
-        id: archive
+      - name: Unpatched | Build the nextest archive
+        id: unpatched_archive
         working-directory: codex-rs
         env:
-          BASELINE_TEST_PACKAGE: ${{ inputs.package }}
-          BASELINE_ARCHIVE_COMPARE: ${{ inputs.compare_upstream_image || inputs.trace_shell_startup }}
+          BASELINE_TEST_PACKAGE: ${{ '' }}
+          BASELINE_ARCHIVE_COMPARE: ${{ false || false }}
         run: |
           set -euo pipefail
           archive_args=(archive --target x86_64-unknown-linux-gnu --cargo-profile ci-test --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst")
@@ -436,13 +353,12 @@ jobs:
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
             cargo-nextest nextest "${archive_args[@]}" 2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/archive.log"
           sha256sum "$RUNNER_TEMP/baseline-test-archive.tar.zst" > "$RUNNER_TEMP/baseline-test-evidence/archive.sha256"
-
-      - name: Save compiled dependencies
-        if: steps.dependency-cache.outputs.hit == 'false'
+      - name: Unpatched | Save compiled dependencies
+        if: steps.unpatched_dependency-cache.outputs.hit == 'false'
         continue-on-error: true
         env:
-          CACHE_REPOSITORY: ${{ steps.dependency-cache.outputs.repository }}
-          CACHE_TAG: ${{ steps.dependency-cache.outputs.tag }}
+          CACHE_REPOSITORY: ${{ steps.unpatched_dependency-cache.outputs.repository }}
+          CACHE_TAG: ${{ steps.unpatched_dependency-cache.outputs.tag }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-test-evidence"
@@ -455,98 +371,35 @@ jobs:
           du -sh "$copy" | tee -a "$evidence/dependency-cache-prune.log"
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "$CACHE_REPOSITORY" "$CACHE_TAG" "$copy" "$(cat "$evidence/upstream-ref")" 2>&1 | tee "$evidence/dependency-cache-save.log"
           rm -rf "$copy"
-
-      - name: Regenerate the precomputed stable app-server exports
-        if: inputs.regenerate_app_server_schema
-        working-directory: codex-rs
-        run: |
-          set -euo pipefail
-          # Upstream's write_schema_fixtures.py runs this ignored test with the same settings; the
-          # Python SDK step it adds afterwards does not touch the precomputed exports.
-          env CODEX_APP_SERVER_SCHEMA_ROOT="$PWD/app-server-protocol/schema" CODEX_APP_SERVER_SCHEMA_EXPERIMENTAL=0 \
-            cargo-nextest nextest run --target x86_64-unknown-linux-gnu --cargo-profile ci-test \
-            -p codex-app-server-protocol --lib --run-ignored only \
-            -E 'test(=schema_fixtures_tests::write_schema_fixtures_from_env)'
-          git -C .. add -A
-          git -C .. diff --cached --binary --stat
-          git -C .. diff --cached --binary > "$RUNNER_TEMP/baseline-test-evidence/regenerated-app-server-schema.diff"
-
-      - name: Run the red phase with the production changes withheld
-        if: inputs.red_restore != ''
-        env:
-          BASELINE_TEST_PACKAGE: ${{ inputs.package }}
-          BASELINE_TEST_FILTER: ${{ inputs.filter }}
-          RED_RESTORE: ${{ inputs.red_restore }}
-          RED_PATCH_COUNT: ${{ inputs.red_patch_count }}
-          PATCH_LIST: ${{ inputs.patches }}
-          STRESS_COUNT: ${{ inputs.stress_count }}
-        working-directory: codex-rs
-        run: |
-          set -euo pipefail
-          test -n "$BASELINE_TEST_PACKAGE"
-          read -r -a restore_paths <<< "$RED_RESTORE"
-          package_args=()
-          for package in $BASELINE_TEST_PACKAGE; do package_args+=(-p "$package"); done
-          if [[ -n "$BASELINE_TEST_FILTER" ]]; then
-            package_args+=(-E "$BASELINE_TEST_FILTER")
-          fi
-          read -r -d '' -a patch_paths <<< "$PATCH_LIST" || true
-          if [[ ! "$RED_PATCH_COUNT" =~ ^[1-9][0-9]*$ ]] || (( RED_PATCH_COUNT > ${#patch_paths[@]} )); then
-            printf 'red_patch_count must be between 1 and the number of patches (%s).\n' "${#patch_paths[@]}" >&2
-            exit 1
-          fi
-          # Withhold only the patches under test; earlier queue patches stay applied.
-          base="$(git -C .. rev-parse "HEAD~$RED_PATCH_COUNT")"
-          printf 'red_base=%s\n' "$base" | tee "$RUNNER_TEMP/baseline-test-evidence/red-base.txt"
-          for path in "${restore_paths[@]}"; do
-            # A file the patches add is withheld by removing it; the restore below brings it back.
-            if git -C .. cat-file -e "$base:$path" 2>/dev/null; then
-              git -C .. checkout "$base" -- "$path"
-            else
-              git -C .. rm -q -- "$path"
-            fi
-          done
-          git -C .. diff --stat HEAD | tee "$RUNNER_TEMP/baseline-test-evidence/red-withheld.txt"
-          helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
-          stress_args=(--no-fail-fast)
-          if [[ -n "$STRESS_COUNT" ]]; then
-            # nextest 0.9.103 exits with only the last stress iteration's status when fail-fast is off, so a stress
-            # run keeps fail-fast: the first failing iteration ends the run with a failing status.
-            stress_args=(--stress-count "$STRESS_COUNT" --retries 0)
-            for _ in $(seq "$(nproc)"); do yes > /dev/null & done
-            trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
-          fi
-          if env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
-            cargo-nextest nextest run --target x86_64-unknown-linux-gnu --cargo-profile ci-test \
-            "${stress_args[@]}" "${package_args[@]}" \
-            2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/red-nextest.log"; then
-            red_status=0
-          else
-            red_status=$?
-          fi
-          git -C .. checkout HEAD -- "${restore_paths[@]}"
-          printf 'red_status=%s\n' "$red_status" | tee "$RUNNER_TEMP/baseline-test-evidence/red-status.txt"
-          if [[ "$red_status" -eq 0 ]]; then
-            printf 'The selected tests passed without the production changes; the red phase must fail.\n' >&2
-            exit 1
-          fi
-
-      - name: Fail on build or nextest configuration warnings
+      - name: Unpatched | Fail on build or nextest configuration warnings
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-test-evidence"
           bash "$RUNNER_TEMP/fail-on-cargo-warnings.sh" "$evidence/test-helper-build.log" "$evidence/archive.log"
-
-      - name: Run the maintained nextest suite or focused comparison
-        id: native_tests
+      - name: Record effective unpatched test settings
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          {
+            rustc -vV
+            cargo --version
+            cargo-nextest --version
+            uname -r
+            sysctl kernel.unprivileged_userns_clone
+            sysctl kernel.apparmor_restrict_unprivileged_userns
+            env | LC_ALL=C sort | grep -E '^(ImageOS|ImageVersion|RUNNER_ARCH|CARGO_HOME|CARGO_TARGET_DIR|CURL_HOME|RUSTUP_TOOLCHAIN|RUSTFLAGS|RUSTDOCFLAGS|CARGO_INCREMENTAL|CARGO_PROFILE_[A-Z0-9_]+|CC|CXX|CFLAGS|CXXFLAGS)='
+          } > "$evidence/test-settings.txt"
+      - name: Unpatched | Run the maintained nextest suite or focused comparison
+        id: unpatched_native_tests
         env:
-          BASELINE_TEST_PACKAGE: ${{ inputs.package }}
-          BASELINE_TEST_FILTER: ${{ inputs.filter }}
-          BASELINE_ARCHIVE_COMPARE: ${{ inputs.compare_upstream_image || inputs.trace_shell_startup }}
-          BASELINE_ACCEPT_SNAPSHOTS: ${{ inputs.accept_snapshots }}
-          STRESS_COUNT: ${{ inputs.stress_count }}
-          LANE_LOCAL: ${{ steps.lanes.outputs.local }}
-          LANE_REMOTE: ${{ steps.lanes.outputs.remote }}
+          BASELINE_TEST_PACKAGE: ${{ '' }}
+          BASELINE_TEST_FILTER: ${{ '' }}
+          BASELINE_ARCHIVE_COMPARE: ${{ false || false }}
+          BASELINE_ACCEPT_SNAPSHOTS: ${{ false }}
+          STRESS_COUNT: ${{ '' }}
+          LANE_LOCAL: ${{ steps.unpatched_lanes.outputs.local }}
+          LANE_REMOTE: ${{ steps.unpatched_lanes.outputs.remote }}
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -652,9 +505,8 @@ jobs:
             exit 0
           fi
           exit "$status"
-
-      - name: Fail on skips caused by missing test setup
-        if: ${{ !cancelled() && steps.native_tests.outcome != 'skipped' && !inputs.compare_upstream_image && !inputs.trace_shell_startup }}
+      - name: Unpatched | Fail on skips caused by missing test setup
+        if: ${{ !cancelled() && steps.unpatched_native_tests.outcome != 'skipped' && !false && !false }}
         run: |
           set -euo pipefail
           status=0
@@ -668,14 +520,14 @@ jobs:
       # The tests run to completion whatever fails; this step decides the result. A patched run fails only on tests that
       # the unpatched baseline for this upstream commit does not list. An unpatched run with write_baseline records its
       # failures instead. Runs without a baseline file, and stress, snapshot and comparison runs, fail on any failure.
-      - name: Compare failures with the unpatched baseline
-        if: ${{ !cancelled() && steps.native_tests.outcome == 'success' && !inputs.compare_upstream_image && !inputs.trace_shell_startup }}
+      - name: Unpatched | Compare failures with the unpatched baseline
+        if: ${{ !cancelled() && steps.unpatched_native_tests.outcome == 'success' && !false && !false }}
         env:
-          NEXTEST_STATUS_LOCAL: ${{ steps.native_tests.outputs.nextest_status_local }}
-          NEXTEST_STATUS_REMOTE: ${{ steps.native_tests.outputs.nextest_status_remote }}
-          WRITE_BASELINE: ${{ inputs.write_baseline }}
-          PATCHES: ${{ inputs.patches }}
-          GATED: ${{ inputs.stress_count == '' && !inputs.accept_snapshots }}
+          NEXTEST_STATUS_LOCAL: ${{ steps.unpatched_native_tests.outputs.nextest_status_local }}
+          NEXTEST_STATUS_REMOTE: ${{ steps.unpatched_native_tests.outputs.nextest_status_remote }}
+          WRITE_BASELINE: ${{ true }}
+          PATCHES: ${{ '' }}
+          GATED: ${{ '' == '' && !false }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-test-evidence"
@@ -707,203 +559,14 @@ jobs:
             fi
           done
           exit "$result"
-
-      - name: Record the accepted snapshot changes
-        if: always() && inputs.accept_snapshots
-        run: |
-          set -euo pipefail
-          # insta records changed inline snapshots in untracked .pending-snap files instead of editing the test source.
-          git add -A -- '*.snap' '*.pending-snap'
-          git diff --cached --stat -- '*.snap' '*.pending-snap'
-          git diff --cached --binary -- '*.snap' '*.pending-snap' > "$RUNNER_TEMP/baseline-test-evidence/accepted-snapshots.diff"
-
-      - name: Trace the same unmodified remote shell selection
-        env:
-          TRACE_FILTER: ${{ inputs.filter }}
-        if: ${{ !cancelled() && inputs.trace_shell_startup && steps.archive.outcome == 'success' }}
-        working-directory: codex-rs
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-test-evidence"
-          helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
-          strace --version > "$evidence/strace-version.txt"
-          /bin/bash --version > "$evidence/bash-version.txt"
-          sha256sum /bin/bash > "$evidence/bash.sha256"
-          trace_options=(-f -yy -s 256 -e 'trace=execve,openat,close,dup,dup2,dup3,fcntl,readlink,readlinkat,connect,getpeername,socketpair,newfstatat')
-          if test "$TRACE_FILTER" = 'test(shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path)'; then
-            printf 'Recording the blocked-descriptor mount and signal diagnostic.\n'
-            cargo-nextest nextest list --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" \
-              --workspace-remap "$GITHUB_WORKSPACE/codex-rs" -E "$TRACE_FILTER" --message-format json \
-              > "$evidence/blocked-test-inventory.json"
-            jq -e --arg selected 'shell_snapshot::shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path' '
-              [.["rust-suites"][] | .testcases | to_entries[] |
-               select(.value["filter-match"].status == "matches") |
-               {name: .key, ignored: .value.ignored}] == [{name: $selected, ignored: false}]
-            ' "$evidence/blocked-test-inventory.json"
-            trace_options=(-f -ttt -T -yy -s 256
-              -e 'trace=%process,%signal,%file,write,writev,sendto,sendmsg,sendmmsg,pipe,pipe2,socketpair,dup,dup2,dup3,fcntl,close,close_range,mount,umount2,pivot_root,chroot,unshare,setns,prctl'
-              -e 'raw=write,writev,sendto,sendmsg,sendmmsg' -e write=2)
-          fi
-          set +e
-          env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
-            strace "${trace_options[@]}" \
-              -o "$evidence/shell-startup.trace" \
-              cargo-nextest nextest run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" \
-                --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate \
-                -E "$TRACE_FILTER" \
-            2>&1 | tee "$evidence/traced-nextest.log"
-          result=${PIPESTATUS[0]}
-          set -e
-          printf 'exit_code=%s\n' "$result" > "$evidence/traced-nextest.receipt"
-          sha256sum --check "$evidence/archive.sha256"
-          exit "$result"
-
-      - name: Diagnose the null-device peer-lookup errno
-        env:
-          TRACE_FILTER: ${{ inputs.filter }}
-        if: ${{ !cancelled() && inputs.trace_shell_startup && steps.archive.outcome == 'success' }}
-        working-directory: codex-rs
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-test-evidence"
-          helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
-          set +e
-          env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
-            strace -f -yy -P /dev/null -e trace=getpeername \
-              -e inject=getpeername:error=ENOTSOCK \
-              -o "$evidence/null-peer-errno-counterfactual.trace" \
-              cargo-nextest nextest run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" \
-                --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate \
-                -E "$TRACE_FILTER" \
-            2>&1 | tee "$evidence/null-peer-errno-counterfactual.log"
-          result=${PIPESTATUS[0]}
-          set -e
-          printf 'exit_code=%s\n' "$result" > "$evidence/null-peer-errno-counterfactual.receipt"
-          sha256sum --check "$evidence/archive.sha256"
-          exit "$result"
-
-      - name: Diagnose the TTY stdin peer-lookup errno
-        env:
-          TRACE_FILTER: ${{ inputs.filter }}
-        if: ${{ (!cancelled() && inputs.trace_shell_startup) && (steps.archive.outcome == 'success' && inputs.filter == 'test(shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_tty_recovery)') }}
-        working-directory: codex-rs
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-test-evidence"
-          helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
-          set +e
-          env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
-            strace -f -yy -e trace-fds=0 -e trace=getpeername \
-              -e inject=getpeername:error=ENOTSOCK \
-              -o "$evidence/stdin-peer-errno-counterfactual.trace" \
-              cargo-nextest nextest run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" \
-                --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate \
-                -E "$TRACE_FILTER" \
-            2>&1 | tee "$evidence/stdin-peer-errno-counterfactual.log"
-          result=${PIPESTATUS[0]}
-          set -e
-          printf 'exit_code=%s\n' "$result" > "$evidence/stdin-peer-errno-counterfactual.receipt"
-          sha256sum --check "$evidence/archive.sha256"
-
-          grep -F '(INJECTED)' "$evidence/stdin-peer-errno-counterfactual.trace" > "$evidence/stdin-peer-errno-injected.trace"
-          selected_calls=$(wc -l < "$evidence/stdin-peer-errno-injected.trace")
-          device_calls=$(grep -Ec 'getpeername\(0</dev/(null|pts/[0-9]+)(<char [0-9]+:[0-9]+>)?>' "$evidence/stdin-peer-errno-injected.trace" || true)
-          if test "$selected_calls" = "$device_calls"; then
-            printf 'injected_device_stdin_calls=%s\n' "$selected_calls" > "$evidence/stdin-peer-errno-scope.receipt"
-          else
-            printf 'Peer-lookup injection affected stdin outside /dev/null and /dev/pts; reject the causal comparison. Inspect stdin-peer-errno-injected.trace.\n' >&2
-            exit 1
-          fi
-          exit "$result"
-
-      - name: Run the same archive in upstream's pinned Linux image
-        if: ${{ !cancelled() && inputs.compare_upstream_image && steps.archive.outcome == 'success' }}
-        env:
-          BASELINE_TEST_FILTER: ${{ inputs.filter }}
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-test-evidence"
-          image_digest=0a8e56bfaa3b2e5279db0d3bb2d62b44ba5e5d63a37d97eb8790f49da570af70
-          grep -F "image_sha = \"$image_digest\"" rbe.bzl > /dev/null
-          image="docker.io/mbolin491/codex-bazel@sha256:$image_digest"
-          docker pull "$image" 2>&1 | tee "$evidence/upstream-image-pull.log"
-          docker image inspect "$image" > "$evidence/upstream-image.json"
-          helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
-          nextest_binary="$(command -v cargo-nextest)"
-          nextest_args=(nextest run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate)
-          if [[ -n "$BASELINE_TEST_FILTER" ]]; then
-            nextest_args+=(-E "$BASELINE_TEST_FILTER")
-          fi
-          printf '%s\n' "${nextest_args[@]}" > "$evidence/image-nextest-arguments.txt"
-          docker_common=(
-            --mount "type=bind,source=$GITHUB_WORKSPACE,target=$GITHUB_WORKSPACE,readonly"
-            --mount "type=bind,source=$RUNNER_TEMP,target=$RUNNER_TEMP,readonly"
-            --mount "type=bind,source=$CARGO_TARGET_DIR,target=$CARGO_TARGET_DIR,readonly"
-            --mount "type=bind,source=$nextest_binary,target=/usr/local/bin/cargo-nextest,readonly"
-            --tmpfs "$GITHUB_WORKSPACE/codex-rs/target/nextest:rw,uid=1000,gid=1000,mode=0700"
-            --workdir "$GITHUB_WORKSPACE/codex-rs"
-            --env RUST_MIN_STACK --env RUST_BACKTRACE --env RUST_LIB_BACKTRACE
-            --env LD_LIBRARY_PATH --env CODEX_TEST_VOICE_RUNTIME
-            --env "CARGO_BIN_EXE_codex-linux-sandbox=$helper"
-            --env "CARGO_BIN_EXE_codex_linux_sandbox=$helper"
-          )
-          bundled_bwrap="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/bwrap"
-          test -x "$bundled_bwrap"
-          comparison_result=0
-          for variant in upstream-image upstream-image-bwrap upstream-image-bwrap-namespaces upstream-image-bwrap-mounts; do
-            variant_args=()
-            case "$variant" in
-              upstream-image-bwrap)
-                variant_args+=(--mount "type=bind,source=$bundled_bwrap,target=/usr/local/bin/bwrap,readonly")
-                ;;
-              upstream-image-bwrap-namespaces)
-                variant_args+=(--mount "type=bind,source=$bundled_bwrap,target=/usr/local/bin/bwrap,readonly" --security-opt seccomp=unconfined)
-                ;;
-              upstream-image-bwrap-mounts)
-                variant_args+=(--mount "type=bind,source=$bundled_bwrap,target=/usr/local/bin/bwrap,readonly" --security-opt seccomp=unconfined --security-opt apparmor=unconfined)
-                ;;
-            esac
-            printf '%s\n' "${variant_args[@]}" > "$evidence/$variant-docker-arguments.txt"
-            set +e
-            docker run --rm "${docker_common[@]}" "${variant_args[@]}" "$image" \
-              /bin/sh -c 'id; cat /proc/self/attr/current; grep -E "^(Seccomp|NoNewPrivs):" /proc/self/status; command -v bwrap; bwrap --unshare-user --unshare-net --ro-bind / / /bin/true' \
-              2>&1 | tee "$evidence/$variant-capability.log"
-            capability_result=${PIPESTATUS[0]}
-            printf 'exit_code=%s\n' "$capability_result" > "$evidence/$variant-capability.receipt"
-            docker run --rm "${docker_common[@]}" "${variant_args[@]}" \
-              "$image" /usr/local/bin/cargo-nextest "${nextest_args[@]}" \
-              2>&1 | tee "$evidence/$variant-nextest.log"
-            result=${PIPESTATUS[0]}
-            set -e
-            printf 'exit_code=%s\n' "$result" > "$evidence/$variant-nextest.receipt"
-            sha256sum --check "$evidence/archive.sha256"
-            if [[ "$result" != 0 ]]; then
-              comparison_result="$result"
-            fi
-          done
-          exit "$comparison_result"
-
-      - name: Remove the remote test environment
-        if: ${{ always() && steps.lanes.outputs.remote == 'true' }}
-        env:
-          REMOTE_ENV_CONTAINER: codex-remote-test-env-${{ github.run_id }}-${{ github.run_attempt }}
-        run: |
-          set -euo pipefail
-          containers="$(docker container ls --all --format '{{.Names}}')"
-          while IFS= read -r container; do
-            if [[ "$container" == "$REMOTE_ENV_CONTAINER" ]]; then
-              docker rm -f "$REMOTE_ENV_CONTAINER"
-            fi
-          done <<< "$containers"
-
-      - name: Verify the tested source matches its upstream and patch commits
+      - name: Unpatched | Verify the tested source matches its upstream and patch commits
         if: always()
         env:
-          BASELINE_REGENERATE_APP_SERVER_SCHEMA: ${{ inputs.regenerate_app_server_schema }}
-          BASELINE_ACCEPT_SNAPSHOTS: ${{ inputs.accept_snapshots }}
+          BASELINE_REGENERATE_APP_SERVER_SCHEMA: ${{ false }}
+          BASELINE_ACCEPT_SNAPSHOTS: ${{ false }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
+          test "$(git rev-parse HEAD)" = "${{ steps.unpatched_patched.outputs.commit }}"
           pathspec=(. ':(exclude)codex-rs/Cargo.lock')
           # Gathering runs change only the outputs they record as evidence diffs.
           if [[ "$BASELINE_REGENERATE_APP_SERVER_SCHEMA" == true ]]; then
@@ -913,12 +576,11 @@ jobs:
             pathspec+=(':(exclude,glob)**/*.snap' ':(exclude,glob)**/*.snap.new' ':(exclude,glob)**/*.pending-snap')
           fi
           git diff --exit-code HEAD -- "${pathspec[@]}"
-
-      - name: Retain test evidence for one day
+      - name: Unpatched | Retain test evidence for one day
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: baseline-linux-tests
+          name: linux-nextest-unpatched
           path: |
             ${{ runner.temp }}/baseline-test-evidence
             ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings
@@ -926,9 +588,529 @@ jobs:
             ${{ env.CARGO_TARGET_DIR }}/nextest/**/junit.xml
             codex-rs/target/nextest/**/junit.xml
           retention-days: 3
-          if-no-files-found: warn
+          if-no-files-found: error
+      - name: Carry forward the fresh unpatched baseline
+        id: rotate
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          upstream="$(cat "$evidence/upstream-commit")"
+          matched="$evidence/test-baselines/$upstream/linux.json"
+          test -s "$matched"
+          test "$(find "$RUNNER_TEMP/nextest-reports/local" -name junit.xml -type f -size +0c | wc -l)" -eq 1
+          test "$CARGO_HOME" = "$RUNNER_TEMP/baseline-test-cargo-home"
+          test "$CARGO_TARGET_DIR" = "$HOME/.cache/codex-ci/cargo-target"
+          mkdir "$RUNNER_TEMP/paired-linux-results"
+          mv "$evidence" "$RUNNER_TEMP/paired-linux-results/unpatched"
+          mkdir "$evidence"
+          for name in upstream-commit upstream-ref restart-commit cargo-cache-package; do
+            cp "$RUNNER_TEMP/paired-linux-results/unpatched/$name" "$evidence/"
+          done
+          install -D "$RUNNER_TEMP/paired-linux-results/unpatched/test-baselines/$upstream/linux.json" "$RUNNER_TEMP/test-baselines/$upstream/linux.json"
+          rm -rf -- "$RUNNER_TEMP/nextest-reports" "$RUNNER_TEMP/baseline-test-native"             "$RUNNER_TEMP/baseline-test-archive.tar.zst" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+          mkdir "$CARGO_TARGET_DIR"
+          df -h / "$RUNNER_TEMP"
+      - name: Patched | Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
 
-      - name: Remove the job-owned tooling runtime
-        if: always()
+      # The upstream checkout cleaned the workspace, deleting restart-metadata that the local actions' post steps need at job
+      # end; check it out again beside the upstream source and keep it out of that source's untracked files.
+      - name: Patched | Restore restart inputs beside the upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+      - name: Patched | Exclude restart inputs from the upstream source status
+        run: printf '/restart-metadata/\n' >> .git/info/exclude
+      - name: Patched | Verify pristine upstream source identity
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(cat "$RUNNER_TEMP/baseline-test-evidence/upstream-commit")"
+          test -z "$(git status --porcelain)"
+          git diff --check
+          git diff --binary > "$RUNNER_TEMP/baseline-test-evidence/pristine-source.diff"
+      - name: Patched | Apply the selected downstream patches
+        id: patched_patched
+        env:
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+          RED_RESTORE: ${{ '' }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          if [[ -n "$RED_RESTORE" && -z "$DOWNSTREAM_PATCHES" ]]; then
+            printf 'A red phase needs downstream patches.\n' >&2
+            exit 1
+          fi
+          read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
+          # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
+          printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"
+          # Upstream's CI tests main, whose workspace version is 0.0.0; a stable tag's release commit changes only that
+          # version. Test the same source, so version strings in snapshots and fixtures match what upstream tested.
+          perl -pi -e '$w = /^\[workspace\.package\]\r?$/ ? 1 : /^\[/ ? 0 : $w;' \
+            -e 's/^version = "[^"]+"(\r?)$/version = "0.0.0"$1/ if $w' codex-rs/Cargo.toml
+          if ! git diff --quiet -- codex-rs/Cargo.toml; then
+            git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              commit -q -m "Test with upstream's development version 0.0.0" -- codex-rs/Cargo.toml
+          fi
+          for patch in "${patch_paths[@]}"; do
+            printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
+            git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
+          done
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Patched | Prepare upstream's native test host
+        uses: ./.github/actions/setup-ci
+      - name: Patched | Enable unprivileged user namespaces
+        run: |
+          sudo sysctl -w kernel.unprivileged_userns_clone=1
+          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.apparmor_restrict_unprivileged_userns'; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+      - name: Patched | Install Linux development prerequisites
+        run: |
+          set -euo pipefail
+          # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
+          sudo bash "$CODEX_TOOLING" apt-install-with-fallback build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex strace zsh ripgrep
+          # Tests skip themselves when a shell or interpreter is missing, so assert each one here.
+          zsh --version
+          /bin/zsh --version
+          python3 --version
+          bwrap --version
+          mkdir -p "$RUNNER_TEMP/baseline-test-cargo-home"
+          printf 'CARGO_HOME=%s\n' "$RUNNER_TEMP/baseline-test-cargo-home" >> "$GITHUB_ENV"
+      - name: Patched | Read upstream's pinned Rust toolchain
+        id: patched_upstream-rust
         shell: bash
-        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+      - name: Patched | Set up upstream's Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: ${{ '1.99.1' == '1.99.1' && '1.99.1' || steps.patched_upstream-rust.outputs.channel }}
+          targets: x86_64-unknown-linux-gnu
+      - name: Patched | Select and verify the dispatched Rust override
+        env:
+          REQUESTED_RUST_TOOLCHAIN: ${{ '1.99.1' }}
+        run: |
+          set -euo pipefail
+          export RUSTUP_TOOLCHAIN="$REQUESTED_RUST_TOOLCHAIN"
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          rustc --version --verbose | tee "$evidence/rustc-version.txt"
+          grep -Fx "release: $REQUESTED_RUST_TOOLCHAIN" "$evidence/rustc-version.txt"
+          env | grep -E '^(ImageOS|ImageVersion|RUNNER_ARCH)=' | sort | tee "$evidence/runner-image.txt"
+          printf 'RUSTUP_TOOLCHAIN=%s\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"
+      - name: Patched | Install upstream's nextest version
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: nextest@0.9.103
+
+      # Upstream's setup scripts call curl without -q, so they read this configuration through CURL_HOME. curl retries
+      # timeouts and HTTP 408, 429, 500, 502, 503 and 504 responses, such as the 504s that GitHub release downloads and
+      # the kernel.org mirror return at times, with growing delays. curl on Windows also looks for _curlrc.
+      - name: Patched | Retry transient download failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          directory="$RUNNER_TEMP/curl-configuration"
+          mkdir -p "$directory"
+          printf '%s\n' 'retry = 8' 'retry-connrefused' 'retry-max-time = 900' > "$directory/.curlrc"
+          cp "$directory/.curlrc" "$directory/_curlrc"
+          printf 'CURL_HOME=%s\n' "$directory" >> "$GITHUB_ENV"
+      - name: Patched | Verify and configure upstream V8 artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: x86_64-unknown-linux-gnu
+      - name: Patched | Supply the native voice prerequisites using upstream's recipe
+        run: |
+          set -euo pipefail
+          native="$RUNNER_TEMP/baseline-test-native"
+          mkdir -p "$native/archives" "$native/tools"
+          curl --fail --location --retry 3 --retry-all-errors --output "$native/cmake.tar.gz" https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-x86_64.tar.gz
+          printf '%s  %s\n' 630615d8e98ac33eba7fbe472626dff5c899c85af3c024585ae109166a6909d0 "$native/cmake.tar.gz" | sha256sum -c -
+          tar -xzf "$native/cmake.tar.gz" -C "$native/tools" --strip-components=1
+          jq -r '.sources[] | [.url, .archive, .sha256] | @tsv' third_party/voice/sources.json > "$native/sources.tsv"
+          while IFS=$'\t' read -r url archive digest; do
+            curl --fail --location --retry 3 --retry-all-errors --output "$native/archives/$archive" "$url"
+            printf '%s  %s\n' "$digest" "$native/archives/$archive" | sha256sum -c -
+          done < "$native/sources.tsv"
+          python3 third_party/voice/build_native.py \
+            --archives "$native/archives" \
+            --output "$native/build" \
+            --cc /usr/bin/gcc --cxx /usr/bin/g++ \
+            --cmake "$native/tools/bin/cmake" --make /usr/bin/make \
+            --pkg-config /usr/bin/pkg-config --shell /bin/bash \
+            --target x86_64-unknown-linux-gnu \
+            2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/native-build.log"
+          cp "$native/build/built.json" "$RUNNER_TEMP/baseline-test-evidence/native-built.json"
+          {
+            printf 'PKG_CONFIG_PATH=%s\n' "$native/build/prefix/lib/pkgconfig:$native/build/prefix/share/pkgconfig"
+            printf 'LD_LIBRARY_PATH=%s\n' "$native/build/prefix/lib"
+            printf 'CODEX_TEST_VOICE_RUNTIME=%s\n' "$native/build/prefix"
+          } >> "$GITHUB_ENV"
+
+      # Tests run curl and expect a refused or timed-out connection to fail at once. The retry configuration above
+      # would make curl retry those attempts for up to 900 seconds, which exceeds nextest's timeout, so the build and
+      # test steps point CURL_HOME at an empty configuration instead.
+      - name: Patched | Stop retrying curl for the build and test steps
+        shell: bash
+        run: |
+          set -euo pipefail
+          directory="$RUNNER_TEMP/curl-test-configuration"
+          mkdir -p "$directory"
+          : > "$directory/.curlrc"
+          printf 'CURL_HOME=%s\n' "$directory" >> "$GITHUB_ENV"
+
+      # Compiled third-party crates are restored from GHCR (the Actions cache is nearly full) under a key made from the
+      # toolchain, Cargo.lock, the upstream commit, the applied patches, the build environment and the package scope.
+      # Only dependency outputs are stored; the workspace crates are always rebuilt.
+      - name: Patched | Set up the GHCR cache transport
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          version: 1.3.1
+      - name: Patched | Restore compiled dependencies
+        id: patched_dependency-cache
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CACHE_PACKAGES: ${{ '' }}
+          GH_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          printf '%s' "$GITHUB_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          repository="ghcr.io/${GH_OWNER,,}/$(cat "$evidence/cargo-cache-package")"
+          digest="$(
+            {
+              rustc -vV; cargo --version
+              printf 'profile=ci-test packages=%s\n' "$CACHE_PACKAGES"
+              printf '%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}" "${ImageVersion:-}"
+              cat "$evidence/upstream-commit"
+              sha256sum codex-rs/Cargo.lock codex-rs/rust-toolchain.toml codex-rs/Cargo.toml
+              cat "$evidence/applied-patches.txt"
+              env | LC_ALL=C sort | grep -E '^(RUSTFLAGS|RUSTDOCFLAGS|CARGO_INCREMENTAL|CARGO_PROFILE_[A-Z0-9_]+|CC|CXX|CFLAGS|CXXFLAGS)=' || true
+            } | sha256sum | cut -d' ' -f1
+          )"
+          tag="cargo-v3-x86_64-unknown-linux-gnu-$digest"
+          {
+            printf 'repository=%s\n' "$repository"
+            printf 'tag=%s\n' "$tag"
+          } >> "$GITHUB_OUTPUT"
+          set +e
+          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull "$repository" "$tag" "$CARGO_TARGET_DIR" "$(cat "$evidence/upstream-ref")" 2>&1 | tee "$evidence/dependency-cache-restore.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          case "$status" in
+            0) printf 'hit=true\n' >> "$GITHUB_OUTPUT" ;;
+            3) printf 'hit=false\n' >> "$GITHUB_OUTPUT" ;;
+            *) exit "$status" ;;
+          esac
+          du -sh "$CARGO_TARGET_DIR" | tee -a "$evidence/dependency-cache-restore.log"
+      - name: Patched | Build the maintained Linux test helper and bundled executable
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          # codex-rmcp-client's test servers (test_stdio_server, which also serves the node_repl tests, and the HTTP and
+          # MCP 2026 servers) are found next to the test binaries. Upstream's full-workspace nextest archive carries
+          # them; a run limited to other packages would not build them, so the tests that start them would fail.
+          cargo build --target x86_64-unknown-linux-gnu --profile ci-test \
+            -p codex-linux-sandbox -p codex-bwrap --bin codex-linux-sandbox --bin bwrap \
+            -p codex-rmcp-client --bins \
+            2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/test-helper-build.log"
+          test -x "$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/test_stdio_server"
+
+      # Upstream splits its Linux tests by environment: the Bazel jobs and its other platforms run with no remote
+      # environment, and its x86-64 nextest job (rust-ci-full's tests_linux_x64_remote) runs with the Docker one. The
+      # tests built for one environment fail in the other (a local stdio MCP server needs a local environment that a
+      # remote run does not register), so this job runs the archive twice, once per lane.
+      - name: Patched | Select the test lanes
+        id: patched_lanes
+        env:
+          REQUESTED_LANES: ${{ 'local' }}
+          SINGLE_LANE_MODE: ${{ false || false || false }}
+        run: |
+          set -euo pipefail
+          lanes="$REQUESTED_LANES"
+          if [[ "$SINGLE_LANE_MODE" == true ]]; then
+            # Accepted snapshots must record the local environment's text, and the focused comparisons start their own
+            # exec-servers.
+            if [[ -n "${lanes// /}" && "$lanes" != local ]]; then
+              printf 'Snapshot, comparison and trace runs use only the local lane; got lanes=%s.\n' "$lanes" >&2
+              exit 1
+            fi
+            lanes=local
+          elif [[ -z "${lanes// /}" ]]; then
+            lanes="local remote"
+          fi
+          local_lane=false
+          remote_lane=false
+          for lane in $lanes; do
+            case "$lane" in
+              local) local_lane=true ;;
+              remote) remote_lane=true ;;
+              *) printf 'Unknown test lane: %s\n' "$lane" >&2; exit 1 ;;
+            esac
+          done
+          printf 'local=%s\nremote=%s\n' "$local_lane" "$remote_lane" | tee -a "$GITHUB_OUTPUT"
+
+      # Mirrors upstream's rust-ci-full-nextest-platform.yml: the debug codex binary runs `codex exec-server` in a
+      # privileged ubuntu container. The environment variables go into a file that only the remote lane sources.
+      - name: Patched | Build the nextest archive
+        id: patched_archive
+        working-directory: codex-rs
+        env:
+          BASELINE_TEST_PACKAGE: ${{ '' }}
+          BASELINE_ARCHIVE_COMPARE: ${{ false || false }}
+        run: |
+          set -euo pipefail
+          archive_args=(archive --target x86_64-unknown-linux-gnu --cargo-profile ci-test --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst")
+          for package in $BASELINE_TEST_PACKAGE; do archive_args+=(-p "$package"); done
+          if [[ -n "$BASELINE_TEST_PACKAGE" && "$BASELINE_ARCHIVE_COMPARE" != true ]]; then
+            # A package-limited archive would lack codex-rmcp-client's test servers, which the other packages' tests start.
+            archive_args+=(-p codex-rmcp-client)
+          fi
+          helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
+          env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
+            cargo-nextest nextest "${archive_args[@]}" 2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/archive.log"
+          sha256sum "$RUNNER_TEMP/baseline-test-archive.tar.zst" > "$RUNNER_TEMP/baseline-test-evidence/archive.sha256"
+      - name: Patched | Save compiled dependencies
+        if: steps.patched_dependency-cache.outputs.hit == 'false'
+        continue-on-error: true
+        env:
+          CACHE_REPOSITORY: ${{ steps.patched_dependency-cache.outputs.repository }}
+          CACHE_TAG: ${{ steps.patched_dependency-cache.outputs.tag }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          copy="$RUNNER_TEMP/dependency-cache"
+          rm -rf "$copy"
+          mkdir -p "$copy"
+          # Hard links keep the live target intact while the copy is pruned of workspace-crate outputs.
+          cp -al "$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu" "$copy/x86_64-unknown-linux-gnu"
+          bash "$CODEX_TOOLING" prune-workspace-outputs --workspace-manifest-dir "$GITHUB_WORKSPACE/codex-rs" --target-copy "$copy" --live-target "$CARGO_TARGET_DIR" 2>&1 | tee "$evidence/dependency-cache-prune.log"
+          du -sh "$copy" | tee -a "$evidence/dependency-cache-prune.log"
+          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "$CACHE_REPOSITORY" "$CACHE_TAG" "$copy" "$(cat "$evidence/upstream-ref")" 2>&1 | tee "$evidence/dependency-cache-save.log"
+          rm -rf "$copy"
+      - name: Patched | Fail on build or nextest configuration warnings
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          bash "$RUNNER_TEMP/fail-on-cargo-warnings.sh" "$evidence/test-helper-build.log" "$evidence/archive.log"
+      - name: Record effective patched test settings
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          {
+            rustc -vV
+            cargo --version
+            cargo-nextest --version
+            uname -r
+            sysctl kernel.unprivileged_userns_clone
+            sysctl kernel.apparmor_restrict_unprivileged_userns
+            env | LC_ALL=C sort | grep -E '^(ImageOS|ImageVersion|RUNNER_ARCH|CARGO_HOME|CARGO_TARGET_DIR|CURL_HOME|RUSTUP_TOOLCHAIN|RUSTFLAGS|RUSTDOCFLAGS|CARGO_INCREMENTAL|CARGO_PROFILE_[A-Z0-9_]+|CC|CXX|CFLAGS|CXXFLAGS)='
+          } > "$evidence/test-settings.txt"
+      - name: Require the same runner and tooling settings
+        run: |
+          set -euo pipefail
+          diff -u "$RUNNER_TEMP/paired-linux-results/unpatched/test-settings.txt"             "$RUNNER_TEMP/baseline-test-evidence/test-settings.txt"
+      - name: Patched | Run the maintained nextest suite or focused comparison
+        id: patched_native_tests
+        env:
+          BASELINE_TEST_PACKAGE: ${{ '' }}
+          BASELINE_TEST_FILTER: ${{ '' }}
+          BASELINE_ARCHIVE_COMPARE: ${{ false || false }}
+          BASELINE_ACCEPT_SNAPSHOTS: ${{ false }}
+          STRESS_COUNT: ${{ '' }}
+          LANE_LOCAL: ${{ steps.patched_lanes.outputs.local }}
+          LANE_REMOTE: ${{ steps.patched_lanes.outputs.remote }}
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          if [[ "$BASELINE_ACCEPT_SNAPSHOTS" == true ]]; then
+            # insta writes each changed snapshot in place and lets its assertion pass, so one run collects every update.
+            export INSTA_UPDATE=always INSTA_FORCE_PASS=1
+          fi
+          (
+            while true; do
+              date -u +'%Y-%m-%dT%H:%M:%SZ'
+              df -k "$CARGO_TARGET_DIR" "$RUNNER_TEMP"
+              if du -sk -- "$CARGO_HOME" "$RUNNER_TEMP/baseline-test-native"; then
+                :
+              else
+                printf 'directory_sample_exit=%s\n' "$?"
+              fi
+              if du -k --max-depth=3 -- "$CARGO_TARGET_DIR" | sort -nr | sed -n '1,30p'; then
+                :
+              else
+                printf 'directory_sample_exit=%s\n' "$?"
+              fi
+              sleep 60
+            done
+          ) >> "$RUNNER_TEMP/baseline-test-evidence/test-disk-usage.log" 2>&1 &
+          disk_monitor=$!
+          # The sample file is lost when the runner dies of a full disk, so the job log carries a compact copy. The
+          # directory sizes run in the background with a time limit so a slow walk never delays the next df line.
+          (
+            sample=0
+            while true; do
+              printf 'disk-sample %s %s\n' "$(date -u +%H:%M:%S)" "$(df -k --output=used,avail / | tail -n 1)"
+              if (( sample % 5 == 0 )); then
+                (
+                  timeout 240 sudo du -xk --max-depth=2 /home/runner/.cache /home/runner/work/_temp /tmp /var/lib/docker \
+                    2>/dev/null | sort -nr | sed -n '1,12p' | sed 's/^/disk-top /'
+                ) &
+              fi
+              sample=$((sample + 1))
+              sleep 60
+            done
+          ) &
+          printf 'archive-size %s\n' "$(stat -c %s "$RUNNER_TEMP/baseline-test-archive.tar.zst")"
+          trap 'kill "$disk_monitor" $(jobs -p) 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
+          cargo-nextest --version | tee "$RUNNER_TEMP/baseline-test-evidence/nextest-version.txt"
+          # Keep passing tests' output in the JUnit report, where the skip check reads it, instead of the log.
+          printf '%s\n' '[profile.default.junit]' 'store-success-output = true' 'store-failure-output = true' \
+            > "$RUNNER_TEMP/nextest-keep-output.toml"
+          helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
+          nextest_args=(run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" --workspace-remap "$GITHUB_WORKSPACE/codex-rs")
+          # nextest 0.9.103 exits with only the last stress iteration's status when fail-fast is off, so a stress run
+          # keeps fail-fast: the first failing iteration ends the run with a failing status.
+          if [[ -z "$STRESS_COUNT" ]]; then nextest_args+=(--no-fail-fast); fi
+          expression="$BASELINE_TEST_FILTER"
+          if [[ "$BASELINE_ARCHIVE_COMPARE" == true ]]; then
+            nextest_args+=(--success-output immediate)
+          else
+            nextest_args+=(--tool-config-file "keep-output:$RUNNER_TEMP/nextest-keep-output.toml")
+            # The archive also holds codex-rmcp-client for its test servers; run only the selected packages' tests.
+            if [[ -n "$BASELINE_TEST_PACKAGE" ]]; then
+              selection=""
+              for package in $BASELINE_TEST_PACKAGE; do selection+="${selection:+ | }package(=$package)"; done
+              expression="($selection)${BASELINE_TEST_FILTER:+ & ($BASELINE_TEST_FILTER)}"
+            fi
+            # The archive carries every test binary, so the build outputs only duplicate it. Free their disk space.
+            cp "$helper" "$RUNNER_TEMP/codex-linux-sandbox"
+            rm -rf "${CARGO_TARGET_DIR:?}"/*
+            mkdir -p "$(dirname "$helper")"
+            cp "$RUNNER_TEMP/codex-linux-sandbox" "$helper"
+          fi
+          if [[ -n "$expression" ]]; then
+            nextest_args+=(-E "$expression")
+          fi
+          if [[ -n "$STRESS_COUNT" ]]; then
+            nextest_args+=(--stress-count "$STRESS_COUNT" --retries 0)
+            for _ in $(seq "$(nproc)"); do yes > /dev/null & done
+          fi
+          printf '%s\n' "${nextest_args[@]}" > "$RUNNER_TEMP/baseline-test-evidence/nextest-arguments.txt"
+          lanes=()
+          if [[ "$LANE_LOCAL" == true ]]; then lanes+=(local); fi
+          if [[ "$LANE_REMOTE" == true ]]; then lanes+=(remote); fi
+          reports="$RUNNER_TEMP/nextest-reports"
+          status=0
+          for lane in "${lanes[@]}"; do
+            rm -rf "$CARGO_TARGET_DIR/nextest" "$GITHUB_WORKSPACE/codex-rs/target/nextest"
+            set +e
+            (
+              # Only the remote lane selects the Docker exec-server, as upstream's remote job alone does.
+              if [[ "$lane" == remote ]]; then source "$RUNNER_TEMP/remote-test-env.sh"; fi
+              exec env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
+                cargo-nextest nextest "${nextest_args[@]}"
+            ) 2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/nextest-$lane.log"
+            lane_status=${PIPESTATUS[0]}
+            set -e
+            printf 'nextest_status_%s=%s\n' "$lane" "$lane_status" | tee -a "$GITHUB_OUTPUT" "$RUNNER_TEMP/baseline-test-evidence/nextest-status.txt"
+            if [[ "$status" == 0 ]]; then status="$lane_status"; fi
+            mkdir -p "$reports/$lane"
+            if [[ -d "$CARGO_TARGET_DIR/nextest" ]]; then mv "$CARGO_TARGET_DIR/nextest" "$reports/$lane/target-dir"; fi
+            if [[ -d "$GITHUB_WORKSPACE/codex-rs/target/nextest" ]]; then mv "$GITHUB_WORKSPACE/codex-rs/target/nextest" "$reports/$lane/workspace"; fi
+          done
+          printf 'nextest_status=%s\n' "$status" | tee -a "$GITHUB_OUTPUT"
+          # A full run is judged against the unpatched baseline in the step below, not by its failures alone.
+          if [[ "$BASELINE_ARCHIVE_COMPARE" != true && -z "$STRESS_COUNT" && "$BASELINE_ACCEPT_SNAPSHOTS" != true ]]; then
+            exit 0
+          fi
+          exit "$status"
+      - name: Patched | Fail on skips caused by missing test setup
+        if: ${{ !cancelled() && steps.patched_native_tests.outcome != 'skipped' && !false && !false }}
+        run: |
+          set -euo pipefail
+          status=0
+          for lane in local remote; do
+            if [[ ! -d "$RUNNER_TEMP/nextest-reports/$lane" ]]; then continue; fi
+            bash "$CODEX_TOOLING" check-test-skips --platform linux --environment "$lane" "$RUNNER_TEMP/nextest-reports/$lane" \
+              2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/skip-check-$lane.log" || status=1
+          done
+          exit "$status"
+
+      # The tests run to completion whatever fails; this step decides the result. A patched run fails only on tests that
+      # the unpatched baseline for this upstream commit does not list. An unpatched run with write_baseline records its
+      # failures instead. Runs without a baseline file, and stress, snapshot and comparison runs, fail on any failure.
+      - name: Patched | Compare failures with the unpatched baseline
+        if: ${{ !cancelled() && steps.patched_native_tests.outcome == 'success' && !false && !false }}
+        env:
+          NEXTEST_STATUS_LOCAL: ${{ steps.patched_native_tests.outputs.nextest_status_local }}
+          NEXTEST_STATUS_REMOTE: ${{ steps.patched_native_tests.outputs.nextest_status_remote }}
+          WRITE_BASELINE: ${{ false }}
+          PATCHES: ${{ inputs.patches }}
+          GATED: ${{ '' == '' && !false }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          commit="$(cat "$evidence/upstream-commit")"
+          if [[ "$WRITE_BASELINE" == true && -n "${PATCHES// /}" ]]; then
+            printf 'A baseline must come from an unpatched run.\n' >&2
+            exit 1
+          fi
+          # The local lane's baseline is linux.json; the remote lane's is linux-remote.json.
+          result=0
+          for lane in local remote; do
+            if [[ ! -d "$RUNNER_TEMP/nextest-reports/$lane" ]]; then continue; fi
+            platform=linux
+            if [[ "$lane" == remote ]]; then platform=linux-remote; fi
+            lane_status_name="NEXTEST_STATUS_${lane^^}"
+            lane_status="${!lane_status_name:-0}"
+            common=(--platform "$platform" --upstream-commit "$commit" --baseline-dir "$RUNNER_TEMP/test-baselines")
+            if [[ "$WRITE_BASELINE" == true ]]; then
+              bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" --write-baseline \
+                --output "$evidence/test-baselines/$commit/$platform.json" "$RUNNER_TEMP/nextest-reports/$lane"
+            elif [[ "$GATED" != true ]]; then
+              if [[ "$lane_status" != 0 ]]; then result="$lane_status"; fi
+            elif [[ ! -f "$RUNNER_TEMP/test-baselines/$commit/$platform.json" ]]; then
+              printf 'No committed baseline for %s on %s; failing on the %s lane status (%s).\n' "$commit" "$platform" "$lane" "$lane_status" >&2
+              if [[ "$lane_status" != 0 ]]; then result="$lane_status"; fi
+            else
+              bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" "$RUNNER_TEMP/nextest-reports/$lane" \
+                2>&1 | tee "$evidence/baseline-comparison-$lane.log" || result=1
+            fi
+          done
+          exit "$result"
+      - name: Patched | Verify the tested source matches its upstream and patch commits
+        if: ${{ always() && steps.rotate.outcome == 'success' }}
+        env:
+          BASELINE_REGENERATE_APP_SERVER_SCHEMA: ${{ false }}
+          BASELINE_ACCEPT_SNAPSHOTS: ${{ false }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ steps.patched_patched.outputs.commit }}"
+          pathspec=(. ':(exclude)codex-rs/Cargo.lock')
+          # Gathering runs change only the outputs they record as evidence diffs.
+          if [[ "$BASELINE_REGENERATE_APP_SERVER_SCHEMA" == true ]]; then
+            pathspec+=(':(exclude)codex-rs/app-server-protocol/schema')
+          fi
+          if [[ "$BASELINE_ACCEPT_SNAPSHOTS" == true ]]; then
+            pathspec+=(':(exclude,glob)**/*.snap' ':(exclude,glob)**/*.snap.new' ':(exclude,glob)**/*.pending-snap')
+          fi
+          git diff --exit-code HEAD -- "${pathspec[@]}"
+      - name: Patched | Retain test evidence for one day
+        if: ${{ always() && steps.rotate.outcome == 'success' }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: linux-nextest-patched
+          path: |
+            ${{ runner.temp }}/baseline-test-evidence
+            ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings
+            ${{ runner.temp }}/nextest-reports/**/junit.xml
+            ${{ env.CARGO_TARGET_DIR }}/nextest/**/junit.xml
+            codex-rs/target/nextest/**/junit.xml
+          retention-days: 3
+          if-no-files-found: error
