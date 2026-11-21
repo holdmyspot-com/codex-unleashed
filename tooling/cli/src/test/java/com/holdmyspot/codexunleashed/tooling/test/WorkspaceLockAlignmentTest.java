@@ -271,6 +271,7 @@ public final class WorkspaceLockAlignmentTest
 		fixture.write("codex-rs/nested/gamma/Cargo.toml", "[package]\nname = \"gamma\"\nversion.workspace = true\n");
 		Path lock = fixture.write("codex-rs/Cargo.lock", lockSource);
 		git(fixture, "init", "-q");
+		git(fixture, "config", "--local", "maintenance.auto", "false");
 		git(fixture, "add", "-A");
 		git(fixture, "-c", "user.name=Queue Author", "-c", "user.email=queue@example.com", "-c", "commit.gpgsign=false",
 			"commit", "-q", "-m", "queue");
