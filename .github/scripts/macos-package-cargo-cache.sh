@@ -55,14 +55,20 @@ if [[ "$operation" == inputs ]]; then
   shasum -a 256 codex-rs/Cargo.lock codex-rs/rust-toolchain.toml > "$inputs/lockfiles"
   shasum -a 256 "$RUSTY_V8_ARCHIVE" "$RUSTY_V8_SRC_BINDING_PATH" > "$inputs/v8"
   python3 "$tree" voice-inventory "$VOICE_RELEASE_DIR" > "$inputs/voice"
-  components=(context apple tools settings lockfiles v8 voice)
-  (cd "$inputs" && cat "${components[@]}") > "$inputs/compiler"
+  compiler_components=(context apple tools settings lockfiles v8)
+  # On Intel, Cargo builds only the application executables. The separately
+  # built voice payload enters the archive step after compilation. Retain its
+  # digest as release evidence outside the compiled dependency key.
+  if [[ "$TARGET" != x86_64-apple-darwin ]]; then
+    compiler_components+=(voice)
+  fi
+  (cd "$inputs" && cat "${compiler_components[@]}") > "$inputs/compiler"
   tag="$(bash "$CODEX_TOOLING" cargo-cache-keys "$TARGET-pkg" "$inputs/source" "$inputs/wrappers" \
     "$inputs/helper" "$inputs/compiler" "$inputs/patches" | sed -n 's/^tag=//p')"
   [[ "$tag" =~ ^cargo-v3-$TARGET-pkg-[0-9a-f]{64}$ ]]
   {
     printf 'tag=%s\n' "$tag"
-    (cd "$inputs" && shasum -a 256 source patches wrappers helper "${components[@]}")
+    (cd "$inputs" && shasum -a 256 source patches wrappers helper context apple tools settings lockfiles v8 voice)
   } > "$RUNNER_TEMP/package-cargo-cache-key.txt"
   printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
   exit
