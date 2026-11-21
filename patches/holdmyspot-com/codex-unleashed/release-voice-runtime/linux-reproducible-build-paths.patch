@@ -1,14 +1,14 @@
-From 179caf22c60f86ac5606e48b54bbc2eeec2fb652 Mon Sep 17 00:00:00 2001
+From bd13aebc8dce4c7fc70d26c40e13a88133d608b5 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 21 Nov 2026 04:26:09 -0500
 Subject: [PATCH] Make Linux release voice build paths deterministic
 
 ---
  .github/scripts/codex-voice-runtime.sh       |  8 +++++++
- patches/ring_windows_msvc_include_dirs.patch |  9 +++++++-
+ patches/ring_windows_msvc_include_dirs.patch | 16 ++++++++++++-
  third_party/voice/bazel_native.py            | 24 ++++++++++++++++++--
  third_party/voice/native.bzl                 |  1 +
- 4 files changed, 39 insertions(+), 3 deletions(-)
+ 4 files changed, 46 insertions(+), 3 deletions(-)
 
 diff --git a/.github/scripts/codex-voice-runtime.sh b/.github/scripts/codex-voice-runtime.sh
 index 9a40d1c57..64f636601 100755
@@ -30,7 +30,7 @@ index 9a40d1c57..64f636601 100755
      bazel_args+=(--macos_minimum_os=14.0)
    fi
 diff --git a/patches/ring_windows_msvc_include_dirs.patch b/patches/ring_windows_msvc_include_dirs.patch
-index 7bb49cbc2..9b7a4abd1 100644
+index 7bb49cbc2..32e83357c 100644
 --- a/patches/ring_windows_msvc_include_dirs.patch
 +++ b/patches/ring_windows_msvc_include_dirs.patch
 @@ -45,7 +45,7 @@ diff --git a/build.rs b/build.rs
@@ -38,11 +38,11 @@ index 7bb49cbc2..9b7a4abd1 100644
       } else {
           compiler
 -@@ -569,6 +595,15 @@
-+@@ -569,6 +595,22 @@
++@@ -569,6 +595,29 @@
   
       let _ = c.include(c_root_dir.join("include"));
       let _ = c.include(include_dir);
-@@ -57,6 +57,13 @@ diff --git a/build.rs b/build.rs
+@@ -57,6 +57,20 @@ diff --git a/build.rs b/build.rs
  +        let _ = c.include(c_root_dir.join("crypto").join("fipsmodule").join("bn"));
  +        let _ = c.include(c_root_dir.join("crypto").join("fipsmodule").join("ec"));
  +        let _ = c.include(c_root_dir.join("crypto").join("poly1305"));
@@ -51,6 +51,13 @@ index 7bb49cbc2..9b7a4abd1 100644
 ++        // The Bazel sandbox ID is a scheduler detail. Retain source locations
 ++        // while keeping it out of the resulting DWARF.
 ++        let cwd = std::env::current_dir().expect("ring build working directory");
+++        // Line tables also include headers outside the crate's source tree.
+++        if let Some(execroot) = c_root_dir.ancestors().find(|path| {
+++            path.parent().and_then(Path::file_name) == Some(std::ffi::OsStr::new("execroot"))
+++        }) {
+++            let _ = c.flag(format!("-fdebug-prefix-map={}=/bazel/execroot", execroot.display()));
+++        }
+++
 ++        let _ = c.flag(format!("-fdebug-prefix-map={}=/ring/work", cwd.display()));
 ++        let _ = c.flag(format!("-fdebug-prefix-map={}=/ring/source", c_root_dir.display()));
  +    }

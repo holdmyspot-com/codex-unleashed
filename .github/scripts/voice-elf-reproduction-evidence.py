@@ -21,6 +21,7 @@ PATH_PATTERNS = {
     "temporary_native": re.compile(rb"/tmp/voice-native-[a-z0-9_]{8}/build(?=/)"),
     "stable_native": re.compile(rb"/var/lib/codex-voice-build/native/build(?=/)"),
     "sandbox_execroot": re.compile(rb"/[^\x00\n ]+/sandbox/linux-sandbox/[0-9]+/execroot/[^/\x00 ]+"),
+    "mapped_execroot": re.compile(rb"/bazel/execroot(?=/)"),
     "mapped_ring_source": re.compile(rb"/ring/source(?=/)"),
     "mapped_ring_work": re.compile(rb"/ring/work(?=/)"),
 }
@@ -45,7 +46,7 @@ def digest_region(stream, offset, size):
 
 def path_counts(stream, offset, size, section):
     """Count recognized build path prefixes without recording path contents."""
-    if section not in (".dynstr", ".rodata", ".debug_str", ".debug_line_str"):
+    if section not in (".dynstr", ".rodata", ".debug_str", ".debug_line", ".debug_line_str"):
         return {}
     stream.seek(offset)
     data = stream.read(size)
