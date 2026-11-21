@@ -1,0 +1,70 @@
+From 75beeb4ac52bd57c861047c53b166e40cf717a1f Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sat, 21 Nov 2026 14:17:23 -0500
+Subject: [PATCH] Preserve compiler flag compatibility for ring on Windows
+ ARM64
+
+Ring selects Clang when the Bazel C toolchain uses MSVC for native actions. Disable MSVC path mapping for this Cargo build script on Windows ARM64 while retaining the native toolchain feature.
+---
+ MODULE.bazel                                   |  2 ++
+ patches/BUILD.bazel                            |  1 +
+ ...st_windows_arm64_build_script_pathmap.patch | 18 ++++++++++++++++++
+ 3 files changed, 21 insertions(+)
+ create mode 100644 patches/rules_rust_windows_arm64_build_script_pathmap.patch
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index d7767e038..c485b8299 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -236,6 +236,7 @@ rules_rust.patch(
+         "//patches:rules_rust_build_script_tools_transition.patch",
+         # Opt-in release profile compatibility for native Cargo build scripts.
+         "//patches:rules_rust_release_build_script_profile.patch",
++        "//patches:rules_rust_windows_arm64_build_script_pathmap.patch",
+         # Prefer Rust's direct linker for Windows/MSVC and keep hermetic
+         # LLVM's non-.lib runtime artifacts compatible with it.
+         "//patches:rules_rust_windows_msvc_direct_link_args.patch",
+@@ -485,6 +486,7 @@ crate.annotation(
+     ],
+ )
+ crate.annotation(
++    build_script_tags = ["use-clang-on-windows-arm64"],
+     crate = "ring",
+     patch_args = ["-p1"],
+     patches = [
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index 6acd379cc..62a7bf600 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -12,6 +12,7 @@ exports_files([
+     "rules_rust_compiler_thp.patch",
+     "rules_rust_process_wrapper_param_file.patch",
+     "rules_rust_release_build_script_profile.patch",
++    "rules_rust_windows_arm64_build_script_pathmap.patch",
+     "rules_rust_windows_execroot_separators.patch",
+     "rules_rust_windows_msvc_direct_link_args.patch",
+     "rules_rust_windows_process_wrapper_skip_temp_outputs.patch",
+diff --git a/patches/rules_rust_windows_arm64_build_script_pathmap.patch b/patches/rules_rust_windows_arm64_build_script_pathmap.patch
+new file mode 100644
+index 000000000..d760b62b8
+--- /dev/null
++++ b/patches/rules_rust_windows_arm64_build_script_pathmap.patch
+@@ -0,0 +1,18 @@
++diff --git a/cargo/private/cargo_build_script.bzl b/cargo/private/cargo_build_script.bzl
++--- a/cargo/private/cargo_build_script.bzl
+++++ b/cargo/private/cargo_build_script.bzl
++@@ -466,7 +466,13 @@
++ 
++     # Pull in env vars which may be required for the cc_toolchain to work (e.g. on OSX, the SDK version).
++     # We hope that the linker env is sufficient for the whole cc_toolchain.
++-    cc_toolchain, feature_configuration = find_cc_toolchain(ctx)
+++    # Some build scripts choose a compiler independent of Bazel's C toolchain.
+++    # Ring uses Clang for Windows ARM64, including when Bazel selected cl.exe.
+++    disabled_cc_features = []
+++    if "use-clang-on-windows-arm64" in ctx.attr.tags and env["TARGET"] == "aarch64-pc-windows-msvc":
+++        disabled_cc_features = ["codex_msvc_pathmap"]
+++
+++    cc_toolchain, feature_configuration = find_cc_toolchain(ctx, extra_unsupported_features = disabled_cc_features)
++     linker, _, link_args, linker_env = get_linker_and_args(ctx, "bin", toolchain, cc_toolchain, feature_configuration, None)
++     env.update(**linker_env)
++     env["LD"] = linker

@@ -51,7 +51,7 @@ index 96b0d8f..ffdd408 100644
            --target-dir "$CARGO_TARGET_DIR" \
 -          --result-dir "$build_result"
 +          --result-dir "$build_result" \
-+          "${restore_arguments[@]}"
++          ${restore_arguments[@]+"${restore_arguments[@]}"}
          cat "${build_result}/export.env" >> "$GITHUB_ENV"
          echo "CODEX_PACKAGE_BUILD_RESULT=${build_result}" >> "$GITHUB_ENV"
 diff --git a/.github/actions/build-codex-packages/action.yml b/.github/actions/build-codex-packages/action.yml
