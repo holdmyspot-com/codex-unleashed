@@ -91,6 +91,7 @@ if [[ "$operation" == inputs ]]; then
   if [[ "$RUNNER_OS" == Linux ]]; then
     native_component=musl
     voice_helper=codex-voice-host
+    voice_jq_options=-er
     voice_path_pattern='^(codex-voice-host|runtime/runtime\.json|runtime/lib/(gstreamer-1\.0/)?lib[A-Za-z0-9_+.-]+\.so(\.[0-9]+)*)$'
     openssl_dir="$X86_64_UNKNOWN_LINUX_MUSL_OPENSSL_DIR"
     native_root="$RUNNER_TEMP/codex-musl-tools-$TARGET"
@@ -99,6 +100,8 @@ if [[ "$operation" == inputs ]]; then
   else
     native_component=windows
     voice_helper=codex-voice-host.exe
+    # A Windows-native jq writes CRLF by default. Compare paths as LF records.
+    voice_jq_options=-ber
     voice_path_pattern='^(codex-voice-host\.exe|runtime/runtime\.json|runtime/[A-Za-z0-9_+.-]+(/[A-Za-z0-9_+.-]+)*\.dll)$'
     if [[ "$RUNNER_ARCH" == ARM64 ]]; then
       printf 'libsqlite3_flags_present=%s\nlibsqlite3_flags=%s\n' \
@@ -111,7 +114,7 @@ if [[ "$operation" == inputs ]]; then
   # paths, runtime.json, and the helper may appear in the diagnostic receipt.
   {
     printf '%s\n' "$voice_helper" runtime/runtime.json
-    if ! jq -er '.libraries[].path | "runtime/" + .' "$VOICE_RELEASE_DIR/runtime/runtime.json" 2>/dev/null; then
+    if ! jq "$voice_jq_options" '.libraries[].path | "runtime/" + .' "$VOICE_RELEASE_DIR/runtime/runtime.json" 2>/dev/null; then
       printf 'Cannot read sealed voice runtime inventory\n' >&2
       exit 1
     fi

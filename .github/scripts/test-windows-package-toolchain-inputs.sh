@@ -99,6 +99,21 @@ printf 'voice host\n' > "$VOICE_RELEASE_DIR/codex-voice-host.exe"
 printf '{"libraries":[{"path":"bin/voice.dll"}]}\n' > "$VOICE_RELEASE_DIR/runtime/runtime.json"
 printf 'voice DLL\n' > "$VOICE_RELEASE_DIR/runtime/bin/voice.dll"
 
+# Windows-native jq writes CRLF to a pipe unless binary mode is enabled.
+export FIXTURE_JQ="$(command -v jq)"
+cat > bin/jq <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+mode="$1"
+shift
+case "$mode" in
+  -er) "$FIXTURE_JQ" -er "$@" | sed $'s/$/\r/' ;;
+  -ber) "$FIXTURE_JQ" -er "$@" ;;
+  *) exit 2 ;;
+esac
+SHIM
+chmod +x bin/jq
+
 key_script="$script_dir/package-cargo-cache.sh"
 bash "$key_script" inputs >/dev/null
 original_key="$(tail -n1 "$GITHUB_OUTPUT")"
