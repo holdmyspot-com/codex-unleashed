@@ -43,6 +43,10 @@ on:
         description: Try the exact compiled Cargo cache during a package dry run for x86_64-unknown-linux-musl
         type: boolean
         default: false
+      package_final_output_cache:
+        description: Try verified pre-strip executables during the exact Linux x64 package cache dry run
+        type: boolean
+        default: false
       package_cache_key_only:
         description: Prepare the Linux package cache key and upload its digests without running the release Cargo build
         type: boolean
@@ -63,6 +67,7 @@ concurrency:
     upstream-auto-release-${{ inputs.upstream_tag || 'latest' }}-${{
       (github.event_name == 'schedule' || !inputs.dry_run) && 'live' ||
       (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_cache_key_only) && 'package-cache-key' ||
+      (inputs.package_dry_run && inputs.package_final_output_cache) && 'package-final-output-cache-pilot' ||
       (inputs.package_dry_run && inputs.package_cargo_cache) && 'package-cache-pilot' ||
       'dry'
     }}
@@ -136,6 +141,7 @@ jobs:
           PACKAGE_DRY_RUN: ${{ inputs.package_dry_run }}
           PACKAGE_CARGO_CACHE: ${{ inputs.package_cargo_cache }}
           PACKAGE_CACHE_KEY_ONLY: ${{ inputs.package_cache_key_only }}
+          PACKAGE_FINAL_OUTPUT_CACHE: ${{ inputs.package_final_output_cache }}
         run: |
           set -euo pipefail
           live=false
@@ -149,6 +155,10 @@ jobs:
           if [[ "$PACKAGE_CARGO_CACHE" == true && ( "$live" == true || "$PACKAGE_DRY_RUN" != true ||
             "$PACKAGE_TARGETS" != x86_64-unknown-linux-musl ) ]]; then
             printf '::error::package_cargo_cache requires a package dry run for x86_64-unknown-linux-musl only\n'
+            exit 1
+          fi
+          if [[ "$PACKAGE_FINAL_OUTPUT_CACHE" == true && "$PACKAGE_CARGO_CACHE" != true ]]; then
+            printf '::error::package_final_output_cache requires package_cargo_cache=true\n'
             exit 1
           fi
           if [[ "$PACKAGE_CACHE_KEY_ONLY" == true && ( "$PACKAGE_CARGO_CACHE" != true || "$SKIP_GATES" != true ) ]]; then
@@ -803,10 +813,22 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
+      - name: Restore verified pre-strip executable outputs
+        id: package-final-output-restore
+        timeout-minutes: 20
+        if: inputs.package_final_output_cache && !inputs.package_cache_key_only && steps.package-cache-inputs.outputs.tag != ''
+        continue-on-error: true
+        env:
+          CACHE_TAG: ${{ steps.package-cache-inputs.outputs.tag }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-final-output-cache.sh" restore
+
       - name: Restore the exact package Cargo cache
         id: package-cache-restore
         timeout-minutes: 20
-        if: ${{ !inputs.package_cache_key_only && steps.package-cache-inputs.outputs.tag != '' }}
+        if: >-
+          !inputs.package_cache_key_only && steps.package-cache-inputs.outputs.tag != '' &&
+          steps.package-final-output-restore.outputs.result != 'hit'
         continue-on-error: true
         env:
           CACHE_TAG: ${{ steps.package-cache-inputs.outputs.tag }}
@@ -823,6 +845,8 @@ jobs:
           package-version: ${{ needs.detect.outputs.version }}+${{ needs.detect.outputs.build }}
           build-mode: release
           prepared-musl-zig: ${{ env.CODEX_PACKAGE_CACHE_ZIG }}
+          restored-final-outputs: ${{ steps.package-final-output-restore.outputs.path }}
+          final-output-cache-tag: ${{ inputs.package_final_output_cache && steps.package-cache-inputs.outputs.tag || '' }}
           voice-release-dir: ${{ steps.voice-build.outputs.release_dir }}
           voice-build-commit: ${{ steps.voice-build.outputs.build_commit }}
           tooling-launcher: ${{ steps.voice-build.outputs.tooling_launcher }}
@@ -1016,9 +1040,31 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
+      - name: Retain restored executable provenance
+        if: steps.package-final-output-restore.outputs.result == 'hit'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: package-final-output-provenance-${{ matrix.target }}
+          path: ${{ steps.package-final-output-restore.outputs.path }}/provenance.json
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Save verified pre-strip executable outputs
+        timeout-minutes: 20
+        if: >-
+          inputs.package_final_output_cache && steps.package.outcome == 'success' &&
+          steps.package-cache-inputs.outputs.tag != '' && steps.package-final-output-restore.outputs.result != 'hit'
+        continue-on-error: true
+        env:
+          CACHE_TAG: ${{ steps.package-cache-inputs.outputs.tag }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-final-output-cache.sh" publish
+
       - name: Save verified package Cargo dependencies
         timeout-minutes: 20
-        if: steps.package.outcome == 'success' && steps.package-cache-inputs.outputs.tag != '' && steps.package-cache-restore.outputs.result != 'hit'
+        if: >-
+          steps.package.outcome == 'success' && steps.package-cache-inputs.outputs.tag != '' &&
+          steps.package-final-output-restore.outputs.result != 'hit' && steps.package-cache-restore.outputs.result != 'hit'
         continue-on-error: true
         env:
           CACHE_TAG: ${{ steps.package-cache-inputs.outputs.tag }}
