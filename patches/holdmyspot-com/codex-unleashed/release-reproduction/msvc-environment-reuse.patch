@@ -5,14 +5,17 @@ Subject: [PATCH] bugfix: reuse the MSVC environment that an earlier setup step
  already configured
 
 The Windows package job configures the Visual Studio developer environment in prepare-bazel-ci, again in the MSVC setup step, and a third time when the Cargo package build repeats its setup. Every VsDevCmd run prepends the same two thousand characters of tool directories to PATH, and the next run passes that PATH to cmd.exe, which rejects lines longer than 8191 characters. The third run therefore failed with "The input line is too long" and never exported VCToolsInstallDir. The setup now reuses an environment whose recorded tools directory and host and target tool directory are already on PATH, runs VsDevCmd only for a host or target that is not configured yet, and still derives and exports the linker.
+On native ARM64, path-map and deterministically compile the LLD forwarding
+wrapper to make its selected binary usable as a cache identity.
+
 ---
- .../actions/setup-msvc-env/setup-msvc-env.ps1 |  33 +-
+ .../actions/setup-msvc-env/setup-msvc-env.ps1 |  43 +-
  .github/scripts/test-setup-msvc-env.ps1       | 407 ++++++++++++++++++
- 2 files changed, 436 insertions(+), 4 deletions(-)
+ 2 files changed, 445 insertions(+), 5 deletions(-)
  create mode 100644 .github/scripts/test-setup-msvc-env.ps1
 
 diff --git a/.github/actions/setup-msvc-env/setup-msvc-env.ps1 b/.github/actions/setup-msvc-env/setup-msvc-env.ps1
-index e2706d9..f034492 100644
+index e2706d9..8d86843 100644
 --- a/.github/actions/setup-msvc-env/setup-msvc-env.ps1
 +++ b/.github/actions/setup-msvc-env/setup-msvc-env.ps1
 @@ -69,11 +69,36 @@ $VarsToExport = @(
@@ -56,6 +59,23 @@ index e2706d9..f034492 100644
  foreach ($Line in $EnvLines) {
      if ($Line -notmatch "^(.*?)=(.*)$") {
          continue
+@@ -244,7 +269,15 @@ internal static class Program
+     if (-not (Test-Path $Csc)) {
+         throw "csc.exe not found at $Csc"
+     }
+-    & $Csc /nologo /target:exe /out:$WrapperPath $WrapperSourcePath
++    $CompilerFlags = @()
++    if ($HostArch -eq "arm64") {
++        # Native ARM64 package workers key the generated wrapper. Map the
++        # scratch directory and ask Roslyn for stable assembly bytes.
++        $CompilerFlags += "/deterministic"
++        $CompilerFlags += "/pathmap:$WrapperDir=/_/msvc-lld-wrapper"
++        "MSVC_LINKER_WRAPPER_COMPILER=$Csc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
++    }
++    & $Csc /nologo /target:exe @CompilerFlags /out:$WrapperPath $WrapperSourcePath
+     if ($LASTEXITCODE -ne 0) {
+         throw "Failed to compile lld-link wrapper"
+     }
 diff --git a/.github/scripts/test-setup-msvc-env.ps1 b/.github/scripts/test-setup-msvc-env.ps1
 new file mode 100644
 index 0000000..552d2d9

@@ -8,6 +8,12 @@ metadata="$RUNNER_TEMP/manifest-patch-repo"
 transport="$metadata/.github/scripts/ghcr-cargo-target-cache.sh"
 case "$RUNNER_OS:$RUNNER_ARCH:$TARGET" in
   Linux:X64:x86_64-unknown-linux-musl|Windows:X64:x86_64-pc-windows-msvc) ;;
+  Windows:ARM64:aarch64-pc-windows-msvc)
+    if [[ "$operation" != inputs ]]; then
+      printf 'The Windows ARM64 package cache pilot supports key generation only\n' >&2
+      exit 2
+    fi
+    ;;
   *) printf 'Unsupported package cache host and target: %s/%s/%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$TARGET" >&2; exit 2 ;;
 esac
 windows_toolchain="$metadata/.github/scripts/windows-package-toolchain-inputs.sh"
@@ -94,7 +100,12 @@ if [[ "$operation" == inputs ]]; then
     native_component=windows
     voice_helper=codex-voice-host.exe
     voice_path_pattern='^(codex-voice-host\.exe|runtime/runtime\.json|runtime/[A-Za-z0-9_+.-]+(/[A-Za-z0-9_+.-]+)*\.dll)$'
-    printf '%s\n' "${LIBSQLITE3_FLAGS:?}" > "$inputs/$native_component"
+    if [[ "$RUNNER_ARCH" == ARM64 ]]; then
+      printf 'libsqlite3_flags_present=%s\nlibsqlite3_flags=%s\n' \
+        "${LIBSQLITE3_FLAGS+x}" "${LIBSQLITE3_FLAGS-}" > "$inputs/$native_component"
+    else
+      printf '%s\n' "${LIBSQLITE3_FLAGS:?}" > "$inputs/$native_component"
+    fi
   fi
   # The verified runtime lists the shipped libraries and plugins. Only those relative
   # paths, runtime.json, and the helper may appear in the diagnostic receipt.

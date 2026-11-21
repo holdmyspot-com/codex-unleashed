@@ -11,7 +11,7 @@ printf 'fixture native setup\n' > .github/actions/setup-msvc-env/setup-msvc-env.
 cat > bin/cygpath <<'SHIM'
 #!/usr/bin/env bash
 set -euo pipefail
-test "$1" = -au
+[[ "$1" == -au || "$1" == -am ]]
 test "$#" = 2
 printf '%s\n' "$2"
 SHIM
@@ -25,7 +25,7 @@ export UniversalCRTSdkDir="$WindowsSdkDir"
 export WindowsSDKVersion="10.0.26100.0\\" WindowsSDKLibVersion="10.0.26100.0\\" UCRTVersion=10.0.26100.0
 export WindowsSdkBinPath="$WindowsSdkDir/bin"
 export INCLUDE='first;second' LIB='native;SDK' LIBPATH='native;metadata'
-unset MSVC_REAL_LINKER WindowsLibPath
+unset MSVC_REAL_LINKER MSVC_LINKER_WRAPPER_COMPILER WindowsLibPath
 
 for arch in x64 arm64; do
   tools="$VCToolsInstallDir/bin/Host$arch/$arch"
@@ -123,6 +123,58 @@ if bash "$probe" >/dev/null 2>&1; then
   exit 1
 fi
 export PATH="$arm64_tools:$PATH"
+# Windows runs the real preflight. On this POSIX fixture Cargo, PE reads
+# and executable output are modeled independently to exercise refusal paths.
+export ARM64_FIXTURE_RUST_SYSROOT="$fixture/native Rust"
+linker="$ARM64_FIXTURE_RUST_SYSROOT/lib/rustlib/aarch64-pc-windows-msvc/bin/rust-lld.exe"
+csc="$fixture/Visual Studio/MSBuild/Current/Bin/Roslyn/csc.exe"
+wrapper_dir="$RUNNER_TEMP/msvc-lld-wrapper"
+mkdir -p "$(dirname "$linker")" "$(dirname "$csc")" "$wrapper_dir"
+printf 'rust-lld\n' > "$linker"
+printf 'Roslyn csc\n' > "$csc"
+printf 'deterministic wrapper\n' > "$wrapper_dir/lld-link-wrapper.exe"
+printf 'wrapper source\n' > "$wrapper_dir/lld-link-wrapper.cs"
+cat > bin/rustc <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == '-vV' ]]; then
+  printf 'fixture ARM64 Rust version\n'
+  exit
+fi
+test "$*" = '--print sysroot'
+printf '%s\n' "$ARM64_FIXTURE_RUST_SYSROOT"
+SHIM
+cat > bin/cargo <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == '--version' ]]; then
+  printf 'fixture ARM64 Cargo version\n'
+  exit
+fi
+test "$*" = "rustc --offline --release --target aarch64-pc-windows-msvc --bin codex-arm64-link-preflight -- -C debuginfo=2 -C link-arg=@$PWD/link.rsp"
+grep -qx /arm64hazardfree link.rsp
+test "$CARGO_TARGET_DIR" = "$PWD/output"
+test "${ARM64_FIXTURE_FAILURE-}" != cargo
+output="$CARGO_TARGET_DIR/aarch64-pc-windows-msvc/release"
+mkdir -p "$output"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s"\n'   "${ARM64_FIXTURE_OUTPUT:-codex-arm64-link-ok}" > "$output/codex-arm64-link-preflight.exe"
+chmod +x "$output/codex-arm64-link-preflight.exe"
+if [[ "${ARM64_FIXTURE_FAILURE-}" != symbols ]]; then
+  printf 'Microsoft C/C++ MSF 7.00' > "$output/codex_arm64_link_preflight.pdb"
+fi
+SHIM
+cat > bin/od <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$2:$3" in
+  -tx2:-N2) printf ' 5a4d\n' ;;
+  -tu4:-j60) printf ' 128\n' ;;
+  -tx4:-N4) printf ' 00004550\n' ;;
+  -tx2:-j132) printf ' %s\n' "${ARM64_FIXTURE_MACHINE:-aa64}" ;;
+  *) exit 2 ;;
+esac
+SHIM
+chmod +x bin/od
 arm64_inputs="$(bash "$probe")"
 grep -qx 'target=aarch64-pc-windows-msvc' <<< "$arm64_inputs"
 test "$arm64_inputs" = "$(bash "$probe")"
@@ -141,3 +193,46 @@ if RUNNER_ARCH=X64 bash "$probe" >/dev/null 2>&1; then
   printf 'ARM64 unexpectedly accepted an x64 runner\n' >&2
   exit 1
 fi
+
+
+export CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER="$wrapper_dir/lld-link-wrapper.exe"
+export MSVC_REAL_LINKER="$linker" MSVC_LINKER_WRAPPER_COMPILER="$csc"
+wrapped_inputs="$(bash "$probe")"
+test "$wrapped_inputs" = "$(bash "$probe")"
+for component in cargo_linker wrapper_source wrapper_compiler real_linker arm64_link_preflight; do
+  grep -Ex "${component}_sha256=[0-9a-f]{64}" <<< "$wrapped_inputs"
+done
+printf 'different linker bytes\n' >> "$linker"
+test "$wrapped_inputs" != "$(bash "$probe")"
+printf 'rust-lld\n' > "$linker"
+printf 'different deterministic wrapper bytes\n' >> "$wrapper_dir/lld-link-wrapper.exe"
+test "$wrapped_inputs" != "$(bash "$probe")"
+
+expect_arm64_refusal() {
+  if env "$@" bash "$probe" > "$fixture/arm64-refusal" 2>&1; then
+    printf 'ARM64 unexpectedly accepted %s\n' "$*" >&2
+    exit 1
+  fi
+  if grep -q '^target=' "$fixture/arm64-refusal"; then
+    printf 'ARM64 emitted a receipt after preflight failure for %s\n' "$*" >&2
+    exit 1
+  fi
+}
+expect_arm64_refusal MSVC_REAL_LINKER="$arm64_tools/link.exe"
+expect_arm64_refusal MSVC_LINKER_WRAPPER_COMPILER=
+expect_arm64_refusal ARM64_FIXTURE_FAILURE=cargo
+expect_arm64_refusal ARM64_FIXTURE_FAILURE=symbols
+expect_arm64_refusal ARM64_FIXTURE_MACHINE=8664
+expect_arm64_refusal ARM64_FIXTURE_OUTPUT=unexpected
+
+rm -- "$VOICE_RELEASE_DIR/runtime/bin/unlisted.dll"
+cp "$probe" "$script_dir/windows-arm64-package-link-preflight.sh" "$metadata/scripts/"
+unset LIBSQLITE3_FLAGS
+: > "$GITHUB_OUTPUT"
+bash "$key_script" inputs >/dev/null
+arm64_key="$(tail -n1 "$GITHUB_OUTPUT")"
+grep -Ex 'tag=cargo-v3-aarch64-pc-windows-msvc-pkg-[0-9a-f]{64}' <<< "$arm64_key"
+bash "$key_script" inputs >/dev/null
+test "$arm64_key" = "$(tail -n1 "$GITHUB_OUTPUT")"
+LIBSQLITE3_FLAGS='' bash "$key_script" inputs >/dev/null
+test "$arm64_key" != "$(tail -n1 "$GITHUB_OUTPUT")"
