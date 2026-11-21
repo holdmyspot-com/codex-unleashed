@@ -1,16 +1,16 @@
-name: Stable upstream Windows Bazel tests
+name: Compare selected Windows Bazel cases
 
 on:
   workflow_dispatch:
     inputs:
       patches:
-        description: Space-separated repository paths of downstream patches to apply with git am, in order; empty tests pristine upstream and records its failures as the baseline
+        description: Space-separated repository paths of downstream patches to apply with git am, in order; empty tests pristine upstream
         type: string
         default: ""
       public_key:
-        description: Optional SSH public key; connect to each Windows worker before starting its Bazel checks
+        description: SSH public key for the client that connects before Bazel starts
         type: string
-        default: ""
+        required: true
 
 permissions:
   contents: read
@@ -22,20 +22,11 @@ jobs:
       matrix:
         include:
           - target: x86_64-pc-windows-gnullvm
-            shard: 1
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 2
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
             shard: 3
             shard_count: 4
           - target: x86_64-pc-windows-gnullvm
             shard: 4
             shard_count: 4
-          - target: x86_64-pc-windows-msvc
-            shard: 1
-            shard_count: 1
     runs-on: windows-2025
     timeout-minutes: 360
     env:
@@ -274,115 +265,113 @@ jobs:
           git diff -- codex-rs/Cargo.lock > "$evidence/workspace-version-lock.diff"
           git diff --binary > "$evidence/source-before.diff"
 
-      - name: Run the maintained Windows Bazel test selection
+      - name: Run the selected ordinary Rust cases
         id: bazel_tests
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
           export CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR="$evidence/execution-logs"
           mkdir -p "$CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR"
-          wrapper_args=()
-          # tui-unit-tests exceeds Bazel's 300 s "moderate" timeout on a 4-vCPU runner (24/24 attempts at
-          # 302 s) and did the same in upstream's native main job on its larger runner (run 41103447384, 304
-          # s). Bazel has no per-target command-line timeout, and the workflow may not edit upstream's BUILD
-          # files, so raise the whole "moderate" category to 900 s; -1 keeps the short, long and eternal
-          # defaults. Every target without an explicit timeout is "moderate", so a hung test now holds a job
-          # for 900 s per attempt instead of 300 s.
           test_args=(test --config=ci-windows --workspace_status_command=./scripts/workspace-status.cmd --disk_cache= --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 --test_tag_filters=-argument-comment-lint --test_verbose_timeout_warnings "--test_timeout=-1,900,-1,-1")
-          targets=()
-          if [[ "$TARGET" == x86_64-pc-windows-gnullvm ]]; then
-            wrapper_args+=(--windows-cross-compile --remote-download-toplevel)
-            test_args+=(--skip_incompatible_explicit_targets --build_metadata="TAG_windows_test_shard=$BAZEL_TEST_SHARD")
-            # Without a BuildBuddy key the wrapper cannot apply upstream's --config=ci-windows-cross,
-            # which needs remote execution, and falls back to --config=ci-windows with an MSVC host
-            # platform. These shards then build and test MSVC-target binaries on this runner's 4 vCPUs,
-            # compiling locally while tests run (--keep_going). Upstream's ci-windows-cross also sets
-            # --local_test_jobs=8 and --test_env=RUST_TEST_THREADS=1, but it sets them for gnullvm
-            # binaries built remotely, where the runner carries only the tests. Upstream's own ci-windows
-            # jobs, the config this fallback uses, set neither, so Bazel sizes local test concurrency from
-            # the detected cores and libtest from available_parallelism. Copying the two cross-only limits
-            # here ran 8 test jobs on 4 cores and serialised each test binary, the probable cause of the
-            # thread-store, daemon_startup and worktree timeouts that upstream's runners do not show (not
-            # yet measured). Pass only the skip list that replaces the Windows one: it adds the PowerShell
-            # parser tests, which hang in cross-built gnullvm binaries and are covered by the native MSVC
-            # job.
-            test_args+=(
-              "--test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::,suite::code_mode::code_mode_can_call_hidden_dynamic_tools,tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child"
-            )
-            query='tests(//...) except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...))'
-            .github/scripts/run-bazel-query-ci.sh --output=label -- "$query" \
-              | LC_ALL=C sort > "$evidence/candidate-targets.txt"
-            bash "$CODEX_TOOLING" select-windows-bazel-targets \
-              --shard "$BAZEL_TEST_SHARD" --shard-count "$BAZEL_TEST_SHARD_COUNT" \
-              --durations "$GITHUB_WORKSPACE/.github/scripts/windows_bazel_test_durations.tsv" \
-              < "$evidence/candidate-targets.txt" > "$evidence/selected-targets.txt"
-            test -s "$evidence/selected-targets.txt"
-            while IFS= read -r target; do
-              targets+=("$target")
-            done < "$evidence/selected-targets.txt"
-          else
-            wrapper_args+=(--windows-msvc-host-platform)
-            test_args+=(--config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --build_metadata=TAG_windows_native_main=true)
-            targets=(//... -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests)
-            printf '%s\n' "${targets[@]}" > "$evidence/selected-targets.txt"
-          fi
-          if [[ "$RUNNER_OS" == Windows ]]; then
-            test_args+=(
-              "--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows,//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain"
-              --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
-              # Bazel's local Windows C++ toolchain defaults _WIN32_WINNT to 0x0601 (Windows 7) while V8's build defines
-              # 0x0A00 (Windows 10), so every V8 compile warned that the macro was redefined. Rust's MSVC targets need
-              # Windows 10, and the release packages are built with Cargo, so this changes only the Bazel jobs.
-              # rules_cc passes the value to cl.exe as the whole flag, so it must include /D_WIN32_WINNT=.
-              --repo_env=BAZEL_WIN32_WINNT=/D_WIN32_WINNT=0x0A00
-              --inject_repository="voice_windows_tools=$VOICE_WINDOWS_BAZEL_REPOSITORY"
-              --//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools
-              --action_env="SystemRoot=$VOICE_WINDOWS_SYSTEM_ROOT"
-              --host_action_env="SystemRoot=$VOICE_WINDOWS_SYSTEM_ROOT"
-              --action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH"
-              --host_action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH"
-            )
-          fi
-          printf '%s\n' "${targets[@]}" > "$evidence/execution-targets.txt"
-          bep="$evidence/bazel-tests.bep.json"
-          rm -f -- "$bep"
-          test_args+=("--build_event_json_file=$bep")
-          printf 'shard=%s\nshard_count=%s\n' "$BAZEL_TEST_SHARD" "$BAZEL_TEST_SHARD_COUNT" > "$evidence/shard.txt"
-          (
-            while true; do
-              date -u +'%Y-%m-%dT%H:%M:%SZ'
-              df -k "$CI_BUILD_ROOT/" "$RUNNER_TEMP"
-              if du -k -d 3 "$CI_BUILD_ROOT/" | sort -nr | sed -n '1,30p'; then
-                :
-              else
-                printf 'directory_sample_exit=%s\n' "$?"
-              fi
-              sleep 60
-            done
-          ) >> "$evidence/disk-usage.log" 2>&1 &
-          disk_monitor=$!
-          trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
-          set +e
-          .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs "${wrapper_args[@]}" -- \
-            "${test_args[@]}" --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
-            "${targets[@]}" 2>&1 | tee "$evidence/bazel-tests.log"
-          result=${PIPESTATUS[0]}
-          set -e
-          printf 'exit_code=%s\n' "$result" > "$evidence/bazel-tests.receipt"
-          bash "$CODEX_TOOLING" validate-bazel-test-evidence \
-            --bep "$bep" --expected-patterns "$evidence/execution-targets.txt" --bazel-exit-code "$result" \
-            > "$evidence/bazel-test-evidence.json"
+          wrapper_args+=(--windows-cross-compile --remote-download-toplevel)
+          test_args+=(--skip_incompatible_explicit_targets --build_metadata="TAG_windows_test_shard=$BAZEL_TEST_SHARD")
+          # Without a BuildBuddy key the wrapper cannot apply upstream's --config=ci-windows-cross,
+          # which needs remote execution, and falls back to --config=ci-windows with an MSVC host
+          # platform. These shards then build and test MSVC-target binaries on this runner's 4 vCPUs,
+          # compiling locally while tests run (--keep_going). Upstream's ci-windows-cross also sets
+          # --local_test_jobs=8 and --test_env=RUST_TEST_THREADS=1, but it sets them for gnullvm
+          # binaries built remotely, where the runner carries only the tests. Upstream's own ci-windows
+          # jobs, the config this fallback uses, set neither, so Bazel sizes local test concurrency from
+          # the detected cores and libtest from available_parallelism. Copying the two cross-only limits
+          # here ran 8 test jobs on 4 cores and serialised each test binary, the probable cause of the
+          # thread-store, daemon_startup and worktree timeouts that upstream's runners do not show (not
+          # yet measured). Pass only the skip list that replaces the Windows one: it adds the PowerShell
+          # parser tests, which hang in cross-built gnullvm binaries and are covered by the native MSVC
+          # job.
+          test_args+=(
+            "--test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::,suite::code_mode::code_mode_can_call_hidden_dynamic_tools,tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child"
+          )
+          {
+            printf 'image_os=%s\nimage_version=%s\ntarget=%s\nshard=%s\n' "${ImageOS:-}" "${ImageVersion:-}" "$TARGET" "$BAZEL_TEST_SHARD"
+            git --version
+            rustc --version --verbose
+            sha256sum .bazelversion .bazelrc .github/scripts/run-bazel-ci.sh
+          } > "$evidence/focused-environment.txt"
+
+          case "$BAZEL_TEST_SHARD" in
+            3)
+              labels=(//codex-rs/core:core-unit-tests)
+              cases=(tools::parallel::tests::cancellation_before_dispatch_admission_logs_dispatch_only_timing::test_case_3_dynamic_capture_disabled)
+              ;;
+            4)
+              labels=(//codex-rs/app-server:app-server-prompt_prefix-test //codex-rs/core:core-all-test)
+              cases=(prompt_prefix_matches_release suite::mcp_tool_cache::cached_mcp_startup_is_eager_for_root_and_lazy_for_subagents)
+              ;;
+          esac
+          upstream_commit=$(cat "$evidence/upstream-commit")
+          failed=0
+          for index in "${!labels[@]}"; do
+            label=${labels[index]}
+            test_case=${cases[index]}
+            report="$evidence/case-$((index + 1))"
+            mkdir "$report"
+            printf '%s\n' "$label" > "$report/target.txt"
+            printf '%s\n' "$test_case" > "$report/case.txt"
+
+            set +e
+            .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs "${wrapper_args[@]}" -- \
+              "${test_args[@]}" --build_metadata="COMMIT_SHA=$upstream_commit" \
+              --test_arg=--exact --test_arg="$test_case" --test_output=all \
+              --nocache_test_results --build_event_json_file="$report/events.json" -- "$label" \
+              2>&1 | tee "$report/bazel.log"
+            pipeline_status=("${PIPESTATUS[@]}")
+            set -e
+            result=${pipeline_status[0]}
+            printf '%s\n' "$result" > "$report/exit-code.txt"
+
+            if [[ "${pipeline_status[1]}" != 0 ]]; then
+              echo "Could not preserve the Bazel log for $label."
+              failed=1
+              continue
+            fi
+            if [[ "$result" != 0 && "$result" != 3 ]]; then
+              echo "Bazel stopped before producing an ordinary test result for $label."
+              failed=1
+              continue
+            fi
+            if bash "$CODEX_TOOLING" validate-bazel-test-evidence \
+              --bep "$report/events.json" --expected-patterns "$report/target.txt" --bazel-exit-code "$result" \
+              > "$report/bazel-test-evidence.json" 2> "$report/validator.stderr"; then
+              :
+            else
+              echo "Bazel evidence did not establish target coverage for $label."
+              failed=1
+            fi
+            log_path=${label#//}
+            log_path=${log_path/:/\/}
+            if [[ -d "bazel-testlogs/$log_path" ]] && cp -R "$(realpath "bazel-testlogs/$log_path")" "$report/testlogs"; then
+              :
+            else
+              echo "Could not preserve test logs for $label."
+              failed=1
+              continue
+            fi
+            find "$report/testlogs" -name '*.log' -type f \
+              -exec grep -hF "test $test_case ... " {} \; \
+              | tr -d '\r' > "$report/case-results.txt"
+            if grep -Fxq "test $test_case ... FAILED" "$report/case-results.txt"; then
+              failed=1
+            elif ! grep -Fxq "test $test_case ... ok" "$report/case-results.txt"; then
+              echo "Bazel did not report a terminal result for the exact Rust case $test_case."
+              failed=1
+            fi
+            if [[ "$result" == 3 ]]; then
+              failed=1
+            fi
+          done
           git diff --binary > "$evidence/source-after.diff"
           cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
-          printf 'bep-complete=true\n' >> "$GITHUB_OUTPUT"
-          # Bazel exits 3 when tests failed and everything else built. The comparison with the unpatched baseline below
-          # judges those failures (an unpatched run records that baseline), so they alone do not fail this step.
-          # Any other failure, such as a build error, does.
-          if [[ "$result" == 3 ]]; then
-            printf 'Bazel reported failing tests; the baseline comparison decides the outcome.\n'
-            exit 0
-          fi
-          exit "$result"
+          exit "$failed"
 
       - name: Record native Opus install links and CMake inputs
         if: always() && env.BAZEL_OUTPUT_BASE != ''
@@ -428,36 +417,6 @@ jobs:
           bash "$CODEX_TOOLING" check-test-skips --platform windows --runner bazel "$(realpath bazel-testlogs)" \
             2>&1 | tee "$RUNNER_TEMP/baseline-windows-bazel-evidence/skip-check.log"
 
-      - name: Record or compare this shard's failures
-        # An unpatched run is pristine upstream, so its failures are the baseline that patched runs are compared with;
-        # the evidence artifact carries the file for committing under docs/test-baselines.
-        if: ${{ !cancelled() && steps.bazel_tests.outcome == 'success' && steps.bazel_tests.outputs['bep-complete'] == 'true' }}
-        env:
-          PATCHES: ${{ inputs.patches }}
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
-          commit="${{ steps.inputs.outputs.commit }}"
-          platform="windows-bazel-${TARGET##*-}-shard-${BAZEL_TEST_SHARD}"
-          common=(--runner bazel --platform "$platform" --upstream-commit "$commit")
-          # select-windows-bazel-targets balances targets across shards by estimated duration, so a target that the
-          # patches add can move others into a different shard; the other shards' failures are known failures here.
-          related=()
-          for ((other = 1; other <= BAZEL_TEST_SHARD_COUNT; other++)); do
-            if ((other != BAZEL_TEST_SHARD)); then
-              related+=(--related-platform "windows-bazel-${TARGET##*-}-shard-$other")
-            fi
-          done
-          if [[ -z "${PATCHES// /}" ]]; then
-            bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" --write-baseline \
-              --output "$evidence/$platform.json" "$(realpath bazel-testlogs)"
-          else
-            bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" "${related[@]}" \
-              --baseline-dir "$RUNNER_TEMP/test-baselines" "$(realpath bazel-testlogs)" 2>&1 \
-              | tee "$evidence/baseline-comparison.log"
-            exit "${PIPESTATUS[0]}"
-          fi
-
       - name: Verify upstream source and tests remain unmodified
         if: always()
         run: |
@@ -470,12 +429,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: baseline-windows-bazel-tests-${{ matrix.target }}-shard-${{ matrix.shard }}
+          name: focused-windows-bazel-cases-shard-${{ matrix.shard }}
           path: ${{ runner.temp }}/baseline-windows-bazel-evidence
           retention-days: 3
           if-no-files-found: warn
-
-      - name: Remove the job-owned tooling runtime
-        if: always()
-        shell: bash
-        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
