@@ -83,6 +83,9 @@ public final class VoiceRuntimeTest
 
 				requireThat(staged, "stageStatus").isEqualTo(0);
 				requireThat(checked, "checkStatus").isEqualTo(0);
+				List<String> checksumPaths = List.copyOf(
+					fixture.scope.getJsonMapper().readTree(manifestBefore).path("sha256").propertyNames());
+				requireThat(checksumPaths, "checksumPaths").isEqualTo(checksumPaths.stream().sorted().toList());
 				requireThat(Files.readString(fixture.packageRoot.resolve("codex-resources/voice/manifest.json")),
 					"manifest").isEqualTo(manifestBefore);
 				requireThat(process.calls, "identityCalls").isEqualTo(2);
