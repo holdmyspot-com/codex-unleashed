@@ -112,3 +112,5 @@ The release applies these patches in this order:
 100. [telemetry-off/telemetry-off.patch](holdmyspot-com/codex-unleashed/telemetry-off/telemetry-off.patch)
 101. [windows-read-acl-helper/inherit-no-handles.patch](holdmyspot-com/codex-unleashed/windows-read-acl-helper/inherit-no-handles.patch)
 102. [release-reproduction/reuse-prepared-musl-package-tools.patch](holdmyspot-com/codex-unleashed/release-reproduction/reuse-prepared-musl-package-tools.patch)
+
+103. [release-voice-runtime/linux-reproducible-build-paths.patch](holdmyspot-com/codex-unleashed/release-voice-runtime/linux-reproducible-build-paths.patch)

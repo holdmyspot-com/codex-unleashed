@@ -17,6 +17,13 @@ SECTION = re.compile(
     r"\s*\[\s*\d+\]\s+(\.[\w.]+)\s+(\w+)\s+[0-9a-fA-F]+\s+"
     r"([0-9a-fA-F]+)\s+([0-9a-fA-F]+)"
 )
+PATH_PATTERNS = {
+    "temporary_native": re.compile(rb"/tmp/voice-native-[a-z0-9_]{8}/build(?=/)"),
+    "stable_native": re.compile(rb"/var/lib/codex-voice-build/native/build(?=/)"),
+    "sandbox_execroot": re.compile(rb"/[^\x00\n ]+/sandbox/linux-sandbox/[0-9]+/execroot/[^/\x00 ]+"),
+    "mapped_ring_source": re.compile(rb"/ring/source(?=/)"),
+    "mapped_ring_work": re.compile(rb"/ring/work(?=/)"),
+}
 SECTION_PREFIXES = (
     ".debug_", ".zdebug_", ".text", ".rodata", ".data",
     ".note.gnu.build-id", ".comment", ".dynamic", ".dynstr", ".symtab", ".strtab",
@@ -36,6 +43,18 @@ def digest_region(stream, offset, size):
     return digest.hexdigest()
 
 
+def path_counts(stream, offset, size, section):
+    """Count recognized build path prefixes without recording path contents."""
+    if section not in (".dynstr", ".rodata", ".debug_str", ".debug_line_str"):
+        return {}
+    stream.seek(offset)
+    data = stream.read(size)
+    if len(data) != size:
+        raise ValueError("Truncated input while scanning a voice payload")
+    counts = {key: len(pattern.findall(data)) for key, pattern in PATH_PATTERNS.items()}
+    return {key: value for key, value in counts.items() if value}
+
+
 def fingerprint(path):
     """Hash an entire payload and selected file-backed ELF sections."""
     size = path.stat().st_size
@@ -48,6 +67,7 @@ def fingerprint(path):
             ["readelf", "-SW", path], check=True, capture_output=True, text=True
         ).stdout
         result["sections"] = {}
+        path_sections = {}
         for line in sections.splitlines():
             entry = SECTION.match(line)
             if not entry:
@@ -55,7 +75,13 @@ def fingerprint(path):
             name, kind, offset, length = entry.groups()
             if kind == "NOBITS" or not name.startswith(SECTION_PREFIXES):
                 continue
-            result["sections"][name] = digest_region(stream, int(offset, 16), int(length, 16))
+            start, size = int(offset, 16), int(length, 16)
+            result["sections"][name] = digest_region(stream, start, size)
+            counts = path_counts(stream, start, size, name)
+            if counts:
+                path_sections[name] = counts
+        if path_sections:
+            result["path_sections"] = path_sections
         if not result["sections"]:
             raise ValueError("readelf returned no selected file-backed sections")
         return result

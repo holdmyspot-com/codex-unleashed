@@ -1,0 +1,118 @@
+From 179caf22c60f86ac5606e48b54bbc2eeec2fb652 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 21 Nov 2026 04:26:09 -0500
+Subject: [PATCH] Make Linux release voice build paths deterministic
+
+---
+ .github/scripts/codex-voice-runtime.sh       |  8 +++++++
+ patches/ring_windows_msvc_include_dirs.patch |  9 +++++++-
+ third_party/voice/bazel_native.py            | 24 ++++++++++++++++++--
+ third_party/voice/native.bzl                 |  1 +
+ 4 files changed, 39 insertions(+), 3 deletions(-)
+
+diff --git a/.github/scripts/codex-voice-runtime.sh b/.github/scripts/codex-voice-runtime.sh
+index 9a40d1c57..64f636601 100755
+--- a/.github/scripts/codex-voice-runtime.sh
++++ b/.github/scripts/codex-voice-runtime.sh
+@@ -187,6 +187,14 @@ configure_bazel_arguments() {
+   wrapper_args=(--remote-download-toplevel --print-failed-action-summary)
+   bazel_args=("$command" --config=release)
+ 
++  if [[ "$runner_os" == Linux && -n "${CODEX_VOICE_SANDBOX_SCRATCH:-}" ]]; then
++    bazel_args+=(
++      --define=codex_voice_fixed_mount=1
++      --strategy=VoiceNativePrefix=linux-sandbox
++      "--sandbox_add_mount_pair=$CODEX_VOICE_SANDBOX_SCRATCH:/var/lib/codex-voice-build"
++      --sandbox_writable_path=/var/lib/codex-voice-build
++    )
++  fi
+   if [[ "$runner_os" == macOS ]]; then
+     bazel_args+=(--macos_minimum_os=14.0)
+   fi
+diff --git a/patches/ring_windows_msvc_include_dirs.patch b/patches/ring_windows_msvc_include_dirs.patch
+index 7bb49cbc2..9b7a4abd1 100644
+--- a/patches/ring_windows_msvc_include_dirs.patch
++++ b/patches/ring_windows_msvc_include_dirs.patch
+@@ -45,7 +45,7 @@ diff --git a/build.rs b/build.rs
+          c.get_compiler()
+      } else {
+          compiler
+-@@ -569,6 +595,15 @@
++@@ -569,6 +595,22 @@
+  
+      let _ = c.include(c_root_dir.join("include"));
+      let _ = c.include(include_dir);
+@@ -57,6 +57,13 @@ diff --git a/build.rs b/build.rs
+ +        let _ = c.include(c_root_dir.join("crypto").join("fipsmodule").join("bn"));
+ +        let _ = c.include(c_root_dir.join("crypto").join("fipsmodule").join("ec"));
+ +        let _ = c.include(c_root_dir.join("crypto").join("poly1305"));
+++    }
+++    if target.os == "linux" {
+++        // The Bazel sandbox ID is a scheduler detail. Retain source locations
+++        // while keeping it out of the resulting DWARF.
+++        let cwd = std::env::current_dir().expect("ring build working directory");
+++        let _ = c.flag(format!("-fdebug-prefix-map={}=/ring/work", cwd.display()));
+++        let _ = c.flag(format!("-fdebug-prefix-map={}=/ring/source", c_root_dir.display()));
+ +    }
+      for f in cpp_flags(&compiler) {
+          let _ = c.flag(f);
+diff --git a/third_party/voice/bazel_native.py b/third_party/voice/bazel_native.py
+index c51eb058c..6f1a145de 100644
+--- a/third_party/voice/bazel_native.py
++++ b/third_party/voice/bazel_native.py
+@@ -1,6 +1,7 @@
+ #!/usr/bin/env python3
+ """Run the existing native recipe with Bazel-declared inputs; export a raw prefix."""
+ 
++from contextlib import contextmanager
+ import json
+ import os
+ from pathlib import Path
+@@ -14,14 +15,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
+ from build_native import NativeBuild
+ 
+ 
++@contextmanager
++def work_directory(fixed_mount):
++    if not fixed_mount:
++        with tempfile.TemporaryDirectory(prefix="voice-native-") as temporary:
++            yield Path(temporary)
++        return
++
++    # The release worker bind-mounts its own disk-backed scratch here inside the
++    # Linux sandbox. The host mountpoint is root-owned and empty.
++    mount = Path("/var/lib/codex-voice-build")
++    if not (mount / "mount-ready").is_file():
++        raise ValueError("The Linux release voice scratch mount is missing")
++    scratch = mount / "native"
++    scratch.mkdir()
++    try:
++        yield scratch
++    finally:
++        shutil.rmtree(scratch)
++
++
+ def main():
+     config = json.loads(Path(sys.argv[1]).read_text())
+     root = str(Path.cwd())
+     # Toolchain flags may name execroot-relative SDK files even though upstream
+     # build systems change directory. Substitute a literal marker, never a shell.
+     config = json.loads(json.dumps(config).replace("@VOICE_EXECROOT@", root))
+-    with tempfile.TemporaryDirectory(prefix="voice-native-") as temporary:
+-        temporary = Path(temporary)
++    with work_directory(config.pop("fixed_mount", False)) as temporary:
+         archives = temporary / "archives"
+         archives.mkdir()
+         for archive in config.pop("archives"):
+diff --git a/third_party/voice/native.bzl b/third_party/voice/native.bzl
+index 5dacbcaf2..18a15eb33 100644
+--- a/third_party/voice/native.bzl
++++ b/third_party/voice/native.bzl
+@@ -30,6 +30,7 @@ def _native_prefix_impl(ctx):
+         "prefix": prefix.path,
+         "receipt": receipt.path,
+         "target": ctx.attr.target,
++        "fixed_mount": ctx.attr.target.endswith("unknown-linux-gnu") and ctx.var.get("codex_voice_fixed_mount") == "1",
+         "deployment_target": minimums[0] if minimums else None,
+         "jobs": 8,
+         "cc": tools.cc,
