@@ -3,8 +3,11 @@
 set -euo pipefail
 
 metadata="$RUNNER_TEMP/manifest-patch-repo/.github/scripts"
+library="$(mktemp "$RUNNER_TEMP/voice-automatic-library.XXXXXX")"
+trap 'rm -f -- "$library"' EXIT
+sed '/^operation=/,$d' "$metadata/macos-sealed-voice-cache.sh" > "$library"
 # shellcheck disable=SC1090
-source <(sed '/^operation=/,$d' "$metadata/macos-sealed-voice-cache.sh")
+source "$library"
 candidate="$RUNNER_TEMP/voice-cache-incoming/1/approved.json"
 origin="$RESULT_DIR/evidence/voice-cache-origin.json"
 inputs="$RUNNER_TEMP/voice-cache-inputs.json"

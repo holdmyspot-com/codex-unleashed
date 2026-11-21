@@ -134,7 +134,7 @@ jobs:
             printf '::error::skip_gates is allowed only with dry_run=true\n'
             exit 1
           fi
-          test "$GITHUB_REF" = refs/heads/verify/cp9-sealed-voice-bash-automatic
+          test "$GITHUB_REF" = refs/heads/verify/cp9-sealed-voice-bash-native
           test "$live" = false && test "$PACKAGE_DRY_RUN" = true && test "$SKIP_GATES" = true
           test "$PACKAGE_TARGETS" = aarch64-apple-darwin && test -n "$DEBUG_KEY" && test "$GITHUB_RUN_ATTEMPT" = 1
           all='[{"runner":"ubuntu-24.04","target":"x86_64-unknown-linux-musl"},
@@ -683,7 +683,7 @@ jobs:
 
       - name: Look up an exact verified ARM64 macOS voice bundle
         id: voice-cache
-        if: matrix.target == 'aarch64-apple-darwin' && github.ref == 'refs/heads/verify/cp9-sealed-voice-bash-automatic'
+        if: matrix.target == 'aarch64-apple-darwin' && github.ref == 'refs/heads/verify/cp9-sealed-voice-bash-native'
         timeout-minutes: 2
         continue-on-error: true
         env:
