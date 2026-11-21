@@ -51,6 +51,10 @@ on:
         description: Prepare the Linux package cache key and upload its digests without running the release Cargo build
         type: boolean
         default: false
+      java_bundle_fixture:
+        description: Verify the Java port using the immutable frozen pre-strip bundle
+        type: boolean
+        default: false
       package_public_key:
         description: Optional SSH public key for dry-run package workers; connect to each selected worker before packaging
         type: string
@@ -66,6 +70,7 @@ concurrency:
   group: >-
     upstream-auto-release-${{ inputs.upstream_tag || 'latest' }}-${{
       (github.event_name == 'schedule' || !inputs.dry_run) && 'live' ||
+      inputs.java_bundle_fixture && 'java-bundle-fixture' ||
       (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_cache_key_only) && 'package-cache-key' ||
       (inputs.package_dry_run && inputs.package_final_output_cache) && 'package-final-output-cache-pilot' ||
       (inputs.package_dry_run && inputs.package_cargo_cache) && 'package-cache-pilot' ||
@@ -78,6 +83,7 @@ permissions:
 
 jobs:
   unit-tests:
+    if: "!inputs.java_bundle_fixture"
     name: Release helper tests
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -108,6 +114,63 @@ jobs:
         run: |
           set -euo pipefail
           node --test .github/scripts/test-codex-version-banner.mjs .github/scripts/test-verify-local-npm.mjs .github/scripts/test-release-publication.mjs
+
+  java-bundle-fixture:
+    name: Verify frozen pre-strip bundle with Java
+    if: inputs.java_bundle_fixture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Require an authenticated fixture-only dry run
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          PACKAGE_DRY_RUN: ${{ inputs.package_dry_run }}
+          PUBLIC_KEY: ${{ inputs.package_public_key }}
+        run: |
+          set -euo pipefail
+          [[ "$DRY_RUN" == true && "$PACKAGE_DRY_RUN" == false && -n "$PUBLIC_KEY" ]]
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Prepare client readiness
+        run: mkdir "$RUNNER_TEMP/package-debug-evidence"
+      - name: Open authenticated package worker
+        uses: ./.github/actions/debug-failed-runner
+        with:
+          public-key: ${{ inputs.package_public_key }}
+          idle-timeout-minutes: '10'
+      - name: Wait for connected package client
+        run: bash .github/scripts/release-debug-session.sh wait-for-client "$RUNNER_TEMP/package-debug-evidence"
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+      - uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          version: 1.3.1
+      - name: Build the Java tooling runtime
+        env:
+          TOOLING_ROOT: ${{ github.workspace }}
+        run: bash .github/scripts/setup-tooling.sh
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: e1ece66fbe69ab0e0921ac831cb46703170e40eb
+          path: frozen-bundle-reference
+          persist-credentials: false
+      - name: Verify the immutable frozen executable bundle and Java output
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/verify-cp9-java-bundle-fixture.sh
+      - name: Retain cross-implementation bundle evidence
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: cp9-java-final-output-fixture
+          path: ${{ runner.temp }}/cp9-java-final-output-fixture.json
+          if-no-files-found: error
+          retention-days: 3
 
   detect:
     name: Detect the upstream release
