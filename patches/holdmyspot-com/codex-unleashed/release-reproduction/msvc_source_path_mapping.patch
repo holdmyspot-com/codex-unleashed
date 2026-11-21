@@ -55,10 +55,10 @@ index 07fa1ff..5e9145f 100755
  if [[ $remote_download_toplevel -eq 1 ]]; then
 diff --git a/.github/scripts/test_bazel_msvc_pathmap.py b/.github/scripts/test_bazel_msvc_pathmap.py
 new file mode 100644
-index 0000000..c98888c
+index 0000000..ffb396e
 --- /dev/null
 +++ b/.github/scripts/test_bazel_msvc_pathmap.py
-@@ -0,0 +1,400 @@
+@@ -0,0 +1,409 @@
 +#!/usr/bin/env python3
 +
 +"""End-to-end contract tests for local Windows MSVC source-path mapping."""
@@ -414,7 +414,16 @@ index 0000000..c98888c
 +        )
 +        self.assertEqual(assignments, ["msvc-cl"] * 4)
 +        self.assertIn('repository_ctx.getenv("CODEX_BAZEL_MSVC_PATHMAP_ROOT", "")', patch)
-+        self.assertIn('if ctx.attr.compiler == "msvc-cl" and ctx.attr.codex_msvc_pathmap_root:', patch)
++        # V8 uses the msvc-cl identifier with clang-cl.exe as the executable.
++        self.assertIn(
++            r'compiler_executable = ctx.attr.msvc_cl_path.replace("\\", "/").split("/")[-1].lower()',
++            patch,
++        )
++        self.assertIn(
++            'if ctx.attr.compiler == "msvc-cl" and compiler_executable == "cl.exe"'
++            ' and ctx.attr.codex_msvc_pathmap_root:',
++            patch,
++        )
 +        self.assertNotIn("ACTION_NAMES.assemble", patch)
 +        self.assertIn('"/pathmap:" + root + "=."', patch)
 +
@@ -485,10 +494,10 @@ index 3345981..8201851 100644
      "llvm_rusty_v8_custom_libcxx.patch",
 diff --git a/patches/rules_cc_windows_msvc_pathmap.patch b/patches/rules_cc_windows_msvc_pathmap.patch
 new file mode 100644
-index 0000000..b4b0d89
+index 0000000..ddcffe8
 --- /dev/null
 +++ b/patches/rules_cc_windows_msvc_pathmap.patch
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,89 @@
 +diff --git a/cc/private/toolchain/BUILD.windows.tpl b/cc/private/toolchain/BUILD.windows.tpl
 +index 2335d2d..e065021 100644
 +--- a/cc/private/toolchain/BUILD.windows.tpl
@@ -539,14 +548,16 @@ index 0000000..b4b0d89
 +     template_vars.update(_get_msvc_vars(repository_ctx, paths, "arm", msvc_vars_x64))
 +     msvc_vars_arm64 = _get_msvc_vars(repository_ctx, paths, "arm64", msvc_vars_x64)
 +diff --git a/cc/private/toolchain/windows_cc_toolchain_config.bzl b/cc/private/toolchain/windows_cc_toolchain_config.bzl
-+index 295f481..65b42ef 100644
++index 295f481..6e2ab59 100644
 +--- a/cc/private/toolchain/windows_cc_toolchain_config.bzl
 ++++ b/cc/private/toolchain/windows_cc_toolchain_config.bzl
-+@@ -1711,6 +1711,25 @@ def _impl(ctx):
++@@ -1711,6 +1711,27 @@ def _impl(ctx):
 +     )
 +     features.extend([cpp_modules_feature, cpp_module_modmap_file_feature, cpp20_module_compile_flags_feature])
 +
-++    if ctx.attr.compiler == "msvc-cl" and ctx.attr.codex_msvc_pathmap_root:
+++    # The V8 toolchain may keep the msvc-cl identifier while substituting clang-cl.exe.
+++    compiler_executable = ctx.attr.msvc_cl_path.replace("\\", "/").split("/")[-1].lower()
+++    if ctx.attr.compiler == "msvc-cl" and compiler_executable == "cl.exe" and ctx.attr.codex_msvc_pathmap_root:
 ++        # Toolchain flag strings use '%' to introduce build variables.
 ++        root = ctx.attr.codex_msvc_pathmap_root.replace("%", "%%")
 ++        features.append(feature(
@@ -568,7 +579,7 @@ index 0000000..b4b0d89
 +     extra_rules_based_features = depset(ctx.attr.extra_enabled_features + ctx.attr.extra_known_features)
 +     features.extend([convert_feature(extra_feature[FeatureInfo], enabled = extra_feature in ctx.attr.extra_enabled_features) for extra_feature in extra_rules_based_features.to_list()])
 +
-+@@ -1740,6 +1759,7 @@ cc_toolchain_config = rule(
++@@ -1740,6 +1761,7 @@ cc_toolchain_config = rule(
 +         "archiver_flags": attr.string_list(default = []),
 +         "all_compile_flags": attr.string_list(),
 +         "compiler": attr.string(),
