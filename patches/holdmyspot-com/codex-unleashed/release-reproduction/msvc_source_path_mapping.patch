@@ -2,18 +2,16 @@ From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 18 Nov 2026 12:21:44 -0500
 Subject: [PATCH] bugfix: remap native MSVC source paths for reproducible builds
 
-Native C and C++ actions expose their absolute Bazel execution root.
-Map that root to a relative path for target and host actions while keeping
-MSVC-only flags out of Cargo build-script environments.
-
-V8's native Windows build compiles with LLVM's clang-cl, which does not accept
-/pathmap, so its sources stay unmapped.
+Read the local Bazel execution root and configure path mapping for native
+MSVC C and C++ compile actions in the generated rules_cc toolchain. GNU
+clang and clang-cl can compile sources from the same packages in the same
+build, so source-path filters cannot safely select the compiler.
 
 diff --git a/.github/scripts/run-bazel-ci.sh b/.github/scripts/run-bazel-ci.sh
-index 07fa1ff..c8cd10e 100755
+index 07fa1ff..5e9145f 100755
 --- a/.github/scripts/run-bazel-ci.sh
 +++ b/.github/scripts/run-bazel-ci.sh
-@@ -279,6 +279,49 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; the
+@@ -279,6 +279,41 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; the
      # explicit `--platforms=...` flag.
      post_config_bazel_args+=("--host_platform=//:local_windows_msvc")
    fi
@@ -50,25 +48,17 @@ index 07fa1ff..c8cd10e 100755
 +  fi
 +
 +  execution_root="${execution_root//\\//}"
-+  execution_root="${execution_root//,/\\,}"
-+  msvc_pathmap_options="/experimental:deterministic,/pathmap:${execution_root}=."
-+  # V8's native Windows build compiles with LLVM's clang-cl (third_party/v8/artifact_profile.bzl), which reads cl.exe's
-+  # /pathmap as an input file name and fails every compile. A per-file filter cannot select a compiler, so exclude the
-+  # sources of that build: V8's dependency, engine and libc++ repositories and the //third_party/v8 package.
-+  msvc_pathmap_filter='.*,-.*\+dependencies\+v8_.*,-.*\+engine_repository\+v8.*,-.*\+git_repository\+rusty_v8_.*,-.*\+new_local_repository\+v8_targets.*,-.*third_party/v8.*'
-+  post_config_bazel_args+=(
-+    "--per_file_copt=${msvc_pathmap_filter}@${msvc_pathmap_options}"
-+    "--host_per_file_copt=${msvc_pathmap_filter}@${msvc_pathmap_options}"
-+  )
++  # Scope /pathmap to compile actions of the generated native cl.exe toolchain.
++  post_config_bazel_args+=("--repo_env=CODEX_BAZEL_MSVC_PATHMAP_ROOT=${execution_root}")
  fi
- 
+
  if [[ $remote_download_toplevel -eq 1 ]]; then
 diff --git a/.github/scripts/test_bazel_msvc_pathmap.py b/.github/scripts/test_bazel_msvc_pathmap.py
 new file mode 100644
-index 0000000..3f6af24
+index 0000000..c98888c
 --- /dev/null
 +++ b/.github/scripts/test_bazel_msvc_pathmap.py
-@@ -0,0 +1,458 @@
+@@ -0,0 +1,400 @@
 +#!/usr/bin/env python3
 +
 +"""End-to-end contract tests for local Windows MSVC source-path mapping."""
@@ -84,12 +74,7 @@ index 0000000..3f6af24
 +
 +REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 +WRAPPER = REPOSITORY_ROOT / ".github/scripts/run-bazel-ci.sh"
-+# Bazel's per-file filter: include every source, then exclude the sources of V8's native Windows build, which
-+# LLVM's clang-cl compiles and which rejects cl.exe's /pathmap.
-+PATHMAP_FILTER = (
-+    r".*,-.*\+dependencies\+v8_.*,-.*\+engine_repository\+v8.*,"
-+    r"-.*\+git_repository\+rusty_v8_.*,-.*\+new_local_repository\+v8_targets.*,-.*third_party/v8.*"
-+)
++PATHMAP_ROOT_OPTION = "--repo_env=CODEX_BAZEL_MSVC_PATHMAP_ROOT="
 +FAKE_BAZEL_SOURCE = r"""#!/usr/bin/env python3
 +import json
 +import os
@@ -212,7 +197,7 @@ index 0000000..3f6af24
 +        self,
 +        records: list[dict[str, object]],
 +        *,
-+        expected_mapping: str,
++        expected_root: str,
 +        keyed: bool,
 +        expected_host_platform: str | None = "//:local_windows_msvc",
 +    ) -> None:
@@ -282,33 +267,17 @@ index 0000000..3f6af24
 +            self.assertNotIn("--config=ci-windows", info_args)
 +            self.assertNotIn("--config=ci-windows", build_args)
 +
-+        target_options = [
-+            arg for arg in build_args if arg.startswith("--per_file_copt=")
-+        ]
-+        host_options = [
-+            arg for arg in build_args if arg.startswith("--host_per_file_copt=")
-+        ]
-+        self.assertEqual(
-+            target_options,
-+            [
-+                f"--per_file_copt={PATHMAP_FILTER}@/experimental:deterministic,{expected_mapping}"
-+            ],
-+        )
-+        self.assertEqual(
-+            host_options,
-+            [
-+                f"--host_per_file_copt={PATHMAP_FILTER}@/experimental:deterministic,{expected_mapping}"
-+            ],
-+        )
-+        self.assertGreater(
-+            build_args.index(target_options[0]),
-+            build_args.index("--host_platform=" + expected_host_platform)
-+            if expected_host_platform
-+            else -1,
-+        )
-+        self.assertGreater(
-+            build_args.index(host_options[0]), build_args.index(target_options[0])
-+        )
++        root_options = [arg for arg in build_args if arg.startswith(PATHMAP_ROOT_OPTION)]
++        self.assertEqual(root_options, [PATHMAP_ROOT_OPTION + expected_root])
++        self.assertFalse(any(
++            arg.startswith(("--per_file_copt=", "--host_per_file_copt="))
++            for arg in build_args
++        ))
++        if expected_host_platform:
++            self.assertGreater(
++                build_args.index(root_options[0]),
++                build_args.index("--host_platform=" + expected_host_platform),
++            )
 +        for argument in build_args:
 +            if argument.startswith(
 +                (
@@ -333,15 +302,16 @@ index 0000000..3f6af24
 +        self,
 +    ) -> None:
 +        cases = (
-+            (r"D:\o\execroot\_main", "/pathmap:D:/o/execroot/_main=."),
-+            ("D:/build root/execroot/_main", "/pathmap:D:/build root/execroot/_main=."),
++            (r"D:\o\execroot\_main", "D:/o/execroot/_main"),
++            ("D:/build root/execroot/_main", "D:/build root/execroot/_main"),
 +            (
 +                "D:/build,root/execroot/_main",
-+                r"/pathmap:D:/build\,root/execroot/_main=.",
++                "D:/build,root/execroot/_main",
 +            ),
-+            ("D:/build@root/execroot/_main", "/pathmap:D:/build@root/execroot/_main=."),
++            ("D:/build@root/execroot/_main", "D:/build@root/execroot/_main"),
++            ("D:/build%root/execroot/_main", "D:/build%root/execroot/_main"),
 +        )
-+        for root, mapping in cases:
++        for root, expected_root in cases:
 +            for keyed in (False, True):
 +                with self.subTest(root=root, keyed=keyed):
 +                    completed, records = self.run_wrapper(
@@ -357,7 +327,7 @@ index 0000000..3f6af24
 +                    self.assertEqual(
 +                        completed.returncode, 0, completed.stderr + completed.stdout
 +                    )
-+                    self.assert_mapping(records, expected_mapping=mapping, keyed=keyed)
++                    self.assert_mapping(records, expected_root=expected_root, keyed=keyed)
 +                    build_args = self.by_command(records, "test")[0]["argv"]
 +                    self.assertIn("--platforms=//:windows_x86_64_msvc", build_args)
 +                    self.assertIn("--keep_going", build_args)
@@ -375,12 +345,7 @@ index 0000000..3f6af24
 +        args = self.by_command(records, "test")[0]["argv"]
 +        self.assertIn("--host_platform=//:custom_host", args)
 +        self.assertNotIn("--host_platform=//:local_windows_msvc", args)
-+        self.assertEqual(
-+            args.count(
-+                f"--per_file_copt={PATHMAP_FILTER}@/experimental:deterministic,/pathmap:D:/custom/root=."
-+            ),
-+            1,
-+        )
++        self.assertEqual(args.count(PATHMAP_ROOT_OPTION + "D:/custom/root"), 1)
 +
 +    def test_unkeyed_windows_cross_compile_uses_native_fallback_mapping(self) -> None:
 +        completed, records = self.run_wrapper(
@@ -392,7 +357,7 @@ index 0000000..3f6af24
 +        self.assertEqual(completed.returncode, 0, completed.stderr + completed.stdout)
 +        self.assert_mapping(
 +            records,
-+            expected_mapping="/pathmap:D:/fallback/root=.",
++            expected_root="D:/fallback/root",
 +            keyed=False,
 +        )
 +        args = self.by_command(records, "test")[0]["argv"]
@@ -423,7 +388,8 @@ index 0000000..3f6af24
 +                args = build_records[0]["argv"]
 +                self.assertFalse(
 +                    any(
-+                        "_per_file_copt=" in arg
++                        arg.startswith(PATHMAP_ROOT_OPTION)
++                        or "_per_file_copt=" in arg
 +                        or "/pathmap:" in arg
 +                        or "/experimental:deterministic" in arg
 +                        for arg in args
@@ -437,43 +403,20 @@ index 0000000..3f6af24
 +                    self.assertIn("--host_platform=//:rbe", args)
 +                    self.assertIn("--shell_executable=/bin/bash", args)
 +
-+    def test_filter_keeps_clang_cl_sources_of_the_v8_build_unmapped(self) -> None:
-+        def selected(source: str) -> bool:
-+            patterns = PATHMAP_FILTER.split(",")
-+            included = any(
-+                re.fullmatch(pattern, source)
-+                for pattern in patterns
-+                if not pattern.startswith("-")
-+            )
-+            excluded = any(
-+                re.fullmatch(pattern[1:], source)
-+                for pattern in patterns
-+                if pattern.startswith("-")
-+            )
-+            return included and not excluded
-+
-+        # The filter must exclude a source whether Bazel matches its label or its execution path.
-+        for source in (
-+            "external/+dependencies+v8_icu/source/i18n/alphaindex.cpp",
-+            "@@+dependencies+v8_icu//:source/i18n/alphaindex.cpp",
-+            "external/+dependencies+v8_abseil/absl/strings/str_cat.cc",
-+            "external/+engine_repository+v8/src/base/platform/platform-win32.cc",
-+            "@@+engine_repository+v8//:src/base/platform/platform-win32.cc",
-+            "external/+git_repository+rusty_v8_libcxx/src/algorithm.cpp",
-+            "bazel-out/x64_windows-opt-exec-ST-1/bin/third_party/v8/binding_152_2_0.cc",
-+            "//third_party/v8:binding_152_2_0.cc",
-+            "external/+new_local_repository+v8_targets/crdtp_binding_152_2_0.cc",
-+        ):
-+            with self.subTest(source=source, selected=False):
-+                self.assertFalse(selected(source))
-+        for source in (
-+            "external/+aws_lc+aws-lc/crypto/fipsmodule/bcm.c",
-+            "@@+aws_lc+aws-lc//:crypto/fipsmodule/bcm.c",
-+            "codex-rs/windows-sandbox-rs/src/native.c",
-+            "third_party/voice/probe.c",
-+        ):
-+            with self.subTest(source=source, selected=True):
-+                self.assertTrue(selected(source))
++    def test_toolchain_feature_is_wired_only_to_native_msvc_compilers(self) -> None:
++        patch_label = "//patches:rules_cc_windows_msvc_pathmap.patch"
++        self.assertIn(patch_label, (REPOSITORY_ROOT / "MODULE.bazel").read_text())
++        patch = (REPOSITORY_ROOT / "patches/rules_cc_windows_msvc_pathmap.patch").read_text()
++        assignments = re.findall(
++            r'^     compiler = "([^"]+)",\n\+    codex_msvc_pathmap_root = ',
++            patch,
++            re.MULTILINE,
++        )
++        self.assertEqual(assignments, ["msvc-cl"] * 4)
++        self.assertIn('repository_ctx.getenv("CODEX_BAZEL_MSVC_PATHMAP_ROOT", "")', patch)
++        self.assertIn('if ctx.attr.compiler == "msvc-cl" and ctx.attr.codex_msvc_pathmap_root:', patch)
++        self.assertNotIn("ACTION_NAMES.assemble", patch)
++        self.assertIn('"/pathmap:" + root + "=."', patch)
 +
 +    def test_invalid_execution_roots_fail_before_build_or_test(self) -> None:
 +        invalid_roots = (
@@ -509,21 +452,127 @@ index 0000000..3f6af24
 +        self.assertEqual(len(self.by_command(records, "info")), 1)
 +        self.assertEqual(len(self.by_command(records, "build")), 1)
 +        build_args = self.by_command(records, "build")[0]["argv"]
-+        self.assertEqual(
-+            build_args.count(
-+                f"--per_file_copt={PATHMAP_FILTER}@/experimental:deterministic,/pathmap:D:/fixture/execroot=."
-+            ),
-+            1,
-+        )
-+        self.assertEqual(
-+            build_args.count(
-+                f"--host_per_file_copt={PATHMAP_FILTER}@/experimental:deterministic,/pathmap:D:/fixture/execroot=."
-+            ),
-+            1,
-+        )
++        self.assertEqual(build_args.count(PATHMAP_ROOT_OPTION + "D:/fixture/execroot"), 1)
 +
 +
 +if __name__ == "__main__":
 +    if os.name != "posix":
 +        raise unittest.SkipTest("fake executable shims require a POSIX host")
 +    unittest.main()
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 14f3cc4..315830e 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -156,6 +156,7 @@ single_version_override(
+     patch_strip = 1,
+     patches = [
+         "//patches:rules_cc_windows_native_llvm.patch",
++        "//patches:rules_cc_windows_msvc_pathmap.patch",
+     ],
+ )
+
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index 3345981..8201851 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -1,6 +1,7 @@
+ exports_files([
+     "opusic_sys_install_headers.patch",
+     "rules_cc_windows_native_llvm.patch",
++    "rules_cc_windows_msvc_pathmap.patch",
+     "abseil_windows_gnullvm_thread_identity.patch",
+     "bzip2_windows_stack_args.patch",
+     "llvm_rusty_v8_custom_libcxx.patch",
+diff --git a/patches/rules_cc_windows_msvc_pathmap.patch b/patches/rules_cc_windows_msvc_pathmap.patch
+new file mode 100644
+index 0000000..b4b0d89
+--- /dev/null
++++ b/patches/rules_cc_windows_msvc_pathmap.patch
+@@ -0,0 +1,87 @@
++diff --git a/cc/private/toolchain/BUILD.windows.tpl b/cc/private/toolchain/BUILD.windows.tpl
++index 2335d2d..e065021 100644
++--- a/cc/private/toolchain/BUILD.windows.tpl
+++++ b/cc/private/toolchain/BUILD.windows.tpl
++@@ -331,6 +331,7 @@ cc_toolchain_config(
++     name = "msvc_x64",
++     cpu = "x64_windows",
++     compiler = "msvc-cl",
+++    codex_msvc_pathmap_root = %{codex_msvc_pathmap_root},
++     host_system_name = "local",
++     target_system_name = "local",
++     target_libc = "msvcrt",
++@@ -406,6 +407,7 @@ cc_toolchain_config(
++     name = "msvc_x64_x86",
++     cpu = "x64_windows",
++     compiler = "msvc-cl",
+++    codex_msvc_pathmap_root = %{codex_msvc_pathmap_root},
++     host_system_name = "local",
++     target_system_name = "local",
++     target_libc = "msvcrt",
++@@ -481,6 +483,7 @@ cc_toolchain_config(
++     name = "msvc_x64_arm",
++     cpu = "x64_windows",
++     compiler = "msvc-cl",
+++    codex_msvc_pathmap_root = %{codex_msvc_pathmap_root},
++     host_system_name = "local",
++     target_system_name = "local",
++     target_libc = "msvcrt",
++@@ -556,6 +559,7 @@ cc_toolchain_config(
++     name = "msvc_arm64",
++     cpu = "x64_windows",
++     compiler = "msvc-cl",
+++    codex_msvc_pathmap_root = %{codex_msvc_pathmap_root},
++     host_system_name = "local",
++     target_system_name = "local",
++     target_libc = "msvcrt",
++diff --git a/cc/private/toolchain/windows_cc_configure.bzl b/cc/private/toolchain/windows_cc_configure.bzl
++index f67cd3c..bb8f4ee 100644
++--- a/cc/private/toolchain/windows_cc_configure.bzl
+++++ b/cc/private/toolchain/windows_cc_configure.bzl
++@@ -941,6 +941,8 @@ def configure_windows_toolchain(repository_ctx):
++     template_vars.update(_get_clang_cl_vars(repository_ctx, paths, msvc_vars_x64, "x64"))
++     template_vars.update(_get_msys_mingw_vars(repository_ctx))
++     template_vars.update(_get_copts(repository_ctx))
+++    pathmap_root = repository_ctx.getenv("CODEX_BAZEL_MSVC_PATHMAP_ROOT", "")
+++    template_vars["%{codex_msvc_pathmap_root}"] = repr(pathmap_root)
++     template_vars.update(_get_msvc_vars(repository_ctx, paths, "x86", msvc_vars_x64))
++     template_vars.update(_get_msvc_vars(repository_ctx, paths, "arm", msvc_vars_x64))
++     msvc_vars_arm64 = _get_msvc_vars(repository_ctx, paths, "arm64", msvc_vars_x64)
++diff --git a/cc/private/toolchain/windows_cc_toolchain_config.bzl b/cc/private/toolchain/windows_cc_toolchain_config.bzl
++index 295f481..65b42ef 100644
++--- a/cc/private/toolchain/windows_cc_toolchain_config.bzl
+++++ b/cc/private/toolchain/windows_cc_toolchain_config.bzl
++@@ -1711,6 +1711,25 @@ def _impl(ctx):
++     )
++     features.extend([cpp_modules_feature, cpp_module_modmap_file_feature, cpp20_module_compile_flags_feature])
++
+++    if ctx.attr.compiler == "msvc-cl" and ctx.attr.codex_msvc_pathmap_root:
+++        # Toolchain flag strings use '%' to introduce build variables.
+++        root = ctx.attr.codex_msvc_pathmap_root.replace("%", "%%")
+++        features.append(feature(
+++            name = "codex_msvc_pathmap",
+++            enabled = True,
+++            flag_sets = [flag_set(
+++                actions = [
+++                    ACTION_NAMES.c_compile,
+++                    ACTION_NAMES.cpp_compile,
+++                    ACTION_NAMES.linkstamp_compile,
+++                ],
+++                flag_groups = [flag_group(flags = [
+++                    "/experimental:deterministic",
+++                    "/pathmap:" + root + "=.",
+++                ])],
+++            )],
+++        ))
+++
++     extra_rules_based_features = depset(ctx.attr.extra_enabled_features + ctx.attr.extra_known_features)
++     features.extend([convert_feature(extra_feature[FeatureInfo], enabled = extra_feature in ctx.attr.extra_enabled_features) for extra_feature in extra_rules_based_features.to_list()])
++
++@@ -1740,6 +1759,7 @@ cc_toolchain_config = rule(
++         "archiver_flags": attr.string_list(default = []),
++         "all_compile_flags": attr.string_list(),
++         "compiler": attr.string(),
+++        "codex_msvc_pathmap_root": attr.string(),
++         "conly_flags": attr.string_list(),
++         "cpu": attr.string(mandatory = True),
++         "cxx_builtin_include_directories": attr.string_list(),
