@@ -47,6 +47,15 @@ on:
         description: Prepare the package cache key and upload its digests without running the release Cargo build
         type: boolean
         default: false
+      package_cache_measurement:
+        description: Measure the ARM64 macOS Cargo package cache with an expected cold miss or warm hit
+        type: choice
+        options: [none, cold, warm]
+        default: none
+      package_cache_expected_tag:
+        description: Exact package Cargo key from the completed cold run, required for a warm ARM64 measurement
+        type: string
+        default: ""
       package_public_key:
         description: Optional SSH public key for dry-run package workers; connect to each selected worker before packaging
         type: string
@@ -65,6 +74,7 @@ concurrency:
       (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_cache_key_only &&
         endsWith(inputs.package_targets, '-apple-darwin')) && format('macos-package-cache-key-{0}', github.run_id) ||
       (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_cache_key_only) && 'package-cache-key' ||
+      (inputs.package_dry_run && inputs.package_cargo_cache && contains(fromJSON('["cold","warm"]'), inputs.package_cache_measurement)) && 'arm64-package-cache-measurement' ||
       (inputs.package_dry_run && inputs.package_cargo_cache) && 'package-cache-pilot' ||
       'dry'
     }}
@@ -139,6 +149,8 @@ jobs:
           PACKAGE_CARGO_CACHE: ${{ inputs.package_cargo_cache }}
           PACKAGE_CACHE_KEY_ONLY: ${{ inputs.package_cache_key_only }}
           PACKAGE_DEBUG_KEY: ${{ inputs.package_public_key }}
+          CACHE_PHASE: ${{ inputs.package_cache_measurement }}
+          EXPECTED_CACHE_TAG: ${{ inputs.package_cache_expected_tag }}
         run: |
           set -euo pipefail
           live=false
@@ -155,9 +167,22 @@ jobs:
             printf '::error::package_cargo_cache requires a package dry run for exactly one supported Linux x64 or native macOS target\n'
             exit 1
           fi
-          if [[ "$PACKAGE_CARGO_CACHE" == true && "$PACKAGE_TARGETS" == *-apple-darwin &&
-            ( "$PACKAGE_CACHE_KEY_ONLY" != true || -z "$PACKAGE_DEBUG_KEY" ) ]]; then
-            printf '::error::The macOS package cache preflight requires key-only mode and an authenticated debug key\n'
+          if [[ "$PACKAGE_CARGO_CACHE" == true && "$PACKAGE_TARGETS" == *-apple-darwin && -z "$PACKAGE_DEBUG_KEY" ]]; then
+            printf '::error::The macOS package cache experiment requires an authenticated debug key\n'
+            exit 1
+          fi
+          if [[ -n "$CACHE_PHASE" && "$CACHE_PHASE" != none ]]; then
+            if [[ "$PACKAGE_CARGO_CACHE" != true || "$PACKAGE_CACHE_KEY_ONLY" == true ||
+              "$PACKAGE_TARGETS" != aarch64-apple-darwin || ( "$CACHE_PHASE" != cold && "$CACHE_PHASE" != warm ) ]]; then
+              printf '::error::A measurement requires an ARM64 macOS package cache dry run with a valid phase\n'
+              exit 1
+            fi
+            if [[ "$CACHE_PHASE" == warm && ! "$EXPECTED_CACHE_TAG" =~ ^cargo-v3-aarch64-apple-darwin-pkg-[0-9a-f]{64}$ ]]; then
+              printf '::error::A warm measurement requires the exact saved cold cache key\n'
+              exit 1
+            fi
+          elif [[ "$PACKAGE_CARGO_CACHE" == true && "$PACKAGE_TARGETS" == *-apple-darwin && "$PACKAGE_CACHE_KEY_ONLY" != true ]]; then
+            printf '::error::Select a measurement phase for an ARM64 macOS package cache build\n'
             exit 1
           fi
           if [[ "$PACKAGE_CACHE_KEY_ONLY" == true && ( "$PACKAGE_CARGO_CACHE" != true || "$SKIP_GATES" != true ) ]]; then
@@ -819,6 +844,13 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
+      - name: Require the exact ARM64 cold cache key
+        if: inputs.package_cache_measurement == 'warm'
+        env:
+          CACHE_TAG: ${{ steps.package-cache-inputs.outputs.tag }}
+          EXPECTED_CACHE_TAG: ${{ inputs.package_cache_expected_tag }}
+        run: test "$CACHE_TAG" = "$EXPECTED_CACHE_TAG"
+
       - name: Restore the exact package Cargo cache
         id: package-cache-restore
         timeout-minutes: 20
@@ -836,6 +868,16 @@ jobs:
           else
             bash "$scripts/package-cargo-cache.sh" restore
           fi
+
+      - name: Require the expected ARM64 cache restore outcome
+        if: contains(fromJSON('["cold","warm"]'), inputs.package_cache_measurement)
+        env:
+          CACHE_PHASE: ${{ inputs.package_cache_measurement }}
+          CACHE_RESTORE: ${{ steps.package-cache-restore.outputs.result }}
+        run: |
+          set -euo pipefail
+          printf 'ARM64 cache %s restore result: %s\n' "$CACHE_PHASE" "${CACHE_RESTORE:-unavailable}"
+          case "$CACHE_PHASE:$CACHE_RESTORE" in cold:miss | warm:hit) ;; *) exit 1 ;; esac
 
       - name: Build and smoke-test upstream's package archives
         id: package
@@ -1039,7 +1081,25 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
+      - name: Verify and record ARM64 package archive identities
+        if: steps.package.outcome == 'success' && contains(fromJSON('["cold","warm"]'), inputs.package_cache_measurement)
+        env:
+          CACHE_PHASE: ${{ inputs.package_cache_measurement }}
+          CACHE_TAG: ${{ steps.package-cache-inputs.outputs.tag }}
+          CACHE_RESTORE: ${{ steps.package-cache-restore.outputs.result }}
+        run: python3 "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/record-arm64-cache-evidence.py"
+
+      - name: Retain ARM64 package cache measurement evidence
+        if: steps.package.outcome == 'success' && contains(fromJSON('["cold","warm"]'), inputs.package_cache_measurement)
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: arm64-package-cache-evidence
+          path: ${{ runner.temp }}/arm64-package-cache-evidence.json
+          retention-days: 3
+          if-no-files-found: error
+
       - name: Save verified package Cargo dependencies
+        id: package-cache-save
         timeout-minutes: 20
         if: steps.package.outcome == 'success' && steps.package-cache-inputs.outputs.tag != '' && steps.package-cache-restore.outputs.result != 'hit'
         continue-on-error: true
@@ -1056,8 +1116,17 @@ jobs:
             bash "$scripts/package-cargo-cache.sh" save
           fi
 
+      - name: Require a verified ARM64 cold cache save
+        if: inputs.package_cache_measurement == 'cold'
+        env:
+          CACHE_SAVE: ${{ steps.package-cache-save.outputs.result }}
+        run: |
+          set -euo pipefail
+          printf 'ARM64 cold cache save result: %s\n' "${CACHE_SAVE:-unavailable}"
+          test "$CACHE_SAVE" = saved
+
       - name: Wait for the macOS package debug client to exit
-        if: always() && runner.os == 'macOS' && inputs.package_cache_key_only && steps.package-debug.outcome == 'success'
+        if: always() && runner.os == 'macOS' && inputs.package_cargo_cache && steps.package-debug.outcome == 'success'
         timeout-minutes: 10
         run: |
           set -euo pipefail
@@ -1067,8 +1136,8 @@ jobs:
           done
 
       - name: Remove the tooling runtime
-        # The macOS key-only worker retains its files through Upterm post cleanup.
-        if: always() && !(runner.os == 'macOS' && inputs.package_cache_key_only)
+        # The macOS cache worker retains its files through Upterm post cleanup.
+        if: always() && !(runner.os == 'macOS' && inputs.package_cargo_cache)
         run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
 
   publish:
