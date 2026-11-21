@@ -45,7 +45,7 @@ esac
         git.chmod(0o755)
         tool = write(tools / "fixture-tool", "#!/bin/bash\nprintf 'fixed tool identity\\n'\n")
         tool.chmod(0o755)
-        for name in ("cargo", "rustc", "zig", "gcc", "clang", "strip", "dpkg-query"):
+        for name in ("cargo", "rustc", "gcc", "clang", "strip", "dpkg-query"):
             (tools / name).symlink_to(tool)
         launcher = write(self.root / "tooling", """#!/bin/bash
 set -euo pipefail
@@ -73,6 +73,10 @@ printf 'seed_tag=ignored\\n'
         self.receipt = runner / "package-cargo-cache-key.txt"
         self.output = self.root / "output"
         self.source = source
+        self.original_zig = self.root / "temporary-extraction-id-1"
+        self.stable_zig = runner / "package-cache-zig"
+        write(self.original_zig / "zig", "#!/bin/bash\nprintf '0.14.0\n'\n").chmod(0o755)
+        write(self.original_zig / "lib/std/std.zig", "Zig standard library fixture\n")
         self.environment = {
             **os.environ, "PATH": f"{tools}:{os.environ['PATH']}",
             "RUNNER_TEMP": str(runner), "RUNNER_OS": "Linux", "RUNNER_ARCH": "X64", "TARGET": TARGET,
@@ -85,7 +89,26 @@ printf 'seed_tag=ignored\\n'
             "RUSTY_V8_ARCHIVE": str(write(self.root / "v8", "v8 archive\n")),
             "RUSTY_V8_SRC_BINDING_PATH": str(write(self.root / "v8.rs", "binding\n")),
             "VOICE_RELEASE_DIR": str(voice), "CODEX_TOOLING": str(launcher), "GITHUB_OUTPUT": str(self.output),
+            "GITHUB_ENV": str(self.root / "github-env"), "GITHUB_PATH": str(self.root / "github-path"),
         }
+        self.stage_zig(self.original_zig)
+
+    def stage_zig(self, origin):
+        """Stage a fixture Zig distribution and apply the exported runner settings."""
+        path_file = Path(self.environment["GITHUB_PATH"])
+        env_file = Path(self.environment["GITHUB_ENV"])
+        path_file.write_text("")
+        env_file.write_text("")
+        result = subprocess.run(
+            ["bash", CACHE_SCRIPT, "stage-zig"],
+            cwd=self.source, env={**self.environment, "PATH": f"{origin}:{self.environment['PATH']}"},
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(env_file.read_text(), f"CODEX_PACKAGE_CACHE_ZIG={self.stable_zig}/zig\n")
+        self.assertEqual(path_file.read_text(), f"{self.stable_zig}\n")
+        self.environment["CODEX_PACKAGE_CACHE_ZIG"] = str(self.stable_zig / "zig")
+        self.environment["PATH"] = f"{self.stable_zig}:{self.environment['PATH']}"
 
     def execute_inputs(self):
         """Invoke the key command with a fresh workflow step output."""
@@ -94,6 +117,7 @@ printf 'seed_tag=ignored\\n'
             ["bash", CACHE_SCRIPT, "inputs"], cwd=self.source, env=self.environment,
             capture_output=True, text=True, check=False,
         )
+
     def run_inputs(self):
         """Return the retained tag and labeled digests from a successful call."""
         result = self.execute_inputs()
@@ -120,6 +144,21 @@ printf 'seed_tag=ignored\\n'
         names = COMPONENTS + COMPILER + VOICE
         self.assertEqual([name for name in names if initial_components[name] != components[name]],
                          ["voice", "voice/codex-voice-host"])
+
+    def test_zig_installation_uuid_does_not_change_the_key(self):
+        initial = self.run_inputs()
+        different_origin = self.root / "temporary-extraction-id-2"
+        shutil.copytree(self.original_zig, different_origin)
+        shutil.rmtree(self.stable_zig)
+        self.stage_zig(different_origin)
+        self.assertEqual(self.run_inputs(), initial)
+
+    def test_zig_standard_library_bytes_change_the_key(self):
+        initial_key, initial_components = self.run_inputs()
+        (self.stable_zig / "lib/std/std.zig").write_text("different Zig standard library\n")
+        key, components = self.run_inputs()
+        self.assertNotEqual(initial_key, key)
+        self.assertNotEqual(initial_components["compiler-toolchain"], components["compiler-toolchain"])
 
     def test_locates_drift_in_the_compiler_context(self):
         initial_key, initial_components = self.run_inputs()

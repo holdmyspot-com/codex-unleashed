@@ -1,12 +1,26 @@
 #!/usr/bin/env bash
-# Derive the exact Linux package cache key, restore into an empty Cargo target
-# directory, or save dependencies after the package receipt and artifact upload.
+# Stage Zig at a stable path, derive the exact Linux package cache key, restore
+# into an empty Cargo target directory, or save verified build dependencies.
 set -euo pipefail
 
-operation="${1:?Expected inputs, restore or save}"
+operation="${1:?Expected stage-zig, inputs, restore or save}"
 metadata="$RUNNER_TEMP/manifest-patch-repo"
 transport="$metadata/.github/scripts/ghcr-cargo-target-cache.sh"
 test "$RUNNER_OS:$TARGET" = Linux:x86_64-unknown-linux-musl
+
+stable_zig="$RUNNER_TEMP/package-cache-zig"
+if [[ "$operation" == stage-zig ]]; then
+  zig="$(command -v zig)"
+  test ! -e "$stable_zig"
+  # setup-zig extracts to a fresh UUID directory. Keep its install intact for
+  # action cleanup and give the keyed musl wrappers a stable toolchain path.
+  cp -a -- "$(dirname -- "$zig")" "$stable_zig"
+  test "$("$stable_zig/zig" version)" = 0.14.0
+  test -f "$stable_zig/lib/std/std.zig"
+  printf 'CODEX_PACKAGE_CACHE_ZIG=%s\n' "$stable_zig/zig" >> "$GITHUB_ENV"
+  printf '%s\n' "$stable_zig" >> "$GITHUB_PATH"
+  exit
+fi
 
 if [[ "$operation" == inputs ]]; then
   inputs="$(mktemp -d "$RUNNER_TEMP/package-cache-inputs.XXXXXX")"
@@ -27,12 +41,23 @@ if [[ "$operation" == inputs ]]; then
   native_root="$RUNNER_TEMP/codex-musl-tools-$TARGET"
   printf '%s\n' "$TARGET" "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:?}" "${ImageVersion:?}" \
     "$GITHUB_WORKSPACE" "$CARGO_TARGET_DIR" "${SOURCE_DATE_EPOCH:?}" > "$inputs/compiler-context"
+  test "${CODEX_PACKAGE_CACHE_ZIG:?}" = "$stable_zig/zig"
+  test "$(command -v zig)" = "$CODEX_PACKAGE_CACHE_ZIG"
+  # The compiler uses Zig headers and libraries as well as the executable.
+  # A symlink must resolve within the staged distribution to keep it keyed.
+  find "$stable_zig" -type l -print0 | LC_ALL=C sort -z > "$inputs/zig-links"
   {
     rustc -vV
     cargo --version
     zig version
-    sha256sum "$(command -v zig)" "$(command -v gcc)" "$(command -v clang)" "$(command -v strip)" \
+    sha256sum "$(command -v gcc)" "$(command -v clang)" "$(command -v strip)" \
       "$CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER" "$CC" "$CXX"
+    find "$stable_zig" -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum
+    while IFS= read -r -d '' link; do
+      resolved="$(realpath -e -- "$link")"
+      [[ "$resolved" == "$stable_zig/"* ]]
+      printf '%s -> %s\n' "$link" "$(readlink -- "$link")"
+    done < "$inputs/zig-links"
   } > "$inputs/compiler-toolchain"
   dpkg-query --showformat='${binary:Package}=${Version}\n' --show | LC_ALL=C sort > "$inputs/compiler-packages"
   {

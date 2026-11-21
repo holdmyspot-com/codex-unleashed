@@ -642,11 +642,21 @@ jobs:
         with:
           version: 0.14.0
 
+      - name: Stage the verified Zig distribution for the package cache
+        id: package-cache-zig
+        if: inputs.package_cargo_cache
+        continue-on-error: ${{ !inputs.package_cache_key_only }}
+        run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-cargo-cache.sh" stage-zig
+
       - name: Install upstream's musl build inputs
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
           bash .github/scripts/install-musl-build-tools.sh
+          if [[ -n "${CODEX_PACKAGE_CACHE_ZIG:-}" ]]; then
+            # Finish the package action's Linux package installation before keying.
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils make pkg-config libcap-dev
+          fi
           echo 'AWS_LC_SYS_NO_JITTER_ENTROPY=1' >> "$GITHUB_ENV"
           target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_$TARGET"
           printf '%s=1\n' "${target_no_jitter//-/_}" >> "$GITHUB_ENV"
@@ -755,7 +765,7 @@ jobs:
 
       - name: Prepare the package Cargo cache transport
         id: package-cache-transport
-        if: inputs.package_cargo_cache && !inputs.package_cache_key_only
+        if: steps.package-cache-zig.outcome == 'success' && !inputs.package_cache_key_only
         continue-on-error: true
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
         with:
@@ -803,6 +813,7 @@ jobs:
           target: ${{ matrix.target }}
           package-version: ${{ needs.detect.outputs.version }}+${{ needs.detect.outputs.build }}
           build-mode: release
+          prepared-musl-zig: ${{ env.CODEX_PACKAGE_CACHE_ZIG }}
           voice-release-dir: ${{ steps.voice-build.outputs.release_dir }}
           voice-build-commit: ${{ steps.voice-build.outputs.build_commit }}
           tooling-launcher: ${{ steps.voice-build.outputs.tooling_launcher }}

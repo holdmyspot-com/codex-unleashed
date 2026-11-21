@@ -111,3 +111,4 @@ The release applies these patches in this order:
 99. [mxc-ancestor-guard/guard-protected-ancestors.patch](holdmyspot-com/codex-unleashed/mxc-ancestor-guard/guard-protected-ancestors.patch)
 100. [telemetry-off/telemetry-off.patch](holdmyspot-com/codex-unleashed/telemetry-off/telemetry-off.patch)
 101. [windows-read-acl-helper/inherit-no-handles.patch](holdmyspot-com/codex-unleashed/windows-read-acl-helper/inherit-no-handles.patch)
+102. [release-reproduction/reuse-prepared-musl-package-tools.patch](holdmyspot-com/codex-unleashed/release-reproduction/reuse-prepared-musl-package-tools.patch)

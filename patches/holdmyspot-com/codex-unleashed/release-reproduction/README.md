@@ -128,6 +128,14 @@ The eight controlled cases in `.github/scripts/test-setup-msvc-env.ps1` model th
 `VsDevCmd.bat` and run under PowerShell on Linux or macOS. They cover a first run, reuse, case and separator variants,
 three runs in one job, another target, another host, an unset tools directory and a missing directory.
 
+## Prepared musl package toolchain
+
+`reuse-prepared-musl-package-tools.patch` is queue entry 102 and requires entries 1–101.
+With the cache pilot enabled, the release workflow stages Zig at a stable path and completes the Linux dependency
+and musl wrapper setup before it computes the cache key. The package actions reuse those tools and check that the
+selected Zig executable and compiler wrappers are available. A caller that omits the prepared Zig input uses the
+actions' normal Linux setup.
+
 ## Workspace lockfile versions
 
 Earlier queues carried `workspace_package_versions.patch`, which changed 171 `version = "0.0.0"` lines in `codex-rs/Cargo.lock` to `0.167.0`. It fixed one release version and broke the test and lint workflows, which rewrite `workspace.package.version` to `0.0.0` before applying the queue. The patch is retired, and the release workflow performs the same edit after the last patch with `codex-tooling align-workspace-lock --source-root ROOT`, taking the version from `codex-rs/Cargo.toml`, and commits it with fixed author, message and dates so that the recorded source commit and tree are reproducible. It makes no commit when the lockfile already matches. For 0.167.0 the resulting lockfile is byte-identical to the one the retired patch produced. See [package identity](../../../../docs/package-identity.md).
