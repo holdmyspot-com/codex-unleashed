@@ -43,6 +43,10 @@ on:
         description: Try the exact compiled Cargo cache during a package dry run for x86_64-unknown-linux-musl
         type: boolean
         default: false
+      package_cache_key_only:
+        description: Prepare the Linux package cache key and upload its digests without running the release Cargo build
+        type: boolean
+        default: false
       package_public_key:
         description: Optional SSH public key for dry-run package workers; connect to each selected worker before packaging
         type: string
@@ -58,6 +62,7 @@ concurrency:
   group: >-
     upstream-auto-release-${{ inputs.upstream_tag || 'latest' }}-${{
       (github.event_name == 'schedule' || !inputs.dry_run) && 'live' ||
+      (inputs.package_dry_run && inputs.package_cargo_cache && inputs.package_cache_key_only) && 'package-cache-key' ||
       (inputs.package_dry_run && inputs.package_cargo_cache) && 'package-cache-pilot' ||
       'dry'
     }}
@@ -130,6 +135,7 @@ jobs:
           PACKAGE_TARGETS: ${{ inputs.package_targets }}
           PACKAGE_DRY_RUN: ${{ inputs.package_dry_run }}
           PACKAGE_CARGO_CACHE: ${{ inputs.package_cargo_cache }}
+          PACKAGE_CACHE_KEY_ONLY: ${{ inputs.package_cache_key_only }}
         run: |
           set -euo pipefail
           live=false
@@ -143,6 +149,10 @@ jobs:
           if [[ "$PACKAGE_CARGO_CACHE" == true && ( "$live" == true || "$PACKAGE_DRY_RUN" != true ||
             "$PACKAGE_TARGETS" != x86_64-unknown-linux-musl ) ]]; then
             printf '::error::package_cargo_cache requires a package dry run for x86_64-unknown-linux-musl only\n'
+            exit 1
+          fi
+          if [[ "$PACKAGE_CACHE_KEY_ONLY" == true && ( "$PACKAGE_CARGO_CACHE" != true || "$SKIP_GATES" != true ) ]]; then
+            printf '::error::package_cache_key_only requires package_cargo_cache=true and skip_gates=true\n'
             exit 1
           fi
           all='[{"runner":"ubuntu-24.04","target":"x86_64-unknown-linux-musl"},
@@ -745,7 +755,7 @@ jobs:
 
       - name: Prepare the package Cargo cache transport
         id: package-cache-transport
-        if: inputs.package_cargo_cache
+        if: inputs.package_cargo_cache && !inputs.package_cache_key_only
         continue-on-error: true
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
         with:
@@ -753,8 +763,8 @@ jobs:
 
       - name: Identify the exact package Cargo cache inputs
         id: package-cache-inputs
-        if: steps.package-cache-transport.outcome == 'success'
-        continue-on-error: true
+        if: inputs.package_cache_key_only || steps.package-cache-transport.outcome == 'success'
+        continue-on-error: ${{ !inputs.package_cache_key_only }}
         env:
           UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
           UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
@@ -764,10 +774,20 @@ jobs:
           VOICE_BUILD_COMMIT: ${{ steps.voice-build.outputs.build_commit }}
         run: bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-cargo-cache.sh" inputs
 
+      - name: Retain the package cache key receipt
+        if: steps.package-cache-inputs.outcome == 'success'
+        continue-on-error: ${{ !inputs.package_cache_key_only }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: package-cargo-cache-key-${{ matrix.target }}
+          path: ${{ runner.temp }}/package-cargo-cache-key.txt
+          retention-days: 3
+          if-no-files-found: error
+
       - name: Restore the exact package Cargo cache
         id: package-cache-restore
         timeout-minutes: 20
-        if: steps.package-cache-inputs.outputs.tag != ''
+        if: ${{ !inputs.package_cache_key_only && steps.package-cache-inputs.outputs.tag != '' }}
         continue-on-error: true
         env:
           CACHE_TAG: ${{ steps.package-cache-inputs.outputs.tag }}
@@ -777,6 +797,7 @@ jobs:
 
       - name: Build and smoke-test upstream's package archives
         id: package
+        if: ${{ !inputs.package_cache_key_only }}
         uses: ./.github/actions/build-codex-packages
         with:
           target: ${{ matrix.target }}
@@ -799,6 +820,7 @@ jobs:
         run: bash "$PACKAGE_SMOKE_TOOLS/package-smoke-baseline.sh" compare
 
       - name: Include supplied legal documents in final package archives
+        if: steps.package.outcome == 'success'
         run: |
           set -euo pipefail
           bash "$CODEX_TOOLING" package-license finalize \
@@ -807,6 +829,7 @@ jobs:
             --archive-root "$GITHUB_WORKSPACE/dist/$TARGET" --target "$TARGET"
 
       - name: Verify both finalized voice archives and the installed package
+        if: steps.package.outcome == 'success'
         id: voice-final-verification
         env:
           SOURCE_ROOT: ${{ github.workspace }}
@@ -880,7 +903,7 @@ jobs:
           printf 'verified=true\n' >> "$GITHUB_OUTPUT"
 
       - name: Retain verification-only voice test binaries and evidence
-        if: always()
+        if: always() && !inputs.package_cache_key_only
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: voice-verification-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -895,6 +918,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Record completed native package inputs
+        if: steps.package.outcome == 'success'
         run: |
           set -euo pipefail
           native_options=(
@@ -910,6 +934,7 @@ jobs:
           bash "$CODEX_TOOLING" release-native-inputs "${native_options[@]}"
 
       - name: Collect the release assets
+        if: steps.package.outcome == 'success'
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/assets"
@@ -924,6 +949,7 @@ jobs:
           fi
 
       - name: Verify the final archived CLI identity
+        if: steps.package.outcome == 'success'
         env:
           VERSION: ${{ needs.detect.outputs.version }}
           BUILD: ${{ needs.detect.outputs.build }}
@@ -938,6 +964,7 @@ jobs:
             --output "$RUNNER_TEMP/assets/codex-version-$TARGET.txt"
 
       - name: Record package receipt and source identity
+        if: steps.package.outcome == 'success'
         env:
           VERSION: ${{ needs.detect.outputs.version }}
           BUILD: ${{ needs.detect.outputs.build }}
@@ -962,6 +989,7 @@ jobs:
             --native-inputs "$RUNNER_TEMP/native-inputs.json"
 
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        if: steps.package.outcome == 'success'
         with:
           name: assets-${{ matrix.target }}
           path: ${{ runner.temp }}/assets/*
@@ -970,7 +998,7 @@ jobs:
 
       - name: Save verified package Cargo dependencies
         timeout-minutes: 20
-        if: steps.package-cache-inputs.outputs.tag != '' && steps.package-cache-restore.outputs.result != 'hit'
+        if: steps.package.outcome == 'success' && steps.package-cache-inputs.outputs.tag != '' && steps.package-cache-restore.outputs.result != 'hit'
         continue-on-error: true
         env:
           CACHE_TAG: ${{ steps.package-cache-inputs.outputs.tag }}

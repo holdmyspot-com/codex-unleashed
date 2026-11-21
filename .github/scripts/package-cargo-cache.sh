@@ -43,11 +43,19 @@ if [[ "$operation" == inputs ]]; then
   find "$openssl_dir/include" "$openssl_dir/lib" "$native_root"/libcap-*/prefix \
     -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum > "$inputs/musl"
   find "$VOICE_RELEASE_DIR" -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum > "$inputs/voice"
-  # Print component digests so runs can diagnose a miss without exposing build environment values.
-  (cd "$inputs" && sha256sum source patches wrappers helper compiler v8 musl voice)
+  # Preserve only the key and fixed-name component digests, never the raw inputs.
+  (cd "$inputs" && sha256sum source patches wrappers helper compiler v8 musl voice) > "$inputs/components"
   cat "$inputs/v8" "$inputs/musl" "$inputs/voice" >> "$inputs/compiler"
-  bash "$CODEX_TOOLING" cargo-cache-keys "$TARGET-pkg" "$inputs/source" "$inputs/wrappers" \
-    "$inputs/helper" "$inputs/compiler" "$inputs/patches" | sed -n '/^tag=/p' >> "$GITHUB_OUTPUT"
+  tag="$(bash "$CODEX_TOOLING" cargo-cache-keys "$TARGET-pkg" "$inputs/source" "$inputs/wrappers" \
+    "$inputs/helper" "$inputs/compiler" "$inputs/patches" | sed -n 's/^tag=//p')"
+  [[ "$tag" =~ ^cargo-v3-x86_64-unknown-linux-musl-pkg-[0-9a-f]{64}$ ]]
+  {
+    printf 'tag=%s\n' "$tag"
+    cat "$inputs/components"
+  } > "$inputs/key-receipt"
+  mv -- "$inputs/key-receipt" "$RUNNER_TEMP/package-cargo-cache-key.txt"
+  cat "$inputs/components"
+  printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
   exit
 fi
 
