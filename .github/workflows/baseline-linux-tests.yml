@@ -3,6 +3,15 @@ name: Stable upstream Linux tests
 on:
   workflow_dispatch:
     inputs:
+      public_key:
+        description: SSH public key for the client that connects before testing
+        type: string
+        default: ''
+      rust_toolchain:
+        description: Rust version to use for this dispatched baseline
+        type: choice
+        default: upstream
+        options: [upstream, '1.99.1']
       package:
         description: Optional space-separated Cargo packages for an unmodified-source comparison
         type: string
@@ -159,6 +168,27 @@ jobs:
           git diff --check
           git diff --binary > "$RUNNER_TEMP/baseline-test-evidence/pristine-source.diff"
 
+      - name: Prepare the retained Linux test worker
+        if: inputs.public_key != ''
+        run: |
+          set -euo pipefail
+          metadata="$GITHUB_WORKSPACE/restart-metadata/.github"
+          bash "$metadata/scripts/release-debug-session.sh" prepare \
+            "$metadata/actions/debug-failed-runner" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-test-evidence"
+
+      - name: Open authenticated Linux test worker
+        if: inputs.public_key != ''
+        uses: ./.github/actions/debug-failed-runner
+        with:
+          public-key: ${{ inputs.public_key }}
+          idle-timeout-minutes: '10'
+
+      - name: Wait for connected Linux test client
+        if: inputs.public_key != ''
+        run: |
+          bash "$GITHUB_WORKSPACE/restart-metadata/.github/scripts/release-debug-session.sh" \
+            wait-for-client "$RUNNER_TEMP/baseline-test-evidence"
+
       - name: Apply the selected downstream patches
         id: patched
         env:
@@ -236,8 +266,21 @@ jobs:
       - name: Set up upstream's Rust toolchain
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
         with:
-          toolchain: ${{ steps.upstream-rust.outputs.channel }}
+          toolchain: ${{ inputs.rust_toolchain == '1.99.1' && inputs.rust_toolchain || steps.upstream-rust.outputs.channel }}
           targets: x86_64-unknown-linux-gnu
+
+      - name: Select and verify the dispatched Rust override
+        if: inputs.rust_toolchain == '1.99.1'
+        env:
+          REQUESTED_RUST_TOOLCHAIN: ${{ inputs.rust_toolchain }}
+        run: |
+          set -euo pipefail
+          export RUSTUP_TOOLCHAIN="$REQUESTED_RUST_TOOLCHAIN"
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          rustc --version --verbose | tee "$evidence/rustc-version.txt"
+          grep -Fx "release: $REQUESTED_RUST_TOOLCHAIN" "$evidence/rustc-version.txt"
+          env | grep -E '^(ImageOS|ImageVersion|RUNNER_ARCH)=' | sort | tee "$evidence/runner-image.txt"
+          printf 'RUSTUP_TOOLCHAIN=%s\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"
 
       - name: Install upstream's nextest version
         uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
