@@ -13,7 +13,7 @@
  */
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { lstat, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, open, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -130,7 +130,7 @@ async function requireAbsent(filename, option) {
 function runToCompletion(command, argumentsList, options) {
   const result = spawnSync(command, argumentsList, {
     cwd: options.cwd, env: options.environment, encoding: 'utf8', windowsHide: true,
-    maxBuffer: MAXIMUM_CAPTURE_BYTES, timeout: options.timeoutMilliseconds, stdio: ['ignore', 'pipe', 'pipe']
+    maxBuffer: MAXIMUM_CAPTURE_BYTES, timeout: options.timeoutMilliseconds, stdio: [options.stdinFd ?? 'ignore', 'pipe', 'pipe']
   });
   return result;
 }
@@ -248,9 +248,16 @@ async function verify(options, runtime) {
     scratch = await mkdtemp(path.join(path.dirname(evidenceRoot), 'app-server-scratch-'));
     await mkdir(installRoot, { recursive: false });
     installed = true;
-    const extraction = runToCompletion('tar', ['-xzf', options.archive, '-C', installRoot], {
-      cwd: scratch, environment: runtime.environment, timeoutMilliseconds: 600000
-    });
+    const archive = await open(options.archive, 'r');
+    let extraction;
+    try {
+      // Stream the archive and set cwd so GNU tar cannot interpret a Windows drive letter as a remote host.
+      extraction = runToCompletion('tar', ['-xzf', '-'], {
+        cwd: installRoot, stdinFd: archive.fd, environment: runtime.environment, timeoutMilliseconds: 600000
+      });
+    } finally {
+      await archive.close();
+    }
     await writeFile(path.join(evidenceRoot, 'extract.log'), `${extraction.stdout ?? ''}${extraction.stderr ?? ''}`, { flag: 'wx' });
     if (extraction.error || extraction.status !== 0) {
       throw new VerificationError(`Extracting ${archiveName} failed: ${extraction.error?.message ?? `exit status ${extraction.status}`}`);
