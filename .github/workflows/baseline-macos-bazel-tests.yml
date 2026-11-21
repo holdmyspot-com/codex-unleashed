@@ -3,6 +3,14 @@ name: Stable upstream macOS Bazel tests
 on:
   workflow_dispatch:
     inputs:
+      public_key:
+        description: Public SSH key for the authenticated debug client that will join each worker
+        required: true
+        type: string
+      upstream_commit:
+        description: Optional upstream commit to test instead of .github/upstream-commit
+        type: string
+        default: ""
       patches:
         description: Space-separated repository paths of downstream patches to apply with git am, in order; empty tests pristine upstream
         type: string
@@ -91,6 +99,13 @@ jobs:
           cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh restart-metadata/.github/scripts/bazel-cc-disk-cache.sh "$RUNNER_TEMP/"
           cp restart-metadata/.github/cargo-cache-package "$evidence/cargo-cache-package"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Stage the retained runner helper
+        if: github.event_name == 'workflow_dispatch' && inputs.public_key != ''
+        run: |
+          set -euo pipefail
+          cp restart-metadata/.github/scripts/release-debug-session.sh "$RUNNER_TEMP/"
+          cp -R restart-metadata/.github/actions/debug-failed-runner "$RUNNER_TEMP/macos-bazel-debug-action"
 
       - name: Retrieve the exact stable upstream source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -235,6 +250,25 @@ jobs:
             "ghcr.io/$owner/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" "$CC_CACHE_LANE" \
             2>&1 | tee "$evidence/cc-cache-restore.log"
 
+      - name: Prepare retained macOS Bazel worker
+        if: github.event_name == 'workflow_dispatch' && inputs.public_key != ''
+        run: |
+          bash "$RUNNER_TEMP/release-debug-session.sh" prepare \
+            "$RUNNER_TEMP/macos-bazel-debug-action" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-macos-bazel-evidence"
+
+      - name: Open authenticated macOS Bazel worker
+        id: bazel-debug
+        if: github.event_name == 'workflow_dispatch' && inputs.public_key != ''
+        uses: ./.github/actions/debug-failed-runner
+        with:
+          public-key: ${{ inputs.public_key }}
+          idle-timeout-minutes: '10'
+          artifact-suffix: -${{ matrix.platform.target }}-${{ matrix.shard }}
+
+      - name: Wait for connected macOS Bazel client
+        if: steps.bazel-debug.outcome == 'success'
+        run: bash "$RUNNER_TEMP/release-debug-session.sh" wait-for-client "$RUNNER_TEMP/baseline-macos-bazel-evidence"
+
       - name: Run the maintained Bazel package shard
         id: bazel_tests
         # A cold build that would reach the job's six-hour limit stops here instead, so the steps below still save the
@@ -344,7 +378,17 @@ jobs:
           test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
 
-      - name: Retain test evidence for one day
+      - name: Archive raw Bazel test logs
+        if: ${{ !cancelled() && steps.bazel-debug.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          if [[ -d bazel-testlogs ]]; then
+            evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
+            tar -czf "$RUNNER_TEMP/bazel-testlogs.tar.gz" -C "$(cd bazel-testlogs && pwd -P)" .
+            mv "$RUNNER_TEMP/bazel-testlogs.tar.gz" "$evidence/"
+          fi
+
+      - name: Retain test evidence
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
@@ -354,6 +398,17 @@ jobs:
           if-no-files-found: warn
 
       - name: Remove the job-owned tooling runtime
-        if: always()
+        # Preserve the tooling for an authenticated client inspecting a failed worker.
+        if: ${{ always() && (steps.bazel-debug.outcome != 'success' || job.status == 'success') }}
         shell: bash
         run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
+
+      - name: Publish retained worker completion
+        if: ${{ !cancelled() && steps.bazel-debug.outcome == 'success' }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
+          printf '%s\n' "$JOB_STATUS" > "$evidence/client-complete.tmp"
+          mv "$evidence/client-complete.tmp" "$evidence/client-complete"
