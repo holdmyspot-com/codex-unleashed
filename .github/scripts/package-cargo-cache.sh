@@ -79,7 +79,7 @@ case "$operation" in
     stage="$(mktemp -d "${CARGO_TARGET_DIR}.restore.XXXXXX")"
     if bash "$transport" pull "$repository" "$CACHE_TAG" "$stage" "$UPSTREAM_TAG"; then
       # setup-ci created the target directory. Preserve it if another step has written into it.
-      if [[ -d "$stage/$TARGET/release/deps" ]] &&
+      if [[ -d "$stage/$TARGET/release/build" || -d "$stage/$TARGET/release/deps" ]] &&
         rmdir -- "$CARGO_TARGET_DIR" && mv -T -- "$stage" "$CARGO_TARGET_DIR"; then
         status=hit
       fi
@@ -89,13 +89,16 @@ case "$operation" in
     fi
     ;;
   save)
-    # Package assembly strips these binaries in place, including Cargo's hardlinked
-    # copies in deps. Relink them from restored dependencies to regenerate symbols.
+    # Package assembly strips these binaries in place. Remove their Cargo hardlinks
+    # as well so the next build relinks from restored dependencies and recreates symbols.
     read -r -a binaries < "$CODEX_PACKAGE_BUILD_RESULT/binaries"
     release_dir="$CARGO_TARGET_DIR/$TARGET/release"
     for binary in bwrap "${binaries[@]}"; do
       [[ "$binary" =~ ^[a-z0-9-]+$ ]]
-      rm -f -- "$release_dir/$binary" "$release_dir/deps/${binary//-/_}"-*
+      binary_path="$release_dir/$binary"
+      test -f "$binary_path"
+      find "$release_dir" -type f -samefile "$binary_path" ! -path "$binary_path" -delete
+      rm -- "$binary_path"
     done
     if bash "$transport" push "$repository" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$UPSTREAM_TAG"; then
       status=saved
