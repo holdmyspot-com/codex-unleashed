@@ -1,0 +1,76 @@
+From 7ae710d7863c7787f2a647edafceda6612fbcb61 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 21 Nov 2026 13:19:37 -0500
+Subject: [PATCH] test: normalize Windows fixture home in prompt prefixes
+
+The app server canonicalizes CODEX_HOME before writing skills roots, so the same fixture can appear with different path spellings in the candidate and release prompts. Normalize the original and canonical paths in the serialized test output and keep sibling paths distinct.
+---
+ codex-rs/app-server/tests/prompt_prefix.rs | 29 +++++++++++++++++++++-
+ 1 file changed, 28 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/app-server/tests/prompt_prefix.rs b/codex-rs/app-server/tests/prompt_prefix.rs
+index 2281c19b2..3f82bc6b2 100644
+--- a/codex-rs/app-server/tests/prompt_prefix.rs
++++ b/codex-rs/app-server/tests/prompt_prefix.rs
+@@ -9,15 +9,23 @@ use codex_app_server_protocol::ThreadStartParams;
+ use codex_app_server_protocol::TurnStartParams;
+ use codex_app_server_protocol::TurnStatus;
+ use codex_app_server_protocol::UserInput;
++use codex_utils_absolute_path::AbsolutePathBuf;
+ use core_test_support::responses;
+ use pretty_assertions::assert_eq;
+ use serde_json::json;
++use std::path::Path;
+ use tempfile::TempDir;
+ 
+ #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+ async fn prompt_prefix_matches_release() -> Result<()> {
+     let release = std::env::var_os("CONTRACT_EXECUTOR_BIN").map(std::path::PathBuf::from);
+     let mut prefixes = Vec::new();
++    let fixture_home = Path::new("C:/temp/fixture-home");
++    let sibling_prefix = json!("C:/temp/fixture-home-other/skills/.system").to_string();
++    assert_eq!(
++        normalize_codex_home(sibling_prefix.clone(), fixture_home)?,
++        sibling_prefix,
++    );
+ 
+     for program in [release.as_deref(), None] {
+         let server = responses::start_mock_server().await;
+@@ -86,10 +94,13 @@ async fn prompt_prefix_matches_release() -> Result<()> {
+         // text, whitespace, tool descriptions, schemas, and array ordering.
+         let mut prefix = serde_json::to_string_pretty(&prefix)?;
+         let environment = app.auto_env_params()?;
++        // The server canonicalizes CODEX_HOME before it writes the skills roots.
++        let canonical_home = AbsolutePathBuf::from_absolute_path(home.path().canonicalize()?)?;
++        prefix = normalize_codex_home(prefix, home.path())?;
++        prefix = normalize_codex_home(prefix, canonical_home.as_path())?;
+         for (value, replacement) in [
+             (environment.cwd.as_str(), "<ENVIRONMENT_CWD>"),
+             (thread.cwd.to_string_lossy().as_ref(), "<CWD>"),
+-            (home.path().to_string_lossy().as_ref(), "<CODEX_HOME>"),
+             (thread.id.as_str(), "<THREAD_ID>"),
+             (thread.session_id.as_str(), "<SESSION_ID>"),
+         ] {
+@@ -109,3 +120,19 @@ async fn prompt_prefix_matches_release() -> Result<()> {
+     );
+     Ok(())
+ }
++
++fn normalize_codex_home(mut prefix: String, home: &Path) -> Result<String> {
++    let path = home.to_string_lossy();
++    for spelling in [path.to_string(), path.replace('\\', "/")] {
++        let quoted = serde_json::to_string(&spelling)?;
++        let escaped = &quoted[1..quoted.len() - 1];
++        // Keep siblings whose names start with the same characters distinct.
++        for suffix in ["/", r"\\", "\"", "`"] {
++            prefix = prefix.replace(
++                &format!("{escaped}{suffix}"),
++                &format!("<CODEX_HOME>{suffix}"),
++            );
++        }
++    }
++    Ok(prefix)
++}
+-- 
+2.43.0
+

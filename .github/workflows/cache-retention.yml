@@ -69,15 +69,15 @@ jobs:
           }
           : > "$evidence/protected-refs.txt"
           : > "$evidence/pinned-commits.txt"
-          while read -r package branch; do
+          while read -r package branch policy; do
             [ -n "$package" ] || continue
             reference="$(branch_file "$branch" .github/upstream-ref)"
             test -n "$reference"
             printf '%s\n' "$reference" >> "$evidence/protected-refs.txt"
             commit="$(branch_file "$branch" .github/upstream-commit)"
             [ -z "$commit" ] || printf '%s\n' "$commit" >> "$evidence/pinned-commits.txt"
-            gh api --paginate "orgs/$PACKAGE_OWNER/packages/container/$package/versions?per_page=100" \
-              --jq '.[] | {id, created_at, metadata}' > "$evidence/versions-$package.jsonl"
+            bash .github/scripts/cache-retention-package-inventory.sh "$PACKAGE_OWNER" "$package" "$policy" \
+              > "$evidence/versions-$package.jsonl"
           done < .github/cache-retention-packages
           gh api --paginate "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
             --jq '.actions_caches[] | {id, key, ref, created_at, size_in_bytes}' > "$evidence/actions-caches.jsonl"
@@ -119,15 +119,17 @@ jobs:
           helper="$RUNNER_TEMP/retention-helper/build/runtime/bin/codex-tooling"
           export TMPDIR="$RUNNER_TEMP/retention-helper-temp"
           : > "$evidence/retained-releases.txt"
-          while read -r package _; do
+          while read -r package _branch policy; do
             [ -n "$package" ] || continue
+            policy_args=()
+            if [[ "$policy" == release-alias ]]; then policy_args+=(--require-release-alias); fi
             jq -n \
               --slurpfile releases "$evidence/upstream-releases.jsonl" \
               --slurpfile versions "$evidence/versions-$package.jsonl" \
               --rawfile protected "$evidence/protected-refs.txt" \
               '{releases: $releases, package_versions: $versions,
                 protected_upstream_refs: ($protected | split("\n") | map(select(length > 0)) | unique)}' \
-              | "$helper" plan-ghcr-retention > "$evidence/plan-$package.json"
+              | "$helper" plan-ghcr-retention "${policy_args[@]}" > "$evidence/plan-$package.json"
             jq -r '.retained_releases[]' "$evidence/plan-$package.json" >> "$evidence/retained-releases.txt"
             jq --arg package "$package" '{package: $package, retained_releases,
               retained: (.retained_version_ids | length), obsolete: (.obsolete_version_ids | length),

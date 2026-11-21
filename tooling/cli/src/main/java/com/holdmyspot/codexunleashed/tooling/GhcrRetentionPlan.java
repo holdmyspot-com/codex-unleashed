@@ -66,11 +66,12 @@ public final class GhcrRetentionPlan
 	 * newest seed lines. A version's seed line is its
 	 * {@code cargo-seed-} tag without {@code -partial}, or, without one, its other cache tags. A version whose target
 	 * cannot be read from its tags is retained. Untagged versions and all other Cargo versions are obsolete; tagged
-	 * versions without a {@code cargo-} tag are unmanaged. Newer means a later created_at, then a larger ID. IDs keep
+	 * versions without a {@code cargo-} tag are unmanaged. With {@code --require-release-alias}, versions without a
+	 * {@code cargo-release-} tag are unmanaged, including untagged versions. Newer means a later created_at, then a larger ID. IDs keep
 	 * inventory order. The plan does not account for writers that change the registry after collection.
 	 *
 	 * @param scope open caller-owned shared values; remains open
-	 * @param arguments command arguments, which must be empty
+	 * @param arguments optional {@code --require-release-alias} flag
 	 * @param in complete inventory JSON; remains open
 	 * @param out complete plan, written only after inventory validation
 	 * @param err invalid-argument diagnostics
@@ -86,9 +87,10 @@ public final class GhcrRetentionPlan
 		Objects.requireNonNull(in, "in");
 		Objects.requireNonNull(out, "out");
 		Objects.requireNonNull(err, "err");
-		if (arguments.length != 0)
+		boolean requireReleaseAlias = arguments.length == 1 && arguments[0].equals("--require-release-alias");
+		if (arguments.length != 0 && !requireReleaseAlias)
 		{
-			err.println("Usage: " + NAME + " < inventory.json");
+			err.println("Usage: " + NAME + " [--require-release-alias] < inventory.json");
 			return 2;
 		}
 
@@ -121,6 +123,8 @@ public final class GhcrRetentionPlan
 		{
 			if (kept.contains(version.id()))
 				retainedIds.add(version.id());
+			else if (requireReleaseAlias && version.tags().stream().noneMatch(tag -> tag.startsWith("cargo-release-")))
+				unmanagedIds.add(version.id());
 			else if (version.tags().isEmpty() || version.tags().stream().anyMatch(tag -> tag.startsWith("cargo-")))
 				obsoleteIds.add(version.id());
 			else

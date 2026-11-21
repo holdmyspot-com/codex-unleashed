@@ -1,2 +1,3 @@
 cargo-cache-main-new main
 cargo-cache main.old
+cargo-cache-package-executables main release-alias

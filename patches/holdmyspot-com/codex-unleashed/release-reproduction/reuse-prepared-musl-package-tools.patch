@@ -1,0 +1,88 @@
+From 8eadedaab6ff6e00b0bac6d837807f95eea94466 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 20 Nov 2026 16:00:00 +0000
+Subject: [PATCH] Reuse caller-prepared musl tools in Cargo package builds
+
+The package cache pilot keys the native preparation before Cargo starts. Keep the verified Zig installation and musl environment in use instead of staging another Zig and altering the wrapper bytes.
+---
+ .../build-cargo-package-binaries/action.yml     | 17 +++++++++++++++--
+ .github/actions/build-codex-packages/action.yml |  5 ++++-
+ 2 files changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/.github/actions/build-cargo-package-binaries/action.yml b/.github/actions/build-cargo-package-binaries/action.yml
+index 112ef65..96b0d8f 100644
+--- a/.github/actions/build-cargo-package-binaries/action.yml
++++ b/.github/actions/build-cargo-package-binaries/action.yml
+@@ -10,6 +10,8 @@ inputs:
+   build-mode:
+     description: Release optimizations, or debug for faster package smoke builds.
+     default: release
++  prepared-musl-zig:
++    description: Verified Zig executable from the caller's completed musl build preparation.
+
+ runs:
+   using: composite
+@@ -45,20 +47,31 @@ runs:
+         : > "${cargo_home}/config.toml"
+
+     - name: Install Zig
+-      if: ${{ runner.os == 'Linux' }}
++      if: ${{ runner.os == 'Linux' && inputs.prepared-musl-zig == '' }}
+       uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+       with:
+         version: 0.14.0
+         use-cache: false
+
+     - name: Install musl build tools
+-      if: ${{ runner.os == 'Linux' }}
++      if: ${{ runner.os == 'Linux' && inputs.prepared-musl-zig == '' }}
+       shell: bash
+       working-directory: codex-rs
+       env:
+         TARGET: ${{ inputs.target }}
+       run: bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
+
++    - name: Verify the prepared musl toolchain
++      if: ${{ runner.os == 'Linux' && inputs.prepared-musl-zig != '' }}
++      shell: bash
++      env:
++        PREPARED_MUSL_ZIG: ${{ inputs.prepared-musl-zig }}
++      run: |
++        set -euo pipefail
++        test "$(command -v zig)" = "$PREPARED_MUSL_ZIG"
++        test -x "$CC"
++        test -x "$CXX"
++
+     - name: Disable aws-lc jitter entropy (musl)
+       if: ${{ runner.os == 'Linux' }}
+       shell: bash
+diff --git a/.github/actions/build-codex-packages/action.yml b/.github/actions/build-codex-packages/action.yml
+index a6bb18f..86e2e3e 100644
+--- a/.github/actions/build-codex-packages/action.yml
++++ b/.github/actions/build-codex-packages/action.yml
+@@ -13,6 +13,8 @@ inputs:
+   build-system:
+     description: Build package binaries with Cargo or Bazel.
+     default: cargo
++  prepared-musl-zig:
++    description: Verified Zig executable from the caller's completed musl build preparation.
+   voice-release-dir:
+     description: Sealed voice runtime release directory for the primary package.
+   voice-build-commit:
+@@ -54,7 +56,7 @@ runs:
+         version: "0.13.5"
+
+     - name: Install Linux build dependencies
+-      if: ${{ runner.os == 'Linux' }}
++      if: ${{ runner.os == 'Linux' && inputs.prepared-musl-zig == '' }}
+       shell: bash
+       working-directory: codex-rs
+       run: |
+@@ -69,6 +71,7 @@ runs:
+         target: ${{ inputs.target }}
+         binaries: ${{ env.NEEDED_BINARIES }}
+         build-mode: ${{ inputs.build-mode }}
++        prepared-musl-zig: ${{ inputs.prepared-musl-zig }}
+
+     - name: Build Bazel package binaries
+       if: inputs.build-system == 'bazel'

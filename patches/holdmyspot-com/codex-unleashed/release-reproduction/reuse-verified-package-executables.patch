@@ -1,0 +1,251 @@
+From 57be2f06abf591d08796f9dcedea13d901aa5d82 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 21 Nov 2026 09:13:49 -0500
+Subject: [PATCH] Reuse verified pre-strip executables in Linux package builds
+
+---
+ .../build-cargo-package-binaries/action.yml   | 16 ++++++-
+ .../actions/build-codex-packages/action.yml   | 19 ++++++++
+ .github/scripts/codex-package-operations.sh   | 44 ++++++++++++++++---
+ .../scripts/test-codex-package-operations.sh  | 44 +++++++++++++++++++
+ 4 files changed, 117 insertions(+), 6 deletions(-)
+
+diff --git a/.github/actions/build-cargo-package-binaries/action.yml b/.github/actions/build-cargo-package-binaries/action.yml
+index 96b0d8f..ffdd408 100644
+--- a/.github/actions/build-cargo-package-binaries/action.yml
++++ b/.github/actions/build-cargo-package-binaries/action.yml
+@@ -10,6 +10,10 @@ inputs:
+   build-mode:
+     description: Release optimizations, or debug for faster package smoke builds.
+     default: release
++  restored-final-outputs:
++    description: Validated native executable bundle for the current Linux release.
++  final-output-cache-tag:
++    description: Exact Cargo package input tag used to restore native executable output.
+   prepared-musl-zig:
+     description: Verified Zig executable from the caller's completed musl build preparation.
+ 
+@@ -107,10 +111,19 @@ runs:
+         BUILD_MODE: ${{ inputs.build-mode }}
+         BINARIES: ${{ inputs.binaries }}
+         PACKAGE_ACTION_PATH: ${{ github.action_path }}
++        RESTORED_FINAL_OUTPUTS: ${{ inputs.restored-final-outputs }}
++        FINAL_OUTPUT_CACHE_TAG: ${{ inputs.final-output-cache-tag }}
+       run: |
+         set -euo pipefail
+         package_source_root="$(cd "${PACKAGE_ACTION_PATH}/../../.." && pwd)"
+         build_result="${RUNNER_TEMP}/codex-build-operations-${TARGET}"
++        restore_arguments=()
++        if [[ -n "$RESTORED_FINAL_OUTPUTS" ]]; then
++          restore_arguments=(
++            --restored-final-outputs "$RESTORED_FINAL_OUTPUTS"
++            --final-output-cache-tag "$FINAL_OUTPUT_CACHE_TAG"
++          )
++        fi
+         bash "${package_source_root}/.github/scripts/codex-package-operations.sh" \
+           build-binaries \
+           --target "$TARGET" \
+@@ -118,6 +131,7 @@ runs:
+           --build-mode "$BUILD_MODE" \
+           --binaries "$BINARIES" \
+           --target-dir "$CARGO_TARGET_DIR" \
+-          --result-dir "$build_result"
++          --result-dir "$build_result" \
++          "${restore_arguments[@]}"
+         cat "${build_result}/export.env" >> "$GITHUB_ENV"
+         echo "CODEX_PACKAGE_BUILD_RESULT=${build_result}" >> "$GITHUB_ENV"
+diff --git a/.github/actions/build-codex-packages/action.yml b/.github/actions/build-codex-packages/action.yml
+index 86e2e3e..3aa2d9b 100644
+--- a/.github/actions/build-codex-packages/action.yml
++++ b/.github/actions/build-codex-packages/action.yml
+@@ -13,6 +13,10 @@ inputs:
+   build-system:
+     description: Build package binaries with Cargo or Bazel.
+     default: cargo
++  restored-final-outputs:
++    description: Validated native executable bundle restored for an exact Linux release build.
++  final-output-cache-tag:
++    description: Exact Cargo package input tag used to restore or capture native executable output.
+   prepared-musl-zig:
+     description: Verified Zig executable from the caller's completed musl build preparation.
+   voice-release-dir:
+@@ -72,6 +76,8 @@ runs:
+         binaries: ${{ env.NEEDED_BINARIES }}
+         build-mode: ${{ inputs.build-mode }}
+         prepared-musl-zig: ${{ inputs.prepared-musl-zig }}
++        restored-final-outputs: ${{ inputs.restored-final-outputs }}
++        final-output-cache-tag: ${{ inputs.final-output-cache-tag }}
+ 
+     - name: Build Bazel package binaries
+       if: inputs.build-system == 'bazel'
+@@ -80,6 +86,19 @@ runs:
+         target: ${{ inputs.target }}
+         build-mode: ${{ inputs.build-mode }}
+ 
++    - name: Capture verified Cargo outputs before stripping
++      if: inputs.final-output-cache-tag != '' && inputs.restored-final-outputs == ''
++      shell: bash
++      env:
++        CACHE_TAG: ${{ inputs.final-output-cache-tag }}
++        TARGET: ${{ inputs.target }}
++      run: |
++        set -euo pipefail
++        cache_helper="$RUNNER_TEMP/manifest-patch-repo/.github/scripts/package-final-output-cache.sh"
++        if ! bash "$cache_helper" capture; then
++          printf '::warning::Could not capture unstripped Cargo package outputs\n'
++        fi
++
+     - name: Archive symbols and build packages
+       shell: bash
+       working-directory: codex-rs
+diff --git a/.github/scripts/codex-package-operations.sh b/.github/scripts/codex-package-operations.sh
+index 9a5bb0f..8143ddb 100644
+--- a/.github/scripts/codex-package-operations.sh
++++ b/.github/scripts/codex-package-operations.sh
+@@ -42,6 +42,8 @@ parse_arguments() {
+       --voice-release-dir) option_name=voice_release_dir ;;
+       --voice-build-commit) option_name=voice_build_commit ;;
+       --tooling-launcher) option_name=tooling_launcher ;;
++      --restored-final-outputs) option_name=restored_final_outputs ;;
++      --final-output-cache-tag) option_name=final_output_cache_tag ;;
+       *) argument_error "Unknown option: $option"; return 2 ;;
+     esac
+ 
+@@ -75,7 +77,7 @@ parse_arguments() {
+   local required_option
+   for required_option in $allowed_options; do
+     case "$required_option" in
+-      voice_release_dir|voice_build_commit|tooling_launcher) continue ;;
++      voice_release_dir|voice_build_commit|tooling_launcher|restored_final_outputs|final_output_cache_tag) continue ;;
+     esac
+     if [[ -z "${!required_option}" ]]; then
+       argument_error "Missing required option: --${required_option//_/-}"
+@@ -278,12 +280,14 @@ profile_env() {
+ # Exit status: 0 on completion, 2 for invalid arguments, or the first failed child status.
+ build_binaries() {
+   local target='' runner_os='' build_mode='' binaries='' target_dir='' result_dir=''
++  local restored_final_outputs='' final_output_cache_tag=''
+   local command_index=0
+   local profile_file export_file assignment bwrap_path bwrap_digest_file digest_value git_commit_file
+   local STABLE_GIT_COMMIT
+   local build_argument
+   local -a selected_binaries=()
+-  parse_arguments 'target runner_os build_mode binaries target_dir result_dir' "$@" || return $?
++  parse_arguments 'target runner_os build_mode binaries target_dir result_dir restored_final_outputs final_output_cache_tag' \
++    "$@" || return $?
+   validate_runner_os "$runner_os" || return $?
+   case "$build_mode" in
+     release|debug) ;;
+@@ -298,6 +302,13 @@ build_binaries() {
+     argument_error 'Option --binaries requires at least one binary name'
+     return 2
+   fi
++  if [[ -n "$restored_final_outputs" || -n "$final_output_cache_tag" ]]; then
++    if [[ "$runner_os:$target:$build_mode" != Linux:x86_64-unknown-linux-musl:release ||
++      -z "$restored_final_outputs" || ! "$final_output_cache_tag" =~ ^cargo-v3-x86_64-unknown-linux-musl-pkg-[0-9a-f]{64}$ ]]; then
++      argument_error 'Restored executables require an exact Linux x86_64 musl release cache and input tag'
++      return 2
++    fi
++  fi
+   prepare_result_directory "$result_dir" || return $?
+   write_common_metadata build_binaries "$target" "$runner_os" "$binaries" || return $?
+   printf '%s\n' "$build_mode" > "${result_dir}/build-mode" || return $?
+@@ -310,9 +321,28 @@ build_binaries() {
+   done < "$profile_file"
+ 
+   if [[ "$runner_os" == Linux ]]; then
+-    run_recorded cargo build --target "$target" --release --timings --bin bwrap || return $?
+     bwrap_path="${target_dir}/${target}/release/bwrap"
+-    run_recorded strip --strip-debug --strip-unneeded "$bwrap_path" || return $?
++    if [[ -n "$restored_final_outputs" ]]; then
++      local source_commit release_dir="${target_dir}/${target}/release"
++      source_commit="$(git rev-parse HEAD)" || return $?
++      mkdir -p -- "${target_dir}/${target}" || return $?
++      if [[ -e "$release_dir" || -L "$release_dir" ]]; then
++        argument_error 'A restored executable bundle requires an empty release directory'
++        return 1
++      fi
++      if ! run_recorded bash "${CODEX_TOOLING:?}" package-final-output-bundle install \
++          --restored-dir "$restored_final_outputs" --release-dir "$release_dir" \
++          --dependency-tag "$final_output_cache_tag" --source-commit "$source_commit" \
++          --binaries bwrap "${selected_binaries[@]}"; then
++        [[ ! -e "$release_dir" && ! -L "$release_dir" ]] || return 1
++        printf '::warning::Could not install the validated executable bundle; building with Cargo\n'
++        restored_final_outputs=''
++      fi
++    fi
++    if [[ -z "$restored_final_outputs" ]]; then
++      run_recorded cargo build --target "$target" --release --timings --bin bwrap || return $?
++      run_recorded strip --strip-debug --strip-unneeded "$bwrap_path" || return $?
++    fi
+     bwrap_digest_file="${result_dir}/.bwrap-sha256sum.out"
+     run_recorded sha256sum "$bwrap_path" > "$bwrap_digest_file" || return $?
+     IFS=' ' read -r digest_value _ < "$bwrap_digest_file"
+@@ -338,7 +368,11 @@ build_binaries() {
+   for build_argument in "${selected_binaries[@]}"; do
+     build_arguments+=(--bin "$build_argument")
+   done
+-  run_recorded "${build_arguments[@]}" || return $?
++  if [[ -z "$restored_final_outputs" ]]; then
++    run_recorded "${build_arguments[@]}" || return $?
++  else
++    printf 'CODEX_PACKAGE_FINAL_OUTPUT_REUSED=true\n' >> "$export_file" || return $?
++  fi
+   complete_result
+ }
+ 
+diff --git a/.github/scripts/test-codex-package-operations.sh b/.github/scripts/test-codex-package-operations.sh
+index c4dd348..7b55431 100644
+--- a/.github/scripts/test-codex-package-operations.sh
++++ b/.github/scripts/test-codex-package-operations.sh
+@@ -221,6 +221,50 @@ assert values[b"STABLE_GIT_COMMIT"] == b"fixture-commit-123"
+ assert b"GH_TOKEN" not in values
+ PY
+ 
++  local cache_tag restored_dir
++  printf -v cache_tag 'cargo-v3-x86_64-unknown-linux-musl-pkg-%064d' 0
++  restored_dir="${test_root}/restored executables"
++  export CODEX_TOOLING="${test_root}/fixture tooling launcher"
++  mkdir -p "$restored_dir"
++  cat > "$CODEX_TOOLING" <<'STUB'
++#!/usr/bin/env bash
++set -euo pipefail
++[[ -z "${FIXTURE_RESTORE_FAIL:-}" ]] || exit 17
++[[ "$1" == package-final-output-bundle && "$2" == install && "$5" == --release-dir && "${11}" == --binaries ]]
++destination="$6"
++shift 11
++mkdir -- "$destination"
++for name in "$@"; do
++  printf 'restored-%s' "$name" > "$destination/$name"
++done
++STUB
++  result_dir="${test_root}/warm build result"
++  export CARGO_TARGET_DIR="${test_root}/warm target"
++  bash "$operations_script" build-binaries \
++    --target "$target" --runner-os Linux --build-mode release \
++    --binaries 'codex codex-app-server' --target-dir "$CARGO_TARGET_DIR" --result-dir "$result_dir" \
++    --restored-final-outputs "$restored_dir" --final-output-cache-tag "$cache_tag"
++  grep -qx 'CODEX_PACKAGE_FINAL_OUTPUT_REUSED=true' "${result_dir}/export.env" || fail 'Warm reuse marker is absent'
++  assert_equal 'warm result is complete' true "$(cat "${result_dir}/completed")"
++  assert_equal 'warm result uses restored codex' restored-codex "$(cat "${CARGO_TARGET_DIR}/${target}/release/codex")"
++  assert_equal 'warm build skipped both Cargo operations' 2 "$(cat "${fixture_logs}/cargo.count")"
++  assert_argv "${result_dir}/commands/0001.argv" bash "$CODEX_TOOLING" package-final-output-bundle install \
++    --restored-dir "$restored_dir" --release-dir "${CARGO_TARGET_DIR}/${target}/release" \
++    --dependency-tag "$cache_tag" --source-commit fixture-commit-123 --binaries bwrap codex codex-app-server
++
++  result_dir="${test_root}/restore fallback result"
++  export CARGO_TARGET_DIR="${test_root}/restore fallback target"
++  FIXTURE_RESTORE_FAIL=1 bash "$operations_script" build-binaries \
++    --target "$target" --runner-os Linux --build-mode release \
++    --binaries 'codex codex-app-server' --target-dir "$CARGO_TARGET_DIR" --result-dir "$result_dir" \
++    --restored-final-outputs "$restored_dir" --final-output-cache-tag "$cache_tag"
++  assert_equal 'failed install falls back to both Cargo operations' 4 "$(cat "${fixture_logs}/cargo.count")"
++  assert_equal 'fallback result is complete' true "$(cat "${result_dir}/completed")"
++  if grep -q '^CODEX_PACKAGE_FINAL_OUTPUT_REUSED=' "${result_dir}/export.env"; then
++    fail 'Fallback unexpectedly reported use of restored executables'
++  fi
++  export CARGO_TARGET_DIR="$target_dir"
++
+   result_dir="${test_root}/Windows build result"
+   bash "$operations_script" build-binaries \
+     --target x86_64-pc-windows-msvc --runner-os Windows --build-mode release \

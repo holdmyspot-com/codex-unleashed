@@ -82,7 +82,7 @@ public final class GhcrRetentionPlanTest
 			version(19, "2026-01-02T05:00:00Z", "cargo-release-j-main-feature", exact("x86_64-unknown-linux-musl", "")),
 			version(20, "2026-01-01T00:00:00Z", "cargo-v2-aarch64-apple-darwin-off-" + HASH,
 				"cargo-release-k-rust-v0.9.0")));
-		JsonNode result = plan(inventory);
+		JsonNode result = plan(inventory, "plan-ghcr-retention");
 		requireThat(result.path("retained_releases").toString(), "retained_releases").
 			isEqualTo("[\"rust-v0.10.0\",\"rust-v0.9.0\",\"rust-v0.8.0\",\"main\"]");
 		requireThat(result.path("retained_version_ids").toString(), "retained_version_ids").
@@ -90,6 +90,32 @@ public final class GhcrRetentionPlanTest
 		requireThat(result.path("obsolete_version_ids").toString(), "obsolete_version_ids").
 			isEqualTo("[1,10,13,15,21,24,17,19]");
 		requireThat(result.path("unmanaged_version_ids").toString(), "unmanaged_version_ids").isEqualTo("[18]");
+	}
+
+	/**
+	 * Prunes managed versions while preserving legacy exact and untagged versions.
+	 */
+	@Test
+	public void preservesLegacyVersionsWithoutReleaseAliases()
+	{
+		String inventory = """
+			{"releases":[
+			  {"tag_name":"rust-v0.10.0","draft":false,"prerelease":false},
+			  {"tag_name":"rust-v0.9.0","draft":false,"prerelease":false},
+			  {"tag_name":"rust-v0.8.0","draft":false,"prerelease":false},
+			  {"tag_name":"rust-v0.7.0","draft":false,"prerelease":false}],
+			  "protected_upstream_refs":[],"package_versions":[%s]}
+			""".formatted(String.join(",",
+			version(1, "2026-01-01T00:00:00Z", exact("x86_64-unknown-linux-musl-pkg-final-v1", ""),
+				"cargo-release-" + HASH + "-rust-v0.10.0"),
+			version(2, "2026-01-02T00:00:00Z", exact("x86_64-unknown-linux-musl-pkg-final-v1", ""),
+				"cargo-release-" + HASH + "-rust-v0.7.0"),
+			version(3, "2026-01-03T00:00:00Z", exact("x86_64-unknown-linux-musl-pkg-final-v1", "")),
+			version(4, "2026-01-04T00:00:00Z")));
+		JsonNode result = plan(inventory, "plan-ghcr-retention", "--require-release-alias");
+		requireThat(result.path("retained_version_ids").toString(), "retained_version_ids").isEqualTo("[1]");
+		requireThat(result.path("obsolete_version_ids").toString(), "obsolete_version_ids").isEqualTo("[2]");
+		requireThat(result.path("unmanaged_version_ids").toString(), "unmanaged_version_ids").isEqualTo("[3,4]");
 	}
 
 	/**
@@ -174,16 +200,17 @@ public final class GhcrRetentionPlanTest
 	 * Runs the command on a valid inventory.
 	 *
 	 * @param inventory caller-supplied JSON
+	 * @param arguments the command followed by its arguments
 	 * @return the parsed plan
 	 */
-	private static JsonNode plan(String inventory)
+	private static JsonNode plan(String inventory, String... arguments)
 	{
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
 		try (PrintStream out = new PrintStream(output, true, StandardCharsets.UTF_8);
 			PrintStream err = new PrintStream(diagnostics, true, StandardCharsets.UTF_8))
 		{
-			int status = Main.run(new String[]{"plan-ghcr-retention"},
+			int status = Main.run(arguments,
 				new ByteArrayInputStream(inventory.getBytes(StandardCharsets.UTF_8)), out, err);
 			requireThat(status, "status").
 				withContext(diagnostics.toString(StandardCharsets.UTF_8), "diagnostic").
