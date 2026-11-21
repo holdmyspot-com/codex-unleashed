@@ -1,14 +1,14 @@
-From 94d183f5f881f77c0361ddd06c7c6f94f047d613 Mon Sep 17 00:00:00 2001
+From aed4a2688994a5440fba463088788b989263d0f8 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 21 Nov 2026 09:13:49 -0500
 Subject: [PATCH] Reuse verified pre-strip executables in Linux package builds
 
 ---
  .../build-cargo-package-binaries/action.yml   | 16 ++++++-
- .../actions/build-codex-packages/action.yml   | 19 ++++++++
- .github/scripts/codex-package-operations.sh   | 43 ++++++++++++++++---
- .../scripts/test-codex-package-operations.sh  | 40 +++++++++++++++++
- 4 files changed, 112 insertions(+), 6 deletions(-)
+ .../actions/build-codex-packages/action.yml   | 19 +++++++++
+ .github/scripts/codex-package-operations.sh   | 42 ++++++++++++++++---
+ .../scripts/test-codex-package-operations.sh  | 40 ++++++++++++++++++
+ 4 files changed, 111 insertions(+), 6 deletions(-)
 
 diff --git a/.github/actions/build-cargo-package-binaries/action.yml b/.github/actions/build-cargo-package-binaries/action.yml
 index 96b0d8f..ffdd408 100644
@@ -99,7 +99,7 @@ index 86e2e3e..3aa2d9b 100644
        shell: bash
        working-directory: codex-rs
 diff --git a/.github/scripts/codex-package-operations.sh b/.github/scripts/codex-package-operations.sh
-index 9a5bb0f..ecf29ff 100644
+index 9a5bb0f..741603c 100644
 --- a/.github/scripts/codex-package-operations.sh
 +++ b/.github/scripts/codex-package-operations.sh
 @@ -42,6 +42,8 @@ parse_arguments() {
@@ -150,7 +150,7 @@ index 9a5bb0f..ecf29ff 100644
    prepare_result_directory "$result_dir" || return $?
    write_common_metadata build_binaries "$target" "$runner_os" "$binaries" || return $?
    printf '%s\n' "$build_mode" > "${result_dir}/build-mode" || return $?
-@@ -310,9 +321,29 @@ build_binaries() {
+@@ -310,9 +321,28 @@ build_binaries() {
    done < "$profile_file"
  
    if [[ "$runner_os" == Linux ]]; then
@@ -158,7 +158,6 @@ index 9a5bb0f..ecf29ff 100644
      bwrap_path="${target_dir}/${target}/release/bwrap"
 -    run_recorded strip --strip-debug --strip-unneeded "$bwrap_path" || return $?
 +    if [[ -n "$restored_final_outputs" ]]; then
-+      local cache_helper="${RUNNER_TEMP:?}/manifest-patch-repo/.github/scripts/package-final-output-bundle.py"
 +      local source_commit release_dir="${target_dir}/${target}/release"
 +      source_commit="$(git rev-parse HEAD)" || return $?
 +      mkdir -p -- "${target_dir}/${target}" || return $?
@@ -166,7 +165,7 @@ index 9a5bb0f..ecf29ff 100644
 +        argument_error 'A restored executable bundle requires an empty release directory'
 +        return 1
 +      fi
-+      if ! run_recorded python3 "$cache_helper" install \
++      if ! run_recorded bash "${CODEX_TOOLING:?}" package-final-output-bundle install \
 +          --restored-dir "$restored_final_outputs" --release-dir "$release_dir" \
 +          --dependency-tag "$final_output_cache_tag" --source-commit "$source_commit" \
 +          --binaries bwrap "${selected_binaries[@]}"; then
@@ -182,7 +181,7 @@ index 9a5bb0f..ecf29ff 100644
      bwrap_digest_file="${result_dir}/.bwrap-sha256sum.out"
      run_recorded sha256sum "$bwrap_path" > "$bwrap_digest_file" || return $?
      IFS=' ' read -r digest_value _ < "$bwrap_digest_file"
-@@ -338,7 +369,9 @@ build_binaries() {
+@@ -338,7 +368,9 @@ build_binaries() {
    for build_argument in "${selected_binaries[@]}"; do
      build_arguments+=(--bin "$build_argument")
    done
@@ -194,30 +193,30 @@ index 9a5bb0f..ecf29ff 100644
  }
  
 diff --git a/.github/scripts/test-codex-package-operations.sh b/.github/scripts/test-codex-package-operations.sh
-index c4dd348..df422d7 100644
+index c4dd348..db01953 100644
 --- a/.github/scripts/test-codex-package-operations.sh
 +++ b/.github/scripts/test-codex-package-operations.sh
 @@ -221,6 +221,46 @@ assert values[b"STABLE_GIT_COMMIT"] == b"fixture-commit-123"
  assert b"GH_TOKEN" not in values
  PY
  
-+  local cache_tag restored_dir cache_helper
++  local cache_tag restored_dir
 +  printf -v cache_tag 'cargo-v3-x86_64-unknown-linux-musl-pkg-%064d' 0
 +  restored_dir="${test_root}/restored executables"
-+  cache_helper="${RUNNER_TEMP}/manifest-patch-repo/.github/scripts/package-final-output-bundle.py"
-+  mkdir -p "$restored_dir" "$(dirname "$cache_helper")"
-+  cat > "$cache_helper" <<'PYTHON'
-+import os
-+import pathlib
-+import sys
-+
-+if os.environ.get("FIXTURE_RESTORE_FAIL"):
-+    sys.exit(17)
-+destination = pathlib.Path(sys.argv[sys.argv.index("--release-dir") + 1])
-+destination.mkdir()
-+for name in sys.argv[sys.argv.index("--binaries") + 1:]:
-+    (destination / name).write_text("restored-" + name)
-+PYTHON
++  export CODEX_TOOLING="${test_root}/fixture tooling launcher"
++  mkdir -p "$restored_dir"
++  cat > "$CODEX_TOOLING" <<'STUB'
++#!/usr/bin/env bash
++set -euo pipefail
++[[ -z "${FIXTURE_RESTORE_FAIL:-}" ]] || exit 17
++[[ "$1" == package-final-output-bundle && "$2" == install && "$5" == --release-dir && "${11}" == --binaries ]]
++destination="$6"
++shift 11
++mkdir -- "$destination"
++for name in "$@"; do
++  printf 'restored-%s' "$name" > "$destination/$name"
++done
++STUB
 +  result_dir="${test_root}/warm build result"
 +  export CARGO_TARGET_DIR="${test_root}/warm target"
 +  bash "$operations_script" build-binaries \
@@ -227,7 +226,7 @@ index c4dd348..df422d7 100644
 +  assert_equal 'warm result is complete' true "$(cat "${result_dir}/completed")"
 +  assert_equal 'warm result uses restored codex' restored-codex "$(cat "${CARGO_TARGET_DIR}/${target}/release/codex")"
 +  assert_equal 'warm build skipped both Cargo operations' 2 "$(cat "${fixture_logs}/cargo.count")"
-+  assert_argv "${result_dir}/commands/0001.argv" python3 "$cache_helper" install \
++  assert_argv "${result_dir}/commands/0001.argv" bash "$CODEX_TOOLING" package-final-output-bundle install \
 +    --restored-dir "$restored_dir" --release-dir "${CARGO_TARGET_DIR}/${target}/release" \
 +    --dependency-tag "$cache_tag" --source-commit fixture-commit-123 --binaries bwrap codex codex-app-server
 +

@@ -9,7 +9,7 @@ case "$operation" in
 esac
 
 metadata="$RUNNER_TEMP/manifest-patch-repo"
-bundle="$metadata/.github/scripts/package-final-output-bundle.py"
+bundle=(bash "${CODEX_TOOLING:?}" package-final-output-bundle)
 archive=final-outputs.tar.gz
 capture="$RUNNER_TEMP/package-final-output-capture"
 media_type=application/vnd.codex.package-final-output.v1.tar+gzip
@@ -64,7 +64,7 @@ if [[ "$operation" == capture ]]; then
     exit 0
   fi
   stage="$(mktemp -d "$RUNNER_TEMP/package-final-output-capture.XXXXXX")" || exit 0
-  if python3 "$bundle" capture "$stage/$archive" "$CARGO_TARGET_DIR/$TARGET/release" bwrap "${binaries[@]}" &&
+  if "${bundle[@]}" capture "$stage/$archive" "$CARGO_TARGET_DIR/$TARGET/release" bwrap "${binaries[@]}" &&
     printf '%s\n' "$dependency_tag:$PACKAGE_FINAL_SOURCE" > "$stage/identity" &&
     [[ ! -e "$capture" && ! -L "$capture" ]] && mv -T -- "$stage" "$capture"; then
     status=captured
@@ -132,7 +132,7 @@ if ! oras blob fetch "${config[@]}" --output "$stage/$archive" "$repository@$blo
   ! printf '%s  %s\n' "${blob#sha256:}" "$stage/$archive" | sha256sum --check --status; then
   exit 0
 fi
-if python3 "$bundle" restore "$stage/$archive" "$stage/verified" "$digest" bwrap "${binaries[@]}" &&
+if "${bundle[@]}" restore "$stage/$archive" "$stage/verified" "$digest" bwrap "${binaries[@]}" &&
   verified="$(mktemp -d "$RUNNER_TEMP/package-final-output-verified.XXXXXX")"; then
   if mv -T -- "$stage/verified" "$verified/payload"; then
     path="$verified/payload"
