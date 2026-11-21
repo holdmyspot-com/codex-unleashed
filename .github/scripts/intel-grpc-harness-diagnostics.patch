@@ -1,0 +1,149 @@
+diff --git a/codex-rs/code-mode-host/tests/grpc/process_metrics_tests.rs b/codex-rs/code-mode-host/tests/grpc/process_metrics_tests.rs
+index 1ee27d17c..9510cbeb6 100644
+--- a/codex-rs/code-mode-host/tests/grpc/process_metrics_tests.rs
++++ b/codex-rs/code-mode-host/tests/grpc/process_metrics_tests.rs
+@@ -141,9 +141,14 @@ async fn remote_metrics_precondition_is_a_failure() -> Result<()> {
+ fn stuck_collector_does_not_block_runtime_shutdown() -> Result<()> {
+     const CHILD_ENV: &str = "CODE_MODE_METRICS_SHUTDOWN_TEST_CHILD";
+     if let Some(shutdown_marker) = std::env::var_os(CHILD_ENV) {
++        let started = std::time::Instant::now();
++        let report_stage =
++            |stage| eprintln!("metrics shutdown child at {:?}: {stage}", started.elapsed());
++        report_stage("starting runtime");
+         let runtime = tokio::runtime::Builder::new_current_thread()
+             .enable_all()
+             .build()?;
++        report_stage("runtime ready");
+         runtime.block_on(async {
+             let calls = Arc::new(AtomicUsize::new(0));
+             let collector_calls = calls.clone();
+@@ -162,24 +167,31 @@ fn stuck_collector_does_not_block_runtime_shutdown() -> Result<()> {
+                     .serve_with_incoming(TcpListenerStream::new(listener))
+                     .await
+             }));
++            report_stage("listener ready");
+             let channel = Endpoint::from_shared(format!("http://{address}"))?
+                 .connect()
+                 .await?;
++            report_stage("connected");
+             let provider = GrpcCodeModeSessionProvider::with_channel(channel);
+             assert!(provider.sample_process_metrics().await.is_err());
++            report_stage("first metrics call returned");
+             let busy = provider.sample_process_metrics().await.unwrap_err();
+             assert!(busy.contains("collector is busy"), "{busy}");
+             assert_eq!(calls.load(Ordering::SeqCst), 1);
++            report_stage("second metrics call returned");
+             drop(server);
+             Ok::<_, anyhow::Error>(())
+         })?;
++        report_stage("dropping runtime");
+         drop(runtime);
++        report_stage("runtime dropped");
+         std::fs::write(shutdown_marker, "runtime dropped")?;
+         return Ok(());
+     }
+ 
+     let directory = tempfile::tempdir()?;
+     let shutdown_marker = directory.path().join("shutdown-completed");
++    let started = std::time::Instant::now();
+     let mut child = std::process::Command::new(std::env::current_exe()?)
+         .args([
+             "--exact",
+@@ -188,6 +200,7 @@ fn stuck_collector_does_not_block_runtime_shutdown() -> Result<()> {
+         ])
+         .env(CHILD_ENV, &shutdown_marker)
+         .spawn()?;
++    let spawned_after = started.elapsed();
+     let deadline = std::time::Instant::now() + Duration::from_secs(/*secs*/ 10);
+     loop {
+         if let Some(status) = child.try_wait()? {
+@@ -196,9 +209,12 @@ fn stuck_collector_does_not_block_runtime_shutdown() -> Result<()> {
+             return Ok(());
+         }
+         if std::time::Instant::now() >= deadline {
++            let elapsed = started.elapsed();
+             child.kill()?;
+             child.wait()?;
+-            anyhow::bail!("a stuck metrics collector blocked runtime shutdown");
++            anyhow::bail!(
++                "metrics shutdown subprocess exceeded its deadline (spawned at {spawned_after:?}, elapsed {elapsed:?}); see child stages above"
++            );
+         }
+         std::thread::sleep(Duration::from_millis(/*millis*/ 10));
+     }
+diff --git a/codex-rs/code-mode-host/tests/support/host.rs b/codex-rs/code-mode-host/tests/support/host.rs
+index ed2a8cfdd..44f7463f3 100644
+--- a/codex-rs/code-mode-host/tests/support/host.rs
++++ b/codex-rs/code-mode-host/tests/support/host.rs
+@@ -1,9 +1,11 @@
+ use std::process::Stdio;
+ use std::time::Duration;
++use std::time::Instant;
+ 
+ use anyhow::Context;
+ use anyhow::Result;
+ use tokio::io::AsyncBufReadExt;
++use tokio::io::AsyncReadExt;
+ use tokio::io::BufReader;
+ use tokio::process::Child;
+ use tokio::process::Command;
+@@ -17,6 +19,7 @@ pub(crate) struct HostHarness {
+ impl HostHarness {
+     pub(crate) async fn start(listen_url: &str) -> Result<Self> {
+         let host_program = codex_utils_cargo_bin::cargo_bin("codex-code-mode-host")?;
++        let started = Instant::now();
+         let mut child = Command::new(host_program)
+             .args(["--listen", listen_url])
+             .stdin(Stdio::null())
+@@ -29,13 +32,44 @@ impl HostHarness {
+             .stdout
+             .take()
+             .context("code-mode host stdout was not captured")?;
+-        let endpoint = timeout(
+-            Duration::from_secs(/*secs*/ 10),
+-            BufReader::new(stdout).lines().next_line(),
+-        )
+-        .await
+-        .context("timed out waiting for code-mode host endpoint")??
+-        .context("code-mode host exited before publishing its endpoint")?;
++        let spawned_after = started.elapsed();
++        let mut stderr = child
++            .stderr
++            .take()
++            .context("code-mode host stderr was not captured")?;
++        let mut stdout = BufReader::new(stdout).lines();
++        let mut startup_stderr = Vec::new();
++        let mut stderr_open = true;
++        let mut chunk = [0_u8; 1024];
++        const STDERR_LIMIT: usize = 4096;
++        let endpoint = timeout(Duration::from_secs(/*secs*/ 10), async {
++            loop {
++                tokio::select! {
++                    line = stdout.next_line() => break line,
++                    read = stderr.read(&mut chunk), if stderr_open => {
++                        match read {
++                            Ok(0) | Err(_) => stderr_open = false,
++                            Ok(count) => {
++                                let retained = count.min(STDERR_LIMIT - startup_stderr.len());
++                                startup_stderr.extend_from_slice(&chunk[..retained]);
++                            }
++                        }
++                    }
++                }
++            }
++        })
++        .await;
++        // Keep the pipe open after startup, matching the harness's existing child lifetime.
++        child.stderr = Some(stderr);
++        let endpoint = endpoint
++            .with_context(|| {
++                format!(
++                    "timed out waiting for code-mode host endpoint (spawned at {spawned_after:?}, elapsed {:?}, first {STDERR_LIMIT} stderr bytes: {:?})",
++                    started.elapsed(),
++                    String::from_utf8_lossy(&startup_stderr),
++                )
++            })??
++            .context("code-mode host exited before publishing its endpoint")?;
+         let expected_scheme = if listen_url.starts_with("grpc://") {
+             "http"
+         } else {
