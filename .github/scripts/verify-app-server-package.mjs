@@ -319,7 +319,8 @@ async function verify(options, runtime) {
   for (const owned of [scratch, installed ? installRoot : undefined]) {
     if (owned === undefined) continue;
     try {
-      await rm(owned, { recursive: true, force: true });
+      // Windows can keep the just-exited executable locked briefly after the child closes.
+      await rm(owned, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
     } catch (error) {
       cleanupFailures.push(`cleanup of ${owned} failed: ${error.message}`);
     }
