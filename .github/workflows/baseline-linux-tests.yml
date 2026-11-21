@@ -83,8 +83,15 @@ jobs:
           test -z "$(git status --porcelain)"
           git diff --check
           git diff --binary > "$RUNNER_TEMP/baseline-test-evidence/pristine-source.diff"
+      - name: Prepare the retained Linux test worker
+        run: |
+          set -euo pipefail
+          metadata="$GITHUB_WORKSPACE/restart-metadata/.github"
+          bash "$metadata/scripts/release-debug-session.sh" prepare \
+            "$metadata/actions/debug-failed-runner" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-test-evidence"
       - name: Open authenticated Linux test worker
-        uses: ./restart-metadata/.github/actions/debug-failed-runner
+        id: debug
+        uses: ./.github/actions/debug-failed-runner
         with:
           public-key: ${{ inputs.public_key }}
           idle-timeout-minutes: '10'
@@ -560,7 +567,7 @@ jobs:
           done
           exit "$result"
       - name: Unpatched | Verify the tested source matches its upstream and patch commits
-        if: always()
+        if: ${{ always() && steps.unpatched_patched.outcome == 'success' }}
         env:
           BASELINE_REGENERATE_APP_SERVER_SCHEMA: ${{ false }}
           BASELINE_ACCEPT_SNAPSHOTS: ${{ false }}
@@ -577,16 +584,14 @@ jobs:
           fi
           git diff --exit-code HEAD -- "${pathspec[@]}"
       - name: Unpatched | Retain test evidence for one day
-        if: always()
+        if: ${{ always() && steps.inputs.outcome == 'success' && steps.unpatched_patched.outcome == 'success' }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: linux-nextest-unpatched
           path: |
             ${{ runner.temp }}/baseline-test-evidence
-            ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings
             ${{ runner.temp }}/nextest-reports/**/junit.xml
-            ${{ env.CARGO_TARGET_DIR }}/nextest/**/junit.xml
-            codex-rs/target/nextest/**/junit.xml
+            ${{ github.workspace }}/codex-rs/target/nextest/**/junit.xml
           retention-days: 3
           if-no-files-found: error
       - name: Carry forward the fresh unpatched baseline
@@ -601,6 +606,7 @@ jobs:
           test "$CARGO_HOME" = "$RUNNER_TEMP/baseline-test-cargo-home"
           test "$CARGO_TARGET_DIR" = "$HOME/.cache/codex-ci/cargo-target"
           mkdir "$RUNNER_TEMP/paired-linux-results"
+          cp -a "$GITHUB_WORKSPACE/.github/actions/debug-failed-runner" "$RUNNER_TEMP/paired-linux-results/debug-action"
           mv "$evidence" "$RUNNER_TEMP/paired-linux-results/unpatched"
           mkdir "$evidence"
           for name in upstream-commit upstream-ref restart-commit cargo-cache-package; do
@@ -633,6 +639,12 @@ jobs:
           test -z "$(git status --porcelain)"
           git diff --check
           git diff --binary > "$RUNNER_TEMP/baseline-test-evidence/pristine-source.diff"
+      - name: Restage the retained Linux test worker
+        run: |
+          set -euo pipefail
+          metadata="$GITHUB_WORKSPACE/restart-metadata/.github"
+          bash "$metadata/scripts/release-debug-session.sh" prepare \
+            "$metadata/actions/debug-failed-runner" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-test-evidence"
       - name: Patched | Apply the selected downstream patches
         id: patched_patched
         env:
@@ -1085,7 +1097,7 @@ jobs:
           done
           exit "$result"
       - name: Patched | Verify the tested source matches its upstream and patch commits
-        if: ${{ always() && steps.rotate.outcome == 'success' }}
+        if: ${{ always() && steps.patched_patched.outcome == 'success' }}
         env:
           BASELINE_REGENERATE_APP_SERVER_SCHEMA: ${{ false }}
           BASELINE_ACCEPT_SNAPSHOTS: ${{ false }}
@@ -1102,15 +1114,28 @@ jobs:
           fi
           git diff --exit-code HEAD -- "${pathspec[@]}"
       - name: Patched | Retain test evidence for one day
-        if: ${{ always() && steps.rotate.outcome == 'success' }}
+        if: ${{ always() && steps.inputs.outcome == 'success' && steps.patched_patched.outcome == 'success' }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: linux-nextest-patched
           path: |
             ${{ runner.temp }}/baseline-test-evidence
-            ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings
             ${{ runner.temp }}/nextest-reports/**/junit.xml
-            ${{ env.CARGO_TARGET_DIR }}/nextest/**/junit.xml
-            codex-rs/target/nextest/**/junit.xml
+            ${{ github.workspace }}/codex-rs/target/nextest/**/junit.xml
           retention-days: 3
           if-no-files-found: error
+      - name: Preserve the debug action for provider cleanup
+        if: ${{ always() && steps.debug.outcome == 'success' && steps.rotate.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          actions="$GITHUB_WORKSPACE/.github/actions"
+          debug="$actions/debug-failed-runner"
+          staged="$RUNNER_TEMP/paired-linux-results/debug-action"
+          test -f "$staged/storage/action.yml"
+          if [[ -f "$debug/storage/action.yml" ]]; then
+            diff -qr "$staged" "$debug"
+          else
+            test ! -e "$debug" && test ! -L "$debug"
+            mkdir -p "$actions"
+            cp -a "$staged" "$debug"
+          fi
