@@ -1,0 +1,77 @@
+From d4b5ee115db3f564f5af203da555adc331114bb0 Mon Sep 17 00:00:00 2001
+From: Codex <codex@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 07:33:00 -0500
+Subject: [PATCH] Translate inherited MSVC flags for ring on Windows ARM64
+
+The ARM64 ring build script switches from the Bazel-selected MSVC driver to clang-cl. Translate the inherited source path mapping before cc-rs reads those flags, and preserve LLVM reproducible object output.
+---
+ patches/ring_windows_msvc_include_dirs.patch | 39 ++++++++++++++++++--
+ 1 file changed, 36 insertions(+), 3 deletions(-)
+
+diff --git a/patches/ring_windows_msvc_include_dirs.patch b/patches/ring_windows_msvc_include_dirs.patch
+index 32e8335..8ef4bec 100644
+--- a/patches/ring_windows_msvc_include_dirs.patch
++++ b/patches/ring_windows_msvc_include_dirs.patch
+@@ -1,7 +1,40 @@
+ diff --git a/build.rs b/build.rs
+ --- a/build.rs
+ +++ b/build.rs
+-@@ -346,7 +346,27 @@
++@@ -329,6 +329,32 @@ fn ring_build_rs_main(c_root_dir: &Path, core_name_and_version: &str) {
++         force_warnings_into_errors,
++     };
++ 
+++    if target.os == WINDOWS && target.arch == AARCH64 && target.env == "msvc" {
+++        // configure_cc selects clang-cl for this target. Translate Bazel's MSVC
+++        // flags before cc-rs reads them while selecting a compiler.
+++        if let Some(flags) = env::var("CFLAGS") {
+++            let mut clang_flags = String::with_capacity(flags.len());
+++            for token in flags.split_inclusive(char::is_whitespace) {
+++                let flag = token.trim_start_matches(['"', '\'']);
+++                clang_flags.push_str(&token[..token.len() - flag.len()]);
+++                if let Some(mapping) = flag.strip_prefix("/pathmap:") {
+++                    clang_flags.push_str("/clang:-ffile-prefix-map=");
+++                    clang_flags.push_str(mapping);
+++                } else if flag.trim_end_matches(['"', '\'', ' ', '\t', '\r', '\n'])
+++                    == "/experimental:deterministic"
+++                {
+++                    clang_flags.push_str("/Brepro");
+++                    clang_flags.push_str(&flag["/experimental:deterministic".len()..]);
+++                } else {
+++                    clang_flags.push_str(flag);
+++                }
+++            }
+++            if clang_flags != flags {
+++                std::env::set_var("CFLAGS", clang_flags);
+++            }
+++        }
+++    }
+++
++     let asm_target = if is_little_endian {
++         ASM_TARGETS.iter().find(|asm_target| {
++             asm_target.arch == target.arch && asm_target.oss.contains(&target.os.as_ref())
++@@ -346,7 +372,27 @@ fn ring_build_rs_main(c_root_dir: &Path, core_name_and_version: &str) {
+      // we want to optimize for minimizing the build tools required: No Perl,
+      // no nasm, etc.
+      let generated_dir = if !is_git {
+@@ -30,7 +63,7 @@ diff --git a/build.rs b/build.rs
+      } else {
+          generate_sources_and_preassemble(
+              &out_dir,
+-@@ -561,7 +581,13 @@
++@@ -561,7 +607,13 @@ fn configure_cc(c: &mut cc::Build, target: &Target, c_root_dir: &Path, include_d
+      let compiler = c.get_compiler();
+      // FIXME: On Windows AArch64 we currently must use Clang to compile C code
+      let compiler = if target.os == WINDOWS && target.arch == AARCH64 && !compiler.is_like_clang() {
+@@ -45,7 +78,7 @@ diff --git a/build.rs b/build.rs
+          c.get_compiler()
+      } else {
+          compiler
+-@@ -569,6 +595,29 @@
++@@ -569,6 +621,29 @@ fn configure_cc(c: &mut cc::Build, target: &Target, c_root_dir: &Path, include_d
+  
+      let _ = c.include(c_root_dir.join("include"));
+      let _ = c.include(include_dir);
+-- 
+2.43.0
+

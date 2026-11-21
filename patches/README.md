@@ -113,3 +113,4 @@ The release applies these patches in this order:
 101. [windows-read-acl-helper/inherit-no-handles.patch](holdmyspot-com/codex-unleashed/windows-read-acl-helper/inherit-no-handles.patch)
 102. [release-reproduction/reuse-prepared-musl-package-tools.patch](holdmyspot-com/codex-unleashed/release-reproduction/reuse-prepared-musl-package-tools.patch)
 103. [release-voice-runtime/linux-reproducible-build-paths.patch](holdmyspot-com/codex-unleashed/release-voice-runtime/linux-reproducible-build-paths.patch)
+104. [release-reproduction/arm64-ring-clang-pathmap.patch](holdmyspot-com/codex-unleashed/release-reproduction/arm64-ring-clang-pathmap.patch)
