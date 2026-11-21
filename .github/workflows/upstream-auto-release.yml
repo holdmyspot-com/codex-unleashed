@@ -455,6 +455,9 @@ jobs:
     # succeeded; skip_gates skips them, so the gate verdict is read from `report` instead.
     if: ${{ !cancelled() && needs.report.result == 'success' && needs.report.outputs.passed == 'true' && (needs.detect.outputs.live == 'true' || inputs.package_dry_run == true) }}
     runs-on: ${{ matrix.runner }}
+    permissions:
+      actions: read
+      contents: read
     timeout-minutes: 360
     strategy:
       fail-fast: false
@@ -668,6 +671,19 @@ jobs:
           # A voice helper identity query that fails keeps its stdout and stderr here; the evidence upload collects them.
           echo "CODEX_VOICE_DIAGNOSTICS_DIR=$RUNNER_TEMP/voice-helper-identity-$TARGET" >> "$GITHUB_ENV"
 
+      - name: Look up an exact verified ARM64 macOS voice bundle
+        id: voice-cache
+        if: matrix.target == 'aarch64-apple-darwin' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        timeout-minutes: 2
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_VERSION: ${{ needs.detect.outputs.version }}+${{ needs.detect.outputs.build }}
+        run: |
+          set -euo pipefail
+          bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/macos-sealed-voice-cache.sh" fetch \
+            "$TARGET" "$PACKAGE_VERSION" "$RUNNER_TEMP/voice-cache-incoming" "$RUNNER_TEMP/voice-cache-inputs.json"
+
       - name: Build the sealed voice runtime for this patched source
         id: voice-build
         env:
@@ -692,9 +708,17 @@ jobs:
             export SystemRoot="$VOICE_WINDOWS_SYSTEM_ROOT"
             export PROCESSOR_ARCHITECTURE="$VOICE_WINDOWS_HOST_ARCH"
           fi
-          bash .github/scripts/codex-voice-runtime.sh build \
-            --upstream-root "$physical_source" --target "$TARGET" --build-commit "$build_commit" \
-            --result-dir "$result_dir"
+          cache_hit=false
+          if [[ -d "$RUNNER_TEMP/voice-cache-incoming" ]] && \
+            bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/macos-sealed-voice-cache.sh" restore \
+              "$TARGET" "$RELEASE_VERSION+$RELEASE_BUILD" "$result_dir" \
+              "$RUNNER_TEMP/voice-cache-incoming" "$RUNNER_TEMP/voice-cache-evidence"; then
+            cache_hit=true
+          else
+            bash .github/scripts/codex-voice-runtime.sh build \
+              --upstream-root "$physical_source" --target "$TARGET" --build-commit "$build_commit" \
+              --result-dir "$result_dir"
+          fi
           test "$(git -C "$physical_source" rev-parse HEAD)" = "$build_commit"
           test -z "$(git -C "$physical_source" status --porcelain --untracked-files=no)"
           release_dir="$result_dir/release"
@@ -713,6 +737,7 @@ jobs:
           printf '%s\n' "$build_commit" > "$verification_artifact/source-commit"
           printf 'result_dir=%s\nrelease_dir=%s\nbuild_commit=%s\nverification_artifact=%s\ntooling_launcher=%s\n' \
             "$result_dir" "$release_dir" "$build_commit" "$verification_artifact" "$CODEX_TOOLING" >> "$GITHUB_OUTPUT"
+          printf 'cache_hit=%s\n' "$cache_hit" >> "$GITHUB_OUTPUT"
 
       - name: Build and smoke-test upstream's package archives
         id: package
@@ -830,6 +855,7 @@ jobs:
             ${{ runner.temp }}/voice-installer-evidence-${{ matrix.target }}
             ${{ runner.temp }}/voice-installed-evidence-${{ matrix.target }}
             ${{ runner.temp }}/voice-helper-identity-${{ matrix.target }}
+            ${{ runner.temp }}/voice-cache-evidence
           retention-days: 3
           if-no-files-found: warn
 
@@ -904,6 +930,29 @@ jobs:
         with:
           name: assets-${{ matrix.target }}
           path: ${{ runner.temp }}/assets/*
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Prepare the verified ARM64 macOS voice bundle for reuse
+        id: voice-cache-save
+        if: steps.voice-cache.outputs.name != '' && steps.voice-build.outputs.cache_hit == 'false' && steps.voice-final-verification.outputs.verified == 'true'
+        timeout-minutes: 2
+        continue-on-error: true
+        env:
+          PACKAGE_VERSION: ${{ needs.detect.outputs.version }}+${{ needs.detect.outputs.build }}
+          VOICE_RESULT: ${{ steps.voice-build.outputs.result_dir }}
+        run: |
+          set -euo pipefail
+          bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/macos-sealed-voice-cache.sh" save \
+            "$TARGET" "$PACKAGE_VERSION" "$VOICE_RESULT" "$RUNNER_TEMP/voice-cache-outgoing" "$RUNNER_TEMP/voice-cache-inputs.json"
+
+      - name: Retain the exact verified voice bundle
+        if: steps.voice-cache-save.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: ${{ steps.voice-cache.outputs.name }}
+          path: ${{ runner.temp }}/voice-cache-outgoing
           retention-days: 3
           if-no-files-found: error
 
