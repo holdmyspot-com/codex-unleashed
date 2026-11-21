@@ -140,7 +140,11 @@ if [[ "$operation" == inputs ]]; then
   ) > "$inputs/voice"
   # Preserve only the key and fixed-name component digests, never the raw inputs.
   (cd "$inputs" && sha256sum source patches wrappers helper compiler v8 "$native_component" voice) > "$inputs/components"
-  cat "$inputs/v8" "$inputs/$native_component" "$inputs/voice" >> "$inputs/compiler"
+  cat "$inputs/v8" "$inputs/$native_component" >> "$inputs/compiler"
+  if [[ "$RUNNER_OS" == Linux ]]; then
+    cat "$inputs/voice" >> "$inputs/compiler"
+  fi
+  # Windows archives consume the sealed voice files after the Cargo build.
   tag="$(bash "$CODEX_TOOLING" cargo-cache-keys "$TARGET-pkg" "$inputs/source" "$inputs/wrappers" \
     "$inputs/helper" "$inputs/compiler" "$inputs/patches" | sed -n 's/^tag=//p')"
   [[ "$tag" =~ ^cargo-v3-$TARGET-pkg-[0-9a-f]{64}$ ]]

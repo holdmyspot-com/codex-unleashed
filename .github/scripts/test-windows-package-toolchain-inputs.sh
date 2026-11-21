@@ -120,6 +120,12 @@ original_key="$(tail -n1 "$GITHUB_OUTPUT")"
 grep -Ex 'tag=cargo-v3-x86_64-pc-windows-msvc-pkg-[0-9a-f]{64}' <<< "$original_key"
 bash "$key_script" inputs >/dev/null
 test "$original_key" = "$(tail -n1 "$GITHUB_OUTPUT")"
+receipt="$RUNNER_TEMP/package-cargo-cache-key.txt"
+original_voice="$(grep '  voice/runtime/bin/voice.dll$' "$receipt")"
+printf 'changed voice DLL\n' >> "$VOICE_RELEASE_DIR/runtime/bin/voice.dll"
+bash "$key_script" inputs >/dev/null
+test "$original_key" = "$(tail -n1 "$GITHUB_OUTPUT")"
+test "$original_voice" != "$(grep '  voice/runtime/bin/voice.dll$' "$receipt")"
 printf 'changed linker\n' >> "$CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER"
 bash "$key_script" inputs >/dev/null
 test "$original_key" != "$(tail -n1 "$GITHUB_OUTPUT")"
