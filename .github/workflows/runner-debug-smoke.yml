@@ -359,7 +359,8 @@ jobs:
           node .github/scripts/verify-local-npm.mjs \
             --package-root "$scratch/packages" --tools "$scratch/tools" \
             --npm-cli "$scratch/tools/node_modules/npm/bin/npm-cli.js" \
-            --scratch-root "$scratch" --evidence-dir "$RUNNER_TEMP/npm-evidence"
+            --scratch-root "$scratch" --evidence-dir "$RUNNER_TEMP/npm-evidence" \
+            --installed-package-output "$scratch/installed-package"
 
       - name: Install and run the app-server package
         run: |
