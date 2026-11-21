@@ -49,7 +49,7 @@ on:
 # This reuses the verified package artifacts for three days. A full rerun restores the original identity, but rebuilds
 # packages and is not artifact-reusing recovery. A fresh dispatch performs normal release selection.
 concurrency:
-  group: upstream-auto-release-${{ inputs.upstream_tag || 'latest' }}-${{ (github.event_name == 'schedule' || !inputs.dry_run) && 'live' || 'dry' }}
+  group: upstream-auto-release-${{ inputs.upstream_tag || 'latest' }}-${{ (github.event_name == 'schedule' || !inputs.dry_run) && 'live' || 'dry-receipt-verification' }}
   cancel-in-progress: false
 
 permissions:
