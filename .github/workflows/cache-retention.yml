@@ -98,17 +98,25 @@ jobs:
           RUSTUP_TOOLCHAIN: 1.95.0
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/retention-helper-temp"
+          unset GH_TOKEN
+          verification_root="$RUNNER_TEMP/retention-helper"
+          helper_temp="$RUNNER_TEMP/retention-helper-temp"
+          test_context="$verification_root/test_context.json"
+          mkdir -p "$verification_root" "$helper_temp"
+          export TMPDIR="$helper_temp" TMP="$helper_temp" TEMP="$helper_temp"
+          jq -n --arg working_directory "$GITHUB_WORKSPACE" --arg temporary_directory "$helper_temp" \
+            '{format_version: 1, working_directory: $working_directory,
+              temporary_directory: $temporary_directory, environment: env}' > "$test_context"
           bash .github/scripts/maven-retry.sh "$RUNNER_TEMP/retention-helper-maven" -q -f tooling/cli/pom.xml -Pruntime \
-            "-Dtooling.build.directory=$RUNNER_TEMP/retention-helper" \
-            "-Djava.io.tmpdir=$RUNNER_TEMP/retention-helper-temp" verify \
+            "-Dtooling.build.directory=$verification_root/build" \
+            "-Djava.io.tmpdir=$helper_temp" "-Dquiet.build.test.context=$test_context" verify \
             2>&1 | tee "$RUNNER_TEMP/cache-retention/helper-verify.log"
 
       - name: Plan the deletions
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/cache-retention"
-          helper="$RUNNER_TEMP/retention-helper/runtime/bin/codex-tooling"
+          helper="$RUNNER_TEMP/retention-helper/build/runtime/bin/codex-tooling"
           export TMPDIR="$RUNNER_TEMP/retention-helper-temp"
           : > "$evidence/retained-releases.txt"
           while read -r package _; do
