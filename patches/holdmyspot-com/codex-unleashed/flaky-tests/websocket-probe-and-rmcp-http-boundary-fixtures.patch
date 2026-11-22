@@ -1,0 +1,398 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Subject: [PATCH] Cover WebSocket probe and RMCP HTTP boundary behavior
+
+diff --git a/codex-rs/codex-api/tests/responses_websocket_probe.rs b/codex-rs/codex-api/tests/responses_websocket_probe.rs
+index 6cee3a013d367127671a6f0cb4fe3a3f71327977..1f485ed8010aa4cab9637ce3de070322b52cfa6e 100644
+--- a/codex-rs/codex-api/tests/responses_websocket_probe.rs
++++ b/codex-rs/codex-api/tests/responses_websocket_probe.rs
+@@ -5,6 +5,7 @@ use codex_api::ApiError;
+ use codex_api::AuthProvider;
+ use codex_api::Provider;
+ use codex_api::ResponsesWebsocketClient;
++use codex_api::ResponsesWebsocketProbe;
+ use codex_api::ResponsesWebsocketProbeFailureStage;
+ use codex_api::RetryConfig;
+ use codex_api::TransportError;
+@@ -12,6 +13,7 @@ use codex_http_client::HttpClientFactory;
+ use codex_http_client::OutboundProxyPolicy;
+ use futures::StreamExt;
+ use http::HeaderMap;
++use http::HeaderName;
+ use http::HeaderValue;
+ use http::StatusCode;
+ use pretty_assertions::assert_eq;
+@@ -59,39 +61,69 @@ fn probe_client(base_url: String) -> ResponsesWebsocketClient {
+     )
+ }
+ 
+-#[tokio::test]
+-async fn probe_reports_normal_loopback_handshake_and_close() -> anyhow::Result<()> {
++fn fixture_socket_config() -> WebSocketConfig {
++    let mut config = WebSocketConfig::default();
++    config.extensions.permessage_deflate = Some(DeflateConfig::default());
++    config
++}
++
++fn fixture_tracking_headers() -> HeaderMap {
++    HeaderMap::from_iter(
++        [
++            ("x-request-id", "fixture-request-id"),
++            ("x-request-id", "fixture-request-id-repeat"),
++            ("x-oai-request-id", "fixture-oai"),
++            ("cf-ray", "fixture-ray"),
++            ("x-ms-request-id", "fixture-ms"),
++        ]
++        .map(|(name, value)| {
++            (
++                HeaderName::from_static(name),
++                HeaderValue::from_static(value),
++            )
++        }),
++    )
++}
++
++enum FixtureClose {
++    WithFrame(CloseFrame),
++    Empty,
++    StayOpen,
++}
++
++async fn probe_loopback_upgrade(close: FixtureClose) -> anyhow::Result<ResponsesWebsocketProbe> {
+     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
+     let client = probe_client(format!("http://{}", listener.local_addr()?));
+     let factory = HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault);
+-    let close_reason = "fixture completed";
+-    let request_id = "fixture-request-id";
++    let wait = if matches!(&close, FixtureClose::StayOpen) {
++        Duration::from_millis(/*millis*/ 100)
++    } else {
++        Duration::from_secs(/*secs*/ 5)
++    };
+     let server = async {
+         let (stream, _) = listener.accept().await?;
+-        let mut config = WebSocketConfig::default();
+-        config.extensions.permessage_deflate = Some(DeflateConfig::default());
+         let mut socket = accept_hdr_async_with_config(
+             stream,
+             |request: &Request, mut response: Response| {
+                 assert_eq!(request.uri().path(), "/responses");
+ 
+                 let headers = response.headers_mut();
+-                headers.insert("x-request-id", HeaderValue::from_static(request_id));
++                headers.extend(fixture_tracking_headers());
+                 headers.insert("x-fixture-note", HeaderValue::from_static("fixture note"));
+                 headers.insert("x-reasoning-included", HeaderValue::from_static("true"));
+                 headers.insert("openai-model", HeaderValue::from_static("fixture model"));
+                 Ok(response)
+             },
+-            Some(config),
++            Some(fixture_socket_config()),
+         )
+         .await?;
+-        socket
+-            .close(Some(CloseFrame {
+-                code: CloseCode::Normal,
+-                reason: close_reason.into(),
+-            }))
+-            .await?;
++        match close {
++            FixtureClose::WithFrame(frame) => socket.close(Some(frame)).await?,
++            FixtureClose::Empty => socket.close(None).await?,
++            FixtureClose::StayOpen => {}
++        }
+ 
++        // Keep the connection alive until the probe finishes, without sending data frames.
+         match socket.next().await {
+             None | Some(Ok(Message::Close(_))) => {}
+             Some(Err(WsError::Protocol(ProtocolError::ResetWithoutClosingHandshake))) => {}
+@@ -99,12 +131,7 @@ async fn probe_reports_normal_loopback_handshake_and_close() -> anyhow::Result<(
+         }
+         Ok::<(), anyhow::Error>(())
+     };
+-    let probe = client.probe_handshake(
+-        &factory,
+-        HeaderMap::new(),
+-        HeaderMap::new(),
+-        Duration::from_secs(/*secs*/ 5),
+-    );
++    let probe = client.probe_handshake(&factory, HeaderMap::new(), HeaderMap::new(), wait);
+ 
+     let (server_result, evidence) = tokio::time::timeout(Duration::from_secs(/*secs*/ 10), async {
+         tokio::join!(server, probe)
+@@ -113,27 +140,162 @@ async fn probe_reports_normal_loopback_handshake_and_close() -> anyhow::Result<(
+     server_result?;
+     let evidence = evidence.expect("probe handshake");
+     assert_eq!(evidence.status, StatusCode::SWITCHING_PROTOCOLS);
+-    assert_eq!(
+-        evidence.headers,
+-        HeaderMap::from_iter([(
+-            http::HeaderName::from_static("x-request-id"),
+-            HeaderValue::from_static(request_id),
+-        )])
+-    );
++    assert_eq!(evidence.headers, fixture_tracking_headers());
+     assert!(evidence.reasoning_included);
+     assert!(evidence.server_model_present);
+ 
++    Ok(evidence)
++}
++
++#[tokio::test]
++async fn probe_reports_normal_loopback_handshake_and_close() -> anyhow::Result<()> {
++    let close_reason = "fixture completed";
++    let evidence = probe_loopback_upgrade(FixtureClose::WithFrame(CloseFrame {
++        code: CloseCode::Normal,
++        reason: close_reason.into(),
++    }))
++    .await?;
+     let close = evidence.immediate_close.as_ref().expect("normal close");
+     assert_eq!(close.code, "1000");
+     assert_eq!(close.reason, close_reason);
+     let diagnostics = format!("{evidence:?}");
+     assert!(diagnostics.contains("101"));
+     assert!(diagnostics.contains("1000"));
+-    assert!(!diagnostics.contains(request_id));
++    assert!(!diagnostics.contains("fixture-"));
+     assert!(!diagnostics.contains(close_reason));
+     Ok(())
+ }
+ 
++#[tokio::test]
++async fn probe_reports_empty_loopback_close() -> anyhow::Result<()> {
++    let evidence = probe_loopback_upgrade(FixtureClose::Empty).await?;
++    let close = evidence
++        .immediate_close
++        .as_ref()
++        .expect("empty close frame");
++    assert_eq!(close.code, "1005");
++    assert_eq!(close.reason, "");
++    Ok(())
++}
++
++#[tokio::test]
++async fn probe_reports_upgrade_when_loopback_peer_stays_open() -> anyhow::Result<()> {
++    let evidence = probe_loopback_upgrade(FixtureClose::StayOpen).await?;
++    assert_eq!(evidence.immediate_close, None);
++    Ok(())
++}
++
++#[tokio::test]
++async fn probe_reports_ordinary_loopback_http_rejection() -> anyhow::Result<()> {
++    let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
++    let client = probe_client(format!("http://{}", listener.local_addr()?));
++    let factory = HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault);
++    let body = "fixture unavailable";
++    let tracking_id = "fixture-rejection";
++    let server = async {
++        let (stream, _) = listener.accept().await?;
++        let result = accept_hdr_async_with_config(
++            stream,
++            |request: &Request, _: Response| {
++                assert_eq!(request.uri().path(), "/responses");
++                let mut response = http::Response::new(Some(body.to_owned()));
++                *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
++                let headers = response.headers_mut();
++                headers.insert(http::header::CONTENT_LENGTH, HeaderValue::from(body.len()));
++                headers.insert("x-request-id", HeaderValue::from_static(tracking_id));
++                Err(response)
++            },
++            Some(fixture_socket_config()),
++        )
++        .await;
++        assert!(matches!(result, Err(WsError::Http(_))));
++        Ok::<(), anyhow::Error>(())
++    };
++    let probe = client.probe_handshake(
++        &factory,
++        HeaderMap::new(),
++        HeaderMap::new(),
++        Duration::from_secs(/*secs*/ 5),
++    );
++    let (server_result, probe_result) =
++        tokio::time::timeout(Duration::from_secs(/*secs*/ 10), async {
++            tokio::join!(server, probe)
++        })
++        .await?;
++    server_result?;
++    let failure = probe_result.expect_err("upgrade rejected");
++    assert_eq!(failure.stage, ResponsesWebsocketProbeFailureStage::Unknown);
++    assert_eq!(failure.status, None);
++    assert_eq!(failure.headers, None);
++    assert_eq!(failure.to_string(), "Responses WebSocket probe failed");
++    let diagnostics = format!("{failure:?}");
++    assert!(!diagnostics.contains(body));
++    assert!(!diagnostics.contains(tracking_id));
++
++    let ApiError::Transport(TransportError::Http {
++        status,
++        headers,
++        body: actual_body,
++        ..
++    }) = *failure.error
++    else {
++        anyhow::bail!("expected HTTP rejection");
++    };
++    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
++    assert_eq!(
++        headers.expect("rejection headers")["x-request-id"],
++        tracking_id
++    );
++    assert_eq!(actual_body.as_deref(), Some(body));
++    Ok(())
++}
++
++#[tokio::test]
++async fn probe_preserves_upgrade_evidence_when_loopback_peer_disconnects() -> anyhow::Result<()> {
++    let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
++    let client = probe_client(format!("http://{}", listener.local_addr()?));
++    let factory = HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault);
++    let server = async {
++        let (stream, _) = listener.accept().await?;
++        let socket = accept_hdr_async_with_config(
++            stream,
++            |_: &Request, mut response: Response| {
++                response.headers_mut().extend(fixture_tracking_headers());
++                response
++                    .headers_mut()
++                    .insert("x-fixture-note", HeaderValue::from_static("fixture note"));
++                Ok(response)
++            },
++            Some(fixture_socket_config()),
++        )
++        .await?;
++        // A peer can lose its transport after completing an otherwise valid upgrade.
++        drop(socket);
++        Ok::<(), anyhow::Error>(())
++    };
++    let probe = client.probe_handshake(
++        &factory,
++        HeaderMap::new(),
++        HeaderMap::new(),
++        Duration::from_secs(/*secs*/ 5),
++    );
++    let (server_result, probe_result) =
++        tokio::time::timeout(Duration::from_secs(/*secs*/ 10), async {
++            tokio::join!(server, probe)
++        })
++        .await?;
++    server_result?;
++    let failure = probe_result.expect_err("read failed after upgrade");
++    assert_eq!(failure.stage, ResponsesWebsocketProbeFailureStage::Unknown);
++    assert_eq!(failure.status, Some(StatusCode::SWITCHING_PROTOCOLS));
++    assert_eq!(failure.headers.as_ref(), Some(&fixture_tracking_headers()));
++    assert!(matches!(*failure.error, ApiError::Stream(_)));
++    let diagnostics = format!("{failure:?}");
++    assert!(diagnostics.contains("101"));
++    assert!(!diagnostics.contains("fixture-"));
++    Ok(())
++}
++
+ #[tokio::test]
+ async fn probe_distinguishes_untrusted_certificates_from_io_failures() -> anyhow::Result<()> {
+     codex_utils_rustls_provider::ensure_rustls_crypto_provider();
+diff --git a/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs b/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
+index 35b771ff916caa12860ab6b991c6d6d31ae4ff54..90ecdda53358f16222419bcdbead72b9629973f9 100644
+--- a/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
++++ b/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
+@@ -147,6 +147,100 @@ async fn ordinary_http_discovery_returns_advertised_peer_info() -> anyhow::Resul
+     Ok(())
+ }
+ 
++#[tokio::test]
++async fn ordinary_modern_http_discovery_stops_at_same_origin_redirect() -> anyhow::Result<()> {
++    let server = MockServer::start().await;
++    Mock::given(method("POST"))
++        .and(path("/mcp"))
++        .respond_with(ResponseTemplate::new(307).insert_header("location", "/alternate"))
++        .expect(1)
++        .mount(&server)
++        .await;
++    Mock::given(path("/alternate"))
++        .respond_with(ResponseTemplate::new(200))
++        .expect(0)
++        .mount(&server)
++        .await;
++
++    let client = create_client(&server, McpProtocolMode::V20260728).await?;
++    let result = initialize_client(&client).await;
++    client.shutdown().await;
++
++    assert!(result.is_err());
++    Ok(())
++}
++
++#[tokio::test]
++async fn ordinary_modern_http_discovery_accepts_json_at_message_limit() -> anyhow::Result<()> {
++    let server = MockServer::start().await;
++    Mock::given(method("POST"))
++        .and(path("/mcp"))
++        .respond_with(|request: &Request| {
++            let request: Value = request.body_json().expect("JSON-RPC request");
++            assert_eq!(request["method"], "server/discover");
++
++            let mut response =
++                serde_json::to_vec(&modern_discover_result(&request)).expect("discovery response");
++            response.resize(MAX_MCP_MESSAGE_BYTES, b' ');
++            ResponseTemplate::new(200).set_body_raw(response, "application/json")
++        })
++        .expect(1)
++        .mount(&server)
++        .await;
++
++    let client = create_client(&server, McpProtocolMode::V20260728).await?;
++    let peer_info = initialize_client(&client).await;
++    client.shutdown().await;
++
++    assert_eq!(peer_info?.protocol_version, ProtocolVersion::V_2026_07_28);
++    Ok(())
++}
++
++#[tokio::test]
++async fn ordinary_modern_http_tool_catalog_accepts_json_at_message_limit() -> anyhow::Result<()> {
++    let server = MockServer::start().await;
++    Mock::given(method("POST"))
++        .and(path("/mcp"))
++        .respond_with(|request: &Request| {
++            let request: Value = request.body_json().expect("JSON-RPC request");
++            match request["method"].as_str() {
++                Some("server/discover") => modern_discover_response(&request),
++                Some("tools/list") => {
++                    let body = json!({
++                        "jsonrpc": "2.0",
++                        "id": request["id"],
++                        "result": {
++                            "resultType": "complete",
++                            "tools": [{
++                                "name": "read_sample",
++                                "inputSchema": {"type": "object"},
++                            }],
++                        },
++                    });
++                    let mut response = serde_json::to_vec(&body).expect("tool catalog response");
++                    response.resize(MAX_MCP_MESSAGE_BYTES, b' ');
++                    ResponseTemplate::new(200).set_body_raw(response, "application/json")
++                }
++                other => panic!("unexpected modern lifecycle request: {other:?}"),
++            }
++        })
++        .expect(2)
++        .mount(&server)
++        .await;
++
++    let client = create_client(&server, McpProtocolMode::V20260728).await?;
++    initialize_client(&client).await?;
++    let tools = client
++        .list_tools(/*params*/ None, Some(Duration::from_secs(5)))
++        .await;
++    client.shutdown().await;
++
++    let tools = tools?.tools;
++    assert_eq!(tools.len(), 1);
++    assert_eq!(tools[0].name.as_ref(), "read_sample");
++    Ok(())
++}
++
+ #[tokio::test]
+ async fn read_only_tool_requests_preserve_host_policy_and_caller_metadata() -> anyhow::Result<()> {
+     for mode in [McpProtocolMode::Legacy, McpProtocolMode::V20260728] {
