@@ -1,0 +1,170 @@
+From e50b2dbbc7624e677706844ebdfc761a2daa89f5 Mon Sep 17 00:00:00 2001
+From: CP9 verification <cp9-focused@users.noreply.github.com>
+Date: Sun, 22 Nov 2026 11:05:35 -0500
+Subject: [PATCH] Verify WebSocket probe and HTTP discovery with loopback
+ fixtures
+
+---
+ .../tests/responses_websocket_probe.rs        | 87 +++++++++++++++++++
+ .../rmcp-client/tests/mcp_2026_discovery.rs   | 31 +++++++
+ 2 files changed, 118 insertions(+)
+
+diff --git a/codex-rs/codex-api/tests/responses_websocket_probe.rs b/codex-rs/codex-api/tests/responses_websocket_probe.rs
+index 278f7ac99..6cee3a013 100644
+--- a/codex-rs/codex-api/tests/responses_websocket_probe.rs
++++ b/codex-rs/codex-api/tests/responses_websocket_probe.rs
+@@ -10,15 +10,27 @@ use codex_api::RetryConfig;
+ use codex_api::TransportError;
+ use codex_http_client::HttpClientFactory;
+ use codex_http_client::OutboundProxyPolicy;
++use futures::StreamExt;
+ use http::HeaderMap;
+ use http::HeaderValue;
++use http::StatusCode;
+ use pretty_assertions::assert_eq;
+ use std::sync::Arc;
+ use std::time::Duration;
+ use tokio::io::AsyncReadExt;
+ use tokio::io::AsyncWriteExt;
+ use tokio::net::TcpListener;
++use tokio_tungstenite::accept_hdr_async_with_config;
++use tokio_tungstenite::tungstenite::Error as WsError;
++use tokio_tungstenite::tungstenite::Message;
++use tokio_tungstenite::tungstenite::error::ProtocolError;
++use tokio_tungstenite::tungstenite::extensions::compression::deflate::DeflateConfig;
+ use tokio_tungstenite::tungstenite::handshake::derive_accept_key;
++use tokio_tungstenite::tungstenite::handshake::server::Request;
++use tokio_tungstenite::tungstenite::handshake::server::Response;
++use tokio_tungstenite::tungstenite::protocol::CloseFrame;
++use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
++use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
+ 
+ struct NoAuth;
+ impl AuthProvider for NoAuth {
+@@ -47,6 +59,81 @@ fn probe_client(base_url: String) -> ResponsesWebsocketClient {
+     )
+ }
+ 
++#[tokio::test]
++async fn probe_reports_normal_loopback_handshake_and_close() -> anyhow::Result<()> {
++    let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
++    let client = probe_client(format!("http://{}", listener.local_addr()?));
++    let factory = HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault);
++    let close_reason = "fixture completed";
++    let request_id = "fixture-request-id";
++    let server = async {
++        let (stream, _) = listener.accept().await?;
++        let mut config = WebSocketConfig::default();
++        config.extensions.permessage_deflate = Some(DeflateConfig::default());
++        let mut socket = accept_hdr_async_with_config(
++            stream,
++            |request: &Request, mut response: Response| {
++                assert_eq!(request.uri().path(), "/responses");
++
++                let headers = response.headers_mut();
++                headers.insert("x-request-id", HeaderValue::from_static(request_id));
++                headers.insert("x-fixture-note", HeaderValue::from_static("fixture note"));
++                headers.insert("x-reasoning-included", HeaderValue::from_static("true"));
++                headers.insert("openai-model", HeaderValue::from_static("fixture model"));
++                Ok(response)
++            },
++            Some(config),
++        )
++        .await?;
++        socket
++            .close(Some(CloseFrame {
++                code: CloseCode::Normal,
++                reason: close_reason.into(),
++            }))
++            .await?;
++
++        match socket.next().await {
++            None | Some(Ok(Message::Close(_))) => {}
++            Some(Err(WsError::Protocol(ProtocolError::ResetWithoutClosingHandshake))) => {}
++            Some(other) => anyhow::bail!("unexpected frame after probe upgrade: {other:?}"),
++        }
++        Ok::<(), anyhow::Error>(())
++    };
++    let probe = client.probe_handshake(
++        &factory,
++        HeaderMap::new(),
++        HeaderMap::new(),
++        Duration::from_secs(/*secs*/ 5),
++    );
++
++    let (server_result, evidence) = tokio::time::timeout(Duration::from_secs(/*secs*/ 10), async {
++        tokio::join!(server, probe)
++    })
++    .await?;
++    server_result?;
++    let evidence = evidence.expect("probe handshake");
++    assert_eq!(evidence.status, StatusCode::SWITCHING_PROTOCOLS);
++    assert_eq!(
++        evidence.headers,
++        HeaderMap::from_iter([(
++            http::HeaderName::from_static("x-request-id"),
++            HeaderValue::from_static(request_id),
++        )])
++    );
++    assert!(evidence.reasoning_included);
++    assert!(evidence.server_model_present);
++
++    let close = evidence.immediate_close.as_ref().expect("normal close");
++    assert_eq!(close.code, "1000");
++    assert_eq!(close.reason, close_reason);
++    let diagnostics = format!("{evidence:?}");
++    assert!(diagnostics.contains("101"));
++    assert!(diagnostics.contains("1000"));
++    assert!(!diagnostics.contains(request_id));
++    assert!(!diagnostics.contains(close_reason));
++    Ok(())
++}
++
+ #[tokio::test]
+ async fn probe_distinguishes_untrusted_certificates_from_io_failures() -> anyhow::Result<()> {
+     codex_utils_rustls_provider::ensure_rustls_crypto_provider();
+diff --git a/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs b/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
+index 950100cd7..35b771ff9 100644
+--- a/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
++++ b/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
+@@ -116,6 +116,37 @@ fn legacy_initialize_response(request: &Value) -> ResponseTemplate {
+     }))
+ }
+ 
++#[tokio::test]
++async fn ordinary_http_discovery_returns_advertised_peer_info() -> anyhow::Result<()> {
++    let server = MockServer::start().await;
++    Mock::given(method("POST"))
++        .and(path("/mcp"))
++        .respond_with(|request: &Request| {
++            let body: Value = request.body_json().expect("JSON-RPC request");
++            assert_eq!(body["method"], "server/discover");
++            modern_discover_response(&body)
++        })
++        .expect(1)
++        .mount(&server)
++        .await;
++
++    let client = create_client(&server, McpProtocolMode::V20260728).await?;
++    let peer_info = initialize_client(&client).await;
++    client.shutdown().await;
++    let peer_info = peer_info?;
++
++    assert_eq!(peer_info.protocol_version, ProtocolVersion::V_2026_07_28);
++    assert_eq!(
++        peer_info.server_info,
++        Some(Implementation::new("modern-test", "1.0.0"))
++    );
++    assert_eq!(
++        peer_info.capabilities,
++        ServerCapabilities::builder().enable_tools().build()
++    );
++    Ok(())
++}
++
+ #[tokio::test]
+ async fn read_only_tool_requests_preserve_host_policy_and_caller_metadata() -> anyhow::Result<()> {
+     for mode in [McpProtocolMode::Legacy, McpProtocolMode::V20260728] {
+-- 
+2.43.0
+

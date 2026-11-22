@@ -117,3 +117,4 @@ The release applies these patches in this order:
 105. [flaky-tests/windows-prompt-prefix-home-normalization.patch](holdmyspot-com/codex-unleashed/flaky-tests/windows-prompt-prefix-home-normalization.patch)
 106. [release-reproduction/windows-arm64-ring-pathmap.patch](holdmyspot-com/codex-unleashed/release-reproduction/windows-arm64-ring-pathmap.patch)
 107. [flaky-tests/synthetic-websocket-and-rmcp-checks.patch](holdmyspot-com/codex-unleashed/flaky-tests/synthetic-websocket-and-rmcp-checks.patch)
+108. [flaky-tests/synthetic-websocket-and-rmcp-integration.patch](holdmyspot-com/codex-unleashed/flaky-tests/synthetic-websocket-and-rmcp-integration.patch)
