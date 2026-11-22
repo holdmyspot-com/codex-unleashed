@@ -10,5 +10,4 @@ run_test() {
     grep -Fxq "test $test_name ... ok" <<< "$output"
 }
 
-run_test http_client_adapter::tests::collect_body_rejects_one_byte_beyond_the_limit -p codex-rmcp-client --lib
-run_test doctor::tests::websocket_probe_json_preserves_http_status_without_response_values -p codex-cli --bin codex
+run_test probe_distinguishes_untrusted_certificates_from_io_failures -p codex-api --test responses_websocket_probe
