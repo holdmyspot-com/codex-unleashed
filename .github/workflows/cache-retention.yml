@@ -73,15 +73,15 @@ jobs:
           }
           : > "$evidence/protected-refs.txt"
           : > "$evidence/pinned-commits.txt"
-          while read -r package branch; do
+          while read -r package branch policy; do
             [ -n "$package" ] || continue
             reference="$(branch_file "$branch" .github/upstream-ref)"
             test -n "$reference"
             printf '%s\n' "$reference" >> "$evidence/protected-refs.txt"
             commit="$(branch_file "$branch" .github/upstream-commit)"
             [ -z "$commit" ] || printf '%s\n' "$commit" >> "$evidence/pinned-commits.txt"
-            gh api --paginate "orgs/$PACKAGE_OWNER/packages/container/$package/versions?per_page=100" \
-              --jq '.[] | {id, created_at, metadata}' > "$evidence/versions-$package.jsonl"
+            bash .github/scripts/cache-retention-package-inventory.sh "$PACKAGE_OWNER" "$package" "$policy" \
+              > "$evidence/versions-$package.jsonl"
           done < .github/cache-retention-packages
           gh api --paginate "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
             --jq '.actions_caches[] | {id, key, ref, created_at, size_in_bytes}' > "$evidence/actions-caches.jsonl"
