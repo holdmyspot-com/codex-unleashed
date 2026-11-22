@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Subject: [PATCH] Verify RMCP OAuth authorization endpoint origin validation
+
+diff --git a/codex-rs/rmcp-client/src/oauth_client_registration_tests.rs b/codex-rs/rmcp-client/src/oauth_client_registration_tests.rs
+index a2c88e279beb839eea2a8a43d4d62962dde73dd6..e6d75fe0a7d2f13ad88d20bbc63f324373984541 100644
+--- a/codex-rs/rmcp-client/src/oauth_client_registration_tests.rs
++++ b/codex-rs/rmcp-client/src/oauth_client_registration_tests.rs
+@@ -276,6 +276,28 @@ fn issuerless_oauth_metadata_requires_one_endpoint_origin() -> Result<()> {
+     Ok(())
+ }
+ 
++#[test]
++fn oauth_authorization_endpoint_must_match_the_issuer_or_token_origin() -> Result<()> {
++    let mut metadata: AuthorizationMetadata = serde_json::from_value(json!({
++        "issuer": "https://login.example.com/tenant",
++        "authorization_endpoint": "https://login.example.com/authorize",
++        "token_endpoint": "https://tokens.example.net/token",
++    }))?;
++    validate_authorization_server_endpoints(&metadata)?;
++
++    metadata.authorization_endpoint = "https://tokens.example.net/authorize".to_string();
++    validate_authorization_server_endpoints(&metadata)?;
++
++    metadata.authorization_endpoint = "https://identity.example.org/authorize".to_string();
++    let error = validate_authorization_server_endpoints(&metadata)
++        .expect_err("the authorization endpoint must match one of the known origins");
++    assert_eq!(
++        error.to_string(),
++        "OAuth authorization endpoint origin does not match the authorization server origin without issuer-bound callbacks"
++    );
++    Ok(())
++}
++
+ #[test]
+ fn legacy_provider_exceptions_require_exact_issuer_and_endpoint_origins() -> Result<()> {
+     for (issuer, authorization_endpoint, token_endpoint, accepted) in [
