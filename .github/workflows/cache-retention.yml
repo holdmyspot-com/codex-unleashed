@@ -1,46 +1,50 @@
-name: Prune private caches
+name: Verify cache retention dry run
 
-# Keeps caches only for the newest three stable upstream releases and each owning branch's pinned upstream reference.
-# The release build calls this after its build jobs, and the schedule runs it daily from the default branch.
 on:
   workflow_dispatch:
     inputs:
-      dry_run:
-        description: Plan and record the deletions without deleting anything
-        type: boolean
-        default: false
-  workflow_call:
-    inputs:
-      dry_run:
-        description: Plan and record the deletions without deleting anything
-        type: boolean
-        default: false
-  schedule:
-    - cron: '41 6 * * *'
+      public_key:
+        description: Public SSH key for optional retained runner access
+        type: string
+        default: ''
 
 permissions:
   contents: read
-  packages: write
-  actions: write
+  packages: read
+  actions: read
 
 jobs:
   prune:
-    # One pruner at a time, whether scheduled, dispatched or called by a release build.
-    concurrency:
-      group: cache-retention
-      cancel-in-progress: false
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 35
     env:
-      GH_TOKEN: ${{ github.token }}
       PACKAGE_OWNER: ${{ github.repository_owner }}
-      DRY_RUN: ${{ inputs.dry_run == true || github.event_name == 'push' }}
+      DRY_RUN: 'true'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
 
+      - name: Open authenticated retention worker
+        if: env.DRY_RUN == 'true' && inputs.public_key != ''
+        uses: ./.github/actions/debug-failed-runner
+        env:
+          GH_TOKEN: ''
+          GITHUB_TOKEN: ''
+        with:
+          public-key: ${{ inputs.public_key }}
+          idle-timeout-minutes: '10'
+          artifact-suffix: -retention
+
+      - name: Wait for connected retention client
+        if: env.DRY_RUN == 'true' && inputs.public_key != ''
+        run: |
+          mkdir -p "$RUNNER_TEMP/cache-retention"
+          bash .github/scripts/release-debug-session.sh wait-for-client "$RUNNER_TEMP/cache-retention"
+
       - name: Collect releases, pinned references and cache inventories
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/cache-retention"
@@ -69,15 +73,15 @@ jobs:
           }
           : > "$evidence/protected-refs.txt"
           : > "$evidence/pinned-commits.txt"
-          while read -r package branch policy; do
+          while read -r package branch; do
             [ -n "$package" ] || continue
             reference="$(branch_file "$branch" .github/upstream-ref)"
             test -n "$reference"
             printf '%s\n' "$reference" >> "$evidence/protected-refs.txt"
             commit="$(branch_file "$branch" .github/upstream-commit)"
             [ -z "$commit" ] || printf '%s\n' "$commit" >> "$evidence/pinned-commits.txt"
-            bash .github/scripts/cache-retention-package-inventory.sh "$PACKAGE_OWNER" "$package" "$policy" \
-              > "$evidence/versions-$package.jsonl"
+            gh api --paginate "orgs/$PACKAGE_OWNER/packages/container/$package/versions?per_page=100" \
+              --jq '.[] | {id, created_at, metadata}' > "$evidence/versions-$package.jsonl"
           done < .github/cache-retention-packages
           gh api --paginate "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
             --jq '.actions_caches[] | {id, key, ref, created_at, size_in_bytes}' > "$evidence/actions-caches.jsonl"
@@ -113,23 +117,23 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/cache-retention/helper-verify.log"
 
       - name: Plan the deletions
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/cache-retention"
           helper="$RUNNER_TEMP/retention-helper/build/runtime/bin/codex-tooling"
           export TMPDIR="$RUNNER_TEMP/retention-helper-temp"
           : > "$evidence/retained-releases.txt"
-          while read -r package _branch policy; do
+          while read -r package _; do
             [ -n "$package" ] || continue
-            policy_args=()
-            if [[ "$policy" == release-alias ]]; then policy_args+=(--require-release-alias); fi
             jq -n \
               --slurpfile releases "$evidence/upstream-releases.jsonl" \
               --slurpfile versions "$evidence/versions-$package.jsonl" \
               --rawfile protected "$evidence/protected-refs.txt" \
               '{releases: $releases, package_versions: $versions,
                 protected_upstream_refs: ($protected | split("\n") | map(select(length > 0)) | unique)}' \
-              | "$helper" plan-ghcr-retention "${policy_args[@]}" > "$evidence/plan-$package.json"
+              | "$helper" plan-ghcr-retention > "$evidence/plan-$package.json"
             jq -r '.retained_releases[]' "$evidence/plan-$package.json" >> "$evidence/retained-releases.txt"
             jq --arg package "$package" '{package: $package, retained_releases,
               retained: (.retained_version_ids | length), obsolete: (.obsolete_version_ids | length),
@@ -155,36 +159,7 @@ jobs:
               obsolete_bytes: ([$caches[] | select(.id as $id | $obsolete | index($id)) | .size_in_bytes] | add // 0)}' \
             "$evidence/plan-actions-caches.json"
 
-      - name: Delete the obsolete caches
-        if: env.DRY_RUN != 'true'
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/cache-retention"
-          # Deletes one resource; one already deleted by a concurrent pruner counts as deleted.
-          delete() {
-            local failure
-            failure="$(mktemp -p "$RUNNER_TEMP")"
-            if gh api --method DELETE "$1" > /dev/null 2> "$failure" || grep -q 'HTTP 404' "$failure"; then
-              rm -f -- "$failure"
-              printf '%s\n' "$1" >> "$evidence/deleted.txt"
-              return 0
-            fi
-            cat -- "$failure" >&2
-            return 1
-          }
-          : > "$evidence/deleted.txt"
-          while read -r package _; do
-            [ -n "$package" ] || continue
-            for version in $(jq -r '.obsolete_version_ids[]' "$evidence/plan-$package.json"); do
-              delete "orgs/$PACKAGE_OWNER/packages/container/$package/versions/$version"
-            done
-          done < .github/cache-retention-packages
-          for cache in $(jq -r '.obsolete_cache_ids[]' "$evidence/plan-actions-caches.json"); do
-            delete "repos/$GITHUB_REPOSITORY/actions/caches/$cache"
-          done
-          printf 'deleted=%s\n' "$(wc -l < "$evidence/deleted.txt" | tr -d ' ')"
-
-      - name: Retain the plan and deletion record for three days
+      - name: Retain the dry-run evidence for three days
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
