@@ -166,6 +166,23 @@ public final class UpstreamAutoRelease
 				published.add(releaseVersion.parts);
 		}
 		String version = dotted(candidate.parts);
+		String forkTags = args.optional("--fork-tags");
+		if (forkTags != null)
+		{
+			String prefix = "rust-v" + version + "+";
+			for (JsonNode entry : readJsonArray(scope, Path.of(forkTags)))
+			{
+				if (!entry.isString())
+					throw new InvocationException("Expected a string in the fork tag list");
+				String name = entry.stringValue();
+				if (name.startsWith(prefix))
+				{
+					Version tagVersion = forkVersion(name);
+					if (tagVersion != null)
+						build = build.max(tagVersion.build.add(BigInteger.ONE));
+				}
+			}
+		}
 		String tag = "rust-v" + version + "+" + build;
 		String action = "release";
 		String reason = "Upstream " + candidate.tag + " is not released by the fork";
@@ -861,7 +878,7 @@ public final class UpstreamAutoRelease
 		{
 			Set<String> allowed = switch (arguments[0])
 			{
-				case "detect" -> Set.of("--upstream-releases", "--fork-releases", "--requested-tag");
+				case "detect" -> Set.of("--upstream-releases", "--fork-releases", "--fork-tags", "--requested-tag");
 				case "save-identity" -> Set.of("--identity", "--run-id", "--fork-commit", "--decision-output",
 					"--upstream-commit");
 				case "restore-identity" -> Set.of("--identity", "--run-id", "--fork-commit");
@@ -884,7 +901,10 @@ public final class UpstreamAutoRelease
 			}
 			Set<String> required = new HashSet<>(allowed);
 			if (arguments[0].equals("detect"))
+			{
+				required.remove("--fork-tags");
 				required.remove("--requested-tag");
+			}
 			if (arguments[0].equals("save-identity"))
 				required.remove("--upstream-commit");
 			if (arguments[0].equals("notes"))

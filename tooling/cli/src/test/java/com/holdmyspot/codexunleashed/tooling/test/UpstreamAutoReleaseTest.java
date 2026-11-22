@@ -136,6 +136,56 @@ public final class UpstreamAutoReleaseTest
 	}
 
 	/**
+	 * Existing refs reserve build numbers and a workflow retry keeps its original selection.
+	 * @throws IOException if the release fixtures cannot be accessed
+	 */
+	@Test
+	public void reservesOrphanTagsAndPreservesRetryIdentity() throws IOException
+	{
+		Path root = Files.createTempDirectory("upstream-auto-release-orphans-");
+		try
+		{
+			Path upstream = Files.writeString(root.resolve("upstream.json"), "[{\"tag_name\":\"rust-v0.167.0\"}]");
+			Path fork = Files.writeString(root.resolve("fork.json"), "[]");
+			Path tags = Files.writeString(root.resolve("tags.json"),
+				"[\"rust-v0.167.0+1\",\"rust-v0.167.0+3\",\"rust-v0.167.0+23-beta\",\"rust-v0.167.1+99\"]");
+			String[] detect = {"detect", "--upstream-releases", upstream.toString(), "--fork-releases", fork.toString(),
+				"--fork-tags", tags.toString()};
+			Result selected = invoke(detect);
+			requireThat(selected.status, "orphan_detection_status").isEqualTo(0);
+			requireThat(selected.output, "orphan_detection_action").contains("action=release");
+			requireThat(selected.output, "orphan_detection_tag").contains("tag=rust-v0.167.0+4");
+
+			Path decision = Files.writeString(root.resolve("decision.txt"), selected.output);
+			Path identity = root.resolve("identity.json");
+			String forkCommit = "a".repeat(40);
+			Result saved = invoke("save-identity", "--decision-output", decision.toString(), "--run-id", "123",
+				"--fork-commit", forkCommit, "--upstream-commit", "b".repeat(40), "--identity", identity.toString());
+			requireThat(saved.status, "orphan_identity_save_status").isEqualTo(0);
+
+			Files.writeString(tags, "[\"rust-v0.167.0+4\"]");
+			Files.writeString(fork, "[{\"tag_name\":\"rust-v0.167.0+4\",\"draft\":true}]");
+			Result restored = invoke("restore-identity", "--identity", identity.toString(), "--run-id", "123",
+				"--fork-commit", forkCommit);
+			requireThat(restored.status, "retry_restore_status").isEqualTo(0);
+			requireThat(restored.output, "retry_tag").contains("tag=rust-v0.167.0+4");
+
+			Files.writeString(fork, "[{\"tag_name\":\"rust-v0.167.0+6\",\"draft\":true}]");
+			Result draft = invoke(detect);
+			requireThat(draft.status, "tag_and_draft_status").isEqualTo(0);
+			requireThat(draft.output, "tag_and_draft_selection").contains("tag=rust-v0.167.0+7");
+			Files.writeString(fork, "[{\"tag_name\":\"rust-v0.167.0+6\",\"draft\":false}]");
+			Result published = invoke(detect);
+			requireThat(published.status, "tag_and_published_status").isEqualTo(0);
+			requireThat(published.output, "tag_and_published_action").contains("action=noop");
+		}
+		finally
+		{
+			deleteTree(root);
+		}
+	}
+
+	/**
 	 * Build selection and identity persistence retain decimal precision above primitive integer ranges.
 	 *
 	 * @throws IOException if the release fixtures cannot be accessed

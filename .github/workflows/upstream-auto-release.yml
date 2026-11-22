@@ -199,8 +199,10 @@ jobs:
             fi
           } | jq -s 'add' > "$work/upstream.json"
           gh_api --paginate "repos/$GITHUB_REPOSITORY/releases" | jq -s 'add' > "$work/fork.json"
+          gh_api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/rust-v" \
+            | jq 'map(.ref | ltrimstr("refs/tags/"))' > "$work/fork-tags.json"
           bash "$CODEX_TOOLING" upstream-auto-release detect --upstream-releases "$work/upstream.json" \
-            --fork-releases "$work/fork.json" --requested-tag "$REQUESTED_TAG" | tee "$RUNNER_TEMP/detection-output" -a "$GITHUB_OUTPUT"
+            --fork-releases "$work/fork.json" --fork-tags "$work/fork-tags.json" --requested-tag "$REQUESTED_TAG" | tee "$RUNNER_TEMP/detection-output" -a "$GITHUB_OUTPUT"
 
       - id: commit
         if: steps.detect.outputs.action == 'release'
