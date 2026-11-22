@@ -523,12 +523,10 @@ jobs:
 
   package:
     name: Package - ${{ matrix.target }}
-    needs: [detect, report]
-    # A live run builds the packages to publish; a dry run builds them only when package_dry_run asks, and uploads them as
-    # workflow artifacts without publishing.
-    # Without a status function, `if` implies success(), which also requires every gate behind `report` to have
-    # succeeded; skip_gates skips them, so the gate verdict is read from `report` instead.
-    if: ${{ !cancelled() && needs.report.result == 'success' && needs.report.outputs.passed == 'true' && (needs.detect.outputs.live == 'true' || inputs.package_dry_run == true) }}
+    needs: [detect, patch-check]
+    # The successful patch check also establishes that draft status allows a new release.
+    # Build workflow artifacts alongside the platform gates. Publish consumes both results.
+    if: ${{ !cancelled() && needs.detect.result == 'success' && needs.patch-check.result == 'success' && (needs.detect.outputs.live == 'true' || inputs.package_dry_run == true) }}
     runs-on: ${{ matrix.runner }}
     permissions:
       actions: read
@@ -1133,8 +1131,8 @@ jobs:
 
   publish:
     name: Publish the release
-    needs: [detect, package]
-    if: needs.detect.outputs.live == 'true'
+    needs: [detect, report, package]
+    if: ${{ !cancelled() && needs.detect.result == 'success' && needs.detect.outputs.live == 'true' && needs.report.result == 'success' && needs.report.outputs.passed == 'true' && needs.package.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     # One publisher per upstream version. A rerun of this job reuses the artifacts the package jobs built.
