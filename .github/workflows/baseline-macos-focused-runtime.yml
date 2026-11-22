@@ -86,7 +86,7 @@ jobs:
         with:
           toolchain: ${{ steps.upstream-rust.outputs.channel }}
 
-      - name: Run the two loopback integration tests
+      - name: Run the exact CP9 fixture tests
         working-directory: upstream/codex-rs
         run: |
           set -o pipefail

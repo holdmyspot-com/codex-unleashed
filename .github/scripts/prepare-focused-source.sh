@@ -5,7 +5,7 @@ set -euo pipefail
 fork="$1"
 source="$2"
 pin=086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a
-expected_tree=b6e02c525ee4d0ef552c249734e6423957afeaf4
+expected_tree=de260a6ece7030931e193343981b1f6e1add7d58
 
 actual_pin="$(git -C "$source" rev-parse HEAD)"
 if [[ "$actual_pin" != "$pin" ]]; then
