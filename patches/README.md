@@ -119,3 +119,4 @@ The release applies these patches in this order:
 107. [flaky-tests/synthetic-websocket-and-rmcp-checks.patch](holdmyspot-com/codex-unleashed/flaky-tests/synthetic-websocket-and-rmcp-checks.patch)
 108. [flaky-tests/synthetic-websocket-and-rmcp-integration.patch](holdmyspot-com/codex-unleashed/flaky-tests/synthetic-websocket-and-rmcp-integration.patch)
 109. [flaky-tests/websocket-probe-and-rmcp-http-boundary-fixtures.patch](holdmyspot-com/codex-unleashed/flaky-tests/websocket-probe-and-rmcp-http-boundary-fixtures.patch)
+110. [flaky-tests/rmcp-oauth-issuer-and-origin-fixtures.patch](holdmyspot-com/codex-unleashed/flaky-tests/rmcp-oauth-issuer-and-origin-fixtures.patch)

@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Subject: [PATCH] Test RMCP OAuth issuer and endpoint origin validation
+
+diff --git a/codex-rs/rmcp-client/src/oauth_client_registration_tests.rs b/codex-rs/rmcp-client/src/oauth_client_registration_tests.rs
+index ca334f346f43214c626a8d8e51ab0c8a875a7cf3..a2c88e279beb839eea2a8a43d4d62962dde73dd6 100644
+--- a/codex-rs/rmcp-client/src/oauth_client_registration_tests.rs
++++ b/codex-rs/rmcp-client/src/oauth_client_registration_tests.rs
+@@ -239,6 +239,43 @@ async fn registration_selection_preserves_dcr_capabilities_and_exact_redirects()
+     Ok(())
+ }
+ 
++#[test]
++fn issuer_bound_oauth_metadata_requires_an_explicit_issuer() -> Result<()> {
++    let mut metadata: AuthorizationMetadata = serde_json::from_value(json!({
++        "authorization_endpoint": "https://login.example.com/authorize",
++        "token_endpoint": "https://login.example.com/token",
++        "authorization_response_iss_parameter_supported": true,
++    }))?;
++
++    let error = validate_authorization_server_endpoints(&metadata)
++        .expect_err("issuer-bound callbacks require an issuer");
++    assert_eq!(
++        error.to_string(),
++        "OAuth issuer-bound callbacks require an authorization server issuer"
++    );
++
++    metadata.issuer = Some("https://login.example.com/tenant".to_string());
++    validate_authorization_server_endpoints(&metadata)
++}
++
++#[test]
++fn issuerless_oauth_metadata_requires_one_endpoint_origin() -> Result<()> {
++    let mut metadata: AuthorizationMetadata = serde_json::from_value(json!({
++        "authorization_endpoint": "https://login.example.com/authorize",
++        "token_endpoint": "https://login.example.com:443/token",
++    }))?;
++    validate_authorization_server_endpoints(&metadata)?;
++
++    metadata.token_endpoint = "https://login.example.com:8443/token".to_string();
++    let error = validate_authorization_server_endpoints(&metadata)
++        .expect_err("a different port changes the origin");
++    assert_eq!(
++        error.to_string(),
++        "OAuth token endpoint origin does not match the authorization server origin without issuer-bound callbacks"
++    );
++    Ok(())
++}
++
+ #[test]
+ fn legacy_provider_exceptions_require_exact_issuer_and_endpoint_origins() -> Result<()> {
+     for (issuer, authorization_endpoint, token_endpoint, accepted) in [
