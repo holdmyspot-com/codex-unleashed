@@ -178,6 +178,13 @@ public final class UpstreamAutoReleaseTest
 			Result published = invoke(detect);
 			requireThat(published.status, "tag_and_published_status").isEqualTo(0);
 			requireThat(published.output, "tag_and_published_action").contains("action=noop");
+			String[] rehearsalArgs = java.util.Arrays.copyOf(detect, detect.length + 2);
+			rehearsalArgs[detect.length] = "--draft-rehearsal";
+			rehearsalArgs[detect.length + 1] = "true";
+			Result rehearsal = invoke(rehearsalArgs);
+			requireThat(rehearsal.status, "historical_rehearsal_status").isEqualTo(0);
+			requireThat(rehearsal.output, "historical_rehearsal_action").contains("action=release");
+			requireThat(rehearsal.output, "historical_rehearsal_tag").contains("tag=rust-v0.167.0+7");
 		}
 		finally
 		{
@@ -423,6 +430,29 @@ public final class UpstreamAutoReleaseTest
 			Result rejected = invoke(incomplete);
 			requireThat(rejected.status, "incomplete_published_status").isEqualTo(1);
 			requireThat(rejected.diagnostics, "incomplete_published_diagnostic").contains("assets are incomplete");
+
+			String[] rehearsal = java.util.Arrays.copyOf(args, args.length + 2);
+			rehearsal[args.length] = "--draft-rehearsal";
+			rehearsal[args.length + 1] = "true";
+			Result publicConflict = invoke(rehearsal);
+			requireThat(publicConflict.status, "draft_public_conflict_status").isEqualTo(1);
+			requireThat(publicConflict.diagnostics, "draft_public_conflict_diagnostic").contains("already public");
+
+			Files.writeString(notes, "Draft notes\n");
+			Files.writeString(releases, "[]");
+			Result draftCreated = invoke(rehearsal);
+			requireThat(draftCreated.status, "draft_request_status").isEqualTo(0);
+			body = Files.readString(notes).replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+			Files.writeString(releases, "[{\"tag_name\":\"rust-v0.167.0+1\",\"target_commitish\":\"" + "a".repeat(40) +
+				"\",\"draft\":true,\"prerelease\":true,\"body\":\"" + body + "\",\"assets\":[]}]");
+
+			Result draftResumed = invoke(rehearsal);
+			requireThat(draftResumed.status, "draft_resume_status").isEqualTo(0);
+			requireThat(draftResumed.output, "draft_resume_phase").contains("phase=upload");
+			Result ordinary = invoke(args);
+			requireThat(ordinary.status, "ordinary_cannot_resume_rehearsal_status").isEqualTo(1);
+			requireThat(ordinary.diagnostics, "ordinary_cannot_resume_rehearsal_diagnostic").
+				contains("different publication request");
 		}
 		finally
 		{

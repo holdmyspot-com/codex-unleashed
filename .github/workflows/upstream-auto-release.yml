@@ -7,7 +7,8 @@ name: Automatic upstream release
 #
 # A dispatch with dry_run=true (the default) stops after the gates and publishes nothing: no tag, release, draft or
 # release asset. It builds no packages unless package_dry_run is set, which builds the selected targets' package archives
-# and installers into 3-day workflow artifacts only. skip_gates (dry runs only) skips the gate workflows so the package
+# and installers into 3-day workflow artifacts only. A manual draft rehearsal runs the strict gates and reads back and
+# installs the staged draft without publishing it. skip_gates (dry runs only) skips the gate workflows so the package
 # build can be rehearsed alone on cheaper runners. Enabling the schedule below is the owner's step at acceptance.
 #
 # Gate coverage: Linux, Windows and macOS tests (the macOS one is the Bazel suite), lints on three platforms and the
@@ -26,6 +27,10 @@ on:
         description: Detect, apply the patch queue and run every gate, but publish nothing
         type: boolean
         default: true
+      draft_rehearsal:
+        description: Stage and verify a GitHub draft on all six targets without publishing or marking it latest
+        type: boolean
+        default: false
       package_dry_run:
         description: In a dry run, also build the package archives and installers (uploaded as workflow artifacts only)
         type: boolean
@@ -53,7 +58,7 @@ on:
 # This reuses the verified package artifacts for three days. A full rerun restores the original identity, but rebuilds
 # packages and is not artifact-reusing recovery. A fresh dispatch performs normal release selection.
 concurrency:
-  group: upstream-auto-release-${{ inputs.upstream_tag || 'latest' }}-${{ (github.event_name == 'schedule' || !inputs.dry_run) && 'live' || 'dry' }}
+  group: upstream-auto-release-${{ inputs.upstream_tag || 'latest' }}-${{ (github.event_name == 'schedule' || !inputs.dry_run || inputs.draft_rehearsal) && 'live' || 'dry' }}
   cancel-in-progress: false
 
 permissions:
@@ -90,7 +95,9 @@ jobs:
       - name: Verify release helper behavior
         run: |
           set -euo pipefail
-          node --test .github/scripts/test-codex-version-banner.mjs .github/scripts/test-verify-local-npm.mjs .github/scripts/test-release-publication.mjs
+          node --test .github/scripts/test-codex-version-banner.mjs .github/scripts/test-verify-local-npm.mjs \
+            .github/scripts/test-release-publication.mjs .github/scripts/test-readback-draft-assets.mjs \
+            .github/scripts/test-draft-rehearsal-completion.mjs
 
   detect:
     name: Detect the upstream release
@@ -119,6 +126,7 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           DRY_RUN: ${{ inputs.dry_run }}
+          DRAFT_REHEARSAL: ${{ inputs.draft_rehearsal }}
           SKIP_GATES: ${{ inputs.skip_gates }}
           PACKAGE_TARGETS: ${{ inputs.package_targets }}
           PACKAGE_DRY_RUN: ${{ inputs.package_dry_run }}
@@ -126,11 +134,15 @@ jobs:
         run: |
           set -euo pipefail
           live=false
-          if [[ "$EVENT" == schedule || "$DRY_RUN" == false ]]; then
+          if [[ "$DRAFT_REHEARSAL" == true && "$DRY_RUN" != true ]]; then
+            printf '::error::draft_rehearsal requires dry_run=true\n'
+            exit 1
+          fi
+          if [[ "$EVENT" == schedule || "$DRY_RUN" == false || "$DRAFT_REHEARSAL" == true ]]; then
             live=true
           fi
           if [[ "$live" == true && "$SKIP_GATES" == true ]]; then
-            printf '::error::skip_gates is allowed only with dry_run=true\n'
+            printf '::error::skip_gates is allowed only in publication-free dry runs\n'
             exit 1
           fi
           all='[{"runner":"ubuntu-24.04","target":"x86_64-unknown-linux-musl"},
@@ -167,6 +179,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REQUESTED_TAG: ${{ inputs.upstream_tag }}
+          DRAFT_REHEARSAL: ${{ inputs.draft_rehearsal }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_RUN_ATTEMPT" != 1 ]]; then
@@ -201,8 +214,11 @@ jobs:
           gh_api --paginate "repos/$GITHUB_REPOSITORY/releases" | jq -s 'add' > "$work/fork.json"
           gh_api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/rust-v" \
             | jq 'map(.ref | ltrimstr("refs/tags/"))' > "$work/fork-tags.json"
+          extra=()
+          if [[ "$DRAFT_REHEARSAL" == true ]]; then extra=(--draft-rehearsal true); fi
           bash "$CODEX_TOOLING" upstream-auto-release detect --upstream-releases "$work/upstream.json" \
-            --fork-releases "$work/fork.json" --fork-tags "$work/fork-tags.json" --requested-tag "$REQUESTED_TAG" | tee "$RUNNER_TEMP/detection-output" -a "$GITHUB_OUTPUT"
+            --fork-releases "$work/fork.json" --fork-tags "$work/fork-tags.json" --requested-tag "$REQUESTED_TAG" \
+            "${extra[@]}" | tee "$RUNNER_TEMP/detection-output" -a "$GITHUB_OUTPUT"
 
       - id: commit
         if: steps.detect.outputs.action == 'release'
@@ -259,19 +275,60 @@ jobs:
           UPSTREAM_TAG: ${{ steps.detect.outputs.upstream_tag }}
           COMMIT: ${{ steps.commit.outputs.upstream_commit }}
           LIVE: ${{ steps.mode.outputs.live }}
+          DRAFT_REHEARSAL: ${{ inputs.draft_rehearsal }}
         run: |
           {
             printf "## Detection\n\n- Decision: **%s**: %s\n- Upstream release: \`%s\`\n" "$ACTION" "$REASON" "$UPSTREAM_TAG"
             if [[ "$ACTION" == release ]]; then
+              publication='dry run, nothing is published'
+              if [[ "$DRAFT_REHEARSAL" == true ]]; then
+                publication='draft rehearsal, nothing is public'
+              elif [[ "$LIVE" == true ]]; then
+                publication=live
+              fi
               printf -- "- Upstream commit: \`%s\`\n- Fork release tag: \`%s\`\n- Publishing: %s\n" "$COMMIT" "$TAG" \
-                "$([[ "$LIVE" == true ]] && echo live || echo 'dry run, nothing is published')"
+                "$publication"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+  draft-status:
+    name: Check for a completed identical draft rehearsal
+    needs: detect
+    if: inputs.draft_rehearsal && needs.detect.outputs.action == 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    outputs:
+      action: ${{ steps.lookup.outputs.action }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - id: lookup
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+          UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
+        run: |
+          set -euo pipefail
+          retained="$(node .github/scripts/draft-rehearsal-completion.mjs lookup)"
+          if [[ -n "$retained" ]]; then
+            printf 'action=noop\n' >> "$GITHUB_OUTPUT"
+            printf '## Draft rehearsal no-op\n\nVerified draft %s is retained with six successful native installs.\n' \
+              "$retained" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf 'action=release\n' >> "$GITHUB_OUTPUT"
+          fi
+
   patch-check:
     name: Apply the patch queue
-    needs: detect
-    if: needs.detect.outputs.action == 'release'
+    needs: [detect, draft-status]
+    if: >-
+      ${{ !cancelled() && needs.detect.result == 'success' && needs.detect.outputs.action == 'release' &&
+          ((inputs.draft_rehearsal != true && needs.draft-status.result == 'skipped') ||
+            (needs.draft-status.result == 'success' && needs.draft-status.outputs.action == 'release')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -426,8 +483,8 @@ jobs:
 
   report:
     name: Gate report
-    needs: [detect, patch-check, platform-lints, macos-lints, windows-lints, linux-tests, windows-tests, macos-nextest, macos-tests, release-builds]
-    if: ${{ !cancelled() && needs.detect.outputs.action == 'release' }}
+    needs: [detect, draft-status, patch-check, platform-lints, macos-lints, windows-lints, linux-tests, windows-tests, macos-nextest, macos-tests, release-builds]
+    if: ${{ !cancelled() && needs.detect.outputs.action == 'release' && needs.draft-status.outputs.action != 'noop' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -442,13 +499,16 @@ jobs:
         env:
           NEEDS: ${{ toJSON(needs) }}
           SKIP_GATES: ${{ inputs.skip_gates }}
+          DRAFT_REHEARSAL: ${{ inputs.draft_rehearsal }}
           UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
           LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           # skip_gates (dry runs only, enforced in detect) deliberately skips the gate workflows.
-          failing="$(jq -r --arg skip "$SKIP_GATES" 'to_entries | map(select(.key != "detect" and .value.result != "success"
-            and (($skip == "true" and .value.result == "skipped") | not)) | "\(.key) (\(.value.result))") | join(", ")' <<< "$NEEDS")"
+          failing="$(jq -r --arg skip "$SKIP_GATES" --arg draft "$DRAFT_REHEARSAL" '
+            to_entries | map(select(.key != "detect" and .value.result != "success"
+              and (($skip == "true" and .value.result == "skipped") | not)
+              and (($draft != "true" and .key == "draft-status" and .value.result == "skipped") | not)) | "\(.key) (\(.value.result))") | join(", ")' <<< "$NEEDS")"
           if [[ -n "$failing" ]]; then
             bash "$CODEX_TOOLING" upstream-auto-release summary --upstream-tag "$UPSTREAM_TAG" \
               --failing "gate $failing" --log-url "$LOG_URL" >> "$GITHUB_STEP_SUMMARY"
@@ -459,7 +519,7 @@ jobs:
           printf 'passed=true\n' >> "$GITHUB_OUTPUT"
           printf "## Gates passed\n\nEvery gate passed for \`%s\`.\n" "$UPSTREAM_TAG" >> "$GITHUB_STEP_SUMMARY"
 
-  # Everything below runs only for a live run (dry_run=false, or a scheduled run) whose gates all passed.
+  # Publication and draft rehearsal both require the strict gates and six packages.
 
   package:
     name: Package - ${{ matrix.target }}
@@ -1074,7 +1134,7 @@ jobs:
   publish:
     name: Publish the release
     needs: [detect, package]
-    if: needs.detect.outputs.live == 'true' && inputs.dry_run != true
+    if: needs.detect.outputs.live == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     # One publisher per upstream version. A rerun of this job reuses the artifacts the package jobs built.
@@ -1089,6 +1149,9 @@ jobs:
       action: ${{ steps.recheck.outputs.action }}
       tag: ${{ steps.recheck.outputs.tag }}
       build: ${{ needs.detect.outputs.build }}
+      draft_release_id: ${{ steps.draft-readback.outputs.release_id }}
+      draft_manifest_sha256: ${{ steps.draft-readback.outputs.manifest_sha256 }}
+      draft_sums_sha256: ${{ steps.draft-readback.outputs.sums_sha256 }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -1126,6 +1189,7 @@ jobs:
         id: recheck
         env:
           GH_TOKEN: ${{ github.token }}
+          DRAFT_REHEARSAL: ${{ inputs.draft_rehearsal }}
           TAG: ${{ needs.detect.outputs.tag }}
           UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
           UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
@@ -1152,10 +1216,12 @@ jobs:
           git ls-remote --tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" \
             "refs/tags/$TAG" "refs/tags/$TAG^{}" > "$work/tag-refs"
           tag_commit="$(awk '$2 ~ /\^\{\}$/ {peeled=$1; next} {direct=$1} END {print peeled ? peeled : direct}' "$work/tag-refs")"
+          extra=()
+          if [[ "$DRAFT_REHEARSAL" == true ]]; then extra=(--draft-rehearsal true); fi
           bash "$CODEX_TOOLING" upstream-auto-release publication --fork-releases "$work/fork.json" \
             --tag "$TAG" --fork-commit "$GITHUB_SHA" --upstream-tag "$UPSTREAM_TAG" \
             --upstream-commit "$UPSTREAM_COMMIT" --tag-commit "$tag_commit" --assets-directory "$RUNNER_TEMP/assets" \
-            --notes "$RUNNER_TEMP/notes.md" | tee -a "$GITHUB_OUTPUT"
+            --notes "$RUNNER_TEMP/notes.md" "${extra[@]}" | tee -a "$GITHUB_OUTPUT"
 
       - name: Attest build provenance
         if: steps.recheck.outputs.phase == 'create' || steps.recheck.outputs.phase == 'upload'
@@ -1164,10 +1230,13 @@ jobs:
           subject-path: ${{ runner.temp }}/assets/*
 
       # Publish only the original request. A retry of a published request proceeds directly to installation.
-      - name: Publish the release as a prerelease
+      - name: Stage the release assets
         if: steps.recheck.outputs.phase == 'create' || steps.recheck.outputs.phase == 'upload'
         env:
           GH_TOKEN: ${{ github.token }}
+          DRAFT_REHEARSAL: ${{ inputs.draft_rehearsal }}
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+          UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
           TAG: ${{ needs.detect.outputs.tag }}
           NAME: ${{ needs.detect.outputs.release_name }}
           PHASE: ${{ steps.recheck.outputs.phase }}
@@ -1175,6 +1244,9 @@ jobs:
           set -euo pipefail
           assets="$RUNNER_TEMP/assets"
           if [[ "$PHASE" == create ]]; then
+            if [[ "$DRAFT_REHEARSAL" == true ]]; then
+              node .github/scripts/draft-rehearsal-completion.mjs start "$RUNNER_TEMP/notes.md"
+            fi
             gh release create "$TAG" -R "$GITHUB_REPOSITORY" --draft --prerelease --target "$GITHUB_SHA" \
               --title "Codex Unleashed $NAME" --notes-file "$RUNNER_TEMP/notes.md"
           fi
@@ -1182,15 +1254,54 @@ jobs:
           for asset in "$assets"/*; do
             gh release upload "$TAG" -R "$GITHUB_REPOSITORY" "$asset" --clobber
           done
+
+      - name: Publish the staged release as a prerelease
+        if: inputs.draft_rehearsal != true && (steps.recheck.outputs.phase == 'create' || steps.recheck.outputs.phase == 'upload')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.recheck.outputs.tag }}
+        run: |
+          set -euo pipefail
           gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=false --prerelease \
             --notes-file "$RUNNER_TEMP/notes.md"
+
+      - name: Read back the staged draft from GitHub
+        id: draft-readback
+        if: inputs.draft_rehearsal && steps.recheck.outputs.action == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.recheck.outputs.tag }}
+        run: |
+          set -euo pipefail
+          release_id="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" |
+            jq -ser --arg tag "$TAG" 'add | map(select(.draft == true and .tag_name == $tag)) |
+              if length == 1 then .[0].id else error("Expected exactly one draft for the resolved tag") end')"
+          node .github/scripts/readback-draft-assets.mjs --repo "$GITHUB_REPOSITORY" \
+            --release-id "$release_id" --tag "$TAG" --expected-assets "$RUNNER_TEMP/assets" \
+            --output "$RUNNER_TEMP/draft-readback"
+          rm -rf -- "${RUNNER_TEMP:?}/assets"
+          manifest_sha256="$(sha256sum "$RUNNER_TEMP/draft-readback/release-manifest.json" | cut -d ' ' -f 1)"
+          sums_sha256="$(sha256sum "$RUNNER_TEMP/draft-readback/SHA256SUMS" | cut -d ' ' -f 1)"
+          printf 'release_id=%s\nmanifest_sha256=%s\nsums_sha256=%s\n' \
+            "$release_id" "$manifest_sha256" "$sums_sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Hand off assets retrieved from the draft
+        if: inputs.draft_rehearsal && steps.recheck.outputs.action == 'release'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: draft-release-readback
+          path: ${{ runner.temp }}/draft-readback/*
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: error
+          overwrite: true
 
   verify-install:
     name: Installer and npm consumer - ${{ matrix.target }}
     needs: [detect, publish, verify-release]
     if: needs.publish.outputs.action == 'release'
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ inputs.draft_rehearsal && 40 || 30 }}
     strategy:
       fail-fast: false
       matrix:
@@ -1205,6 +1316,7 @@ jobs:
       RELEASE_BASE: https://github.com/${{ github.repository }}/releases/download
       TAG_URL: rust-v${{ needs.detect.outputs.version }}%2B${{ needs.publish.outputs.build }}
       CODEX_RELEASE: ${{ needs.detect.outputs.version }}+${{ needs.publish.outputs.build }}
+      TARGET: ${{ matrix.target }}
       CODEX_NON_INTERACTIVE: "1"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -1222,7 +1334,7 @@ jobs:
           path: ${{ runner.temp }}/npm-release-archives
 
       - name: Install with the one-line command on Linux or macOS
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && inputs.draft_rehearsal != true
         run: |
           set -euo pipefail
           export CODEX_INSTALL_DIR="$RUNNER_TEMP/codex-bin"
@@ -1231,20 +1343,57 @@ jobs:
           node .github/scripts/codex-version-banner.mjs "$CODEX_RELEASE" < "$RUNNER_TEMP/version.txt"
 
       - name: Install with the one-line command on Windows
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && inputs.draft_rehearsal != true
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $env:CODEX_INSTALL_DIR = Join-Path $env:RUNNER_TEMP "codex-bin-$([guid]::NewGuid())"
           powershell -ExecutionPolicy ByPass -c "irm $env:RELEASE_BASE/$env:TAG_URL/install.ps1 | iex"
           if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit code $LASTEXITCODE" }
-          $codex = Get-ChildItem -Path "$env:LOCALAPPDATA", "$HOME\.codex" -Recurse -Filter codex.exe -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-          if ($null -eq $codex) { throw 'codex.exe was not installed' }
-          $version = & $codex.FullName --version
+          $codex = Join-Path $env:CODEX_INSTALL_DIR 'codex.exe'
+          if (-not (Test-Path -LiteralPath $codex -PathType Leaf)) { throw "Installer did not create $codex" }
+          $version = & $codex --version
           if ($LASTEXITCODE -ne 0) { throw "Installed CLI --version failed with exit code $LASTEXITCODE" }
           Write-Output $version
           ($version -join "`n") | node .github/scripts/codex-version-banner.mjs $env:CODEX_RELEASE
           if ($LASTEXITCODE -ne 0) { throw "Unexpected version: $version" }
+
+      - name: Obtain verified draft installer and app-server assets
+        if: inputs.draft_rehearsal
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-draft-install-assets
+          path: ${{ runner.temp }}/npm-release-archives
+
+      - name: Install with the shipped draft installer through loopback
+        if: inputs.draft_rehearsal
+        shell: bash
+        run: |
+          set -euo pipefail
+          native_temp="$(cd "$RUNNER_TEMP" && pwd -P)"
+          release="$native_temp/npm-release-archives"
+          source_root="$(mktemp -d "$native_temp/draft-installer-source.XXXXXX")"
+          trap 'rm -rf -- "$source_root"' EXIT
+          mkdir -p "$source_root/scripts/install"
+          cp "$release/install.sh" "$release/install.ps1" "$source_root/scripts/install/"
+          node .github/scripts/verify-voice-installer.mjs --upstream-root "$source_root" \
+            --assets "$release" --target "$TARGET" --package-version "$CODEX_RELEASE" \
+            --scratch-root "$native_temp" \
+            --installed-package-output "$native_temp/installed draft installer package $TARGET" \
+            --evidence-dir "$native_temp/draft-installer-evidence"
+
+      - name: Install and run the draft app-server package
+        if: inputs.draft_rehearsal
+        shell: bash
+        run: |
+          set -euo pipefail
+          native_temp="$(cd "$RUNNER_TEMP" && pwd -P)"
+          release="$native_temp/npm-release-archives"
+          node .github/scripts/verify-app-server-package.mjs \
+            --archive "$release/codex-app-server-package-$TARGET.tar.gz" \
+            --sums "$release/SHA256SUMS" --target "$TARGET" --package-version "$CODEX_RELEASE" \
+            --legal-source "$GITHUB_WORKSPACE" --install-root "$native_temp/installed draft app-server $TARGET" \
+            --evidence-dir "$native_temp/draft-app-server-evidence"
 
       - name: Install the exact npm release from an isolated local registry
         shell: bash
@@ -1284,15 +1433,21 @@ jobs:
           name: npm-consumer-${{ matrix.target }}
           path: |
             ${{ runner.temp }}/npm-evidence
+            ${{ runner.temp }}/draft-installer-evidence
+            ${{ runner.temp }}/draft-app-server-evidence
             ${{ runner.temp }}/npm-release-archives/release-manifest.json
             ${{ runner.temp }}/npm-release-archives/SHA256SUMS
           retention-days: 3
           if-no-files-found: warn
+          overwrite: ${{ inputs.draft_rehearsal == true }}
 
       - name: Remove the downloaded npm inputs
         if: always()
         shell: bash
-        run: rm -rf -- "$RUNNER_TEMP/npm-release-archives" "$RUNNER_TEMP/npm-evidence"
+        run: |
+          rm -rf -- "$RUNNER_TEMP/npm-release-archives" "$RUNNER_TEMP/npm-evidence" \
+            "$RUNNER_TEMP/draft-installer-evidence" "$RUNNER_TEMP/draft-app-server-evidence" \
+            "$RUNNER_TEMP/installed draft installer package $TARGET"
 
   verify-release:
     name: Independently verify published assets and source
@@ -1309,7 +1464,15 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-tooling
 
-      - name: Download and authenticate the published manifest
+      - name: Obtain assets retrieved from the draft
+        if: inputs.draft_rehearsal
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: draft-release-readback
+          path: ${{ runner.temp }}/verified-assets
+
+      - name: Download the published assets
+        if: inputs.draft_rehearsal != true
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.publish.outputs.tag }}
@@ -1317,6 +1480,12 @@ jobs:
           set -euo pipefail
           mkdir "$RUNNER_TEMP/verified-assets"
           gh release download "$TAG" -R holdmyspot-com/codex-unleashed --dir "$RUNNER_TEMP/verified-assets"
+
+      - name: Authenticate the release manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
           gh attestation verify "$RUNNER_TEMP/verified-assets/release-manifest.json" \
             --repo holdmyspot-com/codex-unleashed \
             --signer-workflow holdmyspot-com/codex-unleashed/.github/workflows/upstream-auto-release.yml
@@ -1363,15 +1532,58 @@ jobs:
           compression-level: 0
           retention-days: 3
           if-no-files-found: error
+          overwrite: ${{ inputs.draft_rehearsal == true }}
+
+      - name: Hand off verified draft installers and app-server archives
+        if: inputs.draft_rehearsal
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: verified-draft-install-assets
+          path: |
+            ${{ runner.temp }}/verified-assets/install.sh
+            ${{ runner.temp }}/verified-assets/install.ps1
+            ${{ runner.temp }}/verified-assets/codex-app-server-package-*.tar.gz
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: error
+          overwrite: true
 
       - name: Remove independent verification inputs
         if: always()
         run: rm -rf -- "$RUNNER_TEMP/verified-assets" "$RUNNER_TEMP/verified-fork" "$RUNNER_TEMP/verified-source"
 
+  complete-draft:
+    name: Record draft rehearsal completion
+    needs: [detect, publish, verify-release, verify-install]
+    if: inputs.draft_rehearsal && needs.publish.outputs.action == 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Record the verified six-host draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.publish.outputs.tag }}
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+          UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
+          DRAFT_RELEASE_ID: ${{ needs.publish.outputs.draft_release_id }}
+          DRAFT_MANIFEST_SHA: ${{ needs.publish.outputs.draft_manifest_sha256 }}
+          DRAFT_SUMS_SHA: ${{ needs.publish.outputs.draft_sums_sha256 }}
+        run: |
+          set -euo pipefail
+          node .github/scripts/draft-rehearsal-completion.mjs complete
+          printf '## Draft rehearsal complete\n\nDraft %s passed verification on all six targets.\n' \
+            "$TAG" >> "$GITHUB_STEP_SUMMARY"
+
   mark-latest:
     name: Mark the release latest
     needs: [detect, publish, verify-install, verify-release]
-    if: needs.publish.outputs.action == 'release'
+    if: inputs.draft_rehearsal != true && needs.publish.outputs.action == 'release'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

@@ -131,6 +131,7 @@ public final class UpstreamAutoRelease
 		JsonNode upstream = readJsonArray(scope, args.path("--upstream-releases"));
 		JsonNode fork = readJsonArray(scope, args.path("--fork-releases"));
 		String requested = args.optional("--requested-tag");
+		boolean draftRehearsal = "true".equals(args.optional("--draft-rehearsal"));
 		List<Version> stable = new ArrayList<>();
 		for (JsonNode release : upstream)
 		{
@@ -186,7 +187,9 @@ public final class UpstreamAutoRelease
 		String tag = "rust-v" + version + "+" + build;
 		String action = "release";
 		String reason = "Upstream " + candidate.tag + " is not released by the fork";
-		if (published.stream().anyMatch(candidate.parts::equals))
+		if (draftRehearsal)
+			reason = "Draft rehearsal for upstream " + candidate.tag;
+		else if (published.stream().anyMatch(candidate.parts::equals))
 		{
 			action = "noop";
 			reason = "Upstream " + candidate.tag + " is already released by the fork";
@@ -395,6 +398,7 @@ public final class UpstreamAutoRelease
 		if (!tagCommit.isEmpty() && !tagCommit.equals(forkCommit))
 			throw new InvocationException(tag + " targets " + tagCommit + ", not the original fork commit " + forkCommit);
 		JsonNode releases = readJsonArray(scope, args.path("--fork-releases"));
+		boolean draftRehearsal = "true".equals(args.optional("--draft-rehearsal"));
 		boolean otherPublished = false;
 		List<JsonNode> matches = new ArrayList<>();
 		for (JsonNode release : releases)
@@ -403,7 +407,8 @@ public final class UpstreamAutoRelease
 			Version releaseVersion = forkVersion(releaseTag);
 			if (releaseTag.equals(tag))
 				matches.add(release);
-			else if (!bool(release, "draft", false) && releaseVersion != null && releaseVersion.parts.equals(version.parts))
+			else if (!draftRehearsal && !bool(release, "draft", false) && releaseVersion != null &&
+				releaseVersion.parts.equals(version.parts))
 				otherPublished = true;
 		}
 		if (matches.size() > 1)
@@ -413,7 +418,10 @@ public final class UpstreamAutoRelease
 		if (!matches.isEmpty())
 		{
 			JsonNode release = matches.getFirst();
-			String marker = publicationMarker(scope, tag, forkCommit, upstreamTag, upstreamCommit, digests);
+			if (draftRehearsal && !bool(release, "draft", false))
+				throw new ReleaseFailure(tag + " is already public; refusing draft rehearsal");
+			String marker = publicationMarker(scope, tag, forkCommit, upstreamTag, upstreamCommit, digests,
+				draftRehearsal);
 			String body = text(release, "body");
 			if (!forkCommit.equals(text(release, "target_commitish")) || body == null || !body.contains(marker))
 				throw new ReleaseFailure(tag + " belongs to a different publication request; retry its original workflow run");
@@ -473,7 +481,8 @@ public final class UpstreamAutoRelease
 			action = "release";
 		}
 		Path notes = args.path("--notes");
-		String marker = publicationMarker(scope, tag, forkCommit, upstreamTag, upstreamCommit, digests);
+		String marker = publicationMarker(scope, tag, forkCommit, upstreamTag, upstreamCommit, digests,
+			draftRehearsal);
 		Files.writeString(notes, "\n" + marker + "\n", StandardCharsets.UTF_8,
 			java.nio.file.StandardOpenOption.APPEND);
 		writeFields(out, Map.of("action", action, "phase", phase, "tag", tag), List.of("action", "phase", "tag"));
@@ -488,10 +497,11 @@ public final class UpstreamAutoRelease
 	 * @param upstreamTag operation input
 	 * @param upstreamCommit operation input
 	 * @param digests operation input
+	 * @param draftRehearsal whether the request must remain a draft
 	 * @return operation result
 	 */
 	private static String publicationMarker(ToolingScope scope, String tag, String forkCommit, String upstreamTag,
-		String upstreamCommit, Map<String, String> digests)
+		String upstreamCommit, Map<String, String> digests, boolean draftRehearsal)
 	{
 		Map<String, String> sortedDigests = new TreeMap<>(CODE_POINT_ORDER);
 		sortedDigests.putAll(digests);
@@ -501,6 +511,8 @@ public final class UpstreamAutoRelease
 		request.put("upstream_tag", upstreamTag);
 		request.put("upstream_commit", upstreamCommit);
 		request.put("asset_digests", sortedDigests);
+		if (draftRehearsal)
+			request.put("draft_rehearsal", true);
 		DefaultPrettyPrinter printer = new DefaultPrettyPrinter(Separators.createDefaultInstance().
 			withObjectNameValueSpacing(Separators.Spacing.AFTER).
 			withObjectEntrySpacing(Separators.Spacing.AFTER).
@@ -878,12 +890,13 @@ public final class UpstreamAutoRelease
 		{
 			Set<String> allowed = switch (arguments[0])
 			{
-				case "detect" -> Set.of("--upstream-releases", "--fork-releases", "--fork-tags", "--requested-tag");
+				case "detect" -> Set.of("--upstream-releases", "--fork-releases", "--fork-tags", "--requested-tag",
+					"--draft-rehearsal");
 				case "save-identity" -> Set.of("--identity", "--run-id", "--fork-commit", "--decision-output",
 					"--upstream-commit");
 				case "restore-identity" -> Set.of("--identity", "--run-id", "--fork-commit");
 				case "publication" -> Set.of("--fork-releases", "--tag", "--fork-commit", "--upstream-tag",
-					"--upstream-commit", "--tag-commit", "--assets-directory", "--notes");
+					"--upstream-commit", "--tag-commit", "--assets-directory", "--notes", "--draft-rehearsal");
 				case "patches" -> Set.of("--readme");
 				case "notes" -> Set.of("--version", "--build", "--upstream-tag", "--upstream-commit",
 					"--fork-commit", "--readme", "--changelog");
@@ -900,6 +913,9 @@ public final class UpstreamAutoRelease
 					throw new InvocationException("Invalid or duplicate option: " + key);
 			}
 			Set<String> required = new HashSet<>(allowed);
+			required.remove("--draft-rehearsal");
+			if (values.containsKey("--draft-rehearsal") && !"true".equals(values.get("--draft-rehearsal")))
+				throw new InvocationException("--draft-rehearsal requires true");
 			if (arguments[0].equals("detect"))
 			{
 				required.remove("--fork-tags");
