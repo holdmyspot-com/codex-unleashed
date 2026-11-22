@@ -116,3 +116,4 @@ The release applies these patches in this order:
 104. [release-reproduction/reuse-verified-package-executables.patch](holdmyspot-com/codex-unleashed/release-reproduction/reuse-verified-package-executables.patch)
 105. [flaky-tests/windows-prompt-prefix-home-normalization.patch](holdmyspot-com/codex-unleashed/flaky-tests/windows-prompt-prefix-home-normalization.patch)
 106. [release-reproduction/windows-arm64-ring-pathmap.patch](holdmyspot-com/codex-unleashed/release-reproduction/windows-arm64-ring-pathmap.patch)
+107. [flaky-tests/synthetic-websocket-and-rmcp-checks.patch](holdmyspot-com/codex-unleashed/flaky-tests/synthetic-websocket-and-rmcp-checks.patch)
