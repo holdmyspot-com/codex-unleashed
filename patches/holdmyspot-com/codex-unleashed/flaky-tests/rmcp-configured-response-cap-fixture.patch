@@ -1,0 +1,123 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Subject: [PATCH] Verify the configured RMCP response cap through the adapter
+
+diff --git a/codex-rs/rmcp-client/src/http_client_adapter_tests.rs b/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
+index 1eeed11a3c7764f6d394f457e5d96ba0fb24ec32..6194b949fce883b8ddff7ec5006ee2612c16f136 100644
+--- a/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
++++ b/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
+@@ -1,20 +1,33 @@
+ use std::io::ErrorKind;
++use std::sync::Arc;
+ 
++use codex_exec_server::ExecServerError;
++use codex_exec_server::HttpClient;
+ use codex_exec_server::HttpRedirectPolicy;
++use codex_exec_server::HttpRequestParams;
++use codex_exec_server::HttpRequestResponse;
+ use codex_exec_server::HttpResponseBodyStream;
++use futures::future::BoxFuture;
+ use http::HeaderMap;
++use http::HeaderName;
+ use http::HeaderValue;
+ use http::header::AUTHORIZATION;
+ use pretty_assertions::assert_eq;
++use rmcp::model::ProtocolVersion;
++use rmcp::transport::common::http_header::HEADER_MCP_PROTOCOL_VERSION;
++use rmcp::transport::streamable_http_client::StreamableHttpClient;
+ use rmcp::transport::streamable_http_client::StreamableHttpError;
++use serde_json::json;
+ 
+ use super::HttpHeader;
+ use super::SseEventSizeLimit;
++use super::StreamableHttpClientAdapter;
+ use super::StreamableHttpClientAdapterError;
+ use super::StreamableHttpRedirectMode;
+ use super::collect_body;
+ use super::mcp_redirect_policy;
+ use super::protocol_headers;
++use crate::bounded_stdio_transport::MAX_MCP_STDIO_LINE_BYTES;
+ 
+ #[tokio::test]
+ async fn collect_body_rejects_one_byte_beyond_the_limit() {
+@@ -37,6 +50,80 @@ async fn collect_body_rejects_one_byte_beyond_the_limit() {
+     ));
+ }
+ 
++struct InMemoryToolCatalog;
++
++impl HttpClient for InMemoryToolCatalog {
++    fn http_request(
++        &self,
++        _params: HttpRequestParams,
++    ) -> BoxFuture<'_, Result<HttpRequestResponse, ExecServerError>> {
++        panic!("the MCP adapter must request a streaming response");
++    }
++
++    fn http_request_stream(
++        &self,
++        _params: HttpRequestParams,
++    ) -> BoxFuture<'_, Result<(HttpRequestResponse, HttpResponseBodyStream), ExecServerError>> {
++        Box::pin(async {
++            let mut body =
++                br#"{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","tools":[]}}"#
++                    .to_vec();
++            body.resize(MAX_MCP_STDIO_LINE_BYTES + 1, b' ');
++            let response = HttpRequestResponse {
++                status: 200,
++                headers: vec![HttpHeader {
++                    name: "content-type".to_string(),
++                    value: "application/json".to_string(),
++                    value_env_var: None,
++                }],
++                body: Vec::new().into(),
++            };
++            Ok((response, HttpResponseBodyStream::from_chunks(vec![body])))
++        })
++    }
++}
++
++#[tokio::test]
++async fn modern_tool_catalog_applies_configured_response_cap() -> anyhow::Result<()> {
++    let client = StreamableHttpClientAdapter::new(
++        Arc::new(InMemoryToolCatalog),
++        HeaderMap::new(),
++        /*auth_provider*/ None,
++        /*has_configured_headers*/ false,
++        StreamableHttpRedirectMode::Legacy,
++        Arc::default(),
++    );
++    let message = serde_json::from_value(json!({
++        "jsonrpc": "2.0",
++        "id": 1,
++        "method": "tools/list",
++    }))?;
++    let headers = [(
++        HeaderName::from_bytes(HEADER_MCP_PROTOCOL_VERSION.as_bytes())?,
++        HeaderValue::from_str(ProtocolVersion::V_2026_07_28.as_str())?,
++    )]
++    .into();
++    let result = client
++        .post_message(
++            Arc::from("https://mcp.example.com/mcp"),
++            message,
++            /*session_id*/ None,
++            /*auth_token*/ None,
++            headers,
++        )
++        .await;
++
++    assert!(matches!(
++        result,
++        Err(StreamableHttpError::Client(
++            StreamableHttpClientAdapterError::ResponseTooLarge {
++                maximum_bytes: MAX_MCP_STDIO_LINE_BYTES,
++            }
++        ))
++    ));
++    Ok(())
++}
++
+ #[test]
+ fn protocol_headers_preserve_utf8_values() {
+     let mut headers = HeaderMap::new();

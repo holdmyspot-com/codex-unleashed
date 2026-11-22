@@ -10,5 +10,5 @@ run_test() {
     grep -Fxq "test $test_name ... ok" <<< "$output"
 }
 
-run_test http_client_adapter::tests::collect_body_rejects_one_byte_beyond_the_limit -p codex-rmcp-client --lib
-run_test doctor::tests::websocket_probe_json_preserves_http_status_without_response_values -p codex-cli --bin codex
+run_test http_client_adapter::tests::modern_tool_catalog_applies_configured_response_cap -p codex-rmcp-client --lib
+run_test legacy_oauth_discovery_follows_same_origin_metadata_redirects -p codex-rmcp-client --test mcp_2026_oauth_discovery
