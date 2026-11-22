@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Subject: [PATCH] Test RMCP response limits and WebSocket doctor reporting
+
+diff --git a/codex-rs/cli/src/doctor.rs b/codex-rs/cli/src/doctor.rs
+index af478a9d12ed2ecc3933ec616a9e9a57b779413e..bddab06c4f00feb30ef3108819d018154bee8d92 100644
+--- a/codex-rs/cli/src/doctor.rs
++++ b/codex-rs/cli/src/doctor.rs
+@@ -3281,6 +3281,44 @@ mod tests {
+         insta::assert_snapshot!("websocket_probe_human_output", rendered);
+     }
+ 
++    #[test]
++    fn websocket_probe_json_preserves_http_status_without_response_values() {
++        let error = ApiError::Transport(TransportError::Http {
++            status: http::StatusCode::SERVICE_UNAVAILABLE,
++            url: Some("https://fixture.invalid/responses".to_string()),
++            headers: Some(HeaderMap::from_iter([(
++                http::HeaderName::from_static("x-request-id"),
++                HeaderValue::from_static("fixture-request-id"),
++            )])),
++            body: Some("fixture response body".to_string()),
++            retry_after: None,
++        });
++        let check = websocket_probe_warning(
++            "Responses WebSocket failed; HTTPS fallback may still work",
++            vec![],
++            websocket_error_detail(&error),
++        );
++        let report = DoctorReport {
++            schema_version: 1,
++            generated_at: "0s since unix epoch".to_string(),
++            overall_status: check.status,
++            codex_version: "0.0.0".to_string(),
++            checks: vec![check],
++        };
++        let json = serde_json::to_value(redacted_json_report(&report)).expect("serialize report");
++        let check = &json["checks"]["network.websocket_reachability"];
++        assert_eq!(check["status"], "warning");
++        assert_eq!(check["category"], "websocket");
++        assert_eq!(
++            check["details"]["handshake transport error"],
++            "http 503 Service Unavailable: [redacted]"
++        );
++        let output = json.to_string();
++        assert!(!output.contains("fixture.invalid"));
++        assert!(!output.contains("fixture-request-id"));
++        assert!(!output.contains("fixture response body"));
++    }
++
+     #[test]
+     fn websocket_error_detail_preserves_categories_without_wire_values() {
+         let secret = "private-wire-value";
+diff --git a/codex-rs/rmcp-client/src/http_client_adapter_tests.rs b/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
+index c3effd99831abccd3fbf8b6665a6af38555f0f10..1eeed11a3c7764f6d394f457e5d96ba0fb24ec32 100644
+--- a/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
++++ b/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
+@@ -1,17 +1,42 @@
+ use std::io::ErrorKind;
+ 
+ use codex_exec_server::HttpRedirectPolicy;
++use codex_exec_server::HttpResponseBodyStream;
+ use http::HeaderMap;
+ use http::HeaderValue;
+ use http::header::AUTHORIZATION;
+ use pretty_assertions::assert_eq;
++use rmcp::transport::streamable_http_client::StreamableHttpError;
+ 
+ use super::HttpHeader;
+ use super::SseEventSizeLimit;
++use super::StreamableHttpClientAdapterError;
+ use super::StreamableHttpRedirectMode;
++use super::collect_body;
+ use super::mcp_redirect_policy;
+ use super::protocol_headers;
+ 
++#[tokio::test]
++async fn collect_body_rejects_one_byte_beyond_the_limit() {
++    let maximum_bytes = 4;
++    let mut at_limit = HttpResponseBodyStream::from_chunks(vec![vec![0; maximum_bytes]]);
++    assert_eq!(
++        collect_body(&mut at_limit, Some(maximum_bytes))
++            .await
++            .expect("exactly the configured number of bytes fits"),
++        vec![0; maximum_bytes]
++    );
++
++    let mut over_limit = HttpResponseBodyStream::from_chunks(vec![vec![0; maximum_bytes], vec![0]]);
++    let result = collect_body(&mut over_limit, Some(maximum_bytes)).await;
++    assert!(matches!(
++        result,
++        Err(StreamableHttpError::Client(
++            StreamableHttpClientAdapterError::ResponseTooLarge { maximum_bytes: 4 }
++        ))
++    ));
++}
++
+ #[test]
+ fn protocol_headers_preserve_utf8_values() {
+     let mut headers = HeaderMap::new();
