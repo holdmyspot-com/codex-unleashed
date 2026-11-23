@@ -186,6 +186,7 @@ The patch is split in two to stay under the repository's blob size limit. Part 1
  codex-rs/tui/src/markdown_render.rs           |   19 +-
  codex-rs/tui/src/markdown_render/math.rs      |    2 +-
  codex-rs/tui/src/pets/model.rs                |    4 +-
+ codex-rs/tui/src/session_lock/linux.rs        |   17 +-
  codex-rs/tui/src/status/remote_connection.rs  |    5 +-
  codex-rs/tui/src/system_motion.rs             |    2 +-
  codex-rs/tui/src/test_backend.rs              |   13 +-
@@ -221,7 +222,7 @@ The patch is split in two to stay under the repository's blob size limit. Part 1
  .../windows-sandbox-rs/src/no_reparse_dir.rs  |    4 +-
  .../src/setup_provisioning/sandbox_users.rs   |   11 +-
  .../src/uninstall_windows/principals_tests.rs |    6 +-
- 213 files changed, 2066 insertions(+), 1506 deletions(-)
+ 214 files changed, 2076 insertions(+), 1513 deletions(-)
  create mode 100644 codex-rs/ext/extension-api/src/json_schema.rs
 
 diff --git a/codex-rs/.cargo/audit.toml b/codex-rs/.cargo/audit.toml
@@ -9738,6 +9739,48 @@ index aa02731ab7..e90c080ad6 100644
              self.frame_width, self.frame_height, self.columns, self.rows
          ))
      }
+diff --git a/codex-rs/tui/src/session_lock/linux.rs b/codex-rs/tui/src/session_lock/linux.rs
+index 79bdeed875..8130e17ac7 100644
+--- a/codex-rs/tui/src/session_lock/linux.rs
++++ b/codex-rs/tui/src/session_lock/linux.rs
+@@ -7,8 +7,8 @@
+ use std::collections::HashMap;
+ 
+ use futures::StreamExt;
+-use zbus::zvariant::OwnedObjectPath;
+-use zbus::zvariant::OwnedValue;
++use zbus::OwnedObjectPath;
++use zbus::OwnedVariant;
+ 
+ use super::Activation;
+ 
+@@ -103,8 +103,11 @@ pub(super) async fn observe() -> anyhow::Result<Activation> {
+                 return Ok(());
+             }
+             while let Some(signal) = changes.next().await {
+-                let (_, changed, invalidated): (String, HashMap<String, OwnedValue>, Vec<String>) =
+-                    signal.body().deserialize()?;
++                let (_, changed, invalidated): (
++                    String,
++                    HashMap<String, OwnedVariant>,
++                    Vec<String>,
++                ) = signal.body().deserialize()?;
+                 if changed
+                     .get("LockedHint")
+                     .and_then(|value| bool::try_from(value).ok())
+@@ -180,9 +183,9 @@ async fn session_proxy(
+     path: OwnedObjectPath,
+ ) -> zbus::Result<zbus::Proxy<'static>> {
+     zbus::proxy::Builder::new(connection)
+-        .destination(SERVICE)?
+-        .path(path)?
+-        .interface(SESSION)?
++        .destination(SERVICE)
++        .path(path)
++        .interface(SESSION)
+         .cache_properties(zbus::proxy::CacheProperties::No)
+         .build()
+         .await
 diff --git a/codex-rs/tui/src/status/remote_connection.rs b/codex-rs/tui/src/status/remote_connection.rs
 index 4f4b610330..f8ab9dead9 100644
 --- a/codex-rs/tui/src/status/remote_connection.rs
@@ -10734,3 +10777,6 @@ index 919ac7c73b..9ea1fbf79c 100644
      let user_info = network::USER_INFO_1 {
          usri1_name: username.as_ptr().cast_mut(),
          usri1_password: password.as_ptr().cast_mut(),
+-- 
+2.43.0
+
