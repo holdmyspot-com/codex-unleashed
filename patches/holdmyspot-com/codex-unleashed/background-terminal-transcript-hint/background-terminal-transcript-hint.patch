@@ -6,7 +6,7 @@ Subject: [PATCH] Show background terminal transcript hints
 While background terminals run, /ps explains that the transcript is available after completion; completed and replayed terminal entries show the Ctrl+T shortcut. Snapshots that render those entries include the hint.
 ---
  ...nknown_end_with_active_exploring_cell.snap |  4 ++-
- .../tui/src/chatwidget/tests/exec_flow.rs     |  4 +--
+ .../tui/src/chatwidget/tests/exec_flow.rs     |  5 +--
  ...ps_across_reasoning_live_and_replayed.snap |  2 ++
  codex-rs/tui/src/exec_cell/render.rs          | 33 ++++++++++++++++++-
  codex-rs/tui/src/history_cell/exec.rs         |  9 ++++-
@@ -17,7 +17,7 @@ While background terminals run, /ps explains that the transcript is available af
  ...utput_multiline_long_command_snapshot.snap |  1 +
  ...__tests__ps_output_multiline_snapshot.snap |  1 +
  codex-rs/tui/src/history_cell/tests.rs        | 12 +++++++
- 12 files changed, 68 insertions(+), 8 deletions(-)
+ 12 files changed, 69 insertions(+), 8 deletions(-)
 
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
 index 85259b0b13..3b64049f82 100644
@@ -38,10 +38,17 @@ index 85259b0b13..3b64049f82 100644
  Active:
  • Exploring
 diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-index aeac261154..760b6937c1 100644
+index aeac261154..5d3ee593e2 100644
 --- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-@@ -93,7 +93,7 @@ async fn replayed_background_terminals_belong_to_the_displayed_thread() {
+@@ -87,13 +87,14 @@ async fn replayed_background_terminals_belong_to_the_displayed_thread() {
+     /ps
+ 
+     Background terminals
++      (transcript will be available after terminal completes)
+ 
+       • sleep 200
+     ");
  }
  
  #[tokio::test]
@@ -50,7 +57,7 @@ index aeac261154..760b6937c1 100644
      let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
      chat.on_task_started();
      let mut item =
-@@ -121,7 +121,7 @@ async fn replayed_command_completion_preserves_tracking_without_duplicate_starts
+@@ -121,7 +122,7 @@ async fn replayed_command_completion_preserves_tracking_without_duplicate_starts
          .collect::<Vec<_>>();
      assert_eq!(
          history,

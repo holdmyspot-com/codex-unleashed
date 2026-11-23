@@ -221,9 +221,10 @@ The patch is split in two to stay under the repository's blob size limit. Part 1
  .../src/elevated/runner_pipe.rs               |    7 +-
  codex-rs/windows-sandbox-rs/src/file_write.rs |    4 +-
  .../windows-sandbox-rs/src/no_reparse_dir.rs  |    4 +-
+ .../src/setup_provisioning.rs                 |    2 +-
  .../src/setup_provisioning/sandbox_users.rs   |   11 +-
  .../src/uninstall_windows/principals_tests.rs |    6 +-
- 215 files changed, 2079 insertions(+), 1514 deletions(-)
+ 216 files changed, 2080 insertions(+), 1515 deletions(-)
  create mode 100644 codex-rs/ext/extension-api/src/json_schema.rs
 
 diff --git a/codex-rs/.cargo/audit.toml b/codex-rs/.cargo/audit.toml
@@ -10734,6 +10735,20 @@ index 0abb616fac..698b0462d6 100644
          .try_fill_bytes(&mut random)
          .context("generate sandbox directory guard name")?;
      let guard_id = u64::from_le_bytes(random);
+diff --git a/codex-rs/windows-sandbox-rs/src/setup_provisioning.rs b/codex-rs/windows-sandbox-rs/src/setup_provisioning.rs
+index c4e86584cb..f57ea70ba2 100644
+--- a/codex-rs/windows-sandbox-rs/src/setup_provisioning.rs
++++ b/codex-rs/windows-sandbox-rs/src/setup_provisioning.rs
+@@ -61,8 +61,8 @@ use std::path::PathBuf;
+ use std::process::Command;
+ use std::process::Stdio;
+ use std::sync::mpsc;
+-use windows::Win32::Foundation::BOOL;
+ use windows::Win32::Foundation::HLOCAL as LocalAllocHandle;
++use windows::core::BOOL;
+ use windows::core::Owned;
+ use windows_sys::Win32::Foundation::GetLastError;
+ use windows_sys::Win32::Foundation::HLOCAL;
 diff --git a/codex-rs/windows-sandbox-rs/src/setup_provisioning/sandbox_users.rs b/codex-rs/windows-sandbox-rs/src/setup_provisioning/sandbox_users.rs
 index 9af048a73f..824c95c1ea 100644
 --- a/codex-rs/windows-sandbox-rs/src/setup_provisioning/sandbox_users.rs

@@ -12,11 +12,13 @@ A child's completion or failure now starts a turn on an idle parent, unless the 
  codex-rs/core/src/agent/control/completion.rs |  24 +-
  .../src/tools/handlers/multi_agents_tests.rs  |  12 +-
  codex-rs/core/src/tools/spec_plan.rs          |  18 +-
+ codex-rs/core/tests/suite/abort_tasks.rs      |   5 +
  codex-rs/core/tests/suite/agent_execution.rs  |   8 +
  .../tests/suite/background_subagent_tests.rs  | 702 ++++++++++++++++++
  .../core/tests/suite/cyber_access_program.rs  |   4 +
  .../core/tests/suite/guardian_root_handoff.rs |   5 +
  .../suite/guardian_subagent_authorization.rs  |   4 +
+ .../guardian_subagent_notification_tests.rs   |   5 +
  .../core/tests/suite/multi_agent_resume.rs    |   4 +
  codex-rs/core/tests/suite/scenarios.rs        |   6 +-
  .../suite/scenarios_agent_eviction_tests.rs   |   5 +
@@ -25,7 +27,7 @@ A child's completion or failure now starts a turn on an idle parent, unless the 
  .../tests/suite/subagent_notifications.rs     |   7 +
  .../core/tests/suite/subagent_service_tier.rs |   4 +
  codex-rs/features/src/lib.rs                  |   8 +
- 20 files changed, 890 insertions(+), 37 deletions(-)
+ 22 files changed, 900 insertions(+), 37 deletions(-)
  create mode 100644 codex-rs/core/tests/suite/background_subagent_tests.rs
 
 diff --git a/codex-rs/app-server/tests/suite/v2/guardian_goal_tests.rs b/codex-rs/app-server/tests/suite/v2/guardian_goal_tests.rs
@@ -394,6 +396,22 @@ index a9adb45ef6..f9c0b0a175 100644
                          },
                          spawn_agent_description.map(str::to_owned),
                      ),
+diff --git a/codex-rs/core/tests/suite/abort_tasks.rs b/codex-rs/core/tests/suite/abort_tasks.rs
+index e0507ba86e..a0da1ae433 100644
+--- a/codex-rs/core/tests/suite/abort_tasks.rs
++++ b/codex-rs/core/tests/suite/abort_tasks.rs
+@@ -182,6 +182,11 @@ async fn start_active_tree(
+                 .features
+                 .enable(Feature::MultiAgentV2)
+                 .expect("enable multi-agent v2 for the suspension test");
++            // These cases hand results over through the suspension record, not a woken parent.
++            config
++                .features
++                .disable(Feature::UnleashedBackgroundSubagents)
++                .expect("retain queue-only completion delivery");
+         });
+     if let Some(gate) = finishing {
+         let mut extensions = codex_extension_api::ExtensionRegistryBuilder::new();
 diff --git a/codex-rs/core/tests/suite/agent_execution.rs b/codex-rs/core/tests/suite/agent_execution.rs
 index 4c88ebf602..72db8cdd5b 100644
 --- a/codex-rs/core/tests/suite/agent_execution.rs
@@ -1174,6 +1192,22 @@ index 74c876f4f4..2783145782 100644
              if block_post_hook {
                  config.model_provider.name = "Local compaction test provider".to_owned();
                  config
+diff --git a/codex-rs/core/tests/suite/guardian_subagent_notification_tests.rs b/codex-rs/core/tests/suite/guardian_subagent_notification_tests.rs
+index 2af9794151..dabd73c22b 100644
+--- a/codex-rs/core/tests/suite/guardian_subagent_notification_tests.rs
++++ b/codex-rs/core/tests/suite/guardian_subagent_notification_tests.rs
+@@ -89,6 +89,11 @@ async fn guardian_circuit_breaker_notifies_parent(action: CircuitBreakAction) ->
+                     .enable(feature)
+                     .expect("enable test feature");
+             }
++            // The parent receives the notification only through its explicit prompt below.
++            config
++                .features
++                .disable(Feature::UnleashedBackgroundSubagents)
++                .expect("retain queue-only completion delivery");
+             config.permissions.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
+             config.approvals_reviewer = ApprovalsReviewer::AutoReview;
+             config.guardian_circuit_break_action = action;
 diff --git a/codex-rs/core/tests/suite/multi_agent_resume.rs b/codex-rs/core/tests/suite/multi_agent_resume.rs
 index 4e074544db..c9b090457b 100644
 --- a/codex-rs/core/tests/suite/multi_agent_resume.rs

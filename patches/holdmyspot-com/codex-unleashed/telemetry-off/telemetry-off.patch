@@ -40,6 +40,7 @@ Tests that rely on the old defaults now enable feedback or analytics explicitly.
  codex-rs/tui/src/app/tests.rs                 |  2 +
  .../tests/terminal_size_telemetry_tests.rs    |  3 +-
  ...t__tests__feedback_command_suggestion.snap |  9 ----
+ .../tui/src/chatwidget/tests/app_server.rs    |  2 +
  .../chatwidget/tests/popups_and_settings.rs   | 17 ++-----
  .../src/chatwidget/tests/status_and_layout.rs |  2 +
  codex-rs/tui/src/history_cell/notices.rs      |  9 ++--
@@ -53,7 +54,7 @@ Tests that rely on the old defaults now enable feedback or analytics explicitly.
  codex-rs/tui/src/update_prompt.rs             |  2 +-
  codex-rs/tui/src/update_versions.rs           | 30 ++++++++++--
  codex-rs/tui/src/updates.rs                   |  3 +-
- 33 files changed, 221 insertions(+), 98 deletions(-)
+ 34 files changed, 223 insertions(+), 98 deletions(-)
  delete mode 100644 codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__feedback_command_suggestion.snap
 
 diff --git a/codex-rs/app-server/tests/common/config.rs b/codex-rs/app-server/tests/common/config.rs
@@ -525,6 +526,19 @@ index 0f5e1805ba..0000000000
 -› /feedback
 -
 -  GPT-5.6-Sol default · /tmp/project
+diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
+index c2e6164232..ce0f0dcb8b 100644
+--- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
++++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
+@@ -1124,6 +1124,8 @@ async fn live_app_server_turn_started_sets_feedback_turn_id() {
+         /*replay_kind*/ None,
+     );
+ 
++    // Feedback is off by default in this build; without it the note view submits no report.
++    chat.config.feedback_enabled = true;
+     chat.open_feedback_note(
+         crate::app_event::FeedbackCategory::Bug,
+         /*include_logs*/ false,
 diff --git a/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs b/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs
 index 9bf9748768..90fdbb7f85 100644
 --- a/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs

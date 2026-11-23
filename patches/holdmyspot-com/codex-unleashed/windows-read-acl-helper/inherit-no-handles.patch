@@ -328,7 +328,7 @@ index 21968f1364..ef85201f99 100644
      let Some(directory) = std::env::var_os(CHILD_DIRECTORY_ENV).map(PathBuf::from) else {
          return Ok(());
 diff --git a/codex-rs/windows-sandbox-rs/src/setup_provisioning.rs b/codex-rs/windows-sandbox-rs/src/setup_provisioning.rs
-index c4e86584cb..bc661dd8f5 100644
+index f57ea70ba2..24fe4bbae5 100644
 --- a/codex-rs/windows-sandbox-rs/src/setup_provisioning.rs
 +++ b/codex-rs/windows-sandbox-rs/src/setup_provisioning.rs
 @@ -55,11 +55,9 @@ use std::ffi::OsStr;
@@ -341,8 +341,8 @@ index c4e86584cb..bc661dd8f5 100644
  use std::process::Command;
 -use std::process::Stdio;
  use std::sync::mpsc;
- use windows::Win32::Foundation::BOOL;
  use windows::Win32::Foundation::HLOCAL as LocalAllocHandle;
+ use windows::core::BOOL;
 @@ -223,12 +221,9 @@ fn spawn_read_acl_helper(payload: &Payload, _log: &mut dyn Write) -> Result<()>
      let exe = std::env::current_exe().context("locate setup helper")?;
      let mut command = Command::new(&exe);

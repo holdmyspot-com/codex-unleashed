@@ -7,9 +7,10 @@ Subject: [PATCH] Update direct dependencies to their latest semver-compatible
 Each direct dependency moves to its latest release compatible with its requirement and Rust 1.95. Transitive
 dependencies change only where those releases require it. The tonic annotation follows tonic 0.14.9.
 ---
- MODULE.bazel        |    2 +-
- codex-rs/Cargo.lock | 2017 +++++++++++++++++++++++--------------------
- 2 files changed, 1064 insertions(+), 955 deletions(-)
+ MODULE.bazel                             |    2 +-
+ codex-rs/Cargo.lock                      | 2017 ++++++++++++----------
+ codex-rs/cloud-client/src/turns_tests.rs |    6 +-
+ 3 files changed, 1069 insertions(+), 956 deletions(-)
 
 diff --git a/MODULE.bazel b/MODULE.bazel
 index e7eb55b07b..f476a9cda7 100644
@@ -6168,6 +6169,25 @@ index 7ec62b896e..32632c8aed 100644
 - "syn 2.0.117",
 + "syn 2.0.119",
  ]
+diff --git a/codex-rs/cloud-client/src/turns_tests.rs b/codex-rs/cloud-client/src/turns_tests.rs
+index 94a34ef8ec..98686bfeaf 100644
+--- a/codex-rs/cloud-client/src/turns_tests.rs
++++ b/codex-rs/cloud-client/src/turns_tests.rs
+@@ -609,9 +609,13 @@ async fn mutations_require_explicit_successful_grpc_status() {
+             if expect_success {
+                 result.unwrap();
+             } else {
++                // Tonic 0.14.6 and later reject an HTTP 200 stream that ends without a final
++                // status themselves, as an unknown RPC status instead of an absent trailer.
+                 assert!(matches!(
+                     result,
+-                    Err(MutationError::OutcomeUnknown(Error::InvalidResponse))
++                    Err(MutationError::OutcomeUnknown(
++                        Error::InvalidResponse | Error::Rpc(_)
++                    ))
+                 ));
+             }
+             fixture.requests.recv().await.unwrap();
 -- 
 2.43.0
 

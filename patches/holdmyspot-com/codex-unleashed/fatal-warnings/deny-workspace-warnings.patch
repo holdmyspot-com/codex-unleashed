@@ -17,9 +17,10 @@ hermetic LLVM toolchain's own link flags make clang++ warn that
 --unwindlib=none is unused on every link.
 ---
  .bazelrc                                    | 6 ++++++
+ .github/scripts/install-musl-build-tools.sh | 7 +++++--
  codex-rs/Cargo.toml                         | 5 +++++
  codex-rs/app-server/tests/suite/v2/sleep.rs | 3 ---
- 3 files changed, 11 insertions(+), 3 deletions(-)
+ 4 files changed, 16 insertions(+), 5 deletions(-)
 
 diff --git a/.bazelrc b/.bazelrc
 index 1f804fcd9f..c6d9f2b61f 100644
@@ -37,6 +38,25 @@ index 1f804fcd9f..c6d9f2b61f 100644
 +
  build --workspace_status_command=./scripts/workspace-status.sh
  build:windows --workspace_status_command=./scripts/workspace-status.cmd
+ 
+diff --git a/.github/scripts/install-musl-build-tools.sh b/.github/scripts/install-musl-build-tools.sh
+index da8d3e31a1..07022c8c9a 100644
+--- a/.github/scripts/install-musl-build-tools.sh
++++ b/.github/scripts/install-musl-build-tools.sh
+@@ -261,9 +261,12 @@ target_cxx_var="CXX_${TARGET}"
+ target_cxx_var="${target_cxx_var//-/_}"
+ echo "${target_cxx_var}=${cxx}" >> "$GITHUB_ENV"
+ 
+-# Fold identical code and pack relocations for x86-64 musl release packages.
++# Fold identical code and pack relocations for x86-64 musl release packages. The C objects that zig cc builds carry
++# an address-significance section that lld cannot match to a symbol table, so --icf=safe warns about every such
++# object. The workspace denies linker_messages, which would turn those warnings into a failed link, so
++# --no-warnings drops lld's warnings for this link; lld errors still fail it.
+ if [[ "${TARGET}" == "x86_64-unknown-linux-musl" && "${CODEX_MUSL_RELEASE_LINK_FLAGS:-}" == "1" ]]; then
+-  link_flags=(-Cllvm-args=--addrsig -Clink-arg=-fuse-ld=lld -Clink-arg=-Wl,--icf=safe,-z,pack-relative-relocs)
++  link_flags=(-Cllvm-args=--addrsig -Clink-arg=-fuse-ld=lld -Clink-arg=-Wl,--icf=safe,-z,pack-relative-relocs,--no-warnings)
+   echo "RUSTFLAGS=${RUSTFLAGS:+$RUSTFLAGS }${link_flags[*]}" >> "$GITHUB_ENV"
+ fi
  
 diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
 index 01d075adec..baefbc2f5a 100644

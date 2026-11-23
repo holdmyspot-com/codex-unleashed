@@ -17,6 +17,7 @@ Users need to tell a Codex Unleashed build from OpenAI Codex and see which build
  codex-rs/tui/build.rs                         |   6 +
  ..._menu__tests__daemon_cli_confirmation.snap |   5 +-
  ..._animation_tests__fresh_thread_header.snap |  12 +-
+ ...s__status__tests__watch_only_subagent.snap |  10 +-
  ...s_previous_transcript_before_replay-2.snap |   6 +-
  ...e_reconnect__unavailable_conversation.snap |   2 +-
  ...daemon_command_center_vanished_rename.snap |   2 +-
@@ -25,7 +26,7 @@ Users need to tell a Codex Unleashed build from OpenAI Codex and see which build
  ...partial_completed_after_thread_switch.snap |   5 +-
  ...e_replay_reconciles_matching_captions.snap |   6 +-
  ...s_mention_usage_with_history_disabled.snap |   4 +-
- ...rame_tests__startup_tip_in_transcript.snap |  15 +--
+ ...rame_tests__startup_tip_in_transcript.snap |  16 +--
  .../tui/src/chatwidget/rendering_tests.rs     |   8 +-
  ...__catalog_model_session_header_resume.snap |   5 +-
  ..._catalog_model_session_header_startup.snap |   5 +-
@@ -75,7 +76,7 @@ Users need to tell a Codex Unleashed build from OpenAI Codex and see which build
  codex-rs/tui/src/status/tests.rs              |  27 +++-
  codex-rs/tui/src/version.rs                   |   8 +-
  .../smoke_tests/test_codex_package.py         |   8 +-
- 70 files changed, 621 insertions(+), 251 deletions(-)
+ 71 files changed, 626 insertions(+), 257 deletions(-)
  create mode 100644 codex-rs/cli/tests/build_info.rs
  create mode 100644 codex-rs/tui/build.rs
 
@@ -483,6 +484,34 @@ index 789d6e4bda..a59227ad0a 100644
  
  
  › Ask Codex to do anything
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__sidebar_subagents__status__tests__watch_only_subagent.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__sidebar_subagents__status__tests__watch_only_subagent.snap
+index b6511ab2ba..5116cf6b62 100644
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__sidebar_subagents__status__tests__watch_only_subagent.snap
++++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__sidebar_subagents__status__tests__watch_only_subagent.snap
+@@ -2,10 +2,11 @@
+ source: tui/src/app/sidebar_agent_status_tests.rs
+ expression: "screen.replace(&child.to_string(), \"[agent id]\")"
+ ---
+-                                                                                                                       │ reviewer     ×                                          +
+-  >_ OpenAI Codex (v0.0.0)                                                                                             │esc back to agents · Watch only
+-     /tmp/project                                                                                                      │
+-                                                                                                                       │  >_ OpenAI Codex (v0.0.0)
++  >_ Codex Unleashed (v0.0.0+dev)                                                                                      │ reviewer     ×                                          +
++     Unofficial fork of OpenAI Codex                                                                                   │esc back to agents · Watch only
++     https://holdmyspot.com/codex-unleashed/                                                                           │  >_ Codex Unleashed (v0.0.0+dev)
++     /tmp/project                                                                                                      │     Unofficial fork of OpenAI Codex
++                                                                                                                       │     https://holdmyspot.com/codex-unleashed/
+   To get started, describe a task or try one of these commands:                                                        │     /
+                                                                                                                        │
+   /init - create an AGENTS.md file with instructions for Codex                                                         │
+@@ -17,7 +18,6 @@ expression: "screen.replace(&child.to_string(), \"[agent id]\")"
+ • Started `/root/reviewer`                                                                                             │
+                                                                                                                        │
+                                                                                                                        │
+-                                                                                                                       │
+ ›                                                                                                                      │
+                                                                                                                        │
+   GPT-6.2-Sol default · /tmp/project                                                                                   │
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
 index 8aa1bca71b..36d629ad69 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
@@ -608,7 +637,7 @@ index 6a47bf2b72..847a64d0e4 100644
  
  
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
-index d39259c65b..9907be8dd5 100644
+index d39259c65b..66fc68044c 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
 @@ -3,8 +3,9 @@ source: tui/src/app/tests/startup_frame_tests.rs
@@ -644,10 +673,11 @@ index d39259c65b..9907be8dd5 100644
       /tmp/project
  
  • Conversation continues here.
-@@ -38,8 +41,6 @@ expression: "normalize_snapshot_paths(normalize_agent_center_snapshot(snapshots.
+@@ -37,9 +40,6 @@ expression: "normalize_snapshot_paths(normalize_agent_center_snapshot(snapshots.
  
  
  
+-
 -
 -
  › Ask Codex to do anything

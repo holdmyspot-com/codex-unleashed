@@ -9,11 +9,65 @@ Fix what the upgraded releases change at run time or in test expectations: rtc 0
  codex-rs/Cargo.toml                           |  6 +-
  .../protocol/v2/model_provider_error_tests.rs |  3 +-
  .../remote_control/server_api_tests.rs        | 19 +++++-
+ .../tests/suite/v2/git_attribution.rs         |  9 +--
+ .../tests/suite/v2/plugin_runtime_auth.rs     |  2 +-
+ .../app-server/tests/suite/v2/rate_limits.rs  |  4 +-
+ .../tests/suite/v2/realtime_conversation.rs   | 14 ++---
+ ...ample__sample_inherits_parent_context.snap | 12 ++--
  .../tests/suite/v2/turn_cost_otel.rs          |  2 +-
+ ..._server_help_documents_remote_options.snap |  8 +--
  codex-rs/cli/tests/worktree.rs                |  6 +-
  .../src/ui/transport_tests.rs                 |  2 +-
  codex-rs/code-mode-runtime/src/ui/workers.rs  |  7 ++-
+ codex-rs/core/tests/common/runtime_auth.rs    | 14 +++++
+ .../tests/suite/realtime_sideband_endpoint.rs |  9 +--
+ .../request_plugin_install_runtime_auth.rs    |  6 +-
+ ...s__astra_active_environment_selection.snap |  4 +-
+ ...tra_async_compaction_with_live_suffix.snap | 12 ++--
+ ...rios__astra_async_question_and_answer.snap |  4 +-
+ ...cenarios__astra_code_mode_call_timing.snap |  4 +-
+ ...arios__astra_disabled_executor_skills.snap |  4 +-
+ ..._astra_executor_plugin_policy_refresh.snap |  4 +-
+ ...rios__astra_input_interrupts_response.snap |  4 +-
+ ...os__astra_input_yields_code_mode_cell.snap |  4 +-
+ ...tra_kickoff_remote_compaction_windows.snap |  8 +--
+ ...a_plugin_policy_limits_visible_skills.snap |  4 +-
+ ...gin_policy_without_skill_descriptions.snap |  4 +-
+ ...efresh_simplified_selection_hints_off.snap |  4 +-
+ ...refresh_simplified_selection_hints_on.snap |  4 +-
+ ...ra_settings_release_check_tool_shapes.snap |  4 +-
+ ...reserves_model_context_on_cold_resume.snap |  8 +--
+ ..._host_budget_context_after_compaction.snap |  8 +--
+ ...etion_wakes_parent_after_final_answer.snap |  8 +--
+ ...scenarios__code_mode_catalog_messages.snap |  4 +-
+ ...e_mode_catalog_messages_ranked_search.snap |  4 +-
+ ...ed_helpers__code_mode_settled_helpers.snap |  4 +-
+ ...essions__command_sessions_world_state.snap | 12 ++--
+ ...ios__compaction__remote_slash_compact.snap | 12 ++--
+ ...ves_pending_calls_and_survives_resume.snap |  8 +--
+ ...s_with_named_executor_request_history.snap |  4 +-
+ ...animation_and_replays_a_still_preview.snap |  4 +-
+ ...__catalog_indirect_namespace_prefixes.snap |  8 +--
+ ...ailure_preserves_ordinary_mcp_history.snap |  4 +-
+ ..._preserves_history_and_ordinary_tools.snap |  6 +-
+ ...ource_messages__mcp_resource_messages.snap |  4 +-
+ ...arios__multi_agent_catalog_parameters.snap |  4 +-
+ ...artial_answers__preserved_answer_fork.snap |  8 +--
+ ...es_context_above_compaction_threshold.snap |  4 +-
+ ...ilities__custom_provider_capabilities.snap |  4 +-
+ ...tained_tool_output_retention_disabled.snap | 12 ++--
+ ...catalog_dedup__dedup_before_budgeting.snap |  4 +-
+ ...log_dedup__dedup_without_descriptions.snap |  4 +-
+ ...l_catalog_dedup__skill_catalog_deltas.snap | 16 ++---
+ ...installation_recovery_request_history.snap |  4 +-
+ ...sline_mention_loads_the_bundled_skill.snap |  4 +-
+ ...3p_cache__strict_3p_mcp_catalog_cache.snap |  2 +-
+ ...e_rechecked_without_rewriting_history.snap |  8 +--
+ ...eb_search__literature_search_and_open.snap |  4 +-
  ...rch__literature_search_web_run_schema.snap | 12 ++--
+ ..._preserves_discovery_and_call_history.snap |  8 +--
+ ...prefix__extension_window_prefix_local.snap | 12 ++--
+ ...refix__extension_window_prefix_remote.snap | 12 ++--
  .../src/noise_relay/harness_tests.rs          | 29 ++++++++--
  codex-rs/exec-server/src/remote.rs            |  6 ++
  .../model-provider/tests/runtime_catalog.rs   |  7 +++
@@ -28,7 +82,7 @@ Fix what the upgraded releases change at run time or in test expectations: rtc 0
  codex-rs/utils/cargo-bin/Cargo.toml           |  1 -
  codex-rs/utils/cargo-bin/src/lib.rs           | 41 +++++++------
  .../voice-host/src/capture_worker_tests.rs    | 58 ++++++++++++++-----
- 23 files changed, 194 insertions(+), 83 deletions(-)
+ 77 files changed, 370 insertions(+), 261 deletions(-)
 
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
 index b8dde3b324..3a4f981dd1 100644
@@ -220,6 +274,140 @@ index a871b696e8..bb2dffa453 100644
              stream
                  .write_all(partial_response)
                  .await
+diff --git a/codex-rs/app-server/tests/suite/v2/git_attribution.rs b/codex-rs/app-server/tests/suite/v2/git_attribution.rs
+index 73456974e9..4dc26ae456 100644
+--- a/codex-rs/app-server/tests/suite/v2/git_attribution.rs
++++ b/codex-rs/app-server/tests/suite/v2/git_attribution.rs
+@@ -171,14 +171,11 @@ async fn git_attribution_runtime_auth_uses_request_destination(
+         .expect(1)
+         .mount(&server)
+         .await;
+-    let case = if custom_destination {
+-        format!("{mode}_custom_destination")
+-    } else {
+-        mode.into()
+-    };
+     run_harness_through_proxy(
+         &server,
+-        &format!("suite::v2::git_attribution::git_attribution_runtime_auth_uses_request_destination::{case}"),
++        &format!(
++            "suite::v2::git_attribution::git_attribution_runtime_auth_uses_request_destination"
++        ),
+         /*realtime_target*/ None,
+     )
+     .await?;
+diff --git a/codex-rs/app-server/tests/suite/v2/plugin_runtime_auth.rs b/codex-rs/app-server/tests/suite/v2/plugin_runtime_auth.rs
+index 0732ffb615..791fc2766e 100644
+--- a/codex-rs/app-server/tests/suite/v2/plugin_runtime_auth.rs
++++ b/codex-rs/app-server/tests/suite/v2/plugin_runtime_auth.rs
+@@ -155,7 +155,7 @@ async fn direct_mutation_initializes_runtime_after_config_reload(
+         .await;
+     run_harness_through_proxy(
+         &server,
+-        &format!("suite::v2::plugin_install::runtime_auth_tests::direct_mutation_initializes_runtime_after_config_reload::{operation}_{mode}"),
++        &format!("suite::v2::plugin_install::runtime_auth_tests::direct_mutation_initializes_runtime_after_config_reload"),
+         /*realtime_target*/ None,
+     ).await?;
+     let requests = server
+diff --git a/codex-rs/app-server/tests/suite/v2/rate_limits.rs b/codex-rs/app-server/tests/suite/v2/rate_limits.rs
+index fa9c341330..758ca1185f 100644
+--- a/codex-rs/app-server/tests/suite/v2/rate_limits.rs
++++ b/codex-rs/app-server/tests/suite/v2/rate_limits.rs
+@@ -923,9 +923,7 @@ async fn account_requests_share_runtime_and_rotate_on_restart(mode: &str) -> Res
+         .await;
+     run_harness_through_proxy(
+         &server,
+-        &format!(
+-            "suite::v2::rate_limits::account_requests_share_runtime_and_rotate_on_restart::{mode}"
+-        ),
++        "suite::v2::rate_limits::account_requests_share_runtime_and_rotate_on_restart",
+         /*realtime_target*/ None,
+     )
+     .await?;
+diff --git a/codex-rs/app-server/tests/suite/v2/realtime_conversation.rs b/codex-rs/app-server/tests/suite/v2/realtime_conversation.rs
+index b84d6ee7ef..1a0d88522f 100644
+--- a/codex-rs/app-server/tests/suite/v2/realtime_conversation.rs
++++ b/codex-rs/app-server/tests/suite/v2/realtime_conversation.rs
+@@ -4864,16 +4864,12 @@ async fn realtime_requests_use_runtime_auth(transport: &str, mode: &str) -> Resu
+     .await;
+     let target =
+         url::Url::parse(realtime.uri())?.socket_addrs(/*default_port_number*/ || None)?[0];
+-    let case = match transport {
+-        "webrtc" => "webrtc_reconnect",
+-        "existing_call" => "existing_call_reconnect",
+-        other => other,
+-    };
+-    let test_name = format!(
+-        "suite::v2::realtime_conversation::realtime_requests_use_runtime_auth::{case}_{mode}"
+-    );
+     let (result, ()) = tokio::join!(
+-        run_harness_through_proxy(&server, &test_name, Some(target)),
++        run_harness_through_proxy(
++            &server,
++            "suite::v2::realtime_conversation::realtime_requests_use_runtime_auth",
++            Some(target),
++        ),
+         async {
+             assert!(
+                 realtime
+diff --git a/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap b/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap
+index 44cec7ae21..34f249f119 100644
+--- a/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap
++++ b/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap
+@@ -16,7 +16,7 @@ Settings:
+   stream: true
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=ba5ddd25650ac9fa):
++00:additional_tools/developer (3; hash=06092bb334f30604):
+         - namespace/functions; hash=5fbfd3cadf9e76ac
+           - function/exec_command
+           - function/write_stdin
+@@ -33,7 +33,7 @@ Settings:
+           - function/send_input
+           - function/spawn_agent
+           - function/wait_agent
+-        - namespace/web: Tools in the web namespace.; hash=0037b1ed8d50fab5
++        - namespace/web: Tools in the web namespace.; hash=ed1c60da95696abb
+           - function/run
+ 01:message/developer:
+     Retain these base instructions.
+@@ -77,7 +77,7 @@ Settings:
+ ## Window 2 (after request 2: input repeated)
+ Settings: same as window 1
+ -- request 3 (turn) --
+-00:additional_tools/developer (3; hash=ba5ddd25650ac9fa):
++00:additional_tools/developer (3; hash=06092bb334f30604):
+         - namespace/functions; hash=5fbfd3cadf9e76ac
+           - function/exec_command
+           - function/write_stdin
+@@ -94,7 +94,7 @@ Settings: same as window 1
+           - function/send_input
+           - function/spawn_agent
+           - function/wait_agent
+-        - namespace/web: Tools in the web namespace.; hash=0037b1ed8d50fab5
++        - namespace/web: Tools in the web namespace.; hash=ed1c60da95696abb
+           - function/run
+ 01:message/developer:
+     Retain these base instructions.
+@@ -137,7 +137,7 @@ Settings: same as window 1
+ ## Window 3 (after request 3: input repeated)
+ Settings: same as window 1
+ -- request 4 (turn) --
+-00:additional_tools/developer (3; hash=ba5ddd25650ac9fa):
++00:additional_tools/developer (3; hash=06092bb334f30604):
+         - namespace/functions; hash=5fbfd3cadf9e76ac
+           - function/exec_command
+           - function/write_stdin
+@@ -154,7 +154,7 @@ Settings: same as window 1
+           - function/send_input
+           - function/spawn_agent
+           - function/wait_agent
+-        - namespace/web: Tools in the web namespace.; hash=0037b1ed8d50fab5
++        - namespace/web: Tools in the web namespace.; hash=ed1c60da95696abb
+           - function/run
+ 01:message/developer:
+     Retain these base instructions.
 diff --git a/codex-rs/app-server/tests/suite/v2/turn_cost_otel.rs b/codex-rs/app-server/tests/suite/v2/turn_cost_otel.rs
 index f9a06f2e47..c3f2b4acc7 100644
 --- a/codex-rs/app-server/tests/suite/v2/turn_cost_otel.rs
@@ -233,6 +421,32 @@ index f9a06f2e47..c3f2b4acc7 100644
      let attrs: std::collections::BTreeMap<_, _> = points[0]["attributes"]
          .as_array()
          .expect("attributes")
+diff --git a/codex-rs/cli/src/snapshots/codex__exec_server_args_tests__exec_server_help_documents_remote_options.snap b/codex-rs/cli/src/snapshots/codex__exec_server_args_tests__exec_server_help_documents_remote_options.snap
+index 1176a1d692..3c0ca5626f 100644
+--- a/codex-rs/cli/src/snapshots/codex__exec_server_args_tests__exec_server_help_documents_remote_options.snap
++++ b/codex-rs/cli/src/snapshots/codex__exec_server_args_tests__exec_server_help_documents_remote_options.snap
+@@ -35,6 +35,10 @@ Options:
+ 
+           [default: isolate]
+ 
++      --disable <FEATURE>
++          Disable a feature (repeatable). Equivalent to `-c
++          features.<name>=false`
++
+       --linux-sandbox-transparent-tcp
+           Route managed Linux sandbox TCP through the SOCKS proxy
+ 
+@@ -42,10 +46,6 @@ Options:
+           Require this HTTP CONNECT proxy for raw TCP from the managed SOCKS
+           listener
+ 
+-      --disable <FEATURE>
+-          Disable a feature (repeatable). Equivalent to `-c
+-          features.<name>=false`
+-
+       --proxy-private-ips-via-upstream
+           Allow permitted private IP destinations to use the configured upstream
+           proxy. If no valid upstream proxy applies to the request protocol,
 diff --git a/codex-rs/cli/tests/worktree.rs b/codex-rs/cli/tests/worktree.rs
 index aea4463087..4faaff6bc7 100644
 --- a/codex-rs/cli/tests/worktree.rs
@@ -302,6 +516,1316 @@ index d2636e0cb7..4b16de9c22 100644
                          fatal(error);
                      }
                  }
+diff --git a/codex-rs/core/tests/common/runtime_auth.rs b/codex-rs/core/tests/common/runtime_auth.rs
+index 9eec29bbad..f78ffe9dbe 100644
+--- a/codex-rs/core/tests/common/runtime_auth.rs
++++ b/codex-rs/core/tests/common/runtime_auth.rs
+@@ -147,6 +147,14 @@ pub async fn run_harness_through_proxy_until(
+         #[allow(unreachable_code)]
+         Ok::<_, anyhow::Error>(())
+     });
++    // Parameterized tests are generated by `test-case`, whose generated names changed between
++    // releases (`{case}` became `test_case_{n}_{case}`). The running test thread carries the real
++    // name, so `test_name` only has to be its function path.
++    let thread = std::thread::current();
++    let test_name = match thread.name() {
++        Some(name) if name.starts_with(test_name) => name,
++        _ => test_name,
++    };
+     let mut command = Command::new(std::env::current_exe()?);
+     command
+         .args(["--exact", test_name, "--nocapture"])
+@@ -172,6 +180,12 @@ pub async fn run_harness_through_proxy_until(
+         String::from_utf8_lossy(&output.stdout),
+         String::from_utf8_lossy(&output.stderr)
+     );
++    // An exact filter that matches nothing also exits successfully.
++    assert!(
++        String::from_utf8_lossy(&output.stdout).contains("running 1 test"),
++        "harness subprocess did not run `{test_name}`\n{}",
++        String::from_utf8_lossy(&output.stdout)
++    );
+ 
+     let result = observer_completion.await;
+     proxy_tasks.shutdown().await;
+diff --git a/codex-rs/core/tests/suite/realtime_sideband_endpoint.rs b/codex-rs/core/tests/suite/realtime_sideband_endpoint.rs
+index 7d0381cd6d..37d8ed7dcc 100644
+--- a/codex-rs/core/tests/suite/realtime_sideband_endpoint.rs
++++ b/codex-rs/core/tests/suite/realtime_sideband_endpoint.rs
+@@ -258,14 +258,11 @@ async fn existing_call_runtime_auth_reconnects_and_stops(external_headers: bool)
+         }
+         Ok::<_, anyhow::Error>(())
+     }));
+-    let case = if external_headers {
+-        "private_observer"
+-    } else {
+-        "public_realtime"
+-    };
+     run_harness_through_proxy_until(
+         &server,
+-        &format!("suite::realtime_sideband_endpoint::existing_call_runtime_auth_reconnects_and_stops::{case}"),
++        &format!(
++            "suite::realtime_sideband_endpoint::existing_call_runtime_auth_reconnects_and_stops"
++        ),
+         Some(address),
+         &[],
+         async move {
+diff --git a/codex-rs/core/tests/suite/request_plugin_install_runtime_auth.rs b/codex-rs/core/tests/suite/request_plugin_install_runtime_auth.rs
+index eb0e51ece2..54c9dacd42 100644
+--- a/codex-rs/core/tests/suite/request_plugin_install_runtime_auth.rs
++++ b/codex-rs/core/tests/suite/request_plugin_install_runtime_auth.rs
+@@ -205,13 +205,9 @@ async fn resumed_plugin_install_uses_the_threads_account(mode: RuntimeAuthMode)
+         .expect(1)
+         .mount(&server)
+         .await;
+-    let case = match mode {
+-        RuntimeAuthMode::DualHeader => "dual_header",
+-        RuntimeAuthMode::AssertionOnly => "assertion_only",
+-    };
+     run_harness_through_proxy(
+         &server,
+-        &format!("suite::request_plugin_install::runtime_auth_tests::resumed_plugin_install_uses_the_threads_account::{case}"),
++        &format!("suite::request_plugin_install::runtime_auth_tests::resumed_plugin_install_uses_the_threads_account"),
+         /*realtime_target*/ None,
+     ).await?;
+     let requests = server
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_active_environment_selection.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_active_environment_selection.snap
+index 2444544584..e92cf06858 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_active_environment_selection.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_active_environment_selection.snap
+@@ -6,7 +6,7 @@ Scenario: Astra sees two environments with different permissions. Only the secon
+ 
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=7aafbac510cab352):
++00:additional_tools/developer (3; hash=99d29dba1f990740):
+         - namespace/functions; hash=ebc92fe078f78ade
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: Astra sees two environments with different permissions. Only the secon
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_compaction_with_live_suffix.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_compaction_with_live_suffix.snap
+index c41bf87ef1..c96ef08b38 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_compaction_with_live_suffix.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_compaction_with_live_suffix.snap
+@@ -6,7 +6,7 @@ Scenario: Astra compacts a completed launch-notes turn in the background. The us
+ 
+ ## Window 1
+ -- request 1 (request) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: Astra compacts a completed launch-notes turn in the background. The us
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -45,7 +45,7 @@ Scenario: Astra compacts a completed launch-notes turn in the background. The us
+ 
+ ## Window 2 (after request 2: input diverged at item 10)
+ -- request 3 (request) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -53,7 +53,7 @@ Scenario: Astra compacts a completed launch-notes turn in the background. The us
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -88,7 +88,7 @@ Scenario: Astra compacts a completed launch-notes turn in the background. The us
+ 
+ ## Window 3 (after request 3: input diverged at item 02)
+ -- request 4 (request) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -96,7 +96,7 @@ Scenario: Astra compacts a completed launch-notes turn in the background. The us
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_question_and_answer.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_question_and_answer.snap
+index bf3eb75290..4276cef855 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_question_and_answer.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_question_and_answer.snap
+@@ -6,7 +6,7 @@ Scenario: Astra uses the catalog question schema to ask who a launch update is f
+ 
+ ## Window 1
+ -- request 1 (request) --
+-00:additional_tools/developer (3; hash=1575ec6449565e60):
++00:additional_tools/developer (3; hash=89e82078e4ca719a):
+         - namespace/functions; hash=1f321c5169dfcdc0
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: Astra uses the catalog question schema to ask who a launch update is f
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_code_mode_call_timing.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_code_mode_call_timing.snap
+index 53ab286cb0..0daad8061f 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_code_mode_call_timing.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_code_mode_call_timing.snap
+@@ -6,7 +6,7 @@ Scenario: Astra reads code-mode timings and the collector notice even at zero to
+ 
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: Astra reads code-mode timings and the collector notice even at zero to
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_disabled_executor_skills.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_disabled_executor_skills.snap
+index 6dbe7030ac..efb6697a6c 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_disabled_executor_skills.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_disabled_executor_skills.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (request) --
+-00:additional_tools/developer (3; hash=39cb3ee73f2e1987):
++00:additional_tools/developer (3; hash=364d11ba672d5b61):
+         - namespace/functions; hash=c4874773c24012ab
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_executor_plugin_policy_refresh.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_executor_plugin_policy_refresh.snap
+index 3de0473247..6ad704968e 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_executor_plugin_policy_refresh.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_executor_plugin_policy_refresh.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (request) --
+-00:additional_tools/developer (3; hash=39cb3ee73f2e1987):
++00:additional_tools/developer (3; hash=364d11ba672d5b61):
+         - namespace/functions; hash=c4874773c24012ab
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_interrupts_response.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_interrupts_response.snap
+index 8b38e7b708..d9e75223aa 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_interrupts_response.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_interrupts_response.snap
+@@ -6,7 +6,7 @@ Scenario: Astra receives new user input after its unfinished response is interru
+ 
+ ## Window 1
+ -- request 1 (request) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: Astra receives new user input after its unfinished response is interru
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_yields_code_mode_cell.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_yields_code_mode_cell.snap
+index ad03bdb398..2d601b9503 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_yields_code_mode_cell.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_yields_code_mode_cell.snap
+@@ -6,7 +6,7 @@ Scenario: Astra continues after new user input yields a running code cell, then
+ 
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=6f23592af0082595):
++00:additional_tools/developer (3; hash=9519f0e79721378b):
+         - namespace/functions; hash=d55357e79b53812d
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: Astra continues after new user input yields a running code cell, then
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_kickoff_remote_compaction_windows.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_kickoff_remote_compaction_windows.snap
+index 26c47317e7..d8fbb2cde4 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_kickoff_remote_compaction_windows.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_kickoff_remote_compaction_windows.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -188,7 +188,7 @@ Settings:
+ ## Window 2 (after request 3: input diverged at item 02)
+ Settings: same as window 1
+ -- request 4 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -196,7 +196,7 @@ Settings: same as window 1
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_policy_limits_visible_skills.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_policy_limits_visible_skills.snap
+index a2c544b9a6..9a2d28df1e 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_policy_limits_visible_skills.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_policy_limits_visible_skills.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_policy_without_skill_descriptions.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_policy_without_skill_descriptions.snap
+index 2a3e8aa35f..a818897d91 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_policy_without_skill_descriptions.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_policy_without_skill_descriptions.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_off.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_off.snap
+index 366f577373..847e1960e3 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_off.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_off.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_on.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_on.snap
+index 3e17661c46..0184e213d2 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_on.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh_simplified_selection_hints_on.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_settings_release_check_tool_shapes.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_settings_release_check_tool_shapes.snap
+index eaea544f25..5a30819d3d 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_settings_release_check_tool_shapes.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_settings_release_check_tool_shapes.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__attached_side_chat_preserves_model_context_on_cold_resume.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__attached_side_chat_preserves_model_context_on_cold_resume.snap
+index f67ca8ad25..29db009968 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__attached_side_chat_preserves_model_context_on_cold_resume.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__attached_side_chat_preserves_model_context_on_cold_resume.snap
+@@ -6,7 +6,7 @@ Scenario: A side chat receives the parent turn as reference, adds its own turn,
+ 
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: A side chat receives the parent turn as reference, adds its own turn,
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -108,7 +108,7 @@ Scenario: A side chat receives the parent turn as reference, adds its own turn,
+ 
+ ## Window 2 (after request 1: settings changed (prompt_cache_key))
+ -- request 2 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -116,7 +116,7 @@ Scenario: A side chat receives the parent turn as reference, adds its own turn,
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__budget_context__host_budget_context_after_compaction.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__budget_context__host_budget_context_after_compaction.snap
+index bd88db3096..7e65ba38c9 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__budget_context__host_budget_context_after_compaction.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__budget_context__host_budget_context_after_compaction.snap
+@@ -6,7 +6,7 @@ Scenario: Core renders the host's roster with native World State cadence. Compac
+ 
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: Core renders the host's roster with native World State cadence. Compac
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -63,7 +63,7 @@ Scenario: Core renders the host's roster with native World State cadence. Compac
+ 
+ ## Window 2 (after request 4: input diverged at item 02)
+ -- request 5 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -71,7 +71,7 @@ Scenario: Core renders the host's roster with native World State cadence. Compac
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__child_completion_wakes_parent_after_final_answer.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__child_completion_wakes_parent_after_final_answer.snap
+index ca1c9f8599..dbf2b89d5a 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__child_completion_wakes_parent_after_final_answer.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__child_completion_wakes_parent_after_final_answer.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=2cefe21beec1e2d2):
++00:additional_tools/developer (3; hash=527bfb370f01b2c0):
+         - namespace/functions; hash=1377b145cdccf5b4
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -54,14 +54,14 @@ Settings:
+ ## Window 2 (after request 3: input diverged at item 00)
+ Settings: same as window 1
+ -- request 4 (turn) --
+-00:additional_tools/developer (3; hash=72728edaee929e95):
++00:additional_tools/developer (3; hash=0e879378700f788b):
+         - namespace/functions; hash=d0883eefc88509b7
+           - custom/exec
+           - function/wait
+           - function/request_user_input
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages.snap
+index c5e4f35726..40d532ed9e 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages.snap
+@@ -15,14 +15,14 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (7; hash=4d27bfb639149cfb):
++  tools (7; hash=f036e4cdc5619ded):
+     - custom/exec: Catalog exec instructions. Default yield: 1234 ms. `image(imageUrlOrItem: string | { image_url: s...; hash=26fc765b2c6fa4eb
+     - function/wait: Catalog wait instructions: resume the yielded cell.; args=[cell_id, max_tokens, terminate, yield_time_ms]; hash=67bc0f04da3505b3
+     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
+     - function/request_user_input_async: Ask the user one or more questions during ongoing work. Use this tool only to request missing inf...; args=[questions]; hash=d6d74f33db330162
+     - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+       - function/sleep
+-    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+       - function/followup_task
+       - function/interrupt_agent
+       - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages_ranked_search.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages_ranked_search.snap
+index c7f9ee1a0d..8c510d9649 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages_ranked_search.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages_ranked_search.snap
+@@ -15,14 +15,14 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (7; hash=a2dd9deb36b0b574):
++  tools (7; hash=7c5cf1922af16d72):
+     - custom/exec: Catalog exec instructions. Default yield: 1234 ms. `image(imageUrlOrItem: string | { image_url: s...; hash=043d7068a7445992
+     - function/wait: Catalog wait instructions: resume the yielded cell.; args=[cell_id, max_tokens, terminate, yield_time_ms]; hash=67bc0f04da3505b3
+     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
+     - function/request_user_input_async: Ask the user one or more questions during ongoing work. Use this tool only to request missing inf...; args=[questions]; hash=d6d74f33db330162
+     - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+       - function/sleep
+-    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+       - function/followup_task
+       - function/interrupt_agent
+       - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_settled_helpers__code_mode_settled_helpers.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_settled_helpers__code_mode_settled_helpers.snap
+index 82038f55b7..c71166e99c 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_settled_helpers__code_mode_settled_helpers.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_settled_helpers__code_mode_settled_helpers.snap
+@@ -6,7 +6,7 @@ Scenario: Settlement helpers deliver fulfilled and rejected records with input i
+ 
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: Settlement helpers deliver fulfilled and rejected records with input i
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__command_sessions__command_sessions_world_state.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__command_sessions__command_sessions_world_state.snap
+index 24cd56d7e1..083e04e274 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__command_sessions__command_sessions_world_state.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__command_sessions__command_sessions_world_state.snap
+@@ -6,7 +6,7 @@ Scenario: A Code Mode script drops its command handle. WorldState retains it whi
+ 
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=08fdf601acba9636):
++00:additional_tools/developer (3; hash=fceb97bf2037c7c0):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: A Code Mode script drops its command handle. WorldState retains it whi
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=132d0256c7f80203
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=1afdedcd529bf939
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -58,7 +58,7 @@ Scenario: A Code Mode script drops its command handle. WorldState retains it whi
+ 
+ ## Window 2 (after request 3: settings changed (model))
+ -- request 4 (turn) --
+-00:additional_tools/developer (3; hash=08fdf601acba9636):
++00:additional_tools/developer (3; hash=fceb97bf2037c7c0):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -66,7 +66,7 @@ Scenario: A Code Mode script drops its command handle. WorldState retains it whi
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=132d0256c7f80203
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=1afdedcd529bf939
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -130,7 +130,7 @@ Scenario: A Code Mode script drops its command handle. WorldState retains it whi
+ 
+ ## Window 3 (after request 5: input diverged at item 00, settings changed (model))
+ -- request 6 (turn) --
+-00:additional_tools/developer (3; hash=d5796ee97b1e1527):
++00:additional_tools/developer (3; hash=9d4a95aca94e5031):
+         - namespace/functions; hash=f6f779209c4af0f3
+           - custom/exec
+           - function/wait
+@@ -138,7 +138,7 @@ Scenario: A Code Mode script drops its command handle. WorldState retains it whi
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=132d0256c7f80203
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=1afdedcd529bf939
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__compaction__remote_slash_compact.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__compaction__remote_slash_compact.snap
+index 2278efdefe..ac33014d35 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__compaction__remote_slash_compact.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__compaction__remote_slash_compact.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn; Before /compact) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -112,7 +112,7 @@ Settings:
+ ## Window 2 (after request 2: input diverged at item 07)
+ Settings: same as window 1
+ -- request 3 (compaction; Repeated /compact after resume) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -120,7 +120,7 @@ Settings: same as window 1
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -205,7 +205,7 @@ Settings: same as window 1
+ ## Window 3 (after request 3: input diverged at item 02)
+ Settings: same as window 1
+ -- request 4 (turn; First turn after /compact) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -213,7 +213,7 @@ Settings: same as window 1
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__dynamic_tools__dynamic_tools_update_preserves_pending_calls_and_survives_resume.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__dynamic_tools__dynamic_tools_update_preserves_pending_calls_and_survives_resume.snap
+index ed9a23ac85..cde9a2406c 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__dynamic_tools__dynamic_tools_update_preserves_pending_calls_and_survives_resume.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__dynamic_tools__dynamic_tools_update_preserves_pending_calls_and_survives_resume.snap
+@@ -15,7 +15,7 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (10; hash=926cde2726c284b6):
++  tools (10; hash=4ecc96370f860720):
+     - function/exec_command: Runs a command in a PTY, returning output or a session ID for ongoing interaction.; args=[cmd, justification, login, max_output_tokens, prefix_rule, sandbox_permissions, shell, tty, workdir, yield_time_ms]; hash=24f4b6739dd5d940
+     - function/write_stdin: Writes characters to an existing unified exec session and returns recent output.; args=[chars, max_output_tokens, session_id, yield_time_ms]; hash=7fb62d8a3e2df4e2
+     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
+@@ -25,7 +25,7 @@ Settings:
+       - function/sleep
+     - custom/apply_patch: The `apply_patch` tool can be used to edit files. This is a FREEFORM tool, so do not wrap the pat...; hash=dea9f12b0111a4ba
+     - function/view_image: View a local image file from the filesystem when visual inspection is needed. Use this for images...; args=[path]; hash=1908de9c0be7118a
+-    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+       - function/followup_task
+       - function/interrupt_agent
+       - function/list_agents
+@@ -50,7 +50,7 @@ Settings:
+ 
+ ## Window 2 (after request 1)
+ Settings: relative to window 1
+-  tools (10; hash=7e8f038920b8f08a):
++  tools (10; hash=b2c2e04cb9d658a4):
+     - removed function/release
+     + function/deployment: Check deployment.; args=[]; hash=2e9a71e9a20e43ad
+ -- request 2 (turn) --
+@@ -80,7 +80,7 @@ Settings: relative to window 1
+ 
+ ## Window 3 (after request 4)
+ Settings: relative to window 2
+-  tools (9; hash=9b8b6e1eb2dae92e):
++  tools (9; hash=75be4956319317d4):
+     - removed function/deployment
+ -- request 5 (turn) --
+ 00:message/developer:
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__frozen_cloud_skills__frozen_cloud_skills_with_named_executor_request_history.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__frozen_cloud_skills__frozen_cloud_skills_with_named_executor_request_history.snap
+index c85ebfdad7..396e9eafa3 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__frozen_cloud_skills__frozen_cloud_skills_with_named_executor_request_history.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__frozen_cloud_skills__frozen_cloud_skills_with_named_executor_request_history.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (request) --
+-00:additional_tools/developer (3; hash=8f90f1c7f4fce935):
++00:additional_tools/developer (3; hash=2149b8d88ed97feb):
+         - namespace/functions; hash=3eb85b1b397a4861
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__gif_generation_preserves_animation_and_replays_a_still_preview.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__gif_generation_preserves_animation_and_replays_a_still_preview.snap
+index 780ffe2d73..d340c8a2bc 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__gif_generation_preserves_animation_and_replays_a_still_preview.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__gif_generation_preserves_animation_and_replays_a_still_preview.snap
+@@ -16,14 +16,14 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=97553b6375920580):
++00:additional_tools/developer (3; hash=7c18558afd860478):
+         - namespace/functions; hash=aca887ef399aebba
+           - function/exec_command
+           - function/write_stdin
+           - function/request_user_input
+           - custom/apply_patch
+           - function/view_image
+-        - namespace/image_gen: Tools in the image_gen namespace.; hash=7f9a214246396279
++        - namespace/image_gen: Tools in the image_gen namespace.; hash=78bb13806b67ff91
+           - function/imagegen
+         - tool_search: # Tool discovery  Searches over deferred tool metadata with BM25 and exposes matching tools for t...; args=[limit, query]; hash=b573ed69c0b0e6c7
+ 01:message/developer:
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap
+index 1596fccb49..78d1830422 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap
+@@ -15,8 +15,8 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (4; hash=3d58097fa37447f7):
+-    - custom/exec: Exec guidance.  Run JavaScript code to orchestrate/compose tool calls - Evaluates the provided Ja...; hash=4bcf84c8dca427a8
++  tools (4; hash=228cdb0d11a4ec9f):
++    - custom/exec: Exec guidance.  Run JavaScript code to orchestrate/compose tool calls - Evaluates the provided Ja...; hash=e82d1b8e343db900
+     - function/wait: Waits on a yielded `exec` cell and returns new output or completion. - Use `wait` only after `exe...; args=[cell_id, max_tokens, terminate, yield_time_ms]; hash=6692d8f6c55be489
+     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
+     - web_search; hash=e214d4db1bc49e89
+@@ -49,8 +49,8 @@ Settings:
+ ## Window 2 (after request 2)
+ Settings: relative to window 1
+   model: "prefixes-cleared"
+-  tools (4; hash=ed90d9cc94ab1f37):
+-    ~ custom/exec: Run JavaScript code to orchestrate/compose tool calls - Evaluates the provided JavaScript code in...; hash=c9e960ab9bd58048
++  tools (4; hash=2a46ad2babb4ea6f):
++    ~ custom/exec: Run JavaScript code to orchestrate/compose tool calls - Evaluates the provided JavaScript code in...; hash=e57b4580470d6d20
+ -- request 3 (turn) --
+ 00:message/developer:
+     <MODEL_INSTRUCTIONS>
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_ema__enterprise_failure_preserves_ordinary_mcp_history.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_ema__enterprise_failure_preserves_ordinary_mcp_history.snap
+index 419fb17ffe..d117d2cbbf 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_ema__enterprise_failure_preserves_ordinary_mcp_history.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_ema__enterprise_failure_preserves_ordinary_mcp_history.snap
+@@ -15,7 +15,7 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (13; hash=ec9204e933ea40da):
++  tools (13; hash=825dca787bb455d0):
+     - function/exec_command: Runs a command in a PTY, returning output or a session ID for ongoing interaction.; args=[cmd, justification, login, max_output_tokens, prefix_rule, sandbox_permissions, shell, tty, workdir, yield_time_ms]; hash=24f4b6739dd5d940
+     - function/write_stdin: Writes characters to an existing unified exec session and returns recent output.; args=[chars, max_output_tokens, session_id, yield_time_ms]; hash=7fb62d8a3e2df4e2
+     - function/list_mcp_resources: Lists resources provided by MCP servers. Resources allow servers to share data that provides cont...; args=[cursor, server]; hash=6792edaff13561bd
+@@ -28,7 +28,7 @@ Settings:
+       - function/sleep
+     - custom/apply_patch: The `apply_patch` tool can be used to edit files. This is a FREEFORM tool, so do not wrap the pat...; hash=dea9f12b0111a4ba
+     - function/view_image: View a local image file from the filesystem when visual inspection is needed. Use this for images...; args=[path]; hash=1908de9c0be7118a
+-    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+       - function/followup_task
+       - function/interrupt_agent
+       - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_ema__enterprise_revocation_preserves_history_and_ordinary_tools.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_ema__enterprise_revocation_preserves_history_and_ordinary_tools.snap
+index 3ec48ae763..b31840970b 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_ema__enterprise_revocation_preserves_history_and_ordinary_tools.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_ema__enterprise_revocation_preserves_history_and_ordinary_tools.snap
+@@ -15,7 +15,7 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (14; hash=07d10df366aa7fc5):
++  tools (14; hash=b7a9bdf84d22615f):
+     - function/exec_command: Runs a command in a PTY, returning output or a session ID for ongoing interaction.; args=[cmd, justification, login, max_output_tokens, prefix_rule, sandbox_permissions, shell, tty, workdir, yield_time_ms]; hash=24f4b6739dd5d940
+     - function/write_stdin: Writes characters to an existing unified exec session and returns recent output.; args=[chars, max_output_tokens, session_id, yield_time_ms]; hash=7fb62d8a3e2df4e2
+     - function/list_mcp_resources: Lists resources provided by MCP servers. Resources allow servers to share data that provides cont...; args=[cursor, server]; hash=6792edaff13561bd
+@@ -28,7 +28,7 @@ Settings:
+       - function/sleep
+     - custom/apply_patch: The `apply_patch` tool can be used to edit files. This is a FREEFORM tool, so do not wrap the pat...; hash=dea9f12b0111a4ba
+     - function/view_image: View a local image file from the filesystem when visual inspection is needed. Use this for images...; args=[path]; hash=1908de9c0be7118a
+-    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+       - function/followup_task
+       - function/interrupt_agent
+       - function/list_agents
+@@ -67,7 +67,7 @@ Settings:
+ 
+ ## Window 2 (after request 2)
+ Settings: relative to window 1
+-  tools (13; hash=ec9204e933ea40da):
++  tools (13; hash=825dca787bb455d0):
+     - removed namespace/mcp__enterprise
+ -- request 3 (turn) --
+ 00:message/developer:
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_resource_messages__mcp_resource_messages.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_resource_messages__mcp_resource_messages.snap
+index 541550d009..5fbc973c3a 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_resource_messages__mcp_resource_messages.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_resource_messages__mcp_resource_messages.snap
+@@ -15,13 +15,13 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (6; hash=d843621dc36edf6d):
++  tools (6; hash=3197fbfe84ea9aa3):
+     - custom/exec: Run JavaScript code to orchestrate/compose tool calls - Evaluates the provided JavaScript code in...; hash=c00e260794631906
+     - function/wait: Waits on a yielded `exec` cell and returns new output or completion. - Use `wait` only after `exe...; args=[cell_id, max_tokens, terminate, yield_time_ms]; hash=6692d8f6c55be489
+     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
+     - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+       - function/sleep
+-    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+       - function/followup_task
+       - function/interrupt_agent
+       - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__multi_agent_catalog_parameters.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__multi_agent_catalog_parameters.snap
+index 42680fb14f..5ed1b3c4e4 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__multi_agent_catalog_parameters.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__multi_agent_catalog_parameters.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=5133d148141b321a):
++00:additional_tools/developer (3; hash=e84de11da826f7b8):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=bcd67096347e246f
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=c889fd390dc75689
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__partial_answers__preserved_answer_fork.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__partial_answers__preserved_answer_fork.snap
+index ea8485113f..37d779ffbd 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__partial_answers__preserved_answer_fork.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__partial_answers__preserved_answer_fork.snap
+@@ -6,13 +6,13 @@ Scenario: A worker inherits the parent prefix, then receives its own window hint
+ 
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (2; hash=2c5684dede3a1a9c):
++00:additional_tools/developer (2; hash=a8e72861f221f07e):
+         - namespace/functions; hash=c0e72eb3b93fb0da
+           - custom/exec
+           - function/wait
+           - function/request_user_input
+           - function/new_context
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -60,13 +60,13 @@ Scenario: A worker inherits the parent prefix, then receives its own window hint
+ 
+ ## Window 2 (after request 3: input diverged at item 13)
+ -- request 4 (turn) --
+-00:additional_tools/developer (2; hash=2c5684dede3a1a9c):
++00:additional_tools/developer (2; hash=a8e72861f221f07e):
+         - namespace/functions; hash=c0e72eb3b93fb0da
+           - custom/exec
+           - function/wait
+           - function/request_user_input
+           - function/new_context
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__prediction_fork_preserves_context_above_compaction_threshold.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__prediction_fork_preserves_context_above_compaction_threshold.snap
+index 4eacde0df4..11ca824eb0 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__prediction_fork_preserves_context_above_compaction_threshold.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__prediction_fork_preserves_context_above_compaction_threshold.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=f98b02bc44103876):
++00:additional_tools/developer (3; hash=013cb9b7976efdbc):
+         - namespace/functions; hash=a1243ae7ec163900
+           - custom/exec
+           - function/wait
+@@ -25,7 +25,7 @@ Settings:
+           - function/new_context
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__provider_capabilities__custom_provider_capabilities.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__provider_capabilities__custom_provider_capabilities.snap
+index 6500de5fc4..2dce114a7d 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__provider_capabilities__custom_provider_capabilities.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__provider_capabilities__custom_provider_capabilities.snap
+@@ -15,12 +15,12 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (6; hash=966a568a1aee5ba4):
++  tools (6; hash=be9a467eec86a34a):
+     - function/exec_command: Runs a command in a PTY, returning output or a session ID for ongoing interaction.; args=[cmd, justification, login, max_output_tokens, prefix_rule, sandbox_permissions, shell, tty, workdir, yield_time_ms]; hash=24f4b6739dd5d940
+     - function/write_stdin: Writes characters to an existing unified exec session and returns recent output.; args=[chars, max_output_tokens, session_id, yield_time_ms]; hash=7fb62d8a3e2df4e2
+     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
+     - function/view_image: View a local image file from the filesystem when visual inspection is needed. Use this for images...; args=[path]; hash=1908de9c0be7118a
+-    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=3cbf715dc154e1b7
++    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=5435f35452c107cd
+       - function/followup_task
+       - function/interrupt_agent
+       - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__retained_tool_outputs__retained_tool_output_retention_disabled.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__retained_tool_outputs__retained_tool_output_retention_disabled.snap
+index a3c72ed8a8..b644197ad4 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__retained_tool_outputs__retained_tool_output_retention_disabled.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__retained_tool_outputs__retained_tool_output_retention_disabled.snap
+@@ -6,7 +6,7 @@ Scenario: With retention disabled, the client can still send retain=true. Tool o
+ 
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: With retention disabled, the client can still send retain=true. Tool o
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -45,7 +45,7 @@ Scenario: With retention disabled, the client can still send retain=true. Tool o
+ 
+ ## Window 2 (after request 3: input diverged at item 11)
+ -- request 4 (compaction) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -53,7 +53,7 @@ Scenario: With retention disabled, the client can still send retain=true. Tool o
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -84,7 +84,7 @@ Scenario: With retention disabled, the client can still send retain=true. Tool o
+ 
+ ## Window 3 (after request 4: input diverged at item 06)
+ -- request 5 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -92,7 +92,7 @@ Scenario: With retention disabled, the client can still send retain=true. Tool o
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_before_budgeting.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_before_budgeting.snap
+index 36dbfc1e1b..15fa84f09c 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_before_budgeting.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_before_budgeting.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=39cb3ee73f2e1987):
++00:additional_tools/developer (3; hash=364d11ba672d5b61):
+         - namespace/functions; hash=c4874773c24012ab
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_without_descriptions.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_without_descriptions.snap
+index 4a16d6151d..c89732a37c 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_without_descriptions.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_without_descriptions.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=39cb3ee73f2e1987):
++00:additional_tools/developer (3; hash=364d11ba672d5b61):
+         - namespace/functions; hash=c4874773c24012ab
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__skill_catalog_deltas.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__skill_catalog_deltas.snap
+index ce633e6c26..d3ab24cfc6 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__skill_catalog_deltas.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__skill_catalog_deltas.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -160,7 +160,7 @@ Settings:
+ ## Window 2 (after request 7: input diverged at item 02)
+ Settings: same as window 1
+ -- request 8 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -168,7 +168,7 @@ Settings: same as window 1
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -295,7 +295,7 @@ Settings: same as window 1
+ ## Window 3 (after request 11: input diverged at item 07)
+ Settings: same as window 1
+ -- request 12 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -303,7 +303,7 @@ Settings: same as window 1
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -436,7 +436,7 @@ Settings: same as window 1
+ ## Window 4 (after request 18: input diverged at item 10)
+ Settings: same as window 1
+ -- request 19 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -444,7 +444,7 @@ Settings: same as window 1
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_read_installation_recovery_request_history.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_read_installation_recovery_request_history.snap
+index a137987fc5..f7803e8f34 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_read_installation_recovery_request_history.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_read_installation_recovery_request_history.snap
+@@ -6,7 +6,7 @@ Scenario: Astra reads Cloud instructions, discovers an omitted deployment instal
+ 
+ ## Window 1
+ -- request 1 (request) --
+-00:additional_tools/developer (3; hash=8f90f1c7f4fce935):
++00:additional_tools/developer (3; hash=2149b8d88ed97feb):
+         - namespace/functions; hash=3eb85b1b397a4861
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: Astra reads Cloud instructions, discovers an omitted deployment instal
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__statusline_authoring__explicit_statusline_mention_loads_the_bundled_skill.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__statusline_authoring__explicit_statusline_mention_loads_the_bundled_skill.snap
+index 765784d052..73e788bba7 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__statusline_authoring__explicit_statusline_mention_loads_the_bundled_skill.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__statusline_authoring__explicit_statusline_mention_loads_the_bundled_skill.snap
+@@ -6,7 +6,7 @@ Scenario: A user requests the bundled statusline skill by name.
+ 
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: A user requests the bundled statusline skill by name.
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__strict_3p_cache__strict_3p_mcp_catalog_cache.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__strict_3p_cache__strict_3p_mcp_catalog_cache.snap
+index 65f3664391..9cc6abaca6 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__strict_3p_cache__strict_3p_mcp_catalog_cache.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__strict_3p_cache__strict_3p_mcp_catalog_cache.snap
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__unavailable_images_are_rechecked_without_rewriting_history.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__unavailable_images_are_rechecked_without_rewriting_history.snap
+index 28198e58fc..654d46b4fd 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__unavailable_images_are_rechecked_without_rewriting_history.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__unavailable_images_are_rechecked_without_rewriting_history.snap
+@@ -6,7 +6,7 @@ Scenario: Available file references pass through. A later request replaces missi
+ 
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: Available file references pass through. A later request replaces missi
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -42,7 +42,7 @@ Scenario: Available file references pass through. A later request replaces missi
+ 
+ ## Window 2 (after request 1: input diverged at item 06)
+ -- request 2 (turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -50,7 +50,7 @@ Scenario: Available file references pass through. A later request replaces missi
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_and_open.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_and_open.snap
+index 5462bbff2c..f4cb9cb4d6 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_and_open.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_and_open.snap
+@@ -15,13 +15,13 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (7; hash=efb9f8abcd12f60b):
++  tools (7; hash=fdc88669ba438955):
+     - function/exec_command: Runs a command in a PTY, returning output or a session ID for ongoing interaction.; args=[cmd, justification, login, max_output_tokens, prefix_rule, sandbox_permissions, shell, tty, workdir, yield_time_ms]; hash=24f4b6739dd5d940
+     - function/write_stdin: Writes characters to an existing unified exec session and returns recent output.; args=[chars, max_output_tokens, session_id, yield_time_ms]; hash=7fb62d8a3e2df4e2
+     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
+     - custom/apply_patch: The `apply_patch` tool can be used to edit files. This is a FREEFORM tool, so do not wrap the pat...; hash=dea9f12b0111a4ba
+     - function/view_image: View a local image file from the filesystem when visual inspection is needed. Use this for images...; args=[path]; hash=1908de9c0be7118a
+-    - namespace/web: Tools in the web namespace.; hash=c60e4db83b9fd6b0
++    - namespace/web: Tools in the web namespace.; hash=ea89bde980bfc902
+       - function/run
+     - tool_search: # Tool discovery  Searches over deferred tool metadata with BM25 and exposes matching tools for t...; args=[limit, query]; hash=b573ed69c0b0e6c7
+ -- request 1 (turn) --
 diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_web_run_schema.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_web_run_schema.snap
 index 66517ac2c6..e00cc7015a 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_web_run_schema.snap
@@ -339,6 +1863,155 @@ index 66517ac2c6..e00cc7015a 100644
          ],
          "type": "object"
        },
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__model_selected_search_preserves_discovery_and_call_history.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__model_selected_search_preserves_discovery_and_call_history.snap
+index 23d4f44666..16afe8069d 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__model_selected_search_preserves_discovery_and_call_history.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__model_selected_search_preserves_discovery_and_call_history.snap
+@@ -15,7 +15,7 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (10; hash=2b1f11b924b13f60):
++  tools (10; hash=8c24fdf4276330ea):
+     - function/exec_command: Runs a command in a PTY, returning output or a session ID for ongoing interaction.; args=[cmd, justification, login, max_output_tokens, prefix_rule, sandbox_permissions, shell, tty, workdir, yield_time_ms]; hash=24f4b6739dd5d940
+     - function/write_stdin: Writes characters to an existing unified exec session and returns recent output.; args=[chars, max_output_tokens, session_id, yield_time_ms]; hash=7fb62d8a3e2df4e2
+     - function/list_mcp_resources: Lists resources provided by MCP servers. Resources allow servers to share data that provides cont...; args=[cursor, server]; hash=6792edaff13561bd
+@@ -24,7 +24,7 @@ Settings:
+     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
+     - custom/apply_patch: The `apply_patch` tool can be used to edit files. This is a FREEFORM tool, so do not wrap the pat...; hash=dea9f12b0111a4ba
+     - function/view_image: View a local image file from the filesystem when visual inspection is needed. Use this for images...; args=[path]; hash=1908de9c0be7118a
+-    - namespace/web: Tools in the web namespace.; hash=c60e4db83b9fd6b0
++    - namespace/web: Tools in the web namespace.; hash=ea89bde980bfc902
+       - function/run
+     - tool_search: # Tool discovery  Searches over deferred tool metadata with BM25 and exposes matching tools for t...; args=[limit, query]; hash=b573ed69c0b0e6c7
+ -- request 1 (turn) --
+@@ -106,8 +106,8 @@ Settings: relative to window 1
+ ## Window 3 (after request 7)
+ Settings: relative to window 2
+   model: "native-paper"
+-  tools (10; hash=52194b2cfc736bb5):
+-    + namespace/web: Tools in the web namespace.; hash=0037b1ed8d50fab5
++  tools (10; hash=6d48d601a3fb2ec3):
++    + namespace/web: Tools in the web namespace.; hash=ed1c60da95696abb
+       - function/run
+ -- request 8 (turn) --
+ 00:message/developer:
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__world_state_prefix__extension_window_prefix_local.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__world_state_prefix__extension_window_prefix_local.snap
+index 7be7c5dd27..060b3824a7 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__world_state_prefix__extension_window_prefix_local.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__world_state_prefix__extension_window_prefix_local.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn; Initial policy A) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -132,7 +132,7 @@ Settings:
+ ## Window 2 (after request 4: input diverged at item 02)
+ Settings: unavailable (items only)
+ -- request 5 (items; Stored replacement before next turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -140,7 +140,7 @@ Settings: unavailable (items only)
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -229,7 +229,7 @@ Settings: unavailable (items only)
+ ## Window 3 (after request 5)
+ Settings: same as window 1
+ -- request 6 (turn; Unchanged policy C after compaction) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -237,7 +237,7 @@ Settings: same as window 1
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__world_state_prefix__extension_window_prefix_remote.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__world_state_prefix__extension_window_prefix_remote.snap
+index bfef2ba025..d4a6fc0263 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__world_state_prefix__extension_window_prefix_remote.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__world_state_prefix__extension_window_prefix_remote.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn; Initial policy A) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -123,7 +123,7 @@ Settings:
+ ## Window 2 (after request 4: input diverged at item 02)
+ Settings: unavailable (items only)
+ -- request 5 (items; Stored replacement before next turn) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -131,7 +131,7 @@ Settings: unavailable (items only)
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -218,7 +218,7 @@ Settings: unavailable (items only)
+ ## Window 3 (after request 5)
+ Settings: same as window 1
+ -- request 6 (turn; Unchanged policy C after compaction) --
+-00:additional_tools/developer (3; hash=a7c46a0959d54866):
++00:additional_tools/developer (3; hash=a661361002a50b0c):
+         - namespace/functions; hash=81846de5bc4e7474
+           - custom/exec
+           - function/wait
+@@ -226,7 +226,7 @@ Settings: same as window 1
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a097b9364047b8bb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=48ffe58ac866461d
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
 diff --git a/codex-rs/exec-server/src/noise_relay/harness_tests.rs b/codex-rs/exec-server/src/noise_relay/harness_tests.rs
 index 4c2d77d2d4..c028540d15 100644
 --- a/codex-rs/exec-server/src/noise_relay/harness_tests.rs
