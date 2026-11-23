@@ -1,4 +1,4 @@
-From f17d062279f3bb4e71303e130fcc857d93ee3aac Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 18 Nov 2026 20:14:14 -0500
 Subject: [PATCH] feature: turn off feedback and analytics by default and point
@@ -35,11 +35,13 @@ Tests that rely on the old defaults now enable feedback or analytics explicitly.
  codex-rs/core/src/config/config_tests.rs      | 49 ++++++++++++++-----
  codex-rs/core/src/config/mod.rs               | 13 +++--
  codex-rs/core/src/guardian/tests.rs           |  2 +
- codex-rs/core/tests/common/lib.rs             |  8 ++-
+ codex-rs/core/tests/common/lib.rs             |  3 ++
  .../suite/guardian_subagent_authorization.rs  |  2 +
  codex-rs/tui/src/app/tests.rs                 |  2 +
  .../tests/terminal_size_telemetry_tests.rs    |  3 +-
- .../chatwidget/tests/popups_and_settings.rs   |  2 +
+ ...t__tests__feedback_command_suggestion.snap |  9 ----
+ .../chatwidget/tests/popups_and_settings.rs   | 17 ++-----
+ .../src/chatwidget/tests/status_and_layout.rs |  2 +
  codex-rs/tui/src/history_cell/notices.rs      |  9 ++--
  ...pdate_available_history_cell_snapshot.snap | 14 +++---
  ...pdate_available_history_cell_snapshot.snap |  7 +--
@@ -51,10 +53,11 @@ Tests that rely on the old defaults now enable feedback or analytics explicitly.
  codex-rs/tui/src/update_prompt.rs             |  2 +-
  codex-rs/tui/src/update_versions.rs           | 30 ++++++++++--
  codex-rs/tui/src/updates.rs                   |  3 +-
- 31 files changed, 220 insertions(+), 78 deletions(-)
+ 33 files changed, 221 insertions(+), 98 deletions(-)
+ delete mode 100644 codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__feedback_command_suggestion.snap
 
 diff --git a/codex-rs/app-server/tests/common/config.rs b/codex-rs/app-server/tests/common/config.rs
-index f359b40..940e2eb 100644
+index f359b40f89..940e2ebd39 100644
 --- a/codex-rs/app-server/tests/common/config.rs
 +++ b/codex-rs/app-server/tests/common/config.rs
 @@ -113,6 +113,16 @@ impl MockResponsesConfig {
@@ -84,10 +87,10 @@ index f359b40..940e2eb 100644
          )
      }
 diff --git a/codex-rs/app-server/tests/suite/v2/analytics.rs b/codex-rs/app-server/tests/suite/v2/analytics.rs
-index 9a280c9..feb68fd 100644
+index 1053a6037b..ca3ed7edef 100644
 --- a/codex-rs/app-server/tests/suite/v2/analytics.rs
 +++ b/codex-rs/app-server/tests/suite/v2/analytics.rs
-@@ -616,6 +616,17 @@ pub(crate) async fn mount_analytics_capture(server: &MockServer, codex_home: &Pa
+@@ -741,6 +741,17 @@ pub(crate) async fn mount_analytics_capture(server: &MockServer, codex_home: &Pa
          AuthCredentialsStoreMode::File,
      )?;
  
@@ -106,10 +109,10 @@ index 9a280c9..feb68fd 100644
      Ok(())
  }
 diff --git a/codex-rs/app-server/tests/suite/v2/auth_storage_originator_tests.rs b/codex-rs/app-server/tests/suite/v2/auth_storage_originator_tests.rs
-index 86817d5..0d0c826 100644
+index d0493656d0..1e4acb0ea6 100644
 --- a/codex-rs/app-server/tests/suite/v2/auth_storage_originator_tests.rs
 +++ b/codex-rs/app-server/tests/suite/v2/auth_storage_originator_tests.rs
-@@ -45,13 +45,22 @@ pub(super) async fn configure_collector(codex_home: &Path) -> Result<MockServer>
+@@ -47,13 +47,22 @@ pub(super) async fn configure_collector(codex_home: &Path) -> Result<MockServer>
          .mount(&collector)
          .await;
      let endpoint = format!("{}/v1/metrics", collector.uri());
@@ -135,10 +138,10 @@ index 86817d5..0d0c826 100644
      Ok(collector)
  }
 diff --git a/codex-rs/app-server/tests/suite/v2/external_agent_config.rs b/codex-rs/app-server/tests/suite/v2/external_agent_config.rs
-index e6a8d86..18b83b9 100644
+index 2648edda2d..3a25e8f284 100644
 --- a/codex-rs/app-server/tests/suite/v2/external_agent_config.rs
 +++ b/codex-rs/app-server/tests/suite/v2/external_agent_config.rs
-@@ -1329,6 +1329,8 @@ async fn external_agent_config_import_reports_failed_sync_import_in_completion()
+@@ -1332,6 +1332,8 @@ async fn external_agent_config_import_reports_failed_sync_import_in_completion()
      let mut mcp = TestAppServer::builder()
          .with_codex_home(codex_home.path())
          .without_auto_env()
@@ -147,7 +150,7 @@ index e6a8d86..18b83b9 100644
          .with_env_overrides(&[
              ("HOME", Some(home_dir.as_str())),
              (
-@@ -2749,6 +2751,6 @@ async fn external_agent_config_import_compacts_huge_session_before_first_follow_
+@@ -2845,6 +2847,6 @@ async fn external_agent_config_import_compacts_huge_session_before_first_follow_
  fn write_analytics_config(codex_home: &std::path::Path, base_url: &str) -> std::io::Result<()> {
      std::fs::write(
          codex_home.join("config.toml"),
@@ -156,7 +159,7 @@ index e6a8d86..18b83b9 100644
      )
  }
 diff --git a/codex-rs/app-server/tests/suite/v2/feedback.rs b/codex-rs/app-server/tests/suite/v2/feedback.rs
-index 2bd9237..d96d3f0 100644
+index 2bd9237705..d96d3f079b 100644
 --- a/codex-rs/app-server/tests/suite/v2/feedback.rs
 +++ b/codex-rs/app-server/tests/suite/v2/feedback.rs
 @@ -16,6 +16,7 @@ async fn feedback_upload_limits_concurrency_and_releases_failed_uploads() -> Res
@@ -176,10 +179,10 @@ index 2bd9237..d96d3f0 100644
          .with_env_overrides(&[
              ("HTTPS_PROXY", Some(proxy_uri.as_str())),
 diff --git a/codex-rs/app-server/tests/suite/v2/plugin_install.rs b/codex-rs/app-server/tests/suite/v2/plugin_install.rs
-index ae19ff3..1e434b3 100644
+index b2df7b1bb7..04cfc9f8d1 100644
 --- a/codex-rs/app-server/tests/suite/v2/plugin_install.rs
 +++ b/codex-rs/app-server/tests/suite/v2/plugin_install.rs
-@@ -2863,7 +2863,7 @@ connectors = true
+@@ -2869,7 +2869,7 @@ connectors = true
  fn write_analytics_config(codex_home: &std::path::Path, base_url: &str) -> std::io::Result<()> {
      std::fs::write(
          codex_home.join("config.toml"),
@@ -188,7 +191,7 @@ index ae19ff3..1e434b3 100644
      )
  }
  
-@@ -2967,6 +2967,13 @@ plugins = true
+@@ -2973,6 +2973,13 @@ plugins = true
  
  fn configure_remote_plugin_test(codex_home: &std::path::Path, server: &MockServer) -> Result<()> {
      write_remote_plugin_catalog_config(codex_home, &format!("{}/backend-api/", server.uri()))?;
@@ -203,7 +206,7 @@ index ae19ff3..1e434b3 100644
          codex_home,
          ChatGptAuthFixture::new("chatgpt-token")
 diff --git a/codex-rs/app-server/tests/suite/v2/plugin_uninstall.rs b/codex-rs/app-server/tests/suite/v2/plugin_uninstall.rs
-index 1e0d5d8..8069d68 100644
+index 1e0d5d83e8..8069d68c1e 100644
 --- a/codex-rs/app-server/tests/suite/v2/plugin_uninstall.rs
 +++ b/codex-rs/app-server/tests/suite/v2/plugin_uninstall.rs
 @@ -71,7 +71,7 @@ async fn plugin_uninstall_tracks_analytics_event() -> Result<()> {
@@ -226,7 +229,7 @@ index 1e0d5d8..8069d68 100644
  plugins = true
  "#
 diff --git a/codex-rs/app-server/tests/suite/v2/remote_control.rs b/codex-rs/app-server/tests/suite/v2/remote_control.rs
-index e3faed6..bd8b3fb 100644
+index e3faed676c..bd8b3fbc6e 100644
 --- a/codex-rs/app-server/tests/suite/v2/remote_control.rs
 +++ b/codex-rs/app-server/tests/suite/v2/remote_control.rs
 @@ -512,13 +512,17 @@ async fn stdio_eof_releases_thread_writer_with_pending_remote_control_enable() -
@@ -255,10 +258,10 @@ index e3faed6..bd8b3fb 100644
          codex_home.path(),
          "2025-01-01T00-00-00",
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index f1c664a..1bf6c80 100644
+index 21380779d9..497ae87dd7 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
-@@ -621,6 +621,9 @@ struct AppServerCommand {
+@@ -633,6 +633,9 @@ struct AppServerCommand {
  
      /// Controls whether analytics are enabled by default.
      ///
@@ -269,10 +272,10 @@ index f1c664a..1bf6c80 100644
      /// via the `analytics` section in the config.toml file.
      ///
 diff --git a/codex-rs/cli/tests/doctor_path_safety.rs b/codex-rs/cli/tests/doctor_path_safety.rs
-index 015fb06..a6b56eb 100644
+index a91de8b90d..86a1a1b35d 100644
 --- a/codex-rs/cli/tests/doctor_path_safety.rs
 +++ b/codex-rs/cli/tests/doctor_path_safety.rs
-@@ -638,7 +638,13 @@ async fn feedback_with_logs_does_not_execute_path_helpers() -> Result<()> {
+@@ -642,7 +642,13 @@ async fn feedback_with_logs_does_not_execute_path_helpers() -> Result<()> {
          // The CLI does not accept the standalone app-server's test-only flag.
          // Disable plugins through real config; their safety test joins a full sync.
          .with_plugin_startup_tasks()
@@ -288,10 +291,10 @@ index 015fb06..a6b56eb 100644
              ("PATH", Some(path.as_ref())),
              ("HOME", Some(home.as_ref())),
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index d0302eb..d7138fc 100644
+index 283d52ae00..21d8695531 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
-@@ -551,11 +551,11 @@ pub struct ConfigToml {
+@@ -569,11 +569,11 @@ pub struct ConfigToml {
  
      /// When `enabled` is `false`, disables OpenAI analytics across Codex product surfaces on this machine.
      /// Custom OTLP metrics exporters are controlled by `otel.metrics_exporter`.
@@ -306,29 +309,29 @@ index d0302eb..d7138fc 100644
  
      /// Settings for app-specific controls.
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 13785e3..f96ae9a 100644
+index c5f3645ff5..940c3386a7 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -7452,7 +7452,7 @@
+@@ -7975,7 +7975,7 @@
            "$ref": "#/definitions/AnalyticsConfigToml"
          }
        ],
--      "description": "When `enabled` is `false`, disables OpenAI analytics across Codex product surfaces on this machine.\nCustom OTLP metrics exporters are controlled by `otel.metrics_exporter`.\nWhen unset, the default depends on the client."
-+      "description": "When `enabled` is `false`, disables OpenAI analytics across Codex product surfaces on this machine.\nCustom OTLP metrics exporters are controlled by `otel.metrics_exporter`.\nWhen unset, analytics are off."
+-      "description": "When `enabled` is `false`, disables OpenAI analytics across Codex product surfaces on this machine. Custom OTLP metrics exporters are controlled by `otel.metrics_exporter`. When unset, the default depends on the client."
++      "description": "When `enabled` is `false`, disables OpenAI analytics across Codex product surfaces on this machine. Custom OTLP metrics exporters are controlled by `otel.metrics_exporter`. When unset, analytics are off."
      },
      "approval_policy": {
        "allOf": [
-@@ -8286,7 +8286,7 @@
+@@ -8886,7 +8886,7 @@
            "$ref": "#/definitions/FeedbackConfigToml"
          }
        ],
--      "description": "When `false`, disables feedback collection across Codex product surfaces.\nDefaults to `true`."
-+      "description": "When `false`, disables feedback collection across Codex product surfaces.\nDefaults to `false`."
+-      "description": "When `false`, disables feedback collection across Codex product surfaces. Defaults to `true`."
++      "description": "When `false`, disables feedback collection across Codex product surfaces. Defaults to `false`."
      },
      "file_opener": {
        "allOf": [
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 862b92b..b8654c6 100644
+index bf227ce113..9d304bb0da 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
 @@ -41,6 +41,7 @@ use codex_config::permissions_toml::NetworkToml;
@@ -339,7 +342,7 @@ index 862b92b..b8654c6 100644
  use codex_config::types::AppToolApproval;
  use codex_config::types::ApprovalsReviewer;
  use codex_config::types::BundledSkillsConfig;
-@@ -6906,21 +6907,43 @@ fn local_dev_builds_force_file_mcp_oauth_store_modes() {
+@@ -7045,21 +7046,43 @@ fn local_dev_builds_force_file_mcp_oauth_store_modes() {
  }
  
  #[tokio::test]
@@ -397,10 +400,10 @@ index 862b92b..b8654c6 100644
      Ok(())
  }
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index e7ae30d..f6269a5 100644
+index e32b84e66c..742b01e863 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -1201,11 +1201,11 @@ pub struct Config {
+@@ -1243,11 +1243,11 @@ pub struct Config {
  
      /// When `false`, disables OpenAI analytics across Codex product surfaces on this machine.
      /// Custom OTLP metrics exporters are controlled by `otel.metrics_exporter`.
@@ -414,7 +417,7 @@ index e7ae30d..f6269a5 100644
      pub feedback_enabled: bool,
  
      /// Configured discoverable tools for tool suggestions.
-@@ -4761,12 +4761,17 @@ impl Config {
+@@ -4899,12 +4899,17 @@ impl Config {
                  .and_then(|tui| tui.disable_paste_burst)
                  .or(cfg.disable_paste_burst)
                  .unwrap_or(false),
@@ -435,7 +438,7 @@ index e7ae30d..f6269a5 100644
              tui_notifications: cfg
                  .tui
 diff --git a/codex-rs/core/src/guardian/tests.rs b/codex-rs/core/src/guardian/tests.rs
-index 239a965..4298df7 100644
+index f02ffb2a3d..bdb8ad99d2 100644
 --- a/codex-rs/core/src/guardian/tests.rs
 +++ b/codex-rs/core/src/guardian/tests.rs
 @@ -288,6 +288,8 @@ async fn guardian_test_session_and_turn_with_base_url(
@@ -448,32 +451,21 @@ index 239a965..4298df7 100644
      let models_manager = test_support::models_manager_with_provider(
          config.codex_home.to_path_buf(),
 diff --git a/codex-rs/core/tests/common/lib.rs b/codex-rs/core/tests/common/lib.rs
-index ce3a9a8..ebeb1bd 100644
+index f84d97f4c7..1e085e932a 100644
 --- a/codex-rs/core/tests/common/lib.rs
 +++ b/codex-rs/core/tests/common/lib.rs
-@@ -210,14 +210,18 @@ pub async fn load_default_config_for_test_with_cloud_config_bundle(
-     codex_home: &TempDir,
-     cloud_config_bundle: CloudConfigBundleLoader,
- ) -> Config {
--    ConfigBuilder::default()
-+    let mut config = ConfigBuilder::default()
-         .loader_overrides(LoaderOverrides::without_managed_config_for_tests())
-         .codex_home(codex_home.path().to_path_buf())
-         .harness_overrides(default_test_overrides())
-         .cloud_config_bundle(cloud_config_bundle)
-         .build()
-         .await
--        .expect("defaults for test should always succeed")
-+        .expect("defaults for test should always succeed");
+@@ -229,6 +229,9 @@ pub async fn load_default_config_for_test_with_cloud_config_bundle(
+             .disable(feature)
+             .expect("test config should allow disabling plugin recommendations");
+     }
 +    // This build defaults analytics off. Tests that observe analytics events rely on the upstream
 +    // default, so the harness turns them on and each test opts out explicitly.
 +    config.analytics_enabled = Some(true);
-+    config
+     config
  }
  
- pub fn managed_network_requirements_loader() -> CloudConfigBundleLoader {
 diff --git a/codex-rs/core/tests/suite/guardian_subagent_authorization.rs b/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
-index 2783145..9f126d3 100644
+index 2783145782..9f126d372b 100644
 --- a/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
 +++ b/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
 @@ -736,6 +736,8 @@ async fn run_guardian_subagent_review(
@@ -486,10 +478,10 @@ index 2783145..9f126d3 100644
                  .features
                  .disable(Feature::UnleashedBackgroundSubagents)
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 8377f62..29fb219 100644
+index 76634683cc..e0c2aac6ea 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -7794,6 +7794,8 @@ async fn feedback_submission_stages_logs_cleans_up_and_emits_error_history_cell(
+@@ -10535,6 +10535,8 @@ async fn feedback_submission_stages_logs_cleans_up_and_emits_error_history_cell(
      use tracing_subscriber::fmt::writer::MakeWriter;
  
      let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
@@ -499,7 +491,7 @@ index 8377f62..29fb219 100644
          session_lifecycle_requests::start_recording_remote_app_server(&app.config).await?;
      let diagnostic = "SQLITE LOG WRITE FAILURE: disk full\n";
 diff --git a/codex-rs/tui/src/app/tests/terminal_size_telemetry_tests.rs b/codex-rs/tui/src/app/tests/terminal_size_telemetry_tests.rs
-index 5075ba1..befcccb 100644
+index dbc5ada1b2..2a9b6ee734 100644
 --- a/codex-rs/tui/src/app/tests/terminal_size_telemetry_tests.rs
 +++ b/codex-rs/tui/src/app/tests/terminal_size_telemetry_tests.rs
 @@ -10,6 +10,7 @@ async fn terminal_size_telemetry_respects_reloaded_exporter_and_consent() -> Res
@@ -510,7 +502,7 @@ index 5075ba1..befcccb 100644
          "[otel]\nmetrics_exporter = \"none\"\n",
          "[otel]\nmetrics_exporter = \"statsig\"\n[analytics]\nenabled = false\n",
          "analytics.enabled = false\n[otel.metrics_exporter.otlp-http]\nendpoint = \"http://127.0.0.1:4318/v1/metrics\"\nprotocol = \"json\"\n",
-@@ -25,6 +26,6 @@ async fn terminal_size_telemetry_respects_reloaded_exporter_and_consent() -> Res
+@@ -26,6 +27,6 @@ async fn terminal_size_telemetry_respects_reloaded_exporter_and_consent() -> Res
          app.local_settings = local_settings;
          enabled.push(crate::terminal_size_telemetry::enabled(&app.config));
      }
@@ -518,21 +510,64 @@ index 5075ba1..befcccb 100644
 +    assert_eq!(enabled, vec![false, true, false, false, true]);
      Ok(())
  }
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__feedback_command_suggestion.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__feedback_command_suggestion.snap
+deleted file mode 100644
+index 0f5e1805ba..0000000000
+--- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__feedback_command_suggestion.snap
++++ /dev/null
+@@ -1,9 +0,0 @@
+----
+-source: tui/src/chatwidget/tests/popups_and_settings.rs
+-expression: "normalize_snapshot_paths(render_bottom_popup(&chat, 80))"
+----
+-› /feedback  send logs to maintainers or save a ZIP
+-
+-› /feedback
+-
+-  GPT-5.6-Sol default · /tmp/project
 diff --git a/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs b/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs
-index 54e1f1f..3c4fe8c 100644
+index 9bf9748768..90fdbb7f85 100644
 --- a/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs
-@@ -4314,6 +4314,8 @@ async fn auto_model_advertising_advanced_effort_opens_reasoning_picker() {
+@@ -4301,19 +4301,10 @@ async fn auto_model_advertising_advanced_effort_opens_reasoning_picker() {
+ 
  #[tokio::test]
  async fn feedback_selection_popup_snapshot() {
-     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
-+    // Feedback is off by default in this build.
+-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+-
+-    chat.bottom_pane
+-        .set_composer_text("/feedback".into(), Vec::new(), Vec::new());
+-    assert_chatwidget_snapshot!(
+-        "feedback_command_suggestion",
+-        normalize_snapshot_paths(render_bottom_popup(&chat, /*width*/ 80))
+-    );
+-    chat.handle_key_event(KeyCode::Enter.into());
+-    assert!(
+-        std::iter::from_fn(|| rx.try_recv().ok())
+-            .any(|event| matches!(event, AppEvent::OpenFeedback))
+-    );
++    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
++    // Feedback is off by default in this build, and /feedback is not listed, so open the popup
++    // directly.
 +    chat.config.feedback_enabled = true;
+     chat.open_feedback(crate::ThreadParamsMode::Embedded);
  
-     // Open the feedback category selection popup via slash command.
-     chat.dispatch_command(SlashCommand::Feedback);
+     let popup = render_bottom_popup(&chat, /*width*/ 80);
+diff --git a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
+index 917f1ad904..39ea5d3b9b 100644
+--- a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
++++ b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
+@@ -149,6 +149,8 @@ async fn daybreak_refusal_offers_enable_for_the_next_turn() {
+     )
+     .await;
+     chat.set_feature_enabled(Feature::CliDaybreak, /*enabled*/ true);
++    // Feedback is off by default in this build; the recourse picker offers it only when enabled.
++    chat.config.feedback_enabled = true;
+     let thread_id = ThreadId::new();
+     chat.thread_id = Some(thread_id);
+     let mut model = crate::test_support::TEST_MODEL_PRESETS[0].clone();
 diff --git a/codex-rs/tui/src/history_cell/notices.rs b/codex-rs/tui/src/history_cell/notices.rs
-index 9f5e213..a922f63 100644
+index 033ef0659e..808fd65a95 100644
 --- a/codex-rs/tui/src/history_cell/notices.rs
 +++ b/codex-rs/tui/src/history_cell/notices.rs
 @@ -39,7 +39,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
@@ -573,7 +608,7 @@ index 9f5e213..a922f63 100644
      }
  
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
-index 28aa335..8dec83d 100644
+index 28aa335682..8dec83d2f8 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
 @@ -2,10 +2,10 @@
@@ -595,7 +630,7 @@ index 28aa335..8dec83d 100644
 +│ https://github.com/holdmyspot-com/codex-unleashed/releases/latest │
 +╰───────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
-index 913845c..5f09db9 100644
+index 913845cf60..5f09db9952 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 @@ -4,9 +4,10 @@ expression: rendered
@@ -613,7 +648,7 @@ index 913845c..5f09db9 100644
 +│ https://github.com/holdmyspot-com/codex-unleashed/releases/latest                                          │
  ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
-index 52a497e..8841552 100644
+index 52a497e5c0..8841552598 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
 @@ -5,8 +5,8 @@ expression: rendered
@@ -628,10 +663,10 @@ index 52a497e..8841552 100644
 +│ https://github.com/holdmyspot-com/codex-unleashed/releases/latest                                          │
  ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
-index dfd0538..d44c908 100644
+index 443f26d8eb..e8cb38d2e9 100644
 --- a/codex-rs/tui/src/slash_command.rs
 +++ b/codex-rs/tui/src/slash_command.rs
-@@ -318,6 +318,8 @@ impl SlashCommand {
+@@ -326,6 +326,8 @@ impl SlashCommand {
              SlashCommand::Copy => !cfg!(target_os = "android"),
              SlashCommand::App => cfg!(any(target_os = "macos", target_os = "windows")),
              SlashCommand::Voice => true,
@@ -640,7 +675,7 @@ index dfd0538..d44c908 100644
              SlashCommand::Rollout | SlashCommand::TestApproval => cfg!(debug_assertions),
              _ => true,
          }
-@@ -367,6 +369,15 @@ mod tests {
+@@ -375,6 +377,15 @@ mod tests {
          assert!(SlashCommand::App.available_during_task());
      }
  
@@ -657,7 +692,7 @@ index dfd0538..d44c908 100644
      fn auto_review_command_is_approve() {
          assert_eq!(SlashCommand::AutoReview.command(), "approve");
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
-index 53c8053..7f283d8 100644
+index 53c8053051..7f283d831e 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
 @@ -6,8 +6,8 @@ expression: rendered
@@ -672,7 +707,7 @@ index 53c8053..7f283d8 100644
  › 3. Skip until next version
  
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
-index b547642..0ee815f 100644
+index b547642270..0ee815fe49 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
 @@ -4,7 +4,8 @@ expression: terminal.backend()
@@ -686,7 +721,7 @@ index b547642..0ee815f 100644
  › 1. Update now (runs `npm install -g @openai/codex`)                           
    2. Skip
 diff --git a/codex-rs/tui/src/update_action.rs b/codex-rs/tui/src/update_action.rs
-index 7b3433e..c7f27cf 100644
+index 7b3433e992..c7f27cf2e5 100644
 --- a/codex-rs/tui/src/update_action.rs
 +++ b/codex-rs/tui/src/update_action.rs
 @@ -22,7 +22,7 @@ pub enum UpdateAction {
@@ -794,7 +829,7 @@ index 7b3433e..c7f27cf 100644
          let output = std::process::Command::new(command)
              .args([args[0], &offline_command])
 diff --git a/codex-rs/tui/src/update_prompt.rs b/codex-rs/tui/src/update_prompt.rs
-index 30e948d..102f711 100644
+index 30e948da89..102f711536 100644
 --- a/codex-rs/tui/src/update_prompt.rs
 +++ b/codex-rs/tui/src/update_prompt.rs
 @@ -39,7 +39,7 @@ use ratatui::widgets::Wrap;
@@ -807,7 +842,7 @@ index 30e948d..102f711 100644
  #[cfg(not(debug_assertions))]
  pub(crate) enum UpdatePromptOutcome {
 diff --git a/codex-rs/tui/src/update_versions.rs b/codex-rs/tui/src/update_versions.rs
-index d338802..5cc7b65 100644
+index d33880255b..5cc7b65001 100644
 --- a/codex-rs/tui/src/update_versions.rs
 +++ b/codex-rs/tui/src/update_versions.rs
 @@ -16,7 +16,7 @@ pub(crate) fn extract_version_from_latest_tag(latest_tag_name: &str) -> anyhow::
@@ -873,7 +908,7 @@ index d338802..5cc7b65 100644
      }
  
 diff --git a/codex-rs/tui/src/updates.rs b/codex-rs/tui/src/updates.rs
-index 9bbdf31..f1c2650 100644
+index 9bbdf310a8..f1c2650eee 100644
 --- a/codex-rs/tui/src/updates.rs
 +++ b/codex-rs/tui/src/updates.rs
 @@ -59,7 +59,8 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {

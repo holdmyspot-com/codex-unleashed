@@ -1,8 +1,8 @@
 # Deterministic release tar archives
 
-- Applies to: upstream `openai/codex` commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a` after the 69 patches selected before this patch.
-- Prerequisites: all 69 earlier patches in `patches/README.md`.
-- Patch: `deterministic-archives.patch` (queue entry 70).
+- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`, after the 60 patches selected before this patch.
+- Prerequisites: all 60 earlier patches in `patches/README.md`.
+- Patch: `deterministic-archives.patch` (queue entry 61).
 
 ## Intent
 
@@ -18,8 +18,8 @@ The focused tests compare gzip and zstd SHA-256 for separately staged equivalent
 
 ## Shared package operations
 
-- Applies after upstream commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`, the 69 earlier selected patches, and queue 70 (`deterministic-archives.patch`).
-- Patch: `shared-package-builder.patch` (queue entry 71).
+- Applies after upstream tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`, the 60 earlier selected patches, and queue entry 61 (`deterministic-archives.patch`).
+- Patch: `shared-package-builder.patch` (queue entry 62).
 
 The Cargo package action and package assembly action use `.github/scripts/codex-package-operations.sh` for binary selection, profile setup, Cargo builds, symbol/PDB preparation, and both package variants. The standalone caller can invoke the same operations and receives the same fixed binary list, ordered Cargo arguments, platform branches, and package arguments. Rust setup, platform tool setup, Bazel builds, Python/uv setup, and smoke tests remain in their existing action steps.
 
@@ -42,7 +42,7 @@ git diff --check
 
 ## Archive command
 
-`archive-command.patch` is queue entry 72 and requires entries 1–71. It exposes the existing package archive writer to release tooling through a module command. Archive creation uses the same gzip and zstd compression arguments and normalized tar bytes as direct calls to `write_archive`.
+`archive-command.patch` is queue entry 63 and requires entries 1–62. It exposes the existing package archive writer to release tooling through a module command. Archive creation uses the same gzip and zstd compression arguments and normalized tar bytes as direct calls to `write_archive`.
 
 From the patched upstream checkout, write a package archive:
 
@@ -70,8 +70,8 @@ CODEX_REPO_ROOT="$PWD" python3 scripts/codex_package/test_archive.py ArchiveModu
 
 ## Code-mode symbol validation
 
-`code-mode-symbol-validation.patch` is queue entry 79 and requires entries 1–78 on upstream commit
-`086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
+`code-mode-symbol-validation.patch` is queue entry 70 and requires entries 1–69 on upstream
+tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
 
 Before stripping `codex-code-mode-host` on Linux or macOS, the symbols archive command requires exactly one defined,
 exact demangled `codex_code_mode_host::main` symbol. A failed symbol-tool invocation stops packaging with its failure
@@ -94,7 +94,7 @@ symbol archives.
 
 ## Dev Drive volume classification
 
-`dev-drive-volume-predicate.patch` is queue entry 88 and requires entries 1–87.
+`dev-drive-volume-predicate.patch` is queue entry 79 and requires entries 1–78.
 The setup command classifies non-ReFS volumes as ordinary volumes. For ReFS, it opens the filesystem root
 and queries the Dev Volume flag through the Windows API; query failures stop setup. Trust status is separate
 from volume classification. The compiled helper must resolve to exactly one expected type.
@@ -112,7 +112,7 @@ the exact attached BFS instance, and publication of one build-root entry while p
 
 ## MSVC environment reuse
 
-`msvc-environment-reuse.patch` is queue entry 94 and requires entries 1–93.
+`msvc-environment-reuse.patch` is queue entry 85 and requires entries 1–84.
 The Windows package job configures the Visual Studio developer environment in `prepare-bazel-ci`, in the MSVC setup
 step, and again when the Cargo package build repeats its setup. Every `VsDevCmd.bat` run prepends the same tool
 directories, about 2,100 characters, to `PATH`, and the next run passes that `PATH` to `cmd.exe`, which rejects a line
@@ -131,3 +131,9 @@ three runs in one job, another target, another host, an unset tools directory an
 ## Workspace lockfile versions
 
 Earlier queues carried `workspace_package_versions.patch`, which changed 171 `version = "0.0.0"` lines in `codex-rs/Cargo.lock` to `0.167.0`. It fixed one release version and broke the test and lint workflows, which rewrite `workspace.package.version` to `0.0.0` before applying the queue. The patch is retired, and the release workflow performs the same edit after the last patch with `codex-tooling align-workspace-lock --source-root ROOT`, taking the version from `codex-rs/Cargo.toml`, and commits it with fixed author, message and dates so that the recorded source commit and tree are reproducible. It makes no commit when the lockfile already matches. For 0.167.0 the resulting lockfile is byte-identical to the one the retired patch produced. See [package identity](../../../../docs/package-identity.md).
+
+## Rebase onto rust-v0.171.0
+
+- `shared-package-builder.patch`: `rust-v0.171.0` adds the `codex-windows-sandbox-service` Windows binary, so `.github/scripts/codex-package-operations.sh` selects it and `test-codex-package-operations.sh` expects it in both Windows packages; that test passes. The musl link flags stay upstream's `CODEX_MUSL_RELEASE_LINK_FLAGS`.
+- `aws-lc-c-standard.patch` (queue entry 74): upstream moved to `aws-lc` 5.1.0.bcr.3 and `rules_rs` 0.2.3. The `single_version_override` now targets bcr.3, and `patches/aws_lc_c_standard.patch` is regenerated against the bcr.3 overlay `BUILD.bazel`, which still selects C11 explicitly. `patches/BUILD.bazel` no longer exports the zstd-sys patch that upstream deleted. It has not run under Bazel.
+- No native build or test has run on the rebased queue.

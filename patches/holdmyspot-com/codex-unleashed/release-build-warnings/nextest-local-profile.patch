@@ -1,8 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 23:22:21 -0500
-Subject: [PATCH 23/54] Rely on nextest's implicit inheritance for the local
- profile
+Subject: [PATCH] Rely on nextest's implicit inheritance for the local profile
 
 Every custom nextest profile already inherits from default. The explicit
 inherits key needs nextest 0.9.115, so the pinned 0.9.103 warns that it is
@@ -12,7 +11,7 @@ an unknown key.
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
-index 0dd6717..6a5a83a 100644
+index 0dd671758e..6a5a83ae0e 100644
 --- a/codex-rs/.config/nextest.toml
 +++ b/codex-rs/.config/nextest.toml
 @@ -25,8 +25,8 @@ threads-required = "num-test-threads"

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:04:02 -0500
-Subject: [PATCH 08/54] Avoid blocking startup on a duplicate skills refresh
+Subject: [PATCH] Avoid blocking startup on a duplicate skills refresh
 
 ---
  codex-rs/tui/src/app/background_requests.rs   |   4 +-
@@ -13,11 +13,11 @@ Subject: [PATCH 08/54] Avoid blocking startup on a duplicate skills refresh
  6 files changed, 168 insertions(+), 4 deletions(-)
 
 diff --git a/codex-rs/tui/src/app/background_requests.rs b/codex-rs/tui/src/app/background_requests.rs
-index 999931d..78b54e9 100644
+index bab924254d..c87b01bf7b 100644
 --- a/codex-rs/tui/src/app/background_requests.rs
 +++ b/codex-rs/tui/src/app/background_requests.rs
-@@ -256,7 +256,9 @@ impl App {
-     pub(super) fn refresh_startup_skills(&mut self, app_server: &AppServerSession) {
+@@ -273,7 +273,9 @@ impl App {
+         }
          let request_handle = app_server.request_handle();
          let app_event_tx = self.app_event_tx.clone();
 -        let cwd = self.config.cwd.to_path_buf();
@@ -25,13 +25,13 @@ index 999931d..78b54e9 100644
 +        self.chat_widget.note_startup_skills_refresh(cwd.clone());
 +        let cwd = cwd.to_path_buf();
          tokio::spawn(async move {
-             let result = fetch_skills_list(request_handle, cwd.clone())
-                 .await
+             let request_id = RequestId::String(format!("startup-skills-list-{}", Uuid::new_v4()));
+             let result = fetch_skills_list(
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index fca1ef2..bf0f8eb 100644
+index a5664d2c22..2e5651415f 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -1119,6 +1119,7 @@ See the Codex keymap documentation for supported actions and examples."
+@@ -1202,6 +1202,7 @@ See the Codex keymap documentation for supported actions and examples."
              app.chat_widget.open_hooks_browser(entry);
          }
          app.update_visible_history_rows(tui.terminal.last_known_screen_size);
@@ -39,7 +39,7 @@ index fca1ef2..bf0f8eb 100644
          let initial_session_started_at = Instant::now();
          if let Some(started) = initial_started_thread {
              let thread_id = started.session.thread_id;
-@@ -1234,7 +1235,6 @@ See the Codex keymap documentation for supported actions and examples."
+@@ -1318,7 +1319,6 @@ See the Codex keymap documentation for supported actions and examples."
              event_stream_ms = %event_stream_started_at.elapsed().as_millis(),
              "tui startup initial frame scheduled"
          );
@@ -48,10 +48,10 @@ index fca1ef2..bf0f8eb 100644
          // already has data and available reset credits can be surfaced, without
          // delaying the initial frame render.
 diff --git a/codex-rs/tui/src/app/tests/startup_frame_tests.rs b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
-index 9fe4a76..9b94028 100644
+index 9e484afda9..c1ae3bd876 100644
 --- a/codex-rs/tui/src/app/tests/startup_frame_tests.rs
 +++ b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
-@@ -211,3 +211,152 @@ async fn inline_startup_still_renders_with_pending_history() -> Result<()> {
+@@ -214,3 +214,152 @@ async fn inline_startup_still_renders_with_pending_history() -> Result<()> {
      assert!(frame_text(&tui).contains("inline startup draft"));
      Ok(())
  }
@@ -205,10 +205,10 @@ index 9fe4a76..9b94028 100644
 +    Ok(())
 +}
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 2451776..eb1b053 100644
+index 849b44de13..a06ba16812 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -619,6 +619,7 @@ pub(crate) struct ChatWidget {
+@@ -642,6 +642,7 @@ pub(crate) struct ChatWidget {
      pending_collab_spawn_requests: HashMap<String, multi_agents::SpawnRequestSummary>,
      suppressed_exec_calls: HashSet<String>,
      skills_all: Vec<SkillMetadata>,
@@ -216,8 +216,8 @@ index 2451776..eb1b053 100644
      skills_initial_state: Option<HashMap<PathUri, bool>>,
      last_unified_wait: Option<UnifiedExecWaitState>,
      unified_exec_wait_streak: Option<UnifiedExecWaitStreak>,
-@@ -1858,6 +1859,11 @@ impl ChatWidget {
-         self.external_writer_view
+@@ -1883,6 +1884,11 @@ impl ChatWidget {
+         self.bottom_pane.clear_esc_backtrack_hint();
      }
  
 +    /// Records the directory whose initial skill metadata is supplied by the app's background request.
@@ -229,10 +229,10 @@ index 2451776..eb1b053 100644
          self.submit_op(AppCommand::list_skills(
              vec![self.config.cwd.to_path_buf()],
 diff --git a/codex-rs/tui/src/chatwidget/constructor.rs b/codex-rs/tui/src/chatwidget/constructor.rs
-index 6e405d2..fb2c571 100644
+index f27e7c4801..49898a3a0b 100644
 --- a/codex-rs/tui/src/chatwidget/constructor.rs
 +++ b/codex-rs/tui/src/chatwidget/constructor.rs
-@@ -122,6 +122,7 @@ impl ChatWidget {
+@@ -126,6 +126,7 @@ impl ChatWidget {
              config_panel_tui,
              effective_service_tier,
              skills_all: Vec::new(),
@@ -241,10 +241,10 @@ index 6e405d2..fb2c571 100644
              current_collaboration_mode,
              active_collaboration_mask,
 diff --git a/codex-rs/tui/src/chatwidget/session_flow.rs b/codex-rs/tui/src/chatwidget/session_flow.rs
-index a1ff412..69c1d5e 100644
+index 1162509a59..8745a21e1c 100644
 --- a/codex-rs/tui/src/chatwidget/session_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/session_flow.rs
-@@ -87,7 +87,11 @@ impl ChatWidget {
+@@ -91,7 +91,11 @@ impl ChatWidget {
              history_metadata.log_id,
              history_metadata.entry_count,
          );
@@ -256,8 +256,8 @@ index a1ff412..69c1d5e 100644
 +        }
          self.session_network_proxy = session.network_proxy.clone();
          let previous_thread_id = self.thread_id;
-         let connector_scope_changed = previous_thread_id != Some(session.thread_id)
-@@ -257,7 +261,9 @@ impl ChatWidget {
+         if previous_thread_id != Some(session.thread_id) || self.cloud_picker_selection.is_some() {
+@@ -277,7 +281,9 @@ impl ChatWidget {
              self.add_info_message("Daybreak is on for new turns.".into(), /*hint*/ None);
          }
          self.transcript.saw_copy_source_this_turn = false;

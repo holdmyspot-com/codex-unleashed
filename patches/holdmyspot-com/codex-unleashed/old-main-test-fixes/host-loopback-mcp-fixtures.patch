@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:14 -0500
-Subject: [PATCH 52/54] test: keep host MCP fixtures reachable with the remote
+Subject: [PATCH] test: keep host MCP fixtures reachable with the remote
  executor primary
 
 Register host loopback MCP cleanup fixtures locally and retain remote RPC
@@ -23,22 +23,21 @@ and emitted-queue runtime acceptance remain unrun.
  2 files changed, 37 insertions(+), 3 deletions(-)
 
 diff --git a/codex-rs/core/tests/suite/hooks.rs b/codex-rs/core/tests/suite/hooks.rs
-index 1adc786..12e7736 100644
+index 3223cc4704..015aab0121 100644
 --- a/codex-rs/core/tests/suite/hooks.rs
 +++ b/codex-rs/core/tests/suite/hooks.rs
-@@ -4612,7 +4612,8 @@ async fn local_bundled_cleanup_hook_runs_without_saved_trust(
+@@ -4594,14 +4594,25 @@ async fn local_bundled_cleanup_hook_runs_without_saved_trust(
+             .features
+             .disable(Feature::ExecutorCapabilityDiscovery)
              .expect("disable executor capability discovery");
-         let repl: McpServerConfig = serde_json::from_value(serde_json::json!({
-             "url": repl_url,
--            "environment_id": super::rmcp_client::remote_aware_environment_id(),
-+            // This fixture owns a host loopback server, even when tools run remotely.
-+            "environment_id": codex_config::DEFAULT_MCP_SERVER_ENVIRONMENT_ID,
-         }))
-         .expect("valid MCP configuration");
-         config
-@@ -4624,7 +4625,17 @@ async fn local_bundled_cleanup_hook_runs_without_saved_trust(
-             )
-             .expect("configure MCP server");
++        // This fixture owns a host loopback server, even when tools run remotely.
+         configure_hook_mcp(
+             config,
+             mcp_server_name,
+             &repl_url,
+-            &super::rmcp_client::remote_aware_environment_id(),
++            codex_config::DEFAULT_MCP_SERVER_ENVIRONMENT_ID,
+         );
      });
 -    let test = builder.build_with_auto_env(&server).await?;
 +    let test = builder.build_with_remote_and_local_env(&server).await?;
@@ -56,7 +55,7 @@ index 1adc786..12e7736 100644
      assert_eq!(
          test.config.features.enabled(Feature::CodexHooks),
 diff --git a/codex-rs/core/tests/suite/hooks_executor.rs b/codex-rs/core/tests/suite/hooks_executor.rs
-index 4852848..bf29a1e 100644
+index e2c81bab84..66694ebd67 100644
 --- a/codex-rs/core/tests/suite/hooks_executor.rs
 +++ b/codex-rs/core/tests/suite/hooks_executor.rs
 @@ -37,6 +37,7 @@ use core_test_support::apps_test_server::AppsTestServer;
@@ -78,7 +77,7 @@ index 4852848..bf29a1e 100644
  use core_test_support::test_target_os;
  use core_test_support::wait_for_event;
  use core_test_support::wait_for_event_match;
-@@ -1391,7 +1394,25 @@ async fn executor_plugin_hook_fixture(
+@@ -1778,7 +1781,25 @@ async fn executor_plugin_hook_fixture(
              )
              .expect("configure Node REPL MCP server");
      });
@@ -105,7 +104,7 @@ index 4852848..bf29a1e 100644
      wait_for_mcp_server(&test.codex, "node_repl").await?;
  
      let mut plugin_roots = Vec::new();
-@@ -1430,6 +1451,7 @@ async fn executor_plugin_hook_fixture(
+@@ -1817,6 +1838,7 @@ async fn executor_plugin_hook_fixture(
          responses,
          hook_called,
          plugin_roots,
@@ -113,7 +112,7 @@ index 4852848..bf29a1e 100644
      })
  }
  
-@@ -1439,6 +1461,7 @@ struct ExecutorHookFixture {
+@@ -1826,6 +1848,7 @@ struct ExecutorHookFixture {
      responses: ResponseMock,
      hook_called: Arc<Notify>,
      plugin_roots: Vec<(&'static str, PathUri)>,

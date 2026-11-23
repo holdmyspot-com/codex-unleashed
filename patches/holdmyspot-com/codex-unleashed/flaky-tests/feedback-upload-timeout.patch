@@ -1,4 +1,4 @@
-From c776d6a78620bc623da4fba71f17cd9614f52846 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Fri, 13 Nov 2026 01:41:04 -0500
 Subject: [PATCH] Give the slow feedback upload test a four-minute timeout
@@ -9,7 +9,7 @@ feedback_upload_delivers_large_files_intact takes 57 to 60 seconds on an Intel m
  1 file changed, 6 insertions(+)
 
 diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
-index 04cbb1807..50e5ef037 100644
+index 04cbb1807c..fc4f2a5ea3 100644
 --- a/codex-rs/.config/nextest.toml
 +++ b/codex-rs/.config/nextest.toml
 @@ -128,6 +128,12 @@ filter = '''

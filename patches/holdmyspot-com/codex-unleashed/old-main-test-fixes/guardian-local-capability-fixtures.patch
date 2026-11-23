@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:14 -0500
-Subject: [PATCH 54/54] test: register local Guardian execution alongside
- remote fixtures
+Subject: [PATCH] test: register local Guardian execution alongside remote
+ fixtures
 
 Guardian fixtures explicitly select the local executor and inspect host-owned files. Register both capabilities and retain an owned host cwd so remote test selection does not remove or misplace the local execution contract. Materialize the reuse fixture secret in that same host directory; preserve every review, denial, cancellation and lifecycle assertion.
 
@@ -14,10 +14,10 @@ Prerequisite: issue-61 zzzz-0086-interrupt-host-cwd-fixtures.patch on upstream83
  3 files changed, 7 insertions(+), 13 deletions(-)
 
 diff --git a/codex-rs/core/tests/suite/guardian_authorization.rs b/codex-rs/core/tests/suite/guardian_authorization.rs
-index 91f93d8..212aecd 100644
+index ea7cfbe98b..dfabfc6554 100644
 --- a/codex-rs/core/tests/suite/guardian_authorization.rs
 +++ b/codex-rs/core/tests/suite/guardian_authorization.rs
-@@ -149,6 +149,7 @@ async fn guardian_revalidates_owning_session_before_allow(
+@@ -150,6 +150,7 @@ async fn guardian_revalidates_owning_session_before_allow(
      let base_url = format!("{}/v1", streaming_server.uri());
      let server = responses::start_mock_server().await;
      let mut test = test_codex()
@@ -25,7 +25,7 @@ index 91f93d8..212aecd 100644
          .with_model_info_override("test-gpt-5.1-codex", |model| {
              model.comp_hash = Some("compatible".to_owned());
              model.auto_review_model_override = Some(model.slug.clone());
-@@ -172,7 +173,7 @@ async fn guardian_revalidates_owning_session_before_allow(
+@@ -187,7 +188,7 @@ async fn guardian_revalidates_owning_session_before_allow(
              }
          })
          .with_code_mode_host_program(codex_utils_cargo_bin::cargo_bin("codex-code-mode-host")?)
@@ -35,10 +35,10 @@ index 91f93d8..212aecd 100644
      if review_mode == GuardianContextMode::Legacy {
          test.codex.ensure_rollout_materialized().await;
 diff --git a/codex-rs/core/tests/suite/guardian_review.rs b/codex-rs/core/tests/suite/guardian_review.rs
-index 6c593c9..6f50552 100644
+index 5714c93a02..80cdd0d786 100644
 --- a/codex-rs/core/tests/suite/guardian_review.rs
 +++ b/codex-rs/core/tests/suite/guardian_review.rs
-@@ -1908,6 +1908,7 @@ async fn guardian_session_is_reused_for_consecutive_tool_reviews_without_prewarm
+@@ -1910,6 +1910,7 @@ async fn guardian_session_is_reused_for_consecutive_tool_reviews_without_prewarm
      let mut extensions = ExtensionRegistryBuilder::<Config>::new();
      extensions.tool_lifecycle_contributor(lifecycle_recorder.clone());
      let mut builder = test_codex()
@@ -46,7 +46,7 @@ index 6c593c9..6f50552 100644
          .with_model_info_override("gpt-5.4", |_| {})
          .with_extensions(Arc::new(extensions.build()))
          .with_config(move |config| {
-@@ -1936,20 +1937,11 @@ async fn guardian_session_is_reused_for_consecutive_tool_reviews_without_prewarm
+@@ -1938,20 +1939,11 @@ async fn guardian_session_is_reused_for_consecutive_tool_reviews_without_prewarm
                      NetworkSandboxPolicy::Restricted,
                  ))
                  .expect("set parent permission profile");
@@ -70,10 +70,10 @@ index 6c593c9..6f50552 100644
      let first_output_file = test.cwd.path().join("guardian-first.txt");
      let second_output_file = test.cwd.path().join("guardian-second.txt");
 diff --git a/codex-rs/core/tests/suite/guardian_review_cancellation.rs b/codex-rs/core/tests/suite/guardian_review_cancellation.rs
-index 733f680..2f91ea1 100644
+index 2f9ad19ec8..9b3a4d1a76 100644
 --- a/codex-rs/core/tests/suite/guardian_review_cancellation.rs
 +++ b/codex-rs/core/tests/suite/guardian_review_cancellation.rs
-@@ -50,6 +50,7 @@ async fn cancelling_tool_aborts_its_guardian_review(cancellation: Cancellation)
+@@ -55,6 +55,7 @@ async fn cancelling_tool_aborts_its_guardian_review(
  
      let server = responses::start_mock_server().await;
      let mut builder = test_codex()
@@ -81,7 +81,7 @@ index 733f680..2f91ea1 100644
          .with_model("test-gpt-5.1-codex")
          .with_config(move |config| {
              config.permissions.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
-@@ -66,7 +67,7 @@ async fn cancelling_tool_aborts_its_guardian_review(cancellation: Cancellation)
+@@ -91,7 +92,7 @@ async fn cancelling_tool_aborts_its_guardian_review(
          builder = builder
              .with_code_mode_host_program(codex_utils_cargo_bin::cargo_bin("codex-code-mode-host")?);
      }

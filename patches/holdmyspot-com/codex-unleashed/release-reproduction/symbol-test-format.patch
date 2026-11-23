@@ -1,12 +1,16 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 18 Nov 2026 12:21:44 -0500
 Subject: [PATCH] .github: format symbol validation script
 
 Format the queue93 Python file with the repository's pinned Ruff version.
 The formatting-only change preserves its Python AST.
+---
+ .../test-code-mode-symbol-validation.py       | 43 +++++++++++++++----
+ 1 file changed, 35 insertions(+), 8 deletions(-)
 
 diff --git a/.github/scripts/test-code-mode-symbol-validation.py b/.github/scripts/test-code-mode-symbol-validation.py
-index 02055a5..43c4631 100644
+index 02055a523b..43c463195b 100644
 --- a/.github/scripts/test-code-mode-symbol-validation.py
 +++ b/.github/scripts/test-code-mode-symbol-validation.py
 @@ -20,6 +20,7 @@ class CodeModeSymbolValidationTest(unittest.TestCase):
@@ -100,3 +104,6 @@ index 02055a5..43c4631 100644
                  shutil.rmtree(dwarf.parent.parent.parent, ignore_errors=True)
                  dwarf.mkdir(parents=True)
                  for name, kind in members:
+-- 
+2.43.0
+

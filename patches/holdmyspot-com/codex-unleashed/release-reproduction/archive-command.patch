@@ -1,20 +1,21 @@
-From 6a2a2a7fd8f9be7caf53f56aabb9481673e6e460 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Fri, 13 Nov 2026 12:20:01 -0500
 Subject: [PATCH] feature: expose archive writer to Java release tooling
 
 Release tooling needs a direct process boundary to the existing archive writer so legal finalization can preserve its canonical bytes.
 ---
- scripts/codex_package/archive.py      |  61 +++++++++++++
- scripts/codex_package/test_archive.py | 127 ++++++++++++++++++++++++++
- .../archive-release-symbols-and-strip-binaries.sh | 11 ++---------
+ ...hive-release-symbols-and-strip-binaries.sh |  11 +-
+ scripts/codex_package/archive.py              |  61 +++++++++
+ scripts/codex_package/test_archive.py         | 127 ++++++++++++++++++
  3 files changed, 190 insertions(+), 9 deletions(-)
 
 diff --git a/.github/scripts/archive-release-symbols-and-strip-binaries.sh b/.github/scripts/archive-release-symbols-and-strip-binaries.sh
-index b3c00c0..4f0d0cb 100755
+index b3c00c0b03..4f0d0cb682 100755
 --- a/.github/scripts/archive-release-symbols-and-strip-binaries.sh
 +++ b/.github/scripts/archive-release-symbols-and-strip-binaries.sh
-@@ -119,11 +119,4 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+@@ -118,12 +118,5 @@ esac
+ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
  PYTHONPATH="${repo_root}/scripts${PYTHONPATH:+:${PYTHONPATH}}" \
  CODEX_REPO_ROOT="$repo_root" \
 -python3 - "$symbols_root" "$archive_path" <<'PY'
@@ -29,7 +30,7 @@ index b3c00c0..4f0d0cb 100755
 +python3 -m codex_package.archive write \
 +  --package-dir "$symbols_root" --archive-output "$archive_path" --force
 diff --git a/scripts/codex_package/archive.py b/scripts/codex_package/archive.py
-index 50b771d..60ef6ff 100644
+index 50b771dce3..60ef6ff12f 100644
 --- a/scripts/codex_package/archive.py
 +++ b/scripts/codex_package/archive.py
 @@ -1,8 +1,12 @@
@@ -107,7 +108,7 @@ index 50b771d..60ef6ff 100644
 +if __name__ == "__main__":
 +    sys.exit(main())
 diff --git a/scripts/codex_package/test_archive.py b/scripts/codex_package/test_archive.py
-index 6d835fa..fe1bcbd 100644
+index 6d835fa0f0..fe1bcbd80d 100644
 --- a/scripts/codex_package/test_archive.py
 +++ b/scripts/codex_package/test_archive.py
 @@ -1,6 +1,7 @@

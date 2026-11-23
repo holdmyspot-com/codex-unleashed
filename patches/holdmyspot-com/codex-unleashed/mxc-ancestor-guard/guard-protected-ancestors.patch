@@ -1,4 +1,4 @@
-From 18ad984b2c308bbff83631d818f868727e16e194 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 18 Nov 2026 11:13:17 -0500
 Subject: [PATCH] bugfix: stop MXC sandboxes from moving the ancestors of
@@ -14,10 +14,10 @@ ancestors are still left ungranted, and a protected path that does not exist yet
  2 files changed, 369 insertions(+), 10 deletions(-)
 
 diff --git a/codex-rs/mxc-sandbox/src/policy.rs b/codex-rs/mxc-sandbox/src/policy.rs
-index 8e703e7..8d0ec51 100644
+index be227e1ced..7d0a98a948 100644
 --- a/codex-rs/mxc-sandbox/src/policy.rs
 +++ b/codex-rs/mxc-sandbox/src/policy.rs
-@@ -60,6 +60,12 @@ pub enum PolicyError {
+@@ -63,6 +63,12 @@ pub enum PolicyError {
          #[source]
          source: std::io::Error,
      },
@@ -30,7 +30,7 @@ index 8e703e7..8d0ec51 100644
      #[error(transparent)]
      Path(#[from] std::io::Error),
      #[error(transparent)]
-@@ -256,8 +262,22 @@ pub(super) fn build_request(
+@@ -271,8 +277,22 @@ pub(super) fn build_request(
      // and inaccessible deny paths before the native API can evaluate them.
      // The hard-link and volume-root alias tradeoffs are intentional; see README.
      // Read-only roots already grant recursive access; only expand writable roots.
@@ -55,7 +55,7 @@ index 8e703e7..8d0ec51 100644
      // Resolve equal-path write overrides before reaching MXC so the native
      // API receives one effective access mode for each path identity.
      read.retain(|key, _| !write.contains_key(key) && !deny.contains_key(key));
-@@ -447,6 +467,100 @@ fn expand_volume_roots(
+@@ -465,6 +485,100 @@ fn expand_volume_roots(
      Ok(expanded)
  }
  
@@ -157,7 +157,7 @@ index 8e703e7..8d0ec51 100644
      paths
          .into_iter()
 diff --git a/codex-rs/mxc-sandbox/src/policy_tests.rs b/codex-rs/mxc-sandbox/src/policy_tests.rs
-index 95ebeef..4578e2a 100644
+index d7b13d6340..d68c4bf69f 100644
 --- a/codex-rs/mxc-sandbox/src/policy_tests.rs
 +++ b/codex-rs/mxc-sandbox/src/policy_tests.rs
 @@ -1,6 +1,7 @@
@@ -176,7 +176,7 @@ index 95ebeef..4578e2a 100644
  
  #[test]
  fn symbolic_root_precedence_is_independent_of_drive_and_cwd() -> Result<()> {
-@@ -250,6 +252,7 @@ fn native_grants_preserve_denies_and_read_only_carveouts() -> Result<()> {
+@@ -251,6 +253,7 @@ fn native_grants_preserve_denies_and_read_only_carveouts() -> Result<()> {
          PermissionProfile::from_runtime_permissions(&fs, NetworkSandboxPolicy::Restricted);
      let request = build_request(&command(&profile, root), root, Vec::new(), &[], &[])?;
      let mut expected_read = [
@@ -184,7 +184,7 @@ index 95ebeef..4578e2a 100644
          root.join(".agents"),
          root.join(".aws"),
          root.join(".codex"),
-@@ -268,10 +271,8 @@ fn native_grants_preserve_denies_and_read_only_carveouts() -> Result<()> {
+@@ -269,10 +272,8 @@ fn native_grants_preserve_denies_and_read_only_carveouts() -> Result<()> {
              request.policy.denied_paths
          ),
          (
@@ -197,7 +197,7 @@ index 95ebeef..4578e2a 100644
              expected_read
                  .iter()
                  .map(|path| path.to_str().unwrap().to_owned())
-@@ -308,9 +309,10 @@ fn volume_expansion_does_not_turn_read_only_child_writable() -> Result<()> {
+@@ -309,9 +310,10 @@ fn volume_expansion_does_not_turn_read_only_child_writable() -> Result<()> {
          &[root.to_owned()],
          &[],
      )?;
@@ -210,7 +210,7 @@ index 95ebeef..4578e2a 100644
          assert!(denied.parent().unwrap().is_dir());
          assert!(!denied.exists());
          for directory in [&missing, &missing.join("parent")] {
-@@ -325,6 +327,7 @@ fn volume_expansion_does_not_turn_read_only_child_writable() -> Result<()> {
+@@ -326,6 +328,7 @@ fn volume_expansion_does_not_turn_read_only_child_writable() -> Result<()> {
      assert_eq!(
          request.policy.readonly_paths,
          vec![
@@ -218,7 +218,7 @@ index 95ebeef..4578e2a 100644
              root.join(".agents").to_str().unwrap(),
              root.join(".aws").to_str().unwrap(),
              root.join(".codex").to_str().unwrap(),
-@@ -366,7 +369,6 @@ fn volume_expansion_skips_broken_links_and_preserves_other_grants() -> Result<()
+@@ -367,7 +370,6 @@ fn volume_expansion_skips_broken_links_and_preserves_other_grants() -> Result<()
          (request.policy.readwrite_paths, request.policy.denied_paths),
          (
              vec![
@@ -226,7 +226,7 @@ index 95ebeef..4578e2a 100644
                  alias.to_str().unwrap().to_owned(),
                  readable.to_str().unwrap().to_owned()
              ],
-@@ -540,7 +542,19 @@ fn deny_globs_expand_files_and_directories_before_launch() -> Result<()> {
+@@ -541,7 +543,19 @@ fn deny_globs_expand_files_and_directories_before_launch() -> Result<()> {
          assert!(missing.parent().unwrap().is_dir());
          assert!(!missing.exists());
      }
@@ -247,7 +247,7 @@ index 95ebeef..4578e2a 100644
      let mut expected = [file, directory, missing];
      expected.sort();
      assert_eq!(
-@@ -997,3 +1011,234 @@ fn non_unicode_paths_fail_before_launch() -> Result<()> {
+@@ -998,3 +1012,234 @@ fn non_unicode_paths_fail_before_launch() -> Result<()> {
      }
      Ok(())
  }

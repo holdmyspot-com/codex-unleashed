@@ -1,8 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 10:25:51 -0500
-Subject: [PATCH 37/54] Make OTLP exports wait for the application network
- policy
+Subject: [PATCH] Make OTLP exports wait for the application network policy
 
 The periodic metrics reader starts exporting before the configuration owner has
 published the application network policy. PolicyExporter::export failed at once with
@@ -29,10 +28,10 @@ without exporting. A third test checks that the wait ends when no policy arrives
  create mode 100644 codex-rs/otel/src/network_policy_wait_tests.rs
 
 diff --git a/codex-rs/otel/src/lib.rs b/codex-rs/otel/src/lib.rs
-index b719515..769ffd7 100644
+index ecbc444355..215e1f7817 100644
 --- a/codex-rs/otel/src/lib.rs
 +++ b/codex-rs/otel/src/lib.rs
-@@ -101,3 +101,7 @@ pub fn start_global_timer(name: &str, tags: &[(&str, &str)]) -> MetricsResult<Ti
+@@ -104,3 +104,7 @@ pub fn start_global_timer(name: &str, tags: &[(&str, &str)]) -> MetricsResult<Ti
  pub fn global_statsig_metrics_settings() -> Option<StatsigMetricsSettings> {
      crate::metrics::global_statsig_settings()
  }
@@ -41,11 +40,11 @@ index b719515..769ffd7 100644
 +#[path = "network_policy_tests.rs"]
 +mod network_policy_tests;
 diff --git a/codex-rs/otel/src/network_policy.rs b/codex-rs/otel/src/network_policy.rs
-index 77d782d..5c45780 100644
+index 193f32b5b4..267f51041c 100644
 --- a/codex-rs/otel/src/network_policy.rs
 +++ b/codex-rs/otel/src/network_policy.rs
-@@ -2,7 +2,9 @@
- //! Export futures are revocable, including HTTP exporters driven from SDK worker threads.
+@@ -4,7 +4,9 @@ use crate::headers_helper::HeadersHelper;
+ use std::sync::Arc;
  
  use bytes::Bytes;
 +use codex_http_client::NetworkPermit;
@@ -54,7 +53,7 @@ index 77d782d..5c45780 100644
  use opentelemetry_http::HttpError;
  use opentelemetry_sdk::Resource;
  use opentelemetry_sdk::error::OTelSdkError;
-@@ -16,7 +18,17 @@ use opentelemetry_sdk::trace::SpanData;
+@@ -18,7 +20,17 @@ use opentelemetry_sdk::trace::SpanData;
  use opentelemetry_sdk::trace::SpanExporter;
  use std::future::Future;
  use std::pin::Pin;
@@ -72,7 +71,7 @@ index 77d782d..5c45780 100644
  
  #[derive(Debug)]
  pub(crate) struct PolicyExporter<E> {
-@@ -24,13 +36,72 @@ pub(crate) struct PolicyExporter<E> {
+@@ -26,13 +38,72 @@ pub(crate) struct PolicyExporter<E> {
      pub(crate) policy: NetworkPolicy,
  }
  
@@ -147,7 +146,7 @@ index 77d782d..5c45780 100644
          let export = self.exporter.export(batch);
          permit.run(export).await.map_err(denied)?
      }
-@@ -47,7 +118,9 @@ impl<E: SpanExporter> SpanExporter for PolicyExporter<E> {
+@@ -49,7 +120,9 @@ impl<E: SpanExporter> SpanExporter for PolicyExporter<E> {
  
  impl<E: LogExporter> LogExporter for PolicyExporter<E> {
      async fn export(&self, batch: LogBatch<'_>) -> OTelSdkResult {
@@ -158,7 +157,7 @@ index 77d782d..5c45780 100644
          let export = self.exporter.export(batch);
          permit.run(export).await.map_err(denied)?
      }
-@@ -61,7 +134,9 @@ impl<E: LogExporter> LogExporter for PolicyExporter<E> {
+@@ -63,7 +136,9 @@ impl<E: LogExporter> LogExporter for PolicyExporter<E> {
  
  impl<E: PushMetricExporter> PushMetricExporter for PolicyExporter<E> {
      async fn export(&self, metrics: &ResourceMetrics) -> OTelSdkResult {
@@ -169,7 +168,7 @@ index 77d782d..5c45780 100644
          let export = self.exporter.export(metrics);
          permit.run(export).await.map_err(denied)?
      }
-@@ -127,3 +202,7 @@ impl opentelemetry_http::HttpClient for RuntimeHttpClient {
+@@ -136,3 +211,7 @@ impl opentelemetry_http::HttpClient for RuntimeHttpClient {
          })
      }
  }
@@ -179,7 +178,7 @@ index 77d782d..5c45780 100644
 +mod wait_tests;
 diff --git a/codex-rs/otel/src/network_policy_tests.rs b/codex-rs/otel/src/network_policy_tests.rs
 new file mode 100644
-index 0000000..606fd73
+index 0000000000..606fd73d0b
 --- /dev/null
 +++ b/codex-rs/otel/src/network_policy_tests.rs
 @@ -0,0 +1,60 @@
@@ -245,7 +244,7 @@ index 0000000..606fd73
 +}
 diff --git a/codex-rs/otel/src/network_policy_wait_tests.rs b/codex-rs/otel/src/network_policy_wait_tests.rs
 new file mode 100644
-index 0000000..b7a9131
+index 0000000000..b7a9131e95
 --- /dev/null
 +++ b/codex-rs/otel/src/network_policy_wait_tests.rs
 @@ -0,0 +1,16 @@

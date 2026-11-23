@@ -1,8 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 11:27:19 -0500
-Subject: [PATCH 20/54] Replace stale updater workers before manual daemon
- updates
+Subject: [PATCH] Replace stale updater workers before manual daemon updates
 
 Manual updates compare the running updater's executable identity with the requesting CLI before connecting to its socket. Unknown legacy identities and different executables launch the requesting CLI's updater. Matching workers remain running. Publish updater launch identities and preserve the complete ownership record during Windows successor handoff, keeping stderr pruning paused throughout.
 ---
@@ -16,10 +15,10 @@ Manual updates compare the running updater's executable identity with the reques
  create mode 100644 codex-rs/app-server-daemon/src/manual_update_tests.rs
 
 diff --git a/codex-rs/app-server-daemon/src/backend/pid_start.rs b/codex-rs/app-server-daemon/src/backend/pid_start.rs
-index 6eca5d8..decdfd9 100644
+index e6a3998a05..4f762248e4 100644
 --- a/codex-rs/app-server-daemon/src/backend/pid_start.rs
 +++ b/codex-rs/app-server-daemon/src/backend/pid_start.rs
-@@ -89,12 +89,7 @@ impl PidBackend {
+@@ -90,12 +90,7 @@ impl PidBackend {
          let codex_bin = fs::canonicalize(&self.codex_bin)
              .await
              .unwrap_or_else(|_| self.codex_bin.clone());
@@ -34,10 +33,10 @@ index 6eca5d8..decdfd9 100644
          let stderr_log = match self.open_stderr_log().await {
              Ok(stderr_log) => stderr_log,
 diff --git a/codex-rs/app-server-daemon/src/backend/pid_tests.rs b/codex-rs/app-server-daemon/src/backend/pid_tests.rs
-index 3c47d12..77e11f5 100644
+index 928192bd35..4d2293c6c5 100644
 --- a/codex-rs/app-server-daemon/src/backend/pid_tests.rs
 +++ b/codex-rs/app-server-daemon/src/backend/pid_tests.rs
-@@ -908,7 +908,13 @@ async fn failed_updater_handoff_preserves_predecessor_record() {
+@@ -912,7 +912,13 @@ async fn failed_updater_handoff_preserves_predecessor_record() {
              .await
              .unwrap();
          let error = backend.replace_current_updater().await.unwrap_err();
@@ -53,7 +52,7 @@ index 3c47d12..77e11f5 100644
          } else {
              // Windows may reject breakaway before reporting the missing executable.
 diff --git a/codex-rs/app-server-daemon/src/backend/pid_windows.rs b/codex-rs/app-server-daemon/src/backend/pid_windows.rs
-index eaae6a6..e840e00 100644
+index eaae6a6ec5..e840e00661 100644
 --- a/codex-rs/app-server-daemon/src/backend/pid_windows.rs
 +++ b/codex-rs/app-server-daemon/src/backend/pid_windows.rs
 @@ -8,7 +8,6 @@ use super::PidRecord;
@@ -83,7 +82,7 @@ index eaae6a6..e840e00 100644
          let result = self.start_inner(Some(record.clone())).await;
          // Resume only after ownership is restored. Failed cleanup may leave the
 diff --git a/codex-rs/app-server-daemon/src/manual_update.rs b/codex-rs/app-server-daemon/src/manual_update.rs
-index c0d8269..fea4fb8 100644
+index c0d8269bad..fea4fb849f 100644
 --- a/codex-rs/app-server-daemon/src/manual_update.rs
 +++ b/codex-rs/app-server-daemon/src/manual_update.rs
 @@ -26,6 +26,27 @@ use crate::managed_install::managed_codex_version;
@@ -126,7 +125,7 @@ index c0d8269..fea4fb8 100644
                          } else {
 diff --git a/codex-rs/app-server-daemon/src/manual_update_tests.rs b/codex-rs/app-server-daemon/src/manual_update_tests.rs
 new file mode 100644
-index 0000000..620f42c
+index 0000000000..620f42cb94
 --- /dev/null
 +++ b/codex-rs/app-server-daemon/src/manual_update_tests.rs
 @@ -0,0 +1,158 @@
@@ -289,10 +288,10 @@ index 0000000..620f42c
 +    .await;
 +}
 diff --git a/codex-rs/app-server-daemon/src/update_loop_tests.rs b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-index 2a5a240..6df3ec0 100644
+index efd62baf34..f95c13267a 100644
 --- a/codex-rs/app-server-daemon/src/update_loop_tests.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-@@ -1389,3 +1389,7 @@ printf '%s' '{release}' > '{marker}'
+@@ -1395,3 +1395,7 @@ printf '%s' '{release}' > '{marker}'
          );
      }
  }

@@ -1,8 +1,8 @@
 # Old-main test fixes (T9)
 
-- Applies to: the queue through `flaky-tests/focus-palette.patch` (patch 37), which sits on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
-- Prerequisites: every earlier patch in the queue. The patches below apply in the order listed. `conpty-lifecycle-input-fixture.patch` needs `windows-capture-reader-drain.patch` and `legacy-powershell-environment.patch`, and `legacy-powershell-environment.patch` needs `windows-capture-reader-drain.patch`; the others do not depend on each other.
-- Patches: the 16 files listed under "What changed", in that order.
+- Applies to: the queue through `flaky-tests/focus-palette.patch` (patch 34), which sits on upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
+- Prerequisites: every earlier patch in the queue. The patches below apply in the order listed. `legacy-powershell-environment.patch` needs `windows-capture-reader-drain.patch`; the others do not depend on each other.
+- Patches: the 14 files listed under "What changed", in that order.
 
 ## Intent
 
@@ -15,9 +15,7 @@ All runs are on `holdmyspot-com/codex-unleashed`, from scratch branches `t9-wind
 Windows (x64 unless noted):
 - `windows-capture-reader-drain.patch`: legacy Windows capture finishes after the root process exits, even when a surviving descendant still holds the output pipe. Without it, `legacy_capture_emits_output_and_preserves_descendant_after_normal_exit` fails after about 45 s. Red/green run `42837979896`.
 - `legacy-powershell-environment.patch`: the legacy PowerShell sandbox fixtures get their own temp directory and executor environment (`SystemRoot`, `TEMP`) and write markers inside writable directories. Without it, `legacy_capture_cancellation_terminates_descendants_without_timeout` fails after 31 s. Run `42840897950`.
-- `conpty-lifecycle-input-fixture.patch`: the descendant lifecycle fixture keeps ConPTY input open. With input closed, `legacy_tty_job_terminates_and_preserves_descendants` fails with "Terminate descendant did not start". Run `42840911796`, stacked on the two patches above. Unstacked run `42837997853` failed in both phases because the environment fix was missing.
 - `windows-shell-policy-system-root.patch`: the installed Windows shell policy fixture keeps `SystemRoot`. On ARM64 only, `exec_command_uses_installed_environment_shell_policy_with_explicit_overrides` fails with PowerShell `GetSaferPolicy` Win32Exception 126. ARM64 run `42838009679`; on x64 the red phase passes (run `42838003635`).
-- `conpty-interrupt-readiness-fixture.patch`: the ConPTY interrupt fixture isolates Ctrl+C state and waits for PowerShell to resume instead of a fixed delay. Without it, `conpty_ctrl_c_interrupts_powershell_foreground_child` times out after about 11 s. Run `42838014729`.
 - `windows-mouse-capture-initialization.patch`: native mouse-capture cleanup is armed only after Crossterm has saved the console mode. Without it, releasing input during the scroll write fails with "Initial console modes not set". Run `42838035115`.
 
 Linux:
@@ -46,3 +44,13 @@ Linux:
 ## Rebase onto rust-v0.167.0
 
 Eighteen of the twenty patches apply with `git am -3` unchanged. `interrupt-host-cwd-fixtures.patch` conflicted in `codex-rs/core/tests/common/test_codex.rs`: upstream added `with_apps_tools_cache` where the patch adds `with_separate_host_cwd`, and the merged file keeps both. None of the patches is upstream at `rust-v0.167.0`: each reverse-applies nowhere and applies to a non-empty change. Upstream already contains the old-main patches 53897, 55693 and 0079, which stay omitted, and 0077 is obsolete.
+
+## Rebase onto rust-v0.171.0
+
+- `conpty-lifecycle-input-fixture.patch` is dropped: upstream #60872 made the same fix.
+- `conpty-interrupt-readiness-fixture.patch` is dropped: upstream #59369 rewrote the fixture around a Python child that resets its own Ctrl+C disposition and waits for `READY` and then the returning `PS ` prompt, so the patch's prompt detection has nothing to key on.
+- `windows-capture-reader-drain.patch`: upstream replaced the PowerShell capture test with a native re-exec fixture. The patch moves its checks into that fixture's capture role: stdout and stderr longer than one read buffer, matched with `contains` because libtest also writes to them, and no timeout. The capture role keeps its pipes inheritable so that the descendant holds them.
+- `legacy-powershell-environment.patch`: upstream runs the normal-capture and ConPTY lifecycle tests as native fixtures, so the patch keeps `powershell_env` only for the three remaining PowerShell fixtures and no longer adds `publish_pid_command`.
+- `local-stdio-mcp-fixtures.patch`: the Guardian elicitation fixture keeps upstream's `GuardianNestedApprovalContext` switch and registers its servers with upstream's `set_host_stdio_servers`.
+- `host-loopback-mcp-fixtures.patch`: the hook fixture uses upstream's `configure_hook_mcp` helper with `DEFAULT_MCP_SERVER_ENVIRONMENT_ID` instead of inline JSON.
+- The red/green runs above are on older bases. No native build or test has run on the rebased queue.

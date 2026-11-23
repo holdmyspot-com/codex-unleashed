@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 10:27:07 -0500
-Subject: [PATCH 38/54] Wait for the startup probe replies before the focus
- palette test exits
+Subject: [PATCH] Wait for the startup probe replies before the focus palette
+ test exits
 
 The test wrote the exit key right after the first frame, then waited for the exit
 DA1 query. The startup probe reads terminal input until every reply has arrived and
@@ -17,7 +17,7 @@ queries before it sends the exit key.
  1 file changed, 21 insertions(+)
 
 diff --git a/codex-rs/tui/tests/suite/focus_palette.rs b/codex-rs/tui/tests/suite/focus_palette.rs
-index e7c01ff..69840ba 100644
+index 8beb0a0add..756fcd30d8 100644
 --- a/codex-rs/tui/tests/suite/focus_palette.rs
 +++ b/codex-rs/tui/tests/suite/focus_palette.rs
 @@ -227,6 +227,9 @@ fn default_owned_screen_entry_paints_before_sync_ends_and_exit_clears_inline_dra
@@ -30,7 +30,7 @@ index e7c01ff..69840ba 100644
      let exit_start = terminal.output.len();
      terminal.write_input(b"\x1b[99;5u")?;
      let deadline = Instant::now() + STARTUP_TIMEOUT;
-@@ -435,6 +438,24 @@ impl PtyCodex {
+@@ -438,6 +441,24 @@ impl PtyCodex {
          );
      }
  

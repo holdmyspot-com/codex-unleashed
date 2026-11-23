@@ -8,130 +8,54 @@ Keeps only the hunks that the direct dependency upgrades force. The lockfile,
 deny.toml and every other crate version stay as the earlier patches left them.
 
 - cc is now 1.11.1, so the MXC annotation's build-script label follows it.
-- zstd-sys is now 2.1.2, which leaves -fvisibility=hidden off for MSVC targets
-  itself, so the Bazel crate patch keeps only the MSVC include directories and
-  is rebased onto the 2.1.2 build.rs.
-- zbus 6.2.1 turns on zruntime features that the Bazel crate resolver leaves
-  off, so a Linux-only annotation adds them.
+- zbus 6 turns on zruntime features that the Bazel crate resolver leaves
+  off, so a Linux-only annotation_select adds them.
 ---
- MODULE.bazel                                  | 53 ++++++++++++++++++-
- .../zstd-sys_windows_msvc_include_dirs.patch  | 26 +--------
- 2 files changed, 54 insertions(+), 25 deletions(-)
+ MODULE.bazel | 24 +++++++++++++++++++++++-
+ 1 file changed, 23 insertions(+), 1 deletion(-)
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 70a1998..03e3e80 100644
+index f476a9cda7..73c5c7a676 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -401,6 +401,57 @@ crate.annotation(
-     },
-     rustc_flags = ["-Copt-level=3"],
+@@ -418,6 +418,28 @@ crate.annotation(
+     patches = ["//patches:notify_windows_idle.patch"],
+     version = "8.2.0",
  )
-+crate.annotation(
++crate.annotation_select(
 +    # zbus 6 turns these on through its default `default-rt` and `comms` features, but the Bazel
 +    # feature resolution builds zruntime without them, so zbus fails to import its event types.
 +    crate = "zruntime",
-+    crate_features_select = {
-+        "aarch64-unknown-linux-gnu": [
-+            "broadcast",
-+            "event",
-+            "helper",
-+            "lock",
-+            "process",
-+            "runtime",
-+            "tcp",
-+            "unblock",
-+            "unix",
-+        ],
-+        "aarch64-unknown-linux-musl": [
-+            "broadcast",
-+            "event",
-+            "helper",
-+            "lock",
-+            "process",
-+            "runtime",
-+            "tcp",
-+            "unblock",
-+            "unix",
-+        ],
-+        "x86_64-unknown-linux-gnu": [
-+            "broadcast",
-+            "event",
-+            "helper",
-+            "lock",
-+            "process",
-+            "runtime",
-+            "tcp",
-+            "unblock",
-+            "unix",
-+        ],
-+        "x86_64-unknown-linux-musl": [
-+            "broadcast",
-+            "event",
-+            "helper",
-+            "lock",
-+            "process",
-+            "runtime",
-+            "tcp",
-+            "unblock",
-+            "unix",
-+        ],
-+    },
++    crate_features = [
++        "broadcast",
++        "event",
++        "helper",
++        "lock",
++        "process",
++        "runtime",
++        "tcp",
++        "unblock",
++        "unix",
++    ],
++    triples = [
++        "aarch64-unknown-linux-gnu",
++        "aarch64-unknown-linux-musl",
++        "x86_64-unknown-linux-gnu",
++        "x86_64-unknown-linux-musl",
++    ],
 +)
  
  # Match the CodeModeHost response-compression benchmark's zstd level.
  crate.annotation(
-@@ -524,7 +575,7 @@ crate.annotation(
+@@ -519,7 +541,7 @@ crate.annotation(
  # MXC's resource compiler lookup needs an explicit path for Windows GNU targets.
  crate.annotation(
      build_script_deps = [
--        "@crates//:cc-1.2.55",
-+        "@crates//:cc-1.11.1",
-         "@crates//:winresource-0.1.34",
+-        "@crates//cc-1.2.55",
++        "@crates//cc-1.11.1",
+         "@crates//winresource-0.1.34",
      ],
      build_script_env = {
-diff --git a/patches/zstd-sys_windows_msvc_include_dirs.patch b/patches/zstd-sys_windows_msvc_include_dirs.patch
-index c45a360..41ccb2b 100644
---- a/patches/zstd-sys_windows_msvc_include_dirs.patch
-+++ b/patches/zstd-sys_windows_msvc_include_dirs.patch
-@@ -1,20 +1,10 @@
--diff --git a/build.rs b/build.rs
--index 912a3bf..e078f0e 100644
- --- a/build.rs
- +++ b/build.rs
--@@ -85,6 +85,7 @@ fn flag_if_supported_with_fallbacks(config: &mut cc::Build, flags: &[&str]) {
-- }
-- 
-- fn compile_zstd() {
--+    let target = env::var("TARGET").unwrap_or_default();
--     let mut config = cc::Build::new();
-- 
--     // Search the following directories for C files to add to the compilation.
--@@ -164,6 +165,16 @@ fn compile_zstd() {
-+@@ -350,6 +350,16 @@
-      // Some extra parameters
-      config.include("zstd/lib/");
-      config.include("zstd/lib/common");
--+    if target.contains("msvc") {
-++    if target_is_msvc() {
- +        config.include("zstd/lib/compress");
- +        config.include("zstd/lib/decompress");
- +        #[cfg(feature = "zdict_builder")]
-@@ -27,15 +17,3 @@ index 912a3bf..e078f0e 100644
-      config.warnings(false);
-  
-      config.define("ZSTD_LIB_DEPRECATED", Some("0"));
--@@ -210,7 +221,9 @@ fn compile_zstd() {
-- 
--     // Hide symbols from resulting library,
--     // so we can be used with another zstd-linking lib.
---    // See https://github.com/gyscos/zstd-rs/issues/58
---    config.flag("-fvisibility=hidden");
--+    // See https://github.com/gyscos/zstd-rs/issues/58.
--+    if !target.contains("msvc") {
--+        config.flag("-fvisibility=hidden");
--+    }
--     config.define("XXH_PRIVATE_API", Some(""));
--     config.define("ZSTDLIB_VISIBILITY", Some(""));
 -- 
 2.43.0
 

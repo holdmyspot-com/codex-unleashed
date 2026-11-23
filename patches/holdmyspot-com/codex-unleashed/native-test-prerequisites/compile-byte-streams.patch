@@ -1,4 +1,4 @@
-From cf896648ede752dd665635839687edc83b9aad9b Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 15 Nov 2026 17:03:27 -0500
 Subject: [PATCH] test: construct byte streams to compile Unix signal coverage
@@ -9,7 +9,7 @@ The raw execution result carries byte streams. Construct empty byte streams expl
  1 file changed, 12 insertions(+), 3 deletions(-)
 
 diff --git a/codex-rs/core/src/exec_tests.rs b/codex-rs/core/src/exec_tests.rs
-index 5c24b2f..13c42e2 100644
+index 56c4c00f92..649b17f8b3 100644
 --- a/codex-rs/core/src/exec_tests.rs
 +++ b/codex-rs/core/src/exec_tests.rs
 @@ -377,9 +377,18 @@ fn windows_capture_unix_signal_compatibility() {

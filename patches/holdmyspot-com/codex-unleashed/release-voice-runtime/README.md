@@ -1,6 +1,6 @@
 # Voice runtime packaging
 
-Apply these patches to upstream `openai/codex` commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a` after queue entries 1–73, in the order listed in the parent [README.md](../../../README.md).
+Apply these patches to upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`, after queue entries 1–64, in the order listed in the parent [README.md](../../../README.md).
 
 `producer.patch` adds `.github/scripts/codex-voice-runtime.sh` and its focused fixture test to the selected upstream source. The producer builds the helper, native runtime, and both runtime test binaries for one supported application target, stages and seals the runtime through upstream voice tooling, then writes a completed result directory with identity and hash evidence.
 
@@ -50,3 +50,7 @@ shellcheck .github/scripts/codex-package-operations.sh .github/scripts/test-code
 `loader-path.patch` follows `query-stdout.patch` and runs the producer helper identity check with its own staged libraries: `runtime/lib` on Linux and macOS, or `runtime/bin` on Windows. Inherited loader search directories do not supply third-party libraries for this check. The bounded identity output, exact build-commit check and failure cleanup remain required.
 
 Run the producer fixture suite, Bash syntax check and ShellCheck commands above after applying this patch. These controlled fixtures do not establish native platform acceptance; the real producer and relocated package checks remain release gates.
+
+## Rebase onto rust-v0.171.0
+
+`query-stdout.patch`: upstream replaced `run_bazel_with_buildbuddy.py` with `run_bazel.py` and removed the BuildBuddy echo lines. The FIFO split that keeps the query path on stdout is ported to `run-bazel-ci.sh` as it is now, and its test moves to `.github/scripts/test_run_bazel.py` without the BuildBuddy assertions. `test_run_bazel` (8 tests) and `test-codex-voice-runtime.sh` pass.

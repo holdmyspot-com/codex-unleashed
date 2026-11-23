@@ -1,4 +1,4 @@
-From 6c520d9a026ae169cbdcf6d2acde86a9cbdf916f Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Fri, 13 Nov 2026 02:53:36 -0500
 Subject: [PATCH] Give Windows ARM64 tests slowed by workspace load more time
@@ -11,10 +11,10 @@ Five exec and state tests pass alone on a loaded Windows ARM64 runner in 5 to 50
  3 files changed, 47 insertions(+), 3 deletions(-)
 
 diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
-index 50e5ef037..e09bc0f27 100644
+index fc4f2a5ea3..93a9353a28 100644
 --- a/codex-rs/.config/nextest.toml
 +++ b/codex-rs/.config/nextest.toml
-@@ -134,6 +134,22 @@ slow-timeout = { period = "30s", terminate-after = 8 }
+@@ -134,6 +134,22 @@ slow-timeout = { period = "30s", terminate-after = 4 }
  filter = 'package(codex-feedback) & test(=tests::feedback_upload_delivers_large_files_intact)'
  slow-timeout = { period = "30s", terminate-after = 8 }
  
@@ -38,10 +38,10 @@ index 50e5ef037..e09bc0f27 100644
  # These Windows-heavy tests spawn subprocesses, session files, or JSON-RPC
  # clients and have been the dominant source of 30s full-CI timeouts.
 diff --git a/codex-rs/core/tests/common/test_codex.rs b/codex-rs/core/tests/common/test_codex.rs
-index f9a9b85f3..b69fe7f03 100644
+index 012edbb7a0..31eb06b7a3 100644
 --- a/codex-rs/core/tests/common/test_codex.rs
 +++ b/codex-rs/core/tests/common/test_codex.rs
-@@ -1244,6 +1244,7 @@ impl TestCodex {
+@@ -1300,6 +1300,7 @@ impl TestCodex {
              permission_profile,
              /*service_tier*/ None,
              /*environments*/ None,
@@ -49,7 +49,7 @@ index f9a9b85f3..b69fe7f03 100644
          )
          .await
      }
-@@ -1279,6 +1280,25 @@ impl TestCodex {
+@@ -1335,6 +1336,25 @@ impl TestCodex {
          .await
      }
  
@@ -75,7 +75,7 @@ index f9a9b85f3..b69fe7f03 100644
      async fn submit_turn_with_permission_profile_context(
          &self,
          prompt: &str,
-@@ -1293,6 +1313,7 @@ impl TestCodex {
+@@ -1349,6 +1369,7 @@ impl TestCodex {
              permission_profile,
              service_tier,
              environments,
@@ -83,7 +83,7 @@ index f9a9b85f3..b69fe7f03 100644
          )
          .await
      }
-@@ -1304,6 +1325,7 @@ impl TestCodex {
+@@ -1360,6 +1381,7 @@ impl TestCodex {
          permission_profile: PermissionProfile,
          service_tier: Option<Option<String>>,
          environments: Option<Vec<TurnEnvironmentSelection>>,
@@ -91,7 +91,7 @@ index f9a9b85f3..b69fe7f03 100644
      ) -> Result<()> {
          let (sandbox_policy, permission_profile) =
              turn_permission_fields(permission_profile, self.config.cwd.as_path());
-@@ -1348,7 +1370,7 @@ impl TestCodex {
+@@ -1404,7 +1426,7 @@ impl TestCodex {
                  EventMsg::TurnComplete(event) => event.turn_id == turn_id,
                  _ => false,
              },
@@ -101,7 +101,7 @@ index f9a9b85f3..b69fe7f03 100644
          .await;
          Ok(())
 diff --git a/codex-rs/ext/multi-env-copy-file/tests/suite/transfers.rs b/codex-rs/ext/multi-env-copy-file/tests/suite/transfers.rs
-index 519b27f4e..451972787 100644
+index 519b27f4e1..451972787c 100644
 --- a/codex-rs/ext/multi-env-copy-file/tests/suite/transfers.rs
 +++ b/codex-rs/ext/multi-env-copy-file/tests/suite/transfers.rs
 @@ -400,8 +400,14 @@ async fn copy_hooks_follow_source_and_target(swap_endpoints: bool) -> Result<()>

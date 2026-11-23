@@ -1,4 +1,4 @@
-From 3e9507f085b296b5d9154da42e8aad98cc71fad8 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 15 Nov 2026 12:56:14 -0500
 Subject: [PATCH] Give macOS ARM64 app-server daemon tests more time
@@ -10,10 +10,13 @@ On macOS ARM64 runners the codex-cli app_server_daemon tests start and restart a
  2 files changed, 9 insertions(+), 12 deletions(-)
 
 diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
-index e09bc0f..7f988cf 100644
+index 93a9353a28..46e926153b 100644
 --- a/codex-rs/.config/nextest.toml
 +++ b/codex-rs/.config/nextest.toml
-@@ -153,1 +153,8 @@ slow-timeout = { period = "1m", terminate-after = 4 }
+@@ -150,6 +150,13 @@ filter = '''
+ '''
+ slow-timeout = { period = "1m", terminate-after = 4 }
+ 
 +[[profile.default.overrides]]
 +# Each daemon test starts and restarts a real app-server daemon. On macOS ARM64 runners these tests
 +# take more than 60 seconds under load with and without the downstream patch queue.
@@ -22,11 +25,15 @@ index e09bc0f..7f988cf 100644
 +slow-timeout = { period = "1m", terminate-after = 4 }
 +
  [[profile.default.overrides]]
+ # These Windows-heavy tests spawn subprocesses, session files, or JSON-RPC
+ # clients and have been the dominant source of 30s full-CI timeouts.
 diff --git a/codex-rs/cli/tests/app_server_daemon.rs b/codex-rs/cli/tests/app_server_daemon.rs
-index 72b10fa..b726511 100644
+index 4a1b4c3499..18634fdda8 100644
 --- a/codex-rs/cli/tests/app_server_daemon.rs
 +++ b/codex-rs/cli/tests/app_server_daemon.rs
-@@ -67,8 +67,3 @@ fn managed_daemon_restarts_from_deleted_working_directory() -> Result<()> {
+@@ -65,12 +65,7 @@ fn managed_daemon_restarts_from_deleted_working_directory() -> Result<()> {
+         .home
+         .path()
          .join("app-server-daemon/app-server-updater.sock");
 -    let deadline = Instant::now() + Duration::from_secs(30);
      while std::os::unix::net::UnixStream::connect(&updater_socket).is_err() {
@@ -35,7 +42,11 @@ index 72b10fa..b726511 100644
 -            "replacement updater did not become ready"
 -        );
          std::thread::sleep(Duration::from_millis(50));
-@@ -267,5 +262,5 @@ fn managed_identity_survives_locale_and_timezone_changes() -> Result<()> {
+     }
+     Ok(())
+@@ -302,9 +297,9 @@ fn managed_identity_survives_locale_and_timezone_changes() -> Result<()> {
+                 .home
+                 .path()
                  .join("app-server-daemon/app-server-updater.sock");
 -            let deadline = Instant::now() + Duration::from_secs(30);
 +            // nextest's timeout bounds this wait; a loaded macOS ARM64 runner can need more than
@@ -43,14 +54,25 @@ index 72b10fa..b726511 100644
              while !updater_socket.exists() {
 -                ensure!(Instant::now() < deadline, "updater did not become ready");
                  std::thread::sleep(Duration::from_millis(50));
-@@ -351,3 +346,2 @@ fn managed_starts_ensure_one_updater_and_recover_a_missing_one() -> Result<()> {
+             }
+             let mut legacy: Value = serde_json::from_slice(&original)?;
+@@ -386,16 +381,11 @@ fn managed_starts_ensure_one_updater_and_recover_a_missing_one() -> Result<()> {
+     assert_ne!(replacement_pid, updater_pid);
+     if let Some(native) = native {
          legacy["processIdentity"] = native;
 -        let deadline = Instant::now() + Duration::from_secs(30);
          loop {
-@@ -357,6 +351,2 @@ fn managed_starts_ensure_one_updater_and_recover_a_missing_one() -> Result<()> {
+             let record: Value = serde_json::from_slice(&std::fs::read(&server_record_path)?)?;
+             if record == legacy {
+                 break;
              }
 -            ensure!(
 -                Instant::now() < deadline,
 -                "legacy record was not upgraded: {record}"
 -            );
              std::thread::sleep(Duration::from_millis(50));
+         }
+     }
+-- 
+2.43.0
+

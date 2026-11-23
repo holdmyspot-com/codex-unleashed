@@ -7,10 +7,17 @@ Extract the package action's binary selection, Cargo profile/build, symbol
 archive, and package assembly commands into one Bash entry point. Record the
 observed operation inputs for the later reproducer while preserving existing
 platform behavior.
-
 ---
+ .../build-cargo-package-binaries/action.yml   |  67 +--
+ .../actions/build-codex-packages/action.yml   | 115 +----
+ .github/scripts/codex-package-operations.sh   | 456 ++++++++++++++++++
+ .../scripts/test-codex-package-operations.sh  | 391 +++++++++++++++
+ 4 files changed, 889 insertions(+), 140 deletions(-)
+ create mode 100644 .github/scripts/codex-package-operations.sh
+ create mode 100644 .github/scripts/test-codex-package-operations.sh
+
 diff --git a/.github/actions/build-cargo-package-binaries/action.yml b/.github/actions/build-cargo-package-binaries/action.yml
-index 928e0a1db2ad4425f37edf39c95b33fbeaead7ce..112ef6544f365b728660938a7dff16c328a9f9b3 100644
+index a590e6beff..eeb6c15b3e 100644
 --- a/.github/actions/build-cargo-package-binaries/action.yml
 +++ b/.github/actions/build-cargo-package-binaries/action.yml
 @@ -19,25 +19,14 @@ runs:
@@ -41,13 +48,13 @@ index 928e0a1db2ad4425f37edf39c95b33fbeaead7ce..112ef6544f365b728660938a7dff16c3
 +        package_source_root="$(cd "${PACKAGE_ACTION_PATH}/../../.." && pwd)"
 +        bash "${package_source_root}/.github/scripts/codex-package-operations.sh" \
 +          profile-env --target "$TARGET" --build-mode "$BUILD_MODE" >> "$GITHUB_ENV"
-
+ 
      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
        with:
-@@ -96,40 +85,26 @@ runs:
+@@ -97,40 +86,26 @@ runs:
        with:
          target: ${{ inputs.target }}
-
+ 
 -    - name: Build bwrap and export digest
 -      if: ${{ runner.os == 'Linux' }}
 -      shell: bash
@@ -102,7 +109,7 @@ index 928e0a1db2ad4425f37edf39c95b33fbeaead7ce..112ef6544f365b728660938a7dff16c3
 +        cat "${build_result}/export.env" >> "$GITHUB_ENV"
 +        echo "CODEX_PACKAGE_BUILD_RESULT=${build_result}" >> "$GITHUB_ENV"
 diff --git a/.github/actions/build-codex-packages/action.yml b/.github/actions/build-codex-packages/action.yml
-index aa8a517679870a75eb88e0b1ac6c777ccd77a0df..1976334007ac9d730335e754bd0e1f92cb13ac51 100644
+index 2fea8d3043..1976334007 100644
 --- a/.github/actions/build-codex-packages/action.yml
 +++ b/.github/actions/build-codex-packages/action.yml
 @@ -23,28 +23,19 @@ runs:
@@ -110,7 +117,7 @@ index aa8a517679870a75eb88e0b1ac6c777ccd77a0df..1976334007ac9d730335e754bd0e1f92
        working-directory: codex-rs
        env:
 -        BASE_BINARIES: "codex codex-app-server codex-code-mode-host codex-exec-server"
--        WINDOWS_ONLY_BINARIES: "codex-command-runner codex-windows-sandbox-setup"
+-        WINDOWS_ONLY_BINARIES: "codex-command-runner codex-windows-sandbox-setup codex-windows-sandbox-service"
          BUILD_MODE: ${{ inputs.build-mode }}
          BUILD_SYSTEM: ${{ inputs.build-system }}
          PACKAGE_ACTION_PATH: ${{ github.action_path }}
@@ -136,13 +143,13 @@ index aa8a517679870a75eb88e0b1ac6c777ccd77a0df..1976334007ac9d730335e754bd0e1f92
 -          release|debug) ;;
 -          *) echo "Unsupported build mode: $BUILD_MODE" >&2; exit 1 ;;
 -        esac
-
+ 
      - name: Set up Python 3.12
        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
 @@ -80,94 +71,30 @@ runs:
          target: ${{ inputs.target }}
          build-mode: ${{ inputs.build-mode }}
-
+ 
 -    - name: Normalize Windows PDB filenames
 -      if: ${{ runner.os == 'Windows' }}
 -      shell: bash
@@ -247,12 +254,12 @@ index aa8a517679870a75eb88e0b1ac6c777ccd77a0df..1976334007ac9d730335e754bd0e1f92
 +          --package-version "$CODEX_PACKAGE_VERSION" \
 +          --result-dir "$archive_result"
 +        echo "CODEX_PACKAGE_ARCHIVE_RESULT=${archive_result}" >> "$GITHUB_ENV"
-
+ 
      - name: Smoke-test assembled packages
        shell: bash
 diff --git a/.github/scripts/codex-package-operations.sh b/.github/scripts/codex-package-operations.sh
 new file mode 100644
-index 0000000000000000000000000000000000000000..e86cab1992c2b24a002cb74239b0e9c6dce61cf7
+index 0000000000..6b28cea97e
 --- /dev/null
 +++ b/.github/scripts/codex-package-operations.sh
 @@ -0,0 +1,456 @@
@@ -504,7 +511,7 @@ index 0000000000000000000000000000000000000000..e86cab1992c2b24a002cb74239b0e9c6
 +
 +  selected_binaries='codex codex-app-server codex-code-mode-host codex-exec-server'
 +  if [[ "$runner_os" == Windows ]]; then
-+    selected_binaries+=' codex-command-runner codex-windows-sandbox-setup'
++    selected_binaries+=' codex-command-runner codex-windows-sandbox-setup codex-windows-sandbox-service'
 +  fi
 +  printf '%s\n' "$selected_binaries"
 +}
@@ -714,7 +721,7 @@ index 0000000000000000000000000000000000000000..e86cab1992c2b24a002cb74239b0e9c6
 +main "$@"
 diff --git a/.github/scripts/test-codex-package-operations.sh b/.github/scripts/test-codex-package-operations.sh
 new file mode 100644
-index 0000000000000000000000000000000000000000..77c8f5dd24be30f72d6cc81f07a7169e232b5d5a
+index 0000000000..b8ff74dbc2
 --- /dev/null
 +++ b/.github/scripts/test-codex-package-operations.sh
 @@ -0,0 +1,391 @@
@@ -865,10 +872,10 @@ index 0000000000000000000000000000000000000000..77c8f5dd24be30f72d6cc81f07a7169e
 +    'codex codex-app-server codex-code-mode-host codex-exec-server' "$selected"
 +  selected="$(bash "$operations_script" select-binaries --runner-os Windows --build-mode release --build-system cargo)"
 +  assert_equal 'Windows release binary selection' \
-+    'codex codex-app-server codex-code-mode-host codex-exec-server codex-command-runner codex-windows-sandbox-setup' "$selected"
++    'codex codex-app-server codex-code-mode-host codex-exec-server codex-command-runner codex-windows-sandbox-setup codex-windows-sandbox-service' "$selected"
 +  selected="$(bash "$operations_script" select-binaries --runner-os Windows --build-mode debug --build-system bazel)"
 +  assert_equal 'Windows debug binary selection' \
-+    'codex codex-app-server codex-code-mode-host codex-exec-server codex-command-runner codex-windows-sandbox-setup' "$selected"
++    'codex codex-app-server codex-code-mode-host codex-exec-server codex-command-runner codex-windows-sandbox-setup codex-windows-sandbox-service' "$selected"
 +  assert_invalid_selection --build-mode fast
 +  assert_invalid_selection --build-system make
 +
@@ -1109,3 +1116,6 @@ index 0000000000000000000000000000000000000000..77c8f5dd24be30f72d6cc81f07a7169e
 +}
 +
 +main "$@"
+-- 
+2.43.0
+

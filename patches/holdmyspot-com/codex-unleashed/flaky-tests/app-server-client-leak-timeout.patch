@@ -1,4 +1,4 @@
-From 78f4af61bffd6452b8dd2a374666b34b2580ae56 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 12 Nov 2026 14:20:48 -0500
 Subject: [PATCH] test: give codex-app-server-client tests a 2 second nextest
@@ -10,7 +10,7 @@ Their output handles close within 2 seconds of exit on Windows ARM64, so the def
  1 file changed, 6 insertions(+)
 
 diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
-index 6a5a83ae0..50fb1aa81 100644
+index 6a5a83ae0e..50fb1aa819 100644
 --- a/codex-rs/.config/nextest.toml
 +++ b/codex-rs/.config/nextest.toml
 @@ -22,6 +22,12 @@ filter = 'package(codex-cli) & binary(=app_server_daemon_package)'

@@ -1,463 +1,37 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:16:27 -0500
-Subject: [PATCH 12/54] Preserve mailbox work across interrupted task starts
+Subject: [PATCH] Preserve mailbox work across interrupted task starts
 
 Interrupting or replacing an automatic parent turn before its task registers no longer drops mail the turn had taken. Unobserved child results and unrelated input return to the session queue, and an interrupt keeps background results from waking the parent again.
 ---
- .../app-server-exports-stable.json.zst        | Bin 163903 -> 163974 bytes
  codex-rs/core/src/agent_communication.rs      |   5 +
- codex-rs/core/src/session/input_queue.rs      | 104 +++++++-
+ codex-rs/core/src/session/handlers.rs         |   4 +-
+ codex-rs/core/src/session/input_queue.rs      | 142 ++++++++--
  .../src/session/mailbox_retention_tests.rs    |  64 +++++
+ .../core/src/session/sampling_interrupt.rs    |   2 +-
  codex-rs/core/src/session/turn_input.rs       |   3 +
  codex-rs/core/src/state/turn.rs               |   3 +
  codex-rs/core/src/tasks/mailbox_wake_tests.rs | 244 ++++++++++++++++++
- codex-rs/core/src/tasks/mod.rs                | 104 ++++++--
+ codex-rs/core/src/tasks/mod.rs                | 114 ++++++--
  codex-rs/core/src/tasks/mod_tests.rs          |   3 +
  codex-rs/protocol/src/lib.rs                  |   2 +
  codex-rs/protocol/src/mailbox_wake.rs         |  19 ++
  codex-rs/protocol/src/mailbox_wake_tests.rs   |  45 ++++
  codex-rs/protocol/src/protocol.rs             |   9 +
- 13 files changed, 577 insertions(+), 28 deletions(-)
+ 14 files changed, 611 insertions(+), 48 deletions(-)
  create mode 100644 codex-rs/core/src/session/mailbox_retention_tests.rs
  create mode 100644 codex-rs/core/src/tasks/mailbox_wake_tests.rs
  create mode 100644 codex-rs/protocol/src/mailbox_wake.rs
  create mode 100644 codex-rs/protocol/src/mailbox_wake_tests.rs
 
-diff --git a/codex-rs/app-server-protocol/schema/precomputed/app-server-exports-stable.json.zst b/codex-rs/app-server-protocol/schema/precomputed/app-server-exports-stable.json.zst
-index 62328ddc4598b85a6f8abe2d94afad4760acc172..c08d59195294a4a5372b822e7748fcfbcf8e203c 100644
-GIT binary patch
-delta 10910
-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
-AumAu6
-
-delta 10839
-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
-
 diff --git a/codex-rs/core/src/agent_communication.rs b/codex-rs/core/src/agent_communication.rs
-index 0b5c8db..57fb351 100644
+index ebcd23cfe5..083ae7072f 100644
 --- a/codex-rs/core/src/agent_communication.rs
 +++ b/codex-rs/core/src/agent_communication.rs
-@@ -141,6 +141,11 @@ impl PendingAgentMessage {
-             delivery,
-         }
+@@ -153,6 +153,11 @@ impl PendingAgentMessage {
+     pub(crate) fn consumed(&self, recipient: ThreadId) -> Option<ResultWrite> {
+         self.delivery.as_ref()?.consumed(recipient)
      }
 +
 +    /// Keeps this mail queued without asking it to start a turn.
@@ -466,12 +40,27 @@ index 0b5c8db..57fb351 100644
 +    }
  }
  
- /// The publication state retained until this delivery is consumed or abandoned.
+ /// Only a confirmed append releases a terminal result. Dropping this receipt
+diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
+index 40b9fad8c3..b61385f88e 100644
+--- a/codex-rs/core/src/session/handlers.rs
++++ b/codex-rs/core/src/session/handlers.rs
+@@ -62,7 +62,9 @@ use tracing::info;
+ use tracing::warn;
+ 
+ pub async fn interrupt(sess: &Arc<Session>) {
+-    sess.interrupt_task(sess.active_turn.lock().await).await;
++    sess.interrupt_task(sess.active_turn.lock().await)
++        .await
++        .await;
+ }
+ 
+ pub async fn clean_background_terminals(sess: &Arc<Session>) {
 diff --git a/codex-rs/core/src/session/input_queue.rs b/codex-rs/core/src/session/input_queue.rs
-index a22fc26..2b586de 100644
+index e395ec74c8..3c91945974 100644
 --- a/codex-rs/core/src/session/input_queue.rs
 +++ b/codex-rs/core/src/session/input_queue.rs
-@@ -125,6 +125,11 @@ pub(crate) struct PendingMailboxCommunication {
+@@ -141,6 +141,11 @@ pub(crate) struct PendingMailboxCommunication {
      _diagnostics_guard: GaugeGuard,
  }
  
@@ -483,7 +72,7 @@ index a22fc26..2b586de 100644
  impl InputQueue {
      pub(crate) fn new() -> Self {
          let (activity_tx, _) = watch::channel(InputQueueActivity::Mailbox);
-@@ -261,6 +266,18 @@ impl InputQueue {
+@@ -271,6 +276,27 @@ impl InputQueue {
          pending.drain(..).collect()
      }
  
@@ -499,18 +88,25 @@ index a22fc26..2b586de 100644
 +        mails.iter().any(|mail| mail.communication.trigger_turn)
 +    }
 +
-     pub(crate) async fn drain_mailbox_input_items(&self) -> (Vec<TurnInput>, TurnStartOptions) {
-         let pending_mails = self.drain_mailbox().await;
-         // A later follow-up supersedes the earlier choice, including an omitted choice.
-@@ -333,14 +350,73 @@ impl InputQueue {
++    /// Returns whether queued mail holds a wake that an interrupt must cancel.
++    pub(crate) async fn has_interruptible_mailbox_wake(&self) -> bool {
++        let mut mails = self.mailbox_pending_mails.lock().await;
++        self.read_mailbox(&mut mails);
++        mails.iter().any(|mail| {
++            mail.communication.wake_policy == codex_protocol::MailboxWakePolicy::UnlessInterrupted
++        })
++    }
++
+     pub(crate) async fn pending_wake_options(&self) -> Option<TurnStartOptions> {
+         let mut mails = self.mailbox_pending_mails.lock().await;
+         self.read_mailbox(&mut mails);
+@@ -360,36 +386,86 @@ impl InputQueue {
          })))
      }
  
 -    /// Clear any pending waiters and input buffered for the current turn.
 +    /// Clear turn-local input, retaining unobserved background results for an explicit turn.
      pub(crate) async fn clear_pending(&self, active_turn: &ActiveTurn) {
--        let mut turn_state = active_turn.turn_state.lock().await;
--        turn_state.clear_pending_waiters();
 +        self.cleanup_pending_input(
 +            active_turn.turn_state.as_ref(),
 +            PendingInputDisposition::Discard,
@@ -531,9 +127,19 @@ index a22fc26..2b586de 100644
 +        disposition: PendingInputDisposition,
 +    ) {
          // Pending mail can own extension attachments whose destructors need the lock released.
--        let pending_input = std::mem::take(&mut turn_state.pending_input);
--        drop(turn_state);
--        drop(pending_input);
+-        let pending_input = {
+-            let mut turn_state = active_turn.turn_state.lock().await;
+-            turn_state.clear_pending_waiters();
+-            std::mem::take(&mut turn_state.pending_input)
+-        };
+-        // A terminal result still in the queue has no writer yet. Keep it available
+-        // to the next turn or to the source writer during a graceful drain.
+-        let results: Vec<_> = pending_input
+-            .items
+-            .into_iter()
+-            .filter_map(|input| match input {
+-                TurnInput::InterAgentCommunication(message) if message.is_terminal_result() => {
+-                    Some(message)
 +        let (results, start_options, _discarded) = {
 +            let mut turn_state = turn_state.lock().await;
 +            if matches!(disposition, PendingInputDisposition::Discard) {
@@ -547,8 +153,11 @@ index a22fc26..2b586de 100644
 +            let mut discarded = Vec::new();
 +            for input in pending.items {
 +                match input {
++                    // A terminal result still in the queue has no writer yet. Keep it available
++                    // to the next turn or to the source writer during a graceful drain.
 +                    TurnInput::InterAgentCommunication(mut communication)
 +                        if matches!(disposition, PendingInputDisposition::Preserve)
++                            || communication.is_terminal_result()
 +                            || communication.wake_policy
 +                                == codex_protocol::MailboxWakePolicy::UnlessInterrupted =>
 +                    {
@@ -563,8 +172,19 @@ index a22fc26..2b586de 100644
 +                        turn_state.pending_input.items.push(input);
 +                    }
 +                    input => discarded.push(input),
-+                }
-+            }
+                 }
+-                _ => None,
+-            })
+-            .collect();
+-        if !results.is_empty() {
+-            let mut pending = self.mailbox_pending_mails.lock().await;
+-            for communication in results.into_iter().rev() {
+-                pending.push_front(PendingMailboxCommunication {
+-                    communication,
+-                    start_options: TurnStartOptions::default(),
+-                    _diagnostics_guard: PENDING_MAILBOX_MESSAGES.track(),
+-                });
+             }
 +            let start_options = if matches!(disposition, PendingInputDisposition::Preserve) {
 +                turn_state
 +                    .reserved_mailbox_start_options
@@ -575,14 +195,24 @@ index a22fc26..2b586de 100644
 +            };
 +            (results, start_options, discarded)
 +        };
-+        for communication in results {
-+            self.enqueue_mailbox_communication(communication, start_options.clone())
-+                .await;
++        if results.is_empty() {
++            return;
+         }
++        // Retained mail was taken from the front of the queue, so it precedes later arrivals.
++        let mut pending = self.mailbox_pending_mails.lock().await;
++        for communication in results.into_iter().rev() {
++            pending.push_front(PendingMailboxCommunication {
++                communication,
++                start_options: start_options.clone(),
++                _diagnostics_guard: PENDING_MAILBOX_MESSAGES.track(),
++            });
 +        }
++        drop(pending);
++        self.activity_tx.send_replace(InputQueueActivity::Mailbox);
      }
  
      pub(crate) async fn defer_mailbox_delivery_to_next_turn(
-@@ -498,6 +574,18 @@ impl TurnInputQueue {
+@@ -550,6 +626,18 @@ impl TurnInputQueue {
          self.items.is_empty()
      }
  
@@ -601,7 +231,7 @@ index a22fc26..2b586de 100644
      fn pending_activity(&self) -> Option<InputQueueActivity> {
          if self.notified_activity == Some(InputQueueActivity::Steer) {
              return self.notified_activity;
-@@ -511,6 +599,10 @@ impl TurnInputQueue {
+@@ -563,6 +651,10 @@ impl TurnInputQueue {
      }
  }
  
@@ -614,7 +244,7 @@ index a22fc26..2b586de 100644
      use super::*;
 diff --git a/codex-rs/core/src/session/mailbox_retention_tests.rs b/codex-rs/core/src/session/mailbox_retention_tests.rs
 new file mode 100644
-index 0000000..4de0b1e
+index 0000000000..4de0b1e7ca
 --- /dev/null
 +++ b/codex-rs/core/src/session/mailbox_retention_tests.rs
 @@ -0,0 +1,64 @@
@@ -682,12 +312,25 @@ index 0000000..4de0b1e
 +    assert!(!result.trigger_turn);
 +    assert!(queue.drain_mailbox_input_items().await.0.is_empty());
 +}
+diff --git a/codex-rs/core/src/session/sampling_interrupt.rs b/codex-rs/core/src/session/sampling_interrupt.rs
+index 261edaabb4..ba221b7f09 100644
+--- a/codex-rs/core/src/session/sampling_interrupt.rs
++++ b/codex-rs/core/src/session/sampling_interrupt.rs
+@@ -98,7 +98,7 @@ impl SamplingInterrupt {
+                 )
+             } else {
+                 // Claim the hard abort under the same lock that admits a sampling attempt.
+-                ControlFlow::Break(session.interrupt_task(active))
++                ControlFlow::Break(session.interrupt_task(active).await)
+             }
+         };
+         match action {
 diff --git a/codex-rs/core/src/session/turn_input.rs b/codex-rs/core/src/session/turn_input.rs
-index 74753c5..8099979 100644
+index 8f9eb5e600..4073047a51 100644
 --- a/codex-rs/core/src/session/turn_input.rs
 +++ b/codex-rs/core/src/session/turn_input.rs
-@@ -728,6 +728,9 @@ impl Session {
-         if active_turn.is_some() {
+@@ -848,6 +848,9 @@ impl Session {
+         if active_turn.is_some() || self.turn_starts_closed() {
              return None;
          }
 +        if self.is_interrupted() && !self.input_queue.suppress_interrupted_wakeups().await {
@@ -697,10 +340,10 @@ index 74753c5..8099979 100644
          if !has_trigger_turn
              && !self.has_outstanding_durable_sleep()
 diff --git a/codex-rs/core/src/state/turn.rs b/codex-rs/core/src/state/turn.rs
-index 99d7152..de297eb 100644
+index dc7d916b25..e4e92d9042 100644
 --- a/codex-rs/core/src/state/turn.rs
 +++ b/codex-rs/core/src/state/turn.rs
-@@ -12,6 +12,7 @@ use tokio_util::task::AbortOnDropHandle;
+@@ -13,6 +13,7 @@ use tokio_util::task::task_tracker::TaskTrackerToken;
  
  use codex_diagnostics::GaugeGuard;
  use codex_protocol::dynamic_tools::DynamicToolResponse;
@@ -708,7 +351,7 @@ index 99d7152..de297eb 100644
  use codex_protocol::request_permissions::RequestPermissionProfile;
  use codex_protocol::request_permissions::RequestPermissionsResponse;
  use codex_protocol::request_user_input::RequestUserInputResponse;
-@@ -99,6 +100,8 @@ pub(crate) struct TurnState {
+@@ -113,6 +114,8 @@ pub(crate) struct TurnState {
      pending_elicitations: HashMap<(String, RequestId), oneshot::Sender<ElicitationResponse>>,
      pending_dynamic_tools: HashMap<String, oneshot::Sender<DynamicToolResponse>>,
      pub(crate) pending_input: TurnInputQueue,
@@ -719,7 +362,7 @@ index 99d7152..de297eb 100644
      pub(crate) has_memory_citation: bool,
 diff --git a/codex-rs/core/src/tasks/mailbox_wake_tests.rs b/codex-rs/core/src/tasks/mailbox_wake_tests.rs
 new file mode 100644
-index 0000000..9ec4165
+index 0000000000..9ec4165a2a
 --- /dev/null
 +++ b/codex-rs/core/src/tasks/mailbox_wake_tests.rs
 @@ -0,0 +1,244 @@
@@ -968,11 +611,11 @@ index 0000000..9ec4165
 +    );
 +}
 diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
-index 77ce9b8..ddf171a 100644
+index f437135856..4b68285074 100644
 --- a/codex-rs/core/src/tasks/mod.rs
 +++ b/codex-rs/core/src/tasks/mod.rs
-@@ -281,16 +281,34 @@ impl Session {
-         self.start_task(turn_context, input, task).await;
+@@ -309,16 +309,34 @@ impl Session {
+         self.start_task(turn_context, input, task).await
      }
  
 +    pub(crate) async fn start_task<T: SessionTask>(
@@ -980,15 +623,15 @@ index 77ce9b8..ddf171a 100644
 +        turn_context: Arc<TurnContext>,
 +        input: Vec<TurnInput>,
 +        task: T,
-+    ) {
++    ) -> TurnInputSubmission {
 +        self.start_task_with_reservation(turn_context, input, task, /*reservation*/ None)
-+            .await;
++            .await
 +    }
 +
      #[expect(
          clippy::await_holding_invalid_type,
--        reason = "record the started turn atomically with task registration"
-+        reason = "record the started turn atomically with task registration and its reservation"
+-        reason = "register the turn and its pending input atomically with the suspension fence"
++        reason = "register the turn, its pending input and its reservation atomically with the suspension fence"
      )]
 -    pub(crate) async fn start_task<T: SessionTask>(
 +    async fn start_task_with_reservation<T: SessionTask>(
@@ -997,7 +640,7 @@ index 77ce9b8..ddf171a 100644
          input: Vec<TurnInput>,
          task: T,
 +        reservation: Option<Arc<Mutex<TurnState>>>,
-     ) {
+     ) -> TurnInputSubmission {
 +        let reservation_matches = |active: &Option<ActiveTurn>| {
 +            reservation.as_ref().is_none_or(|expected| {
 +                active
@@ -1008,59 +651,44 @@ index 77ce9b8..ddf171a 100644
          // Replace the cache; in-flight acquisitions retain their previous Arc.
          self.services
              .thread_extension_data
-@@ -325,18 +343,24 @@ impl Session {
-         let cancellation_token = CancellationToken::new();
-         let done = Arc::new(Notify::new());
- 
--        let (pending_items, _) = self.input_queue.drain_mailbox_input_items().await;
-         let turn_state = {
-             let mut active = self.active_turn.lock().await;
+@@ -365,6 +383,15 @@ impl Session {
+                     reason: NotSubmittedReason::ServerDraining,
+                 };
+             }
++            // Do not recreate a turn whose reservation an interrupt or replacement took.
 +            if !reservation_matches(&active) {
 +                drop(active);
 +                self.finish_cancelled_task_start(&turn_context, reservation.as_deref())
 +                    .await;
-+                return;
++                return TurnInputSubmission::NotSubmitted {
++                    reason: NotSubmittedReason::Superseded,
++                };
 +            }
-+            let (pending_items, _) = self.input_queue.drain_mailbox_input_items().await;
              let turn = active.get_or_insert_with(ActiveTurn::default);
              debug_assert!(turn.task.is_none());
-             turn.finishing = None;
-+            self.input_queue
-+                .extend_pending_input_for_turn_state(turn.turn_state.as_ref(), pending_items)
-+                .await;
-             Arc::clone(&turn.turn_state)
-         };
-         turn_state.lock().await.token_usage_at_turn_start = token_usage_at_turn_start.clone();
--        self.input_queue
--            .extend_pending_input_for_turn_state(turn_state.as_ref(), pending_items)
--            .await;
-         self.emit_turn_start_lifecycle(
-             turn_context.as_ref(),
-             Some(&token_usage_at_turn_start),
-@@ -345,6 +369,12 @@ impl Session {
-         .await;
- 
-         let mut active = self.active_turn.lock().await;
-+        if !reservation_matches(&active) {
+             turn.turn_id = Some(turn_context.sub_id.clone());
+@@ -400,6 +427,9 @@ impl Session {
+             .as_mut()
+             .filter(|turn| Arc::ptr_eq(&turn.turn_state, &turn_state))
+         else {
 +            drop(active);
 +            self.finish_cancelled_task_start(&turn_context, reservation.as_deref())
 +                .await;
-+            return;
-+        }
-         let turn = active.get_or_insert_with(ActiveTurn::default);
-         debug_assert!(turn.task.is_none());
-         // Record lineage only when the task starts: settings changes can invalidate a reservation.
-@@ -513,6 +543,7 @@ impl Session {
-                 .await
-                 .and_then(|context| context.cyber_access_program);
-         }
+             return TurnInputSubmission::NotSubmitted {
+                 reason: NotSubmittedReason::Superseded,
+             };
+@@ -613,6 +643,8 @@ impl Session {
+         let wake_options = self.input_queue.pending_wake_options().await;
+         let triggered = wake_options.is_some();
+         let start_options = wake_options.unwrap_or(previous_options);
++        // An abandoned start returns turn-local mail to the queue with these options.
 +        turn_state.lock().await.reserved_mailbox_start_options = Some(start_options.clone());
          let options = NewTurnContextOptions {
+             direct_only_tool_namespaces: start_options.direct_only_tool_namespaces,
              final_output_json_schema: start_options.final_output_json_schema,
-             cyber_access_program: start_options.cyber_access_program,
-@@ -555,19 +586,29 @@ impl Session {
-         self.input_queue
-             .extend_pending_input_for_turn_state(turn_state.as_ref(), input)
+@@ -651,28 +683,42 @@ impl Session {
+             );
+         self.maybe_emit_model_warnings_for_turn(turn_context.as_ref())
              .await;
 -        // Context construction can outlive an interrupt or replacement. Do not let
 -        // start_task recreate a turn whose reservation is no longer ours.
@@ -1071,6 +699,8 @@ index 77ce9b8..ddf171a 100644
 -            .as_ref()
 -            .is_none_or(|turn| !Arc::ptr_eq(&turn.turn_state, &turn_state))
 -        {
++        // Context construction can outlive an interrupt or replacement. The reservation
++        // check keeps start_task from recreating a turn that is no longer ours.
 +        self.start_task_with_reservation(
 +            turn_context,
 +            Vec::new(),
@@ -1098,8 +728,32 @@ index 77ce9b8..ddf171a 100644
 -            .await;
      }
  
+-    pub(crate) fn interrupt_task(
++    pub(crate) async fn interrupt_task(
+         self: &Arc<Self>,
+         active: MutexGuard<'_, Option<ActiveTurn>>,
+     ) -> impl Future<Output = ()> + Send + use<> {
+         info!("interrupt received: abort current task, if any");
+         // Release the admission lock before creating the asynchronous cleanup.
+-        let turn = self.take_active_turn(active, &TurnAbortReason::Interrupted);
++        let turn = self
++            .take_active_turn(active, &TurnAbortReason::Interrupted)
++            .await;
+         let session = Arc::clone(self);
+         async move {
+             let had_active_turn = turn.is_some();
+@@ -686,7 +732,9 @@ impl Session {
+     }
+ 
      pub async fn abort_all_tasks(self: &Arc<Self>, reason: TurnAbortReason) {
-@@ -587,6 +628,10 @@ impl Session {
+-        let active = self.take_active_turn(self.active_turn.lock().await, &reason);
++        let active = self
++            .take_active_turn(self.active_turn.lock().await, &reason)
++            .await;
+         self.abort_taken_tasks(active, reason).await;
+     }
+ 
+@@ -711,6 +759,10 @@ impl Session {
              }
              if aborted_turn {
                  active_turn_to_clear = Some(active_turn);
@@ -1110,7 +764,7 @@ index 77ce9b8..ddf171a 100644
              }
          }
  
-@@ -595,6 +640,9 @@ impl Session {
+@@ -719,6 +771,9 @@ impl Session {
              // in-flight approval wait can surface as a model-visible rejection before TurnAborted.
              self.input_queue.clear_pending(&active_turn).await;
          }
@@ -1120,21 +774,29 @@ index 77ce9b8..ddf171a 100644
          if reason == TurnAbortReason::Interrupted && aborted_turn {
              self.maybe_start_turn_for_pending_work().await;
          }
-@@ -937,19 +985,31 @@ impl Session {
+@@ -1129,21 +1184,38 @@ impl Session {
          }
      }
  
+-    fn take_active_turn(
 +    #[expect(
 +        clippy::await_holding_invalid_type,
 +        reason = "record the abort cause before invalidating the turn reservation"
 +    )]
-     async fn take_active_turn(&self, reason: &TurnAbortReason) -> Option<ActiveTurn> {
-         let mut active = self.active_turn.lock().await;
++    async fn take_active_turn(
+         &self,
+         mut active: MutexGuard<'_, Option<ActiveTurn>>,
+         reason: &TurnAbortReason,
+     ) -> Option<ActiveTurn> {
 +        let mut reserves_interruptible_wake = false;
 +        if let Some(turn) = active.as_ref() {
 +            let mut turn_state = turn.turn_state.lock().await;
 +            turn_state.task_start_abort_reason = Some(reason.clone());
 +            reserves_interruptible_wake = turn_state.pending_input.has_interruptible_wake();
++        }
++        // A reservation leaves its wake mail queued until task registration.
++        if !reserves_interruptible_wake && active.as_ref().is_some_and(|turn| turn.task.is_none()) {
++            reserves_interruptible_wake = self.input_queue.has_interruptible_mailbox_wake().await;
 +        }
          if matches!(
              reason,
@@ -1145,10 +807,9 @@ index 77ce9b8..ddf171a 100644
 +                || (turn.finishing.is_none()
 +                    && (self.enabled(Feature::WakeOnAgentMessages) || reserves_interruptible_wake))
          }) {
--            // Message wakes reserve work before registering a task. With the
--            // feature enabled, stopping a reservation must block later mail too.
--            // Finishing turns must retain their status until completion is
--            // persisted, so capacity eviction cannot close their rollout writer.
+-            // A message wake can reserve work before registering a task. Mark
+-            // it interrupted too, but leave a finishing turn's status intact
+-            // until its terminal event is persisted.
 +            // Mail wakes reserve work before registering a task. Stopping a
 +            // reservation must block later mail when message wakes are enabled or
 +            // the reservation holds a background result that an interrupt
@@ -1158,39 +819,39 @@ index 77ce9b8..ddf171a 100644
          }
          active.take()
 diff --git a/codex-rs/core/src/tasks/mod_tests.rs b/codex-rs/core/src/tasks/mod_tests.rs
-index fe6b6dd..4d2eb98 100644
+index 049de5196b..8ba51c4778 100644
 --- a/codex-rs/core/src/tasks/mod_tests.rs
 +++ b/codex-rs/core/src/tasks/mod_tests.rs
-@@ -660,3 +660,6 @@ async fn hard_abort_drops_timing_guards_before_profile_completion() {
-         None
-     );
+@@ -808,3 +808,6 @@ async fn turn_critical_path_metrics_count_each_capture_once() {
+         }
+     }
  }
 +
 +#[path = "mailbox_wake_tests.rs"]
 +mod mailbox_wake_tests;
 diff --git a/codex-rs/protocol/src/lib.rs b/codex-rs/protocol/src/lib.rs
-index 6e6559f..5952b71 100644
+index c4d2f9c11c..18b999e458 100644
 --- a/codex-rs/protocol/src/lib.rs
 +++ b/codex-rs/protocol/src/lib.rs
-@@ -1,6 +1,7 @@
- pub mod account;
- mod agent_path;
- pub mod auth;
+@@ -4,6 +4,7 @@ pub mod auth;
+ mod budget_units;
+ mod context_window_id;
+ mod item_id_generator;
 +mod mailbox_wake;
- mod response_item_id;
- mod response_usage;
- mod sanitized_git_url;
-@@ -8,6 +9,7 @@ mod session_id;
- mod thread_id;
- mod tool_name;
- pub use agent_path::AgentPath;
+ mod request_country;
+ pub use request_country::InvalidRequestCountry;
+ pub use request_country::RequestCountry;
+@@ -19,6 +20,7 @@ pub use context_window_id::ContextWindowId;
+ pub use item_id_generator::ItemIdGenerator;
+ #[cfg(test)]
+ use item_id_generator::uuid_v7_item_id_generator_for_test;
 +pub use mailbox_wake::MailboxWakePolicy;
  pub use permission_profile_intersection::PermissionIntersectionError;
  pub use permission_profile_intersection::intersect_effective_permission_profiles;
  pub use response_item_id::ResponseItemId;
 diff --git a/codex-rs/protocol/src/mailbox_wake.rs b/codex-rs/protocol/src/mailbox_wake.rs
 new file mode 100644
-index 0000000..5d58afd
+index 0000000000..5d58afd2eb
 --- /dev/null
 +++ b/codex-rs/protocol/src/mailbox_wake.rs
 @@ -0,0 +1,19 @@
@@ -1215,7 +876,7 @@ index 0000000..5d58afd
 +}
 diff --git a/codex-rs/protocol/src/mailbox_wake_tests.rs b/codex-rs/protocol/src/mailbox_wake_tests.rs
 new file mode 100644
-index 0000000..4f294a2
+index 0000000000..4f294a2d2c
 --- /dev/null
 +++ b/codex-rs/protocol/src/mailbox_wake_tests.rs
 @@ -0,0 +1,45 @@
@@ -1265,10 +926,10 @@ index 0000000..4f294a2
 +    assert!(serde_json::from_value::<InterAgentCommunication>(value).is_err());
 +}
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index a0af620..57f383f 100644
+index 6218afce13..192d3187af 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -974,6 +974,8 @@ pub struct InterAgentCommunication {
+@@ -1025,6 +1025,8 @@ pub struct InterAgentCommunication {
      #[ts(optional)]
      pub internal_chat_message_metadata_passthrough: Option<InternalChatMessageMetadataPassthrough>,
      pub trigger_turn: bool,
@@ -1277,7 +938,7 @@ index a0af620..57f383f 100644
  }
  
  impl InterAgentCommunication {
-@@ -993,6 +995,7 @@ impl InterAgentCommunication {
+@@ -1044,6 +1046,7 @@ impl InterAgentCommunication {
              encrypted_content: None,
              internal_chat_message_metadata_passthrough: None,
              trigger_turn,
@@ -1285,7 +946,7 @@ index a0af620..57f383f 100644
          }
      }
  
-@@ -1012,6 +1015,7 @@ impl InterAgentCommunication {
+@@ -1063,6 +1066,7 @@ impl InterAgentCommunication {
              encrypted_content: Some(encrypted_content),
              internal_chat_message_metadata_passthrough: None,
              trigger_turn,
@@ -1293,7 +954,7 @@ index a0af620..57f383f 100644
          }
      }
  
-@@ -4795,6 +4799,10 @@ pub struct CollabResumeEndEvent {
+@@ -4957,6 +4961,10 @@ pub struct CollabResumeEndEvent {
  #[path = "conversation_start_params_tests.rs"]
  mod conversation_start_params_tests;
  
@@ -1304,7 +965,7 @@ index a0af620..57f383f 100644
  #[cfg(test)]
  mod tests {
      use super::*;
-@@ -5007,6 +5015,7 @@ mod tests {
+@@ -5169,6 +5177,7 @@ mod tests {
              encrypted_content: None,
              internal_chat_message_metadata_passthrough: None,
              trigger_turn: true,

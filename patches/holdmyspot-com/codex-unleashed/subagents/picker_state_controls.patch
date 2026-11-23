@@ -1,4 +1,4 @@
-From 9af5c283dbed5c1375429ed06bb731bbcf3ec641 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 14 Nov 2026 09:32:02 -0500
 Subject: [PATCH] feature: support persistent picker controls with empty
@@ -6,16 +6,16 @@ Subject: [PATCH] feature: support persistent picker controls with empty
 
 Subagent filters need to retain selection and query state and accept filter shortcuts even when no rows match. Add opt-in state callbacks and row-independent keyboard actions while preserving the existing picker defaults.
 ---
- .../src/bottom_pane/list_selection_view.rs    | 247 +++++++++++++++++-
- 1 file changed, 234 insertions(+), 13 deletions(-)
+ .../src/bottom_pane/list_selection_view.rs    | 263 ++++++++++++++++--
+ 1 file changed, 242 insertions(+), 21 deletions(-)
 
 diff --git a/codex-rs/tui/src/bottom_pane/list_selection_view.rs b/codex-rs/tui/src/bottom_pane/list_selection_view.rs
-index 4397175..c583e8d 100644
+index eeea1342e4..f38580a826 100644
 --- a/codex-rs/tui/src/bottom_pane/list_selection_view.rs
 +++ b/codex-rs/tui/src/bottom_pane/list_selection_view.rs
-@@ -124,6 +124,11 @@ pub(crate) enum SelectionRowDisplay {
- /// One selectable item in the generic selection list.
+@@ -125,6 +125,11 @@ pub(crate) enum SelectionRowDisplay {
  pub(crate) type SelectionAction = Box<dyn Fn(&AppEventSender) + Send + Sync>;
+ pub(crate) type SelectionKeyAction = Box<dyn Fn(&AppEventSender, KeyBinding) + Send + Sync>;
  
 +pub(crate) struct SelectionViewAction {
 +    pub key: KeyBinding,
@@ -25,7 +25,7 @@ index 4397175..c583e8d 100644
  /// A second way to accept the highlighted row, sharing its dismissal behavior.
  pub(crate) struct SelectionSecondaryAction {
      pub key: KeyBinding,
-@@ -155,6 +160,9 @@ pub(crate) struct SelectionToggleState {
+@@ -156,6 +161,9 @@ pub(crate) struct SelectionToggleState {
  pub(crate) type OnSelectionChangedCallback =
      Option<Box<dyn Fn(usize, &AppEventSender) + Send + Sync>>;
  
@@ -35,7 +35,7 @@ index 4397175..c583e8d 100644
  /// Callback invoked when the picker is dismissed without accepting (Esc or
  /// Ctrl+C).  Used by the theme picker to restore the pre-open theme.
  pub(crate) type OnCancelCallback = Option<Box<dyn Fn(&AppEventSender) + Send + Sync>>;
-@@ -274,6 +282,10 @@ pub(crate) struct SelectionViewParams {
+@@ -277,6 +285,10 @@ pub(crate) struct SelectionViewParams {
      /// Called when the highlighted item changes (navigation, filter, number-key).
      /// Receives the *actual* item index, not the filtered/visible index.
      pub on_selection_changed: OnSelectionChangedCallback,
@@ -46,7 +46,7 @@ index 4397175..c583e8d 100644
  
      /// Whether cancellation keys can dismiss the picker.
      pub allow_cancel: bool,
-@@ -320,6 +332,8 @@ impl Default for SelectionViewParams {
+@@ -323,6 +335,8 @@ impl Default for SelectionViewParams {
              stacked_side_content: None,
              preserve_side_content_bg: false,
              on_selection_changed: None,
@@ -55,7 +55,7 @@ index 4397175..c583e8d 100644
              allow_cancel: true,
              on_cancel: None,
          }
-@@ -384,6 +398,8 @@ pub(crate) struct ListSelectionView {
+@@ -387,6 +401,8 @@ pub(crate) struct ListSelectionView {
  
      /// Called when the highlighted item changes (navigation, filter, number-key).
      on_selection_changed: OnSelectionChangedCallback,
@@ -64,7 +64,7 @@ index 4397175..c583e8d 100644
  
      allow_cancel: bool,
  
-@@ -543,6 +559,8 @@ impl ListSelectionView {
+@@ -546,6 +562,8 @@ impl ListSelectionView {
              stacked_side_content: params.stacked_side_content,
              preserve_side_content_bg: params.preserve_side_content_bg,
              on_selection_changed: params.on_selection_changed,
@@ -73,7 +73,7 @@ index 4397175..c583e8d 100644
              allow_cancel: params.allow_cancel,
              on_cancel: params.on_cancel,
              keymap,
-@@ -1273,20 +1291,18 @@ impl ListSelectionView {
+@@ -1283,28 +1301,18 @@ impl ListSelectionView {
      }
  }
  
@@ -88,6 +88,10 @@ index 4397175..c583e8d 100644
 -
 -    fn accepts_input_when_disconnected(&self) -> bool {
 -        self.allow_input_when_disconnected
+-    }
+-
+-    fn handle_key_event(&mut self, key_event: KeyEvent) {
+-        self.handle_key_event_with_activation_key(key_event, /*activation_key*/ None);
 +impl ListSelectionView {
 +    fn notify_state_changed(&self) {
 +        if let Some(callback) = &self.on_state_changed {
@@ -99,12 +103,16 @@ index 4397175..c583e8d 100644
 +        }
      }
  
--    fn handle_key_event(&mut self, key_event: KeyEvent) {
-+    fn handle_key_event_inner(&mut self, key_event: KeyEvent) {
+-    fn handle_key_event_with_activation_key(
+-        &mut self,
+-        key_event: KeyEvent,
+-        activation_key: Option<KeyBinding>,
+-    ) {
++    fn handle_key_event_inner(&mut self, key_event: KeyEvent, activation_key: Option<KeyBinding>) {
+         let key = activation_key.unwrap_or_else(|| KeyBinding::from_event(key_event));
          // An active search reserves printable keys for the query. On-demand search leaves the
          // configured list bindings untouched until its shortcut is pressed.
-         let search_field_visible = self.search_field_visible();
-@@ -1445,7 +1461,7 @@ impl BottomPaneView for ListSelectionView {
+@@ -1464,7 +1472,7 @@ impl BottomPaneView for ListSelectionView {
          }
      }
  
@@ -113,7 +121,7 @@ index 4397175..c583e8d 100644
          if !self.search_field_visible() {
              return false;
          }
-@@ -1455,6 +1471,39 @@ impl BottomPaneView for ListSelectionView {
+@@ -1474,6 +1482,47 @@ impl BottomPaneView for ListSelectionView {
          self.edit_search_query(|query| query.push_str(&pasted));
          true
      }
@@ -133,6 +141,14 @@ index 4397175..c583e8d 100644
 +    }
 +
 +    fn handle_key_event(&mut self, key_event: KeyEvent) {
++        self.handle_key_event_with_activation_key(key_event, /*activation_key*/ None);
++    }
++
++    fn handle_key_event_with_activation_key(
++        &mut self,
++        key_event: KeyEvent,
++        activation_key: Option<KeyBinding>,
++    ) {
 +        if let Some(action) = self
 +            .key_actions
 +            .iter()
@@ -140,7 +156,7 @@ index 4397175..c583e8d 100644
 +        {
 +            (action.action)(&self.app_event_tx);
 +        } else {
-+            self.handle_key_event_inner(key_event);
++            self.handle_key_event_inner(key_event, activation_key);
 +        }
 +        self.notify_state_changed();
 +    }
@@ -153,7 +169,7 @@ index 4397175..c583e8d 100644
  
      fn is_complete(&self) -> bool {
          self.completion.is_some()
-@@ -1931,6 +1980,178 @@ mod tests {
+@@ -1950,6 +1999,178 @@ mod tests {
      use ratatui::style::Style;
      use tokio::sync::mpsc::unbounded_channel;
  

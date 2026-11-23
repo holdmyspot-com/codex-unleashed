@@ -1,6 +1,6 @@
 # Shared Codex Unleashed configuration table
 
-- Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`. No downstream prerequisites.
+- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`. No downstream prerequisites.
 
 ## Intent
 

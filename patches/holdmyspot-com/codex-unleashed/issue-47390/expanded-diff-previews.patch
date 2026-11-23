@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 08:53:59 -0500
-Subject: [PATCH 05/54] Expand patch diff previews in the fullscreen transcript
- when configured
+Subject: [PATCH] Expand patch diff previews in the fullscreen transcript when
+ configured
 
 Tracks https://github.com/openai/codex/issues/47390.
 
@@ -29,10 +29,10 @@ existing disclosure, and detailed and raw modes are unchanged.
  13 files changed, 228 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 43b9cde..a1199f6 100644
+index 69962b96cb..354378235c 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
-@@ -167,6 +167,8 @@ pub struct FeatureToggleToml {
+@@ -176,6 +176,8 @@ pub struct RolloutTraceToml {
  #[schemars(deny_unknown_fields)]
  pub struct CodexUnleashedToml {
      // Fields are registered by their owning feature patches.
@@ -42,7 +42,7 @@ index 43b9cde..a1199f6 100644
  
  /// Base config deserialized from ~/.codex/config.toml.
 diff --git a/codex-rs/config/src/types_tests.rs b/codex-rs/config/src/types_tests.rs
-index e844413..2864d44 100644
+index e844413670..2864d44901 100644
 --- a/codex-rs/config/src/types_tests.rs
 +++ b/codex-rs/config/src/types_tests.rs
 @@ -215,3 +215,15 @@ fn rendering_preferences_default_individually_and_ignore_animation_switch() {
@@ -62,10 +62,10 @@ index e844413..2864d44 100644
 +    );
 +}
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index ed55b72..a45e739 100644
+index 39432025f0..b72fee2123 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -744,6 +744,12 @@
+@@ -725,6 +725,12 @@
      "CodexUnleashedToml": {
        "additionalProperties": false,
        "description": "Project settings for Codex Unleashed features.",
@@ -78,7 +78,7 @@ index ed55b72..a45e739 100644
        "type": "object"
      },
      "ComputerUseConfigToml": {
-@@ -1442,6 +1448,9 @@
+@@ -1489,6 +1495,9 @@
              "unified_image_budget": {
                "type": "boolean"
              },
@@ -88,7 +88,7 @@ index ed55b72..a45e739 100644
              "untrusted_as_tool_output": {
                "type": "boolean"
              },
-@@ -8161,6 +8170,9 @@
+@@ -8789,6 +8798,9 @@
          "unified_image_budget": {
            "type": "boolean"
          },
@@ -99,10 +99,10 @@ index ed55b72..a45e739 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
-index b7fc813..a4d0a67 100644
+index 634b773d48..ec7bd5df5b 100644
 --- a/codex-rs/core/src/config/config_loader_tests.rs
 +++ b/codex-rs/core/src/config/config_loader_tests.rs
-@@ -4163,6 +4163,66 @@ wire_api = "responses"
+@@ -4173,6 +4173,66 @@ wire_api = "responses"
      Ok(())
  }
  
@@ -170,10 +170,10 @@ index b7fc813..a4d0a67 100644
  async fn strict_config_rejects_unknown_codex_unleashed_settings() {
      for (contents, expected) in [
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 8b2548f..862b92b 100644
+index 96b86fce61..bf227ce113 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -1497,6 +1497,29 @@ fn test_tui_vim_mode_default_true() {
+@@ -1567,6 +1567,29 @@ fn test_tui_vim_mode_default_true() {
      );
  }
  
@@ -204,10 +204,10 @@ index 8b2548f..862b92b 100644
  async fn runtime_config_uses_tui_raw_output_mode() {
      let toml = r#"
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 8d93436..4b62a55 100644
+index 1006e07ec0..7c0a80659a 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -836,6 +836,9 @@ pub struct Config {
+@@ -864,6 +864,9 @@ pub struct Config {
      /// Mouse wheel speed multiplier for transcript scrolling; defaults to one row per event.
      pub tui_mouse_scroll_speed: Option<f64>,
  
@@ -217,9 +217,9 @@ index 8d93436..4b62a55 100644
      /// Override the terminal default for copying transcript, footer, and composer selections.
      pub tui_copy_on_select: codex_config::types::CopyOnSelect,
  
-@@ -4792,6 +4795,12 @@ impl Config {
-                 .as_ref()
+@@ -4932,6 +4935,12 @@ impl Config {
                  .is_none_or(|tui| tui.fullscreen_transcript),
+             tui_sidebar_width_percent: cfg.tui.as_ref().and_then(|tui| tui.sidebar_width_percent),
              tui_mouse_scroll_speed: cfg.tui.as_ref().and_then(|tui| tui.mouse_scroll_speed),
 +
 +            unleashed_expanded_diff_previews: cfg
@@ -231,10 +231,10 @@ index 8d93436..4b62a55 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 8a9a097..7ab0444 100644
+index 9cd34596a7..f9a9481129 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -97,6 +97,8 @@ impl Stage {
+@@ -98,6 +98,8 @@ impl Stage {
  /// Unique features toggled via configuration.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
  pub enum Feature {
@@ -243,7 +243,7 @@ index 8a9a097..7ab0444 100644
      /// Preview consumer five-hour and weekly allowance history.
      AnalyticsPlanHistory,
      /// Discover model catalogs for OpenAI API-key authentication.
-@@ -1086,6 +1088,12 @@ pub struct FeatureSpec {
+@@ -1137,6 +1139,12 @@ pub struct FeatureSpec {
  }
  
  pub const FEATURES: &[FeatureSpec] = &[
@@ -257,10 +257,10 @@ index 8a9a097..7ab0444 100644
          id: Feature::AnalyticsPlanHistory,
          key: "analytics_plan_history",
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index 1ced86e..227717e 100644
+index afe4fb0236..6509d9bb94 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -288,6 +288,7 @@ async fn new_config(
+@@ -296,6 +296,7 @@ async fn new_config(
          notify: None,
          tui_notifications: TuiNotificationSettings::default(),
          animations: true,
@@ -269,13 +269,13 @@ index 1ced86e..227717e 100644
          tui_rendering: Default::default(),
          show_tooltips: true,
 diff --git a/codex-rs/tui/src/app/owned_transcript.rs b/codex-rs/tui/src/app/owned_transcript.rs
-index da20829..5a242ad 100644
+index 9aeaa9845a..dcba2af4bd 100644
 --- a/codex-rs/tui/src/app/owned_transcript.rs
 +++ b/codex-rs/tui/src/app/owned_transcript.rs
-@@ -156,6 +156,11 @@ impl App {
+@@ -205,6 +205,11 @@ impl App {
+     }
  
-     fn sync_owned_transcript(&mut self, width: u16) -> bool {
-         self.transcript_view.image_protocol = self.prepare_frame_images();
+     pub(super) fn sync_owned_transcript(&mut self, width: u16) -> bool {
 +        let expanded_diff_previews = self
 +            .config
 +            .features
@@ -284,19 +284,19 @@ index da20829..5a242ad 100644
          let chat_widget = &self.chat_widget;
          let transcript_width = chat_widget.history_wrap_width(width);
          let view = &mut self.transcript_view;
-@@ -166,6 +171,7 @@ impl App {
+@@ -215,6 +220,7 @@ impl App {
              .copy_on_select(&codex_terminal_detection::terminal_info());
          view.copy_on_select_clear_selection =
              self.local_settings.tui.copy_on_select_clear_selection;
 +        view.set_expanded_diff_previews(expanded_diff_previews);
          view.set_keymap_bindings(&self.keymap);
          view.set_presentation(view.is_detailed(), chat_widget.history_render_mode());
-         let active_key = chat_widget.active_cell_transcript_key();
+         let active = chat_widget.active_activity_cell();
 diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
-index 422d53f..fc6024d 100644
+index 6b76d69a08..93f8f00023 100644
 --- a/codex-rs/tui/src/app/owned_transcript_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
-@@ -74,6 +74,71 @@ pub(in crate::app) fn buffer_text(buffer: &Buffer) -> String {
+@@ -77,6 +77,71 @@ pub(in crate::app) fn buffer_text(buffer: &Buffer) -> String {
          .join("\n")
  }
  
@@ -369,10 +369,10 @@ index 422d53f..fc6024d 100644
  async fn external_writer_escape_returns_to_command_center_without_editing() -> Result<()> {
      for (detailed, scrolled, offline) in [
 diff --git a/codex-rs/tui/src/transcript_view.rs b/codex-rs/tui/src/transcript_view.rs
-index 9911b8c..001187a 100644
+index 7deb51df66..f511851f4e 100644
 --- a/codex-rs/tui/src/transcript_view.rs
 +++ b/codex-rs/tui/src/transcript_view.rs
-@@ -116,6 +116,7 @@ pub(crate) struct TranscriptView {
+@@ -123,6 +123,7 @@ pub(crate) struct TranscriptView {
      search: Search,
      detailed: bool,
      mode: HistoryRenderMode,
@@ -380,7 +380,7 @@ index 9911b8c..001187a 100644
      pub(crate) history: TranscriptHistoryState,
      highlight: Option<usize>,
      saved_position: Option<Position>,
-@@ -156,6 +157,7 @@ impl Default for TranscriptView {
+@@ -167,6 +168,7 @@ impl Default for TranscriptView {
              search: Search::default(),
              detailed: false,
              mode: HistoryRenderMode::Rich,
@@ -388,7 +388,7 @@ index 9911b8c..001187a 100644
              history: TranscriptHistoryState::Idle,
              highlight: None,
              saved_position: None,
-@@ -420,6 +422,18 @@ impl TranscriptView {
+@@ -617,6 +619,18 @@ impl TranscriptView {
          self.mode = mode;
      }
  
@@ -408,7 +408,7 @@ index 9911b8c..001187a 100644
          self.select_mode.is_some()
              || self.selection.is_some()
 diff --git a/codex-rs/tui/src/transcript_view/layout.rs b/codex-rs/tui/src/transcript_view/layout.rs
-index dd81a38..cd173a8 100644
+index 4966c4cda1..0e5e150987 100644
 --- a/codex-rs/tui/src/transcript_view/layout.rs
 +++ b/codex-rs/tui/src/transcript_view/layout.rs
 @@ -65,7 +65,9 @@ fn cell_content_layout(
@@ -422,7 +422,7 @@ index dd81a38..cd173a8 100644
          activity_layout(
              ActivityTranscriptLines {
                  activity: if presentation.expanded {
-@@ -132,6 +134,7 @@ pub(super) struct CellPresentation {
+@@ -144,6 +146,7 @@ pub(super) struct CellPresentation {
      turn_tip_space: bool,
      expanded: bool,
      disclosure: bool,
@@ -430,7 +430,7 @@ index dd81a38..cd173a8 100644
      detailed: bool,
      image_protocol: Option<crate::pets::ImageProtocol>,
  }
-@@ -144,7 +147,14 @@ impl TranscriptView {
+@@ -156,7 +159,14 @@ impl TranscriptView {
          mode: HistoryRenderMode,
      ) -> CellPresentation {
          let ids = cell.activity_ids();
@@ -446,7 +446,7 @@ index dd81a38..cd173a8 100644
          let manually_expanded = self.disclosure.is_expanded(&ids);
          let reveal_image = ids.is_empty() || manually_expanded || self.detailed;
          if manually_expanded {
-@@ -156,6 +166,7 @@ impl TranscriptView {
+@@ -169,6 +179,7 @@ impl TranscriptView {
              turn_tip_space: false,
              expanded: disclosure && (full_content || manually_expanded),
              disclosure,
@@ -455,10 +455,10 @@ index dd81a38..cd173a8 100644
              image_protocol: self
                  .image_protocol
 diff --git a/codex-rs/tui/src/transcript_view/layout_tests.rs b/codex-rs/tui/src/transcript_view/layout_tests.rs
-index 2cb45fb..47aa130 100644
+index 6f9f0d4e7d..d84e8afc7b 100644
 --- a/codex-rs/tui/src/transcript_view/layout_tests.rs
 +++ b/codex-rs/tui/src/transcript_view/layout_tests.rs
-@@ -51,6 +51,7 @@ fn layouts_refresh_for_width_animation_and_mutable_frames() {
+@@ -52,6 +52,7 @@ fn layouts_refresh_for_width_animation_and_mutable_frames() {
                      turn_tip_space: false,
                      expanded: false,
                      disclosure: false,
@@ -466,7 +466,7 @@ index 2cb45fb..47aa130 100644
                      detailed: false,
                      image_protocol: None,
                  },
-@@ -109,6 +110,7 @@ fn recent_entries_are_reused_and_old_entries_are_evicted() {
+@@ -111,6 +112,7 @@ fn recent_entries_are_reused_and_old_entries_are_evicted() {
                  turn_tip_space: false,
                  expanded: false,
                  disclosure: false,
@@ -474,7 +474,7 @@ index 2cb45fb..47aa130 100644
                  detailed: false,
                  image_protocol: None,
              },
-@@ -131,6 +133,7 @@ fn recent_entries_are_reused_and_old_entries_are_evicted() {
+@@ -134,6 +136,7 @@ fn recent_entries_are_reused_and_old_entries_are_evicted() {
                  turn_tip_space: false,
                  expanded: false,
                  disclosure: false,

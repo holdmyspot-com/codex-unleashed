@@ -1,8 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 23:20:12 -0500
-Subject: [PATCH 21/54] Compile release builds of the app server and cloud
- tasks without warnings
+Subject: [PATCH] Compile release builds of the app server without warnings
 
 Release builds compile out the debug-only test hooks, which left their
 imports and constants unused and one parameter needlessly mutable. Gate
@@ -11,14 +10,13 @@ settings by value instead of mutating them.
 ---
  codex-rs/app-server/src/lib.rs  | 7 +++++--
  codex-rs/app-server/src/main.rs | 3 +++
- codex-rs/cloud-tasks/src/lib.rs | 2 ++
- 3 files changed, 10 insertions(+), 2 deletions(-)
+ 2 files changed, 8 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
-index b3aa3b9..4b29e51 100644
+index d7cc906c88..71822189c1 100644
 --- a/codex-rs/app-server/src/lib.rs
 +++ b/codex-rs/app-server/src/lib.rs
-@@ -1543,7 +1543,7 @@ fn test_user_config_file_from_env() -> Option<std::path::PathBuf> {
+@@ -1569,7 +1569,7 @@ fn test_user_config_file_from_env() -> Option<std::path::PathBuf> {
  }
  
  fn loader_overrides_with_test_user_config_file(
@@ -27,7 +25,7 @@ index b3aa3b9..4b29e51 100644
      test_user_config_file: Option<std::path::PathBuf>,
  ) -> IoResult<LoaderOverrides> {
      #[cfg(debug_assertions)]
-@@ -1558,7 +1558,10 @@ fn loader_overrides_with_test_user_config_file(
+@@ -1584,7 +1584,10 @@ fn loader_overrides_with_test_user_config_file(
              path = %path.as_path().display(),
              "using debug-only app-server test user config file"
          );
@@ -40,18 +38,18 @@ index b3aa3b9..4b29e51 100644
  
      #[cfg(not(debug_assertions))]
 diff --git a/codex-rs/app-server/src/main.rs b/codex-rs/app-server/src/main.rs
-index 9e527de..390ae09 100644
+index fe2be58cf4..d0f2fbe9d0 100644
 --- a/codex-rs/app-server/src/main.rs
 +++ b/codex-rs/app-server/src/main.rs
-@@ -4,6 +4,7 @@ use clap::Parser;
- use codex_app_server::AppServerCodeModeHostArgs;
+@@ -5,6 +5,7 @@ use codex_app_server::AppServerCodeModeHostArgs;
  use codex_app_server::AppServerRuntimeOptions;
  use codex_app_server::AppServerTransport;
+ use codex_app_server::PluginMcpLaunchArgs;
 +#[cfg(debug_assertions)]
  use codex_app_server::PluginStartupTasks;
  use codex_app_server::run_main_with_transport_options;
  use codex_arg0::Arg0DispatchPaths;
-@@ -24,7 +25,9 @@ static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+@@ -25,7 +26,9 @@ static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
  
  // Debug-only test hook: lets integration tests point the server at a temporary
  // managed config file without writing to /etc.
@@ -61,20 +59,6 @@ index 9e527de..390ae09 100644
  const DISABLE_MANAGED_CONFIG_ENV_VAR: &str = "CODEX_APP_SERVER_DISABLE_MANAGED_CONFIG";
  
  #[derive(Debug, Parser)]
-diff --git a/codex-rs/cloud-tasks/src/lib.rs b/codex-rs/cloud-tasks/src/lib.rs
-index b0975fe..36e8698 100644
---- a/codex-rs/cloud-tasks/src/lib.rs
-+++ b/codex-rs/cloud-tasks/src/lib.rs
-@@ -13,7 +13,9 @@ use codex_cloud_tasks_client::TaskStatus;
- use codex_git_utils::current_branch_name;
- use codex_git_utils::default_branch_name;
- use codex_http_client::ClientRouteClass;
-+#[cfg(debug_assertions)]
- use codex_http_client::HttpClientFactory;
-+#[cfg(debug_assertions)]
- use codex_http_client::OutboundProxyPolicy;
- use codex_http_client::RouteAwareClientPool;
- use codex_login::default_client::get_codex_user_agent;
 -- 
 2.43.0
 

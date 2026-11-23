@@ -1,12 +1,14 @@
 # Responsive startup, resume and agent switching
 
 - Issue: [openai/codex#34776](https://github.com/openai/codex/issues/34776)
-- Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
-- Prerequisites: the three skill patches have none and apply independently. [avoid-slow-agent-switching-and-resume.patch](avoid-slow-agent-switching-and-resume.patch) applies after [base-configuration](../base-configuration/README.md), [issue-47390](../issue-47390/README.md) and [collapsed-tool-activity](../collapsed-tool-activity/README.md), whose feature and schema entries surround its own.
+- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
+- Prerequisites: the skill patches have none and apply independently. [avoid-slow-agent-switching-and-resume.patch](avoid-slow-agent-switching-and-resume.patch) applies after [base-configuration](../base-configuration/README.md), [issue-47390](../issue-47390/README.md) and [collapsed-tool-activity](../collapsed-tool-activity/README.md), whose feature and schema entries surround its own.
 
 ## Deferred implicit skill index
 
 [defer-implicit-skill-index.patch](defer-implicit-skill-index.patch)
+
+Status: left out of the `rust-v0.171.0` queue and not rebased; the file still applies to `rust-v0.167.0`. Upstream #59280 builds the implicit skill index asynchronously through each skill's `EnvironmentAccess`, so deferring the build to its first lookup needs a new design.
 
 ### Intent
 

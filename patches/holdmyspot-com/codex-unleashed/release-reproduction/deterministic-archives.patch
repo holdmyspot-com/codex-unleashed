@@ -1,23 +1,23 @@
-From 9c843989e01f0aa4a0dba52a1ba5af7c7929448a Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Fri, 13 Nov 2026 09:34:29 -0500
 Subject: [PATCH] bugfix: normalize release tar metadata
 
 Release archives inherited host timestamps and permissions, so equivalent package trees could produce different checksums.
 ---
- .../archive-release-symbols-and-strip-binaries.sh  |  14 +-
- scripts/codex_package/archive.py                   |  70 ++++++-
- scripts/codex_package/test_archive.py              | 220 +++++++++++++++++++++
+ ...hive-release-symbols-and-strip-binaries.sh |  14 +-
+ scripts/codex_package/archive.py              |  70 +++++-
+ scripts/codex_package/test_archive.py         | 220 ++++++++++++++++++
  3 files changed, 294 insertions(+), 10 deletions(-)
 
 diff --git a/.github/scripts/archive-release-symbols-and-strip-binaries.sh b/.github/scripts/archive-release-symbols-and-strip-binaries.sh
-index 3e5894b..b3c00c0 100755
+index 3e5894bb99..b3c00c0b03 100755
 --- a/.github/scripts/archive-release-symbols-and-strip-binaries.sh
 +++ b/.github/scripts/archive-release-symbols-and-strip-binaries.sh
 @@ -115,5 +115,15 @@ case "$target" in
      ;;
  esac
-
+ 
 -rm -f "$archive_path"
 -tar -C "$symbols_root" -czf "$archive_path" "codex-symbols-${artifact_name}"
 +repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -33,29 +33,29 @@ index 3e5894b..b3c00c0 100755
 +write_archive(Path(sys.argv[1]), Path(sys.argv[2]), force=True)
 +PY
 diff --git a/scripts/codex_package/archive.py b/scripts/codex_package/archive.py
-index 85123cc..50b771d 100644
+index 85123cc01e..50b771dce3 100644
 --- a/scripts/codex_package/archive.py
 +++ b/scripts/codex_package/archive.py
 @@ -1,5 +1,6 @@
  """Archive writers for canonical Codex package directories."""
-
+ 
 +import gzip
  import shutil
  import subprocess
  import tarfile
 @@ -13,6 +14,9 @@ from .targets import REPO_ROOT
-
+ 
  ZSTD_DOTSLASH = REPO_ROOT / ".github" / "workflows" / "zstd"
-
+ 
 +# The fixed Unix epoch keeps gzip and tar headers independent of build time.
 +ARCHIVE_EPOCH = 0
 +
-
+ 
  def write_archive(package_dir: Path, archive_path: Path, *, force: bool) -> None:
      if is_relative_to(archive_path, package_dir):
 @@ -59,14 +63,64 @@ def archive_format_for_path(path: Path) -> str:
-
-
+ 
+ 
  def write_tar_archive(package_dir: Path, archive_path: Path, *, mode: str) -> None:
 -    options = {"compresslevel": 6} if mode == "w:gz" else {}
 -    with tarfile.open(archive_path, mode, **options) as archive:
@@ -123,16 +123,16 @@ index 85123cc..50b771d 100644
 +        f"Unsupported archive entry type for {tar_info.name}; only regular files, "
 +        "directories, and symlinks are supported."
 +    )
-
-
+ 
+ 
  def write_tar_zst_archive(package_dir: Path, archive_path: Path) -> None:
 diff --git a/scripts/codex_package/test_archive.py b/scripts/codex_package/test_archive.py
-index ae3902e..6d835fa 100644
+index ae3902e215..6d835fa0f0 100644
 --- a/scripts/codex_package/test_archive.py
 +++ b/scripts/codex_package/test_archive.py
 @@ -1,13 +1,233 @@
  #!/usr/bin/env python3
-
+ 
 +import hashlib
 +import os
  from pathlib import Path
@@ -142,9 +142,9 @@ index ae3902e..6d835fa 100644
  import tempfile
 +import time
  import unittest
-
+ 
  sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
+ 
  from codex_package.archive import resolve_zstd_command
 +from codex_package.archive import write_archive
 +
@@ -361,6 +361,9 @@ index ae3902e..6d835fa 100644
 +                    archive.extractfile("codex-symbols-windows/codex.pdb").read(),
 +                    b"symbols\n",
 +                )
-
-
+ 
+ 
  class ResolveZstdCommandTest(unittest.TestCase):
+-- 
+2.43.0
+

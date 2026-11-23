@@ -1,19 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 18 Nov 2026 12:21:44 -0500
 Subject: [PATCH] bazel: Configure AWS-LC C actions for C11
 
 Add a rules_cc feature overlay that removes the default C standard selection for AWS-LC targets.
 Keep the configured C11 standard unique while preserving warning and static CRT configuration.
-
 ---
+ MODULE.bazel                            |   8 ++
+ patches/BUILD.bazel                     |   1 +
+ patches/aws_lc_c_standard.patch         | 100 ++++++++++++++++++++++++
+ tools/aws-lc-standard/BUILD.bazel       |  91 +++++++++++++++++++++
+ tools/aws-lc-standard/default.c         |   1 +
+ tools/aws-lc-standard/standard_test.bzl |  42 ++++++++++
+ 6 files changed, 243 insertions(+)
+ create mode 100644 patches/aws_lc_c_standard.patch
+ create mode 100644 tools/aws-lc-standard/BUILD.bazel
+ create mode 100644 tools/aws-lc-standard/default.c
+ create mode 100644 tools/aws-lc-standard/standard_test.bzl
+
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 14f3cc47a1455faac14a9a0810af5bf8862a2338..9523259eea2477f188962d83c80a611e1c7e45af 100644
+index 73c5c7a676..ba9a2173f9 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -162,6 +162,14 @@ single_version_override(
+@@ -165,6 +165,14 @@ bazel_dep(name = "rules_cc", version = "0.2.25")
  bazel_dep(name = "rules_platform", version = "0.1.0")
  bazel_dep(name = "rules_pkg", version = "1.0.1")
- bazel_dep(name = "aws-lc", version = "5.1.0.bcr.1")
+ bazel_dep(name = "aws-lc", version = "5.1.0.bcr.3")
 +single_version_override(
 +    module_name = "aws-lc",
 +    patch_strip = 1,
@@ -22,22 +34,22 @@ index 14f3cc47a1455faac14a9a0810af5bf8862a2338..9523259eea2477f188962d83c80a611e
 +    ],
 +)
 +
- bazel_dep(name = "rules_rs", version = "0.0.96")
+ bazel_dep(name = "rules_rs", version = "0.2.3")
  bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
  single_version_override(
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index 334598195c58385cb0332b43c14f0f0fe6ae1b63..211595c0299deeec66879bb5dd4cc521349c9206 100644
+index 6fad1f052b..6c86164f40 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
-@@ -36,4 +36,5 @@ exports_files([
+@@ -31,4 +31,5 @@ exports_files([
+     "windows-support-remote-case-aliases.patch",
      "windows-support-native-tools.patch",
      "xz_windows_stack_args.patch",
-     "zstd-sys_windows_msvc_include_dirs.patch",
 +    "aws_lc_c_standard.patch",
  ])
 diff --git a/patches/aws_lc_c_standard.patch b/patches/aws_lc_c_standard.patch
 new file mode 100644
-index 0000000000000000000000000000000000000000..daecb1d920a97df8fea9a3c3dce5d4f430fccc09
+index 0000000000..f1f3e13712
 --- /dev/null
 +++ b/patches/aws_lc_c_standard.patch
 @@ -0,0 +1,100 @@
@@ -54,13 +66,13 @@ index 0000000000000000000000000000000000000000..daecb1d920a97df8fea9a3c3dce5d4f4
 + 1 file changed, 13 insertions(+), 1 deletion(-)
 +
 +diff --git a/BUILD.bazel b/BUILD.bazel
-+index 58cac9f..202fd2c 100755
++index 2e5d1b1..b35a21c 100755
 +--- a/BUILD.bazel
 ++++ b/BUILD.bazel
-+@@ -31,6 +31,10 @@ BORINGSSL_CONLYOPTS = select({
++@@ -32,6 +32,10 @@ BORINGSSL_CONLYOPTS = select({
 +     "//conditions:default": ["-std=c11"],
 + })
-+
++ 
 ++# Explicit C11 targets exclude the toolchain default, such as MSVC C17,
 ++# so each C compilation receives one standard flag.
 ++BORINGSSL_C_FEATURES = ["-default_c_std"]
@@ -68,7 +80,7 @@ index 0000000000000000000000000000000000000000..daecb1d920a97df8fea9a3c3dce5d4f4
 + BORINGSSL_CXXOPTS = select({
 +     "@platforms//os:windows": [],
 +     "//conditions:default": [
-+@@ -228,7 +232,7 @@ cc_library(
++@@ -236,7 +240,7 @@ cc_library(
 +         ],
 +     }) + BORINGSSL_COPTS,
 +     cxxopts = BORINGSSL_CXXOPTS,
@@ -77,7 +89,7 @@ index 0000000000000000000000000000000000000000..daecb1d920a97df8fea9a3c3dce5d4f4
 +     includes = [
 +         "include",
 +         "third_party/jitterentropy/jitterentropy-library",
-+@@ -504,6 +508,7 @@ cc_library(
++@@ -512,6 +516,7 @@ cc_library(
 +     conlyopts = BORINGSSL_CONLYOPTS,
 +     copts = COMMON_COPTS + BORINGSSL_COPTS,
 +     cxxopts = BORINGSSL_CXXOPTS,
@@ -85,7 +97,7 @@ index 0000000000000000000000000000000000000000..daecb1d920a97df8fea9a3c3dce5d4f4
 +     implementation_deps = [
 +         ":jitterentropy",
 +     ],
-+@@ -567,6 +572,7 @@ cc_library(
++@@ -575,6 +580,7 @@ cc_library(
 +     conlyopts = BORINGSSL_CONLYOPTS,
 +     copts = COMMON_COPTS + BORINGSSL_COPTS,
 +     cxxopts = BORINGSSL_CXXOPTS,
@@ -93,7 +105,7 @@ index 0000000000000000000000000000000000000000..daecb1d920a97df8fea9a3c3dce5d4f4
 +     includes = ["include"],
 +     visibility = ["//visibility:public"],
 +     deps = [
-+@@ -587,6 +593,7 @@ cc_binary(
++@@ -595,6 +601,7 @@ cc_binary(
 +     conlyopts = BORINGSSL_CONLYOPTS,
 +     copts = COMMON_COPTS + BORINGSSL_COPTS,
 +     cxxopts = BORINGSSL_CXXOPTS,
@@ -101,7 +113,7 @@ index 0000000000000000000000000000000000000000..daecb1d920a97df8fea9a3c3dce5d4f4
 +     includes = [
 +         "include",
 +         "tool",
-+@@ -615,6 +622,7 @@ cc_library(
++@@ -623,6 +630,7 @@ cc_library(
 +     conlyopts = BORINGSSL_CONLYOPTS,
 +     copts = TEST_COPTS + BORINGSSL_COPTS,
 +     cxxopts = BORINGSSL_CXXOPTS,
@@ -109,7 +121,7 @@ index 0000000000000000000000000000000000000000..daecb1d920a97df8fea9a3c3dce5d4f4
 +     includes = ["include"],
 +     local_defines = ["BORINGSSL_USE_BAZEL_RUNFILES"],
 +     deps = [
-+@@ -637,6 +645,7 @@ cc_library(
++@@ -645,6 +653,7 @@ cc_library(
 +     conlyopts = BORINGSSL_CONLYOPTS,
 +     copts = TEST_COPTS + BORINGSSL_COPTS,
 +     cxxopts = BORINGSSL_CXXOPTS,
@@ -117,7 +129,7 @@ index 0000000000000000000000000000000000000000..daecb1d920a97df8fea9a3c3dce5d4f4
 +     includes = ["crypto/test"],
 +     deps = [
 +         ":crypto_test_support",
-+@@ -764,6 +773,7 @@ cc_test(
++@@ -772,6 +781,7 @@ cc_test(
 +     conlyopts = BORINGSSL_CONLYOPTS,
 +     copts = TEST_COPTS + ["-DAWS_LC_TEST_ENV"] + BORINGSSL_COPTS,
 +     cxxopts = BORINGSSL_CXXOPTS,
@@ -125,7 +137,7 @@ index 0000000000000000000000000000000000000000..daecb1d920a97df8fea9a3c3dce5d4f4
 +     data = CRYPTO_TEST_DATA,
 +     linkstatic = True,
 +     shard_count = 30,
-+@@ -782,6 +792,7 @@ cc_test(
++@@ -790,6 +800,7 @@ cc_test(
 +     conlyopts = BORINGSSL_CONLYOPTS,
 +     copts = TEST_COPTS + BORINGSSL_COPTS,
 +     cxxopts = BORINGSSL_CXXOPTS,
@@ -133,7 +145,7 @@ index 0000000000000000000000000000000000000000..daecb1d920a97df8fea9a3c3dce5d4f4
 +     data = CRYPTO_TEST_DATA,
 +     deps = [
 +         ":crypto",
-+@@ -813,6 +824,7 @@ cc_test(
++@@ -821,6 +832,7 @@ cc_test(
 +     conlyopts = BORINGSSL_CONLYOPTS,
 +     copts = TEST_COPTS + BORINGSSL_COPTS,
 +     cxxopts = BORINGSSL_CXXOPTS,
@@ -143,7 +155,7 @@ index 0000000000000000000000000000000000000000..daecb1d920a97df8fea9a3c3dce5d4f4
 +     deps = [
 diff --git a/tools/aws-lc-standard/BUILD.bazel b/tools/aws-lc-standard/BUILD.bazel
 new file mode 100644
-index 0000000000000000000000000000000000000000..958b7b613c3c5418028b2f990f2e7b40628f8b6c
+index 0000000000..958b7b613c
 --- /dev/null
 +++ b/tools/aws-lc-standard/BUILD.bazel
 @@ -0,0 +1,91 @@
@@ -240,14 +252,14 @@ index 0000000000000000000000000000000000000000..958b7b613c3c5418028b2f990f2e7b40
 +)
 diff --git a/tools/aws-lc-standard/default.c b/tools/aws-lc-standard/default.c
 new file mode 100644
-index 0000000000000000000000000000000000000000..3cf8728f2116fb942c39efb8e3459be3c89e3835
+index 0000000000..3cf8728f21
 --- /dev/null
 +++ b/tools/aws-lc-standard/default.c
 @@ -0,0 +1 @@
 +int aws_lc_standard_control(void) { return 0; }
 diff --git a/tools/aws-lc-standard/standard_test.bzl b/tools/aws-lc-standard/standard_test.bzl
 new file mode 100644
-index 0000000000000000000000000000000000000000..02197433d1857b7d70740362c2480b6e7fe6222b
+index 0000000000..02197433d1
 --- /dev/null
 +++ b/tools/aws-lc-standard/standard_test.bzl
 @@ -0,0 +1,42 @@
@@ -293,3 +305,6 @@ index 0000000000000000000000000000000000000000..02197433d1857b7d70740362c2480b6e
 +        "//command_line_option:features": ["static_link_msvcrt", "-dynamic_link_msvcrt"],
 +    },
 +)
+-- 
+2.43.0
+

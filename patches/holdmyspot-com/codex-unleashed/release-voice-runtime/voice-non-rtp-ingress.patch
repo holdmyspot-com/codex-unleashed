@@ -1,4 +1,4 @@
-From 33db8d66bd4f29a452bb8a9c785244011c59ec14 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 15 Nov 2026 01:27:20 -0500
 Subject: [PATCH] voice: preserve non-RTP ingress packets
@@ -9,7 +9,7 @@ Subject: [PATCH] voice: preserve non-RTP ingress packets
  2 files changed, 127 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/voice-host/src/incoming.rs b/codex-rs/voice-host/src/incoming.rs
-index 78a94fb..1441813 100644
+index 78a94fbde5..1441813f0f 100644
 --- a/codex-rs/voice-host/src/incoming.rs
 +++ b/codex-rs/voice-host/src/incoming.rs
 @@ -53,6 +53,7 @@ pub(crate) struct Incoming {
@@ -52,7 +52,7 @@ index 78a94fb..1441813 100644
  
      fn handle_write(&mut self, message: TaggedPacket) -> Result<(), Self::Error> {
 diff --git a/codex-rs/voice-host/src/incoming_tests.rs b/codex-rs/voice-host/src/incoming_tests.rs
-index fd99291..9352659 100644
+index fd99291cbc..9352659177 100644
 --- a/codex-rs/voice-host/src/incoming_tests.rs
 +++ b/codex-rs/voice-host/src/incoming_tests.rs
 @@ -1,7 +1,12 @@

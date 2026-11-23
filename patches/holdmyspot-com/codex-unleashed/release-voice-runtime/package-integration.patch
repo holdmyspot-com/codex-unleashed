@@ -1,12 +1,17 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 18 Nov 2026 12:21:44 -0500
 Subject: [PATCH] build: include voice runtime in release packages
 
 Stage verified voice resources in the primary release package.
-
 ---
+ .../actions/build-codex-packages/action.yml   |  20 +-
+ .github/scripts/codex-package-operations.sh   |  86 +++-
+ .../scripts/test-codex-package-operations.sh  | 465 +++++++++++++++++-
+ 3 files changed, 559 insertions(+), 12 deletions(-)
+
 diff --git a/.github/actions/build-codex-packages/action.yml b/.github/actions/build-codex-packages/action.yml
-index 1976334..a6bb18f 100644
+index 1976334007..a6bb18f1f8 100644
 --- a/.github/actions/build-codex-packages/action.yml
 +++ b/.github/actions/build-codex-packages/action.yml
 @@ -13,6 +13,12 @@ inputs:
@@ -55,7 +60,7 @@ index 1976334..a6bb18f 100644
  
      - name: Smoke-test assembled packages
 diff --git a/.github/scripts/codex-package-operations.sh b/.github/scripts/codex-package-operations.sh
-index e86cab1..9a5bb0f 100644
+index 6b28cea97e..5fdac81055 100644
 --- a/.github/scripts/codex-package-operations.sh
 +++ b/.github/scripts/codex-package-operations.sh
 @@ -39,6 +39,9 @@ parse_arguments() {
@@ -194,7 +199,7 @@ index e86cab1..9a5bb0f 100644
    complete_result
  }
 diff --git a/.github/scripts/test-codex-package-operations.sh b/.github/scripts/test-codex-package-operations.sh
-index 77c8f5d..c4dd348 100644
+index b8ff74dbc2..44c58f1104 100644
 --- a/.github/scripts/test-codex-package-operations.sh
 +++ b/.github/scripts/test-codex-package-operations.sh
 @@ -1,9 +1,17 @@
@@ -695,3 +700,6 @@ index 77c8f5d..c4dd348 100644
    trap - EXIT
  }
  
+-- 
+2.43.0
+

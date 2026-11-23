@@ -1,7 +1,7 @@
 # Use a mountable procfs denial to test snapshot descriptor fallback
 
 - Issue: [holdmyspot-com/codex-unleashed#49](https://github.com/holdmyspot-com/codex-unleashed/issues/49)
-- Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`. No downstream prerequisites.
+- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`. No downstream prerequisites.
 
 ## Intent
 

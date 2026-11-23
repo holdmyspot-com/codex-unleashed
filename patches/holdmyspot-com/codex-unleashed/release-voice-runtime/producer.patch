@@ -1,13 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 18 Nov 2026 12:21:44 -0500
 Subject: [PATCH] build: produce native voice runtime resources
 
 Build the target voice runtime and retain its verified output for packaging.
-
 ---
+ .github/scripts/codex-voice-runtime.sh      | 525 +++++++++++++++++++
+ .github/scripts/test-codex-voice-runtime.sh | 534 ++++++++++++++++++++
+ 2 files changed, 1059 insertions(+)
+ create mode 100755 .github/scripts/codex-voice-runtime.sh
+ create mode 100755 .github/scripts/test-codex-voice-runtime.sh
+
 diff --git a/.github/scripts/codex-voice-runtime.sh b/.github/scripts/codex-voice-runtime.sh
 new file mode 100755
-index 0000000..4eb7530
+index 0000000000..4eb753048b
 --- /dev/null
 +++ b/.github/scripts/codex-voice-runtime.sh
 @@ -0,0 +1,525 @@
@@ -538,7 +544,7 @@ index 0000000..4eb7530
 +main "$@"
 diff --git a/.github/scripts/test-codex-voice-runtime.sh b/.github/scripts/test-codex-voice-runtime.sh
 new file mode 100755
-index 0000000..c9e07f2
+index 0000000000..c879eca30f
 --- /dev/null
 +++ b/.github/scripts/test-codex-voice-runtime.sh
 @@ -0,0 +1,534 @@
@@ -1076,3 +1082,6 @@ index 0000000..c9e07f2
 +fi
 +assert_equal caller-owned "$(cat "$existing_result/sentinel")" 'preexisting result sentinel'
 +assert_absent "$existing_result/completed" 'preexisting result completion marker'
+-- 
+2.43.0
+

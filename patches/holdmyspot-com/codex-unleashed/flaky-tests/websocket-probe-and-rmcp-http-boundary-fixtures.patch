@@ -1,9 +1,15 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 22 Nov 2026 23:12:23 -0500
 Subject: [PATCH] Cover WebSocket probe and RMCP HTTP boundary behavior
 
+---
+ .../tests/responses_websocket_probe.rs        | 218 +++++++++++++++---
+ .../rmcp-client/tests/mcp_2026_discovery.rs   |  94 ++++++++
+ 2 files changed, 284 insertions(+), 28 deletions(-)
+
 diff --git a/codex-rs/codex-api/tests/responses_websocket_probe.rs b/codex-rs/codex-api/tests/responses_websocket_probe.rs
-index 6cee3a013d367127671a6f0cb4fe3a3f71327977..1f485ed8010aa4cab9637ce3de070322b52cfa6e 100644
+index 6cee3a013d..1f485ed801 100644
 --- a/codex-rs/codex-api/tests/responses_websocket_probe.rs
 +++ b/codex-rs/codex-api/tests/responses_websocket_probe.rs
 @@ -5,6 +5,7 @@ use codex_api::ApiError;
@@ -292,7 +298,7 @@ index 6cee3a013d367127671a6f0cb4fe3a3f71327977..1f485ed8010aa4cab9637ce3de070322
  async fn probe_distinguishes_untrusted_certificates_from_io_failures() -> anyhow::Result<()> {
      codex_utils_rustls_provider::ensure_rustls_crypto_provider();
 diff --git a/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs b/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
-index 35b771ff916caa12860ab6b991c6d6d31ae4ff54..90ecdda53358f16222419bcdbead72b9629973f9 100644
+index 35b771ff91..90ecdda533 100644
 --- a/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
 +++ b/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
 @@ -147,6 +147,100 @@ async fn ordinary_http_discovery_returns_advertised_peer_info() -> anyhow::Resul
@@ -396,3 +402,6 @@ index 35b771ff916caa12860ab6b991c6d6d31ae4ff54..90ecdda53358f16222419bcdbead72b9
  #[tokio::test]
  async fn read_only_tool_requests_preserve_host_policy_and_caller_metadata() -> anyhow::Result<()> {
      for mode in [McpProtocolMode::Legacy, McpProtocolMode::V20260728] {
+-- 
+2.43.0
+

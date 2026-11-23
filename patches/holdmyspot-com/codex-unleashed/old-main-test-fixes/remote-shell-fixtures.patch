@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:13 -0500
-Subject: [PATCH 49/54] bugfix: align shell fixtures with local and remote
+Subject: [PATCH] bugfix: align shell fixtures with local and remote
  capabilities
 
 Keep legacy zsh configuration migration on an explicit local fixture.
@@ -17,7 +17,7 @@ fresh test compilation; source contract and patch applicability checks pass.
  2 files changed, 5 insertions(+), 10 deletions(-)
 
 diff --git a/codex-rs/core/tests/suite/deprecation_notice.rs b/codex-rs/core/tests/suite/deprecation_notice.rs
-index 63501fe..87e9591 100644
+index 63501fee48..87e9591a77 100644
 --- a/codex-rs/core/tests/suite/deprecation_notice.rs
 +++ b/codex-rs/core/tests/suite/deprecation_notice.rs
 @@ -162,7 +162,8 @@ unified_exec_zsh_fork = true
@@ -48,10 +48,10 @@ index 63501fe..87e9591 100644
          "yield_time_ms": 10_000,
      });
 diff --git a/codex-rs/core/tests/suite/remote_env.rs b/codex-rs/core/tests/suite/remote_env.rs
-index 8ca6266..3f95d09 100644
+index 25083ae5e9..4a806fb2c3 100644
 --- a/codex-rs/core/tests/suite/remote_env.rs
 +++ b/codex-rs/core/tests/suite/remote_env.rs
-@@ -3811,7 +3811,7 @@ async fn exec_command_routes_to_selected_remote_environment() -> Result<()> {
+@@ -3900,7 +3900,7 @@ async fn exec_command_routes_to_selected_remote_environment() -> Result<()> {
          &server,
          "call-multi-env",
          json!({
@@ -60,7 +60,7 @@ index 8ca6266..3f95d09 100644
              "cmd": format!("cat {remote_marker_name}"),
              "login": false,
              "yield_time_ms": 1_000,
-@@ -4094,7 +4094,7 @@ async fn remote_request_permissions_grant_unblocks_later_remote_exec() -> Result
+@@ -4183,7 +4183,7 @@ async fn remote_request_permissions_grant_unblocks_later_remote_exec() -> Result
                      "exec-call",
                      "exec_command",
                      &json!({

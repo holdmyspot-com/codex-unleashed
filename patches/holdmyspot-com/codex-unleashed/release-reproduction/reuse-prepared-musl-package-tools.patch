@@ -1,4 +1,4 @@
-From 8eadedaab6ff6e00b0bac6d837807f95eea94466 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Fri, 20 Nov 2026 16:00:00 +0000
 Subject: [PATCH] Reuse caller-prepared musl tools in Cargo package builds
@@ -10,7 +10,7 @@ The package cache pilot keys the native preparation before Cargo starts. Keep th
  2 files changed, 19 insertions(+), 3 deletions(-)
 
 diff --git a/.github/actions/build-cargo-package-binaries/action.yml b/.github/actions/build-cargo-package-binaries/action.yml
-index 112ef65..96b0d8f 100644
+index eeb6c15b3e..6ce8b47f02 100644
 --- a/.github/actions/build-cargo-package-binaries/action.yml
 +++ b/.github/actions/build-cargo-package-binaries/action.yml
 @@ -10,6 +10,8 @@ inputs:
@@ -19,12 +19,12 @@ index 112ef65..96b0d8f 100644
      default: release
 +  prepared-musl-zig:
 +    description: Verified Zig executable from the caller's completed musl build preparation.
-
+ 
  runs:
    using: composite
-@@ -45,20 +47,31 @@ runs:
+@@ -45,14 +47,14 @@ runs:
          : > "${cargo_home}/config.toml"
-
+ 
      - name: Install Zig
 -      if: ${{ runner.os == 'Linux' }}
 +      if: ${{ runner.os == 'Linux' && inputs.prepared-musl-zig == '' }}
@@ -32,16 +32,17 @@ index 112ef65..96b0d8f 100644
        with:
          version: 0.14.0
          use-cache: false
-
+ 
      - name: Install musl build tools
 -      if: ${{ runner.os == 'Linux' }}
 +      if: ${{ runner.os == 'Linux' && inputs.prepared-musl-zig == '' }}
        shell: bash
        working-directory: codex-rs
        env:
-         TARGET: ${{ inputs.target }}
+@@ -60,6 +62,17 @@ runs:
+         CODEX_MUSL_RELEASE_LINK_FLAGS: "1"
        run: bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
-
+ 
 +    - name: Verify the prepared musl toolchain
 +      if: ${{ runner.os == 'Linux' && inputs.prepared-musl-zig != '' }}
 +      shell: bash
@@ -57,7 +58,7 @@ index 112ef65..96b0d8f 100644
        if: ${{ runner.os == 'Linux' }}
        shell: bash
 diff --git a/.github/actions/build-codex-packages/action.yml b/.github/actions/build-codex-packages/action.yml
-index a6bb18f..86e2e3e 100644
+index a6bb18f1f8..86e2e3e01f 100644
 --- a/.github/actions/build-codex-packages/action.yml
 +++ b/.github/actions/build-codex-packages/action.yml
 @@ -13,6 +13,8 @@ inputs:
@@ -71,7 +72,7 @@ index a6bb18f..86e2e3e 100644
    voice-build-commit:
 @@ -54,7 +56,7 @@ runs:
          version: "0.13.5"
-
+ 
      - name: Install Linux build dependencies
 -      if: ${{ runner.os == 'Linux' }}
 +      if: ${{ runner.os == 'Linux' && inputs.prepared-musl-zig == '' }}
@@ -83,6 +84,9 @@ index a6bb18f..86e2e3e 100644
          binaries: ${{ env.NEEDED_BINARIES }}
          build-mode: ${{ inputs.build-mode }}
 +        prepared-musl-zig: ${{ inputs.prepared-musl-zig }}
-
+ 
      - name: Build Bazel package binaries
        if: inputs.build-system == 'bazel'
+-- 
+2.43.0
+

@@ -1,4 +1,4 @@
-From 41ff2860eb82853840cd437c428641c8ca3a5ad8 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 12 Nov 2026 23:46:20 -0500
 Subject: [PATCH] Give three slow Windows end-to-end tests a two-minute timeout
@@ -9,7 +9,7 @@ interactive_worktree_start_and_fork_bind_owner_before_turn, mcp_code_mode_exclus
  1 file changed, 11 insertions(+)
 
 diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
-index 50fb1aa81..04cbb1807 100644
+index 50fb1aa819..04cbb1807c 100644
 --- a/codex-rs/.config/nextest.toml
 +++ b/codex-rs/.config/nextest.toml
 @@ -117,6 +117,17 @@ platform = 'cfg(windows)'

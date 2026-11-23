@@ -1,6 +1,6 @@
 # Ctrl+C during MCP startup
 
-- Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
+- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
 - Prerequisites: the rest of the queue up to and including `flaky-tests/startup-probe-da1-last.patch`.
 
 ## Intent
@@ -49,3 +49,9 @@ Evidence on `holdmyspot-com/codex-unleashed`, Linux nextest, `codex-tui`, on the
 
 - Without the fix, `43336705606` failed `tui_tools_server_startup_leaves_ctrl_c_to_quit`, `mcp_startup_status_leaves_out_the_tui_tools_server` and `mcp_startup_header_booting_snapshot`. `ctrl_c_interrupts_user_mcp_server_startup` passed, because it guards behavior upstream already has.
 - Without the fix, the 30-iteration loaded run `43300544442` of `default_owned_screen_entry_paints_before_sync_ends_and_exit_clears_inline_draft` failed in iteration 5: the log shows `codex_tui` still `Starting` when Ctrl+C arrived, then `MCP startup interrupted`. With the fix, `43336783607` passed 30 of 30.
+
+## Rebase onto rust-v0.171.0
+
+Upstream rewrote MCP startup rounds (openai/codex#60280 and #60622): servers are keyed by name and environment, and the round has no expected-server set, so `set_mcp_startup_expected_servers` is gone. The patch now treats a round as user startup while any server other than the TUI tools server (`codex_tui` with no environment) is `Starting`. The round finishes when no server is `Starting`, so the TUI tools server still holds queued input until it is ready. The status line's run state uses the same check. The tests no longer set expected servers. The `mcp_startup_header_booting` snapshot was not regenerated.
+
+Because the round no longer knows which servers to expect, a Ctrl+C that arrives before a user server reports `Starting` quits instead of interrupting. No native build or test has run on the rebased patch.

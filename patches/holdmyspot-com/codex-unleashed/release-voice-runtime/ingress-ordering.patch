@@ -1,13 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 15 Nov 2026 02:54:39 +0000
 Subject: [PATCH] bugfix: receive voice RTP before optional jitter buffering
 
 Register RTP ingress before the optional jitter interceptor so incoming
 packets retain arrival order and reach the receiver exactly once.
-
 ---
+ .../voice-host/src/capture_worker_tests.rs    |  2 +-
+ codex-rs/voice-host/src/transport.rs          | 14 ++--
+ codex-rs/voice-host/src/transport_tests.rs    | 68 +++++++++++++++++++
+ 3 files changed, 79 insertions(+), 5 deletions(-)
+
 diff --git a/codex-rs/voice-host/src/capture_worker_tests.rs b/codex-rs/voice-host/src/capture_worker_tests.rs
-index e15a7d9..e3c8e00 100644
+index e15a7d9b8d..e3c8e00871 100644
 --- a/codex-rs/voice-host/src/capture_worker_tests.rs
 +++ b/codex-rs/voice-host/src/capture_worker_tests.rs
 @@ -220,7 +220,7 @@ async fn capture_reaches_remote_rtp_and_mute_discards_queued_and_partial_audio()
@@ -20,7 +25,7 @@ index e15a7d9..e3c8e00 100644
                      write_queue: VecDeque::new(),
                      sender,
 diff --git a/codex-rs/voice-host/src/transport.rs b/codex-rs/voice-host/src/transport.rs
-index ea0213e..2f583da 100644
+index ea0213e835..2f583daf34 100644
 --- a/codex-rs/voice-host/src/transport.rs
 +++ b/codex-rs/voice-host/src/transport.rs
 @@ -23,6 +23,10 @@ use webrtc::peer_connection::RTCSessionDescription;
@@ -59,7 +64,7 @@ index ea0213e..2f583da 100644
                  .with_runtime(runtime)
                  .with_setting_engine(settings)
 diff --git a/codex-rs/voice-host/src/transport_tests.rs b/codex-rs/voice-host/src/transport_tests.rs
-index 52e05bd..85b60b1 100644
+index 52e05bdb32..85b60b1a72 100644
 --- a/codex-rs/voice-host/src/transport_tests.rs
 +++ b/codex-rs/voice-host/src/transport_tests.rs
 @@ -3,9 +3,77 @@ mod network;
@@ -140,3 +145,6 @@ index 52e05bd..85b60b1 100644
  struct RemoteEvents(mpsc::Sender<Arc<dyn DataChannel>>, Arc<Notify>);
  
  impl PeerConnectionEventHandler for RemoteEvents {
+-- 
+2.43.0
+

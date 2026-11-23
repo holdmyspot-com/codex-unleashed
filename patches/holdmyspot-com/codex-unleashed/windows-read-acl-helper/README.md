@@ -1,9 +1,9 @@
 # Start the background Windows read-ACL helper without inherited handles
 
-- Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`. The
+- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`. The
   patch changes only `codex-rs/windows-sandbox-rs/src/setup_launch.rs`, `setup_launch_tests.rs` and
   `setup_provisioning.rs`, which no earlier queue entry changes, so it applies after any prefix of the queue. It is
-  queue entry 97 and is listed last.
+  queue entry 88 and is listed last.
 
 ## Intent
 

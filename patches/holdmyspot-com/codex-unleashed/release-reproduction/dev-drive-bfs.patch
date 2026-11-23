@@ -1,13 +1,18 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 15 Nov 2026 03:07:42 +0000
-Subject: [PATCH] bugfix: enforce BFS attachment before publishing a new Dev Drive
+Subject: [PATCH] bugfix: enforce BFS attachment before publishing a new Dev
+ Drive
 
 Validate the new volume and its installed BFS filter before builds consume it.
-
 ---
+ .github/scripts/setup-dev-drive.ps1          | 124 +++++++--
+ .github/scripts/test-setup-dev-drive-bfs.ps1 | 279 +++++++++++++++++++
+ 2 files changed, 374 insertions(+), 29 deletions(-)
+ create mode 100644 .github/scripts/test-setup-dev-drive-bfs.ps1
+
 diff --git a/.github/scripts/setup-dev-drive.ps1 b/.github/scripts/setup-dev-drive.ps1
-index dfd2ea1..d171231 100644
+index dfd2ea1f0a..d171231eba 100644
 --- a/.github/scripts/setup-dev-drive.ps1
 +++ b/.github/scripts/setup-dev-drive.ps1
 @@ -22,42 +22,108 @@ function Invoke-BestEffort {
@@ -150,7 +155,7 @@ index dfd2ea1..d171231 100644
 +Invoke-DevDriveSetup -RunnerTempPath $env:RUNNER_TEMP -GitHubEnvPath $env:GITHUB_ENV
 diff --git a/.github/scripts/test-setup-dev-drive-bfs.ps1 b/.github/scripts/test-setup-dev-drive-bfs.ps1
 new file mode 100644
-index 0000000..f53e10e
+index 0000000000..f53e10e839
 --- /dev/null
 +++ b/.github/scripts/test-setup-dev-drive-bfs.ps1
 @@ -0,0 +1,279 @@
@@ -433,3 +438,6 @@ index 0000000..f53e10e
 +Assert-Equal $false ($script:TestState.Calls -match "setFiltersAllowed|Dismount-VHD|fltmc.exe") "existing Dev Drive BFS operations"
 +
 +Write-Output "All Dev Drive BFS boundary cases passed."
+-- 
+2.43.0
+

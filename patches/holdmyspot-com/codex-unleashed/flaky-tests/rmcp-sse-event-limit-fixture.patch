@@ -1,9 +1,14 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 22 Nov 2026 23:12:24 -0500
 Subject: [PATCH] Verify RMCP SSE event-size error propagation
 
+---
+ .../src/http_client_adapter_tests.rs          | 31 +++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
 diff --git a/codex-rs/rmcp-client/src/http_client_adapter_tests.rs b/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
-index 6194b949fce883b8ddff7ec5006ee2612c16f136..de03a992e5628242c17933c0b2ac41b8d173c0b7 100644
+index 2fca8524b0..87b3776b27 100644
 --- a/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
 +++ b/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
 @@ -7,6 +7,7 @@ use codex_exec_server::HttpRedirectPolicy;
@@ -58,3 +63,6 @@ index 6194b949fce883b8ddff7ec5006ee2612c16f136..de03a992e5628242c17933c0b2ac41b8
  struct InMemoryToolCatalog;
  
  impl HttpClient for InMemoryToolCatalog {
+-- 
+2.43.0
+

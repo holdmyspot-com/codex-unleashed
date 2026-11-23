@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       upstream_tag:
-        description: Optional stable upstream tag to release, such as rust-v0.167.0; empty selects the newest stable release
+        description: Optional stable upstream tag to release, such as rust-v0.171.0; empty selects the newest stable release
         type: string
         default: ""
       dry_run:

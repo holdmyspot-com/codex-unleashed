@@ -1,4 +1,4 @@
-From c8ea3567e2724c7e0ec7d410d76cf7cd83fe270a Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 14 Nov 2026 19:41:47 -0500
 Subject: [PATCH] ci: validate code-mode release symbols
@@ -10,7 +10,7 @@ Subject: [PATCH] ci: validate code-mode release symbols
  create mode 100644 .github/scripts/test-code-mode-symbol-validation.py
 
 diff --git a/.github/scripts/archive-release-symbols-and-strip-binaries.sh b/.github/scripts/archive-release-symbols-and-strip-binaries.sh
-index b3c00c0..4a968b2 100755
+index 4f0d0cb682..298965fa84 100755
 --- a/.github/scripts/archive-release-symbols-and-strip-binaries.sh
 +++ b/.github/scripts/archive-release-symbols-and-strip-binaries.sh
 @@ -1,6 +1,12 @@
@@ -152,7 +152,7 @@ index b3c00c0..4a968b2 100755
        "$objcopy_bin" --add-gnu-debuglink="$debug_path" "$binary_path"
 diff --git a/.github/scripts/test-code-mode-symbol-validation.py b/.github/scripts/test-code-mode-symbol-validation.py
 new file mode 100644
-index 0000000..02055a5
+index 0000000000..02055a523b
 --- /dev/null
 +++ b/.github/scripts/test-code-mode-symbol-validation.py
 @@ -0,0 +1,253 @@
@@ -409,3 +409,6 @@ index 0000000..02055a5
 +
 +if __name__ == "__main__":
 +    unittest.main()
+-- 
+2.43.0
+

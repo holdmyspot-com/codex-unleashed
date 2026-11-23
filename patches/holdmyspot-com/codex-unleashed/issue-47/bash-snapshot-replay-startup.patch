@@ -1,8 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 08:53:50 -0500
-Subject: [PATCH 01/54] Avoid repeating Bash startup when replaying shell
- snapshots
+Subject: [PATCH] Avoid repeating Bash startup when replaying shell snapshots
 
 Tracks https://github.com/holdmyspot-com/codex-unleashed/issues/47.
 
@@ -15,49 +14,49 @@ and can fail inside a read-only sandbox. Replay now passes --norc to Bash.
 
 Declared base: openai/codex main dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4.
 ---
- codex-rs/exec-server/src/shell_snapshot.rs       | 7 +++++++
- codex-rs/exec-server/src/shell_snapshot_tests.rs | 4 ++--
- codex-rs/exec-server/tests/exec_process.rs       | 5 +++++
- 3 files changed, 14 insertions(+), 2 deletions(-)
+ codex-rs/exec-server/src/shell_snapshot.rs       |  6 ++++++
+ codex-rs/exec-server/src/shell_snapshot_tests.rs |  4 ++--
+ codex-rs/exec-server/tests/exec_process.rs       |  5 +++++
+ codex-rs/sandboxing/src/launch.rs                | 12 ++++++++++++
+ 4 files changed, 25 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/exec-server/src/shell_snapshot.rs b/codex-rs/exec-server/src/shell_snapshot.rs
-index 55a831c..ccb1ca0 100644
+index 5c5397e48f..f31eb4ddb1 100644
 --- a/codex-rs/exec-server/src/shell_snapshot.rs
 +++ b/codex-rs/exec-server/src/shell_snapshot.rs
-@@ -370,6 +370,13 @@ impl ShellSnapshotCache {
-                 params.argv[2]
+@@ -393,6 +393,12 @@ impl ShellSnapshotCache {
+                 "{startup}if ! {restore} >/dev/null; then printf 'failed to restore shell snapshot\\n' >&2; fi\n{script}"
              )
          };
 +        if shell_type == ShellType::Bash {
 +            // Noninteractive Bash still sources .bashrc with -p when it detects
 +            // SSH or a network stdin. The snapshot already holds that startup state.
-+            prepared
-+                .command
-+                .insert(shell_start + 1, "--norc".to_string());
++            let replay = [params.argv[0].clone(), flag.clone(), script.clone()];
++            prepared.insert_shell_option(&replay, "--norc");
 +        }
  
          telemetry.shell_snapshot_command(wait, availability, "used");
          Ok(reader)
 diff --git a/codex-rs/exec-server/src/shell_snapshot_tests.rs b/codex-rs/exec-server/src/shell_snapshot_tests.rs
-index 7f5298f..b6b39ee 100644
+index 59561100b1..34712df794 100644
 --- a/codex-rs/exec-server/src/shell_snapshot_tests.rs
 +++ b/codex-rs/exec-server/src/shell_snapshot_tests.rs
-@@ -139,8 +139,8 @@ async fn snapshot_failure_retries_are_bounded_and_single_flight(
-         for (prepared, reader) in [(&mut prepared, first), (&mut concurrent, second)] {
+@@ -141,8 +141,8 @@ async fn snapshot_failure_retries_are_bounded_and_single_flight(
+             let mut request = prepared.into_command_request().expect("shell command");
              if let Some(reader) = reader {
                  let fd = std::os::fd::AsRawFd::as_raw_fd(&reader);
--                prepared.command[2] =
--                    prepared.command[2].replace(&format!("/dev/fd/{fd}"), "/dev/fd/SNAPSHOT");
-+                let script = prepared.command.last_mut().expect("shell command script");
+-                request.command[2] =
+-                    request.command[2].replace(&format!("/dev/fd/{fd}"), "/dev/fd/SNAPSHOT");
++                let script = request.command.last_mut().expect("shell command script");
 +                *script = script.replace(&format!("/dev/fd/{fd}"), "/dev/fd/SNAPSHOT");
              }
-         }
-         assert_eq!(
+             (request.command, request.env)
+         };
 diff --git a/codex-rs/exec-server/tests/exec_process.rs b/codex-rs/exec-server/tests/exec_process.rs
-index 6823574..77583a7 100644
+index 4d03404eb5..b4295e5852 100644
 --- a/codex-rs/exec-server/tests/exec_process.rs
 +++ b/codex-rs/exec-server/tests/exec_process.rs
-@@ -276,6 +276,10 @@ async fn shell_snapshot_v2_filters_profile_exports_and_stays_in_memory(
+@@ -272,6 +272,10 @@ async fn shell_snapshot_v2_filters_profile_exports_and_stays_in_memory(
          "HOME".to_string(),
          home.path().to_string_lossy().into_owned(),
      )]);
@@ -68,7 +67,7 @@ index 6823574..77583a7 100644
      if posix_shell {
          configured_environment.insert(
              "ENV".to_string(),
-@@ -310,6 +314,7 @@ async fn shell_snapshot_v2_filters_profile_exports_and_stays_in_memory(
+@@ -306,6 +310,7 @@ async fn shell_snapshot_v2_filters_profile_exports_and_stays_in_memory(
              "HOME".to_string(),
              "PATH".to_string(),
              "PROFILE_*".to_string(),
@@ -76,6 +75,29 @@ index 6823574..77583a7 100644
          ],
      };
      let (command_prefix, expected_prefix) = if shell_name == "sh" {
+diff --git a/codex-rs/sandboxing/src/launch.rs b/codex-rs/sandboxing/src/launch.rs
+index 0c2e5f9e51..d9281b88c9 100644
+--- a/codex-rs/sandboxing/src/launch.rs
++++ b/codex-rs/sandboxing/src/launch.rs
+@@ -157,6 +157,18 @@ impl WrappedSandboxCommand {
+         Some((flag, script, &mut self.request.env))
+     }
+ 
++    /// Insert `option` between the shell and its flag in the matched shell invocation.
++    ///
++    /// Returns whether `expected` matched the invocation.
++    pub fn insert_shell_option(&mut self, expected: &[String], option: &str) -> bool {
++        let Some(index) = self.shell_script_index(expected) else {
++            return false;
++        };
++        self.request.command.insert(index - 1, option.to_string());
++        self.inner_arg_count += 1;
++        true
++    }
++
+     /// Spawn the command in its prepared sandbox.
+     pub async fn spawn(self, options: SpawnOptions<'_>) -> anyhow::Result<SpawnedProcess> {
+         let request = self.request;
 -- 
 2.43.0
 

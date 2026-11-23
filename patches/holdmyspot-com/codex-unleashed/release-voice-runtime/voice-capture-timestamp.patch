@@ -1,4 +1,4 @@
-From 5d8803bb7684855a222bdfc76ee06b0b3dbc7076 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 15 Nov 2026 01:27:55 -0500
 Subject: [PATCH] voice: preserve capture timestamps
@@ -9,7 +9,7 @@ Subject: [PATCH] voice: preserve capture timestamps
  2 files changed, 30 insertions(+), 7 deletions(-)
 
 diff --git a/codex-rs/voice-host/src/audio_track.rs b/codex-rs/voice-host/src/audio_track.rs
-index 587a19b..c3d2c44 100644
+index 587a19b511..c3d2c446bd 100644
 --- a/codex-rs/voice-host/src/audio_track.rs
 +++ b/codex-rs/voice-host/src/audio_track.rs
 @@ -24,6 +24,16 @@ pub(crate) struct EncodedAudio {
@@ -61,7 +61,7 @@ index 587a19b..c3d2c44 100644
          })
          .await
 diff --git a/codex-rs/voice-host/src/audio_track_tests.rs b/codex-rs/voice-host/src/audio_track_tests.rs
-index affed2f..4b799e3 100644
+index affed2f4d7..4b799e3bc4 100644
 --- a/codex-rs/voice-host/src/audio_track_tests.rs
 +++ b/codex-rs/voice-host/src/audio_track_tests.rs
 @@ -15,3 +15,19 @@ async fn timestamp_jitter_does_not_accumulate_but_mute_advances_the_clock() {

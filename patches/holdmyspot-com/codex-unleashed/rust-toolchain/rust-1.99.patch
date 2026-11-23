@@ -1,565 +1,35 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 22:07:55 -0500
-Subject: [PATCH 28/54] Build with Rust 1.99.1 so macOS links pass under fatal
- linker messages
+Subject: [PATCH] Pass Rust 1.99.1 macOS links and lints under fatal warnings
 
-Rust 1.95 reports ld's "ignoring duplicate libraries: '-lSystem'" through
-linker_messages, which the workspace denies. libSystem is linked by both std
-and block2 (via os_info's objc2-foundation), so every macOS link of
-codex-code-mode-host fails. Since Rust 1.96 rustc files that message, and
-ld's "built for newer macOS version" notes, under the allow-by-default
-linker_info lint.
-
-Pin Rust 1.99.1, the latest stable release, in rust-toolchain.toml, the
-Bazel toolchain, setup-windows.ps1 and every workflow's toolchain action.
+Upstream builds with Rust 1.99.1 (#61205), which files ld's "ignoring
+duplicate libraries: '-lSystem'" message under the allow-by-default
+linker_info lint, so macOS links of codex-code-mode-host pass under the
+workspace's denied linker_messages lint.
 
 The release codex binary's __eh_frame section exceeds the 16 MB that
 compact unwind's DWARF offsets can reach, and ld says so on stderr, which
 fails the link. Link Apple targets through scripts/apple-linker.sh, which
 drops that one exact notice and passes every other linker message through.
+
+Clippy's redundant_field_names fires inside thiserror 2.0.18's expansion of
+`#[from] source`, and double_must_use fires on the boxed futures that
+async-trait 0.1.89 returns from tonic's generated traits. Move thiserror and
+thiserror-impl to 2.0.21 and async-trait to 0.1.92, which trigger neither.
+
+Since Rust 1.97, linker_messages warns by default but ignores -D warnings,
+so the workspace comment gives that as the reason for denying it.
 ---
- .../build-bazel-package-binaries/action.yml   |   2 +-
- .../build-cargo-package-binaries/action.yml   |   2 +-
- .github/workflows/cargo-deny.yml              |   4 +-
- .../rust-ci-full-nextest-platform.yml         |   4 +-
- .github/workflows/rust-ci-full.yml            |   6 +-
- .github/workflows/rust-ci.yml                 |   6 +-
- .github/workflows/rust-release-windows.yml    |   2 +-
- .github/workflows/rust-release.yml            |   4 +-
- .github/workflows/rusty-v8-release.yml        |  10 +-
- .github/workflows/v8-canary.yml               |  10 +-
- MODULE.bazel                                  |   2 +-
- MODULE.bazel.lock                             | 205 +++++++++---------
- codex-rs/.cargo/config.toml                   |   8 +
- codex-rs/Cargo.lock                           | 180 +++++++--------
- codex-rs/Cargo.toml                           |   2 +-
- codex-rs/agent-identity/src/lib.rs            |   1 -
- codex-rs/app-server/src/message_processor.rs  |   6 +-
- .../src/session_runtime/mod.rs                |   2 +-
- .../src/connection_manager/startup.rs         |   4 +-
- codex-rs/core/src/realtime_conversation.rs    |   6 +-
- .../core/src/tools/executed_tool_calls.rs     |   2 +-
- .../core/tests/common/apps_test_server.rs     |   2 +-
- codex-rs/core/tests/suite/scenarios.rs        |   2 +-
- codex-rs/core/tests/suite/tools.rs            |   2 +-
- codex-rs/diagnostics/src/lib.rs               |   2 +-
- codex-rs/exec-server-protocol/src/protocol.rs |   2 +-
- codex-rs/exec/src/lib.rs                      |   6 +-
- codex-rs/ext/skills/src/provider/executor.rs  |   4 +-
- codex-rs/external-agent-migration/src/mcp.rs  |   5 +-
- .../otel/tests/suite/otlp_http_loopback.rs    |  42 ++--
- codex-rs/rust-toolchain.toml                  |   2 +-
- codex-rs/sandboxing/src/seatbelt_tests.rs     |   6 +-
- codex-rs/scripts/apple-linker.sh              |  25 +++
- codex-rs/scripts/setup-windows.ps1            |   2 +-
- codex-rs/shell-command/src/bash.rs            |   6 +-
- codex-rs/tui/src/app/reconnect.rs             |   2 +-
- .../tests/background_task_defaults_tests.rs   |   2 +-
- .../app/tests/session_lifecycle_requests.rs   |   2 +-
- .../tui/src/app/user_verification_tests.rs    |   2 +-
- codex-rs/tui/src/app_backtrack.rs             |   2 +-
- codex-rs/tui/src/app_server_connection.rs     |   2 +-
- .../src/bottom_pane/async_questions/layout.rs |  11 +-
- .../src/bottom_pane/list_selection_view.rs    |   2 +-
- ...nput_halfwidth_sound_marks_truncation.snap |   4 +-
- codex-rs/tui/src/pager_overlay.rs             |   4 +-
- codex-rs/tui/src/pets/sixel.rs                |   2 +-
- .../utils/path-uri/src/api_path_string.rs     |   6 +-
- codex-rs/utils/path-uri/src/lib.rs            |  12 +-
- .../stream-parser/src/inline_hidden_tag.rs    |   2 +-
- .../voice-host/src/input_channel_tests.rs     |   6 +-
- codex-rs/voice-host/src/playback.rs           |   4 +-
- codex-rs/websocket-auth/src/lib.rs            |   6 +-
- 52 files changed, 344 insertions(+), 303 deletions(-)
+ codex-rs/.cargo/config.toml      |   8 ++
+ codex-rs/Cargo.lock              | 188 +++++++++++++++----------------
+ codex-rs/Cargo.toml              |   2 +-
+ codex-rs/scripts/apple-linker.sh |  25 ++++
+ 4 files changed, 128 insertions(+), 95 deletions(-)
  create mode 100755 codex-rs/scripts/apple-linker.sh
 
-diff --git a/.github/actions/build-bazel-package-binaries/action.yml b/.github/actions/build-bazel-package-binaries/action.yml
-index dd918ba..ae8660b 100644
---- a/.github/actions/build-bazel-package-binaries/action.yml
-+++ b/.github/actions/build-bazel-package-binaries/action.yml
-@@ -18,7 +18,7 @@ runs:
-         cache-scope: bazel-release
- 
-     - name: Install Cargo for workspace metadata
--      uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
- 
-     - name: Configure MSVC environment
-       if: ${{ runner.os == 'Windows' }}
-diff --git a/.github/actions/build-cargo-package-binaries/action.yml b/.github/actions/build-cargo-package-binaries/action.yml
-index 84a35f5..928e0a1 100644
---- a/.github/actions/build-cargo-package-binaries/action.yml
-+++ b/.github/actions/build-cargo-package-binaries/action.yml
-@@ -39,7 +39,7 @@ runs:
-           *) echo "Unsupported build mode: $BUILD_MODE" >&2; exit 1 ;;
-         esac
- 
--    - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+    - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-       with:
-         targets: ${{ inputs.target }}
- 
-diff --git a/.github/workflows/cargo-deny.yml b/.github/workflows/cargo-deny.yml
-index 0f8ebae..3ea46cc 100644
---- a/.github/workflows/cargo-deny.yml
-+++ b/.github/workflows/cargo-deny.yml
-@@ -18,12 +18,12 @@ jobs:
-       - uses: ./.github/actions/setup-ci
- 
-       - name: Install Rust toolchain
--        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
- 
-       - name: Run cargo-deny
-         uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
-         with:
--          rust-version: 1.95.0
-+          rust-version: 1.99.1
-           manifest-path: ./codex-rs/Cargo.toml
- 
-       - name: Check for a clean worktree
-diff --git a/.github/workflows/rust-ci-full-nextest-platform.yml b/.github/workflows/rust-ci-full-nextest-platform.yml
-index 03050c6..83bb481 100644
---- a/.github/workflows/rust-ci-full-nextest-platform.yml
-+++ b/.github/workflows/rust-ci-full-nextest-platform.yml
-@@ -96,7 +96,7 @@ jobs:
-             sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap
-           fi
- 
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-         with:
-           targets: ${{ inputs.target }}
- 
-@@ -323,7 +323,7 @@ jobs:
-             sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libcap-dev libasound2-dev bubblewrap
-           fi
- 
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-         with:
-           targets: ${{ inputs.target }}
- 
-diff --git a/.github/workflows/rust-ci-full.yml b/.github/workflows/rust-ci-full.yml
-index 8e045e0..e1dd71c 100644
---- a/.github/workflows/rust-ci-full.yml
-+++ b/.github/workflows/rust-ci-full.yml
-@@ -21,7 +21,7 @@ jobs:
-         with:
-           persist-credentials: false
-       - uses: ./.github/actions/setup-ci
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-         with:
-           components: rustfmt
-       - name: cargo fmt
-@@ -40,7 +40,7 @@ jobs:
-         with:
-           persist-credentials: false
-       - uses: ./.github/actions/setup-ci
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-       - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
-         with:
-           tool: cargo-shear@1.11.2
-@@ -238,7 +238,7 @@ jobs:
-             sudo apt-get update -y
-             sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev
-           fi
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-         with:
-           targets: ${{ matrix.target }}
-           components: clippy
-diff --git a/.github/workflows/rust-ci.yml b/.github/workflows/rust-ci.yml
-index 84cef8b..b84260d 100644
---- a/.github/workflows/rust-ci.yml
-+++ b/.github/workflows/rust-ci.yml
-@@ -70,7 +70,7 @@ jobs:
-         with:
-           persist-credentials: false
-       - uses: ./.github/actions/setup-ci
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-         with:
-           components: rustfmt
-       - name: cargo fmt
-@@ -95,7 +95,7 @@ jobs:
-         with:
-           persist-credentials: false
-       - uses: ./.github/actions/setup-ci
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-       - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
-         with:
-           tool: cargo-shear@1.11.2
-@@ -119,7 +119,7 @@ jobs:
-         with:
-           persist-credentials: false
-       - uses: ./.github/actions/setup-ci
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-       - name: Install nightly argument-comment-lint toolchain
-         shell: bash
-         run: |
-diff --git a/.github/workflows/rust-release-windows.yml b/.github/workflows/rust-release-windows.yml
-index 7514d66..1cb655f 100644
---- a/.github/workflows/rust-release-windows.yml
-+++ b/.github/workflows/rust-release-windows.yml
-@@ -99,7 +99,7 @@ jobs:
-           Write-Host "Disk usage:"
-           Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize Name, @{Name='Size(GB)';Expression={[math]::Round(($_.Used + $_.Free) / 1GB, 1)}}, @{Name='Free(GB)';Expression={[math]::Round($_.Free / 1GB, 1)}}
-       - name: Set up Rust toolchain
--        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-         with:
-           targets: ${{ matrix.build-system == 'cargo' && matrix.target || '' }}
- 
-diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 4c6c9a4..7d4ddcc 100644
---- a/.github/workflows/rust-release.yml
-+++ b/.github/workflows/rust-release.yml
-@@ -30,7 +30,7 @@ jobs:
-       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-         with:
-           persist-credentials: false
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-       - name: Validate tag matches Cargo.toml version
-         shell: bash
-         run: |
-@@ -182,7 +182,7 @@ jobs:
-           sudo apt-get update -y
-           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils pkg-config libcap-dev
-       - name: Set up Rust toolchain
--        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-         with:
-           targets: ${{ matrix.build-system == 'cargo' && matrix.target || '' }}
- 
-diff --git a/.github/workflows/rusty-v8-release.yml b/.github/workflows/rusty-v8-release.yml
-index 08e6d69..045a6c8 100644
---- a/.github/workflows/rusty-v8-release.yml
-+++ b/.github/workflows/rusty-v8-release.yml
-@@ -161,9 +161,9 @@ jobs:
-           python-version: "3.12"
- 
-       - name: Set up Rust toolchain for Cargo smoke
--        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-         with:
--          toolchain: "1.95.0"
-+          toolchain: "1.99.1"
-           targets: ${{ matrix.target }}
- 
-       - name: Build Bazel V8 release pair
-@@ -326,9 +326,9 @@ jobs:
-           architecture: x64
- 
-       - name: Set up Codex Rust toolchain for Cargo smoke
--        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-         with:
--          toolchain: "1.95.0"
-+          toolchain: "1.99.1"
-           targets: ${{ matrix.target }}
- 
-       - name: Install rusty_v8 Rust toolchain
-@@ -418,7 +418,7 @@ jobs:
-             cd codex-rs
-             RUSTY_V8_ARCHIVE="${GITHUB_WORKSPACE}/${archive}" \
-             RUSTY_V8_SRC_BINDING_PATH="${GITHUB_WORKSPACE}/${binding}" \
--            cargo +1.95.0 test -p codex-v8-poc --target "${TARGET}" --features sandbox --no-run
-+            cargo +1.99.1 test -p codex-v8-poc --target "${TARGET}" --features sandbox --no-run
-           )
- 
-       - name: Upload staged artifacts
-diff --git a/.github/workflows/v8-canary.yml b/.github/workflows/v8-canary.yml
-index 65eca04..162ff62 100644
---- a/.github/workflows/v8-canary.yml
-+++ b/.github/workflows/v8-canary.yml
-@@ -174,9 +174,9 @@ jobs:
-           python-version: "3.12"
- 
-       - name: Set up Rust toolchain for Cargo smoke
--        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-         with:
--          toolchain: "1.95.0"
-+          toolchain: "1.99.1"
-           targets: ${{ matrix.target }}
- 
-       - name: Build Bazel V8 release pair
-@@ -344,9 +344,9 @@ jobs:
-           architecture: x64
- 
-       - name: Set up Codex Rust toolchain for Cargo smoke
--        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
-         with:
--          toolchain: "1.95.0"
-+          toolchain: "1.99.1"
-           targets: ${{ matrix.target }}
- 
-       - name: Install rusty_v8 Rust toolchain
-@@ -436,7 +436,7 @@ jobs:
-             cd codex-rs
-             RUSTY_V8_ARCHIVE="${GITHUB_WORKSPACE}/${archive}" \
-             RUSTY_V8_SRC_BINDING_PATH="${GITHUB_WORKSPACE}/${binding}" \
--            cargo +1.95.0 test -p codex-v8-poc --target "${TARGET}" --features sandbox --no-run
-+            cargo +1.99.1 test -p codex-v8-poc --target "${TARGET}" --features sandbox --no-run
-           )
- 
-       - name: Upload staged artifacts
-diff --git a/MODULE.bazel b/MODULE.bazel
-index 22e185c..6fa809c 100644
---- a/MODULE.bazel
-+++ b/MODULE.bazel
-@@ -325,7 +325,7 @@ toolchains.toolchain(
-     edition = "2024",
-     extra_exec_rustc_flags = MSVC_RUSTC_FLAGS,
-     extra_rustc_flags = MSVC_RUSTC_FLAGS,
--    version = "1.95.0",
-+    version = "1.99.1",
- )
- use_repo(toolchains, "default_rust_toolchains")
- 
-diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index 8fde4a2..7b46285 100644
---- a/MODULE.bazel.lock
-+++ b/MODULE.bazel.lock
-@@ -1011,6 +1011,7 @@
-       "async-stream_0.3.6": "{\"dependencies\":[{\"name\":\"async-stream-impl\",\"req\":\"=0.3.6\"},{\"name\":\"futures-core\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"futures-util\",\"req\":\"^0.3\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1\"}],\"features\":{}}",
-       "async-task_4.7.1": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"atomic-waker\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"easy-parallel\",\"req\":\"^3\"},{\"kind\":\"dev\",\"name\":\"flaky_test\",\"req\":\"^0.2\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"flume\",\"req\":\"^0.11\"},{\"kind\":\"dev\",\"name\":\"futures-lite\",\"req\":\"^2.0.0\"},{\"kind\":\"dev\",\"name\":\"once_cell\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"pin-project-lite\",\"req\":\"^0.2.10\"},{\"default_features\":false,\"name\":\"portable-atomic\",\"optional\":true,\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"smol\",\"req\":\"^2\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
-       "async-trait_0.1.89": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"futures\",\"req\":\"^0.3.30\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.13\"},{\"default_features\":false,\"features\":[\"clone-impls\",\"full\",\"parsing\",\"printing\",\"proc-macro\",\"visit-mut\"],\"name\":\"syn\",\"req\":\"^2.0.46\"},{\"kind\":\"dev\",\"name\":\"tracing\",\"req\":\"^0.1.40\"},{\"kind\":\"dev\",\"name\":\"tracing-attributes\",\"req\":\"^0.1.27\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.81\"}],\"features\":{}}",
-+      "async-trait_0.1.92": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"futures\",\"req\":\"^0.3.30\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.13\"},{\"default_features\":false,\"features\":[\"clone-impls\",\"full\",\"parsing\",\"printing\",\"proc-macro\",\"visit-mut\"],\"name\":\"syn\",\"req\":\"^3\"},{\"kind\":\"dev\",\"name\":\"tracing\",\"req\":\"^0.1.40\"},{\"kind\":\"dev\",\"name\":\"tracing-attributes\",\"req\":\"^0.1.27\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.108\"}],\"features\":{}}",
-       "asynk-strim_0.1.5": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"async-fn-stream\",\"req\":\"^0.3.2\"},{\"kind\":\"dev\",\"name\":\"async-stream\",\"req\":\"^0.3.6\"},{\"default_features\":false,\"features\":[\"cargo_bench_support\",\"plotters\"],\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.7.0\"},{\"default_features\":false,\"name\":\"futures-core\",\"req\":\"^0.3.31\"},{\"default_features\":false,\"features\":[\"std\"],\"kind\":\"dev\",\"name\":\"futures-lite\",\"req\":\"^2.3.0\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2.14\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.99\"}],\"features\":{}}",
-       "atoi_2.0.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"num-traits\",\"req\":\"^0.2.14\"}],\"features\":{\"default\":[\"std\"],\"std\":[\"num-traits/std\"]}}",
-       "atomic-polyfill_1.0.3": "{\"dependencies\":[{\"name\":\"critical-section\",\"req\":\"^1.0.0\"}],\"features\":{}}",
-@@ -2120,9 +2121,11 @@
-       "thiserror-impl-no-std_2.0.2": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0\"},{\"name\":\"quote\",\"req\":\"^1.0\"},{\"name\":\"syn\",\"req\":\"^1.0.45\"}],\"features\":{\"std\":[]}}",
-       "thiserror-impl_1.0.69": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"name\":\"syn\",\"req\":\"^2.0.87\"}],\"features\":{}}",
-       "thiserror-impl_2.0.18": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"name\":\"syn\",\"req\":\"^2.0.87\"}],\"features\":{}}",
-+      "thiserror-impl_2.0.21": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"name\":\"syn\",\"req\":\"^3\"}],\"features\":{}}",
-       "thiserror-no-std_2.0.2": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"anyhow\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"ref-cast\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0\"},{\"name\":\"thiserror-impl-no-std\",\"req\":\"=2.0.2\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.49\"}],\"features\":{\"std\":[\"thiserror-impl-no-std/std\"]}}",
-       "thiserror_1.0.69": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"anyhow\",\"req\":\"^1.0.73\"},{\"kind\":\"dev\",\"name\":\"ref-cast\",\"req\":\"^1.0.18\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.13\"},{\"name\":\"thiserror-impl\",\"req\":\"=1.0.69\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.81\"}],\"features\":{}}",
-       "thiserror_2.0.18": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"anyhow\",\"req\":\"^1.0.73\"},{\"kind\":\"dev\",\"name\":\"ref-cast\",\"req\":\"^1.0.18\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.13\"},{\"name\":\"thiserror-impl\",\"req\":\"=2.0.18\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.108\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
-+      "thiserror_2.0.21": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"anyhow\",\"req\":\"^1.0.73\"},{\"kind\":\"dev\",\"name\":\"ref-cast\",\"req\":\"^1.0.18\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.13\"},{\"name\":\"thiserror-impl\",\"req\":\"=2.0.21\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.108\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
-       "thread_local_1.1.9": "{\"dependencies\":[{\"name\":\"cfg-if\",\"req\":\"^1.0.0\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5.1\"}],\"features\":{\"nightly\":[]}}",
-       "threadpool_1.8.1": "{\"dependencies\":[{\"name\":\"num_cpus\",\"req\":\"^1.13\"}],\"features\":{}}",
-       "tiff_0.10.3": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"crc32fast\",\"req\":\"^1.5\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.3.1\"},{\"name\":\"fax34\",\"optional\":true,\"package\":\"fax\",\"req\":\"^0.2.6\"},{\"name\":\"flate2\",\"optional\":true,\"req\":\"^1.0.20\"},{\"name\":\"half\",\"req\":\"^2.4.1\"},{\"name\":\"quick-error\",\"req\":\"^2.0.1\"},{\"name\":\"weezl\",\"optional\":true,\"req\":\"^0.1.10\"},{\"name\":\"zstd\",\"optional\":true,\"req\":\"^0.13\"},{\"name\":\"zune-jpeg\",\"optional\":true,\"req\":\"^0.4.17\"}],\"features\":{\"default\":[\"deflate\",\"fax\",\"jpeg\",\"lzw\"],\"deflate\":[\"dep:flate2\"],\"fax\":[\"dep:fax34\"],\"jpeg\":[\"dep:zune-jpeg\"],\"lzw\":[\"dep:weezl\"],\"zstd\":[\"dep:zstd\"]}}",
-@@ -2419,107 +2422,107 @@
-       "zvariant_utils_2.1.0": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.81\"},{\"name\":\"quote\",\"req\":\"^1.0.36\"},{\"features\":[\"extra-traits\",\"full\"],\"name\":\"syn\",\"req\":\"^2.0.64\"}],\"features\":{}}"
-     },
-     "@@rules_rs+//rs/toolchains:module_extension.bzl%toolchains": {
--      "cargo-1.95.0-aarch64-apple-darwin.tar.xz": "6c2ffed8e1ac9cf4dc9e80f282a869a6b237a153e7c55cca039d33de29d80aaf",
--      "cargo-1.95.0-aarch64-pc-windows-msvc.tar.xz": "e645b30fa035a18aa12d28b699052014c7efa9dd4a33dabd223f0d16b5fa28e8",
--      "cargo-1.95.0-aarch64-unknown-linux-gnu.tar.xz": "7c070aeba9bbf12073646995a03f36c346bb5f541d0078ba6d9dc2a7adaaf6af",
--      "cargo-1.95.0-x86_64-apple-darwin.tar.xz": "e2e1131ade2dddc0d779e0ab3a6a990085c7a654951235742823c3a1ce0f190f",
--      "cargo-1.95.0-x86_64-pc-windows-msvc.tar.xz": "cab2606cb2d0aa31c55d50512fe07a9f15e893227566fbeb448306760cd0d2bf",
--      "cargo-1.95.0-x86_64-unknown-linux-gnu.tar.xz": "e74edd2cf7d0f1f1383b4f00eb90c843750bc489e2ccf7214e6476678a907425",
--      "clippy-1.95.0-aarch64-apple-darwin.tar.xz": "fd183baa023d0c4e0c5b8184226e2d4c85126adf156cb1f3a726ec593bba8d62",
--      "clippy-1.95.0-aarch64-pc-windows-msvc.tar.xz": "44c1b7ada72aa8f3fcaceb37a3899665bc9b160c2fea77879c8ecb65a9e97eba",
--      "clippy-1.95.0-aarch64-unknown-linux-gnu.tar.xz": "fb021e0c0fc2238be9266d7614f4a26bc372544c4cba3528d729ab24ad229fc9",
--      "clippy-1.95.0-x86_64-apple-darwin.tar.xz": "e47367f6b1489d74cbba93b387310adcb82e27a51e44b2c6ff543eb4f199fe32",
--      "clippy-1.95.0-x86_64-pc-windows-msvc.tar.xz": "ddc151d6f58c6658b7380292ecaef36e62d063bbdbf7f5802669810575bb5b75",
--      "clippy-1.95.0-x86_64-unknown-linux-gnu.tar.xz": "ac779bc9839dd47180806b133e4e2563c4a34716284cd5b8fede8ef289f452ca",
--      "rust-analyzer-1.95.0-aarch64-apple-darwin.tar.xz": "11231fc6574301b94bd379af4ef409caef7c65b877bcecf2b227dc0d74aa0ec7",
--      "rust-analyzer-1.95.0-aarch64-pc-windows-msvc.tar.xz": "92958624f23d4b0980748ac9e6d67f6f67a868f8224e8c6240e3f84145e2d805",
--      "rust-analyzer-1.95.0-aarch64-unknown-linux-gnu.tar.xz": "b37e5b9aad624e54228254f98a710ee19ad464fe7ada93ef12e20c87886a0047",
--      "rust-analyzer-1.95.0-x86_64-apple-darwin.tar.xz": "6cd111900e13fd19b188c5d8844b34136af3967066c0ea2914ce5c3508296c85",
--      "rust-analyzer-1.95.0-x86_64-pc-windows-msvc.tar.xz": "ba58e349f5e8b0ef13735c48d4ad8d8c7664472f8403f3c9d97b291bd54a7638",
--      "rust-analyzer-1.95.0-x86_64-unknown-linux-gnu.tar.xz": "a9d71c6e7427c45afcd846a8b34a3e3301ae7a0e91a2bcf929326af77a7dc68e",
--      "rust-src-1.95.0.tar.xz": "67b09138c8db96afc4bbfc69ea771ac9a091fd777698acb43f6dfd9fb7dea363",
--      "rust-std-1.95.0-aarch64-apple-darwin.tar.xz": "9b30089b0f767cb91b2190ffec55a9beeb2a21a1405d8da0f664d7e09d08e6d8",
--      "rust-std-1.95.0-aarch64-apple-ios-macabi.tar.xz": "0e1760828f4e0fa1cde0061ba5680619dcc1cdcafec9242cc18dc4547c73b1cd",
--      "rust-std-1.95.0-aarch64-apple-ios-sim.tar.xz": "4bfe5b0c74c10d121a8ac60f1833c7714b963f9130f6256ca313d94405267deb",
--      "rust-std-1.95.0-aarch64-apple-ios.tar.xz": "6fcc42d8dbba4910a128ffa32d62a730339a7e3882a90341a881f2edf66ff55a",
--      "rust-std-1.95.0-aarch64-linux-android.tar.xz": "de5e8fa5d955809891eea77682811fc90be705f78883bd94071e98f5a738d05b",
--      "rust-std-1.95.0-aarch64-pc-windows-gnullvm.tar.xz": "93d810b8872771afe04f66aa30a4eee48736aca693186e4c7cc2766e1a82e340",
--      "rust-std-1.95.0-aarch64-pc-windows-msvc.tar.xz": "be21b5a8a71c49b4dcbc19956233b0de7bfda3ee3c8a199148299f867e95cb42",
--      "rust-std-1.95.0-aarch64-unknown-fuchsia.tar.xz": "b311a0523f75e031d683d983515edb9baaf22a843dbd44ce2a30a3204752f592",
--      "rust-std-1.95.0-aarch64-unknown-linux-gnu.tar.xz": "3a21b271b1ff973b94d69b25e7a39992f9fbcae1ab6d9475844a23e6ad3908ac",
--      "rust-std-1.95.0-aarch64-unknown-linux-musl.tar.xz": "f6710416ed9a7d5cf2a15efa761eb79a1deeb43f9961bbe05cc97bec4ef9064a",
--      "rust-std-1.95.0-aarch64-unknown-none-softfloat.tar.xz": "54d691468e25e7989b022a171337beadf78b5202877b312b75182b7f93efbb8b",
--      "rust-std-1.95.0-aarch64-unknown-none.tar.xz": "2b0c986dc9902866311f1fe2d44bc2bd84479d2ac84ed7ada76a5eb7ba37080f",
--      "rust-std-1.95.0-aarch64-unknown-uefi.tar.xz": "ca657564103024d345ca32e8e4ade7ebb395a51163d2897d9e5f8373c025e49e",
--      "rust-std-1.95.0-arm-linux-androideabi.tar.xz": "12a9c5fa24608159c2b2bd50abc0c6d0add407c0258cee894c2f61c07051a9c4",
--      "rust-std-1.95.0-arm-unknown-linux-gnueabi.tar.xz": "f6cd592dacdf41f724ee90a2f34db028e37ca2a7fb26fa86e93e8fd68e24d066",
--      "rust-std-1.95.0-arm-unknown-linux-gnueabihf.tar.xz": "fda8408ea17881c6529e27e58672d6c628f786cad557fac92856077e7a610239",
--      "rust-std-1.95.0-arm-unknown-linux-musleabi.tar.xz": "62f21fabc209fd0de53156764fc426da74c59525bb60cb4c1c3ffd1be0bbe00b",
--      "rust-std-1.95.0-arm-unknown-linux-musleabihf.tar.xz": "2842ce67f7a4c68c6e8b30ad3bb36484fb745edcc2694b2a36bf0609cf758044",
--      "rust-std-1.95.0-armv7-linux-androideabi.tar.xz": "61e95e144986c52ff9fa2fe3c249a68b2bf268adb2a2eeb81d80c180e43027f1",
--      "rust-std-1.95.0-armv7-unknown-linux-gnueabi.tar.xz": "e23454d6ca7fc3f5eb7cf9241572765176d86e9f45d4f394de31a5fd794e523f",
--      "rust-std-1.95.0-armv7-unknown-linux-gnueabihf.tar.xz": "bd319e18ca2dad0450f76277874d56356330da536be8cf271509f8e6f28ac6de",
--      "rust-std-1.95.0-armv7-unknown-linux-musleabi.tar.xz": "a49bc987e0531800f92825ce61402b5734ea747caa8970d3373506742ed7daa6",
--      "rust-std-1.95.0-armv7-unknown-linux-musleabihf.tar.xz": "77f9aaff4669c076edc96cdb99dc21749d2c692c862232b52176572c289fe671",
--      "rust-std-1.95.0-i686-linux-android.tar.xz": "e7b5e18d1d4119c7c1454ee8427933f27aeff9e81a22248c2829f5f299d3a937",
--      "rust-std-1.95.0-i686-pc-windows-gnu.tar.xz": "2e98fb94fc500690d7e72e071ce29dd98790ff518163963f5c82c32afba9231d",
--      "rust-std-1.95.0-i686-pc-windows-gnullvm.tar.xz": "b429a8c456d6a1815ece064102bd6a25f67d46db4f6d7b79dbe7d1b9d1f78e0f",
--      "rust-std-1.95.0-i686-pc-windows-msvc.tar.xz": "6206fd7e8bd119e9d1ba1c425ad25c282512eb0d5659f2dcb4be224b84715706",
--      "rust-std-1.95.0-i686-unknown-freebsd.tar.xz": "3b13b3ccecf482c0da3e94f19e0aa5e8e375622f4e09b30e6dae2b7638bee63f",
--      "rust-std-1.95.0-i686-unknown-linux-gnu.tar.xz": "527c5d5249a7f77b48d3c9da3ac512d27b47f43d08dbe3c6f82a3d5b35d8aa27",
--      "rust-std-1.95.0-i686-unknown-linux-musl.tar.xz": "af4d3e7aabb63d39a7a2ff5435cc993b65ff38a2d2e23f1967e519037a1b0455",
--      "rust-std-1.95.0-i686-unknown-uefi.tar.xz": "3233985273616ec36861f2d50b4a025c903b2bb8c45b171c0ae9e2de8342125b",
--      "rust-std-1.95.0-loongarch64-unknown-linux-gnu.tar.xz": "eaf2c37c3293eea742e7ab20f25718ab19c93bd381df8823113fce70460c19c3",
--      "rust-std-1.95.0-loongarch64-unknown-linux-musl.tar.xz": "959b1bf99bc724c87bc4f2c0d184eb0554c134885c05c90d060eb572838924fd",
--      "rust-std-1.95.0-loongarch64-unknown-none.tar.xz": "139e8bdc86cbc21e149a2229c092f74741c907ef6424fa8ce8d435db47895cb6",
--      "rust-std-1.95.0-powerpc-unknown-linux-gnu.tar.xz": "59e0abbaa246502521e37c55b8d6cf88d5b8a697b0c70c61ec189937308f7246",
--      "rust-std-1.95.0-powerpc64-unknown-linux-gnu.tar.xz": "cc7fb9aa289ff1756502ae16a05e2885289165f01ed94a7c2db6576b3dae74a6",
--      "rust-std-1.95.0-powerpc64le-unknown-linux-gnu.tar.xz": "2370d9266051a0b23346d42e43a00f91b2daff22a963fb03e28ae50cb0b76c50",
--      "rust-std-1.95.0-powerpc64le-unknown-linux-musl.tar.xz": "0362ba4ecfe0bb508f0d2b064c6fbbfe72604d5ae1989d6a8a7b4fe5ff1889f1",
--      "rust-std-1.95.0-riscv32imc-unknown-none-elf.tar.xz": "04befebf3b15372dacb7e6c0fcdab842c17a63ea58bf2f4cdccd7182ae9195c6",
--      "rust-std-1.95.0-riscv64gc-unknown-linux-gnu.tar.xz": "50fe7869e166bb4c990a0e1664366b1ffdbe669664b7663cd03c079bd0efdcac",
--      "rust-std-1.95.0-riscv64gc-unknown-linux-musl.tar.xz": "e01bdbf5d6fa3e529671d49e87ba81dc9612101144f3ee5a0e1de3c48f27b47c",
--      "rust-std-1.95.0-riscv64gc-unknown-none-elf.tar.xz": "a4cb7a1527f3b56a39464e5ca2b174a27b708b26d78e604735eb5ffd9ee4d20b",
--      "rust-std-1.95.0-s390x-unknown-linux-gnu.tar.xz": "31978c1286afff9a0bb7f01c2ae4a39f40727b6100a82b6d934f146b06cde510",
--      "rust-std-1.95.0-sparc64-unknown-linux-gnu.tar.xz": "88619b2413d218c119a2060e583a9e835fa5f9cf6ac038070eec10b02c191056",
--      "rust-std-1.95.0-thumbv6m-none-eabi.tar.xz": "602ec023c4615fc1c2d78b688554d42fa525e07e861c052f406fd7a607e5d5ee",
--      "rust-std-1.95.0-thumbv7em-none-eabi.tar.xz": "fb671966ba9aede333956ed43fcfe114ec890ca6e70369c9f3219871ee3ae8ae",
--      "rust-std-1.95.0-thumbv7em-none-eabihf.tar.xz": "fa3d189c09b64d818ad65a3fec1ce1c7d7b3908aea6fc4607a3fcc05067cad81",
--      "rust-std-1.95.0-thumbv7m-none-eabi.tar.xz": "e9e39f483ad4c1ce55fa4f508009e8d7d7ef25efe6592f7bfbabc159a24658ff",
--      "rust-std-1.95.0-thumbv8m.main-none-eabi.tar.xz": "3b64bffb193b37e83dc7b169add55f0ef3298220f8475468be4bb87276a68105",
--      "rust-std-1.95.0-thumbv8m.main-none-eabihf.tar.xz": "25ec92187d3a45fb1e397b0ba6000341d872523925a99a48b1978bdf1e6038cb",
--      "rust-std-1.95.0-wasm32-unknown-emscripten.tar.xz": "967b92a8682e8b8a1a459d776b36e41c906cdcac1008fef70e4800fec40d6864",
--      "rust-std-1.95.0-wasm32-unknown-unknown.tar.xz": "5587b89ff69623d09e476439d44a24453b4e4ea3d5e0b53a5c0a935151ff3fd1",
--      "rust-std-1.95.0-wasm32-wasip1-threads.tar.xz": "9079935a00a3c3aaf284957bbe82972983ce2708019687cec1f4988c30c1e0f3",
--      "rust-std-1.95.0-wasm32-wasip1.tar.xz": "86e5b6d98c7520bb9c3ad4f8cbbbf14beaf230b0f06b437db398e3c4f7dae43e",
--      "rust-std-1.95.0-wasm32-wasip2.tar.xz": "68146eb4c887431379966efa21d75dc957f18bd1166239c1deaa53fe38cb9ab4",
--      "rust-std-1.95.0-x86_64-apple-darwin.tar.xz": "2be13c14122b8d4d09b7f7c434fca9ae7215ec72049944189c88c4d9128ce504",
--      "rust-std-1.95.0-x86_64-apple-ios-macabi.tar.xz": "60b92e51e87f84046e0b19ccedc88c45b4b62c3ab10351f8473453f341c894f1",
--      "rust-std-1.95.0-x86_64-apple-ios.tar.xz": "11abb7b1c92b5a88b8c3ba21ee596a1be7dee5e817b336f26b4968d8ed5513ad",
--      "rust-std-1.95.0-x86_64-linux-android.tar.xz": "77b8e2be4a6e784a63cd77de944864c8044ddf4d5c7d56f663ada8a38a8319c4",
--      "rust-std-1.95.0-x86_64-pc-windows-gnu.tar.xz": "f57e045016a04130125fb43295d95f9ad2bebc296150eadb031dbf5167ad12bd",
--      "rust-std-1.95.0-x86_64-pc-windows-gnullvm.tar.xz": "3c52a0e34e0b4abe4439cabd77383408f5f9c80b6e249fbc0855df424b45008d",
--      "rust-std-1.95.0-x86_64-pc-windows-msvc.tar.xz": "7c659bdc88646e7e1befa370881bd311be87b26f006933a28b40dcab2f7cc832",
--      "rust-std-1.95.0-x86_64-unknown-freebsd.tar.xz": "dfe913c2f477172db10d3723d9f5c536d8b6f42776c979cc855820d8249adec3",
--      "rust-std-1.95.0-x86_64-unknown-fuchsia.tar.xz": "faa2bc09a3992f1d81b538121d64a3a396f4ec666e665c79d2ab47461c2d3206",
--      "rust-std-1.95.0-x86_64-unknown-linux-gnu.tar.xz": "047ea7098803d3500fa1072e9cee5392697e21525559e4458128a2bf874aa382",
--      "rust-std-1.95.0-x86_64-unknown-linux-musl.tar.xz": "aee540abf132920f791ef781489851a078d69dff493fb628d49c1d573f92bb3a",
--      "rust-std-1.95.0-x86_64-unknown-netbsd.tar.xz": "7a82b71c53f20cb147a340819fcab645da220b312a96194531e631ee99783a7d",
--      "rust-std-1.95.0-x86_64-unknown-none.tar.xz": "7c151c0e7bf3b0b4d7136774cd3686e5f691b761b648b17e83af58e7669d3e01",
--      "rust-std-1.95.0-x86_64-unknown-uefi.tar.xz": "4cc55629480aa8ab5b39eb6b7458433b48461d6626fdea0330fb88e23af818ea",
--      "rustc-1.95.0-aarch64-apple-darwin.tar.xz": "149e85a285b6eba58eb6c8bdf7deb1b93763890598e62cb635a712e3a8454f04",
--      "rustc-1.95.0-aarch64-pc-windows-msvc.tar.xz": "0dbec9739b93427ccdd3948c3b1f83cec42e4c9545d930a8d1e1464ff4092c5f",
--      "rustc-1.95.0-aarch64-unknown-linux-gnu.tar.xz": "0fe3689eeaed603e5ef24572d11597d3edadaefd2cb181674ad621260f2501d2",
--      "rustc-1.95.0-src.tar.xz": "62b67230754da642a264ca0cb9fc08820c54e2ed7b3baba0289876d4cdb48c08",
--      "rustc-1.95.0-x86_64-apple-darwin.tar.xz": "33db457715446a69ed6f69f78f5fbb9ca8e17a16585d1d7a0060479bfe4c7afc",
--      "rustc-1.95.0-x86_64-pc-windows-msvc.tar.xz": "4cb1f3b578adc6541cbe13a6f85f1fd8c0ce643d90b506a36dee24c680864c67",
--      "rustc-1.95.0-x86_64-unknown-linux-gnu.tar.xz": "8426a3d170a5879f5682f5fbdd024a1779b3951e7baba685af2d6dc32a6dfc15",
--      "rustfmt-1.95.0-aarch64-apple-darwin.tar.xz": "c54af79adfdc790d27fc56e24407e370c80be5a89ad537eef9fbd45d3c3e28e8",
--      "rustfmt-1.95.0-aarch64-pc-windows-msvc.tar.xz": "a873c048743e6da29e09a8b55c774ee113f8f6ae4fd57d988d304a6453801b34",
--      "rustfmt-1.95.0-aarch64-unknown-linux-gnu.tar.xz": "64cce868f0f3d29f1524e11e9bab01ac9d538a31665fea1cd6b78af46a1c0a41",
--      "rustfmt-1.95.0-x86_64-apple-darwin.tar.xz": "5f7228f40a160e80d260e74e068d6fec8627aa02f1f5ae29d2019b9347076401",
--      "rustfmt-1.95.0-x86_64-pc-windows-msvc.tar.xz": "8bcf91606e36b8a0164efafde50709cd7a3c02143a2edaa81dbf3dccd6ed8f4c",
--      "rustfmt-1.95.0-x86_64-unknown-linux-gnu.tar.xz": "f1b2a7301513ffdd95ebf22ebbdd932e4d17fc806f748d93924740d0297b1396"
-+      "cargo-1.99.1-aarch64-apple-darwin.tar.xz": "685e563d94db1f003ffa5f5831439eec02569b9950b69867953c8213269c1eaf",
-+      "cargo-1.99.1-aarch64-pc-windows-msvc.tar.xz": "28ae5b9b72ae43aa01d2f6c1b285be59f8aef6eafc96f9e16b912c3c1363a638",
-+      "cargo-1.99.1-aarch64-unknown-linux-gnu.tar.xz": "5156832e0c1254e9b49a79edabdc6d4c35f32f8fc1cf3ca700f268ff96087ab0",
-+      "cargo-1.99.1-x86_64-apple-darwin.tar.xz": "6636dabcec164909d1c6eb9e2c596148787c84f7d3a02ff68a141569077f80b5",
-+      "cargo-1.99.1-x86_64-pc-windows-msvc.tar.xz": "4adb46c3707dee790682f7769d86983841148111695f561c843c33daa2af0c9b",
-+      "cargo-1.99.1-x86_64-unknown-linux-gnu.tar.xz": "53f3521949404d595efb06a55c12c5658d4ed1c75566f33d3d514eaebe70bd8a",
-+      "clippy-1.99.1-aarch64-apple-darwin.tar.xz": "c463f31831196702fc544900a0dc4c1837905327507fbec751fe46e59ca098bf",
-+      "clippy-1.99.1-aarch64-pc-windows-msvc.tar.xz": "6324b172cdda7ca117df406564a6c1f6634f983c06afc71c7a9fd46a4e34bfa8",
-+      "clippy-1.99.1-aarch64-unknown-linux-gnu.tar.xz": "3bea76c26dcf30c176c0a8a8cc283eb59fabd754e24a68b4ca0701e5f3245f6b",
-+      "clippy-1.99.1-x86_64-apple-darwin.tar.xz": "b5810174b696eaa05dd4ffd5b24c40a33c6d4bccc05fb72264006b7bfefb8c5d",
-+      "clippy-1.99.1-x86_64-pc-windows-msvc.tar.xz": "eb20d3f60731450acecd7c6b108bec2eb4abd18321b383e6663a3f072fe9c0b3",
-+      "clippy-1.99.1-x86_64-unknown-linux-gnu.tar.xz": "458339712a058e52cc4522ff9ef8b59cd1ea1340312216cd94194c464a3f6dc5",
-+      "rust-analyzer-1.99.1-aarch64-apple-darwin.tar.xz": "c1ee8a54e685e13414e53fc46029d46db12613bc45c081f1a49020f1674ad6b4",
-+      "rust-analyzer-1.99.1-aarch64-pc-windows-msvc.tar.xz": "a4df9d29b15a2ab6f9b6fefe1198f3bdb03e2b7e91899cdc0f0fdf8b68b5c44b",
-+      "rust-analyzer-1.99.1-aarch64-unknown-linux-gnu.tar.xz": "b626351402eb9ea16af2ebc2b2cd02ec6f6ca6f0c18fa74b41243eb42996e2b1",
-+      "rust-analyzer-1.99.1-x86_64-apple-darwin.tar.xz": "fe414afba5aa69e7994e29dddd9b166496900e70acc51fd3a55c82bfac86fe97",
-+      "rust-analyzer-1.99.1-x86_64-pc-windows-msvc.tar.xz": "e8d29f16781a71468dbff5c602dd48d6c544696c957752be783ed5a1edd954e4",
-+      "rust-analyzer-1.99.1-x86_64-unknown-linux-gnu.tar.xz": "5f2613d62003fc8cbe788d4ae409359c91c241ba248adbefe032df8bb77357bf",
-+      "rust-src-1.99.1.tar.xz": "e485a88c45db546b73571df7bebfcb4454ba4fb552c492e25fc5b00eeb5bf22d",
-+      "rust-std-1.99.1-aarch64-apple-darwin.tar.xz": "fe79d6ab5a0321de26463999d8c112b8ad3eafbcbcf822d66a2300b45dde1031",
-+      "rust-std-1.99.1-aarch64-apple-ios-macabi.tar.xz": "0d5ec58e0b034fab7decd4e72f21cfa6428421585ca98cf6ab65d3d5369b3f8b",
-+      "rust-std-1.99.1-aarch64-apple-ios-sim.tar.xz": "9780e3b33bb4aad552b2288de1aa65dff4feba66f51b77a4a6b2c52bfd455a28",
-+      "rust-std-1.99.1-aarch64-apple-ios.tar.xz": "d62c2e84717c6fa56ef0d8e5a11821850fb717c40879075a8e465a1e15af247c",
-+      "rust-std-1.99.1-aarch64-linux-android.tar.xz": "7463b06bb5f734c02d3bac967538b4de4da910fb90668398bc21b10b5620e35d",
-+      "rust-std-1.99.1-aarch64-pc-windows-gnullvm.tar.xz": "cf14a1b1fb7f32b90369d91f97fa157fe1ca43edb64235df951006baab677a95",
-+      "rust-std-1.99.1-aarch64-pc-windows-msvc.tar.xz": "044748841f47007a222dd5b3f5e9dacec1dae7386d7d308c5172d07ea7112fa0",
-+      "rust-std-1.99.1-aarch64-unknown-fuchsia.tar.xz": "c28c7143f598af3cdaa8d62e120a2348473e7a7cb580b0958c99ec1b1d764fbc",
-+      "rust-std-1.99.1-aarch64-unknown-linux-gnu.tar.xz": "e25668477083d6a9ddb87b9beb9c00742225f38233ccb4bfba3afa7a07427f52",
-+      "rust-std-1.99.1-aarch64-unknown-linux-musl.tar.xz": "2f3eb0d0610e2b7f6b2121d106e2490ac648decfa0c09b30873bdfc60de6c1ab",
-+      "rust-std-1.99.1-aarch64-unknown-none-softfloat.tar.xz": "6ff3ecba5ae285c5286ad6f5024994d818cee569c59d980aa2edc9e5fa3bcd4e",
-+      "rust-std-1.99.1-aarch64-unknown-none.tar.xz": "fa76b51dba64b20f6ca0593ed9bfb582a91fb0060fa803c54b68f1f6a3774eb9",
-+      "rust-std-1.99.1-aarch64-unknown-uefi.tar.xz": "e48e00681ea2c989d39274e3ed50ffdacb3bccea0950ea1789ab5075c8f36dae",
-+      "rust-std-1.99.1-arm-linux-androideabi.tar.xz": "6973466090a51ab5d5fadde4449cb2e521371ede85b35f95252ba2119aceb9b6",
-+      "rust-std-1.99.1-arm-unknown-linux-gnueabi.tar.xz": "fb93e9715ef14ed17fd6922dd200d14cfe855b46c4fa1e8a03ee85ca75646022",
-+      "rust-std-1.99.1-arm-unknown-linux-gnueabihf.tar.xz": "32278298365b7b78cf5b67ec34bf5e11821679dfea8a6d867725af860c4cbe50",
-+      "rust-std-1.99.1-arm-unknown-linux-musleabi.tar.xz": "f66cb84ada451344f46757c72d1bfa5a34e8f174affe67b7fa9c3b2d8a033e26",
-+      "rust-std-1.99.1-arm-unknown-linux-musleabihf.tar.xz": "74adeec515565c17242c8fafedbda40a30a49f85e9510fc60013cbc539f83782",
-+      "rust-std-1.99.1-armv7-linux-androideabi.tar.xz": "8c5c8d2bb1faf551ab21de3c9f9f930bfc7e610222e08bfae43b9438413fe300",
-+      "rust-std-1.99.1-armv7-unknown-linux-gnueabi.tar.xz": "d9f8155889cd3f4fc36ac35dd1ec357c46ae9cade0b106aca03e272b005e0823",
-+      "rust-std-1.99.1-armv7-unknown-linux-gnueabihf.tar.xz": "53fdf6581a24f510def5173813a0d23518a8cde547b9fbf4876499f19feda18c",
-+      "rust-std-1.99.1-armv7-unknown-linux-musleabi.tar.xz": "eaf5ee2b0948e18e586af42aa9aeb0e8e5aba515bc2d862bf0d23dc59569a8a9",
-+      "rust-std-1.99.1-armv7-unknown-linux-musleabihf.tar.xz": "edccfaef9195cb74b5c33541e587629f92433f59fb5e4bbb7b8293f966ecd60a",
-+      "rust-std-1.99.1-i686-linux-android.tar.xz": "76494f24073c8c3f0f98649580bf4ae8d3e91831c763017c2d120ade90a5a108",
-+      "rust-std-1.99.1-i686-pc-windows-gnu.tar.xz": "bf9668700154fcce55eca02d785da580eea561c1b6f70e723fd2f8a4296fd93f",
-+      "rust-std-1.99.1-i686-pc-windows-gnullvm.tar.xz": "28ffcbd7ff0f7cf1d4104fce7ef72d186a3e1c583319e8e32b69957d17ce498a",
-+      "rust-std-1.99.1-i686-pc-windows-msvc.tar.xz": "3a086606ba2581d43e905f65466d122c257ef0329ae3fbc3ceb067286d0668b0",
-+      "rust-std-1.99.1-i686-unknown-freebsd.tar.xz": "90342aa51874648ca441913f8df923a915dcbc229694b8bf4620b3d53389350f",
-+      "rust-std-1.99.1-i686-unknown-linux-gnu.tar.xz": "8abb74feac06cfb0d3de4e27301adb05f740661c7d6fb154528906202157ae15",
-+      "rust-std-1.99.1-i686-unknown-linux-musl.tar.xz": "25df5dae9ead02745f709ed133f09700abdec5eb7a8027e08bb41aefb1a451a1",
-+      "rust-std-1.99.1-i686-unknown-uefi.tar.xz": "c1297ae654a1a695056aa3c5113c67a9e68616bf225ba3da78873cc3cc538792",
-+      "rust-std-1.99.1-loongarch64-unknown-linux-gnu.tar.xz": "6400e6880a1f8183bba1a8b939cb1c6d189ab64e4aff4f246c00161941ee76e8",
-+      "rust-std-1.99.1-loongarch64-unknown-linux-musl.tar.xz": "3053ebe881b3434879a934012c4a61b1fa94a0aec922115a574cc81e8e3ca15e",
-+      "rust-std-1.99.1-loongarch64-unknown-none.tar.xz": "01dd53deb6fe0d62b0dffa0e172935c1cf6ab1f59bf6287306df0937db47db9b",
-+      "rust-std-1.99.1-powerpc-unknown-linux-gnu.tar.xz": "25d05cf16db111ecfe7dd8e1a3d61d144f2348e87dafeb07ff3cf402e3196cfd",
-+      "rust-std-1.99.1-powerpc64-unknown-linux-gnu.tar.xz": "58f8526a50eb47eb106130a29e77c97e3c5fd60af41e8a16a63d39673f9aa33d",
-+      "rust-std-1.99.1-powerpc64le-unknown-linux-gnu.tar.xz": "4bfb8ca55cc13f11addc5782a946b360b78888a18c8e315635b822f961f553c6",
-+      "rust-std-1.99.1-powerpc64le-unknown-linux-musl.tar.xz": "6db9c7e403354b0f52321d286a032565a84aa925624daed33a87c02f956e302f",
-+      "rust-std-1.99.1-riscv32imc-unknown-none-elf.tar.xz": "1c92e40aca279ee001a3a36d816140d49997f4b3791d81ae67175cfcbdb1d817",
-+      "rust-std-1.99.1-riscv64gc-unknown-linux-gnu.tar.xz": "0fe2aa8294281e16886a101466160ec460ed99e51c8af11e1c76f88f8bd0de6b",
-+      "rust-std-1.99.1-riscv64gc-unknown-linux-musl.tar.xz": "59797f5c7c87ef38c1d202576cb6fb9c6423730d8efcaf2fab7c367d2d878a39",
-+      "rust-std-1.99.1-riscv64gc-unknown-none-elf.tar.xz": "bf5b831d8df3ad039770dffaf59ad3492ff0b239a5c4bb225a1961831c117b3e",
-+      "rust-std-1.99.1-s390x-unknown-linux-gnu.tar.xz": "a5e394a3d85c6888f016abc9ac02dceadc6eb8a7216b8a5ba863d6cf649766ae",
-+      "rust-std-1.99.1-sparc64-unknown-linux-gnu.tar.xz": "c73df3e84bba70fa87151ead94aac7848fee8334f16526bc2f97d20372b327ae",
-+      "rust-std-1.99.1-thumbv6m-none-eabi.tar.xz": "2097eeae25f0d9a76a9fab9d78e5b8eed6f5c262946c9c0418f23aa6273e9b2f",
-+      "rust-std-1.99.1-thumbv7em-none-eabi.tar.xz": "dbe6561e6a655e9866a8502961fe7089bffd438195945d03a190ee59a9568a02",
-+      "rust-std-1.99.1-thumbv7em-none-eabihf.tar.xz": "dff135161000157504513c459a9646e52125d8b825395559c35ce78d54d226c8",
-+      "rust-std-1.99.1-thumbv7m-none-eabi.tar.xz": "04c171e0c59fee9ea8b4b27f0195eadbf2f47495e06e14ff09d19eb6c6946d38",
-+      "rust-std-1.99.1-thumbv8m.main-none-eabi.tar.xz": "59251d3c7d1804242c4a1ade2a08b0e133ee83537deff860408b08d1a239f938",
-+      "rust-std-1.99.1-thumbv8m.main-none-eabihf.tar.xz": "a24ca64600d6ff0d7f765ff4d60cb697b1535b6f4fdb3fe3054918b75c702e0f",
-+      "rust-std-1.99.1-wasm32-unknown-emscripten.tar.xz": "1797fc9e45d1a8fe819573e9d002fd9f3d4e680d3cfc4bb49af43cebd3096e90",
-+      "rust-std-1.99.1-wasm32-unknown-unknown.tar.xz": "5f628f857dd00a8aa3fcac2e275665d2782066a5795274ed124c5b560f46423c",
-+      "rust-std-1.99.1-wasm32-wasip1-threads.tar.xz": "5d44556bbae559fd029f207c8c2140b63ed70f0aa29f08be1bf42bed1bf7f716",
-+      "rust-std-1.99.1-wasm32-wasip1.tar.xz": "d498fbff3fd032f2f5fabc299e5cbf7bc9d64abac6e389fc1a315b69821b48c4",
-+      "rust-std-1.99.1-wasm32-wasip2.tar.xz": "15d54cff9ce112ab273cf7e214600108754d51100ce7d6bd62a354f16c93b4f3",
-+      "rust-std-1.99.1-x86_64-apple-darwin.tar.xz": "484d5b88b424ddd29df196e1eb9420c8335bb5fac90a3c37140253345a8c65c4",
-+      "rust-std-1.99.1-x86_64-apple-ios-macabi.tar.xz": "a85f3aacdc89a737b384f9676c4cfbc9e1f802c8ae4e10ba298bd07e06f2501e",
-+      "rust-std-1.99.1-x86_64-apple-ios.tar.xz": "cfadc69ce94f86a7517510389893cc10a4df88e619536bd7bb5f4db57d76bd94",
-+      "rust-std-1.99.1-x86_64-linux-android.tar.xz": "48132cd1f40a8112345ead45e8483495ab48285f152100f3ae1b1190bed4d8d4",
-+      "rust-std-1.99.1-x86_64-pc-windows-gnu.tar.xz": "b17e3bc962ff24b3bc47a750d838defed85b280746250e3a3ad029e6c1a29dd7",
-+      "rust-std-1.99.1-x86_64-pc-windows-gnullvm.tar.xz": "8ddc26705e13c46530c898524b0d2657b7d416a25e8d9ffe369a97b23a619bf6",
-+      "rust-std-1.99.1-x86_64-pc-windows-msvc.tar.xz": "4fe09430ded40b8b3092b49f0a651178eb1f8154ef4d1f1a73f2a3595b2d956f",
-+      "rust-std-1.99.1-x86_64-unknown-freebsd.tar.xz": "cd11b574be47094026f0fdb12ab3ae7fdb16acea71143d87c3ccf0208e6c9852",
-+      "rust-std-1.99.1-x86_64-unknown-fuchsia.tar.xz": "00e4d731dd46e0879bd25a280178627b2bc53b4143d7ec3fac05b746ea8f5537",
-+      "rust-std-1.99.1-x86_64-unknown-linux-gnu.tar.xz": "109b074225bf5b9ea3820890876bfdf4ed161adbfaf94b2b4b5984c85ee5d958",
-+      "rust-std-1.99.1-x86_64-unknown-linux-musl.tar.xz": "1dd241eaeb19ff3b5180461c77bdee93d6cafc669eda9de834e7c06b0ec3ca95",
-+      "rust-std-1.99.1-x86_64-unknown-netbsd.tar.xz": "97569760ad6e042d56ccdac2fd295df8a10351403b9bbca2a19567f8ed6ae46b",
-+      "rust-std-1.99.1-x86_64-unknown-none.tar.xz": "ae62c0c5ea47af55eb432dabc8f4a92c1815965633fc3ecf4056c02948f302cf",
-+      "rust-std-1.99.1-x86_64-unknown-uefi.tar.xz": "436c3de8edf19b2bea8f877f495927d2bdef4f3f6e6c67eae3eb5d31b0820616",
-+      "rustc-1.99.1-aarch64-apple-darwin.tar.xz": "23948a0a9c162fd2952defb3fb0462c44e8fcfd1a4ab8a274a1e1bdb2cf810a3",
-+      "rustc-1.99.1-aarch64-pc-windows-msvc.tar.xz": "4d89c7f3f9d8637c667332adf77b55f43c322ae0ff038e75493bb28e16369af2",
-+      "rustc-1.99.1-aarch64-unknown-linux-gnu.tar.xz": "acdcdfe09ae1f103aa9a2b7f88903a9588bc2e99288af10e6fbf5514e2e49f25",
-+      "rustc-1.99.1-src.tar.xz": "6451598a99e77f07571960f6b21d577399d3a30f33e80cbd2e3a4aae6535d265",
-+      "rustc-1.99.1-x86_64-apple-darwin.tar.xz": "203feef2c2165d7dda1f30ccf75590f72a6abc52ce259ed1c418de84a6887698",
-+      "rustc-1.99.1-x86_64-pc-windows-msvc.tar.xz": "7da83c2af1f209606b0160f25174d2867c7c7b73667c32c9e5fbcef4f5f45348",
-+      "rustc-1.99.1-x86_64-unknown-linux-gnu.tar.xz": "2ff05ff9c08a90861e7f6e4065b40a8b87463b4576186fd613871c3e37f2091f",
-+      "rustfmt-1.99.1-aarch64-apple-darwin.tar.xz": "8b80dda570f140ee9ced8799294e812bba847a025f185bae4cba85a2ba235570",
-+      "rustfmt-1.99.1-aarch64-pc-windows-msvc.tar.xz": "2ad35c2fd069066955c40eaa48fe8c5f14c55c86de73fda35ab53e7decef49a8",
-+      "rustfmt-1.99.1-aarch64-unknown-linux-gnu.tar.xz": "26b3200b1461921415927abf7fe410202a6eda2db3e419abde59e0abfcd93fc2",
-+      "rustfmt-1.99.1-x86_64-apple-darwin.tar.xz": "06491b425e02612479c30ad9a49f72f88bc8e033310ec8cc238a15eafecf91b7",
-+      "rustfmt-1.99.1-x86_64-pc-windows-msvc.tar.xz": "1a4d309df5ecacbefe5798c092a03f9d00aa9e1cbc65673c4ace1367c7a25989",
-+      "rustfmt-1.99.1-x86_64-unknown-linux-gnu.tar.xz": "e3b36c4c7ec3486c059d8067ff48787676612007123aad7a4e8ec12c48ee9ba2"
-     },
-     "@@windows_support+//windows:extensions.bzl%msvc_runtime": {
-       "visual_studio_installer_manifest_v1": {
 diff --git a/codex-rs/.cargo/config.toml b/codex-rs/.cargo/config.toml
-index 2de645c..91c41b6 100644
+index 2de645c21e..91c41b6882 100644
 --- a/codex-rs/.cargo/config.toml
 +++ b/codex-rs/.cargo/config.toml
 @@ -19,3 +19,11 @@ rustflags = ["-C", "link-arg=/STACK:8388608", "-C", "link-arg=/arm64hazardfree"]
@@ -575,7 +45,7 @@ index 2de645c..91c41b6 100644
 +[target.x86_64-apple-darwin]
 +linker = "scripts/apple-linker.sh"
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 2eae72d..bcee310 100644
+index 8b8bad583a..7ec62b896e 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -226,7 +226,7 @@ dependencies = [
@@ -596,7 +66,7 @@ index 2eae72d..bcee310 100644
   "time",
  ]
  
-@@ -627,13 +627,13 @@ checksum = "8b75356056920673b02621b35afd0f7dda9306d03c79a30f5c56c44cf256e3de"
+@@ -639,13 +639,13 @@ checksum = "8b75356056920673b02621b35afd0f7dda9306d03c79a30f5c56c44cf256e3de"
  
  [[package]]
  name = "async-trait"
@@ -613,7 +83,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -1546,7 +1546,7 @@ dependencies = [
+@@ -1558,7 +1558,7 @@ dependencies = [
   "cached_proc_macro_types",
   "hashbrown 0.15.5",
   "once_cell",
@@ -622,7 +92,7 @@ index 2eae72d..bcee310 100644
   "web-time",
  ]
  
-@@ -1883,7 +1883,7 @@ version = "0.3.0"
+@@ -1895,7 +1895,7 @@ version = "0.3.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "0fa961b519f0b462e3a3b4a34b64d119eeaca1d59af726fe450bbba07a9fc0a1"
  dependencies = [
@@ -631,7 +101,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -1909,7 +1909,7 @@ dependencies = [
+@@ -1921,7 +1921,7 @@ dependencies = [
   "serde",
   "serde_json",
   "tempfile",
@@ -640,7 +110,7 @@ index 2eae72d..bcee310 100644
   "tokio",
  ]
  
-@@ -2043,7 +2043,7 @@ dependencies = [
+@@ -2083,7 +2083,7 @@ dependencies = [
   "serde",
   "serde_json",
   "tempfile",
@@ -649,7 +119,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tokio-test",
   "tokio-tungstenite",
-@@ -2154,7 +2154,7 @@ dependencies = [
+@@ -2199,7 +2199,7 @@ dependencies = [
   "tar",
   "tempfile",
   "test-case",
@@ -658,7 +128,16 @@ index 2eae72d..bcee310 100644
   "tikv-jemallocator",
   "time",
   "tokio",
-@@ -2257,7 +2257,7 @@ dependencies = [
+@@ -2245,7 +2245,7 @@ dependencies = [
+  "serde",
+  "serde_json",
+  "tempfile",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tokio-tungstenite",
+  "toml 0.9.11+spec-1.1.0",
+@@ -2312,7 +2312,7 @@ dependencies = [
   "similar",
   "strum_macros 0.28.0",
   "tempfile",
@@ -667,7 +146,7 @@ index 2eae72d..bcee310 100644
   "tracing",
   "ts-rs",
   "uuid",
-@@ -2347,7 +2347,7 @@ dependencies = [
+@@ -2408,7 +2408,7 @@ dependencies = [
   "pretty_assertions",
   "similar",
   "tempfile",
@@ -676,7 +155,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tree-sitter",
   "tree-sitter-bash",
-@@ -2416,7 +2416,7 @@ dependencies = [
+@@ -2477,7 +2477,7 @@ dependencies = [
   "rcgen",
   "rustls",
   "tempfile",
@@ -685,16 +164,16 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tokio-rustls",
   "url",
-@@ -2628,7 +2628,7 @@ dependencies = [
-  "hyper-util",
-  "pretty_assertions",
+@@ -2704,7 +2704,7 @@ dependencies = [
   "prost",
+  "serde",
+  "serde_json",
 - "thiserror 2.0.18",
 + "thiserror 2.0.21",
   "tokio",
   "tokio-rustls",
   "tonic",
-@@ -2659,7 +2659,7 @@ dependencies = [
+@@ -2735,7 +2735,7 @@ dependencies = [
   "serde_json",
   "sha2 0.10.9",
   "tempfile",
@@ -703,7 +182,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tracing",
   "wiremock",
-@@ -2710,7 +2710,7 @@ dependencies = [
+@@ -2795,7 +2795,7 @@ dependencies = [
   "codex-http-client",
   "serde",
   "serde_json",
@@ -712,7 +191,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -2859,7 +2859,7 @@ dependencies = [
+@@ -2944,7 +2944,7 @@ dependencies = [
   "sha2 0.10.9",
   "tempfile",
   "test-case",
@@ -721,7 +200,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tokio-stream",
   "tokio-util",
-@@ -2916,7 +2916,7 @@ dependencies = [
+@@ -3001,7 +3001,7 @@ dependencies = [
   "codex-plugin",
   "codex-utils-path-uri",
   "serde_json",
@@ -730,16 +209,16 @@ index 2eae72d..bcee310 100644
   "tracing",
  ]
  
-@@ -3059,7 +3059,7 @@ dependencies = [
+@@ -3148,7 +3148,7 @@ dependencies = [
   "tempfile",
   "test-case",
   "test-log",
 - "thiserror 2.0.18",
 + "thiserror 2.0.21",
   "tokio",
+  "tokio-rustls",
   "tokio-tungstenite",
-  "tokio-util",
-@@ -3112,7 +3112,7 @@ dependencies = [
+@@ -3203,7 +3203,7 @@ dependencies = [
   "semver",
   "serde",
   "serde_json",
@@ -748,7 +227,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -3160,7 +3160,7 @@ dependencies = [
+@@ -3255,7 +3255,7 @@ dependencies = [
   "sha2 0.10.9",
   "tar",
   "tempfile",
@@ -757,7 +236,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "toml 0.9.11+spec-1.1.0",
   "tracing",
-@@ -3302,7 +3302,7 @@ dependencies = [
+@@ -3398,7 +3398,7 @@ dependencies = [
   "serial_test",
   "tempfile",
   "test-case",
@@ -766,7 +245,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tokio-tungstenite",
   "tokio-util",
-@@ -3409,7 +3409,7 @@ dependencies = [
+@@ -3504,7 +3504,7 @@ dependencies = [
   "shlex",
   "starlark",
   "tempfile",
@@ -775,7 +254,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "unicode-normalization",
  ]
-@@ -3607,7 +3607,7 @@ dependencies = [
+@@ -3705,7 +3705,7 @@ dependencies = [
   "serde",
   "similar",
   "tempfile",
@@ -784,16 +263,16 @@ index 2eae72d..bcee310 100644
   "tokio",
   "ts-rs",
   "walkdir",
-@@ -3719,7 +3719,7 @@ dependencies = [
-  "pretty_assertions",
+@@ -3822,7 +3822,7 @@ dependencies = [
   "serde_json",
   "tempfile",
+  "test-case",
 - "thiserror 2.0.18",
 + "thiserror 2.0.21",
   "tokio",
   "tracing",
   "uuid",
-@@ -3844,7 +3844,7 @@ dependencies = [
+@@ -3985,7 +3985,7 @@ dependencies = [
   "socket2 0.6.3",
   "system-configuration",
   "tempfile",
@@ -802,7 +281,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tokio-rustls",
   "tracing",
-@@ -3990,7 +3990,7 @@ dependencies = [
+@@ -4152,7 +4152,7 @@ dependencies = [
   "serial_test",
   "sha2 0.10.9",
   "tempfile",
@@ -811,7 +290,7 @@ index 2eae72d..bcee310 100644
   "tiny_http",
   "tokio",
   "tracing",
-@@ -4039,7 +4039,7 @@ dependencies = [
+@@ -4206,7 +4206,7 @@ dependencies = [
   "serde_json",
   "sha1 0.10.6",
   "tempfile",
@@ -820,7 +299,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tokio-util",
   "tracing",
-@@ -4073,7 +4073,7 @@ dependencies = [
+@@ -4241,7 +4241,7 @@ dependencies = [
   "pretty_assertions",
   "serde_json",
   "tempfile",
@@ -829,7 +308,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tokio-util",
   "tracing",
-@@ -4098,7 +4098,7 @@ dependencies = [
+@@ -4266,7 +4266,7 @@ dependencies = [
   "serde",
   "serde_json",
   "tempfile",
@@ -838,7 +317,7 @@ index 2eae72d..bcee310 100644
   "tokio",
  ]
  
-@@ -4329,7 +4329,7 @@ dependencies = [
+@@ -4514,7 +4514,7 @@ dependencies = [
   "serde",
   "serde_json",
   "tempfile",
@@ -847,7 +326,7 @@ index 2eae72d..bcee310 100644
   "tracelogging",
   "windows-sys 0.61.2",
  ]
-@@ -4376,7 +4376,7 @@ dependencies = [
+@@ -4561,7 +4561,7 @@ dependencies = [
   "serde_json",
   "sha2 0.10.9",
   "tempfile",
@@ -856,16 +335,16 @@ index 2eae72d..bcee310 100644
   "time",
   "tokio",
   "tracing",
-@@ -4436,7 +4436,7 @@ dependencies = [
+@@ -4623,7 +4623,7 @@ dependencies = [
   "serde_json",
   "strum_macros 0.28.0",
   "tempfile",
 - "thiserror 2.0.18",
 + "thiserror 2.0.21",
   "tokio",
-  "tokio-tungstenite",
   "tracing",
-@@ -4467,7 +4467,7 @@ dependencies = [
+  "tracing-opentelemetry",
+@@ -4653,7 +4653,7 @@ dependencies = [
   "codex-utils-plugins",
   "pretty_assertions",
   "serde_json",
@@ -874,7 +353,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -4551,7 +4551,7 @@ dependencies = [
+@@ -4739,7 +4739,7 @@ dependencies = [
   "strum_macros 0.28.0",
   "sys-locale",
   "tempfile",
@@ -883,7 +362,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tracing",
   "ts-rs",
-@@ -4581,7 +4581,7 @@ dependencies = [
+@@ -4771,7 +4771,7 @@ dependencies = [
   "pretty_assertions",
   "serde_json",
   "tempfile",
@@ -892,7 +371,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tracing",
   "uuid",
-@@ -4677,7 +4677,7 @@ dependencies = [
+@@ -4868,7 +4868,7 @@ dependencies = [
   "sha2 0.10.9",
   "sse-stream",
   "tempfile",
@@ -901,7 +380,7 @@ index 2eae72d..bcee310 100644
   "tiny_http",
   "tokio",
   "tokio-util",
-@@ -4760,7 +4760,7 @@ dependencies = [
+@@ -4957,7 +4957,7 @@ dependencies = [
   "serde",
   "serde_json",
   "tempfile",
@@ -910,7 +389,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "url",
   "uuid",
-@@ -4853,7 +4853,7 @@ dependencies = [
+@@ -5050,7 +5050,7 @@ dependencies = [
   "serde",
   "serde_yaml",
   "shlex",
@@ -919,7 +398,7 @@ index 2eae72d..bcee310 100644
   "tracing",
  ]
  
-@@ -5010,7 +5010,7 @@ dependencies = [
+@@ -5202,7 +5202,7 @@ dependencies = [
   "sqlx",
   "sqlx-macros",
   "tempfile",
@@ -928,7 +407,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tracing",
   "uuid",
-@@ -5038,7 +5038,7 @@ dependencies = [
+@@ -5230,7 +5230,7 @@ dependencies = [
   "rmcp",
   "serde",
   "serde_json",
@@ -937,7 +416,7 @@ index 2eae72d..bcee310 100644
   "tracing",
   "urlencoding",
  ]
-@@ -5146,7 +5146,7 @@ dependencies = [
+@@ -5344,7 +5344,7 @@ dependencies = [
   "syntect",
   "tempfile",
   "textwrap 0.16.2",
@@ -946,7 +425,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tokio-stream",
   "tokio-tungstenite",
-@@ -5202,7 +5202,7 @@ dependencies = [
+@@ -5418,7 +5418,7 @@ dependencies = [
   "security-framework-sys",
   "sha2 0.10.9",
   "tempfile",
@@ -955,7 +434,7 @@ index 2eae72d..bcee310 100644
   "tracing",
  ]
  
-@@ -5237,7 +5237,7 @@ dependencies = [
+@@ -5453,7 +5453,7 @@ dependencies = [
   "codex-utils-string",
   "pretty_assertions",
   "symphonia",
@@ -964,7 +443,7 @@ index 2eae72d..bcee310 100644
   "tracing",
  ]
  
-@@ -5256,7 +5256,7 @@ version = "0.0.0"
+@@ -5472,7 +5472,7 @@ version = "0.0.0"
  dependencies = [
   "assert_cmd",
   "runfiles",
@@ -973,16 +452,25 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -5326,7 +5326,7 @@ dependencies = [
-  "image",
+@@ -5543,7 +5543,7 @@ dependencies = [
   "mime_guess",
+  "moxcms",
   "png",
 - "thiserror 2.0.18",
 + "thiserror 2.0.21",
   "tokio",
  ]
  
-@@ -5380,7 +5380,7 @@ dependencies = [
+@@ -5565,7 +5565,7 @@ dependencies = [
+  "schemars 0.8.22",
+  "serde",
+  "serde_json",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tracing",
+ ]
+ 
+@@ -5610,7 +5610,7 @@ dependencies = [
   "schemars 0.8.22",
   "serde",
   "serde_json",
@@ -991,7 +479,7 @@ index 2eae72d..bcee310 100644
   "ts-rs",
   "url",
   "urlencoding",
-@@ -5432,7 +5432,7 @@ name = "codex-utils-readiness"
+@@ -5663,7 +5663,7 @@ name = "codex-utils-readiness"
  version = "0.0.0"
  dependencies = [
   "assert_matches",
@@ -1000,16 +488,16 @@ index 2eae72d..bcee310 100644
   "time",
   "tokio",
  ]
-@@ -5654,7 +5654,7 @@ dependencies = [
-  "serde",
+@@ -5891,7 +5891,7 @@ dependencies = [
   "serde_json",
+  "spiffe",
   "tempfile",
 - "thiserror 2.0.18",
 + "thiserror 2.0.21",
   "tokio",
-  "url",
-  "wiremock",
-@@ -6612,7 +6612,7 @@ version = "1.0.0"
+  "tonic",
+  "tonic-prost",
+@@ -6880,7 +6880,7 @@ version = "1.0.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "10d60334b3b2e7c9d91ef8150abfb6fa4c1c39ebbcf4a81c2e346aad939fee3e"
  dependencies = [
@@ -1018,7 +506,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -7528,7 +7528,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -7804,7 +7804,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "54f0d287c53ffd184d04d8677f590f4ac5379785529e5e08b1c8083acdd5c198"
  dependencies = [
   "memchr",
@@ -1027,7 +515,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -8600,7 +8600,7 @@ dependencies = [
+@@ -8876,7 +8876,7 @@ dependencies = [
   "pastey",
   "pin-project-lite",
   "smallvec",
@@ -1036,7 +524,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -8921,7 +8921,7 @@ dependencies = [
+@@ -9207,7 +9207,7 @@ dependencies = [
   "once_cell",
   "rand 0.9.3",
   "ring",
@@ -1045,7 +533,16 @@ index 2eae72d..bcee310 100644
   "tinyvec",
   "tokio",
   "tracing",
-@@ -8944,7 +8944,7 @@ dependencies = [
+@@ -9227,7 +9227,7 @@ dependencies = [
+  "once_cell",
+  "rand 0.10.1",
+  "ring",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tinyvec",
+  "tracing",
+  "url",
+@@ -9249,7 +9249,7 @@ dependencies = [
   "rand 0.9.3",
   "resolv-conf",
   "smallvec",
@@ -1054,7 +551,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tracing",
  ]
-@@ -9850,7 +9850,7 @@ dependencies = [
+@@ -10155,7 +10155,7 @@ dependencies = [
   "jni-sys 0.4.1",
   "log",
   "simd_cesu8",
@@ -1063,7 +560,7 @@ index 2eae72d..bcee310 100644
   "walkdir",
   "windows-link",
  ]
-@@ -9945,7 +9945,7 @@ checksum = "bde5057d6143cc94e861d90f591b9303d6716c6b9602309150bd068853c10899"
+@@ -10250,7 +10250,7 @@ checksum = "bde5057d6143cc94e861d90f591b9303d6716c6b9602309150bd068853c10899"
  dependencies = [
   "hashbrown 0.16.1",
   "portable-atomic",
@@ -1072,7 +569,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -10028,7 +10028,7 @@ checksum = "49fefd6652c57d68aaa32544a4c0e642929725bdc1fd929367cdeb673ab81088"
+@@ -10333,7 +10333,7 @@ checksum = "49fefd6652c57d68aaa32544a4c0e642929725bdc1fd929367cdeb673ab81088"
  dependencies = [
   "enumflags2",
   "libc",
@@ -1081,7 +578,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -10529,7 +10529,7 @@ dependencies = [
+@@ -10840,7 +10840,7 @@ dependencies = [
   "serde_path_to_error",
   "sha2 0.11.0",
   "tempfile",
@@ -1090,7 +587,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tracelogging",
   "unicode-general-category",
-@@ -11277,7 +11277,7 @@ dependencies = [
+@@ -11587,7 +11587,7 @@ dependencies = [
   "futures-sink",
   "js-sys",
   "pin-project-lite",
@@ -1099,7 +596,7 @@ index 2eae72d..bcee310 100644
   "tracing",
  ]
  
-@@ -11320,7 +11320,7 @@ dependencies = [
+@@ -11630,7 +11630,7 @@ dependencies = [
   "prost",
   "reqwest 0.12.28",
   "serde_json",
@@ -1108,7 +605,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tonic",
   "tracing",
-@@ -11361,7 +11361,7 @@ dependencies = [
+@@ -11672,7 +11672,7 @@ dependencies = [
   "opentelemetry",
   "percent-encoding",
   "rand 0.9.3",
@@ -1117,7 +614,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tokio-stream",
  ]
-@@ -12325,7 +12325,7 @@ dependencies = [
+@@ -12627,7 +12627,7 @@ dependencies = [
   "rustc-hash",
   "rustls",
   "socket2 0.6.3",
@@ -1126,7 +623,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tracing",
   "web-time",
-@@ -12347,7 +12347,7 @@ dependencies = [
+@@ -12649,7 +12649,7 @@ dependencies = [
   "rustls",
   "rustls-pki-types",
   "slab",
@@ -1135,7 +632,7 @@ index 2eae72d..bcee310 100644
   "tinyvec",
   "tracing",
   "web-time",
-@@ -12876,7 +12876,7 @@ dependencies = [
+@@ -13178,7 +13178,7 @@ dependencies = [
   "palette",
   "serde",
   "strum 0.28.0",
@@ -1144,7 +641,7 @@ index 2eae72d..bcee310 100644
   "unicode-segmentation",
   "unicode-truncate",
   "unicode-width 0.2.1",
-@@ -13028,7 +13028,7 @@ checksum = "a4e608c6638b9c18977b00b475ac1f28d14e84b27d8d42f70e0bf1e3dec127ac"
+@@ -13330,7 +13330,7 @@ checksum = "a4e608c6638b9c18977b00b475ac1f28d14e84b27d8d42f70e0bf1e3dec127ac"
  dependencies = [
   "getrandom 0.2.17",
   "libredox",
@@ -1153,7 +650,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -13276,7 +13276,7 @@ dependencies = [
+@@ -13578,7 +13578,7 @@ dependencies = [
   "serde",
   "serde_json",
   "sse-stream",
@@ -1162,7 +659,7 @@ index 2eae72d..bcee310 100644
   "tokio",
   "tokio-stream",
   "tokio-util",
-@@ -13448,7 +13448,7 @@ dependencies = [
+@@ -13750,7 +13750,7 @@ dependencies = [
   "rand 0.10.1",
   "rtc-rtp",
   "rtc-shared",
@@ -1171,7 +668,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -13487,7 +13487,7 @@ dependencies = [
+@@ -13789,7 +13789,7 @@ dependencies = [
   "rtc-shared",
   "rustc-hash",
   "slab",
@@ -1180,7 +677,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -13518,7 +13518,7 @@ dependencies = [
+@@ -13820,7 +13820,7 @@ dependencies = [
   "sec1",
   "serde",
   "substring",
@@ -1189,7 +686,7 @@ index 2eae72d..bcee310 100644
   "url",
   "winapi",
  ]
-@@ -14115,7 +14115,7 @@ dependencies = [
+@@ -14417,7 +14417,7 @@ dependencies = [
   "rand 0.9.3",
   "serde",
   "serde_json",
@@ -1198,7 +695,7 @@ index 2eae72d..bcee310 100644
   "time",
   "url",
   "uuid",
-@@ -14503,7 +14503,7 @@ checksum = "0d585997b0ac10be3c5ee635f1bab02d512760d14b7c468801ac8a01d9ae5f1d"
+@@ -14805,7 +14805,7 @@ checksum = "0d585997b0ac10be3c5ee635f1bab02d512760d14b7c468801ac8a01d9ae5f1d"
  dependencies = [
   "num-bigint",
   "num-traits",
@@ -1207,16 +704,25 @@ index 2eae72d..bcee310 100644
   "time",
  ]
  
-@@ -14708,7 +14708,7 @@ dependencies = [
+@@ -14981,7 +14981,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "539d8f20779006e7e078d8ac7f30a7d7d77fdbbf1f343e1d4416c22772850fbf"
+ dependencies = [
+  "hyper-util",
+- "thiserror 2.0.18",
++ "thiserror 2.0.21",
+  "tokio",
+  "tonic",
+  "tower",
+@@ -15048,7 +15048,7 @@ dependencies = [
   "serde_json",
-  "sha2 0.10.9",
+  "sha2 0.11.0",
   "smallvec",
 - "thiserror 2.0.18",
 + "thiserror 2.0.21",
   "time",
   "tokio",
   "tokio-stream",
-@@ -14779,7 +14779,7 @@ dependencies = [
+@@ -15119,7 +15119,7 @@ dependencies = [
   "sha1 0.11.0",
   "sha2 0.11.0",
   "sqlx-core",
@@ -1225,7 +731,7 @@ index 2eae72d..bcee310 100644
   "time",
   "tracing",
   "uuid",
-@@ -14816,7 +14816,7 @@ dependencies = [
+@@ -15156,7 +15156,7 @@ dependencies = [
   "smallvec",
   "sqlx-core",
   "stringprep",
@@ -1234,7 +740,7 @@ index 2eae72d..bcee310 100644
   "time",
   "tracing",
   "uuid",
-@@ -14843,7 +14843,7 @@ dependencies = [
+@@ -15182,7 +15182,7 @@ dependencies = [
   "percent-encoding",
   "serde",
   "sqlx-core",
@@ -1243,7 +749,7 @@ index 2eae72d..bcee310 100644
   "time",
   "tracing",
   "url",
-@@ -14911,7 +14911,7 @@ dependencies = [
+@@ -15250,7 +15250,7 @@ dependencies = [
   "strong_hash",
   "strsim 0.10.0",
   "textwrap 0.11.0",
@@ -1252,7 +758,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -14962,7 +14962,7 @@ dependencies = [
+@@ -15301,7 +15301,7 @@ dependencies = [
   "once_cell",
   "pagable",
   "starlark_map",
@@ -1261,7 +767,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -15306,7 +15306,7 @@ dependencies = [
+@@ -15645,7 +15645,7 @@ dependencies = [
   "serde",
   "serde_derive",
   "serde_json",
@@ -1270,7 +776,7 @@ index 2eae72d..bcee310 100644
   "walkdir",
  ]
  
-@@ -15625,11 +15625,11 @@ dependencies = [
+@@ -15964,11 +15964,11 @@ dependencies = [
  
  [[package]]
  name = "thiserror"
@@ -1285,7 +791,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -15645,13 +15645,13 @@ dependencies = [
+@@ -15984,13 +15984,13 @@ dependencies = [
  
  [[package]]
  name = "thiserror-impl"
@@ -1302,7 +808,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -16167,7 +16167,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -16510,7 +16510,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "786d480bce6247ab75f005b14ae1624ad978d3029d9113f0a22fa1ac773faeaf"
  dependencies = [
   "crossbeam-channel",
@@ -1311,7 +817,7 @@ index 2eae72d..bcee310 100644
   "time",
   "tracing-subscriber",
  ]
-@@ -16356,7 +16356,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -16699,7 +16699,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "4994acea2522cd2b3b85c1d9529a55991e3ad5e25cdcd3de9d505972c4379424"
  dependencies = [
   "serde_json",
@@ -1320,7 +826,7 @@ index 2eae72d..bcee310 100644
   "ts-rs-macros",
   "uuid",
  ]
-@@ -16389,7 +16389,7 @@ dependencies = [
+@@ -16732,7 +16732,7 @@ dependencies = [
   "rustls",
   "rustls-pki-types",
   "sha1 0.10.6",
@@ -1329,7 +835,7 @@ index 2eae72d..bcee310 100644
   "utf-8",
  ]
  
-@@ -17174,7 +17174,7 @@ version = "0.3.0"
+@@ -17517,7 +17517,7 @@ version = "0.3.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "f9b0540e91e49de3817c314da0dd3bc518093ceacc6ea5327cb0e1eb073e5189"
  dependencies = [
@@ -1338,7 +844,7 @@ index 2eae72d..bcee310 100644
  ]
  
  [[package]]
-@@ -17825,7 +17825,7 @@ dependencies = [
+@@ -18168,7 +18168,7 @@ dependencies = [
   "log",
   "os_pipe",
   "rustix 1.1.4",
@@ -1347,7 +853,7 @@ index 2eae72d..bcee310 100644
   "tree_magic_mini",
   "wayland-backend",
   "wayland-client",
-@@ -17900,7 +17900,7 @@ dependencies = [
+@@ -18243,7 +18243,7 @@ dependencies = [
   "oid-registry 0.8.1",
   "ring",
   "rusticata-macros",
@@ -1357,10 +863,10 @@ index 2eae72d..bcee310 100644
  ]
  
 diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
-index f1b9ccf..e6fd7c8 100644
+index baefbc2f5a..5d4de8d3e8 100644
 --- a/codex-rs/Cargo.toml
 +++ b/codex-rs/Cargo.toml
-@@ -591,7 +591,7 @@ zeroize = "1.8.2"
+@@ -602,7 +602,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(codex_bazel)'] }
  # Every workspace crate inherits these lints, so any rustc lint warning in Codex fails
  # its build. Dependencies keep Cargo's cap and are not affected.
  warnings = "deny"
@@ -1369,431 +875,9 @@ index f1b9ccf..e6fd7c8 100644
  linker_messages = "deny"
  
  [workspace.lints.clippy]
-diff --git a/codex-rs/agent-identity/src/lib.rs b/codex-rs/agent-identity/src/lib.rs
-index 14a9e35..30f2b8a 100644
---- a/codex-rs/agent-identity/src/lib.rs
-+++ b/codex-rs/agent-identity/src/lib.rs
-@@ -564,7 +564,6 @@ fn signing_key_from_private_key_pkcs8_base64(private_key_pkcs8_base64: &str) ->
- 
- #[cfg(test)]
- mod tests {
--    use base64::Engine as _;
-     use ed25519_dalek::Signature;
-     use ed25519_dalek::Verifier as _;
-     use jsonwebtoken::EncodingKey;
-diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index c234acb..6480be7 100644
---- a/codex-rs/app-server/src/message_processor.rs
-+++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1257,7 +1257,7 @@ impl MessageProcessor {
-                 .clients_revoke(params)
-                 .await
-                 .map(|response| Some(response.into())),
--            ClientRequest::ConfigRequirementsRead { params: _, .. } => self
-+            ClientRequest::ConfigRequirementsRead { .. } => self
-                 .config_processor
-                 .config_requirements_read()
-                 .await
-@@ -1316,7 +1316,7 @@ impl MessageProcessor {
-                 .unwatch(connection_id, params)
-                 .await
-                 .map(|response| Some(response.into())),
--            ClientRequest::ModelProviderCapabilitiesRead { params: _, .. } => self
-+            ClientRequest::ModelProviderCapabilitiesRead { .. } => self
-                 .config_processor
-                 .model_provider_capabilities_read()
-                 .await
-@@ -1771,7 +1771,7 @@ impl MessageProcessor {
-             ClientRequest::ThreadTimelineList { params, .. } => {
-                 self.thread_processor.thread_timeline_list(params).await
-             }
--            ClientRequest::ThreadRealtimeListVoices { params: _, .. } => {
-+            ClientRequest::ThreadRealtimeListVoices { .. } => {
-                 self.turn_processor.thread_realtime_list_voices().await
-             }
-             ClientRequest::ReviewStart { params, .. } => {
-diff --git a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
-index 06224d5..f8da480 100644
---- a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
-+++ b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
-@@ -153,7 +153,7 @@ impl SessionRuntime {
-     fn allocate_cell_id(&self) -> Result<CellId, Error> {
-         self.inner
-             .next_cell_id
--            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next_cell_id| {
-+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |next_cell_id| {
-                 next_cell_id.checked_add(1)
-             })
-             .map(|cell_id| CellId::new(cell_id.to_string()))
-diff --git a/codex-rs/codex-mcp/src/connection_manager/startup.rs b/codex-rs/codex-mcp/src/connection_manager/startup.rs
-index 0f019d2..56be80d 100644
---- a/codex-rs/codex-mcp/src/connection_manager/startup.rs
-+++ b/codex-rs/codex-mcp/src/connection_manager/startup.rs
-@@ -42,13 +42,15 @@ pub(super) async fn emit_update(
-     submit_id: &str,
-     tx_event: &Sender<Event>,
-     update: McpStartupUpdateEvent,
--) -> Result<(), async_channel::SendError<Event>> {
-+) -> Result<(), Box<async_channel::SendError<Event>>> {
-+    // The rejected event is returned inside the error, so box it to keep the result small.
-     tx_event
-         .send(Event {
-             id: submit_id.to_string(),
-             msg: EventMsg::McpStartupUpdate(update),
-         })
-         .await
-+        .map_err(Box::new)
- }
- 
- pub(super) fn mcp_startup_failure_reason(
-diff --git a/codex-rs/core/src/realtime_conversation.rs b/codex-rs/core/src/realtime_conversation.rs
-index ffa74f0..c2a8cc6 100644
---- a/codex-rs/core/src/realtime_conversation.rs
-+++ b/codex-rs/core/src/realtime_conversation.rs
-@@ -365,14 +365,14 @@ impl RealtimeStreamedItem {
-             if self.buffered_text.is_empty() {
-                 return None;
-             }
--            let text = self.buffered_text.drain(..).collect::<String>();
-+            let text = std::mem::take(&mut self.buffered_text);
-             let text = format!("{prefix}{text}");
-             self.sent_bytes += text.len();
-             return Some(text);
-         }
- 
--        let head = self.buffered_text.drain(..).collect::<String>();
--        let tail = self.tail_text.drain(..).collect::<String>();
-+        let head = std::mem::take(&mut self.buffered_text);
-+        let tail = std::mem::take(&mut self.tail_text);
-         let text = format!("{prefix}{head}{HANDOFF_STREAM_TRUNCATION_MARKER}{tail}");
-         self.sent_bytes += text.len();
-         Some(text)
-diff --git a/codex-rs/core/src/tools/executed_tool_calls.rs b/codex-rs/core/src/tools/executed_tool_calls.rs
-index 853c88a..26c1eb7 100644
---- a/codex-rs/core/src/tools/executed_tool_calls.rs
-+++ b/codex-rs/core/src/tools/executed_tool_calls.rs
-@@ -369,7 +369,7 @@ impl ExecutedToolCalls {
-     fn reserve_direct_call(&self) -> Option<DirectCallPermit> {
-         let recording = Arc::downgrade(&self.lock_state().as_ref()?.recording);
-         self.pending_direct_calls
--            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |pending| {
-+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |pending| {
-                 (pending < MAX_PENDING_EXECUTED_TOOL_CALLS).then_some(pending + 1)
-             })
-             .ok()?;
-diff --git a/codex-rs/core/tests/common/apps_test_server.rs b/codex-rs/core/tests/common/apps_test_server.rs
-index cde2ed7..6771062 100644
---- a/codex-rs/core/tests/common/apps_test_server.rs
-+++ b/codex-rs/core/tests/common/apps_test_server.rs
-@@ -543,7 +543,7 @@ impl Respond for CodexAppsJsonRpcResponder {
-                     .as_ref()
-                     .is_some_and(|remaining| {
-                         remaining
--                            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |remaining| {
-+                            .try_update(Ordering::SeqCst, Ordering::SeqCst, |remaining| {
-                                 remaining.checked_sub(1)
-                             })
-                             .is_ok()
-diff --git a/codex-rs/core/tests/suite/scenarios.rs b/codex-rs/core/tests/suite/scenarios.rs
-index 63ac88a..2f39279 100644
---- a/codex-rs/core/tests/suite/scenarios.rs
-+++ b/codex-rs/core/tests/suite/scenarios.rs
-@@ -3506,7 +3506,7 @@ async fn astra_async_compaction_keeps_work_added_after_its_snapshot(
-     )
-     .await?;
-     assert_eq!(compaction_events.len(), if over_budget { 4 } else { 2 });
--    for pair in compaction_events.chunks_exact(2) {
-+    for pair in compaction_events.as_chunks::<2>().0 {
-         assert_eq!((pair[0].0, pair[1].0), ("started", "completed"));
-         assert_eq!(pair[0].1, pair[1].1);
-     }
-diff --git a/codex-rs/core/tests/suite/tools.rs b/codex-rs/core/tests/suite/tools.rs
-index b183492..a53266d 100644
---- a/codex-rs/core/tests/suite/tools.rs
-+++ b/codex-rs/core/tests/suite/tools.rs
-@@ -688,7 +688,7 @@ async fn sandbox_denied_exec_command_returns_original_output() -> Result<()> {
-         "printf {sentinel:?} >&2; printf {content:?} > {path:?}",
-         sentinel = format!("{sentinel}\n"),
-         content = "sandbox denied",
--        path = &target_path
-+        path = target_path
-     );
-     let args = json!({
-         "cmd": command,
-diff --git a/codex-rs/diagnostics/src/lib.rs b/codex-rs/diagnostics/src/lib.rs
-index a966e4a..91b878b 100644
---- a/codex-rs/diagnostics/src/lib.rs
-+++ b/codex-rs/diagnostics/src/lib.rs
-@@ -32,7 +32,7 @@ impl Gauge {
-     pub fn decrement(&self) {
-         let _ = self
-             .value
--            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
-+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
-                 Some(value.saturating_sub(1))
-             });
-     }
-diff --git a/codex-rs/exec-server-protocol/src/protocol.rs b/codex-rs/exec-server-protocol/src/protocol.rs
-index 5ff06e0..8d94c15 100644
---- a/codex-rs/exec-server-protocol/src/protocol.rs
-+++ b/codex-rs/exec-server-protocol/src/protocol.rs
-@@ -273,7 +273,7 @@ impl EnvironmentInfo {
-             if let Some(path) = std::env::var_os(name)
-                 .filter(|path| !path.is_empty())
-                 .filter(|path| cfg!(unix) || std::path::Path::new(path).is_absolute())
--                .and_then(&normalize_temp_path)
-+                .and_then(normalize_temp_path)
-                 && !temporary_directories.contains(&path)
-             {
-                 temporary_directories.push(path);
-diff --git a/codex-rs/exec/src/lib.rs b/codex-rs/exec/src/lib.rs
-index 0a6a5cb..6b1517c 100644
---- a/codex-rs/exec/src/lib.rs
-+++ b/codex-rs/exec/src/lib.rs
-@@ -2378,8 +2378,10 @@ fn decode_utf16(
-     }
- 
-     let units: Vec<u16> = input
--        .chunks_exact(2)
--        .map(|chunk| decode_unit([chunk[0], chunk[1]]))
-+        .as_chunks::<2>()
-+        .0
-+        .iter()
-+        .map(|chunk| decode_unit(*chunk))
-         .collect();
- 
-     String::from_utf16(&units).map_err(|_| PromptDecodeError::InvalidUtf16 { encoding })
-diff --git a/codex-rs/ext/skills/src/provider/executor.rs b/codex-rs/ext/skills/src/provider/executor.rs
-index bb16a39..ee1278b 100644
---- a/codex-rs/ext/skills/src/provider/executor.rs
-+++ b/codex-rs/ext/skills/src/provider/executor.rs
-@@ -330,10 +330,10 @@ async fn read_bounded_text(
-     let mut stream = file_system
-         .read_file_stream(path)
-         .await
--        .map_err(&read_error)?;
-+        .map_err(read_error)?;
-     let mut contents = Vec::new();
-     while let Some(chunk) = stream.next().await {
--        let chunk = chunk.map_err(&read_error)?;
-+        let chunk = chunk.map_err(read_error)?;
-         if contents.len().saturating_add(chunk.len()) > MAX_SKILL_RESOURCE_CONTENT_BYTES {
-             return Err(SkillProviderError::new(format!(
-                 "executor skill resource {resource} exceeds {MAX_SKILL_RESOURCE_CONTENT_BYTES} bytes"
-diff --git a/codex-rs/external-agent-migration/src/mcp.rs b/codex-rs/external-agent-migration/src/mcp.rs
-index eb820ce..46889af 100644
---- a/codex-rs/external-agent-migration/src/mcp.rs
-+++ b/codex-rs/external-agent-migration/src/mcp.rs
-@@ -222,7 +222,8 @@ fn mcp_server_toml_table(
-         if let Some(env) = server_config.get("env").and_then(JsonValue::as_object) {
-             append_env_config(&mut table, env)?;
-         }
--    } else if let Some(url) = server_config.get("url").and_then(json_string) {
-+    } else {
-+        let url = server_config.get("url").and_then(json_string)?;
-         if !matches!(
-             transport_type,
-             None | Some("http") | Some("streamable_http")
-@@ -236,8 +237,6 @@ fn mcp_server_toml_table(
-         if let Some(headers) = server_config.get("headers").and_then(JsonValue::as_object) {
-             append_header_config(&mut table, headers)?;
-         }
--    } else {
--        return None;
-     }
- 
-     Some(table)
-diff --git a/codex-rs/otel/tests/suite/otlp_http_loopback.rs b/codex-rs/otel/tests/suite/otlp_http_loopback.rs
-index 44b73bd..9b9ed52 100644
---- a/codex-rs/otel/tests/suite/otlp_http_loopback.rs
-+++ b/codex-rs/otel/tests/suite/otlp_http_loopback.rs
-@@ -296,17 +296,17 @@ fn otlp_http_exporter_honors_cumulative_temporality_env() -> Result<()> {
-     assert!(
-         body.contains("codex.turns"),
-         "expected metric name not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains("codex.active"),
-         "expected gauge not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains("\"codex.api_request\""),
-         "expected API-request counter not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains(EXEC_SERVER_CLIENT_REQUEST_COUNT_METRIC),
-@@ -315,47 +315,47 @@ fn otlp_http_exporter_honors_cumulative_temporality_env() -> Result<()> {
-     assert!(
-         body.contains("\"codex.api_request.duration_ms\""),
-         "expected API-request duration not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains("\"codex.conversation.turn.count\""),
-         "expected conversation turn count not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains("\"codex.responses_api_engine_iapi_ttft.duration_ms\""),
-         "expected engine IAPI TTFT duration not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains("\"codex.responses_api_engine_service_tbt.duration_ms\""),
-         "expected engine service TBT duration not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains("\"codex.responses_api_engine_service_ttft.duration_ms\""),
-         "expected engine service TTFT duration not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains("\"codex.tool.call\""),
-         "expected tool-call counter not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains("\"codex.turn.token_usage\""),
-         "expected turn-token histogram not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains("\"codex.tool.call.duration_ms\""),
-         "expected tool-call duration not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains("component") && body.contains("test"),
-         "expected gauge tag not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
- 
-     Ok(())
-@@ -449,7 +449,7 @@ fn otlp_http_exporter_sends_logs_to_collector()
-     assert!(
-         body.contains("codex.test.log_exported"),
-         "expected exported log event not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     Ok(())
- }
-@@ -609,22 +609,22 @@ fn otlp_http_exporter_sends_traces_to_collector()
-     assert!(
-         body.contains("trace-loopback"),
-         "expected span name not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains("codex-cli"),
-         "expected service name not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains("test.configured_attribute") && body.contains("configured-value"),
-         "expected configured span attribute not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains("codex.test.trace_event"),
-         "expected trace event not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
- 
-     Ok(())
-@@ -733,12 +733,12 @@ async fn otlp_http_exporter_sends_traces_to_collector_with_bounded_shutdown_in_t
-     assert!(
-         body.contains("trace-loopback-tokio"),
-         "expected span name not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains("codex-cli"),
-         "expected service name not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
- 
-     Ok(())
-@@ -935,12 +935,12 @@ fn otlp_http_exporter_sends_traces_to_collector_in_current_thread_tokio_runtime(
-     assert!(
-         body.contains("trace-loopback-current-thread"),
-         "expected span name not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
-     assert!(
-         body.contains("codex-cli"),
-         "expected service name not found; body prefix: {}",
--        &body.chars().take(2000).collect::<String>()
-+        body.chars().take(2000).collect::<String>()
-     );
- 
-     Ok(())
-diff --git a/codex-rs/rust-toolchain.toml b/codex-rs/rust-toolchain.toml
-index 910c651..d73899d 100644
---- a/codex-rs/rust-toolchain.toml
-+++ b/codex-rs/rust-toolchain.toml
-@@ -1,3 +1,3 @@
- [toolchain]
--channel = "1.95.0"
-+channel = "1.99.1"
- components = ["clippy", "rustfmt", "rust-src"]
-diff --git a/codex-rs/sandboxing/src/seatbelt_tests.rs b/codex-rs/sandboxing/src/seatbelt_tests.rs
-index b5034bc..0d69bf9 100644
---- a/codex-rs/sandboxing/src/seatbelt_tests.rs
-+++ b/codex-rs/sandboxing/src/seatbelt_tests.rs
-@@ -2031,7 +2031,7 @@ fn create_seatbelt_args_with_read_only_git_and_codex_subpaths() {
-     assert!(
-         !output.status.success(),
-         "command to write {} should fail under seatbelt",
--        &config_toml.display()
-+        config_toml.display()
-     );
-     assert_seatbelt_denied(&output.stderr, &config_toml);
- 
-@@ -2069,7 +2069,7 @@ fn create_seatbelt_args_with_read_only_git_and_codex_subpaths() {
-     assert!(
-         !output.status.success(),
-         "command to write {} should fail under seatbelt",
--        &pre_commit_hook.display()
-+        pre_commit_hook.display()
-     );
-     assert_seatbelt_denied(&output.stderr, &pre_commit_hook);
- 
-@@ -2107,7 +2107,7 @@ fn create_seatbelt_args_with_read_only_git_and_codex_subpaths() {
-     assert!(
-         output.status.success(),
-         "command to write {} should succeed under seatbelt",
--        &allowed_file.display()
-+        allowed_file.display()
-     );
-     assert_eq!(
-         "this is allowed\n",
 diff --git a/codex-rs/scripts/apple-linker.sh b/codex-rs/scripts/apple-linker.sh
 new file mode 100755
-index 0000000..b2360a4
+index 0000000000..b2360a4fa5
 --- /dev/null
 +++ b/codex-rs/scripts/apple-linker.sh
 @@ -0,0 +1,25 @@
@@ -1822,320 +906,6 @@ index 0000000..b2360a4
 +	cat "$log" >&2
 +fi
 +exit "$status"
-diff --git a/codex-rs/scripts/setup-windows.ps1 b/codex-rs/scripts/setup-windows.ps1
-index a8fe0c2..9567b29 100644
---- a/codex-rs/scripts/setup-windows.ps1
-+++ b/codex-rs/scripts/setup-windows.ps1
-@@ -179,7 +179,7 @@ if (-not (Ensure-Command 'cargo')) {
- Write-Host "==> Configuring Rust toolchain per rust-toolchain.toml" -ForegroundColor Cyan
- 
- # Pin to the workspace toolchain and install components
--$toolchain = '1.95.0'
-+$toolchain = '1.99.1'
- & rustup toolchain install $toolchain --profile minimal | Out-Host
- & rustup default $toolchain | Out-Host
- & rustup component add clippy rustfmt rust-src --toolchain $toolchain | Out-Host
-diff --git a/codex-rs/shell-command/src/bash.rs b/codex-rs/shell-command/src/bash.rs
-index ddd5807..2be91e6 100644
---- a/codex-rs/shell-command/src/bash.rs
-+++ b/codex-rs/shell-command/src/bash.rs
-@@ -88,11 +88,7 @@ pub fn try_parse_word_only_commands_sequence(tree: &Tree, src: &str) -> Option<V
- 
-     let mut commands = Vec::new();
-     for node in command_nodes {
--        if let Some(words) = parse_plain_command_from_node(node, src) {
--            commands.push(words);
--        } else {
--            return None;
--        }
-+        commands.push(parse_plain_command_from_node(node, src)?);
-     }
-     Some(commands)
- }
-diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index a0730e3..d678e6c 100644
---- a/codex-rs/tui/src/app/reconnect.rs
-+++ b/codex-rs/tui/src/app/reconnect.rs
-@@ -135,7 +135,7 @@ pub(super) async fn reconnect(
-         }
-     }
-     tracing::warn!(stage, "automatic reconnect timed out");
--    color_eyre::eyre::bail!("Automatic reconnect timed out while {stage}.")
-+    color_eyre::eyre::bail!("Automatic reconnect timed out while {stage}.");
- }
- 
- impl App {
-diff --git a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
-index 9123904..970e55e 100644
---- a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
-+++ b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
-@@ -1207,7 +1207,7 @@ async fn command_center_new_checkout_and_worktree_preserve_source_and_default_br
-                     return Ok::<_, color_eyre::Report>(());
-                 }
-             }
--            color_eyre::eyre::bail!("permissions menu event stream closed")
-+            color_eyre::eyre::bail!("permissions menu event stream closed");
-         })
-         .await??;
-         app.chat_widget.handle_key_event(KeyCode::Up.into());
-diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index e803fce..38a8a53 100644
---- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-+++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -2085,7 +2085,7 @@ async fn older_external_server_starts_without_unsupported_dynamic_tools_or_histo
- 
-     let starts = recorded_params(&requests, "thread/start");
-     assert_eq!(starts.len(), 6);
--    for attempts in starts.chunks_exact(3) {
-+    for attempts in starts.as_chunks::<3>().0 {
-         assert_eq!(attempts[0]["dynamicTools"][0]["type"], "namespace");
-         assert_eq!(attempts[0]["historyMode"], "paginated");
-         assert_eq!(attempts[1]["dynamicTools"], serde_json::Value::Null);
-diff --git a/codex-rs/tui/src/app/user_verification_tests.rs b/codex-rs/tui/src/app/user_verification_tests.rs
-index ec21bb9..9bf779f 100644
---- a/codex-rs/tui/src/app/user_verification_tests.rs
-+++ b/codex-rs/tui/src/app/user_verification_tests.rs
-@@ -194,7 +194,7 @@ async fn run_verification_rpc_scenario(scenario: RpcScenario) -> color_eyre::Res
-                 }
-             }
-         }
--        color_eyre::eyre::bail!("connection closed before the elicitation response")
-+        color_eyre::eyre::bail!("connection closed before the elicitation response");
-     });
-     let client = crate::connect_remote_app_server(endpoint).await?;
-     let mode = if scenario == RpcScenario::RemoteWorkspace {
-diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
-index 03ede03..67a2917 100644
---- a/codex-rs/tui/src/app_backtrack.rs
-+++ b/codex-rs/tui/src/app_backtrack.rs
-@@ -676,7 +676,7 @@ pub(crate) fn backtrack_revert_before_turn_id(
-         }
-     }
- 
--    bail!("the selected prompt was not found in the persisted thread")
-+    bail!("the selected prompt was not found in the persisted thread");
- }
- 
- /// Returns whether a turn is the reconstructed inline-review child with duplicated prompt inputs.
-diff --git a/codex-rs/tui/src/app_server_connection.rs b/codex-rs/tui/src/app_server_connection.rs
-index 31d6f52..ef4de92 100644
---- a/codex-rs/tui/src/app_server_connection.rs
-+++ b/codex-rs/tui/src/app_server_connection.rs
-@@ -17,7 +17,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
- pub(crate) async fn connect(target: &AppServerTarget) -> color_eyre::Result<AppServerClient> {
-     match target {
-         AppServerTarget::Embedded => {
--            color_eyre::eyre::bail!("embedded sessions have no remote connection")
-+            color_eyre::eyre::bail!("embedded sessions have no remote connection");
-         }
-         #[cfg(windows)]
-         AppServerTarget::LocalDaemon {
-diff --git a/codex-rs/tui/src/bottom_pane/async_questions/layout.rs b/codex-rs/tui/src/bottom_pane/async_questions/layout.rs
-index 327d1e9..43da721 100644
---- a/codex-rs/tui/src/bottom_pane/async_questions/layout.rs
-+++ b/codex-rs/tui/src/bottom_pane/async_questions/layout.rs
-@@ -52,9 +52,8 @@ impl AsyncQuestions {
-         let mut spacer_after_input = 0;
-         let progress_height;
-         let footer_lines;
--        let notes_height;
- 
--        if has_options {
-+        let notes_height = if has_options {
-             let min_options_height = remaining.min(1);
-             // Reserve hints and spacers while retaining a row for the selected option.
-             let reserved = footer_pref + progress_pref + DESIRED_SPACERS_BETWEEN_SECTIONS;
-@@ -71,7 +70,7 @@ impl AsyncQuestions {
-             spacer_after_question = u16::from(remaining > 0);
-             remaining -= spacer_after_question;
-             options_height += remaining.min(full_options_height.saturating_sub(options_height));
--            notes_height = 0;
-+            0
-         } else {
-             // Freeform answers take their preferred input height before hints and progress.
-             let preferred_notes = self
-@@ -90,10 +89,8 @@ impl AsyncQuestions {
-             // Drop padding before input or prompt content in a constrained viewport.
-             spacer_before_question = u16::from(remaining >= 2 && self.unanswered_count() > 1);
-             spacer_after_question = u16::from(remaining >= 1);
--            notes_height = min_notes + preferred_notes + remaining
--                - spacer_before_question
--                - spacer_after_question;
--        }
-+            min_notes + preferred_notes + remaining - spacer_before_question - spacer_after_question
-+        };
- 
-         let mut y = area.y;
-         let mut take_rows = |height| {
-diff --git a/codex-rs/tui/src/bottom_pane/list_selection_view.rs b/codex-rs/tui/src/bottom_pane/list_selection_view.rs
-index 6dca72b..4397175 100644
---- a/codex-rs/tui/src/bottom_pane/list_selection_view.rs
-+++ b/codex-rs/tui/src/bottom_pane/list_selection_view.rs
-@@ -1119,7 +1119,7 @@ impl ListSelectionView {
-             None
-         }
-         .or_else(|| self.footer_note.clone());
--        let mut lines = note.map(&wrap).unwrap_or_default();
-+        let mut lines = note.map(wrap).unwrap_or_default();
-         if self.reserve_result_rows && show_selected_description {
-             let height = self
-                 .items
-diff --git a/codex-rs/tui/src/bottom_pane/request_user_input/snapshots/codex_tui__bottom_pane__request_user_input__render__tests__request_user_input_halfwidth_sound_marks_truncation.snap b/codex-rs/tui/src/bottom_pane/request_user_input/snapshots/codex_tui__bottom_pane__request_user_input__render__tests__request_user_input_halfwidth_sound_marks_truncation.snap
-index 4dc0fc1..1efcc1a 100644
---- a/codex-rs/tui/src/bottom_pane/request_user_input/snapshots/codex_tui__bottom_pane__request_user_input__render__tests__request_user_input_halfwidth_sound_marks_truncation.snap
-+++ b/codex-rs/tui/src/bottom_pane/request_user_input/snapshots/codex_tui__bottom_pane__request_user_input__render__tests__request_user_input_halfwidth_sound_marks_truncation.snap
-@@ -22,12 +22,12 @@ Buffer {
- [
-     Line::from_iter([
-         Span::from("ab").bold(),
--        Span::from("ｶ\u{ff9e}").cyan(),
-+        Span::from("ｶﾞ").cyan(),
-         Span::from("…").cyan(),
-     ]),
-     Line::from_iter([
-         Span::from("xy").bold(),
--        Span::from("ﾊ\u{ff9f}").magenta(),
-+        Span::from("ﾊﾟ").magenta(),
-         Span::from("…").magenta(),
-     ]),
- ]
-diff --git a/codex-rs/tui/src/pager_overlay.rs b/codex-rs/tui/src/pager_overlay.rs
-index 43fb410..dff8a56 100644
---- a/codex-rs/tui/src/pager_overlay.rs
-+++ b/codex-rs/tui/src/pager_overlay.rs
-@@ -150,7 +150,9 @@ fn render_navigation_hints(area: Rect, buf: &mut Buffer, keymap: &PagerKeymap) {
-         ("jump_bottom", &keymap.jump_bottom),
-     ];
-     let hints = actions
--        .chunks_exact(2)
-+        .as_chunks::<2>()
-+        .0
-+        .iter()
-         .zip(["to scroll", "to page", "to jump"])
-         .map(|(actions, description)| {
-             (
-diff --git a/codex-rs/tui/src/pets/sixel.rs b/codex-rs/tui/src/pets/sixel.rs
-index 624fd7b..c21ed65 100644
---- a/codex-rs/tui/src/pets/sixel.rs
-+++ b/codex-rs/tui/src/pets/sixel.rs
-@@ -216,7 +216,7 @@ struct Palette {
- impl Palette {
-     fn from_rgba(rgba: &[u8]) -> Self {
-         let mut used = [false; PALETTE_COLOR_COUNT];
--        for pixel in rgba.chunks_exact(4) {
-+        for pixel in rgba.as_chunks::<4>().0 {
-             if pixel[3] < TRANSPARENT_ALPHA_THRESHOLD {
-                 continue;
-             }
-diff --git a/codex-rs/utils/path-uri/src/api_path_string.rs b/codex-rs/utils/path-uri/src/api_path_string.rs
-index b2ecdf0..85e577d 100644
---- a/codex-rs/utils/path-uri/src/api_path_string.rs
-+++ b/codex-rs/utils/path-uri/src/api_path_string.rs
-@@ -263,8 +263,10 @@ fn render_windows_opaque_fallback(path_bytes: &[u8]) -> Option<String> {
-         return None;
-     }
-     let path_wide = path_bytes
--        .chunks_exact(2)
--        .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]]))
-+        .as_chunks::<2>()
-+        .0
-+        .iter()
-+        .map(|bytes| u16::from_le_bytes(*bytes))
-         .collect::<Vec<_>>();
- 
-     // Windows absolute paths either have a rooted drive prefix (`C:\\`) or a
-diff --git a/codex-rs/utils/path-uri/src/lib.rs b/codex-rs/utils/path-uri/src/lib.rs
-index 7a42363..4e6e0a2 100644
---- a/codex-rs/utils/path-uri/src/lib.rs
-+++ b/codex-rs/utils/path-uri/src/lib.rs
-@@ -587,8 +587,10 @@ impl PathUri {
-                 use std::os::windows::ffi::OsStringExt;
-                 path_bytes.len().is_multiple_of(2).then(|| {
-                     let path_wide = path_bytes
--                        .chunks_exact(2)
--                        .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]]))
-+                        .as_chunks::<2>()
-+                        .0
-+                        .iter()
-+                        .map(|&pair| u16::from_le_bytes(pair))
-                         .collect::<Vec<_>>();
-                     std::path::PathBuf::from(std::ffi::OsString::from_wide(&path_wide))
-                 })
-@@ -819,8 +821,10 @@ fn infer_opaque_path_convention(path_bytes: &[u8]) -> Option<PathConvention> {
-     }
- 
-     let mut path_wide = path_bytes
--        .chunks_exact(2)
--        .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]]));
-+        .as_chunks::<2>()
-+        .0
-+        .iter()
-+        .map(|bytes| u16::from_le_bytes(*bytes));
-     let first = path_wide.next()?;
-     let second = path_wide.next()?;
-     let has_drive = u8::try_from(first).is_ok_and(|drive| drive.is_ascii_alphabetic())
-diff --git a/codex-rs/utils/stream-parser/src/inline_hidden_tag.rs b/codex-rs/utils/stream-parser/src/inline_hidden_tag.rs
-index 0e0d44b..ccb08d8 100644
---- a/codex-rs/utils/stream-parser/src/inline_hidden_tag.rs
-+++ b/codex-rs/utils/stream-parser/src/inline_hidden_tag.rs
-@@ -92,7 +92,7 @@ where
-             .iter()
-             .map(|spec| longest_suffix_prefix_len(pending, spec.open))
-             .max()
--            .map_or(0, std::convert::identity)
-+            .unwrap_or(0)
-     }
- 
-     fn push_visible_prefix(out: &mut StreamTextChunk<ExtractedInlineTag<T>>, pending: &str) {
-diff --git a/codex-rs/voice-host/src/input_channel_tests.rs b/codex-rs/voice-host/src/input_channel_tests.rs
-index e3c7807..316078d 100644
---- a/codex-rs/voice-host/src/input_channel_tests.rs
-+++ b/codex-rs/voice-host/src/input_channel_tests.rs
-@@ -18,8 +18,10 @@ fn microphone_selection_excludes_playback_channels() {
-     unplugged[0] = 0.0;
-     let interleaved = [plugged_in, unplugged].concat();
-     let captured: Vec<_> = interleaved
--        .chunks_exact(/*chunk_size*/ 16)
--        .map(|frame| source.sample(frame))
-+        .as_chunks::<16>()
-+        .0
-+        .iter()
-+        .map(|frame| source.sample(frame.as_slice()))
-         .collect();
-     assert_eq!(captured, vec![0.25, 0.0]);
- }
-diff --git a/codex-rs/voice-host/src/playback.rs b/codex-rs/voice-host/src/playback.rs
-index 199abfa..2f98c3b 100644
---- a/codex-rs/voice-host/src/playback.rs
-+++ b/codex-rs/voice-host/src/playback.rs
-@@ -67,8 +67,8 @@ impl PlaybackWriter {
-             at: Instant::now(),
-             generation: self.epoch,
-         };
--        for (sample, bytes) in frame.samples.iter_mut().zip(bytes.chunks_exact(4)) {
--            *sample = f32::from_le_bytes(bytes.try_into().map_err(|_| "invalid speaker buffer")?);
-+        for (sample, bytes) in frame.samples.iter_mut().zip(bytes.as_chunks::<4>().0) {
-+            *sample = f32::from_le_bytes(*bytes);
-             if !sample.is_finite() {
-                 return Err("invalid speaker sample");
-             }
-diff --git a/codex-rs/websocket-auth/src/lib.rs b/codex-rs/websocket-auth/src/lib.rs
-index 5a062ff..810c445 100644
---- a/codex-rs/websocket-auth/src/lib.rs
-+++ b/codex-rs/websocket-auth/src/lib.rs
-@@ -444,9 +444,9 @@ fn sha256_digest_arg(flag_name: &str, value: &str) -> anyhow::Result<[u8; 32]> {
-     }
- 
-     let mut digest = [0u8; 32];
--    for (index, pair) in trimmed.as_bytes().chunks_exact(2).enumerate() {
--        let high = hex_nibble(flag_name, pair[0])?;
--        let low = hex_nibble(flag_name, pair[1])?;
-+    for (index, [high, low]) in trimmed.as_bytes().as_chunks::<2>().0.iter().enumerate() {
-+        let high = hex_nibble(flag_name, *high)?;
-+        let low = hex_nibble(flag_name, *low)?;
-         digest[index] = (high << 4) | low;
-     }
-     Ok(digest)
 -- 
 2.43.0
 

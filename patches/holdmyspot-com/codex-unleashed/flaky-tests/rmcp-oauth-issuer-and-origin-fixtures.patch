@@ -1,9 +1,14 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 22 Nov 2026 23:12:23 -0500
 Subject: [PATCH] Test RMCP OAuth issuer and endpoint origin validation
 
+---
+ .../src/oauth_client_registration_tests.rs    | 37 +++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
 diff --git a/codex-rs/rmcp-client/src/oauth_client_registration_tests.rs b/codex-rs/rmcp-client/src/oauth_client_registration_tests.rs
-index ca334f346f43214c626a8d8e51ab0c8a875a7cf3..a2c88e279beb839eea2a8a43d4d62962dde73dd6 100644
+index ca334f346f..a2c88e279b 100644
 --- a/codex-rs/rmcp-client/src/oauth_client_registration_tests.rs
 +++ b/codex-rs/rmcp-client/src/oauth_client_registration_tests.rs
 @@ -239,6 +239,43 @@ async fn registration_selection_preserves_dcr_capabilities_and_exact_redirects()
@@ -50,3 +55,6 @@ index ca334f346f43214c626a8d8e51ab0c8a875a7cf3..a2c88e279beb839eea2a8a43d4d62962
  #[test]
  fn legacy_provider_exceptions_require_exact_issuer_and_endpoint_origins() -> Result<()> {
      for (issuer, authorization_endpoint, token_endpoint, accepted) in [
+-- 
+2.43.0
+

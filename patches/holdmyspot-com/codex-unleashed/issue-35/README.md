@@ -1,7 +1,7 @@
 # Background subagent completion
 
 - Issue: [holdmyspot-com/codex-unleashed#35](https://github.com/holdmyspot-com/codex-unleashed/issues/35)
-- Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
+- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
 - Prerequisites: the release queue through `issue-34776/avoid-slow-agent-switching-and-resume.patch`, which registers a neighboring feature in the shared configuration schema.
 - Upstream status: upstream's `wake_on_agent_messages` feature (under development, default off) wakes only a root thread and keeps child completion mail queue-only. It does not preserve mail across an interrupted task start or defer goal continuation to running children, so this series builds on upstream's mailbox reservation instead of enabling that feature.
 

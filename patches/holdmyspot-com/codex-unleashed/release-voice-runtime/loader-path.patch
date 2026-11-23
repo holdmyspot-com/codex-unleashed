@@ -1,4 +1,4 @@
-From 47081968f909fa32b48577945dd1672d1e665e21 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 15 Nov 2026 04:39:39 -0500
 Subject: [PATCH] Fix staged voice helper loader identity
@@ -9,10 +9,10 @@ Subject: [PATCH] Fix staged voice helper loader identity
  2 files changed, 48 insertions(+), 3 deletions(-)
 
 diff --git a/.github/scripts/codex-voice-runtime.sh b/.github/scripts/codex-voice-runtime.sh
-index d276b62..20a3522 100755
+index 7151dad143..9a40d1c572 100755
 --- a/.github/scripts/codex-voice-runtime.sh
 +++ b/.github/scripts/codex-voice-runtime.sh
-@@ -422,6 +422,8 @@ main() {
+@@ -434,6 +434,8 @@ main() {
    local helper_commit
    local helper_bytes
    local helper_name
@@ -21,7 +21,7 @@ index d276b62..20a3522 100755
    local argument
  
    if [[ "$operation" == build ]]; then :; else
-@@ -575,7 +577,25 @@ main() {
+@@ -587,7 +589,25 @@ main() {
    fi
    run_logged 'voice runtime sealing' "$evidence_root/seal.stdout.log" "$evidence_root/seal.stderr.log" \
      python "$upstream_root/third_party/voice/release_runtime.py" seal --target "$voice_target" --output "$release_root/runtime"
@@ -49,10 +49,10 @@ index d276b62..20a3522 100755
    fi
    helper_bytes="$(wc -c < "$evidence_root/helper-build-commit.txt" | tr -d '[:space:]')"
 diff --git a/.github/scripts/test-codex-voice-runtime.sh b/.github/scripts/test-codex-voice-runtime.sh
-index 1c6a2e1..6f71e8d 100755
+index 9419cd43ea..53b7bc66be 100755
 --- a/.github/scripts/test-codex-voice-runtime.sh
 +++ b/.github/scripts/test-codex-voice-runtime.sh
-@@ -245,9 +245,13 @@ if [[ "$command" == build ]]; then
+@@ -266,9 +266,13 @@ if [[ "$command" == build ]]; then
      if [[ "$suffix" == windows_* ]]; then helper=bazel-bin/codex-rs/voice-host/codex-voice-host.exe
      else helper=bazel-bin/codex-rs/voice-host/codex-voice-host; fi
      cat > "$helper" <<'HELPER'
@@ -68,7 +68,7 @@ index 1c6a2e1..6f71e8d 100755
  exit 94
  HELPER
      chmod +x "$helper"
-@@ -341,6 +345,9 @@ run_producer() {
+@@ -363,6 +367,9 @@ run_producer() {
    FAKE_GIT_COMMIT="$EXPECTED_COMMIT" \
    FAKE_CHANGED_COMMIT="$CHANGED_COMMIT" \
    FAKE_HELPER_COMMIT="$commit" \
@@ -78,7 +78,7 @@ index 1c6a2e1..6f71e8d 100755
    FAKE_BUILD_ARGUMENTS="$TEST_ROOT/build-arguments.txt" \
    FAKE_QUERY_ARGUMENTS="$TEST_ROOT/query-arguments.txt" \
    FAKE_QUERY_RUNNER_ARGUMENTS="$TEST_ROOT/query-runner-arguments.txt" \
-@@ -388,6 +395,7 @@ check_target_mapping() {
+@@ -410,6 +417,7 @@ check_target_mapping() {
    local name="mapping-${target}"
    local root
    local result="$TEST_ROOT/$name result"
@@ -86,7 +86,7 @@ index 1c6a2e1..6f71e8d 100755
  
    if [[ "$machine" == aarch64 ]]; then
      processor_architecture=ARM64
-@@ -405,6 +413,23 @@ check_target_mapping() {
+@@ -427,6 +435,23 @@ check_target_mapping() {
      unset VOICE_WINDOWS_BAZEL_REPOSITORY || true
    fi
    run_producer "$root" "$target" "$runner_os" "$machine" "$EXPECTED_COMMIT" "$result" || fail "producer rejected valid target $target"

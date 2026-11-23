@@ -1,4 +1,4 @@
-From 8ec28ccafee78394ba5489533cb6c5a00f0df440 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 22 Nov 2026 19:48:15 -0500
 Subject: [PATCH] test: cover the stdio line limit for local and executor
@@ -13,10 +13,10 @@ Check that a JSON-RPC line exactly at MAX_MCP_STDIO_LINE_BYTES is accepted and t
  create mode 100644 codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
 
 diff --git a/codex-rs/rmcp-client/src/bounded_stdio_transport.rs b/codex-rs/rmcp-client/src/bounded_stdio_transport.rs
-index dc065995f..b76071ade 100644
+index 3a6164d03c..f3af7b6b8e 100644
 --- a/codex-rs/rmcp-client/src/bounded_stdio_transport.rs
 +++ b/codex-rs/rmcp-client/src/bounded_stdio_transport.rs
-@@ -146,3 +146,7 @@ impl Transport<RoleClient> for BoundedStdioTransport {
+@@ -147,3 +147,7 @@ impl Transport<RoleClient> for BoundedStdioTransport {
          Ok(())
      }
  }
@@ -26,7 +26,7 @@ index dc065995f..b76071ade 100644
 +mod tests;
 diff --git a/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs b/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
 new file mode 100644
-index 000000000..b3210d836
+index 0000000000..b3210d8361
 --- /dev/null
 +++ b/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
 @@ -0,0 +1,68 @@
@@ -99,7 +99,7 @@ index 000000000..b3210d836
 +    assert!(message.is_none());
 +}
 diff --git a/codex-rs/rmcp-client/src/executor_process_transport_tests.rs b/codex-rs/rmcp-client/src/executor_process_transport_tests.rs
-index 82fdaddcc..958bdec9b 100644
+index 82fdaddcc9..958bdec9bd 100644
 --- a/codex-rs/rmcp-client/src/executor_process_transport_tests.rs
 +++ b/codex-rs/rmcp-client/src/executor_process_transport_tests.rs
 @@ -499,3 +499,62 @@ fn accepts_input_larger_than_limit_when_each_line_is_bounded() {

@@ -1,4 +1,4 @@
-From 57be2f06abf591d08796f9dcedea13d901aa5d82 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 21 Nov 2026 09:13:49 -0500
 Subject: [PATCH] Reuse verified pre-strip executables in Linux package builds
@@ -11,7 +11,7 @@ Subject: [PATCH] Reuse verified pre-strip executables in Linux package builds
  4 files changed, 117 insertions(+), 6 deletions(-)
 
 diff --git a/.github/actions/build-cargo-package-binaries/action.yml b/.github/actions/build-cargo-package-binaries/action.yml
-index 96b0d8f..ffdd408 100644
+index 6ce8b47f02..0b4ee839f9 100644
 --- a/.github/actions/build-cargo-package-binaries/action.yml
 +++ b/.github/actions/build-cargo-package-binaries/action.yml
 @@ -10,6 +10,10 @@ inputs:
@@ -25,7 +25,7 @@ index 96b0d8f..ffdd408 100644
    prepared-musl-zig:
      description: Verified Zig executable from the caller's completed musl build preparation.
  
-@@ -107,10 +111,19 @@ runs:
+@@ -108,10 +112,19 @@ runs:
          BUILD_MODE: ${{ inputs.build-mode }}
          BINARIES: ${{ inputs.binaries }}
          PACKAGE_ACTION_PATH: ${{ github.action_path }}
@@ -45,7 +45,7 @@ index 96b0d8f..ffdd408 100644
          bash "${package_source_root}/.github/scripts/codex-package-operations.sh" \
            build-binaries \
            --target "$TARGET" \
-@@ -118,6 +131,7 @@ runs:
+@@ -119,6 +132,7 @@ runs:
            --build-mode "$BUILD_MODE" \
            --binaries "$BINARIES" \
            --target-dir "$CARGO_TARGET_DIR" \
@@ -55,7 +55,7 @@ index 96b0d8f..ffdd408 100644
          cat "${build_result}/export.env" >> "$GITHUB_ENV"
          echo "CODEX_PACKAGE_BUILD_RESULT=${build_result}" >> "$GITHUB_ENV"
 diff --git a/.github/actions/build-codex-packages/action.yml b/.github/actions/build-codex-packages/action.yml
-index 86e2e3e..3aa2d9b 100644
+index 86e2e3e01f..3aa2d9bf02 100644
 --- a/.github/actions/build-codex-packages/action.yml
 +++ b/.github/actions/build-codex-packages/action.yml
 @@ -13,6 +13,10 @@ inputs:
@@ -99,7 +99,7 @@ index 86e2e3e..3aa2d9b 100644
        shell: bash
        working-directory: codex-rs
 diff --git a/.github/scripts/codex-package-operations.sh b/.github/scripts/codex-package-operations.sh
-index 9a5bb0f..8143ddb 100644
+index 5fdac81055..d571d85992 100644
 --- a/.github/scripts/codex-package-operations.sh
 +++ b/.github/scripts/codex-package-operations.sh
 @@ -42,6 +42,8 @@ parse_arguments() {
@@ -195,7 +195,7 @@ index 9a5bb0f..8143ddb 100644
  }
  
 diff --git a/.github/scripts/test-codex-package-operations.sh b/.github/scripts/test-codex-package-operations.sh
-index c4dd348..7b55431 100644
+index 44c58f1104..a07179c2da 100644
 --- a/.github/scripts/test-codex-package-operations.sh
 +++ b/.github/scripts/test-codex-package-operations.sh
 @@ -221,6 +221,50 @@ assert values[b"STABLE_GIT_COMMIT"] == b"fixture-commit-123"
@@ -249,3 +249,6 @@ index c4dd348..7b55431 100644
    result_dir="${test_root}/Windows build result"
    bash "$operations_script" build-binaries \
      --target x86_64-pc-windows-msvc --runner-os Windows --build-mode release \
+-- 
+2.43.0
+

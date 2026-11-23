@@ -1,42 +1,28 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 10:21:28 -0500
-Subject: [PATCH 35/54] Give the Wine PowerShell PTY test one timeout budget
+Subject: [PATCH] Give the Wine PowerShell PTY test one timeout budget
 
-The wine-test-support unit-test target had a 60 second Bazel timeout. Its PowerShell
-PTY test copies a runtime into a fresh Wine prefix, boots Wine, cold-starts pwsh,
-then waits up to 30 seconds more before a 10 second wineserver teardown. On a loaded
-runner the sum exceeds 60 seconds and Bazel kills the target.
+The wine-test-support unit-test target runs under the moderate (300 second)
+Bazel timeout. Its PowerShell PTY test copies a runtime into a fresh Wine
+prefix, boots Wine, cold-starts pwsh, then waits up to 90 seconds more before a
+10 second wineserver teardown. On a loaded runner that inner deadline expires
+before Bazel's does.
 
-The target now uses the moderate (300 second) timeout and the inner 30 second
-deadline is gone, so the Bazel timeout is the only bound on a hang.
+The inner deadline is gone, so the Bazel timeout is the only bound on a hang.
 ---
- bazel/rules/testing/wine/BUILD.bazel      | 2 +-
  bazel/rules/testing/wine/src/lib_tests.rs | 9 ++++-----
- 2 files changed, 5 insertions(+), 6 deletions(-)
+ 1 file changed, 4 insertions(+), 5 deletions(-)
 
-diff --git a/bazel/rules/testing/wine/BUILD.bazel b/bazel/rules/testing/wine/BUILD.bazel
-index 4bd9acf..9854d56 100644
---- a/bazel/rules/testing/wine/BUILD.bazel
-+++ b/bazel/rules/testing/wine/BUILD.bazel
-@@ -42,7 +42,7 @@ rust_binary(
- 
- wine_rust_test(
-     name = "wine-test-support-unit-tests",
--    timeout = "short",
-+    timeout = "moderate",
-     crate = ":wine_test_support",
-     windows_binaries = {
-         "wine-smoke": ":windows-smoke",
 diff --git a/bazel/rules/testing/wine/src/lib_tests.rs b/bazel/rules/testing/wine/src/lib_tests.rs
-index 4dc0431..fa813f7 100644
+index 21f85d4c17..fa813f7826 100644
 --- a/bazel/rules/testing/wine/src/lib_tests.rs
 +++ b/bazel/rules/testing/wine/src/lib_tests.rs
 @@ -370,7 +370,8 @@ async fn pinned_powershell_runs_under_wine_with_a_pty() -> Result<()> {
          codex_utils_pty::ChildFds::Inherited(&[]),
      )
      .await?;
--    let command_result = timeout(Duration::from_secs(30), async {
+-    let command_result = timeout(Duration::from_secs(90), async {
 +    // No inner deadline: Bazel's test timeout bounds a hang, and a fixed budget here fails when the runner is slow.
 +    let command_result = async {
          let stdout = async {

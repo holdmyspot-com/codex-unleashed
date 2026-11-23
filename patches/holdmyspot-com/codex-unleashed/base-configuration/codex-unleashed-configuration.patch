@@ -1,8 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 08:53:58 -0500
-Subject: [PATCH 04/54] Add a shared configuration table for Codex Unleashed
- settings
+Subject: [PATCH] Add a shared configuration table for Codex Unleashed settings
 
 Codex Unleashed features need project settings, and each feature should
 own its typed fields instead of adding top-level keys. The new optional
@@ -17,11 +16,11 @@ table so the schema fixture test keeps matching.
  4 files changed, 62 insertions(+)
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index cd1c400..43b9cde 100644
+index c485a2e614..69962b96cb 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
-@@ -162,10 +162,20 @@ pub struct FeatureToggleToml {
-     pub enabled: Option<bool>,
+@@ -171,10 +171,20 @@ pub struct RolloutTraceToml {
+     pub max_bytes: Option<u64>,
  }
  
 +/// Project settings for Codex Unleashed features.
@@ -42,7 +41,7 @@ index cd1c400..43b9cde 100644
      pub model: Option<String>,
      /// Default Daybreak preference for new threads and non-interactive turns.
 diff --git a/codex-rs/config/src/types_tests.rs b/codex-rs/config/src/types_tests.rs
-index 5a78075..e844413 100644
+index 5a78075bfe..e844413670 100644
 --- a/codex-rs/config/src/types_tests.rs
 +++ b/codex-rs/config/src/types_tests.rs
 @@ -82,6 +82,19 @@ fn mouse_scroll_speed_rejects_nonpositive_and_nonfinite_values() {
@@ -66,10 +65,10 @@ index 5a78075..e844413 100644
  fn deserialize_skill_config_with_name_selector() {
      let cfg: SkillConfig = toml::from_str(
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index f5149c6..ed55b72 100644
+index b99d4360b0..39432025f0 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -741,6 +741,11 @@
+@@ -722,6 +722,11 @@
        },
        "type": "object"
      },
@@ -81,9 +80,9 @@ index f5149c6..ed55b72 100644
      "ComputerUseConfigToml": {
        "additionalProperties": false,
        "properties": {
-@@ -7474,6 +7479,14 @@
+@@ -8036,6 +8041,14 @@
        ],
-       "description": "Cloud-owned feature settings."
+       "description": "Code Mode session settings."
      },
 +    "codex_unleashed": {
 +      "allOf": [
@@ -97,10 +96,10 @@ index f5149c6..ed55b72 100644
        "description": "Compact prompt used for history compaction.",
        "type": "string"
 diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
-index 16811b4..b7fc813 100644
+index 71c3728646..634b773d48 100644
 --- a/codex-rs/core/src/config/config_loader_tests.rs
 +++ b/codex-rs/core/src/config/config_loader_tests.rs
-@@ -4163,6 +4163,32 @@ wire_api = "responses"
+@@ -4173,6 +4173,32 @@ wire_api = "responses"
      Ok(())
  }
  

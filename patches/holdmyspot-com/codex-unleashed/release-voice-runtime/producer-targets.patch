@@ -1,4 +1,4 @@
-From c6ef86b146386e5f31fbe03fc0eb1a06c1ce63a9 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 14 Nov 2026 23:32:05 +0000
 Subject: [PATCH] bugfix: discover configured voice test executables
@@ -14,13 +14,13 @@ feeds so the Windows interpreter does not translate them.
 ---
  .github/scripts/codex-voice-runtime.sh      | 152 ++++++++---
  .github/scripts/test-codex-voice-runtime.sh | 282 +++++++++++++++-----
- third_party/voice/test_windows_crt.py       |  94 ++++++
+ third_party/voice/test_windows_crt.py       |  94 +++++++
  third_party/voice/windows_crt.py            |   5 +-
  4 files changed, 438 insertions(+), 95 deletions(-)
  create mode 100644 third_party/voice/test_windows_crt.py
 
 diff --git a/.github/scripts/codex-voice-runtime.sh b/.github/scripts/codex-voice-runtime.sh
-index 4eb7530..4b0cc38 100755
+index 4eb753048b..4b0cc380d0 100755
 --- a/.github/scripts/codex-voice-runtime.sh
 +++ b/.github/scripts/codex-voice-runtime.sh
 @@ -6,6 +6,11 @@ set -Eeuo pipefail
@@ -225,7 +225,7 @@ index 4eb7530..4b0cc38 100755
      fail "voice runtime receipt sourceCommit does not match $build_commit"
    fi
 diff --git a/.github/scripts/test-codex-voice-runtime.sh b/.github/scripts/test-codex-voice-runtime.sh
-index c9e07f2..1c6ac2e 100755
+index c879eca30f..c5d2f37d7c 100755
 --- a/.github/scripts/test-codex-voice-runtime.sh
 +++ b/.github/scripts/test-codex-voice-runtime.sh
 @@ -71,6 +71,15 @@ assert_build_argument() {
@@ -623,7 +623,7 @@ index c9e07f2..1c6ac2e 100755
  check_failed_case changed-source-after x86_64-unknown-linux-musl Linux x86_64 FAKE_CHANGE_COMMIT_AFTER_BUILD=1
 diff --git a/third_party/voice/test_windows_crt.py b/third_party/voice/test_windows_crt.py
 new file mode 100644
-index 0000000..d3ff440
+index 0000000000..72bd52abeb
 --- /dev/null
 +++ b/third_party/voice/test_windows_crt.py
 @@ -0,0 +1,94 @@
@@ -722,7 +722,7 @@ index 0000000..d3ff440
 +if __name__ == "__main__":
 +    unittest.main()
 diff --git a/third_party/voice/windows_crt.py b/third_party/voice/windows_crt.py
-index a927c1b..2263643 100644
+index a927c1b19e..2263643b61 100644
 --- a/third_party/voice/windows_crt.py
 +++ b/third_party/voice/windows_crt.py
 @@ -71,7 +71,10 @@ def stage(root: Path, target: str, helper: Path):

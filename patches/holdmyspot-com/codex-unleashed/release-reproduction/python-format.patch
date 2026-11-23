@@ -1,3 +1,4 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 18 Nov 2026 12:21:44 -0500
 Subject: [PATCH] scripts: format package archive sources
@@ -5,10 +6,13 @@ Subject: [PATCH] scripts: format package archive sources
 Apply the pinned Ruff formatting to the two files flagged by the formatting gate.
 The change is formatting-only and preserves both Python ASTs.
 Base source manifest: 179c13555d250ced53dddd9a9eb4d3f2230720f482f4a63888cb8f3421376b23.
-
 ---
+ scripts/codex_package/archive.py      | 4 +---
+ scripts/codex_package/test_archive.py | 8 ++++++--
+ 2 files changed, 7 insertions(+), 5 deletions(-)
+
 diff --git a/scripts/codex_package/archive.py b/scripts/codex_package/archive.py
-index 60ef6ff12f808abef1ad1cb3f3e0aae179273cef..b5f1feba7122dbefa2b3ab2d126d6e1bda0e2bc8 100644
+index 60ef6ff12f..b5f1feba71 100644
 --- a/scripts/codex_package/archive.py
 +++ b/scripts/codex_package/archive.py
 @@ -88,9 +88,7 @@ def write_tar_archive(package_dir: Path, archive_path: Path, *, mode: str) -> No
@@ -23,7 +27,7 @@ index 60ef6ff12f808abef1ad1cb3f3e0aae179273cef..b5f1feba7122dbefa2b3ab2d126d6e1b
          archive.add(
              path,
 diff --git a/scripts/codex_package/test_archive.py b/scripts/codex_package/test_archive.py
-index fe1bcbd80d966432e7f43e7965b50fcaf69f839b..d05b7051b24de800fedd4ed43f788a5df857ba20 100644
+index fe1bcbd80d..d05b7051b2 100644
 --- a/scripts/codex_package/test_archive.py
 +++ b/scripts/codex_package/test_archive.py
 @@ -141,7 +141,9 @@ class WriteArchiveTest(unittest.TestCase):
@@ -48,3 +52,6 @@ index fe1bcbd80d966432e7f43e7965b50fcaf69f839b..d05b7051b24de800fedd4ed43f788a5d
  
      def test_resolve_zstd_prints_existing_resolver_argv_as_json(self) -> None:
          result = self.run_archive_command("resolve-zstd")
+-- 
+2.43.0
+

@@ -1,14 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 14 Nov 2026 23:28:45 +0000
 Subject: [PATCH] test: verify installed voice resources survive relocation
 
 Exercise packaged voice resources from the installed directory so
 release verification detects missing or misplaced runtime files.
-
 ---
+ .../tests/installed_package_runtime.rs        | 98 +++++++++++++++++++
+ 1 file changed, 98 insertions(+)
+ create mode 100644 codex-rs/voice-host/tests/installed_package_runtime.rs
+
 diff --git a/codex-rs/voice-host/tests/installed_package_runtime.rs b/codex-rs/voice-host/tests/installed_package_runtime.rs
 new file mode 100644
-index 0000000..9762b98
+index 0000000000..6887a776d4
 --- /dev/null
 +++ b/codex-rs/voice-host/tests/installed_package_runtime.rs
 @@ -0,0 +1,98 @@
@@ -110,3 +114,6 @@ index 0000000..9762b98
 +
 +    Ok(())
 +}
+-- 
+2.43.0
+

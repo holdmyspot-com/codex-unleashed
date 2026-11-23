@@ -1,8 +1,8 @@
 # Keep protected paths in place inside writable MXC roots
 
-- Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`. The
+- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`. The
   patch changes only `codex-rs/mxc-sandbox/src/policy.rs` and `policy_tests.rs`, which no earlier queue entry changes,
-  so it applies after any prefix of the queue. It is queue entry 95 and is listed last.
+  so it applies after any prefix of the queue. It is queue entry 86 and is listed last.
 
 ## Intent
 

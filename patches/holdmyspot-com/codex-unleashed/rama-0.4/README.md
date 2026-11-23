@@ -1,6 +1,7 @@
 # Rama 0.4 port
 
-- Applies to: the CP7 queue through `dependency-upgrades/transitive-updates.patch` (patch 32), which sits on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
+- Applies to: the CP7 queue through `dependency-upgrades/transitive-updates.patch` (patch 32 of that queue), which sat on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
+- Status: left out of the `rust-v0.171.0` queue and not rebased. rama 0.4.0, the only 0.4 release, depends on `rama-crypto` 0.4.0, which pins `time = "=0.3.47"`. `rust-v0.171.0` overrides `sqlx-core` with a git revision (`transact-rs/sqlx` `10462fa`) that requires `time ^0.3.48`, so no `Cargo.lock` resolves both. `codex-network-proxy` stays on rama 0.3.0-alpha.4, and `codex-rs/deny.toml` keeps its Hickory exceptions. Restore the patch when a rama 0.4 release relaxes the `time` pin or upstream drops the `sqlx-core` override.
 - Prerequisites: every earlier patch in the queue, through `dependency-upgrades/transitive-updates.patch`.
 - Patches: `rama-0.4.patch`.
 

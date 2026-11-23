@@ -19,7 +19,7 @@ each timeout fires at its exact deadline.
  2 files changed, 5 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/file-watcher/Cargo.toml b/codex-rs/file-watcher/Cargo.toml
-index 781698794..afb14fcde 100644
+index 7816987947..afb14fcde6 100644
 --- a/codex-rs/file-watcher/Cargo.toml
 +++ b/codex-rs/file-watcher/Cargo.toml
 @@ -20,3 +20,4 @@ tracing = { workspace = true, features = ["log"] }
@@ -28,7 +28,7 @@ index 781698794..afb14fcde 100644
  tempfile = { workspace = true }
 +tokio = { workspace = true, features = ["test-util"] }
 diff --git a/codex-rs/file-watcher/src/file_watcher_tests.rs b/codex-rs/file-watcher/src/file_watcher_tests.rs
-index ecf54cabd..1309ba152 100644
+index 84caf8d082..c257957f70 100644
 --- a/codex-rs/file-watcher/src/file_watcher_tests.rs
 +++ b/codex-rs/file-watcher/src/file_watcher_tests.rs
 @@ -20,7 +20,8 @@ fn notify_event(kind: EventKind, paths: Vec<PathBuf>) -> Event {

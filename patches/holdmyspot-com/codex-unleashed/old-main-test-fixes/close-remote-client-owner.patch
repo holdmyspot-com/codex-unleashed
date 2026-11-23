@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:13 -0500
-Subject: [PATCH 45/54] bugfix: close remote connections when their owning
- client is dropped
+Subject: [PATCH] bugfix: close remote connections when their owning client is
+ dropped
 
 A retained request handle keeps the command channel open after the event
 consumer disappears. Observe the event receiver closing so idle remote
@@ -17,10 +17,10 @@ within the existing two-second deadline while a request handle stays alive.
  2 files changed, 35 insertions(+)
 
 diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
-index 518dfd0..9839de4 100644
+index 1b10ea3cf1..3d8000bbc7 100644
 --- a/codex-rs/app-server-client/src/lib.rs
 +++ b/codex-rs/app-server-client/src/lib.rs
-@@ -1784,6 +1784,33 @@ mod tests {
+@@ -1832,6 +1832,33 @@ mod tests {
          client.shutdown().await.expect("shutdown should complete");
      }
  
@@ -55,7 +55,7 @@ index 518dfd0..9839de4 100644
      async fn remote_notifications_arrive_over_websocket() {
          let (close_tx, close_rx) = tokio::sync::oneshot::channel();
 diff --git a/codex-rs/app-server-client/src/remote.rs b/codex-rs/app-server-client/src/remote.rs
-index c6ac801..9f610b3 100644
+index 5321c0600a..cf08172be1 100644
 --- a/codex-rs/app-server-client/src/remote.rs
 +++ b/codex-rs/app-server-client/src/remote.rs
 @@ -163,6 +163,9 @@ struct RemoteServerMetadata {

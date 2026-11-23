@@ -1,4 +1,4 @@
-From ef4f7ad7e89363c91dcbbc040c1718481fa43aec Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 15 Nov 2026 02:08:07 -0500
 Subject: [PATCH] Fix Dev Drive volume-state detection and reuse a provisioned
@@ -11,7 +11,7 @@ A second setup in the same job used to remove and recreate the owned VHD, which 
  2 files changed, 353 insertions(+), 12 deletions(-)
 
 diff --git a/.github/scripts/setup-dev-drive.ps1 b/.github/scripts/setup-dev-drive.ps1
-index d171231..157aa7a 100644
+index d171231eba..157aa7a13c 100644
 --- a/.github/scripts/setup-dev-drive.ps1
 +++ b/.github/scripts/setup-dev-drive.ps1
 @@ -5,11 +5,161 @@
@@ -218,7 +218,7 @@ index d171231..157aa7a 100644
  
              if (Test-Path $VhdPath) {
 diff --git a/.github/scripts/test-setup-dev-drive-bfs.ps1 b/.github/scripts/test-setup-dev-drive-bfs.ps1
-index f53e10e..15c9896 100644
+index f53e10e839..15c9896653 100644
 --- a/.github/scripts/test-setup-dev-drive-bfs.ps1
 +++ b/.github/scripts/test-setup-dev-drive-bfs.ps1
 @@ -21,7 +21,15 @@ function Reset-TestState {

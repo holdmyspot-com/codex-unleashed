@@ -1,4 +1,4 @@
-From 7a7664741c0a783c2ab13e457d22f4ad7c3d1e46 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 22 Nov 2026 21:05:31 -0500
 Subject: [PATCH] bugfix: stop reading local MCP stdio output after an
@@ -13,11 +13,11 @@ rmcp's Transport::receive returns no error, so the oversized line is still repor
  2 files changed, 71 insertions(+), 12 deletions(-)
 
 diff --git a/codex-rs/rmcp-client/src/bounded_stdio_transport.rs b/codex-rs/rmcp-client/src/bounded_stdio_transport.rs
-index b76071ade..17a92f26e 100644
+index f3af7b6b8e..2c39e4ffeb 100644
 --- a/codex-rs/rmcp-client/src/bounded_stdio_transport.rs
 +++ b/codex-rs/rmcp-client/src/bounded_stdio_transport.rs
-@@ -28,6 +28,10 @@ pub(super) struct BoundedStdioTransport {
-     stdout: BufReader<ChildStdout>,
+@@ -29,6 +29,10 @@ pub(super) struct BoundedStdioTransport {
+     stdout: BufReader<Stdout>,
      pending_line: Vec<u8>,
      program_name: String,
 +    /// Set once a stdout line exceeds [`MAX_MCP_STDIO_LINE_BYTES`]. A closed transport never
@@ -27,7 +27,7 @@ index b76071ade..17a92f26e 100644
  }
  
  impl BoundedStdioTransport {
-@@ -37,13 +41,26 @@ impl BoundedStdioTransport {
+@@ -38,13 +42,26 @@ impl BoundedStdioTransport {
              stdout: BufReader::new(stdout),
              pending_line: Vec::new(),
              program_name,
@@ -41,7 +41,7 @@ index b76071ade..17a92f26e 100644
 +    /// codec would otherwise read the tail of that line.
      pub(super) fn into_legacy_pipes(
          self,
-     ) -> io::Result<(Box<dyn AsyncRead + Send + Unpin>, ChildStdin)> {
+     ) -> io::Result<(Box<dyn AsyncRead + Send + Unpin>, Stdin)> {
 +        if self.closed {
 +            return Err(io::Error::new(
 +                io::ErrorKind::InvalidData,
@@ -54,7 +54,7 @@ index b76071ade..17a92f26e 100644
          let stdin = self
              .stdin
              .try_lock()
-@@ -56,6 +73,9 @@ impl BoundedStdioTransport {
+@@ -57,6 +74,9 @@ impl BoundedStdioTransport {
  
      async fn receive_message(&mut self) -> Option<RxJsonRpcMessage<RoleClient>> {
          loop {
@@ -64,7 +64,7 @@ index b76071ade..17a92f26e 100644
              let bytes = match self.stdout.fill_buf().await {
                  Ok(bytes) => bytes,
                  Err(error) => {
-@@ -82,6 +102,7 @@ impl BoundedStdioTransport {
+@@ -83,6 +103,7 @@ impl BoundedStdioTransport {
                      self.program_name
                  );
                  self.pending_line.clear();
@@ -73,7 +73,7 @@ index b76071ade..17a92f26e 100644
              }
  
 diff --git a/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs b/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
-index b3210d836..8c1978bce 100644
+index b3210d8361..8c1978bce4 100644
 --- a/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
 +++ b/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
 @@ -20,10 +20,18 @@ fn padded_ping(content_len: usize) -> Vec<u8> {

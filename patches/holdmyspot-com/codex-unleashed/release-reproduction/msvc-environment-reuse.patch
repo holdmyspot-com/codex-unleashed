@@ -1,4 +1,4 @@
-From bec7dd32ed8fbb514b61171d29fb22be7994b821 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 16 Nov 2026 22:12:26 -0500
 Subject: [PATCH] bugfix: reuse the MSVC environment that an earlier setup step
@@ -12,7 +12,7 @@ The Windows package job configures the Visual Studio developer environment in pr
  create mode 100644 .github/scripts/test-setup-msvc-env.ps1
 
 diff --git a/.github/actions/setup-msvc-env/setup-msvc-env.ps1 b/.github/actions/setup-msvc-env/setup-msvc-env.ps1
-index e2706d9..f034492 100644
+index e2706d9117..f034492380 100644
 --- a/.github/actions/setup-msvc-env/setup-msvc-env.ps1
 +++ b/.github/actions/setup-msvc-env/setup-msvc-env.ps1
 @@ -69,11 +69,36 @@ $VarsToExport = @(
@@ -58,7 +58,7 @@ index e2706d9..f034492 100644
          continue
 diff --git a/.github/scripts/test-setup-msvc-env.ps1 b/.github/scripts/test-setup-msvc-env.ps1
 new file mode 100644
-index 0000000..552d2d9
+index 0000000000..552d2d9ad7
 --- /dev/null
 +++ b/.github/scripts/test-setup-msvc-env.ps1
 @@ -0,0 +1,407 @@

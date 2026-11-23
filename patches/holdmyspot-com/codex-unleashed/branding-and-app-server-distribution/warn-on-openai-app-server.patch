@@ -1,8 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 11:21:56 -0500
-Subject: [PATCH 18/54] Identify server distribution and order Unleashed
- versions
+Subject: [PATCH] Identify server distribution and order Unleashed versions
 
 Warn when the connected server identifies itself as OpenAI Codex. Compare numeric Unleashed versions by release precedence, then build number, so a bare equal release is older and a higher release stays newer.
 ---
@@ -17,10 +16,10 @@ Warn when the connected server identifies itself as OpenAI Codex. Compare numeri
  create mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap
 
 diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
-index c4b9011..518dfd0 100644
+index 9dec04079a..1b10ea3cf1 100644
 --- a/codex-rs/app-server-client/src/lib.rs
 +++ b/codex-rs/app-server-client/src/lib.rs
-@@ -1463,7 +1463,14 @@ mod tests {
+@@ -1506,7 +1506,14 @@ mod tests {
      #[tokio::test]
      async fn remote_typed_request_roundtrip_works() {
          let websocket_url = start_test_remote_server(|mut websocket| async move {
@@ -36,7 +35,7 @@ index c4b9011..518dfd0 100644
              let JSONRPCMessage::Request(request) = read_websocket_message(&mut websocket).await
              else {
                  panic!("expected account/read request");
-@@ -1489,7 +1496,7 @@ mod tests {
+@@ -1533,7 +1540,7 @@ mod tests {
              .await
              .expect("remote client should connect");
  
@@ -46,7 +45,7 @@ index c4b9011..518dfd0 100644
          let client = AppServerClient::Remote(client);
          let response: GetAccountResponse = client
 diff --git a/codex-rs/tui/src/app/server_version_notice.rs b/codex-rs/tui/src/app/server_version_notice.rs
-index bca03e3..f90cf53 100644
+index bca03e34f7..f90cf5346e 100644
 --- a/codex-rs/tui/src/app/server_version_notice.rs
 +++ b/codex-rs/tui/src/app/server_version_notice.rs
 @@ -58,6 +58,7 @@ impl App {
@@ -58,10 +57,10 @@ index bca03e3..f90cf53 100644
                  };
              Some(format!(
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
-index fa06ce9..04dc152 100644
+index a31a4b5265..9419ec5679 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
-@@ -3,8 +3,8 @@ source: tui/src/app/tests/active_reconnect_tests.rs
+@@ -3,6 +3,6 @@ source: tui/src/app/tests/active_reconnect_tests.rs
  expression: "format!(\"{history}\\n{}\",\nrender_bottom_popup(&app.chat_widget,\n80)).replace(&test_path_buf(\"/tmp/project\").display().to_string(),\n\"/tmp/project\")"
  ---
  • This conversation is unavailable. Its cached transcript and draft remain here; input is paused. Open the agent picker or return to the parent to continue.
@@ -70,11 +69,9 @@ index fa06ce9..04dc152 100644
 +⚠ The connected app-server identifies itself as OpenAI Codex v2.0.0. Update it
 +  to a Codex Unleashed app-server to use Codex Unleashed server features.
  › unavailable draft
- 
-   gpt-test default · /tmp/project
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap
 new file mode 100644
-index 0000000..b5da90f
+index 0000000000..b5da90f77b
 --- /dev/null
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap
 @@ -0,0 +1,8 @@
@@ -87,7 +84,7 @@ index 0000000..b5da90f
 +  Use /daemon to manage the local background server.
 +  Updating may interrupt active or queued work.
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 71604ef..d89d01d 100644
+index 45b38d66c0..0bd0bc9110 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
 @@ -100,6 +100,35 @@ fn local_daemon_version_notice_snapshot() {
@@ -127,10 +124,10 @@ index 71604ef..d89d01d 100644
      let codex_home = std::env::temp_dir();
      ConfigBuilder::default()
 diff --git a/codex-rs/tui/src/status/remote_connection.rs b/codex-rs/tui/src/status/remote_connection.rs
-index 2ee0395..9695fd8 100644
+index a08b3b760c..4f4b610330 100644
 --- a/codex-rs/tui/src/status/remote_connection.rs
 +++ b/codex-rs/tui/src/status/remote_connection.rs
-@@ -52,8 +52,28 @@ pub(crate) fn remote_connection_status_value(
+@@ -60,8 +60,28 @@ pub(crate) fn remote_connection_status_value(
  
  pub(crate) fn server_version_notice(client: &str, server: Option<&str>) -> Option<String> {
      let server = server?;
@@ -160,7 +157,7 @@ index 2ee0395..9695fd8 100644
          ServerVersionNoticeKind::Different => "different from",
      };
      Some(format!(
-@@ -176,6 +196,101 @@ mod tests {
+@@ -184,6 +204,101 @@ mod tests {
      use codex_utils_absolute_path::AbsolutePathBuf;
      use pretty_assertions::assert_eq;
  
@@ -263,7 +260,7 @@ index 2ee0395..9695fd8 100644
      fn remote_connection_status_value_formats_display_value() -> color_eyre::Result<()> {
          assert_eq!(
 diff --git a/codex-rs/tui/src/update_versions.rs b/codex-rs/tui/src/update_versions.rs
-index b0aa3de..d338802 100644
+index b0aa3deb47..d33880255b 100644
 --- a/codex-rs/tui/src/update_versions.rs
 +++ b/codex-rs/tui/src/update_versions.rs
 @@ -22,10 +22,12 @@ pub(crate) fn is_source_build_version(version: &str) -> bool {

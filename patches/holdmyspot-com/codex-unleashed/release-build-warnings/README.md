@@ -1,15 +1,14 @@
 # Build warnings in Codex sources and build configuration
 
-- Applies to: upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
-- Prerequisites: none for patches 1 to 6, each of which applies alone and after the rest of the queue. Patch 7 requires the `dependency-upgrades` and `rama-0.4` patches, whose lockfile changes make its entries stale.
+- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
+- Prerequisites: none for patches 1 to 5, each of which applies alone and after the rest of the queue. Patch 6 requires the `dependency-upgrades` patches, whose lockfile changes make its entries stale.
 - Patches, in queue order:
   1. `debug-only-release-items.patch`: release-build warnings from debug-only test hooks.
   2. `bubblewrap-netlink-initializers.patch`: `-Wmissing-field-initializers` in the vendored bubblewrap.
   3. `nextest-local-profile.patch`: nextest's unknown `profile.local.inherits` key.
-  4. `bazel-module-versions.patch`: Bazel's root-module version mismatch for `platforms` and `rules_cc`.
-  5. `rmcp-client-doc-links.patch`: rustdoc's bare-URL warnings in `codex-rmcp-client` (queued after `fatal-warnings`).
-  6. `workspace-rustdoc.patch`: rustdoc's warnings in the other 22 workspace crates (queued after 5).
-  7. `stale-cargo-deny-entries.patch`: cargo-deny's warnings about `deny.toml` entries that match no crate (queued after the dependency upgrades and rama 0.4; see its section for the advisories and why it is needed).
+  4. `rmcp-client-doc-links.patch`: rustdoc's bare-URL warnings in `codex-rmcp-client` (queued after `fatal-warnings`).
+  5. `workspace-rustdoc.patch`: rustdoc's warnings in the other 22 workspace crates (queued after 4).
+  6. `stale-cargo-deny-entries.patch`: cargo-deny's warnings about `deny.toml` entries that match no crate (queued after the dependency upgrades; see its section for the advisories and why it is needed).
 
 The inventory these come from, with the warnings left open and why, is [warning-inventory.md](../../../../docs/warning-inventory.md).
 
@@ -17,12 +16,11 @@ The inventory these come from, with the warnings left open and why, is [warning-
 
 ## Intent
 
-A release build of Codex compiles without warnings in `codex-app-server` and `codex-cloud-tasks`. Debug builds keep every test hook unchanged.
+A release build of Codex compiles without warnings in `codex-app-server`. Debug builds keep every test hook unchanged.
 
 Release builds compile out the debug-only test hooks. At the pinned base this leaves the following unused in release builds:
 
 - the `PluginStartupTasks` import and the two managed-config environment-variable constants in `app-server/src/main.rs`;
-- the `HttpClientFactory` and `OutboundProxyPolicy` imports in `cloud-tasks/src/lib.rs`;
 - the `mut` on `loader_overrides` in `app-server/src/lib.rs`.
 
 The patch gates those items on `debug_assertions` too. It also returns the overridden loader settings by value, so the parameter no longer needs `mut`.
@@ -65,15 +63,9 @@ Verification: a Linux build of `codex-bwrap` reports no compiler warnings, and `
 
 Verification: `NEXTEST_PROFILE=local cargo nextest run ...` with nextest 0.9.103 prints no configuration warning.
 
-## bazel-module-versions.patch
-
-The root `MODULE.bazel` requires `platforms@1.0.0` and `rules_cc@0.2.18`, but other modules require 1.1.0 and 0.2.20, so Bazel resolves those and warns about the mismatch. The patch raises the two requirements. `bazel mod deps --lockfile_mode=update` with the pinned Bazel 9.2.0 removes only the two registry hashes nothing uses any more; every resolved module version stays the same.
-
-Verification: `bazel mod deps --lockfile_mode=error` with Bazel 9.2.0 passes and prints no version warning.
-
 ## rmcp-client-doc-links.patch
 
-`cargo doc --no-deps` reports eight `rustdoc::bare_urls` warnings in `codex-rmcp-client`: plain URLs in the doc comments of `oauth.rs`, `oauth_callback.rs` and `rmcp_client.rs`, which rustdoc renders as text, not links. Under patch 25 they fail documentation with `error: this URL is not a hyperlink` (platform lint run `42537177622`). The patch wraps each URL in angle brackets, rustdoc's autolink form.
+`cargo doc --no-deps` reports eight `rustdoc::bare_urls` warnings in `codex-rmcp-client`: plain URLs in the doc comments of `oauth.rs`, `oauth_callback.rs` and `rmcp_client.rs`, which rustdoc renders as text, not links. Under `fatal-warnings/deny-workspace-warnings.patch` (patch 22) they fail documentation with `error: this URL is not a hyperlink` (platform lint run `42537177622`). The patch wraps each URL in angle brackets, rustdoc's autolink form.
 
 Verification: `RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps` reports nothing for `codex-rmcp-client`.
 
@@ -97,23 +89,28 @@ Verification: `RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps --keep-go
 
 ### What it does
 
-The patch deletes nine entries from `codex-rs/deny.toml` that match nothing in the queue's `Cargo.lock`: four advisory exceptions, one allowed license, three ban wrappers and one allowed Git source. It changes no build input, and every check that still matches a crate is unchanged. `RUSTSEC-2026-0418` is deliberately not removed (see below).
+The patch deletes seven entries from `codex-rs/deny.toml` that match nothing in the queue's `Cargo.lock`: three advisory exceptions, one allowed license, two ban wrappers and one allowed Git source. It changes no build input, and every check that still matches a crate is unchanged.
 
 ### Why it is needed
 
-`deny.toml` excepts an advisory only for the crate versions that carry it, and each exception's reason names its removal condition. When no crate in the lockfile matches an exception, cargo-deny reports `warning[advisory-not-detected]: advisory was not encountered`; an unmatched license, ban wrapper or Git source gets the corresponding not-encountered warning. Cargo-deny does not fail on these warnings by default, but this queue treats a release-build warning as a defect (see [warning-inventory.md](../../../../docs/warning-inventory.md)), and a stale exception would silently excuse the advisory if a vulnerable version returned. The direct upgrades in `dependency-upgrades` and `rama-0.4` make the entries stale, so the patch comes after both. Repository check run `43009570386` on the earlier queue reported the warnings.
+`deny.toml` excepts an advisory only for the crate versions that carry it, and each exception's reason names its removal condition. When no crate in the lockfile matches an exception, cargo-deny reports `warning[advisory-not-detected]: advisory was not encountered`; an unmatched license, ban wrapper or Git source gets the corresponding not-encountered warning. Cargo-deny does not fail on these warnings by default, but this queue treats a release-build warning as a defect (see [warning-inventory.md](../../../../docs/warning-inventory.md)), and a stale exception would silently excuse the advisory if a vulnerable version returned. The direct upgrades in `dependency-upgrades` make the entries stale, so the patch comes after them. Repository check run `43009570386` on the earlier queue reported the warnings.
 
 | Entry | Why it matches nothing |
 | --- | --- |
-| Advisory exception `RUSTSEC-2026-0391` (`zstd`: a borrowed context carries data from an abandoned stream into the next stream) | The advisory covers `zstd` before 0.14.3 (and 0.13.2 to 0.13.3); the zstd 0.14 upgrade locks 0.14.3 |
-| Advisory exception `RUSTSEC-2026-0398` (`zstd-safe`: `Seekable::decompress` sets a `Vec` length beyond its capacity) | It covers `zstd-safe` before 8.2.0; the lockfile uses 8.2.0 |
-| Advisory exception `RUSTSEC-2026-0403` (`zstd-safe`: uninitialized memory exposed when streaming decompression of a legacy frame fails) | It covers `zstd-safe` before 8.2.0; the lockfile uses 8.2.0 |
-| Advisory exception `RUSTSEC-2026-0410` (`zstd-sys`: the wasm32 allocator shim corrupts memory on allocation failure) | It is fixed in `zstd-sys` 2.1.2, which the lockfile uses |
-| Allowed license `OpenSSL` | `aws-lc-sys` 0.45.0, its only listed user, declares no OpenSSL term (the license is only in `aws-lc-fips-sys`, which no target builds) |
-| `async-trait` wrapper `hickory-proto` | rama 0.4 removed `hickory-proto` from the dependency graph |
+| Advisory exception `RUSTSEC-2026-0391` (`zstd`: a borrowed context carries data from an abandoned stream into the next stream) | The advisory covers `zstd` before 0.14.3 and 0.13.2 to 0.13.3; the lockfile holds 0.13.4 and 0.14.3 |
+| Advisory exception `RUSTSEC-2026-0398` (`zstd-safe`: `Seekable::decompress` sets a `Vec` length beyond its capacity) | The lockfile holds `zstd-safe` 7.4.1 and 8.2.0, both patched |
+| Advisory exception `RUSTSEC-2026-0403` (`zstd-safe`: uninitialized memory exposed when streaming decompression of a legacy frame fails) | The lockfile holds `zstd-safe` 7.4.1 and 8.2.0, both patched |
+| Allowed license `OpenSSL` | No package in `cargo metadata` declares an OpenSSL term; `aws-lc-sys`, its only listed user, does not |
 | `reqwest` wrapper `sentry` | `sentry` 0.49.5 no longer depends on `reqwest` directly |
 | `reqwest` wrapper `webrtc-sys-build` and allowed Git source `juberti-oai/rust-sdks` | Already absent from the base lockfile |
 
-The exception for `RUSTSEC-2026-0418` (`libz-sys`: the build script prints its environment when built with `cc` 1.6.0 or later on a Unix host) stays. The advisory covers `libz-sys` before 1.1.31 and the lockfile keeps 1.1.29, because the queue takes no transitive update beyond what the direct upgrades force. Removing it would make cargo-deny report the advisory as an error. Its reason still says that `cc` is locked to 1.2.55; the direct cc upgrade moved it to 1.11.1, so the reason needs the owner's review.
+`rust-v0.171.0` already removed the exceptions for `RUSTSEC-2026-0410` (`zstd-sys`) and `RUSTSEC-2026-0418` (`libz-sys`). The `async-trait` wrapper for `hickory-proto` stays, because `rama-0.4.patch` is left out of this queue and rama 0.3 keeps `hickory-proto` 0.25.2, which depends on `async-trait`.
 
-Verification: derived from the lockfile, the advisory database and each crate's published license; `cargo deny check` has not run on this queue yet. After applying the queue, run it in `codex-rs`; it must report none of the nine warnings.
+Verification: derived from the lockfile, the advisory database and each crate's published license; `cargo deny check` has not run on this queue yet. After applying the queue, run it in `codex-rs`; it must report none of the seven warnings.
+
+## Rebase onto rust-v0.171.0
+
+- `bazel-module-versions.patch` is dropped: `rust-v0.171.0` requires `platforms` 1.1.0 and `rules_cc` 0.2.25.
+- `debug-only-release-items.patch` no longer changes `codex-cloud-tasks`: upstream's route-aware HTTP client pool removed the two imports that release builds left unused.
+- `workspace-rustdoc.patch` no longer carries the precomputed app-server exports (`app-server-exports-stable.json.zst` and `-experimental.json.zst`); they are stale and need upstream's generator.
+- `stale-cargo-deny-entries.patch`: see the table above.

@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 08:53:54 -0500
-Subject: [PATCH 03/54] Use a mountable procfs denial to test snapshot
- descriptor fallback
+Subject: [PATCH] Use a mountable procfs denial to test snapshot descriptor
+ fallback
 
 Tracks https://github.com/holdmyspot-com/codex-unleashed/issues/49.
 
@@ -22,7 +22,7 @@ Declared base: openai/codex main dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4.
  2 files changed, 27 insertions(+), 4 deletions(-)
 
 diff --git a/codex-rs/exec-server/tests/common/mod.rs b/codex-rs/exec-server/tests/common/mod.rs
-index d9affe4..f1b18a1 100644
+index d9affe4fdb..f1b18a154c 100644
 --- a/codex-rs/exec-server/tests/common/mod.rs
 +++ b/codex-rs/exec-server/tests/common/mod.rs
 @@ -28,6 +28,7 @@ pub(crate) const DELAYED_OUTPUT_AFTER_EXIT_PARENT_ARG: &str =
@@ -45,7 +45,7 @@ index d9affe4..f1b18a1 100644
          .ok()
          .map(|value| {
 diff --git a/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs b/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs
-index 7d02211..edb3b68 100644
+index 7d022116b1..edb3b68d76 100644
 --- a/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs
 +++ b/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs
 @@ -129,6 +129,18 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(

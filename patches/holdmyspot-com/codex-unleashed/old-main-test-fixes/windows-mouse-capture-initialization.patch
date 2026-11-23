@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Tue, 10 Nov 2026 17:25:13 -0500
-Subject: [PATCH 44/54] bugfix: avoid restoring mouse input before Windows
- capture initializes
+Subject: [PATCH] bugfix: avoid restoring mouse input before Windows capture
+ initializes
 
 Only arm native mouse-capture cleanup after Crossterm saves the console mode.
 Releasing input while the preceding scroll command is written must not try to
@@ -14,10 +14,10 @@ partial write can enable reporting.
  2 files changed, 56 insertions(+), 9 deletions(-)
 
 diff --git a/codex-rs/tui/src/tui/alternate_screen.rs b/codex-rs/tui/src/tui/alternate_screen.rs
-index 7c99c1c..adc18ee 100644
+index 3052820844..52a5c47066 100644
 --- a/codex-rs/tui/src/tui/alternate_screen.rs
 +++ b/codex-rs/tui/src/tui/alternate_screen.rs
-@@ -53,16 +53,25 @@ pub(super) struct AlternateScreen {
+@@ -57,16 +57,25 @@ pub(super) struct AlternateScreen {
  }
  
  /// Report pointer motion so the owned transcript can update its return-to-bottom hover state.
@@ -46,9 +46,9 @@ index 7c99c1c..adc18ee 100644
      }
  
      #[cfg(windows)]
-@@ -112,9 +121,14 @@ impl AlternateScreen {
-         self.input_configured
+@@ -121,9 +130,14 @@ impl AlternateScreen {
              .store(/*val*/ false, Ordering::Relaxed);
+         self.scroll_dirty.store(/*val*/ true, Ordering::Relaxed);
          let result = if capture_mouse && !self.mouse_capture_disabled.load(Ordering::Relaxed) {
 -            // A partial write can already enable reporting; cleanup must still attempt to stop it.
 -            self.mouse_active.store(/*val*/ true, Ordering::Relaxed);
@@ -65,7 +65,7 @@ index 7c99c1c..adc18ee 100644
                  // reports so ConPTY can translate them into mouse records instead.
                  writer.write_all(b"\x1b[?1006h")?;
 diff --git a/codex-rs/tui/src/tui/alternate_screen_windows_tests.rs b/codex-rs/tui/src/tui/alternate_screen_windows_tests.rs
-index b5ecc35..be3bc75 100644
+index b5ecc35cd7..be3bc756b0 100644
 --- a/codex-rs/tui/src/tui/alternate_screen_windows_tests.rs
 +++ b/codex-rs/tui/src/tui/alternate_screen_windows_tests.rs
 @@ -4,6 +4,7 @@ use super::AlternateScreen;

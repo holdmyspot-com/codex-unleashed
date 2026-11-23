@@ -1,4 +1,4 @@
-From: Gili Tzabari <cowwoc2020@gmail.com>
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 15 Nov 2026 02:59:58 +0000
 Subject: [PATCH] bugfix: preserve Windows command output on capture failure
@@ -8,12 +8,23 @@ and protocol boundaries instead of silently losing command results. A command
 that exited with 0 but whose output was truncated by a pipe read error is
 reported with exit code 253 (`EXEC_OUTPUT_TRUNCATED_EXIT_CODE`); a non-zero exit
 code of the command itself is kept.
+---
+ codex-rs/core/src/exec.rs                     | 141 ++++++-
+ codex-rs/core/src/exec_tests.rs               | 378 ++++++++++++++++++
+ codex-rs/core/src/tools/events.rs             |  74 ++++
+ codex-rs/protocol/src/error.rs                |   7 +
+ codex-rs/windows-sandbox-rs/src/capture.rs    | 277 +++++++++++++
+ .../windows-sandbox-rs/src/capture_tests.rs   | 342 ++++++++++++++++
+ codex-rs/windows-sandbox-rs/src/lib.rs        | 263 +++++++-----
+ 7 files changed, 1362 insertions(+), 120 deletions(-)
+ create mode 100644 codex-rs/windows-sandbox-rs/src/capture.rs
+ create mode 100644 codex-rs/windows-sandbox-rs/src/capture_tests.rs
 
 diff --git a/codex-rs/core/src/exec.rs b/codex-rs/core/src/exec.rs
-index f72396e..4828912 100644
+index 65d7a6bdbb..2b97c3bb7c 100644
 --- a/codex-rs/core/src/exec.rs
 +++ b/codex-rs/core/src/exec.rs
-@@ -68,6 +68,15 @@ const SIGKILL_CODE: i32 = 9;
+@@ -69,6 +69,15 @@ const SIGKILL_CODE: i32 = 9;
  const TIMEOUT_CODE: i32 = 64;
  const EXIT_CODE_SIGNAL_BASE: i32 = 128; // conventional shell: 128 + signal
  const EXEC_TIMEOUT_EXIT_CODE: i32 = 124; // conventional timeout exit code
@@ -29,7 +40,7 @@ index f72396e..4828912 100644
  const CANCELLATION_TERMINATION_GRACE_PERIOD: Duration = Duration::from_millis(50);
  
  // I/O buffer sizing
-@@ -729,26 +738,81 @@ async fn exec_windows_sandbox(
+@@ -724,26 +733,81 @@ async fn exec_windows_sandbox(
      })
      .await;
  
@@ -124,7 +135,7 @@ index f72396e..4828912 100644
      let mut stdout_text = capture.stdout;
      if let Some(max_bytes) = capture_policy.retained_bytes_cap()
          && stdout_text.len() > max_bytes
-@@ -777,6 +841,7 @@ async fn exec_windows_sandbox(
+@@ -772,6 +836,7 @@ async fn exec_windows_sandbox(
          stderr,
          aggregated_output,
          timed_out: capture.timed_out,
@@ -132,7 +143,7 @@ index f72396e..4828912 100644
      })
  }
  
-@@ -803,13 +868,31 @@ fn finalize_exec_result(
+@@ -798,13 +863,31 @@ fn finalize_exec_result(
              }
  
              let mut exit_code = raw_output.exit_status.code().unwrap_or(-1);
@@ -165,7 +176,7 @@ index f72396e..4828912 100644
              let exec_output = ExecToolCallOutput {
                  exit_code,
                  stdout,
-@@ -819,6 +902,13 @@ fn finalize_exec_result(
+@@ -814,6 +897,13 @@ fn finalize_exec_result(
                  timed_out,
              };
  
@@ -179,7 +190,7 @@ index f72396e..4828912 100644
              if timed_out {
                  return Err(CodexErr::Sandbox(SandboxErr::Timeout {
                      output: Box::new(exec_output),
-@@ -844,6 +934,27 @@ fn finalize_exec_result(
+@@ -839,6 +929,27 @@ fn finalize_exec_result(
      }
  }
  
@@ -207,7 +218,7 @@ index f72396e..4828912 100644
  #[derive(Debug)]
  struct RawExecToolCallOutput {
      pub exit_status: ExitStatus,
-@@ -851,6 +962,7 @@ struct RawExecToolCallOutput {
+@@ -846,6 +957,7 @@ struct RawExecToolCallOutput {
      pub stderr: StreamOutput<Vec<u8>>,
      pub aggregated_output: StreamOutput<Vec<u8>>,
      pub timed_out: bool,
@@ -215,7 +226,7 @@ index f72396e..4828912 100644
  }
  
  #[inline]
-@@ -1188,6 +1300,7 @@ async fn consume_output(
+@@ -1184,6 +1296,7 @@ async fn consume_output(
          stderr,
          aggregated_output,
          timed_out,
@@ -224,7 +235,7 @@ index f72396e..4828912 100644
  }
  
 diff --git a/codex-rs/core/src/exec_tests.rs b/codex-rs/core/src/exec_tests.rs
-index 98a542d..5c24b2f 100644
+index 971281f212..56c4c00f92 100644
 --- a/codex-rs/core/src/exec_tests.rs
 +++ b/codex-rs/core/src/exec_tests.rs
 @@ -1,5 +1,6 @@
@@ -619,7 +630,7 @@ index 98a542d..5c24b2f 100644
      exit_code: i32,
      stdout: &str,
 diff --git a/codex-rs/core/src/tools/events.rs b/codex-rs/core/src/tools/events.rs
-index 2d5262e..41fedd1 100644
+index 2d5262ee9b..41fedd1467 100644
 --- a/codex-rs/core/src/tools/events.rs
 +++ b/codex-rs/core/src/tools/events.rs
 @@ -418,6 +418,13 @@ impl ToolEmitter {
@@ -718,7 +729,7 @@ index 2d5262e..41fedd1 100644
      async fn rejected_apply_patch_tracks_committed_delta() {
          assert_failed_apply_patch_tracks_committed_delta(
 diff --git a/codex-rs/protocol/src/error.rs b/codex-rs/protocol/src/error.rs
-index e48cf5a..19abd12 100644
+index 6e3e342a92..49dc811a4c 100644
 --- a/codex-rs/protocol/src/error.rs
 +++ b/codex-rs/protocol/src/error.rs
 @@ -42,6 +42,13 @@ const ERROR_MESSAGE_UI_MAX_BYTES: usize = 2 * 1024;
@@ -737,7 +748,7 @@ index e48cf5a..19abd12 100644
          "sandbox denied exec error, exit code: {}, stdout: {}, stderr: {}",
 diff --git a/codex-rs/windows-sandbox-rs/src/capture.rs b/codex-rs/windows-sandbox-rs/src/capture.rs
 new file mode 100644
-index 0000000..2d32246
+index 0000000000..2d32246daa
 --- /dev/null
 +++ b/codex-rs/windows-sandbox-rs/src/capture.rs
 @@ -0,0 +1,277 @@
@@ -1020,7 +1031,7 @@ index 0000000..2d32246
 +}
 diff --git a/codex-rs/windows-sandbox-rs/src/capture_tests.rs b/codex-rs/windows-sandbox-rs/src/capture_tests.rs
 new file mode 100644
-index 0000000..8702456
+index 0000000000..87024565c5
 --- /dev/null
 +++ b/codex-rs/windows-sandbox-rs/src/capture_tests.rs
 @@ -0,0 +1,342 @@
@@ -1367,12 +1378,12 @@ index 0000000..8702456
 +    assert_eq!(output.stderr, b"err");
 +}
 diff --git a/codex-rs/windows-sandbox-rs/src/lib.rs b/codex-rs/windows-sandbox-rs/src/lib.rs
-index 895565b..699ec81 100644
+index e68cfe78ee..b8bc58f26d 100644
 --- a/codex-rs/windows-sandbox-rs/src/lib.rs
 +++ b/codex-rs/windows-sandbox-rs/src/lib.rs
-@@ -155,7 +155,14 @@ mod winutil;
- #[cfg(target_os = "windows")]
- mod workspace_acl;
+@@ -158,7 +158,14 @@ mod workspace_acl;
+ mod cmd_script;
+ pub use cmd_script::cmd_script_command_line;
  
 +mod capture;
  mod deny_read_resolver;
@@ -1385,7 +1396,7 @@ index 895565b..699ec81 100644
  #[cfg(target_os = "windows")]
  mod uninstall_windows;
  
-@@ -595,60 +602,67 @@ mod windows_impl {
+@@ -597,60 +604,67 @@ mod windows_impl {
  
      type PipeHandles = ((HANDLE, HANDLE), (HANDLE, HANDLE), (HANDLE, HANDLE));
  
@@ -1503,7 +1514,7 @@ index 895565b..699ec81 100644
      enum WaitOutcome {
          Exited,
          TimedOut,
-@@ -876,74 +890,73 @@ mod windows_impl {
+@@ -878,74 +892,73 @@ mod windows_impl {
          let finished = Arc::new(AtomicBool::new(false));
          let stdout_finished = Arc::clone(&finished);
          let stderr_finished = Arc::clone(&finished);
@@ -1633,7 +1644,7 @@ index 895565b..699ec81 100644
      }
  
      pub fn run_windows_sandbox_legacy_preflight(
-@@ -991,7 +1004,45 @@ mod windows_impl {
+@@ -993,7 +1006,45 @@ mod windows_impl {
          use codex_protocol::models::PermissionProfile;
          use codex_protocol::permissions::NetworkSandboxPolicy;
          use std::collections::HashMap;

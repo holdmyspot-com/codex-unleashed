@@ -1,12 +1,18 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 22 Nov 2026 23:12:23 -0500
 Subject: [PATCH] Test RMCP response limits and WebSocket doctor reporting
 
+---
+ codex-rs/cli/src/doctor.rs                    | 38 +++++++++++++++++++
+ .../src/http_client_adapter_tests.rs          | 25 ++++++++++++
+ 2 files changed, 63 insertions(+)
+
 diff --git a/codex-rs/cli/src/doctor.rs b/codex-rs/cli/src/doctor.rs
-index af478a9d12ed2ecc3933ec616a9e9a57b779413e..bddab06c4f00feb30ef3108819d018154bee8d92 100644
+index 619326595a..bf762690d7 100644
 --- a/codex-rs/cli/src/doctor.rs
 +++ b/codex-rs/cli/src/doctor.rs
-@@ -3281,6 +3281,44 @@ mod tests {
+@@ -3337,6 +3337,44 @@ mod tests {
          insta::assert_snapshot!("websocket_probe_human_output", rendered);
      }
  
@@ -52,7 +58,7 @@ index af478a9d12ed2ecc3933ec616a9e9a57b779413e..bddab06c4f00feb30ef3108819d01815
      fn websocket_error_detail_preserves_categories_without_wire_values() {
          let secret = "private-wire-value";
 diff --git a/codex-rs/rmcp-client/src/http_client_adapter_tests.rs b/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
-index c3effd99831abccd3fbf8b6665a6af38555f0f10..1eeed11a3c7764f6d394f457e5d96ba0fb24ec32 100644
+index 01b24851fb..b19df0a083 100644
 --- a/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
 +++ b/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
 @@ -1,17 +1,42 @@
@@ -98,3 +104,6 @@ index c3effd99831abccd3fbf8b6665a6af38555f0f10..1eeed11a3c7764f6d394f457e5d96ba0
  #[test]
  fn protocol_headers_preserve_utf8_values() {
      let mut headers = HeaderMap::new();
+-- 
+2.43.0
+

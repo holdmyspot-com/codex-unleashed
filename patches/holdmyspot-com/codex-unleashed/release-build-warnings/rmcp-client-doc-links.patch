@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 8 Nov 2026 19:20:42 -0500
-Subject: [PATCH 26/54] Write the MCP client's documentation links as rustdoc
+Subject: [PATCH] Write the MCP client's documentation links as rustdoc
  autolinks
 
 Rustdoc reports each bare URL in a doc comment as rustdoc::bare_urls,
@@ -14,7 +14,7 @@ client's documentation in angle brackets so they render as links.
  3 files changed, 8 insertions(+), 8 deletions(-)
 
 diff --git a/codex-rs/rmcp-client/src/oauth.rs b/codex-rs/rmcp-client/src/oauth.rs
-index f80cd6e..8a26eae 100644
+index b00db701a5..090ccf4ea4 100644
 --- a/codex-rs/rmcp-client/src/oauth.rs
 +++ b/codex-rs/rmcp-client/src/oauth.rs
 @@ -1,6 +1,6 @@
@@ -26,7 +26,7 @@ index f80cd6e..8a26eae 100644
  //! Windows: Windows Credential Manager
  //! Linux: DBus-based Secret Service, the kernel keyutils, and a combo of the two
 diff --git a/codex-rs/rmcp-client/src/oauth_callback.rs b/codex-rs/rmcp-client/src/oauth_callback.rs
-index eb3d7f3..d49c108 100644
+index eb3d7f3176..d49c108bbc 100644
 --- a/codex-rs/rmcp-client/src/oauth_callback.rs
 +++ b/codex-rs/rmcp-client/src/oauth_callback.rs
 @@ -5,14 +5,14 @@
@@ -63,10 +63,10 @@ index eb3d7f3..d49c108 100644
  use anyhow::Context;
  use anyhow::Result;
 diff --git a/codex-rs/rmcp-client/src/rmcp_client.rs b/codex-rs/rmcp-client/src/rmcp_client.rs
-index 46b86ca..d86ea29 100644
+index 677a7d474d..cfc4767bc7 100644
 --- a/codex-rs/rmcp-client/src/rmcp_client.rs
 +++ b/codex-rs/rmcp-client/src/rmcp_client.rs
-@@ -411,7 +411,7 @@ pub struct CancellableEventStreamRequest {
+@@ -412,7 +412,7 @@ pub struct CancellableEventStreamRequest {
  }
  
  /// MCP client implemented on top of the official `rmcp` SDK.
@@ -75,7 +75,7 @@ index 46b86ca..d86ea29 100644
  pub struct RmcpClient {
      // Drop our interest in retrying before the SDK transport uses its ordinary shutdown grace.
      stdio_process: Option<StdioProcessSlot>,
-@@ -673,7 +673,7 @@ impl RmcpClient {
+@@ -674,7 +674,7 @@ impl RmcpClient {
      }
  
      /// Perform the initialization handshake with the MCP server.

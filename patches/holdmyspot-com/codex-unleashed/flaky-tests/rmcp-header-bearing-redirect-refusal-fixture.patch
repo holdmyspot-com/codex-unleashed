@@ -1,4 +1,4 @@
-From 7db36548e30d38994d49fe8235a6e42364b22d4f Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 22 Nov 2026 19:48:40 -0500
 Subject: [PATCH] test: refuse cross-origin redirects for RMCP clients with
@@ -9,7 +9,7 @@ Subject: [PATCH] test: refuse cross-origin redirects for RMCP clients with
  1 file changed, 89 insertions(+)
 
 diff --git a/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs b/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
-index 90ecdda53..962b5b430 100644
+index 90ecdda533..962b5b430a 100644
 --- a/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
 +++ b/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
 @@ -4,15 +4,21 @@ use std::sync::Arc;

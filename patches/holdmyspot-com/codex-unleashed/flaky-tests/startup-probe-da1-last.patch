@@ -1,4 +1,4 @@
-From df56c2d20dbc5f6351979425ebb912b60bf1fdcb Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 12 Nov 2026 14:36:04 -0500
 Subject: [PATCH] Query DA1 last at TUI startup and stop the probe when its
@@ -22,13 +22,13 @@ no terminal does once DA1 is sent last. The probe then stopped before the color
 replies arrived, and they reached the composer as typed input. The fake terminal now
 answers DA1 after the other queries.
 ---
- codex-rs/tui/src/terminal_probe.rs        | 79 +++++++++++++++++++++--
+ codex-rs/tui/src/terminal_probe.rs        | 81 +++++++++++++++++++++--
  codex-rs/tui/src/tui.rs                   |  2 +-
- codex-rs/tui/tests/suite/focus_palette.rs | 18 +++---
- 3 files changed, 86 insertions(+), 13 deletions(-)
+ codex-rs/tui/tests/suite/focus_palette.rs | 18 ++---
+ 3 files changed, 88 insertions(+), 13 deletions(-)
 
 diff --git a/codex-rs/tui/src/terminal_probe.rs b/codex-rs/tui/src/terminal_probe.rs
-index 08118acd4..16f3b0f35 100644
+index dbf67fc42c..93295e8f36 100644
 --- a/codex-rs/tui/src/terminal_probe.rs
 +++ b/codex-rs/tui/src/terminal_probe.rs
 @@ -23,9 +23,18 @@ mod terminal_identity;
@@ -51,9 +51,9 @@ index 08118acd4..16f3b0f35 100644
  /// Default terminal foreground and background colors reported by OSC 10 and OSC 11.
  #[derive(Debug, Clone, Copy, Eq, PartialEq)]
  pub(crate) struct DefaultColors {
-@@ -307,11 +316,13 @@ mod imp {
-         if keyboard_probe == StartupKeyboardEnhancementProbe::Query {
-             query.extend_from_slice(b"\x1B[?u");
+@@ -325,11 +334,13 @@ mod imp {
+             // Query a single inline RGB pixel without storing or displaying an image.
+             query.extend_from_slice(b"\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\");
          }
 -        // DA1 finishes keyboard detection and establishes whether we can use it at exit.
 -        query.extend_from_slice(b"\x1B[c\x1B[6n\x1B]10;?\x1B\\\x1B]11;?\x1B\\");
@@ -67,8 +67,8 @@ index 08118acd4..16f3b0f35 100644
          tty.write_all(&query)?;
  
          let mut buffer = Vec::new();
-@@ -382,8 +393,12 @@ mod imp {
-             if startup_probe_complete(&probe, keyboard_probe) {
+@@ -406,8 +417,12 @@ mod imp {
+             {
                  return Ok(probe);
              }
 +            // The DA1 query was sent last, so its reply follows every reply the terminal will send.
@@ -81,7 +81,7 @@ index 08118acd4..16f3b0f35 100644
                  finish_startup_probe(&mut probe, keyboard_probe, saw_supported_keyboard);
                  return Ok(probe);
              }
-@@ -575,6 +590,7 @@ mod imp {
+@@ -603,6 +618,7 @@ mod imp {
      #[cfg(test)]
      mod tests {
          use super::*;
@@ -89,7 +89,7 @@ index 08118acd4..16f3b0f35 100644
          use pretty_assertions::assert_eq;
          use std::os::fd::OwnedFd;
          use std::os::unix::net::UnixStream;
-@@ -758,6 +774,61 @@ mod imp {
+@@ -793,6 +809,63 @@ mod imp {
              assert_eq!(probe.terminal_app_over_ssh, None);
          }
  
@@ -104,6 +104,7 @@ index 08118acd4..16f3b0f35 100644
 +                Duration::from_secs(/*secs*/ 30),
 +                StartupKeyboardEnhancementProbe::Skip,
 +                /*query_identity*/ false,
++                /*probe_herdr*/ false,
 +                &mut buffer,
 +            )
 +            .expect("finish at the DA1 reply");
@@ -138,6 +139,7 @@ index 08118acd4..16f3b0f35 100644
 +                STARTUP_TIMEOUT,
 +                StartupKeyboardEnhancementProbe::Query,
 +                /*query_identity*/ false,
++                /*probe_herdr*/ false,
 +                &mut buffer,
 +            )
 +            .expect("read the slow terminal's replies");
@@ -152,23 +154,23 @@ index 08118acd4..16f3b0f35 100644
          fn startup_probe_finds_responses_after_large_typeahead() {
              let mut input = vec![b'x'; 2_048];
 diff --git a/codex-rs/tui/src/tui.rs b/codex-rs/tui/src/tui.rs
-index 25c70c4e5..3007b8640 100644
+index 6bd03f234f..d6e5a8fd21 100644
 --- a/codex-rs/tui/src/tui.rs
 +++ b/codex-rs/tui/src/tui.rs
-@@ -520,7 +520,7 @@ pub(crate) fn init() -> Result<InitializedTerminal> {
-         } else {
+@@ -534,7 +534,7 @@ pub(crate) fn init() -> Result<InitializedTerminal> {
              StartupKeyboardEnhancementProbe::Query
          };
--        match crate::terminal_probe::startup(crate::terminal_probe::DEFAULT_TIMEOUT, keyboard_probe)
-+        match crate::terminal_probe::startup(crate::terminal_probe::STARTUP_TIMEOUT, keyboard_probe)
-         {
-             Ok(probe) => {
-                 tracing::info!(
+         match crate::terminal_probe::startup(
+-            crate::terminal_probe::DEFAULT_TIMEOUT,
++            crate::terminal_probe::STARTUP_TIMEOUT,
+             keyboard_probe,
+             probe_herdr,
+         ) {
 diff --git a/codex-rs/tui/tests/suite/focus_palette.rs b/codex-rs/tui/tests/suite/focus_palette.rs
-index 69840ba32..1e859aacb 100644
+index 756fcd30d8..dbdf35ded4 100644
 --- a/codex-rs/tui/tests/suite/focus_palette.rs
 +++ b/codex-rs/tui/tests/suite/focus_palette.rs
-@@ -489,14 +489,6 @@ impl PtyCodex {
+@@ -492,14 +492,6 @@ impl PtyCodex {
              self.cursor_answered = true;
          }
  
@@ -183,7 +185,7 @@ index 69840ba32..1e859aacb 100644
          if !self.palette_answered
              && contains_bytes(&self.output, b"\x1b]10;?")
              && contains_bytes(&self.output, b"\x1b]11;?")
-@@ -505,6 +497,16 @@ impl PtyCodex {
+@@ -508,6 +500,16 @@ impl PtyCodex {
              self.palette_answered = true;
          }
  

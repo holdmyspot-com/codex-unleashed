@@ -1,9 +1,14 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 22 Nov 2026 23:12:24 -0500
 Subject: [PATCH] Verify the configured RMCP response cap through the adapter
 
+---
+ .../src/http_client_adapter_tests.rs          | 87 +++++++++++++++++++
+ 1 file changed, 87 insertions(+)
+
 diff --git a/codex-rs/rmcp-client/src/http_client_adapter_tests.rs b/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
-index 1eeed11a3c7764f6d394f457e5d96ba0fb24ec32..6194b949fce883b8ddff7ec5006ee2612c16f136 100644
+index b19df0a083..2fca8524b0 100644
 --- a/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
 +++ b/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
 @@ -1,20 +1,33 @@
@@ -121,3 +126,6 @@ index 1eeed11a3c7764f6d394f457e5d96ba0fb24ec32..6194b949fce883b8ddff7ec5006ee261
  #[test]
  fn protocol_headers_preserve_utf8_values() {
      let mut headers = HeaderMap::new();
+-- 
+2.43.0
+

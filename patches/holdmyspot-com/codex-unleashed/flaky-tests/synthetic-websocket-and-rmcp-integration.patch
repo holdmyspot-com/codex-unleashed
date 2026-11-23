@@ -1,4 +1,4 @@
-From e50b2dbbc7624e677706844ebdfc761a2daa89f5 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 22 Nov 2026 11:05:35 -0500
 Subject: [PATCH] Verify WebSocket probe and HTTP discovery with loopback
@@ -10,7 +10,7 @@ Subject: [PATCH] Verify WebSocket probe and HTTP discovery with loopback
  2 files changed, 118 insertions(+)
 
 diff --git a/codex-rs/codex-api/tests/responses_websocket_probe.rs b/codex-rs/codex-api/tests/responses_websocket_probe.rs
-index 278f7ac99..6cee3a013 100644
+index 278f7ac995..6cee3a013d 100644
 --- a/codex-rs/codex-api/tests/responses_websocket_probe.rs
 +++ b/codex-rs/codex-api/tests/responses_websocket_probe.rs
 @@ -10,15 +10,27 @@ use codex_api::RetryConfig;
@@ -124,7 +124,7 @@ index 278f7ac99..6cee3a013 100644
  async fn probe_distinguishes_untrusted_certificates_from_io_failures() -> anyhow::Result<()> {
      codex_utils_rustls_provider::ensure_rustls_crypto_provider();
 diff --git a/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs b/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
-index 950100cd7..35b771ff9 100644
+index 950100cd7b..35b771ff91 100644
 --- a/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
 +++ b/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
 @@ -116,6 +116,37 @@ fn legacy_initialize_response(request: &Value) -> ResponseTemplate {

@@ -18,10 +18,10 @@ checks every source output against those indexes. The assertions are unchanged.
  1 file changed, 20 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/core/src/compact_tests.rs b/codex-rs/core/src/compact_tests.rs
-index a57d2f024..6076395a4 100644
+index 9efe51eaa8..35eb8260ff 100644
 --- a/codex-rs/core/src/compact_tests.rs
 +++ b/codex-rs/core/src/compact_tests.rs
-@@ -211,6 +211,22 @@ async fn local_compaction_retries_preserve_instructions_and_tool_metadata(
+@@ -210,6 +210,22 @@ async fn local_compaction_retries_preserve_instructions_and_tool_metadata(
              serde_json::to_value(&expected_code_mode_output)?,
          );
      }
@@ -44,7 +44,7 @@ index a57d2f024..6076395a4 100644
      for mut output in outputs {
          if !metadata_enabled {
              let metadata = output["internal_chat_message_metadata_passthrough"]
-@@ -220,8 +236,10 @@ async fn local_compaction_retries_preserve_instructions_and_tool_metadata(
+@@ -219,8 +235,10 @@ async fn local_compaction_retries_preserve_instructions_and_tool_metadata(
              metadata.remove("tool_calls_complete");
          }
          let call_id = output["call_id"].as_str().expect("source call id");

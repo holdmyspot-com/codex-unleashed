@@ -1,22 +1,18 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 9 Nov 2026 11:13:20 -0500
-Subject: [PATCH 32/54] Adapt tests and runtime behavior to the upgraded
- releases
+Subject: [PATCH] Adapt tests and runtime behavior to the upgraded releases
 
 Fix what the upgraded releases change at run time or in test expectations: rtc 0.21's interceptor API, tokio-util's Bytes requirement, jsonwebtoken 11's crypto backend, pulldown-cmark 0.13's task list output, opentelemetry-proto 0.33's string-encoded integers, the OpenTelemetry SDK's export error events, schemars 1's web.run schema hashes, and opentelemetry-otlp 0.33's retries, which need the real HTTP status. Two test servers now read the request before answering, which hyper requires under reqwest 0.13. unicode-width stays at 0.2.2, because ratatui-core 0.1.2 compensates for 0.2.2's zero-width halfwidth sound marks and would count them twice under 0.2.3.
 ---
- MODULE.bazel.lock                             |  1 -
  codex-rs/Cargo.lock                           | 24 ++++----
  codex-rs/Cargo.toml                           |  6 +-
  .../protocol/v2/model_provider_error_tests.rs |  3 +-
  .../remote_control/server_api_tests.rs        | 19 +++++-
- ...ample__sample_inherits_parent_context.snap | 12 ++--
  .../tests/suite/v2/turn_cost_otel.rs          |  2 +-
  codex-rs/cli/tests/worktree.rs                |  6 +-
  .../src/ui/transport_tests.rs                 |  2 +-
  codex-rs/code-mode-runtime/src/ui/workers.rs  |  7 ++-
- ...eb_search__literature_search_and_open.snap |  4 +-
  ...rch__literature_search_web_run_schema.snap | 12 ++--
  .../src/noise_relay/harness_tests.rs          | 29 ++++++++--
  codex-rs/exec-server/src/remote.rs            |  6 ++
@@ -32,25 +28,13 @@ Fix what the upgraded releases change at run time or in test expectations: rtc 0
  codex-rs/utils/cargo-bin/Cargo.toml           |  1 -
  codex-rs/utils/cargo-bin/src/lib.rs           | 41 +++++++------
  .../voice-host/src/capture_worker_tests.rs    | 58 ++++++++++++++-----
- 26 files changed, 202 insertions(+), 92 deletions(-)
+ 23 files changed, 194 insertions(+), 83 deletions(-)
 
-diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index 0ea2b06..c80c548 100644
---- a/MODULE.bazel.lock
-+++ b/MODULE.bazel.lock
-@@ -2265,7 +2265,6 @@
-       "unicode-truncate_2.0.1": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.8\"},{\"default_features\":false,\"name\":\"itertools\",\"req\":\"^0.14\"},{\"default_features\":false,\"name\":\"unicode-segmentation\",\"req\":\"^1\"},{\"name\":\"unicode-width\",\"req\":\"^0.2\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
-       "unicode-width_0.1.14": "{\"dependencies\":[{\"name\":\"compiler_builtins\",\"optional\":true,\"req\":\"^0.1\"},{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0\"},{\"name\":\"std\",\"optional\":true,\"package\":\"rustc-std-workspace-std\",\"req\":\"^1.0\"}],\"features\":{\"cjk\":[],\"default\":[\"cjk\"],\"no_std\":[],\"rustc-dep-of-std\":[\"std\",\"core\",\"compiler_builtins\"]}}",
-       "unicode-width_0.2.2": "{\"dependencies\":[{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0\"},{\"name\":\"std\",\"optional\":true,\"package\":\"rustc-std-workspace-std\",\"req\":\"^1.0\"}],\"features\":{\"cjk\":[],\"default\":[\"cjk\"],\"no_std\":[],\"rustc-dep-of-std\":[\"std\",\"core\"]}}",
--      "unicode-width_0.2.3": "{\"dependencies\":[{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0\"},{\"name\":\"std\",\"optional\":true,\"package\":\"rustc-std-workspace-std\",\"req\":\"^1.0\"}],\"features\":{\"cjk\":[],\"default\":[\"cjk\"],\"no_std\":[],\"rustc-dep-of-std\":[\"std\",\"core\"]}}",
-       "unicode-xid_0.2.6": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.3\"}],\"features\":{\"bench\":[],\"default\":[],\"no_std\":[]}}",
-       "universal-hash_0.5.1": "{\"dependencies\":[{\"name\":\"crypto-common\",\"req\":\"^0.1.6\"},{\"default_features\":false,\"name\":\"subtle\",\"req\":\"^2.4\"}],\"features\":{\"std\":[\"crypto-common/std\"]}}",
-       "untrusted_0.7.1": "{\"dependencies\":[],\"features\":{}}",
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 9fbe4ec..850e6bf 100644
+index b8dde3b324..3a4f981dd1 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
-@@ -225,7 +225,7 @@ checksum = "b2a5b0a5ab8561c603f16c3b78c24a386b1f70e7fc1b1b1e8c15738828e4a176"
+@@ -225,7 +225,7 @@ checksum = "0258346f92c78dbc5b336b9a5b27c64447aa10643bc64e651db2edb145361564"
  dependencies = [
   "anstyle",
   "memchr",
@@ -59,16 +43,16 @@ index 9fbe4ec..850e6bf 100644
  ]
  
  [[package]]
-@@ -2784,7 +2784,7 @@ dependencies = [
+@@ -2867,7 +2867,7 @@ dependencies = [
   "tracing",
   "tracing-subscriber",
   "unicode-segmentation",
 - "unicode-width 0.2.3",
 + "unicode-width 0.2.2",
+  "uuid",
+  "wiremock",
  ]
- 
- [[package]]
-@@ -4251,7 +4251,7 @@ version = "0.0.0"
+@@ -4422,7 +4422,7 @@ version = "0.0.0"
  dependencies = [
   "insta",
   "pretty_assertions",
@@ -77,16 +61,16 @@ index 9fbe4ec..850e6bf 100644
  ]
  
  [[package]]
-@@ -5260,7 +5260,7 @@ dependencies = [
-  "tracing-subscriber",
-  "two-face",
+@@ -5462,7 +5462,7 @@ dependencies = [
+  "unicode-bidi",
+  "unicode-linebreak",
   "unicode-segmentation",
 - "unicode-width 0.2.3",
 + "unicode-width 0.2.2",
   "url",
   "urlencoding",
   "uuid",
-@@ -5356,7 +5356,6 @@ dependencies = [
+@@ -5573,7 +5573,6 @@ dependencies = [
  name = "codex-utils-cargo-bin"
  version = "0.0.0"
  dependencies = [
@@ -94,7 +78,7 @@ index 9fbe4ec..850e6bf 100644
   "runfiles",
   "thiserror 2.0.21",
  ]
-@@ -10073,6 +10072,7 @@ version = "11.1.0"
+@@ -10377,6 +10376,7 @@ version = "11.1.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "e75fe14a82d81e5f5af639997db37d8b96045938a7ac6ab18cdbe1c7467e05e1"
  dependencies = [
@@ -102,7 +86,7 @@ index 9fbe4ec..850e6bf 100644
   "base64 0.22.1",
   "getrandom 0.2.17",
   "js-sys",
-@@ -13114,7 +13114,7 @@ dependencies = [
+@@ -13455,7 +13455,7 @@ dependencies = [
   "thiserror 2.0.21",
   "unicode-segmentation",
   "unicode-truncate",
@@ -111,7 +95,7 @@ index 9fbe4ec..850e6bf 100644
  ]
  
  [[package]]
-@@ -13188,7 +13188,7 @@ dependencies = [
+@@ -13529,7 +13529,7 @@ dependencies = [
   "strum",
   "time",
   "unicode-segmentation",
@@ -120,7 +104,7 @@ index 9fbe4ec..850e6bf 100644
  ]
  
  [[package]]
-@@ -15884,7 +15884,7 @@ checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
+@@ -16261,7 +16261,7 @@ checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
  dependencies = [
   "smawk",
   "unicode-linebreak",
@@ -129,7 +113,7 @@ index 9fbe4ec..850e6bf 100644
  ]
  
  [[package]]
-@@ -16837,7 +16837,7 @@ checksum = "16b380a1238663e5f8a691f9039c73e1cdae598a30e9855f541d29b08b53e9a5"
+@@ -17219,7 +17219,7 @@ checksum = "16b380a1238663e5f8a691f9039c73e1cdae598a30e9855f541d29b08b53e9a5"
  dependencies = [
   "itertools 0.14.0",
   "unicode-segmentation",
@@ -138,7 +122,7 @@ index 9fbe4ec..850e6bf 100644
  ]
  
  [[package]]
-@@ -16848,9 +16848,9 @@ checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
+@@ -17230,9 +17230,9 @@ checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
  
  [[package]]
  name = "unicode-width"
@@ -150,7 +134,7 @@ index 9fbe4ec..850e6bf 100644
  
  [[package]]
  name = "unicode-xid"
-@@ -16995,7 +16995,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -17377,7 +17377,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "eb05cdd19ae8707bf6a0a269972c07e6358103a7079faec749dec318a5b3dc23"
  dependencies = [
   "itoa",
@@ -160,10 +144,10 @@ index 9fbe4ec..850e6bf 100644
  ]
  
 diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
-index 8d40d19..e07e817 100644
+index 3ed9ea3a12..5f2a5ed844 100644
 --- a/codex-rs/Cargo.toml
 +++ b/codex-rs/Cargo.toml
-@@ -418,7 +418,7 @@ insta = "1.46.3"
+@@ -425,7 +425,7 @@ insta = "1.46.3"
  inventory = "0.3.19"
  itertools = "0.15.0"
  jsonptr = { version = "0.8.2", default-features = false }
@@ -172,8 +156,8 @@ index 8d40d19..e07e817 100644
  keyring = { version = "3.6", default-features = false }
  landlock = "0.4.4"
  lazy_static = "1"
-@@ -557,7 +557,9 @@ tungstenite = { version = "0.27.0", features = ["deflate", "proxy"] }
- uds_windows = "1.1.0"
+@@ -566,7 +566,9 @@ unicode-bidi = "0.3.18"
+ unicode-linebreak = "0.1.5"
  unicode-normalization = "0.1.25"
  unicode-segmentation = "1.12.0"
 -unicode-width = "0.2"
@@ -184,7 +168,7 @@ index 8d40d19..e07e817 100644
  urlencoding = "2.1"
  uuid = "1"
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/model_provider_error_tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/model_provider_error_tests.rs
-index 0537ec6..fe4dc15 100644
+index 0537ec6a21..fe4dc159e7 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/model_provider_error_tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/model_provider_error_tests.rs
 @@ -25,7 +25,8 @@ fn provider_error_schema_matches_wire_fields() -> anyhow::Result<()> {
@@ -198,7 +182,7 @@ index 0537ec6..fe4dc15 100644
          let wire_fields: BTreeSet<_> = wire
              .as_object()
 diff --git a/codex-rs/app-server-transport/src/transport/remote_control/server_api_tests.rs b/codex-rs/app-server-transport/src/transport/remote_control/server_api_tests.rs
-index cc8d93d..64d687e 100644
+index a871b696e8..bb2dffa453 100644
 --- a/codex-rs/app-server-transport/src/transport/remote_control/server_api_tests.rs
 +++ b/codex-rs/app-server-transport/src/transport/remote_control/server_api_tests.rs
 @@ -3,7 +3,9 @@ use crate::transport::remote_control::protocol::normalize_remote_control_url;
@@ -211,7 +195,7 @@ index cc8d93d..64d687e 100644
  use tokio::net::TcpListener;
  use tokio::sync::oneshot;
  
-@@ -44,8 +46,23 @@ async fn timed_out_request(partial_response: Option<&'static [u8]>) -> io::Error
+@@ -45,8 +47,23 @@ async fn timed_out_request(partial_response: Option<&'static [u8]>) -> io::Error
      );
      let (request_done_tx, request_done_rx) = oneshot::channel();
      let server_task = tokio::spawn(async move {
@@ -236,66 +220,8 @@ index cc8d93d..64d687e 100644
              stream
                  .write_all(partial_response)
                  .await
-diff --git a/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap b/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap
-index f6d612a..23c9f66 100644
---- a/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap
-+++ b/codex-rs/app-server/tests/suite/v2/snapshots/all__suite__v2__thread_sample__sample_inherits_parent_context.snap
-@@ -16,7 +16,7 @@ Settings:
-   stream: true
-   tool_choice: "auto"
- -- request 1 (turn) --
--00:additional_tools/developer (3; hash=bf13940dee826ebd):
-+00:additional_tools/developer (3; hash=321bc4cdce4e789f):
-         - namespace/functions; hash=028af59ad835936d
-           - function/exec_command
-           - function/write_stdin
-@@ -33,7 +33,7 @@ Settings:
-           - function/send_input
-           - function/spawn_agent
-           - function/wait_agent
--        - namespace/web: Tools in the web namespace.; hash=0037b1ed8d50fab5
-+        - namespace/web: Tools in the web namespace.; hash=ed1c60da95696abb
-           - function/run
- 01:message/developer:
-     Retain these base instructions.
-@@ -77,7 +77,7 @@ Settings:
- ## Window 2 (after request 2: input repeated)
- Settings: same as window 1
- -- request 3 (turn) --
--00:additional_tools/developer (3; hash=bf13940dee826ebd):
-+00:additional_tools/developer (3; hash=321bc4cdce4e789f):
-         - namespace/functions; hash=028af59ad835936d
-           - function/exec_command
-           - function/write_stdin
-@@ -94,7 +94,7 @@ Settings: same as window 1
-           - function/send_input
-           - function/spawn_agent
-           - function/wait_agent
--        - namespace/web: Tools in the web namespace.; hash=0037b1ed8d50fab5
-+        - namespace/web: Tools in the web namespace.; hash=ed1c60da95696abb
-           - function/run
- 01:message/developer:
-     Retain these base instructions.
-@@ -137,7 +137,7 @@ Settings: same as window 1
- ## Window 3 (after request 3: input repeated)
- Settings: same as window 1
- -- request 4 (turn) --
--00:additional_tools/developer (3; hash=bf13940dee826ebd):
-+00:additional_tools/developer (3; hash=321bc4cdce4e789f):
-         - namespace/functions; hash=028af59ad835936d
-           - function/exec_command
-           - function/write_stdin
-@@ -154,7 +154,7 @@ Settings: same as window 1
-           - function/send_input
-           - function/spawn_agent
-           - function/wait_agent
--        - namespace/web: Tools in the web namespace.; hash=0037b1ed8d50fab5
-+        - namespace/web: Tools in the web namespace.; hash=ed1c60da95696abb
-           - function/run
- 01:message/developer:
-     Retain these base instructions.
 diff --git a/codex-rs/app-server/tests/suite/v2/turn_cost_otel.rs b/codex-rs/app-server/tests/suite/v2/turn_cost_otel.rs
-index f9a06f2..c3f2b4a 100644
+index f9a06f2e47..c3f2b4acc7 100644
 --- a/codex-rs/app-server/tests/suite/v2/turn_cost_otel.rs
 +++ b/codex-rs/app-server/tests/suite/v2/turn_cost_otel.rs
 @@ -268,7 +268,7 @@ metrics_exporter = {{ otlp-http = {{ endpoint = "{}/metrics", protocol = "json"
@@ -308,7 +234,7 @@ index f9a06f2..c3f2b4a 100644
          .as_array()
          .expect("attributes")
 diff --git a/codex-rs/cli/tests/worktree.rs b/codex-rs/cli/tests/worktree.rs
-index 13b6914..950ac78 100644
+index aea4463087..4faaff6bc7 100644
 --- a/codex-rs/cli/tests/worktree.rs
 +++ b/codex-rs/cli/tests/worktree.rs
 @@ -669,7 +669,7 @@ trust_level = "trusted"
@@ -339,7 +265,7 @@ index 13b6914..950ac78 100644
                      .as_array()
                      .context("observation attributes")?
 diff --git a/codex-rs/code-mode-runtime/src/ui/transport_tests.rs b/codex-rs/code-mode-runtime/src/ui/transport_tests.rs
-index c2e9f19..431c67e 100644
+index c2e9f19319..431c67e5e5 100644
 --- a/codex-rs/code-mode-runtime/src/ui/transport_tests.rs
 +++ b/codex-rs/code-mode-runtime/src/ui/transport_tests.rs
 @@ -59,7 +59,7 @@ fn blocking_transport_preserves_wire_format_and_buffered_frames() -> io::Result<
@@ -352,7 +278,7 @@ index c2e9f19..431c67e 100644
      }
      assert_eq!(bytes, b"\x03\0\0\0abc\0\0\0\0\x03\0\0\0hi\0");
 diff --git a/codex-rs/code-mode-runtime/src/ui/workers.rs b/codex-rs/code-mode-runtime/src/ui/workers.rs
-index d2636e0..4b16de9 100644
+index d2636e0cb7..4b16de9c22 100644
 --- a/codex-rs/code-mode-runtime/src/ui/workers.rs
 +++ b/codex-rs/code-mode-runtime/src/ui/workers.rs
 @@ -51,7 +51,9 @@ pub(super) fn run() -> io::Result<()> {
@@ -376,28 +302,8 @@ index d2636e0..4b16de9 100644
                          fatal(error);
                      }
                  }
-diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_and_open.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_and_open.snap
-index 45e9cc1..37dacfa 100644
---- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_and_open.snap
-+++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_and_open.snap
-@@ -15,13 +15,13 @@ Settings:
-   stream: true
-   text: {"verbosity":"low"}
-   tool_choice: "auto"
--  tools (7; hash=dba1108606ea8676):
-+  tools (7; hash=6389e5ccd44a36d0):
-     - function/exec_command: Runs a command in a PTY, returning output or a session ID for ongoing interaction.; args=[cmd, justification, login, max_output_tokens, prefix_rule, sandbox_permissions, shell, tty, workdir, yield_time_ms]; hash=c04108e51a8548c5
-     - function/write_stdin: Writes characters to an existing unified exec session and returns recent output.; args=[chars, max_output_tokens, session_id, yield_time_ms]; hash=7fb62d8a3e2df4e2
-     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
-     - custom/apply_patch: The `apply_patch` tool can be used to edit files. This is a FREEFORM tool, so do not wrap the pat...; hash=dea9f12b0111a4ba
-     - function/view_image: View a local image file from the filesystem when visual inspection is needed. Use this for images...; args=[detail, path]; hash=3b766d5bdec5d50e
--    - namespace/web: Tools in the web namespace.; hash=c60e4db83b9fd6b0
-+    - namespace/web: Tools in the web namespace.; hash=ea89bde980bfc902
-       - function/run
-     - tool_search: # Tool discovery  Searches over deferred tool metadata with BM25 and exposes matching tools for t...; args=[limit, query]; hash=b573ed69c0b0e6c7
- -- request 1 (turn) --
 diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_web_run_schema.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_web_run_schema.snap
-index 66517ac..e00cc70 100644
+index 66517ac2c6..e00cc7015a 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_web_run_schema.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__web_search__literature_search_web_run_schema.snap
 @@ -18,8 +18,8 @@ expression: "serde_json::to_string_pretty(&parameters)?"
@@ -434,7 +340,7 @@ index 66517ac..e00cc70 100644
          "type": "object"
        },
 diff --git a/codex-rs/exec-server/src/noise_relay/harness_tests.rs b/codex-rs/exec-server/src/noise_relay/harness_tests.rs
-index 4c2d77d..c028540 100644
+index 4c2d77d2d4..c028540d15 100644
 --- a/codex-rs/exec-server/src/noise_relay/harness_tests.rs
 +++ b/codex-rs/exec-server/src/noise_relay/harness_tests.rs
 @@ -636,13 +636,21 @@ impl futures::Stream for ControlledWebSocket {
@@ -489,10 +395,10 @@ index 4c2d77d..c028540 100644
          }) {
              fields.0.insert("trace_id".to_owned(), trace_id.to_string());
 diff --git a/codex-rs/exec-server/src/remote.rs b/codex-rs/exec-server/src/remote.rs
-index cf88006..84739cc 100644
+index ed1fa073fc..770743f50f 100644
 --- a/codex-rs/exec-server/src/remote.rs
 +++ b/codex-rs/exec-server/src/remote.rs
-@@ -1668,6 +1668,12 @@ mod tests {
+@@ -1719,6 +1719,12 @@ mod tests {
                  .accept()
                  .await
                  .expect("registry request should connect");
@@ -506,7 +412,7 @@ index cf88006..84739cc 100644
                  .write_all(
                      b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 256\r\n\r\n{",
 diff --git a/codex-rs/model-provider/tests/runtime_catalog.rs b/codex-rs/model-provider/tests/runtime_catalog.rs
-index d65745c..681f2b0 100644
+index d65745cbeb..681f2b07dc 100644
 --- a/codex-rs/model-provider/tests/runtime_catalog.rs
 +++ b/codex-rs/model-provider/tests/runtime_catalog.rs
 @@ -244,10 +244,17 @@ fn tls_config() -> (String, Arc<rustls::ServerConfig>) {
@@ -528,10 +434,10 @@ index d65745c..681f2b0 100644
      let cert = leaf.signed_by(&key, &ca).unwrap();
      let config = rustls::ServerConfig::builder()
 diff --git a/codex-rs/otel/src/metrics/client.rs b/codex-rs/otel/src/metrics/client.rs
-index 9564f1e..6e1571d 100644
+index c21a01db81..2a1dbe4f63 100644
 --- a/codex-rs/otel/src/metrics/client.rs
 +++ b/codex-rs/otel/src/metrics/client.rs
-@@ -667,6 +667,7 @@ fn build_otlp_metric_exporter(
+@@ -713,6 +713,7 @@ fn build_otlp_metric_exporter(
  
              opentelemetry_otlp::MetricExporter::builder()
                  .with_tonic()
@@ -539,7 +445,7 @@ index 9564f1e..6e1571d 100644
                  .with_endpoint(endpoint)
                  .with_temporality(temporality)
                  .with_metadata(MetadataMap::from_headers(header_map))
-@@ -689,6 +690,7 @@ fn build_otlp_metric_exporter(
+@@ -735,6 +736,7 @@ fn build_otlp_metric_exporter(
  
              let mut exporter_builder = opentelemetry_otlp::MetricExporter::builder()
                  .with_http()
@@ -548,10 +454,10 @@ index 9564f1e..6e1571d 100644
                  .with_temporality(temporality)
                  .with_protocol(protocol)
 diff --git a/codex-rs/otel/src/network_policy.rs b/codex-rs/otel/src/network_policy.rs
-index e39c800..77d782d 100644
+index ca8ea51a56..193f32b5b4 100644
 --- a/codex-rs/otel/src/network_policy.rs
 +++ b/codex-rs/otel/src/network_policy.rs
-@@ -107,8 +107,10 @@ impl opentelemetry_http::HttpClient for RuntimeHttpClient {
+@@ -116,8 +116,10 @@ impl opentelemetry_http::HttpClient for RuntimeHttpClient {
                          .body(body)
                          .timeout(timeout)
                          .send()
@@ -565,10 +471,10 @@ index e39c800..77d782d 100644
                      if let Some(headers) = builder.headers_mut() {
                          *headers = response.headers().clone();
 diff --git a/codex-rs/otel/src/otlp.rs b/codex-rs/otel/src/otlp.rs
-index df57c57..122b723 100644
+index 2e24c6ca5d..59d37b2574 100644
 --- a/codex-rs/otel/src/otlp.rs
 +++ b/codex-rs/otel/src/otlp.rs
-@@ -3,6 +3,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
+@@ -4,6 +4,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
  use http::Uri;
  use opentelemetry_otlp::OTEL_EXPORTER_OTLP_TIMEOUT;
  use opentelemetry_otlp::OTEL_EXPORTER_OTLP_TIMEOUT_DEFAULT;
@@ -576,8 +482,8 @@ index df57c57..122b723 100644
  use opentelemetry_otlp::tonic_types::transport::Certificate as TonicCertificate;
  use opentelemetry_otlp::tonic_types::transport::ClientTlsConfig;
  use opentelemetry_otlp::tonic_types::transport::Identity as TonicIdentity;
-@@ -19,6 +20,16 @@ use std::io::ErrorKind;
- use std::path::PathBuf;
+@@ -21,6 +22,16 @@ use std::path::PathBuf;
+ use std::sync::Arc;
  use std::time::Duration;
  
 +/// Returns the retry policy for every OTLP exporter: one attempt per export.
@@ -594,10 +500,10 @@ index df57c57..122b723 100644
      let mut header_map = HeaderMap::new();
      for (key, value) in headers {
 diff --git a/codex-rs/otel/src/provider.rs b/codex-rs/otel/src/provider.rs
-index d04d107..d256b19 100644
+index 1b4ecffdc7..f8aa132ad6 100644
 --- a/codex-rs/otel/src/provider.rs
 +++ b/codex-rs/otel/src/provider.rs
-@@ -481,6 +481,7 @@ fn build_logger(
+@@ -523,6 +523,7 @@ fn build_logger(
  
              let exporter = LogExporter::builder()
                  .with_tonic()
@@ -605,7 +511,7 @@ index d04d107..d256b19 100644
                  .with_endpoint(endpoint)
                  .with_metadata(MetadataMap::from_headers(header_map))
                  .with_tls_config(tls_config)
-@@ -506,6 +507,7 @@ fn build_logger(
+@@ -548,6 +549,7 @@ fn build_logger(
  
              let mut exporter_builder = LogExporter::builder()
                  .with_http()
@@ -613,7 +519,7 @@ index d04d107..d256b19 100644
                  .with_endpoint(endpoint)
                  .with_protocol(protocol)
                  .with_headers(headers);
-@@ -563,6 +565,7 @@ fn build_tracer_provider(
+@@ -609,6 +611,7 @@ fn build_tracer_provider(
  
              SpanExporter::builder()
                  .with_tonic()
@@ -621,7 +527,7 @@ index d04d107..d256b19 100644
                  .with_endpoint(endpoint)
                  .with_metadata(MetadataMap::from_headers(header_map))
                  .with_tls_config(tls_config)
-@@ -584,6 +587,7 @@ fn build_tracer_provider(
+@@ -630,6 +633,7 @@ fn build_tracer_provider(
  
                  let mut exporter_builder = SpanExporter::builder()
                      .with_http()
@@ -629,7 +535,7 @@ index d04d107..d256b19 100644
                      .with_endpoint(endpoint)
                      .with_protocol(protocol)
                      .with_headers(headers);
-@@ -616,6 +620,7 @@ fn build_tracer_provider(
+@@ -663,6 +667,7 @@ fn build_tracer_provider(
  
              let mut exporter_builder = SpanExporter::builder()
                  .with_http()
@@ -638,7 +544,7 @@ index d04d107..d256b19 100644
                  .with_protocol(protocol)
                  .with_headers(headers);
 diff --git a/codex-rs/plugin-host/tests/fixtures/plugin_process.rs b/codex-rs/plugin-host/tests/fixtures/plugin_process.rs
-index 25c7b1c..ed8f93a 100644
+index 25c7b1c399..ed8f93a8be 100644
 --- a/codex-rs/plugin-host/tests/fixtures/plugin_process.rs
 +++ b/codex-rs/plugin-host/tests/fixtures/plugin_process.rs
 @@ -6,6 +6,7 @@ use futures::StreamExt;
@@ -675,7 +581,7 @@ index 25c7b1c..ed8f93a 100644
      let mut descendants = Vec::new();
      while let Some(message) = block_on(input.next()) {
 diff --git a/codex-rs/state/src/log_db.rs b/codex-rs/state/src/log_db.rs
-index ef03ad8..ca7a631 100644
+index ef03ad8573..ca7a631139 100644
 --- a/codex-rs/state/src/log_db.rs
 +++ b/codex-rs/state/src/log_db.rs
 @@ -317,6 +317,17 @@ where
@@ -697,7 +603,7 @@ index ef03ad8..ca7a631 100644
          event.record(&mut visitor);
          // OTLP gRPC connections run on their own task, so an unsolicited PING
 diff --git a/codex-rs/state/src/log_db_filter_tests.rs b/codex-rs/state/src/log_db_filter_tests.rs
-index 3f04e10..6c9bc12 100644
+index 3f04e1049c..6c9bc12bd8 100644
 --- a/codex-rs/state/src/log_db_filter_tests.rs
 +++ b/codex-rs/state/src/log_db_filter_tests.rs
 @@ -31,6 +31,7 @@ async fn sqlite_sink_filters_noisy_targets_without_dropping_useful_diagnostics()
@@ -709,7 +615,7 @@ index 3f04e10..6c9bc12 100644
      tracing::warn!(target: "sqlx::pool::acquire", "dropped-slow-acquire-warning");
      tracing::warn!(target: "sqlx::other", "dropped-sqlx-warning");
 diff --git a/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap b/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap
-index 636eba4..8f3113d 100644
+index 636eba47d2..8f3113db08 100644
 --- a/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap
 +++ b/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap
 @@ -32,8 +32,8 @@ expression: "stages.join(\"\\n\\n---\\n\\n\")"
@@ -744,7 +650,7 @@ index 636eba4..8f3113d 100644
  ☑ <div>done</div>
  ---
 diff --git a/codex-rs/utils/cargo-bin/Cargo.toml b/codex-rs/utils/cargo-bin/Cargo.toml
-index a56e575..d7788d7 100644
+index a56e575830..d7788d79c0 100644
 --- a/codex-rs/utils/cargo-bin/Cargo.toml
 +++ b/codex-rs/utils/cargo-bin/Cargo.toml
 @@ -8,7 +8,6 @@ license.workspace = true
@@ -756,7 +662,7 @@ index a56e575..d7788d7 100644
  thiserror = { workspace = true }
  
 diff --git a/codex-rs/utils/cargo-bin/src/lib.rs b/codex-rs/utils/cargo-bin/src/lib.rs
-index 6ef7080..cc61644 100644
+index 32a2329838..6321cfde18 100644
 --- a/codex-rs/utils/cargo-bin/src/lib.rs
 +++ b/codex-rs/utils/cargo-bin/src/lib.rs
 @@ -40,7 +40,6 @@ pub enum CargoBinError {
@@ -817,7 +723,7 @@ index 6ef7080..cc61644 100644
  }
  
 diff --git a/codex-rs/voice-host/src/capture_worker_tests.rs b/codex-rs/voice-host/src/capture_worker_tests.rs
-index 0d85153..e15a7d9 100644
+index 0d85153769..e15a7d9b8d 100644
 --- a/codex-rs/voice-host/src/capture_worker_tests.rs
 +++ b/codex-rs/voice-host/src/capture_worker_tests.rs
 @@ -7,13 +7,12 @@ use codex_realtime_webrtc::AudioControls;

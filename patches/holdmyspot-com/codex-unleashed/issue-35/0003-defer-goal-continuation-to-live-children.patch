@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:35:08 -0500
-Subject: [PATCH 14/54] Keep active-goal parents available while children run
+Subject: [PATCH] Keep active-goal parents available while children run
 
 Automatic goal continuation no longer starts a parent turn while a V2 child is still running. The goal stays active, the parent can answer unrelated prompts, and the child's completion resumes the parent to finish the goal.
 ---
@@ -15,7 +15,7 @@ Automatic goal continuation no longer starts a parent turn while a V2 child is s
 
 diff --git a/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs b/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs
 new file mode 100644
-index 0000000..77f5fe0
+index 0000000000..77f5fe01c6
 --- /dev/null
 +++ b/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs
 @@ -0,0 +1,294 @@
@@ -314,7 +314,7 @@ index 0000000..77f5fe0
 +    Ok(())
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/turn_start.rs b/codex-rs/app-server/tests/suite/v2/turn_start.rs
-index 154f152..592cc80 100644
+index 5419761db5..4b51d59700 100644
 --- a/codex-rs/app-server/tests/suite/v2/turn_start.rs
 +++ b/codex-rs/app-server/tests/suite/v2/turn_start.rs
 @@ -120,6 +120,9 @@ use super::analytics::mount_analytics_capture;
@@ -328,10 +328,10 @@ index 154f152..592cc80 100644
  const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(25);
  #[cfg(not(windows))]
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index a8d5865..32ad753 100644
+index 1d443d3a4d..18c0fb88d6 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -1179,6 +1179,45 @@ impl CodexThread {
+@@ -1432,6 +1432,45 @@ impl CodexThread {
          self.session.multi_agent_version()
      }
  
@@ -378,7 +378,7 @@ index a8d5865..32ad753 100644
      pub async fn conversation_history_snapshot(&self) -> Arc<dyn ConversationHistorySnapshot> {
          self.session.conversation_history_snapshot().await
 diff --git a/codex-rs/core/tests/suite/background_subagent_tests.rs b/codex-rs/core/tests/suite/background_subagent_tests.rs
-index 9cdc27d..7ba3593 100644
+index 9cdc27d87c..7ba359315b 100644
 --- a/codex-rs/core/tests/suite/background_subagent_tests.rs
 +++ b/codex-rs/core/tests/suite/background_subagent_tests.rs
 @@ -218,6 +218,7 @@ async fn background_subagent_guidance_reaches_model_only_with_wakeup_enabled(
@@ -408,10 +408,10 @@ index 9cdc27d..7ba3593 100644
      Ok(())
  }
 diff --git a/codex-rs/ext/goal/src/runtime.rs b/codex-rs/ext/goal/src/runtime.rs
-index 8744473..6188beb 100644
+index e966119be6..796815abed 100644
 --- a/codex-rs/ext/goal/src/runtime.rs
 +++ b/codex-rs/ext/goal/src/runtime.rs
-@@ -477,6 +477,14 @@ impl GoalRuntimeHandle {
+@@ -475,6 +475,14 @@ impl GoalRuntimeHandle {
              self.inner.accounting_state.clear_active_goal();
              return Ok(());
          }
