@@ -123,3 +123,6 @@ The release applies these patches in this order:
 111. [flaky-tests/rmcp-configured-response-cap-fixture.patch](holdmyspot-com/codex-unleashed/flaky-tests/rmcp-configured-response-cap-fixture.patch)
 112. [flaky-tests/rmcp-oauth-authorization-origin-fixture.patch](holdmyspot-com/codex-unleashed/flaky-tests/rmcp-oauth-authorization-origin-fixture.patch)
 113. [flaky-tests/rmcp-sse-event-limit-fixture.patch](holdmyspot-com/codex-unleashed/flaky-tests/rmcp-sse-event-limit-fixture.patch)
+114. [flaky-tests/rmcp-oversize-discovery-and-error-body-fixture.patch](holdmyspot-com/codex-unleashed/flaky-tests/rmcp-oversize-discovery-and-error-body-fixture.patch)
+115. [flaky-tests/rmcp-header-bearing-redirect-refusal-fixture.patch](holdmyspot-com/codex-unleashed/flaky-tests/rmcp-header-bearing-redirect-refusal-fixture.patch)
+116. [flaky-tests/rmcp-stdio-line-limit-fixtures.patch](holdmyspot-com/codex-unleashed/flaky-tests/rmcp-stdio-line-limit-fixtures.patch)

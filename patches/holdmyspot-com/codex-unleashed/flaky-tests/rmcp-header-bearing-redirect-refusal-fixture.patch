@@ -1,0 +1,129 @@
+From 7db36548e30d38994d49fe8235a6e42364b22d4f Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 22 Nov 2026 19:48:40 -0500
+Subject: [PATCH] test: refuse cross-origin redirects for RMCP clients with
+ configured headers or auth providers
+
+---
+ .../rmcp-client/tests/mcp_2026_discovery.rs   | 89 +++++++++++++++++++
+ 1 file changed, 89 insertions(+)
+
+diff --git a/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs b/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
+index 90ecdda53..962b5b430 100644
+--- a/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
++++ b/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
+@@ -4,15 +4,21 @@ use std::sync::Arc;
+ use std::sync::Mutex;
+ use std::time::Duration;
+ 
++use codex_api::AuthError;
++use codex_api::AuthProvider;
+ use codex_config::types::AuthKeyringBackendKind;
+ use codex_config::types::OAuthCredentialsStoreMode;
+ use codex_exec_server::Environment;
+ use codex_rmcp_client::ElicitationAction;
+ use codex_rmcp_client::ElicitationResponse;
+ use codex_rmcp_client::LocalStdioServerLauncher;
++use codex_rmcp_client::McpOAuthRefreshMode;
+ use codex_rmcp_client::McpProtocolMode;
+ use codex_rmcp_client::RmcpClient;
++use codex_rmcp_client::StreamableHttpRedirectMode;
+ use futures::FutureExt;
++use http::HeaderMap;
++use http::HeaderValue;
+ use pretty_assertions::assert_eq;
+ use rmcp::model::ClientCapabilities;
+ use rmcp::model::Implementation;
+@@ -170,6 +176,89 @@ async fn ordinary_modern_http_discovery_stops_at_same_origin_redirect() -> anyho
+     Ok(())
+ }
+ 
++struct StaticBearerAuth;
++
++impl AuthProvider for StaticBearerAuth {
++    fn add_auth_headers(&self, headers: &mut HeaderMap) -> Result<(), AuthError> {
++        headers.insert(
++            http::header::AUTHORIZATION,
++            HeaderValue::from_static("Bearer test-bearer"),
++        );
++        Ok(())
++    }
++}
++
++async fn assert_cross_origin_redirect_is_refused(
++    http_headers: Option<HashMap<String, String>>,
++    auth_provider: Option<Arc<StaticBearerAuth>>,
++) -> anyhow::Result<()> {
++    let target = MockServer::start().await;
++    Mock::given(path("/redirect-target"))
++        .respond_with(ResponseTemplate::new(200))
++        .expect(0)
++        .mount(&target)
++        .await;
++    let server = MockServer::start().await;
++    Mock::given(method("POST"))
++        .and(path("/mcp"))
++        .respond_with(
++            ResponseTemplate::new(307)
++                .insert_header("location", format!("{}/redirect-target", target.uri())),
++        )
++        .expect(1)
++        .mount(&server)
++        .await;
++
++    let client = RmcpClient::new_streamable_http_client_with_protocol_mode_and_redirect_mode(
++        "redirect-test",
++        &format!("{}/mcp", server.uri()),
++        /*bearer_token*/ None,
++        http_headers,
++        /*env_http_headers*/ None,
++        /*oauth_config*/ None,
++        OAuthCredentialsStoreMode::File,
++        AuthKeyringBackendKind::default(),
++        Environment::default_for_tests().get_http_client(),
++        auth_provider.map(|auth| auth as _),
++        McpProtocolMode::Legacy,
++        StreamableHttpRedirectMode::AgentPluginV1,
++        McpOAuthRefreshMode::Legacy,
++    )
++    .await?;
++    let result = initialize_client(&client).await;
++    client.shutdown().await;
++
++    assert!(result.is_err());
++    assert_eq!(
++        target.received_requests().await.unwrap_or_default().len(),
++        0
++    );
++    Ok(())
++}
++
++#[tokio::test]
++async fn ordinary_http_client_with_configured_headers_refuses_cross_origin_redirect()
++-> anyhow::Result<()> {
++    assert_cross_origin_redirect_is_refused(
++        Some(HashMap::from([(
++            "x-test-header".to_string(),
++            "configured".to_string(),
++        )])),
++        /*auth_provider*/ None,
++    )
++    .await
++}
++
++#[tokio::test]
++async fn ordinary_http_client_with_auth_provider_refuses_cross_origin_redirect()
++-> anyhow::Result<()> {
++    assert_cross_origin_redirect_is_refused(
++        /*http_headers*/ None,
++        Some(Arc::new(StaticBearerAuth)),
++    )
++    .await
++}
++
+ #[tokio::test]
+ async fn ordinary_modern_http_discovery_accepts_json_at_message_limit() -> anyhow::Result<()> {
+     let server = MockServer::start().await;
+-- 
+2.43.0
+

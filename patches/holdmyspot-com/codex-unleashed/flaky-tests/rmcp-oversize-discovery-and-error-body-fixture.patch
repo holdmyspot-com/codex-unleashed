@@ -1,0 +1,145 @@
+From 2ce2ac927ead14a6c61e58e2ce55e45de9c83c59 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 22 Nov 2026 19:47:36 -0500
+Subject: [PATCH] test: bound oversized MCP discovery and error responses
+
+Add adapter tests that a server/discover response one byte over the
+message limit and a 500 response whose body exceeds the response cap
+both fail with ResponseTooLarge instead of being buffered.
+---
+ .../src/http_client_adapter_tests.rs          | 119 ++++++++++++++++++
+ 1 file changed, 119 insertions(+)
+
+diff --git a/codex-rs/rmcp-client/src/http_client_adapter_tests.rs b/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
+index de03a992e..2301bffb3 100644
+--- a/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
++++ b/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
+@@ -155,6 +155,125 @@ async fn modern_tool_catalog_applies_configured_response_cap() -> anyhow::Result
+     Ok(())
+ }
+ 
++struct FixedStreamResponse {
++    status: u16,
++    chunks: Vec<Vec<u8>>,
++}
++
++impl HttpClient for FixedStreamResponse {
++    fn http_request(
++        &self,
++        _params: HttpRequestParams,
++    ) -> BoxFuture<'_, Result<HttpRequestResponse, ExecServerError>> {
++        panic!("the MCP adapter must request a streaming response");
++    }
++
++    fn http_request_stream(
++        &self,
++        _params: HttpRequestParams,
++    ) -> BoxFuture<'_, Result<(HttpRequestResponse, HttpResponseBodyStream), ExecServerError>> {
++        let status = self.status;
++        let chunks = self.chunks.clone();
++        Box::pin(async move {
++            let response = HttpRequestResponse {
++                status,
++                headers: vec![HttpHeader {
++                    name: "content-type".to_string(),
++                    value: "application/json".to_string(),
++                    value_env_var: None,
++                }],
++                body: Vec::new().into(),
++            };
++            Ok((response, HttpResponseBodyStream::from_chunks(chunks)))
++        })
++    }
++}
++
++async fn post_modern_request(
++    http_client: FixedStreamResponse,
++    method: &str,
++) -> Result<
++    rmcp::transport::streamable_http_client::StreamableHttpPostResponse,
++    StreamableHttpError<StreamableHttpClientAdapterError>,
++> {
++    let client = StreamableHttpClientAdapter::new(
++        Arc::new(http_client),
++        HeaderMap::new(),
++        /*auth_provider*/ None,
++        /*has_configured_headers*/ false,
++        StreamableHttpRedirectMode::Legacy,
++        Arc::default(),
++    );
++    let message = serde_json::from_value(json!({
++        "jsonrpc": "2.0",
++        "id": 1,
++        "method": method,
++        "params": {},
++    }))
++    .expect("valid JSON-RPC request");
++    let headers = [(
++        HeaderName::from_bytes(HEADER_MCP_PROTOCOL_VERSION.as_bytes())
++            .expect("valid protocol version header name"),
++        HeaderValue::from_str(ProtocolVersion::V_2026_07_28.as_str())
++            .expect("valid protocol version header value"),
++    )]
++    .into();
++    client
++        .post_message(
++            Arc::from("https://mcp.example.com/mcp"),
++            message,
++            /*session_id*/ None,
++            /*auth_token*/ None,
++            headers,
++        )
++        .await
++}
++
++#[tokio::test]
++async fn modern_discovery_rejects_response_one_byte_over_the_message_limit() {
++    let mut body = br#"{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete"}}"#.to_vec();
++    body.resize(MAX_MCP_STDIO_LINE_BYTES + 1, b' ');
++    let result = post_modern_request(
++        FixedStreamResponse {
++            status: 200,
++            chunks: vec![body],
++        },
++        "server/discover",
++    )
++    .await;
++
++    assert!(matches!(
++        result,
++        Err(StreamableHttpError::Client(
++            StreamableHttpClientAdapterError::ResponseTooLarge {
++                maximum_bytes: MAX_MCP_STDIO_LINE_BYTES,
++            }
++        ))
++    ));
++}
++
++#[tokio::test]
++async fn modern_non_success_response_body_is_bounded_by_the_response_cap() {
++    let chunk = vec![b'x'; MAX_MCP_STDIO_LINE_BYTES / 2];
++    let result = post_modern_request(
++        FixedStreamResponse {
++            status: 500,
++            chunks: vec![chunk.clone(), chunk.clone(), chunk.clone(), chunk],
++        },
++        "tools/list",
++    )
++    .await;
++
++    assert!(matches!(
++        result,
++        Err(StreamableHttpError::Client(
++            StreamableHttpClientAdapterError::ResponseTooLarge {
++                maximum_bytes: MAX_MCP_STDIO_LINE_BYTES,
++            }
++        ))
++    ));
++}
++
+ #[test]
+ fn protocol_headers_preserve_utf8_values() {
+     let mut headers = HeaderMap::new();
+-- 
+2.43.0
+

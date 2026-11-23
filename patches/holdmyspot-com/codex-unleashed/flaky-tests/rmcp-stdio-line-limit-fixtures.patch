@@ -1,0 +1,170 @@
+From d0c51365e90cf5c01a46455264e2b7aea9ab1fd5 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <codex-unleashed@users.noreply.github.com>
+Date: Sun, 22 Nov 2026 19:48:15 -0500
+Subject: [PATCH] test: cover the stdio line limit for local and executor
+ transports
+
+Check that a JSON-RPC line exactly at MAX_MCP_STDIO_LINE_BYTES is accepted and that one byte more ends the stream (local) or yields LineTooLong and closes the transport (executor).
+---
+ .../src/bounded_stdio_transport.rs            |  4 ++
+ .../src/bounded_stdio_transport_tests.rs      | 68 +++++++++++++++++++
+ .../src/executor_process_transport_tests.rs   | 59 ++++++++++++++++
+ 3 files changed, 131 insertions(+)
+ create mode 100644 codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
+
+diff --git a/codex-rs/rmcp-client/src/bounded_stdio_transport.rs b/codex-rs/rmcp-client/src/bounded_stdio_transport.rs
+index dc065995f..b76071ade 100644
+--- a/codex-rs/rmcp-client/src/bounded_stdio_transport.rs
++++ b/codex-rs/rmcp-client/src/bounded_stdio_transport.rs
+@@ -146,3 +146,7 @@ impl Transport<RoleClient> for BoundedStdioTransport {
+         Ok(())
+     }
+ }
++
++#[cfg(all(test, unix))]
++#[path = "bounded_stdio_transport_tests.rs"]
++mod tests;
+diff --git a/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs b/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
+new file mode 100644
+index 000000000..cfcd260bd
+--- /dev/null
++++ b/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
+@@ -0,0 +1,68 @@
++//! Line-limit tests for the local bounded stdio transport.
++//!
++//! The transport only accepts `ChildStdin` and `ChildStdout`, so these tests wrap anonymous
++//! pipes in those types instead of spawning a server. Anonymous Windows pipes are not
++//! overlapped and cannot be registered with tokio, so the module is Unix-only.
++
++use std::io::Write;
++use std::os::fd::OwnedFd;
++
++use rmcp::transport::Transport;
++
++use super::BoundedStdioTransport;
++use super::MAX_MCP_STDIO_LINE_BYTES;
++
++/// A ping request padded with trailing JSON whitespace to exactly `content_len` bytes.
++fn padded_ping(content_len: usize) -> Vec<u8> {
++    let mut line = br#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#.to_vec();
++    assert!(line.len() <= content_len);
++    line.resize(content_len, b' ');
++    line
++}
++
++/// Build a transport whose stdout yields `line` plus a newline, written from a separate thread
++/// because the line is larger than the pipe buffer. The returned stdin reader keeps the stdin
++/// pipe open for the lifetime of the test.
++fn transport_with_stdout_line(line: Vec<u8>) -> (BoundedStdioTransport, std::io::PipeReader) {
++    let (stdout_reader, mut stdout_writer) = std::io::pipe().expect("stdout pipe");
++    let (stdin_reader, stdin_writer) = std::io::pipe().expect("stdin pipe");
++    let stdout = tokio::process::ChildStdout::try_from(std::process::ChildStdout::from(
++        OwnedFd::from(stdout_reader),
++    ))
++    .expect("tokio stdout");
++    let stdin = tokio::process::ChildStdin::try_from(std::process::ChildStdin::from(
++        OwnedFd::from(stdin_writer),
++    ))
++    .expect("tokio stdin");
++    std::thread::spawn(move || {
++        // The reader may close early after an oversized line; a broken pipe is expected then.
++        let _ = stdout_writer
++            .write_all(&line)
++            .and_then(|()| stdout_writer.write_all(b"\n"));
++    });
++    (
++        BoundedStdioTransport::new(stdin, stdout, "line-limit-test".to_string()),
++        stdin_reader,
++    )
++}
++
++#[tokio::test]
++async fn local_stdio_accepts_a_line_exactly_at_the_limit() {
++    let (mut transport, _stdin) = transport_with_stdout_line(padded_ping(MAX_MCP_STDIO_LINE_BYTES));
++
++    let message = transport.receive().await;
++
++    assert!(message.is_some());
++}
++
++/// The local transport has no typed error: an oversized line is logged and `receive` returns
++/// `None`, which rmcp treats as the end of the stream, so the service shuts down.
++#[tokio::test]
++async fn local_stdio_ends_the_stream_for_a_line_one_byte_over_the_limit() {
++    let (mut transport, _stdin) =
++        transport_with_stdout_line(padded_ping(MAX_MCP_STDIO_LINE_BYTES + 1));
++
++    let message = transport.receive().await;
++
++    assert!(message.is_none());
++}
+diff --git a/codex-rs/rmcp-client/src/executor_process_transport_tests.rs b/codex-rs/rmcp-client/src/executor_process_transport_tests.rs
+index 82fdaddcc..958bdec9b 100644
+--- a/codex-rs/rmcp-client/src/executor_process_transport_tests.rs
++++ b/codex-rs/rmcp-client/src/executor_process_transport_tests.rs
+@@ -499,3 +499,62 @@ fn accepts_input_larger_than_limit_when_each_line_is_bounded() {
+     assert_eq!(buffer.take_line(), None);
+     assert_eq!(buffer.take_remaining(), Some(BytesMut::from(&b"tail"[..])));
+ }
++
++fn padded_ping(content_len: usize) -> Vec<u8> {
++    let mut line = br#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#.to_vec();
++    assert!(line.len() <= content_len);
++    line.resize(content_len, b' ');
++    line.push(b'\n');
++    line
++}
++
++fn idle_transport() -> ExecutorProcessTransport {
++    let process = Arc::new(RetainedReadProcess {
++        process_id: ProcessId::from("mcp-stdio-line-limit"),
++        response: retained_read_response(Vec::new(), /*next_seq*/ 1),
++    });
++    ExecutorProcessTransport::new(process, "mcp-stdio-line-limit".to_string())
++}
++
++// These tests drive the transport at its output-ingest boundary, below the executor RPC, so
++// they cover the same line limit that a real executor-backed server hits.
++#[tokio::test]
++async fn accepts_a_stdout_line_exactly_at_the_limit() {
++    let mut transport = idle_transport();
++
++    transport.push_process_output(recovered_output(
++        /*seq*/ 1,
++        ExecOutputStream::Stdout,
++        &padded_ping(MAX_MCP_STDOUT_LINE_BYTES),
++    ));
++
++    assert!(!transport.closed);
++    assert!(transport.receive().await.is_some());
++}
++
++#[tokio::test]
++async fn rejects_a_stdout_line_one_byte_over_the_limit_with_the_typed_error() {
++    assert_eq!(
++        LineBuffer::default().extend_from_slice(&padded_ping(MAX_MCP_STDOUT_LINE_BYTES + 1)),
++        Err(LineTooLong {
++            max_line_bytes: MAX_MCP_STDOUT_LINE_BYTES
++        })
++    );
++}
++
++/// After the typed error the transport is closed, drops the oversized line and yields no
++/// message, so rmcp sees end-of-stream.
++#[tokio::test]
++async fn closes_the_transport_after_a_stdout_line_one_byte_over_the_limit() {
++    let mut transport = idle_transport();
++
++    transport.push_process_output(recovered_output(
++        /*seq*/ 1,
++        ExecOutputStream::Stdout,
++        &padded_ping(MAX_MCP_STDOUT_LINE_BYTES + 1),
++    ));
++
++    assert!(transport.closed);
++    assert_eq!(transport.stdout, LineBuffer::default());
++    assert!(transport.receive().await.is_none());
++}
+-- 
+2.43.0
+
