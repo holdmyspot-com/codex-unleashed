@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Subject: [PATCH] Verify RMCP SSE event-size error propagation
+
+diff --git a/codex-rs/rmcp-client/src/http_client_adapter_tests.rs b/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
+index 6194b949fce883b8ddff7ec5006ee2612c16f136..de03a992e5628242c17933c0b2ac41b8d173c0b7 100644
+--- a/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
++++ b/codex-rs/rmcp-client/src/http_client_adapter_tests.rs
+@@ -7,6 +7,7 @@ use codex_exec_server::HttpRedirectPolicy;
+ use codex_exec_server::HttpRequestParams;
+ use codex_exec_server::HttpRequestResponse;
+ use codex_exec_server::HttpResponseBodyStream;
++use futures::StreamExt;
+ use futures::future::BoxFuture;
+ use http::HeaderMap;
+ use http::HeaderName;
+@@ -27,6 +28,7 @@ use super::StreamableHttpRedirectMode;
+ use super::collect_body;
+ use super::mcp_redirect_policy;
+ use super::protocol_headers;
++use super::sse_stream_from_body;
+ use crate::bounded_stdio_transport::MAX_MCP_STDIO_LINE_BYTES;
+ 
+ #[tokio::test]
+@@ -50,6 +52,35 @@ async fn collect_body_rejects_one_byte_beyond_the_limit() {
+     ));
+ }
+ 
++#[tokio::test]
++async fn sse_body_stream_propagates_event_size_error() {
++    let maximum_bytes = 9;
++    let body = HttpResponseBodyStream::from_chunks(vec![
++        b"data: ok\n\n".to_vec(),
++        b"data: abc\n\n".to_vec(),
++    ]);
++    let mut events = sse_stream_from_body(body, Some(maximum_bytes));
++
++    let event = events
++        .next()
++        .await
++        .expect("one complete event")
++        .expect("the first event fits");
++    assert_eq!(event.data.as_deref(), Some("ok"));
++
++    let Some(Err(sse_stream::Error::Body(error))) = events.next().await else {
++        panic!("the event size error must propagate as a body error");
++    };
++    let error = error
++        .downcast_ref::<std::io::Error>()
++        .expect("the body error contains the original I/O error");
++    assert_eq!(error.kind(), ErrorKind::InvalidData);
++    assert_eq!(
++        error.to_string(),
++        format!("MCP response body exceeds {maximum_bytes} bytes")
++    );
++}
++
+ struct InMemoryToolCatalog;
+ 
+ impl HttpClient for InMemoryToolCatalog {
