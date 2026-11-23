@@ -1,4 +1,4 @@
-From: Codex <codex@openai.com>
+From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 18 Nov 2026 12:21:44 -0500
 Subject: [PATCH] bazel: Configure AWS-LC C actions for C11
 

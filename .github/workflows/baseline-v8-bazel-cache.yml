@@ -1,7 +1,8 @@
 name: Seed the compiled V8 Bazel actions
 
-# Upstream's Bazel build compiles V8 from source (upstream commit ab190cdfd) and hides that cost behind a BuildBuddy cache
-# this repository does not have. This builds the V8-dependent crates under the argument-comment lint's Bazel
+# Upstream's Bazel build compiles V8 from source (upstream commit ab190cdfd) and hides that cost behind a BuildBuddy cache.
+# This repository's own BuildBuddy remote cache (docs/BUILD_CACHE.md) serves only trusted runs that hold its key; this seed
+# keeps the fallback for runs without it. This builds the V8-dependent crates under the argument-comment lint's Bazel
 # configuration into an empty Bazel disk cache and pushes it to GHCR, keyed on the committed Bazel module files, .bazelrc
 # and third_party/v8, so the Bazel lint job reads the compiled actions instead. That configuration sets
 # `--output_groups=argument_comment_lint_checks`, so a build of the V8 targets themselves ran no action and saved an empty
@@ -48,6 +49,7 @@ jobs:
           mkdir -p "$evidence"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          cp restart-metadata/.github/scripts/buildbuddy-cache.sh "$RUNNER_TEMP/"
           cp restart-metadata/.github/cargo-cache-package "$evidence/cargo-cache-package"
           cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh restart-metadata/.github/scripts/v8-bazel-cache.sh "$RUNNER_TEMP/"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
@@ -137,6 +139,14 @@ jobs:
           target: Linux
           cache-scope: bazel-v8-seed
 
+      # Remote cache only, and only for a trusted run (see buildbuddy-cache.sh). The key reaches this step and the finish
+      # step, never the Bazel wrapper; without it Bazel keeps using the GHCR disk caches.
+      - name: Configure the BuildBuddy remote cache
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" configure "$GITHUB_WORKSPACE"
+
       - name: Set up the GHCR cache transport
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
         with:
@@ -183,6 +193,13 @@ jobs:
             build --disk_cache="$RUNNER_TEMP/v8-bazel-cache" --remote_upload_local_results=false --keep_going \
             --verbose_failures --build_metadata=ROLE=CI -- //codex-rs/v8-poc/... \
             2>&1 | tee "$RUNNER_TEMP/baseline-v8-cache-evidence/bazel-v8-plain-probe.log"
+
+      - name: Keep the BuildBuddy key out of the retained evidence
+        if: always()
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" finish "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-v8-cache-evidence"
 
       - name: Remove the job-owned tooling runtime
         if: always()

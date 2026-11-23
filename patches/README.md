@@ -127,3 +127,4 @@ The release applies these patches in this order:
 115. [flaky-tests/rmcp-header-bearing-redirect-refusal-fixture.patch](holdmyspot-com/codex-unleashed/flaky-tests/rmcp-header-bearing-redirect-refusal-fixture.patch)
 116. [flaky-tests/rmcp-stdio-line-limit-fixtures.patch](holdmyspot-com/codex-unleashed/flaky-tests/rmcp-stdio-line-limit-fixtures.patch)
 117. [release-build-warnings/debug-only-test-imports.patch](holdmyspot-com/codex-unleashed/release-build-warnings/debug-only-test-imports.patch)
+118. [rmcp-stdio/close-after-oversized-line.patch](holdmyspot-com/codex-unleashed/rmcp-stdio/close-after-oversized-line.patch)

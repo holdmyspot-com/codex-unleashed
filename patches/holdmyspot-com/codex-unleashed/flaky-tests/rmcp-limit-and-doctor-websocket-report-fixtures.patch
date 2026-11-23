@@ -1,5 +1,5 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Codex <codex@openai.com>
+From: Gili Tzabari <cowwoc2020@gmail.com>
 Subject: [PATCH] Test RMCP response limits and WebSocket doctor reporting
 
 diff --git a/codex-rs/cli/src/doctor.rs b/codex-rs/cli/src/doctor.rs

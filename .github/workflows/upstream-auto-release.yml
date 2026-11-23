@@ -500,6 +500,8 @@ jobs:
       contents: read
       packages: write
     uses: ./.github/workflows/baseline-macos-bazel-tests.yml
+    secrets:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     with:
       patches: ${{ needs.detect.outputs.patches }}
       upstream_commit: ${{ needs.detect.outputs.upstream_commit }}

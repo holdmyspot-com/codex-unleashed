@@ -17,6 +17,10 @@ on:
         description: Optional upstream commit to test instead of .github/upstream-commit
         type: string
         default: ""
+    secrets:
+      BUILDBUDDY_API_KEY:
+        description: BuildBuddy key for the remote cache; callers pass it only on trusted runs, and jobs run without it when it is absent
+        required: false
 
 permissions:
   contents: read
@@ -85,6 +89,7 @@ jobs:
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          cp restart-metadata/.github/scripts/buildbuddy-cache.sh "$RUNNER_TEMP/"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           mkdir -p "$RUNNER_TEMP/test-baselines"
           if [[ -d restart-metadata/docs/test-baselines ]]; then cp -R restart-metadata/docs/test-baselines/. "$RUNNER_TEMP/test-baselines/"; fi
@@ -217,8 +222,16 @@ jobs:
         with:
           version: 1.3.1
 
-      # Upstream hides the cost of compiling V8 from source behind its BuildBuddy cache; without one, each shard spent
-      # about three of its six hours compiling V8, and an Intel shard reached the job limit. A cache fault never fails
+      # Remote cache only, and only for a trusted run (see buildbuddy-cache.sh). The key reaches this step and the finish
+      # step, never the Bazel wrapper; without it Bazel keeps using the GHCR disk caches.
+      - name: Configure the BuildBuddy remote cache
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" configure "$GITHUB_WORKSPACE"
+
+      # Upstream hides the cost of compiling V8 from source behind its BuildBuddy cache. This repository's own BuildBuddy
+      # remote cache serves trusted runs that hold its key; without it, each shard spent about three of its six hours compiling V8, and an Intel shard reached the job limit. A cache fault never fails
       # the tests: the build then runs cold.
       - name: Restore the compiled C++ actions
         id: cc_cache
@@ -343,6 +356,13 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+
+      - name: Keep the BuildBuddy key out of the retained evidence
+        if: always()
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" finish "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-macos-bazel-evidence"
 
       - name: Retain test evidence for one day
         if: always()

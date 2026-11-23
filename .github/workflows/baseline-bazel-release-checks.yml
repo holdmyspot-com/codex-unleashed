@@ -52,6 +52,7 @@ jobs:
           cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          cp restart-metadata/.github/scripts/buildbuddy-cache.sh "$RUNNER_TEMP/"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
@@ -163,6 +164,14 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
+      # Remote cache only, and only for a trusted run (see buildbuddy-cache.sh). The key reaches this step and the finish
+      # step, never the Bazel wrapper; without it Bazel keeps using the GHCR disk caches.
+      - name: Configure the BuildBuddy remote cache
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" configure "$GITHUB_WORKSPACE"
+
       - name: Compile the maintained release selection with debug assertions disabled
         run: |
           set -euo pipefail
@@ -260,6 +269,13 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ steps.inputs.outputs.commit }}"
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+
+      - name: Keep the BuildBuddy key out of the retained evidence
+        if: always()
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" finish "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-bazel-release-evidence"
 
       - name: Retain build evidence for one day
         if: always()

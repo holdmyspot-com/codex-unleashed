@@ -29,6 +29,10 @@ on:
         description: Package shard number of a lint job, or empty for the whole selection
         type: string
         default: ""
+    secrets:
+      BUILDBUDDY_API_KEY:
+        description: BuildBuddy key for the remote cache; callers pass it only on trusted runs, and jobs run without it when it is absent
+        required: false
 
 permissions:
   contents: read
@@ -79,6 +83,7 @@ jobs:
           cp restart-metadata/.github/scripts/add-windows-page-file.ps1 "$RUNNER_TEMP/add-windows-page-file.ps1"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          cp restart-metadata/.github/scripts/buildbuddy-cache.sh "$RUNNER_TEMP/"
           cp restart-metadata/.github/cargo-cache-package "$evidence/cargo-cache-package"
           cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh restart-metadata/.github/scripts/bazel-cc-disk-cache.sh "$RUNNER_TEMP/"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
@@ -256,6 +261,14 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
+      # Remote cache only, and only for a trusted run (see buildbuddy-cache.sh). The key reaches this step and the finish
+      # step, never the Bazel wrapper; without it Bazel keeps using the GHCR disk caches.
+      - name: Configure the BuildBuddy remote cache
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" configure "$GITHUB_WORKSPACE"
+
       # A cache fault never fails the lint: the build then runs cold.
       - name: Restore the compiled C++ actions
         if: steps.shared.outputs.exists != 'true'
@@ -395,6 +408,13 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+
+      - name: Keep the BuildBuddy key out of the retained evidence
+        if: always()
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" finish "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-bazel-lint-evidence"
 
       - name: Retain lint evidence for one day
         if: always()

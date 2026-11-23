@@ -2,9 +2,11 @@
 set -euo pipefail
 
 # Keeps the compiled C++ actions of a Bazel build, chiefly V8, in a Bazel disk cache stored in GHCR. Upstream hides the
-# cost of compiling V8 from source behind its BuildBuddy cache, which this repository does not have, so every Bazel lint
-# job compiled V8 twice (for the target and the exec configuration), about three hours on a macOS runner. The whole disk
-# cache of a lint job would be 34-110 GB, so the build marks every action except C++ compiles, archives and links
+# cost of compiling V8 from source behind its BuildBuddy cache. This repository's BuildBuddy remote cache
+# (docs/BUILD_CACHE.md) is available only to trusted runs that hold its key, so this GHCR cache stays as the fallback
+# for runs without it. Without either, every Bazel lint job compiled V8 twice (for the target and the exec
+# configuration), about three hours on a macOS runner. The whole disk cache of a lint job would be 34-110 GB, so the
+# build marks every action except C++ compiles, archives and links
 # `no-cache` (see the workflow) and only those reach this cache.
 #
 # usage: bazel-cc-disk-cache.sh <restore|save|exists> <source-directory> <cache-directory> <repository> <upstream-ref>

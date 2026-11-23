@@ -80,6 +80,7 @@ jobs:
           mkdir -p "$evidence"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          cp restart-metadata/.github/scripts/buildbuddy-cache.sh "$RUNNER_TEMP/"
           cp restart-metadata/.github/upstream-compat-releases.json "$evidence/compat-releases.json"
           cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh "$RUNNER_TEMP/ghcr-cargo-target-cache.sh"
           cp restart-metadata/.github/cargo-cache-package "$evidence/cargo-cache-package"
@@ -147,6 +148,14 @@ jobs:
               am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
           done
           printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Remote cache only, and only for a trusted run (see buildbuddy-cache.sh). The key reaches this step and the finish
+      # step, never the Bazel wrapper; without it Bazel keeps using the GHCR disk caches.
+      - name: Configure the BuildBuddy remote cache
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" configure "$GITHUB_WORKSPACE"
 
       - name: Prepare upstream's native test host
         uses: ./.github/actions/setup-ci
@@ -216,7 +225,7 @@ jobs:
           "$tools/bazel" --version | tee "$RUNNER_TEMP/baseline-bazel-evidence/bazel-version.txt"
           printf '%s\n' "$tools" >> "$GITHUB_PATH"
 
-      # Upstream's `--config=ci-linux` (.bazelrc) is applied only with a BuildBuddy key, which this repository lacks.
+      # Upstream's `--config=ci-linux` (.bazelrc) is not applied: the key goes only to the remote cache (buildbuddy-cache.sh), because the config requires remote execution.
       # These are the flags that configuration and its `ci` parents add, except the ones that need a remote cache or
       # executor (`--remote_download_minimal`, `--strategy=remote`, `--platforms=//:rbe`). The last one fails toolchain
       # resolution on this host ("No matching toolchains found") because //:rbe is a target platform meant to be paired
@@ -508,6 +517,13 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+
+      - name: Keep the BuildBuddy key out of the retained evidence
+        if: always()
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" finish "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-bazel-evidence"
 
       - name: Retain test evidence for one day
         if: always()

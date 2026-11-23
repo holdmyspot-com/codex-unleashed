@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # Shares the compiled V8 actions of a Bazel build through GHCR. Upstream builds V8 from source in Bazel and hides the cost
-# behind its BuildBuddy cache, which this repository does not have. A seed run builds only the V8 targets into an empty
+# behind its BuildBuddy cache. This repository's own BuildBuddy remote cache (docs/BUILD_CACHE.md) serves only trusted runs
+# that hold its key; this GHCR cache is the fallback for every other run. A seed run builds only the V8 targets into an empty
 # disk cache and saves it; consumer runs restore it and read from it without writing back.
 #
 # usage: v8-bazel-cache.sh <restore|save> <source-directory> <cache-directory> <repository> <upstream-ref>

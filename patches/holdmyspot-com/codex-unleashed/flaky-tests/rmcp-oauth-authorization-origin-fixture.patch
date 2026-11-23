@@ -1,5 +1,5 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Codex <codex@openai.com>
+From: Gili Tzabari <cowwoc2020@gmail.com>
 Subject: [PATCH] Verify RMCP OAuth authorization endpoint origin validation
 
 diff --git a/codex-rs/rmcp-client/src/oauth_client_registration_tests.rs b/codex-rs/rmcp-client/src/oauth_client_registration_tests.rs

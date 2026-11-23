@@ -1,0 +1,175 @@
+From 7a7664741c0a783c2ab13e457d22f4ad7c3d1e46 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 22 Nov 2026 21:05:31 -0500
+Subject: [PATCH] bugfix: stop reading local MCP stdio output after an
+ oversized line
+
+An MCP server stdout line over MAX_MCP_STDIO_LINE_BYTES made the local transport return end-of-stream without remembering it, so a later receive could read the tail of that line and deliver a message parsed from it. The transport now stays closed, as the executor transport does, and never reads or parses another stdout byte. Switching to the legacy codec after an oversized line fails with an InvalidData error that names the limit.
+
+rmcp's Transport::receive returns no error, so the oversized line is still reported only in the log, as it is for the executor transport.
+---
+ .../src/bounded_stdio_transport.rs            | 21 +++++++
+ .../src/bounded_stdio_transport_tests.rs      | 62 +++++++++++++++----
+ 2 files changed, 71 insertions(+), 12 deletions(-)
+
+diff --git a/codex-rs/rmcp-client/src/bounded_stdio_transport.rs b/codex-rs/rmcp-client/src/bounded_stdio_transport.rs
+index b76071ade..17a92f26e 100644
+--- a/codex-rs/rmcp-client/src/bounded_stdio_transport.rs
++++ b/codex-rs/rmcp-client/src/bounded_stdio_transport.rs
+@@ -28,6 +28,10 @@ pub(super) struct BoundedStdioTransport {
+     stdout: BufReader<ChildStdout>,
+     pending_line: Vec<u8>,
+     program_name: String,
++    /// Set once a stdout line exceeds [`MAX_MCP_STDIO_LINE_BYTES`]. A closed transport never
++    /// reads or parses another stdout byte, so the tail of the oversized line cannot be
++    /// mistaken for the start of a message.
++    closed: bool,
+ }
+ 
+ impl BoundedStdioTransport {
+@@ -37,13 +41,26 @@ impl BoundedStdioTransport {
+             stdout: BufReader::new(stdout),
+             pending_line: Vec::new(),
+             program_name,
++            closed: false,
+         }
+     }
+ 
+     /// Pass both a partial line and buffered read-ahead to the SDK's legacy codec.
++    ///
++    /// Fails with [`io::ErrorKind::InvalidData`] after an oversized line, because the legacy
++    /// codec would otherwise read the tail of that line.
+     pub(super) fn into_legacy_pipes(
+         self,
+     ) -> io::Result<(Box<dyn AsyncRead + Send + Unpin>, ChildStdin)> {
++        if self.closed {
++            return Err(io::Error::new(
++                io::ErrorKind::InvalidData,
++                format!(
++                    "MCP server stdout line exceeds {MAX_MCP_STDIO_LINE_BYTES} bytes ({})",
++                    self.program_name
++                ),
++            ));
++        }
+         let stdin = self
+             .stdin
+             .try_lock()
+@@ -56,6 +73,9 @@ impl BoundedStdioTransport {
+ 
+     async fn receive_message(&mut self) -> Option<RxJsonRpcMessage<RoleClient>> {
+         loop {
++            if self.closed {
++                return None;
++            }
+             let bytes = match self.stdout.fill_buf().await {
+                 Ok(bytes) => bytes,
+                 Err(error) => {
+@@ -82,6 +102,7 @@ impl BoundedStdioTransport {
+                     self.program_name
+                 );
+                 self.pending_line.clear();
++                self.closed = true;
+                 return None;
+             }
+ 
+diff --git a/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs b/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
+index b3210d836..8c1978bce 100644
+--- a/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
++++ b/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
+@@ -20,10 +20,18 @@ fn padded_ping(content_len: usize) -> Vec<u8> {
+     line
+ }
+ 
+-/// Build a transport whose stdout yields `line` plus a newline, written from a separate thread
+-/// because the line is larger than the pipe buffer. The returned stdin reader keeps the stdin
++/// `line` terminated by a newline.
++fn terminated(mut line: Vec<u8>) -> Vec<u8> {
++    line.push(b'\n');
++    line
++}
++
++/// Build a transport whose stdout yields exactly `stdout_bytes`, written from a separate thread
++/// because the data can be larger than the pipe buffer. The returned stdin reader keeps the stdin
+ /// pipe open for the lifetime of the test.
+-fn transport_with_stdout_line(line: Vec<u8>) -> (BoundedStdioTransport, std::io::PipeReader) {
++fn transport_with_stdout_bytes(
++    stdout_bytes: Vec<u8>,
++) -> (BoundedStdioTransport, std::io::PipeReader) {
+     let (stdout_reader, mut stdout_writer) = std::io::pipe().expect("stdout pipe");
+     let (stdin_reader, stdin_writer) = std::io::pipe().expect("stdin pipe");
+     let stdout = tokio::process::ChildStdout::from_std(std::process::ChildStdout::from(
+@@ -35,10 +43,8 @@ fn transport_with_stdout_line(line: Vec<u8>) -> (BoundedStdioTransport, std::io:
+     ))
+     .expect("tokio stdin");
+     std::thread::spawn(move || {
+-        // The reader may close early after an oversized line; a broken pipe is expected then.
+-        let _ = stdout_writer
+-            .write_all(&line)
+-            .and_then(|()| stdout_writer.write_all(b"\n"));
++        // The reader stops reading after an oversized line; a broken pipe is expected then.
++        let _ = stdout_writer.write_all(&stdout_bytes);
+     });
+     (
+         BoundedStdioTransport::new(stdin, stdout, "line-limit-test".to_string()),
+@@ -48,21 +54,53 @@ fn transport_with_stdout_line(line: Vec<u8>) -> (BoundedStdioTransport, std::io:
+ 
+ #[tokio::test]
+ async fn local_stdio_accepts_a_line_exactly_at_the_limit() {
+-    let (mut transport, _stdin) = transport_with_stdout_line(padded_ping(MAX_MCP_STDIO_LINE_BYTES));
++    let (mut transport, _stdin) =
++        transport_with_stdout_bytes(terminated(padded_ping(MAX_MCP_STDIO_LINE_BYTES)));
+ 
+     let message = transport.receive().await;
+ 
+     assert!(message.is_some());
++    assert!(!transport.closed);
+ }
+ 
+-/// The local transport has no typed error: an oversized line is logged and `receive` returns
+-/// `None`, which rmcp treats as the end of the stream, so the service shuts down.
++/// An oversized line ends the stream and closes the transport, like the executor transport
++/// (`closes_the_transport_after_a_stdout_line_one_byte_over_the_limit`). The SDK reports no
++/// typed error through `Transport::receive`, so the reason is only logged.
+ #[tokio::test]
+-async fn local_stdio_ends_the_stream_for_a_line_one_byte_over_the_limit() {
++async fn local_stdio_closes_the_transport_for_a_line_one_byte_over_the_limit() {
+     let (mut transport, _stdin) =
+-        transport_with_stdout_line(padded_ping(MAX_MCP_STDIO_LINE_BYTES + 1));
++        transport_with_stdout_bytes(terminated(padded_ping(MAX_MCP_STDIO_LINE_BYTES + 1)));
+ 
+     let message = transport.receive().await;
+ 
+     assert!(message.is_none());
++    assert!(transport.closed);
++    assert!(transport.pending_line.is_empty());
++}
++
++/// The oversized line is followed by a valid ping. A closed transport must not read the rest of
++/// the oversized line or the ping, however many times `receive` is called.
++#[tokio::test]
++async fn local_stdio_never_delivers_data_after_an_oversized_line() {
++    let mut stdout_bytes = terminated(padded_ping(MAX_MCP_STDIO_LINE_BYTES + 1));
++    stdout_bytes.extend(terminated(padded_ping(/*content_len*/ 64)));
++    let (mut transport, _stdin) = transport_with_stdout_bytes(stdout_bytes);
++
++    assert!(transport.receive().await.is_none());
++    assert!(transport.receive().await.is_none());
++    assert!(transport.receive().await.is_none());
++}
++
++/// Handing the pipes to the legacy codec would let it read the tail of the oversized line.
++#[tokio::test]
++async fn local_stdio_refuses_legacy_pipes_after_an_oversized_line() {
++    let (mut transport, _stdin) =
++        transport_with_stdout_bytes(terminated(padded_ping(MAX_MCP_STDIO_LINE_BYTES + 1)));
++    assert!(transport.receive().await.is_none());
++
++    let Err(error) = transport.into_legacy_pipes() else {
++        panic!("closed transport must not hand out legacy pipes");
++    };
++
++    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+ }
+-- 
+2.43.0
+

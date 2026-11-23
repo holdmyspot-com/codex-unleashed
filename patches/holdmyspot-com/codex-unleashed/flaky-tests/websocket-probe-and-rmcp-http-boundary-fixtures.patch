@@ -1,5 +1,5 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Codex <codex@openai.com>
+From: Gili Tzabari <cowwoc2020@gmail.com>
 Subject: [PATCH] Cover WebSocket probe and RMCP HTTP boundary behavior
 
 diff --git a/codex-rs/codex-api/tests/responses_websocket_probe.rs b/codex-rs/codex-api/tests/responses_websocket_probe.rs

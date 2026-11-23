@@ -77,6 +77,7 @@ jobs:
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          cp restart-metadata/.github/scripts/buildbuddy-cache.sh "$RUNNER_TEMP/"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
@@ -274,6 +275,14 @@ jobs:
           git diff -- codex-rs/Cargo.lock > "$evidence/workspace-version-lock.diff"
           git diff --binary > "$evidence/source-before.diff"
 
+      # Remote cache only, and only for a trusted run (see buildbuddy-cache.sh). The key reaches this step and the finish
+      # step, never the Bazel wrapper; without it Bazel keeps using the GHCR disk caches.
+      - name: Configure the BuildBuddy remote cache
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" configure "$GITHUB_WORKSPACE"
+
       - name: Run the maintained Windows Bazel test selection
         id: bazel_tests
         run: |
@@ -293,8 +302,9 @@ jobs:
           if [[ "$TARGET" == x86_64-pc-windows-gnullvm ]]; then
             wrapper_args+=(--windows-cross-compile --remote-download-toplevel)
             test_args+=(--skip_incompatible_explicit_targets --build_metadata="TAG_windows_test_shard=$BAZEL_TEST_SHARD")
-            # Without a BuildBuddy key the wrapper cannot apply upstream's --config=ci-windows-cross,
-            # which needs remote execution, and falls back to --config=ci-windows with an MSVC host
+            # The wrapper is deliberately not given a BuildBuddy key (buildbuddy-cache.sh configures remote
+            # caching only), so it cannot apply upstream's --config=ci-windows-cross, which needs remote
+            # execution, and falls back to --config=ci-windows with an MSVC host
             # platform. These shards then build and test MSVC-target binaries on this runner's 4 vCPUs,
             # compiling locally while tests run (--keep_going). Upstream's ci-windows-cross also sets
             # --local_test_jobs=8 and --test_env=RUST_TEST_THREADS=1, but it sets them for gnullvm
@@ -465,6 +475,13 @@ jobs:
           test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
           # The Dev Drive sizing step edits setup-dev-drive.ps1 in place; no other tracked file may differ.
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock' ':(exclude).github/scripts/setup-dev-drive.ps1'
+
+      - name: Keep the BuildBuddy key out of the retained evidence
+        if: always()
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" finish "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-windows-bazel-evidence"
 
       - name: Retain test evidence for one day
         if: always()

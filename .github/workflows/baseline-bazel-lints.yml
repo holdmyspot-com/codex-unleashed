@@ -23,6 +23,8 @@ jobs:
       contents: read
       packages: write
     uses: ./.github/workflows/bazel-clippy-job.yml
+    secrets:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     with:
       patches: ${{ inputs.patches }}
       role: shared-v8
@@ -40,6 +42,8 @@ jobs:
       contents: read
       packages: write
     uses: ./.github/workflows/bazel-clippy-job.yml
+    secrets:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     with:
       patches: ${{ inputs.patches }}
       role: lint
@@ -52,6 +56,8 @@ jobs:
       contents: read
       packages: write
     uses: ./.github/workflows/bazel-clippy-job.yml
+    secrets:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     with:
       patches: ${{ inputs.patches }}
       role: shared-v8
@@ -69,6 +75,8 @@ jobs:
       contents: read
       packages: write
     uses: ./.github/workflows/bazel-clippy-job.yml
+    secrets:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     with:
       patches: ${{ inputs.patches }}
       role: lint
@@ -81,6 +89,8 @@ jobs:
       contents: read
       packages: write
     uses: ./.github/workflows/bazel-clippy-job.yml
+    secrets:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     with:
       patches: ${{ inputs.patches }}
       role: lint

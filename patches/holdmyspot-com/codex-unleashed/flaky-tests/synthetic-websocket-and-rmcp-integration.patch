@@ -1,5 +1,5 @@
 From e50b2dbbc7624e677706844ebdfc761a2daa89f5 Mon Sep 17 00:00:00 2001
-From: CP9 verification <cp9-focused@users.noreply.github.com>
+From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 22 Nov 2026 11:05:35 -0500
 Subject: [PATCH] Verify WebSocket probe and HTTP discovery with loopback
  fixtures

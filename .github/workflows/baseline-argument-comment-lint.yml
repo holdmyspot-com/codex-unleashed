@@ -202,6 +202,7 @@ jobs:
           mkdir -p "$evidence"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          cp restart-metadata/.github/scripts/buildbuddy-cache.sh "$RUNNER_TEMP/"
           cp restart-metadata/.github/cargo-cache-package "$evidence/cargo-cache-package"
           cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh restart-metadata/.github/scripts/v8-bazel-cache.sh "$RUNNER_TEMP/"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
@@ -274,12 +275,21 @@ jobs:
           cargo metadata --format-version 1 --manifest-path codex-rs/Cargo.toml > /dev/null
           git diff --stat
 
-      # Upstream builds V8 from source in Bazel and relies on its BuildBuddy cache. The compiled V8 actions are kept in
-      # GHCR by baseline-v8-bazel-cache.yml and read here without being written back.
+      # Upstream builds V8 from source in Bazel and relies on its BuildBuddy cache. This repository's own remote cache serves
+      # trusted runs that hold its key; otherwise the compiled V8 actions are kept in GHCR by baseline-v8-bazel-cache.yml and
+      # read here without being written back.
       - name: Set up the GHCR cache transport
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
         with:
           version: 1.3.1
+
+      # Remote cache only, and only for a trusted run (see buildbuddy-cache.sh). The key reaches this step and the finish
+      # step, never the Bazel wrapper; without it Bazel keeps using the GHCR disk caches.
+      - name: Configure the BuildBuddy remote cache
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" configure "$GITHUB_WORKSPACE"
 
       - name: Restore the compiled V8 actions
         env:
@@ -303,3 +313,10 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+
+      - name: Keep the BuildBuddy key out of the retained evidence
+        if: always()
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" finish "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-argument-lint-evidence"
