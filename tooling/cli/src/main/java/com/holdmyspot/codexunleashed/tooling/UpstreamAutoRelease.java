@@ -1,6 +1,7 @@
 package com.holdmyspot.codexunleashed.tooling;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintStream;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -13,6 +14,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -46,6 +48,20 @@ public final class UpstreamAutoRelease
 	 * Implements the corresponding release workflow operation.
 	 */
 	private static final Pattern PATCH = Pattern.compile("^(\\d+)\\. \\[[^\\]]*]\\(([^)]+\\.patch)\\)\\s*$");
+	/**
+	 * The repository directory of the patch queue, which prefixes every queued patch path.
+	 */
+	private static final String PATCH_DIRECTORY = "patches/";
+	/**
+	 * Names the release asset that holds the Codex package of one target.
+	 */
+	private static final String PACKAGE_ASSET_FORMAT = "codex-package-%s.tar.gz";
+	/**
+	 * The targets for which every upstream release must publish a Codex package.
+	 */
+	private static final List<String> PACKAGE_TARGETS = List.of("x86_64-unknown-linux-musl",
+		"aarch64-unknown-linux-musl", "x86_64-apple-darwin", "aarch64-apple-darwin", "x86_64-pc-windows-msvc",
+		"aarch64-pc-windows-msvc");
 	/**
 	 * Implements the corresponding release workflow operation.
 	 */
@@ -90,7 +106,10 @@ public final class UpstreamAutoRelease
 				case "save-identity" -> saveIdentity(scope, options);
 				case "restore-identity" -> restoreIdentity(scope, options, out);
 				case "publication" -> publication(scope, options, out);
-				case "patches" -> out.println(String.join(" ", patchQueue(Files.readString(options.path("--readme")))));
+				case "patches" -> patches(options, out);
+				case "verify-package-assets" -> verifyPackageAssets(scope, options);
+				case "resource-manifest-releases" -> resourceManifestReleases(scope, options, out);
+				case "verify-resource-manifest" -> verifyResourceManifest(scope, options);
 				case "notes" -> notes(options, out);
 				case "summary" -> out.print(failureSummary(options.required("--upstream-tag"),
 					options.required("--failing"), options.optional("--log-url")));
@@ -534,6 +553,120 @@ public final class UpstreamAutoRelease
 	}
 
 	/**
+	 * Prints the patch queue after refusing a patch that contains a carriage return. The patches are applied with
+	 * {@code git am}, which would otherwise apply a patch whose line endings differ from the committed text.
+	 *
+	 * @param args operation input
+	 * @param out  operation output
+	 * @throws IOException if the README or a listed patch cannot be read
+	 */
+	private static void patches(Options args, PrintStream out) throws IOException
+	{
+		Path readme = args.path("--readme").toAbsolutePath();
+		List<String> queue = patchQueue(Files.readString(readme));
+		Path directory = readme.getParent();
+		for (String entry : queue)
+		{
+			try (InputStream patch = Files.newInputStream(directory.resolve(entry.substring(PATCH_DIRECTORY.length()))))
+			{
+				byte[] buffer = new byte[8192];
+				for (int read = patch.read(buffer); read != -1; read = patch.read(buffer))
+					for (int i = 0; i < read; ++i)
+						if (buffer[i] == '\r')
+							throw new InvocationException("Patch is not LF-normalized: " + entry);
+			}
+		}
+		out.println(String.join(" ", queue));
+	}
+
+	/**
+	 * Requires an upstream release to publish a Codex package for every supported target.
+	 *
+	 * @param scope operation input
+	 * @param args  operation input
+	 * @throws IOException if the release record cannot be read
+	 */
+	private static void verifyPackageAssets(ToolingScope scope, Options args) throws IOException
+	{
+		JsonNode release = readJsonObject(scope, args.path("--release"));
+		Set<String> published = releaseAssets(release).keySet();
+		for (String target : PACKAGE_TARGETS)
+		{
+			String asset = PACKAGE_ASSET_FORMAT.formatted(target);
+			if (!published.contains(asset))
+				throw new ReleaseFailure("Upstream release " + string(release, "tag_name") + " is missing " + asset);
+		}
+	}
+
+	/**
+	 * Prints the release that each distinct GitHub download in a resource manifest comes from.
+	 *
+	 * @param scope operation input
+	 * @param args  operation input
+	 * @param out   operation output
+	 * @throws IOException if the manifest cannot be read
+	 */
+	private static void resourceManifestReleases(ToolingScope scope, Options args, PrintStream out) throws IOException
+	{
+		Set<String> releases = new LinkedHashSet<>();
+		for (ReleaseResourceManifest.Asset asset : ReleaseResourceManifest.assets(scope, args.path("--manifest")))
+			releases.add(asset.repository() + "\t" + asset.tag());
+		releases.forEach(out::println);
+	}
+
+	/**
+	 * Requires the size and SHA-256 digest that a resource manifest declares for each asset of one release to equal what
+	 * GitHub reports for that release.
+	 *
+	 * @param scope operation input
+	 * @param args  operation input
+	 * @throws IOException if the manifest or release record cannot be read
+	 */
+	private static void verifyResourceManifest(ToolingScope scope, Options args) throws IOException
+	{
+		Path manifest = args.path("--manifest");
+		String repository = args.required("--repository");
+		String tag = args.required("--tag");
+		Map<String, JsonNode> published = releaseAssets(readJsonObject(scope, args.path("--release")));
+		boolean found = false;
+		for (ReleaseResourceManifest.Asset asset : ReleaseResourceManifest.assets(scope, manifest))
+		{
+			if (!asset.repository().equals(repository) || !asset.tag().equals(tag))
+				continue;
+			found = true;
+			JsonNode actual = published.get(asset.name());
+			if (actual == null)
+				throw new ReleaseFailure(manifest + " names " + asset.name() + ", which " + repository + "@" + tag +
+					" does not publish");
+			String actualSize = String.valueOf(actual.get("size"));
+			String actualDigest = text(actual, "digest");
+			if (!asset.size().equals(actualSize) || !("sha256:" + asset.digest()).equals(actualDigest))
+				throw new ReleaseFailure(manifest + " disagrees with " + repository + "@" + tag + " asset " +
+					asset.name() + ": manifest size=" + asset.size() + " digest=sha256:" + asset.digest() +
+					", release size=" + actualSize + " digest=" + actualDigest);
+		}
+		if (!found)
+			throw new InvocationException(manifest + " names no asset of " + repository + "@" + tag);
+	}
+
+	/**
+	 * Indexes the assets of a release record by name.
+	 *
+	 * @param release the release record
+	 * @return the asset records, keyed by asset name
+	 */
+	private static Map<String, JsonNode> releaseAssets(JsonNode release)
+	{
+		JsonNode assets = release.get("assets");
+		if (assets == null || !assets.isArray())
+			throw new InvocationException("Release record has invalid assets");
+		Map<String, JsonNode> result = new LinkedHashMap<>();
+		for (JsonNode asset : assets)
+			result.put(string(asset, "name"), asset);
+		return result;
+	}
+
+	/**
 	 * Implements the corresponding release workflow operation.
 	 *
 	 * @param readme operation input
@@ -550,7 +683,7 @@ public final class UpstreamAutoRelease
 				int number = parsePositive(matcher.group(1), "patch entry");
 				if (number != paths.size() + 1)
 					throw new InvocationException("Patch entry " + number + " where " + (paths.size() + 1) + " was expected");
-				paths.add("patches/" + matcher.group(2));
+				paths.add(PATCH_DIRECTORY + matcher.group(2));
 			}
 		}
 		if (paths.isEmpty())
@@ -898,6 +1031,9 @@ public final class UpstreamAutoRelease
 				case "publication" -> Set.of("--fork-releases", "--tag", "--fork-commit", "--upstream-tag",
 					"--upstream-commit", "--tag-commit", "--assets-directory", "--notes", "--draft-rehearsal");
 				case "patches" -> Set.of("--readme");
+				case "verify-package-assets" -> Set.of("--release");
+				case "resource-manifest-releases" -> Set.of("--manifest");
+				case "verify-resource-manifest" -> Set.of("--manifest", "--repository", "--tag", "--release");
 				case "notes" -> Set.of("--version", "--build", "--upstream-tag", "--upstream-commit",
 					"--fork-commit", "--readme", "--changelog");
 				case "summary" -> Set.of("--upstream-tag", "--failing", "--log-url");

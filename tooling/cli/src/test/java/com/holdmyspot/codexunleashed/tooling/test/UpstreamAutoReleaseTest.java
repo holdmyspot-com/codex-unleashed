@@ -307,6 +307,114 @@ public final class UpstreamAutoReleaseTest
 	}
 
 	/**
+	 * A patch that contains a carriage return is refused before any release step applies it, and the patch queue is
+	 * not printed.
+	 *
+	 * @throws IOException if the isolated fixture cannot be accessed
+	 */
+	@Test
+	public void refusesPatchContainingCarriageReturn() throws IOException
+	{
+		Path root = Files.createTempDirectory("upstream-auto-release-patch-");
+		try
+		{
+			Path readme = Files.writeString(root.resolve("README.md"),
+				"# Queue\n\n1. [one.patch](vendor/one.patch)\n2. [two.patch](vendor/two.patch)\n");
+			Files.createDirectory(root.resolve("vendor"));
+			Files.writeString(root.resolve("vendor/one.patch"), "one\n");
+			Files.writeString(root.resolve("vendor/two.patch"), "two\r\n");
+			Result refused = invoke("patches", "--readme", readme.toString());
+			requireThat(refused.status, "status").isEqualTo(2);
+			requireThat(refused.output, "output").isEmpty();
+			requireThat(refused.diagnostics, "diagnostics").contains("patches/vendor/two.patch");
+		}
+		finally
+		{
+			deleteTree(root);
+		}
+	}
+
+	/**
+	 * An upstream release must publish a Codex package for each of the six targets.
+	 *
+	 * @throws IOException if the isolated fixture cannot be accessed
+	 */
+	@Test
+	public void requiresPackageForEveryTarget() throws IOException
+	{
+		Path root = Files.createTempDirectory("upstream-auto-release-assets-");
+		try
+		{
+			String[] targets = {"x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl", "x86_64-apple-darwin",
+				"aarch64-apple-darwin", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"};
+			StringBuilder assets = new StringBuilder();
+			for (int i = 0; i < targets.length - 1; ++i)
+				assets.append("{\"name\":\"codex-package-").append(targets[i]).append(".tar.gz\"},");
+			String last = "{\"name\":\"codex-package-" + targets[targets.length - 1] + ".tar.gz\"}";
+			Path complete = Files.writeString(root.resolve("complete.json"),
+				"{\"tag_name\":\"rust-v1.2.3\",\"assets\":[" + assets + last + "]}");
+			requireThat(invoke("verify-package-assets", "--release", complete.toString()).status, "complete_status").
+				isEqualTo(0);
+			Path incomplete = Files.writeString(root.resolve("incomplete.json"),
+				"{\"tag_name\":\"rust-v1.2.3\",\"assets\":[" + assets + "{\"name\":\"other\"}]}");
+			Result missing = invoke("verify-package-assets", "--release", incomplete.toString());
+			requireThat(missing.status, "missing_status").isEqualTo(1);
+			requireThat(missing.diagnostics, "missing_diagnostics").
+				contains("codex-package-aarch64-pc-windows-msvc.tar.gz");
+		}
+		finally
+		{
+			deleteTree(root);
+		}
+	}
+
+	/**
+	 * A resource manifest is checked against the release that its URLs name: a matching size and digest pass, and a
+	 * differing digest fails.
+	 *
+	 * @throws IOException if the isolated fixture cannot be accessed
+	 */
+	@Test
+	public void comparesResourceManifestWithRelease() throws IOException
+	{
+		Path root = Files.createTempDirectory("upstream-auto-release-manifest-");
+		try
+		{
+			Path manifest = Files.writeString(root.resolve("rg"), """
+				#!/usr/bin/env dotslash
+
+				{"name": "rg", "platforms": {
+				  "linux": {"size": 9007199254740993, "hash": "sha256", "digest": "aa",
+				    "providers": [{"url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/rg-linux.tar.gz"}]},
+				  "mac": {"size": 7, "digest": "bb",
+				    "providers": [{"type": "unused"},
+				      {"url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/rg-mac.tar.gz"}]}}}
+				""");
+			Result releases = invoke("resource-manifest-releases", "--manifest", manifest.toString());
+			requireThat(releases.status, "releases_status").isEqualTo(0);
+			requireThat(releases.output, "releases_output").isEqualTo("BurntSushi/ripgrep\t15.2.0" +
+				System.lineSeparator());
+			Path matching = Files.writeString(root.resolve("matching.json"), "{\"assets\":[" +
+				"{\"name\":\"rg-linux.tar.gz\",\"size\":9007199254740993,\"digest\":\"sha256:aa\"}," +
+				"{\"name\":\"rg-mac.tar.gz\",\"size\":7,\"digest\":\"sha256:bb\"}]}");
+			Result matched = invoke("verify-resource-manifest", "--manifest", manifest.toString(),
+				"--repository", "BurntSushi/ripgrep", "--tag", "15.2.0", "--release", matching.toString());
+			requireThat(matched.status, "matched_status").isEqualTo(0);
+			Path differing = Files.writeString(root.resolve("differing.json"), "{\"assets\":[" +
+				"{\"name\":\"rg-linux.tar.gz\",\"size\":9007199254740993,\"digest\":\"sha256:aa\"}," +
+				"{\"name\":\"rg-mac.tar.gz\",\"size\":7,\"digest\":\"sha256:cc\"}]}");
+			Result mismatched = invoke("verify-resource-manifest", "--manifest", manifest.toString(),
+				"--repository", "BurntSushi/ripgrep", "--tag", "15.2.0", "--release", differing.toString());
+			requireThat(mismatched.status, "mismatched_status").isEqualTo(1);
+			requireThat(mismatched.diagnostics, "mismatched_diagnostics").contains("rg-mac.tar.gz");
+		}
+		finally
+		{
+			deleteTree(root);
+		}
+	}
+
+	/**
 	 * Builds a release identity JSON document with the supplied numeric representation.
 	 *
 	 * @param buildNode JSON source for the build value
@@ -374,6 +482,9 @@ public final class UpstreamAutoReleaseTest
 		{
 			Path readme = Files.writeString(root.resolve("README.md"),
 				"# Queue\n\n1. [one.patch](vendor/one.patch)\n2. [two.patch](vendor/two.patch)\n");
+			Files.createDirectory(root.resolve("vendor"));
+			Files.writeString(root.resolve("vendor/one.patch"), "one\n");
+			Files.writeString(root.resolve("vendor/two.patch"), "two\n");
 			Result patches = invoke("patches", "--readme", readme.toString());
 			requireThat(patches.status, "patches_status").isEqualTo(0);
 			requireThat(patches.output, "patches_output").isEqualTo(

@@ -4,7 +4,7 @@ This repository does not provide general support for Codex.
 
 ## Maintainer Response Policy
 
-The maintainer does not guarantee a response, fix, delivery date, or outcome for any request. Support and access do not depend on funding.
+The maintainer does not guarantee a response, fix, delivery date, or outcome for any request.
 
 ## Accounts and Usage Billing
 

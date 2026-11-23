@@ -368,6 +368,45 @@ jobs:
           done
           printf 'Applied %s patches to %s.\n' "${#patch_paths[@]}" "$UPSTREAM_TAG"
 
+      - name: Check the patched tree and the upstream release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+          UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
+        run: |
+          set -euo pipefail
+          # The patches add no whitespace error to upstream. Snapshots and nested patch files keep intended trailing
+          # spaces, so only their end-of-line check is disabled; every other whitespace check still applies to them.
+          git -C upstream diff --check "$UPSTREAM_COMMIT" HEAD -- . ':(exclude)*.snap' ':(exclude)*.patch'
+          git -C upstream -c core.whitespace=-blank-at-eol diff --check "$UPSTREAM_COMMIT" HEAD -- '*.snap' '*.patch'
+
+          # GitHub's API answers an occasional 504, so every read retries.
+          gh_api() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              gh api "$@" && return 0
+              sleep $((attempt * 10))
+            done
+            return 1
+          }
+          release="$RUNNER_TEMP/upstream-release.json"
+          gh_api "repos/openai/codex/releases/tags/$UPSTREAM_TAG" > "$release"
+          bash "$CODEX_TOOLING" upstream-auto-release verify-package-assets --release "$release"
+
+          # The bundled tools are downloaded from the releases that their manifests name; the declared size and digest
+          # must be what those releases publish.
+          manifests=(upstream/scripts/codex_package/rg)
+          if [[ -f upstream/scripts/codex_package/codex-zsh ]]; then
+            manifests+=(upstream/scripts/codex_package/codex-zsh)
+          fi
+          for manifest in "${manifests[@]}"; do
+            while IFS=$'\t' read -r repository tag; do
+              gh_api "repos/$repository/releases/tags/$tag" > "$RUNNER_TEMP/resource-release.json"
+              bash "$CODEX_TOOLING" upstream-auto-release verify-resource-manifest --manifest "$manifest" \
+                --repository "$repository" --tag "$tag" --release "$RUNNER_TEMP/resource-release.json"
+            done < <(bash "$CODEX_TOOLING" upstream-auto-release resource-manifest-releases --manifest "$manifest")
+          done
+
   platform-lints:
     name: Platform lints
     needs: [detect, patch-check]

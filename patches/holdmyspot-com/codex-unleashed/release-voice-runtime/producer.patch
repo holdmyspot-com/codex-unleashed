@@ -541,7 +541,7 @@ new file mode 100755
 index 0000000..c9e07f2
 --- /dev/null
 +++ b/.github/scripts/test-codex-voice-runtime.sh
-@@ -0,0 +1,535 @@
+@@ -0,0 +1,534 @@
 +#!/usr/bin/env bash
 +# Exercises the producer's target mapping, resource staging, identity checks and failure cleanup.
 +set -euo pipefail
@@ -1076,5 +1076,3 @@ index 0000000..c9e07f2
 +fi
 +assert_equal caller-owned "$(cat "$existing_result/sentinel")" 'preexisting result sentinel'
 +assert_absent "$existing_result/completed" 'preexisting result completion marker'
-+
-+printf 'PASS: native voice producer fixture cases\n'

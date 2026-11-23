@@ -1,0 +1,48 @@
+From 6ec11848dc057133d720e9ad9fa38b29d31a4d5d Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 22 Nov 2026 20:09:31 -0500
+Subject: [PATCH] Keep debug-only test imports out of release targets
+
+Gate the analytics capture-test HTTP client imports and the CLI update-test
+helpers with the same debug_assertions condition as their only uses, so
+release test targets build without unused-import and dead-code warnings.
+---
+ codex-rs/analytics/src/client_tests.rs | 2 ++
+ codex-rs/cli/tests/update.rs           | 5 +++++
+ 2 files changed, 7 insertions(+)
+
+diff --git a/codex-rs/analytics/src/client_tests.rs b/codex-rs/analytics/src/client_tests.rs
+index d7d8ff637..084c151f1 100644
+--- a/codex-rs/analytics/src/client_tests.rs
++++ b/codex-rs/analytics/src/client_tests.rs
+@@ -91,7 +91,9 @@ use codex_app_server_protocol::TurnStartResponse;
+ use codex_app_server_protocol::TurnStatus as AppServerTurnStatus;
+ use codex_app_server_protocol::TurnSteerParams;
+ use codex_app_server_protocol::TurnSteerResponse;
++#[cfg(debug_assertions)]
+ use codex_http_client::HttpClientFactory;
++#[cfg(debug_assertions)]
+ use codex_http_client::OutboundProxyPolicy;
+ #[cfg(debug_assertions)]
+ use codex_login::AuthManager;
+diff --git a/codex-rs/cli/tests/update.rs b/codex-rs/cli/tests/update.rs
+index cf1742cda..4d95ba6a7 100644
+--- a/codex-rs/cli/tests/update.rs
++++ b/codex-rs/cli/tests/update.rs
+@@ -1,8 +1,13 @@
++#[cfg(debug_assertions)]
+ use anyhow::Result;
++#[cfg(debug_assertions)]
+ use predicates::str::contains;
++#[cfg(debug_assertions)]
+ use std::path::Path;
++#[cfg(debug_assertions)]
+ use tempfile::TempDir;
+ 
++#[cfg(debug_assertions)]
+ fn codex_command(codex_home: &Path) -> Result<assert_cmd::Command> {
+     let mut cmd = assert_cmd::Command::new(codex_utils_cargo_bin::cargo_bin("codex")?);
+     cmd.env("CODEX_HOME", codex_home);
+-- 
+2.43.0
+

@@ -7,7 +7,7 @@ dispositions: migrated, upstream-equivalent, omitted, deferred and needs-owner-d
 
 | Register | Covers | Result |
 | --- | --- | --- |
-| [old-main-file-inventory.tsv](../old-main-file-inventory.tsv) | All 648 old-main paths, with the state recomputed against one `main` commit and an `evidence` column | 143 migrated, 71 upstream-equivalent, 45 omitted, 388 deferred, 1 needs-owner-decision |
+| [old-main-file-inventory.tsv](../old-main-file-inventory.tsv) | All 648 old-main paths, with the state recomputed against one `main` commit and an `evidence` column | 143 migrated, 71 upstream-equivalent, 78 omitted, 356 deferred, 0 needs-owner-decision |
 | [old-main-patches-1-72.md](old-main-patches-1-72.md), [old-main-patches-73-144.md](old-main-patches-73-144.md) | The 144 old-main patch and mailbox rows | 34 rows changed since the `restart-scope.md` appendix was written; the appendix is stale where these tables disagree |
 | [archived-worktree-refs.md](archived-worktree-refs.md) | The 38 refs under `refs/archive/restart-worktrees` | The main HEAD refs share a 279-commit history containing a merge; the separate probe branch has four commits; the T9 product and fixture patches were re-tested; the confirmed ones are queue entries 40–55 |
 | [legacy-checkouts.md](legacy-checkouts.md) | The 33 archived independent checkouts and the two named stashes | 29 migrated, 3 omitted, 1 needs-owner-decision; the archive checksum verifies |

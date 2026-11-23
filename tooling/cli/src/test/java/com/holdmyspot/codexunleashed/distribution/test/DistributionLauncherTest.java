@@ -221,6 +221,65 @@ public final class DistributionLauncherTest
     }
 
     /**
+     * Converts an MSYS temporary path before passing it to the JVM, as Git for Windows requires, and gives the JVM
+     * the converted path of the launcher.
+     * <p>
+     * A {@code cygpath} adapter on the search path stands in for MSYS: it maps the fixture's MSYS spelling to a
+     * native directory. The adapter needs a POSIX shell, so other hosts skip the test.
+     *
+     * @throws Exception if fixture compilation, production packaging, launch or cleanup fails
+     */
+    @Test
+    public void convertsMsysTemporaryDirectory() throws Exception
+    {
+        if (!Path.of("/bin/sh").toFile().canExecute())
+            throw new SkipException("The cygpath adapter requires a POSIX shell");
+        try (Directory directory = new Directory())
+        {
+            Path root = directory.path;
+            RuntimeFixture fixture = createRuntime(root);
+            Path adapters = Files.createDirectory(root.resolve("adapters"));
+            Path cygpath = adapters.resolve("cygpath");
+            Files.writeString(cygpath, """
+                #!/bin/sh
+                if [ "$1" != -m ]; then echo "Expected -m, received $1" >&2; exit 2; fi
+                case "$2" in
+                    /hosted-msys-temporary) printf '%s\\n' "$FIXTURE_NATIVE_TEMP" ;;
+                    *) printf '%s\\n' "$2" ;;
+                esac
+                """);
+            requireThat(cygpath.toFile().setExecutable(true), "adapterExecutable").isTrue();
+            Path nativeTemporary = Files.createDirectory(root.resolve("native temporary"));
+            Path captured = root.resolve("msys.properties");
+            ProcessBuilder launch = new ProcessBuilder("/bin/sh", fixture.launcher().toString(), captured.toString()).
+                directory(root.toFile()).redirectErrorStream(true);
+            launch.environment().clear();
+            launch.environment().put("PATH", adapters + java.io.File.pathSeparator + "/usr/bin:/bin");
+            launch.environment().put("TMPDIR", "/hosted-msys-temporary");
+            launch.environment().put("FIXTURE_NATIVE_TEMP", nativeTemporary.toString());
+            Path output = root.resolve("msys-output.log");
+            launch.redirectOutput(output.toFile());
+            try (Process child = launch.start())
+            {
+                child.getOutputStream().close();
+                int exit = child.waitFor();
+                if (exit != 23)
+                    System.err.println(Files.readString(output));
+                requireThat(exit, "actualLauncherExit").isEqualTo(23);
+            }
+            java.util.Properties result = new java.util.Properties();
+            try (java.io.InputStream input = Files.newInputStream(captured))
+            {
+                result.load(input);
+            }
+            requireThat(result.getProperty("temporaryDirectory"), "actualTemporaryDirectory").
+                isEqualTo(nativeTemporary.toString());
+            requireThat(result.getProperty("launcher"), "actualPackagedLauncher").
+                isEqualTo(fixture.launcher().toString());
+        }
+    }
+
+    /**
      * Builds an independently owned receiver module and jlink runtime beneath one fixture root.
      *
      * @param root owned fixture root

@@ -1,4 +1,4 @@
-From d0c51365e90cf5c01a46455264e2b7aea9ab1fd5 Mon Sep 17 00:00:00 2001
+From 8ec28ccafee78394ba5489533cb6c5a00f0df440 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <codex-unleashed@users.noreply.github.com>
 Date: Sun, 22 Nov 2026 19:48:15 -0500
 Subject: [PATCH] test: cover the stdio line limit for local and executor
@@ -26,7 +26,7 @@ index dc065995f..b76071ade 100644
 +mod tests;
 diff --git a/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs b/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
 new file mode 100644
-index 000000000..cfcd260bd
+index 000000000..b3210d836
 --- /dev/null
 +++ b/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
 @@ -0,0 +1,68 @@
@@ -58,11 +58,11 @@ index 000000000..cfcd260bd
 +fn transport_with_stdout_line(line: Vec<u8>) -> (BoundedStdioTransport, std::io::PipeReader) {
 +    let (stdout_reader, mut stdout_writer) = std::io::pipe().expect("stdout pipe");
 +    let (stdin_reader, stdin_writer) = std::io::pipe().expect("stdin pipe");
-+    let stdout = tokio::process::ChildStdout::try_from(std::process::ChildStdout::from(
++    let stdout = tokio::process::ChildStdout::from_std(std::process::ChildStdout::from(
 +        OwnedFd::from(stdout_reader),
 +    ))
 +    .expect("tokio stdout");
-+    let stdin = tokio::process::ChildStdin::try_from(std::process::ChildStdin::from(
++    let stdin = tokio::process::ChildStdin::from_std(std::process::ChildStdin::from(
 +        OwnedFd::from(stdin_writer),
 +    ))
 +    .expect("tokio stdin");

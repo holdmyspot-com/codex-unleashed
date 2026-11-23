@@ -785,6 +785,8 @@ public final class MainTest
 			Path sourceRoot = manifest.getParent().getParent();
 			Path readme = fixture.write("README.md",
 				"# Queue\n\n1. [one.patch](vendor/one.patch)\n2. [two.patch](vendor/two.patch)\n");
+			fixture.write("vendor/one.patch", "one\n");
+			fixture.write("vendor/two.patch", "two\n");
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			ByteArrayOutputStream errors = new ByteArrayOutputStream();
 			try (PrintStream out = new PrintStream(output, true, StandardCharsets.UTF_8);
