@@ -1,6 +1,6 @@
 # Old-main test fixes (T9)
 
-- Applies to: the queue through `flaky-tests/focus-palette.patch` (patch 40), which sits on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
+- Applies to: the queue through `flaky-tests/focus-palette.patch` (patch 37), which sits on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 - Prerequisites: every earlier patch in the queue. The patches below apply in the order listed. `conpty-lifecycle-input-fixture.patch` needs `windows-capture-reader-drain.patch` and `legacy-powershell-environment.patch`, and `legacy-powershell-environment.patch` needs `windows-capture-reader-drain.patch`; the others do not depend on each other.
 - Patches: the 16 files listed under "What changed", in that order.
 

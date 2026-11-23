@@ -6,8 +6,7 @@ Subject: [PATCH 34/54] Port the network proxy to rama 0.4
 Rama 0.4 removed ProxyTarget, StreamForwardService and PeekStream and changed the SOCKS5 acceptor to take an executor, so the network proxy forwards streams, replays peeked prefixes and relays SOCKS5 through the new APIs.
 ---
  MODULE.bazel                                  |   7 +
- MODULE.bazel.lock                             |  49 +-
- codex-rs/Cargo.lock                           | 435 ++++++++++--------
+ codex-rs/Cargo.lock                           | 558 ++++++++----------
  codex-rs/deny.toml                            |   2 -
  codex-rs/network-proxy/Cargo.toml             |  21 +-
  codex-rs/network-proxy/src/attribution.rs     |   3 +-
@@ -18,17 +17,17 @@ Rama 0.4 removed ProxyTarget, StreamForwardService and PeekStream and changed th
  codex-rs/network-proxy/src/brokered_tunnel.rs |  26 +-
  .../src/brokered_tunnel_tests.rs              |  28 +-
  codex-rs/network-proxy/src/certs.rs           |  40 +-
- codex-rs/network-proxy/src/connect_policy.rs  | 107 +++--
+ codex-rs/network-proxy/src/connect_policy.rs  | 107 ++--
  .../src/connection_lifecycle/service.rs       |  15 +-
  .../src/credential_broker/configured.rs       |   7 +-
  .../src/credential_broker/providers/github.rs |  20 +-
  .../src/credential_broker/providers/openai.rs |   2 +-
  .../src/credential_broker/registry.rs         |   6 +-
- codex-rs/network-proxy/src/http_proxy.rs      | 416 +++++++++--------
+ codex-rs/network-proxy/src/http_proxy.rs      | 416 +++++++------
  .../src/http_proxy/host_header_tests.rs       |   6 +-
  codex-rs/network-proxy/src/lib.rs             |   1 +
- codex-rs/network-proxy/src/mitm.rs            | 158 +++----
- .../src/mitm_forwarding_tests.rs              |  56 +--
+ codex-rs/network-proxy/src/mitm.rs            | 158 ++---
+ .../src/mitm_forwarding_tests.rs              |  56 +-
  codex-rs/network-proxy/src/mitm_hook.rs       |  43 +-
  codex-rs/network-proxy/src/mitm_tests.rs      |  14 +-
  codex-rs/network-proxy/src/native_certs.rs    |   4 +-
@@ -36,20 +35,20 @@ Rama 0.4 removed ProxyTarget, StreamForwardService and PeekStream and changed th
  codex-rs/network-proxy/src/request_context.rs |  51 ++
  codex-rs/network-proxy/src/runtime.rs         |   3 +
  .../network-proxy/src/secret_substitution.rs  |   9 +-
- codex-rs/network-proxy/src/socks5.rs          | 228 ++++-----
- codex-rs/network-proxy/src/system_dns.rs      |  63 +--
+ codex-rs/network-proxy/src/socks5.rs          | 228 +++----
+ codex-rs/network-proxy/src/system_dns.rs      |  63 +-
  .../network-proxy/src/system_dns_tests.rs     |  41 +-
- codex-rs/network-proxy/src/upstream.rs        |  98 ++--
+ codex-rs/network-proxy/src/upstream.rs        |  98 +--
  codex-rs/network-proxy/src/upstream_tests.rs  |  26 +-
  .../src/windows_proxy_ingress.rs              |  15 +-
  patches/BUILD.bazel                           |   1 +
  .../rama-dns_windows_dnsapi_link_name.patch   |  12 +
- 39 files changed, 1156 insertions(+), 893 deletions(-)
+ 38 files changed, 1137 insertions(+), 986 deletions(-)
  create mode 100644 codex-rs/network-proxy/src/request_context.rs
  create mode 100644 patches/rama-dns_windows_dnsapi_link_name.patch
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index aa84b9d..3c1bfb7 100644
+index 03e3e80..b622ff5 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -452,6 +452,13 @@ crate.annotation(
@@ -66,162 +65,11 @@ index aa84b9d..3c1bfb7 100644
  
  # Match the CodeModeHost response-compression benchmark's zstd level.
  crate.annotation(
-diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index e3cc59b..66a23cd 100644
---- a/MODULE.bazel.lock
-+++ b/MODULE.bazel.lock
-@@ -1032,6 +1032,7 @@
-       "autocfg_1.5.1": "{\"dependencies\":[],\"features\":{}}",
-       "aws-config_1.13.1": "{\"dependencies\":[{\"features\":[\"test-util\"],\"name\":\"aws-credential-types\",\"req\":\"^1.3.1\"},{\"name\":\"aws-runtime\",\"req\":\"^1.10.3\"},{\"default_features\":false,\"name\":\"aws-sdk-signin\",\"optional\":true,\"req\":\"^1.34.0\"},{\"default_features\":false,\"name\":\"aws-sdk-sso\",\"optional\":true,\"req\":\"^1.120.0\"},{\"default_features\":false,\"name\":\"aws-sdk-ssooidc\",\"optional\":true,\"req\":\"^1.122.0\"},{\"default_features\":false,\"name\":\"aws-sdk-sts\",\"req\":\"^1.125.0\"},{\"name\":\"aws-smithy-async\",\"req\":\"^1.3.1\"},{\"features\":[\"rt-tokio\",\"test-util\"],\"kind\":\"dev\",\"name\":\"aws-smithy-async\",\"req\":\"^1.3.1\"},{\"name\":\"aws-smithy-http\",\"req\":\"^0.64.3\"},{\"features\":[\"default-client\",\"test-util\"],\"kind\":\"dev\",\"name\":\"aws-smithy-http-client\",\"req\":\"^1.5.2\"},{\"name\":\"aws-smithy-json\",\"req\":\"^0.65.1\"},{\"features\":[\"client\"],\"name\":\"aws-smithy-runtime\",\"req\":\"^1.16.2\"},{\"features\":[\"client\",\"test-util\"],\"kind\":\"dev\",\"name\":\"aws-smithy-runtime\",\"req\":\"^1.16.2\"},{\"features\":[\"client\"],\"name\":\"aws-smithy-runtime-api\",\"req\":\"^1.20.0\"},{\"features\":[\"test-util\"],\"kind\":\"dev\",\"name\":\"aws-smithy-runtime-api\",\"req\":\"^1.20.0\"},{\"name\":\"aws-smithy-schema\",\"req\":\"^1.2.0\"},{\"name\":\"aws-smithy-types\",\"req\":\"^1.9.3\"},{\"name\":\"aws-types\",\"req\":\"^1.7.0\"},{\"name\":\"base64-simd\",\"optional\":true,\"req\":\"^0.8.0\"},{\"name\":\"bytes\",\"req\":\"^1.11.1\"},{\"name\":\"fastrand\",\"req\":\"^2.3.0\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"futures-util\",\"req\":\"^0.3.29\"},{\"name\":\"hex\",\"optional\":true,\"req\":\"^0.4.3\"},{\"name\":\"http\",\"req\":\"^1\"},{\"name\":\"p256\",\"optional\":true,\"req\":\"^0.14.0\"},{\"default_features\":false,\"features\":[\"std\",\"std_rng\",\"sys_rng\"],\"name\":\"rand\",\"optional\":true,\"req\":\"^0.10.3\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1\"},{\"name\":\"sha1\",\"optional\":true,\"req\":\"^0.10\"},{\"name\":\"sha2\",\"optional\":true,\"req\":\"^0.10.9\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.16.0\",\"target\":\"cfg(windows)\"},{\"features\":[\"parsing\"],\"name\":\"time\",\"req\":\"^0.3.4\"},{\"features\":[\"sync\"],\"name\":\"tokio\",\"req\":\"^1.13.1\"},{\"features\":[\"full\",\"test-util\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.23.1\"},{\"name\":\"tracing\",\"req\":\"^0.1\"},{\"features\":[\"fmt\",\"json\"],\"kind\":\"dev\",\"name\":\"tracing-subscriber\",\"req\":\"^0.3.16\"},{\"kind\":\"dev\",\"name\":\"tracing-test\",\"req\":\"^0.2.4\"},{\"name\":\"url\",\"req\":\"^2.5.4\"},{\"name\":\"uuid\",\"optional\":true,\"req\":\"^1.18.1\"},{\"name\":\"zeroize\",\"optional\":true,\"req\":\"^1\"}],\"features\":{\"allow-compilation\":[],\"behavior-version-latest\":[],\"client-hyper\":[\"aws-smithy-runtime/default-https-client\"],\"credentials-login\":[\"dep:aws-sdk-signin\",\"dep:sha2\",\"dep:zeroize\",\"dep:hex\",\"dep:base64-simd\",\"dep:uuid\",\"uuid?/v4\",\"dep:p256\",\"p256?/arithmetic\",\"p256?/pem\",\"dep:rand\"],\"credentials-process\":[\"tokio/process\"],\"default\":[\"default-https-client\",\"rt-tokio\",\"credentials-process\",\"sso\"],\"default-https-client\":[\"aws-smithy-runtime/default-https-client\"],\"legacy-client\":[\"aws-smithy-runtime/tls-rustls\"],\"rt-tokio\":[\"aws-smithy-async/rt-tokio\",\"aws-smithy-runtime/rt-tokio\",\"tokio/rt\"],\"rustls\":[\"client-hyper\"],\"sso\":[\"dep:aws-sdk-sso\",\"dep:aws-sdk-ssooidc\",\"dep:sha1\",\"dep:hex\",\"dep:zeroize\",\"aws-smithy-runtime-api/http-auth\"],\"test-util\":[\"aws-runtime/test-util\"]}}",
-       "aws-credential-types_1.3.1": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"async-trait\",\"req\":\"^0.1.74\"},{\"name\":\"aws-smithy-async\",\"req\":\"^1.3.1\"},{\"features\":[\"client\",\"http-auth\"],\"name\":\"aws-smithy-runtime-api\",\"req\":\"^1.19.1\"},{\"features\":[\"test-util\"],\"kind\":\"dev\",\"name\":\"aws-smithy-runtime-api\",\"req\":\"^1.19.1\"},{\"name\":\"aws-smithy-types\",\"req\":\"^1.9.0\"},{\"features\":[\"full\",\"test-util\",\"rt\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.49.0\"},{\"name\":\"zeroize\",\"req\":\"^1.8.0\"}],\"features\":{\"hardcoded-credentials\":[],\"test-util\":[\"aws-smithy-runtime-api/test-util\"]}}",
-+      "aws-lc-fips-sys_0.14.4": "{\"dependencies\":[{\"kind\":\"build\",\"name\":\"bindgen\",\"req\":\"^0.73\"},{\"kind\":\"build\",\"name\":\"cc\",\"req\":\"^1.2.41\"},{\"kind\":\"build\",\"name\":\"cmake\",\"req\":\"^0.1.54\"},{\"kind\":\"build\",\"name\":\"dunce\",\"req\":\"^1.0.5\"},{\"kind\":\"build\",\"name\":\"fs_extra\",\"req\":\"^1.3.0\"},{\"kind\":\"build\",\"name\":\"pkg-config\",\"req\":\"^0.3.31\",\"target\":\"cfg(unix)\"},{\"kind\":\"build\",\"name\":\"regex\",\"req\":\"^1.11.1\"},{\"kind\":\"dev\",\"name\":\"regex\",\"req\":\"^1.11.1\"}],\"features\":{\"asan\":[],\"bindgen\":[],\"default\":[\"fips\"],\"fips\":[],\"ssl\":[]}}",
-       "aws-lc-rs_1.19.0": "{\"dependencies\":[{\"name\":\"aws-lc-fips-sys\",\"optional\":true,\"req\":\"^0.14.2\"},{\"default_features\":false,\"name\":\"aws-lc-sys\",\"optional\":true,\"req\":\"^0.47.0\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"clap\",\"req\":\"^4.4\"},{\"kind\":\"dev\",\"name\":\"hex\",\"req\":\"^0.4.3\"},{\"kind\":\"dev\",\"name\":\"lazy_static\",\"req\":\"^1.5.0\"},{\"kind\":\"dev\",\"name\":\"paste\",\"req\":\"^1.0.15\"},{\"kind\":\"dev\",\"name\":\"regex\",\"req\":\"^1.11.1\"},{\"name\":\"untrusted\",\"optional\":true,\"req\":\"^0.7.1\"},{\"name\":\"zeroize\",\"req\":\"^1.8.1\"}],\"features\":{\"alloc\":[],\"asan\":[\"aws-lc-sys?/asan\",\"aws-lc-fips-sys?/asan\"],\"bindgen\":[\"aws-lc-sys?/bindgen\",\"aws-lc-fips-sys?/bindgen\"],\"default\":[\"aws-lc-sys\",\"alloc\",\"ring-io\",\"ring-sig-verify\"],\"dev-tests-only\":[],\"fips\":[\"dep:aws-lc-fips-sys\"],\"legacy-des\":[\"aws-lc-sys?/all-bindings\"],\"non-fips\":[\"aws-lc-sys\"],\"prebuilt-nasm\":[\"aws-lc-sys?/prebuilt-nasm\"],\"ring-io\":[\"dep:untrusted\"],\"ring-sig-verify\":[\"dep:untrusted\"],\"test_logging\":[],\"unstable\":[\"aws-lc-sys?/unstable\"]}}",
-       "aws-lc-sys_0.47.0": "{\"dependencies\":[{\"kind\":\"build\",\"name\":\"bindgen\",\"optional\":true,\"req\":\"^0.73\"},{\"features\":[\"parallel\"],\"kind\":\"build\",\"name\":\"cc\",\"req\":\"^1.2.41\"},{\"kind\":\"build\",\"name\":\"cmake\",\"req\":\"^0.1.54\"},{\"kind\":\"build\",\"name\":\"dunce\",\"req\":\"^1.0.5\"},{\"kind\":\"build\",\"name\":\"fs_extra\",\"req\":\"^1.3.0\"},{\"kind\":\"build\",\"name\":\"pkg-config\",\"req\":\"^0.3.31\",\"target\":\"cfg(unix)\"}],\"features\":{\"all-bindings\":[],\"asan\":[],\"bindgen\":[\"dep:bindgen\"],\"default\":[\"all-bindings\"],\"disable-prebuilt-nasm\":[],\"fips\":[\"dep:bindgen\"],\"prebuilt-nasm\":[],\"ssl\":[\"bindgen\",\"all-bindings\"],\"unstable\":[]}}",
-       "aws-runtime_1.10.3": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"arbitrary\",\"req\":\"^1.3\"},{\"name\":\"aws-credential-types\",\"req\":\"^1.3.1\"},{\"features\":[\"test-util\"],\"kind\":\"dev\",\"name\":\"aws-credential-types\",\"req\":\"^1.3.1\"},{\"name\":\"aws-sigv4\",\"req\":\"^1.6.5\"},{\"name\":\"aws-smithy-async\",\"req\":\"^1.3.1\"},{\"features\":[\"test-util\"],\"kind\":\"dev\",\"name\":\"aws-smithy-async\",\"req\":\"^1.3.1\"},{\"name\":\"aws-smithy-eventstream\",\"optional\":true,\"req\":\"^0.61.6\"},{\"name\":\"aws-smithy-http\",\"req\":\"^0.64.3\"},{\"kind\":\"dev\",\"name\":\"aws-smithy-protocol-test\",\"req\":\"^0.64.0\"},{\"features\":[\"client\"],\"name\":\"aws-smithy-runtime\",\"req\":\"^1.16.2\"},{\"features\":[\"client\",\"http-1x\"],\"name\":\"aws-smithy-runtime-api\",\"req\":\"^1.20.0\"},{\"features\":[\"test-util\",\"http-1x\"],\"kind\":\"dev\",\"name\":\"aws-smithy-runtime-api\",\"req\":\"^1.20.0\"},{\"features\":[\"http-body-1-x\"],\"name\":\"aws-smithy-types\",\"req\":\"^1.9.3\"},{\"features\":[\"test-util\"],\"kind\":\"dev\",\"name\":\"aws-smithy-types\",\"req\":\"^1.9.3\"},{\"name\":\"aws-types\",\"req\":\"^1.7.0\"},{\"name\":\"bytes\",\"req\":\"^1.11.1\"},{\"name\":\"bytes-utils\",\"req\":\"^0.1.2\"},{\"kind\":\"dev\",\"name\":\"bytes-utils\",\"req\":\"^0.1.2\"},{\"kind\":\"dev\",\"name\":\"convert_case\",\"req\":\"^0.6.0\"},{\"name\":\"fastrand\",\"req\":\"^2.3.0\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"futures-util\",\"req\":\"^0.3.29\"},{\"name\":\"http-02x\",\"optional\":true,\"package\":\"http\",\"req\":\"^0.2.12\"},{\"name\":\"http-1x\",\"package\":\"http\",\"req\":\"^1.3.1\"},{\"name\":\"http-body-04x\",\"optional\":true,\"package\":\"http-body\",\"req\":\"^0.4.6\"},{\"name\":\"http-body-1x\",\"package\":\"http-body\",\"req\":\"^1.0.1\"},{\"kind\":\"dev\",\"name\":\"http-body-util\",\"req\":\"^0.1.3\"},{\"name\":\"percent-encoding\",\"req\":\"^2.3.1\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2.14\"},{\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1.2\"},{\"name\":\"regex-lite\",\"optional\":true,\"req\":\"^0.1.5\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.228\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.146\"},{\"features\":[\"macros\",\"rt\",\"time\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.49.0\"},{\"name\":\"tracing\",\"req\":\"^0.1.44\"},{\"features\":[\"env-filter\"],\"kind\":\"dev\",\"name\":\"tracing-subscriber\",\"req\":\"^0.3.19\"},{\"kind\":\"dev\",\"name\":\"tracing-test\",\"req\":\"^0.2.5\"},{\"name\":\"uuid\",\"req\":\"^1.1.2\"}],\"features\":{\"event-stream\":[\"dep:aws-smithy-eventstream\",\"aws-sigv4/sign-eventstream\"],\"http-02x\":[\"dep:http-02x\",\"dep:http-body-04x\",\"aws-smithy-types/http-body-0-4-x\"],\"http-1x\":[],\"sigv4a\":[\"aws-sigv4/sigv4a\"],\"test-util\":[\"dep:regex-lite\"]}}",
-@@ -1069,6 +1070,7 @@
-       "beef_0.5.2": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0.105\"},{\"kind\":\"dev\",\"name\":\"serde_derive\",\"req\":\"^1.0.105\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"}],\"features\":{\"const_fn\":[],\"default\":[],\"impl_serde\":[\"serde\"]}}",
-       "bincode_1.3.3": "{\"dependencies\":[{\"name\":\"serde\",\"req\":\"^1.0.63\"},{\"kind\":\"dev\",\"name\":\"serde_bytes\",\"req\":\"^0.11\"},{\"kind\":\"dev\",\"name\":\"serde_derive\",\"req\":\"^1.0.27\"}],\"features\":{\"i128\":[]}}",
-       "bindgen_0.72.1": "{\"dependencies\":[{\"name\":\"annotate-snippets\",\"optional\":true,\"req\":\"^0.11.4\"},{\"name\":\"bitflags\",\"req\":\"^2.2.1\"},{\"name\":\"cexpr\",\"req\":\"^0.6\"},{\"features\":[\"clang_11_0\"],\"name\":\"clang-sys\",\"req\":\"^1\"},{\"features\":[\"derive\"],\"name\":\"clap\",\"optional\":true,\"req\":\"^4\"},{\"name\":\"clap_complete\",\"optional\":true,\"req\":\"^4\"},{\"default_features\":false,\"name\":\"itertools\",\"req\":\">=0.10, <0.14\"},{\"name\":\"log\",\"optional\":true,\"req\":\"^0.4\"},{\"features\":[\"verbatim\"],\"name\":\"prettyplease\",\"optional\":true,\"req\":\"^0.2.7\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.80\"},{\"default_features\":false,\"name\":\"quote\",\"req\":\"^1\"},{\"default_features\":false,\"features\":[\"std\",\"unicode-perl\"],\"name\":\"regex\",\"req\":\"^1.5.3\"},{\"name\":\"rustc-hash\",\"req\":\"^2.1.0\"},{\"name\":\"shlex\",\"req\":\"^1\"},{\"features\":[\"full\",\"extra-traits\",\"visit-mut\"],\"name\":\"syn\",\"req\":\"^2.0\"}],\"features\":{\"__cli\":[\"dep:clap\",\"dep:clap_complete\"],\"__testing_only_extra_assertions\":[],\"__testing_only_libclang_16\":[],\"__testing_only_libclang_9\":[],\"default\":[\"logging\",\"prettyplease\",\"runtime\"],\"experimental\":[\"dep:annotate-snippets\"],\"logging\":[\"dep:log\"],\"runtime\":[\"clang-sys/runtime\"],\"static\":[\"clang-sys/static\"]}}",
-+      "bindgen_0.73.2": "{\"dependencies\":[{\"name\":\"annotate-snippets\",\"optional\":true,\"req\":\"^0.11.4\"},{\"name\":\"bitflags\",\"req\":\"^2.2.1\"},{\"name\":\"cexpr\",\"req\":\"^0.6\"},{\"features\":[\"clang_11_0\"],\"name\":\"clang-sys\",\"req\":\"^1\"},{\"features\":[\"derive\"],\"name\":\"clap\",\"optional\":true,\"req\":\"^4\"},{\"name\":\"clap_complete\",\"optional\":true,\"req\":\"^4\"},{\"name\":\"log\",\"optional\":true,\"req\":\"^0.4\"},{\"features\":[\"verbatim\"],\"name\":\"prettyplease\",\"optional\":true,\"req\":\">=0.2.7, <0.4\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.80\"},{\"default_features\":false,\"name\":\"quote\",\"req\":\"^1\"},{\"default_features\":false,\"features\":[\"std\",\"unicode-perl\"],\"name\":\"regex\",\"req\":\"^1.5.3\"},{\"name\":\"rustc-hash\",\"req\":\"^2.1.0\"},{\"name\":\"shlex\",\"req\":\"^2\"},{\"features\":[\"full\",\"extra-traits\",\"visit-mut\"],\"name\":\"syn\",\"req\":\">=2, <4\"}],\"features\":{\"__cli\":[\"dep:clap\",\"dep:clap_complete\"],\"__testing_only_extra_assertions\":[],\"__testing_only_libclang_16\":[],\"__testing_only_libclang_20\":[],\"__testing_only_libclang_22\":[],\"default\":[\"logging\",\"prettyplease\",\"runtime\"],\"experimental\":[\"dep:annotate-snippets\"],\"libcpp\":[\"clang-sys/libcpp\"],\"logging\":[\"dep:log\"],\"runtime\":[\"clang-sys/runtime\"],\"static\":[\"clang-sys/static\"]}}",
-       "bit-set_0.5.3": "{\"dependencies\":[{\"default_features\":false,\"name\":\"bit-vec\",\"req\":\"^0.6.1\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.3\"}],\"features\":{\"default\":[\"std\"],\"std\":[\"bit-vec/std\"]}}",
-       "bit-set_0.8.0": "{\"dependencies\":[{\"default_features\":false,\"name\":\"bit-vec\",\"req\":\"^0.8.0\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.8\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"}],\"features\":{\"default\":[\"std\"],\"serde\":[\"dep:serde\",\"bit-vec/serde\"],\"std\":[\"bit-vec/std\"]}}",
-       "bit-vec_0.6.3": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.7\"},{\"kind\":\"dev\",\"name\":\"rand_xorshift\",\"req\":\"^0.2\"},{\"default_features\":false,\"features\":[\"derive\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"}],\"features\":{\"default\":[\"std\"],\"serde_no_std\":[\"serde/alloc\"],\"serde_std\":[\"std\",\"serde/std\"],\"std\":[]}}",
-@@ -1298,7 +1300,6 @@
-       "endi_1.1.1": "{\"dependencies\":[],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
-       "endian-type_0.1.2": "{\"dependencies\":[],\"features\":{}}",
-       "endian-type_0.2.0": "{\"dependencies\":[],\"features\":{}}",
--      "enum-as-inner_0.6.1": "{\"dependencies\":[{\"name\":\"heck\",\"req\":\"^0.5\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0\"},{\"name\":\"quote\",\"req\":\"^1.0\"},{\"name\":\"syn\",\"req\":\"^2.0\"}],\"features\":{}}",
-       "enumflags2_0.7.12": "{\"dependencies\":[{\"name\":\"enumflags2_derive\",\"req\":\"=0.7.12\"},{\"default_features\":false,\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0.0\"}],\"features\":{\"std\":[]}}",
-       "enumflags2_derive_0.7.12": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0\"},{\"name\":\"quote\",\"req\":\"^1.0\"},{\"default_features\":false,\"features\":[\"parsing\",\"printing\",\"derive\",\"proc-macro\"],\"name\":\"syn\",\"req\":\"^2.0\"}],\"features\":{}}",
-       "env_filter_1.0.0": "{\"dependencies\":[{\"features\":[\"std\"],\"name\":\"log\",\"req\":\"^0.4.8\"},{\"default_features\":false,\"features\":[\"std\",\"perf\"],\"name\":\"regex\",\"optional\":true,\"req\":\"^1.0.3\"},{\"kind\":\"dev\",\"name\":\"snapbox\",\"req\":\"^0.6\"}],\"features\":{\"default\":[\"regex\"],\"regex\":[\"dep:regex\"]}}",
-@@ -1489,8 +1490,6 @@
-       "hermit-abi_0.5.2": "{\"dependencies\":[{\"name\":\"alloc\",\"optional\":true,\"package\":\"rustc-std-workspace-alloc\",\"req\":\"^1.0.0\"},{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0.0\"}],\"features\":{\"default\":[],\"rustc-dep-of-std\":[\"core\",\"alloc\"]}}",
-       "hermit-abi_0.5.3": "{\"dependencies\":[{\"name\":\"alloc\",\"optional\":true,\"package\":\"rustc-std-workspace-alloc\",\"req\":\"^1.0.0\"},{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0.0\"}],\"features\":{\"default\":[],\"rustc-dep-of-std\":[\"core\",\"alloc\"]}}",
-       "hex_0.4.3": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"faster-hex\",\"req\":\"^0.5\"},{\"kind\":\"dev\",\"name\":\"pretty_assertions\",\"req\":\"^0.6\"},{\"kind\":\"dev\",\"name\":\"rustc-hex\",\"req\":\"^2.1\"},{\"default_features\":false,\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"version-sync\",\"req\":\"^0.9\"}],\"features\":{\"alloc\":[],\"default\":[\"std\"],\"std\":[\"alloc\"]}}",
--      "hickory-proto_0.25.2": "{\"dependencies\":[{\"name\":\"async-trait\",\"req\":\"^0.1.43\"},{\"default_features\":false,\"features\":[\"prebuilt-nasm\"],\"name\":\"aws-lc-rs\",\"optional\":true,\"req\":\"^1.12.3\"},{\"name\":\"backtrace\",\"optional\":true,\"req\":\"^0.3.50\"},{\"name\":\"bitflags\",\"optional\":true,\"req\":\"^2.4.1\"},{\"name\":\"bytes\",\"optional\":true,\"req\":\"^1\"},{\"name\":\"cfg-if\",\"req\":\"^1\"},{\"name\":\"critical-section\",\"optional\":true,\"req\":\"^1.1.1\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"data-encoding\",\"req\":\"^2.2.0\"},{\"name\":\"enum-as-inner\",\"req\":\"^0.6\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"futures-channel\",\"req\":\"^0.3.5\"},{\"default_features\":false,\"features\":[\"std\"],\"kind\":\"dev\",\"name\":\"futures-executor\",\"req\":\"^0.3.5\"},{\"default_features\":false,\"name\":\"futures-io\",\"optional\":true,\"req\":\"^0.3.5\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"futures-util\",\"req\":\"^0.3.5\"},{\"features\":[\"stream\"],\"name\":\"h2\",\"optional\":true,\"req\":\"^0.4.0\"},{\"name\":\"h3\",\"optional\":true,\"req\":\"^0.0.7\"},{\"name\":\"h3-quinn\",\"optional\":true,\"req\":\"^0.0.9\"},{\"name\":\"http\",\"optional\":true,\"req\":\"^1.1\"},{\"default_features\":false,\"features\":[\"alloc\",\"compiled_data\"],\"name\":\"idna\",\"req\":\"^1.0.3\"},{\"default_features\":false,\"name\":\"ipnet\",\"req\":\"^2.3.0\"},{\"name\":\"js-sys\",\"optional\":true,\"req\":\"^0.3.44\"},{\"default_features\":false,\"features\":[\"critical-section\"],\"name\":\"once_cell\",\"req\":\"^1.20.0\"},{\"name\":\"pin-project-lite\",\"optional\":true,\"req\":\"^0.2\"},{\"default_features\":false,\"features\":[\"log\",\"runtime-tokio\"],\"name\":\"quinn\",\"optional\":true,\"req\":\"^0.11.2\"},{\"default_features\":false,\"features\":[\"alloc\",\"std_rng\"],\"name\":\"rand\",\"req\":\"^0.9\"},{\"features\":[\"std\"],\"name\":\"ring\",\"optional\":true,\"req\":\"^0.17\"},{\"default_features\":false,\"features\":[\"logging\",\"std\",\"tls12\"],\"name\":\"rustls\",\"optional\":true,\"req\":\"^0.23.23\"},{\"name\":\"rustls-pki-types\",\"optional\":true,\"req\":\"^1.10\"},{\"name\":\"rustls-platform-verifier\",\"optional\":true,\"req\":\"^0.5\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0\"},{\"name\":\"socket2\",\"optional\":true,\"req\":\"^0.5\"},{\"default_features\":false,\"name\":\"thiserror\",\"req\":\"^2\"},{\"name\":\"time\",\"optional\":true,\"req\":\"^0.3\"},{\"features\":[\"alloc\"],\"name\":\"tinyvec\",\"req\":\"^1.1.1\"},{\"features\":[\"io-util\",\"macros\"],\"name\":\"tokio\",\"optional\":true,\"req\":\"^1.21\"},{\"features\":[\"rt\",\"time\",\"macros\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.21\"},{\"default_features\":false,\"features\":[\"early-data\"],\"name\":\"tokio-rustls\",\"optional\":true,\"req\":\"^0.26\"},{\"default_features\":false,\"name\":\"tracing\",\"req\":\"^0.1.30\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"tracing-subscriber\",\"req\":\"^0.3\"},{\"default_features\":false,\"name\":\"url\",\"req\":\"^2.5.4\"},{\"name\":\"wasm-bindgen-crate\",\"optional\":true,\"package\":\"wasm-bindgen\",\"req\":\"^0.2.58\"},{\"name\":\"webpki-roots\",\"optional\":true,\"req\":\"^0.26\"}],\"features\":{\"__dnssec\":[\"dep:bitflags\",\"dep:rustls-pki-types\",\"dep:time\",\"std\"],\"__h3\":[\"dep:h3\",\"dep:h3-quinn\",\"dep:http\",\"std\"],\"__https\":[\"dep:bytes\",\"dep:h2\",\"dep:http\",\"std\"],\"__quic\":[\"dep:bytes\",\"dep:pin-project-lite\",\"dep:quinn\",\"std\"],\"__tls\":[\"dep:bytes\",\"dep:rustls\",\"dep:tokio-rustls\",\"std\",\"tokio\"],\"backtrace\":[\"dep:backtrace\",\"std\"],\"default\":[\"std\",\"tokio\"],\"dnssec-aws-lc-rs\":[\"dep:aws-lc-rs\",\"aws-lc-rs/aws-lc-sys\",\"aws-lc-rs/ring-io\",\"__dnssec\"],\"dnssec-ring\":[\"dep:ring\",\"__dnssec\"],\"h3-aws-lc-rs\":[\"quic-aws-lc-rs\",\"__h3\"],\"h3-ring\":[\"quic-ring\",\"__h3\"],\"https-aws-lc-rs\":[\"tls-aws-lc-rs\",\"__https\"],\"https-ring\":[\"tls-ring\",\"__https\"],\"mdns\":[\"socket2/all\",\"std\"],\"no-std-rand\":[\"once_cell/critical-section\",\"dep:critical-section\"],\"quic-aws-lc-rs\":[\"quinn/rustls-aws-lc-rs\",\"tls-aws-lc-rs\",\"__quic\"],\"quic-ring\":[\"quinn/rustls-ring\",\"tls-ring\",\"__quic\"],\"rustls-platform-verifier\":[\"dep:rustls-platform-verifier\",\"std\"],\"serde\":[\"dep:serde\",\"std\",\"url/serde\"],\"std\":[\"data-encoding/std\",\"futures-channel/std\",\"futures-io/std\",\"futures-util/std\",\"ipnet/std\",\"rand/std\",\"rand/thread_rng\",\"ring?/std\",\"thiserror/std\",\"tracing-subscriber/env-filter\",\"tracing-subscriber/fmt\",\"tracing-subscriber/std\",\"tracing/std\",\"url/std\"],\"testing\":[\"std\"],\"text-parsing\":[\"std\"],\"tls-aws-lc-rs\":[\"tokio-rustls/aws-lc-rs\",\"__tls\"],\"tls-ring\":[\"tokio-rustls/ring\",\"__tls\"],\"tokio\":[\"dep:tokio\",\"std\",\"tokio/net\",\"tokio/rt\",\"tokio/time\",\"tokio/rt-multi-thread\"],\"wasm-bindgen\":[\"dep:wasm-bindgen-crate\",\"dep:js-sys\"]}}",
--      "hickory-resolver_0.25.2": "{\"dependencies\":[{\"name\":\"backtrace\",\"optional\":true,\"req\":\"^0.3.50\"},{\"name\":\"cfg-if\",\"req\":\"^1\"},{\"default_features\":false,\"features\":[\"std\"],\"kind\":\"dev\",\"name\":\"futures-executor\",\"req\":\"^0.3.5\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"futures-util\",\"req\":\"^0.3.5\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"hickory-proto\",\"req\":\"^0.25\"},{\"name\":\"ipconfig\",\"optional\":true,\"req\":\"^0.3.0\",\"target\":\"cfg(windows)\"},{\"features\":[\"sync\"],\"name\":\"moka\",\"req\":\"^0.12\"},{\"default_features\":false,\"features\":[\"critical-section\"],\"name\":\"once_cell\",\"req\":\"^1.20.0\"},{\"name\":\"parking_lot\",\"req\":\"^0.12\"},{\"default_features\":false,\"features\":[\"log\",\"runtime-tokio\"],\"name\":\"quinn\",\"optional\":true,\"req\":\"^0.11.2\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"rand\",\"req\":\"^0.9\"},{\"features\":[\"system\"],\"name\":\"resolv-conf\",\"optional\":true,\"req\":\"^0.7.0\"},{\"default_features\":false,\"features\":[\"logging\",\"std\",\"tls12\"],\"name\":\"rustls\",\"optional\":true,\"req\":\"^0.23.23\"},{\"features\":[\"derive\",\"rc\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1\"},{\"name\":\"smallvec\",\"req\":\"^1.6\"},{\"default_features\":false,\"name\":\"thiserror\",\"req\":\"^2\"},{\"name\":\"tokio\",\"optional\":true,\"req\":\"^1.21\"},{\"features\":[\"macros\",\"test-util\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.21\"},{\"default_features\":false,\"name\":\"tokio-rustls\",\"optional\":true,\"req\":\"^0.26\"},{\"kind\":\"dev\",\"name\":\"toml\",\"req\":\"^0.8.14\"},{\"default_features\":false,\"name\":\"tracing\",\"req\":\"^0.1.30\"},{\"default_features\":false,\"features\":[\"env-filter\",\"fmt\",\"std\"],\"kind\":\"dev\",\"name\":\"tracing-subscriber\",\"req\":\"^0.3\"},{\"name\":\"webpki-roots\",\"optional\":true,\"req\":\"^0.26\"}],\"features\":{\"__dnssec\":[],\"__h3\":[\"__quic\"],\"__https\":[\"__tls\"],\"__quic\":[\"dep:quinn\",\"__tls\"],\"__tls\":[\"dep:rustls\",\"dep:tokio-rustls\",\"tokio\"],\"backtrace\":[\"dep:backtrace\",\"hickory-proto/backtrace\"],\"default\":[\"system-config\",\"tokio\"],\"dnssec-aws-lc-rs\":[\"hickory-proto/dnssec-aws-lc-rs\",\"__dnssec\"],\"dnssec-ring\":[\"hickory-proto/dnssec-ring\",\"__dnssec\"],\"h3-aws-lc-rs\":[\"hickory-proto/h3-aws-lc-rs\",\"__h3\"],\"h3-ring\":[\"hickory-proto/h3-ring\",\"__h3\"],\"https-aws-lc-rs\":[\"hickory-proto/https-aws-lc-rs\",\"__https\"],\"https-ring\":[\"hickory-proto/https-ring\",\"__https\"],\"quic-aws-lc-rs\":[\"hickory-proto/quic-aws-lc-rs\",\"__quic\",\"quinn/rustls-aws-lc-rs\"],\"quic-ring\":[\"hickory-proto/quic-ring\",\"__quic\",\"quinn/rustls-ring\"],\"rustls-platform-verifier\":[\"hickory-proto/rustls-platform-verifier\"],\"serde\":[\"dep:serde\",\"hickory-proto/serde\"],\"system-config\":[\"dep:ipconfig\",\"dep:resolv-conf\"],\"tls-aws-lc-rs\":[\"hickory-proto/tls-aws-lc-rs\",\"__tls\"],\"tls-ring\":[\"hickory-proto/tls-ring\",\"__tls\"],\"tokio\":[\"dep:tokio\",\"tokio/rt\",\"hickory-proto/tokio\"],\"webpki-roots\":[\"dep:webpki-roots\",\"hickory-proto/webpki-roots\"]}}",
-       "hkdf_0.12.4": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"blobby\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^0.2.2\"},{\"name\":\"hmac\",\"req\":\"^0.12.1\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"sha1\",\"req\":\"^0.10\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"sha2\",\"req\":\"^0.10\"}],\"features\":{\"std\":[\"hmac/std\"]}}",
-       "hkdf_0.13.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"blobby\",\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^1\"},{\"name\":\"hmac\",\"req\":\"^0.13\"},{\"name\":\"kdf\",\"optional\":true,\"req\":\"^0.1\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"sha1\",\"req\":\"^0.11\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"sha2\",\"req\":\"^0.11\"}],\"features\":{}}",
-       "hmac_0.12.1": "{\"dependencies\":[{\"features\":[\"mac\"],\"name\":\"digest\",\"req\":\"^0.10.3\"},{\"features\":[\"dev\"],\"kind\":\"dev\",\"name\":\"digest\",\"req\":\"^0.10\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^0.2.2\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"md-5\",\"req\":\"^0.10\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"sha-1\",\"req\":\"^0.10\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"sha2\",\"req\":\"^0.10\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"streebog\",\"req\":\"^0.10\"}],\"features\":{\"reset\":[],\"std\":[\"digest/std\"]}}",
-@@ -1571,7 +1570,6 @@
-       "intl_pluralrules_7.0.2": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.3\"},{\"name\":\"unic-langid\",\"req\":\"^0.9\"},{\"features\":[\"macros\"],\"kind\":\"dev\",\"name\":\"unic-langid\",\"req\":\"^0.9\"}],\"features\":{}}",
-       "inventory_0.3.25": "{\"dependencies\":[{\"name\":\"rustversion\",\"req\":\"^1.0\",\"target\":\"cfg(target_family = \\\"wasm\\\")\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.108\"}],\"features\":{}}",
-       "io_tee_0.1.1": "{\"dependencies\":[],\"features\":{}}",
--      "ipconfig_0.3.4": "{\"dependencies\":[{\"name\":\"socket2\",\"req\":\"^0.6.0\",\"target\":\"cfg(windows)\"},{\"name\":\"widestring\",\"req\":\"^1.0.2\",\"target\":\"cfg(windows)\"},{\"name\":\"windows-registry\",\"optional\":true,\"req\":\"^0.6.1\",\"target\":\"cfg(windows)\"},{\"name\":\"windows-result\",\"optional\":true,\"req\":\"^0.4.1\",\"target\":\"cfg(windows)\"},{\"features\":[\"Win32_Foundation\",\"Win32_Networking_WinSock\",\"Win32_System_Registry\"],\"name\":\"windows-sys\",\"req\":\"^0.61\",\"target\":\"cfg(windows)\"}],\"features\":{\"computer\":[\"dep:windows-registry\",\"dep:windows-result\"],\"default\":[\"computer\"]}}",
-       "ipnet_2.12.2": "{\"dependencies\":[{\"name\":\"heapless\",\"optional\":true,\"req\":\"^0\"},{\"default_features\":false,\"name\":\"schemars08\",\"optional\":true,\"package\":\"schemars\",\"req\":\"^0.8\"},{\"default_features\":false,\"name\":\"schemars1\",\"optional\":true,\"package\":\"schemars\",\"req\":\"^1\"},{\"default_features\":false,\"features\":[\"derive\"],\"name\":\"serde\",\"optional\":true,\"package\":\"serde\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1\"}],\"features\":{\"default\":[\"std\"],\"heapless\":[\"dep:heapless\",\"serde\"],\"json\":[\"schemars08\",\"serde\"],\"schemars\":[\"schemars08\"],\"schemars08\":[\"dep:schemars08\"],\"schemars1\":[\"dep:schemars1\"],\"ser_as_str\":[\"dep:heapless\"],\"serde\":[\"dep:serde\"],\"std\":[]}}",
-       "iri-string_0.7.14": "{\"dependencies\":[{\"default_features\":false,\"name\":\"memchr\",\"optional\":true,\"req\":\"^2.4.1\"},{\"default_features\":false,\"features\":[\"derive\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0.103\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1.0.104\"}],\"features\":{\"alloc\":[\"serde?/alloc\"],\"default\":[\"std\"],\"std\":[\"alloc\",\"memchr?/std\",\"serde?/std\"]}}",
-       "is-terminal_0.4.17": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"atty\",\"req\":\"^0.2.14\"},{\"name\":\"hermit-abi\",\"req\":\"^0.5.0\",\"target\":\"cfg(target_os = \\\"hermit\\\")\"},{\"name\":\"libc\",\"req\":\"^0.2\",\"target\":\"cfg(any(unix, target_os = \\\"wasi\\\"))\"},{\"kind\":\"dev\",\"name\":\"libc\",\"req\":\"^0.2.110\",\"target\":\"cfg(any(unix, target_os = \\\"wasi\\\"))\"},{\"features\":[\"termios\"],\"kind\":\"dev\",\"name\":\"rustix\",\"req\":\"^1.0.0\",\"target\":\"cfg(any(unix, target_os = \\\"wasi\\\"))\"},{\"features\":[\"stdio\"],\"kind\":\"dev\",\"name\":\"rustix\",\"req\":\"^1.0.0\",\"target\":\"cfg(not(any(windows, target_os = \\\"hermit\\\", target_os = \\\"unknown\\\")))\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3\",\"target\":\"cfg(windows)\"},{\"features\":[\"Win32_Foundation\",\"Win32_Storage_FileSystem\",\"Win32_System_Console\"],\"name\":\"windows-sys\",\"req\":\">=0.52, <0.62\",\"target\":\"cfg(windows)\"}],\"features\":{}}",
-@@ -1661,7 +1659,6 @@
-       "maplit_1.0.2": "{\"dependencies\":[],\"features\":{}}",
-       "matchers_0.2.0": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"syntax\",\"dfa-build\",\"dfa-search\"],\"name\":\"regex-automata\",\"req\":\"^0.4\"}],\"features\":{\"unicode\":[\"regex-automata/unicode\"]}}",
-       "matchit_0.8.4": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"actix-router\",\"req\":\"^0.2.7\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.3.4\"},{\"kind\":\"dev\",\"name\":\"gonzales\",\"req\":\"^0.0.3-beta\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"hyper\",\"req\":\"^0.14\"},{\"kind\":\"dev\",\"name\":\"path-tree\",\"req\":\"^0.2.2\"},{\"kind\":\"dev\",\"name\":\"regex\",\"req\":\"^1.5.4\"},{\"kind\":\"dev\",\"name\":\"route-recognizer\",\"req\":\"^0.3.0\"},{\"kind\":\"dev\",\"name\":\"routefinder\",\"req\":\"^0.5.2\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1\"},{\"features\":[\"make\",\"util\"],\"kind\":\"dev\",\"name\":\"tower\",\"req\":\"^0.4\"}],\"features\":{\"__test_helpers\":[],\"default\":[]}}",
--      "matchit_0.9.2": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"actix-router\",\"req\":\"^0.5\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5\"},{\"kind\":\"dev\",\"name\":\"gonzales\",\"req\":\"^0.0.3-beta\"},{\"kind\":\"dev\",\"name\":\"http-body-util\",\"req\":\"^0.1\"},{\"features\":[\"http1\",\"server\"],\"kind\":\"dev\",\"name\":\"hyper\",\"req\":\"^1\"},{\"features\":[\"tokio\"],\"kind\":\"dev\",\"name\":\"hyper-util\",\"req\":\"^0.1\"},{\"kind\":\"dev\",\"name\":\"path-tree\",\"req\":\"^0.8\"},{\"kind\":\"dev\",\"name\":\"regex\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"route-recognizer\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"routefinder\",\"req\":\"^0.5\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1\"},{\"features\":[\"make\",\"util\"],\"kind\":\"dev\",\"name\":\"tower\",\"req\":\"^0.5.2\"},{\"kind\":\"dev\",\"name\":\"wayfind\",\"req\":\"^0.8\"}],\"features\":{\"__test_helpers\":[],\"default\":[]}}",
-       "md-5_0.10.6": "{\"dependencies\":[{\"name\":\"cfg-if\",\"req\":\"^1.0\"},{\"name\":\"digest\",\"req\":\"^0.10.7\"},{\"features\":[\"dev\"],\"kind\":\"dev\",\"name\":\"digest\",\"req\":\"^0.10.7\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^0.2.2\"},{\"name\":\"md5-asm\",\"optional\":true,\"req\":\"^0.5\",\"target\":\"cfg(any(target_arch = \\\"x86\\\", target_arch = \\\"x86_64\\\"))\"}],\"features\":{\"asm\":[\"md5-asm\"],\"default\":[\"std\"],\"force-soft\":[],\"loongarch64_asm\":[],\"oid\":[\"digest/oid\"],\"std\":[\"digest/std\"]}}",
-       "md-5_0.11.0": "{\"dependencies\":[{\"name\":\"cfg-if\",\"req\":\"^1\"},{\"name\":\"digest\",\"req\":\"^0.11\"},{\"features\":[\"dev\"],\"kind\":\"dev\",\"name\":\"digest\",\"req\":\"^0.11\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^1\"}],\"features\":{\"alloc\":[\"digest/alloc\"],\"default\":[\"alloc\",\"oid\"],\"oid\":[\"digest/oid\"],\"zeroize\":[\"digest/zeroize\"]}}",
-       "md5_0.8.1": "{\"dependencies\":[],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
-@@ -1900,22 +1897,25 @@
-       "r-efi_6.0.0": "{\"dependencies\":[{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0.0\"}],\"features\":{\"native\":[],\"rustc-dep-of-std\":[\"core\"]}}",
-       "radix_trie_0.2.1": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.3\"},{\"name\":\"endian-type\",\"req\":\"^0.1.2\"},{\"name\":\"nibble_vec\",\"req\":\"^0.1\"},{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.3\"},{\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1.0\"}],\"features\":{}}",
-       "radix_trie_0.3.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.3\"},{\"name\":\"endian-type\",\"req\":\"^0.2.0\"},{\"name\":\"nibble_vec\",\"req\":\"^0.1\"},{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.8\"},{\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1.0\"}],\"features\":{}}",
--      "rama-core_0.3.0-alpha.4": "{\"dependencies\":[{\"name\":\"ahash\",\"req\":\"^0.8\"},{\"name\":\"asynk-strim\",\"req\":\"^0.1\"},{\"name\":\"bytes\",\"req\":\"^1\"},{\"name\":\"futures\",\"req\":\"^0.3\"},{\"default_features\":false,\"features\":[\"trace\"],\"name\":\"opentelemetry\",\"optional\":true,\"req\":\"^0.31\"},{\"features\":[\"semconv_experimental\"],\"name\":\"opentelemetry-semantic-conventions\",\"optional\":true,\"req\":\"^0.31\"},{\"default_features\":false,\"features\":[\"trace\",\"rt-tokio\"],\"name\":\"opentelemetry_sdk\",\"optional\":true,\"req\":\"^0.31\"},{\"name\":\"parking_lot\",\"req\":\"^0.12\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.0\"},{\"name\":\"rama-error\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-macros\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-utils\",\"req\":\"^0.3.0-alpha.4\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.9\"},{\"name\":\"serde\",\"req\":\"^1.0\"},{\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"features\":[\"macros\",\"fs\",\"io-std\"],\"name\":\"tokio\",\"req\":\"^1.48\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.48\"},{\"name\":\"tokio-graceful\",\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4\"},{\"features\":[\"codec\",\"io\",\"io-util\"],\"name\":\"tokio-util\",\"req\":\"^0.7\"},{\"name\":\"tracing\",\"req\":\"^0.1\"},{\"name\":\"tracing-opentelemetry\",\"optional\":true,\"req\":\"^0.32\"}],\"features\":{\"default\":[],\"opentelemetry\":[\"dep:opentelemetry\",\"dep:opentelemetry-semantic-conventions\",\"dep:opentelemetry_sdk\",\"dep:tracing-opentelemetry\"]}}",
--      "rama-dns_0.3.0-alpha.4": "{\"dependencies\":[{\"name\":\"ahash\",\"req\":\"^0.8\"},{\"default_features\":false,\"features\":[\"tokio\",\"system-config\"],\"name\":\"hickory-resolver\",\"req\":\"^0.25\"},{\"name\":\"rama-core\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-net\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-utils\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"serde\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_html_form\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"features\":[\"macros\",\"net\"],\"name\":\"tokio\",\"req\":\"^1.48\"}],\"features\":{\"default\":[]}}",
--      "rama-error_0.3.0-alpha.4": "{\"dependencies\":[],\"features\":{}}",
--      "rama-http-backend_0.3.0-alpha.4": "{\"dependencies\":[{\"name\":\"h2\",\"req\":\"^0.4\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"name\":\"rama-core\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-http\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-http-core\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-http-headers\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-http-types\",\"req\":\"^0.3.0-alpha.4\"},{\"features\":[\"http\"],\"name\":\"rama-net\",\"req\":\"^0.3.0-alpha.4\"},{\"features\":[\"http\"],\"name\":\"rama-tcp\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-unix\",\"req\":\"^0.3.0-alpha.4\",\"target\":\"cfg(target_family = \\\"unix\\\")\"},{\"name\":\"rama-utils\",\"req\":\"^0.3.0-alpha.4\"},{\"features\":[\"macros\"],\"name\":\"tokio\",\"req\":\"^1.48\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4\"}],\"features\":{\"default\":[],\"tls\":[\"rama-net/tls\"]}}",
--      "rama-http-core_0.3.0-alpha.4": "{\"dependencies\":[{\"name\":\"ahash\",\"req\":\"^0.8\"},{\"name\":\"atomic-waker\",\"req\":\"^1.1\"},{\"kind\":\"dev\",\"name\":\"env_logger\",\"req\":\"^0.11\"},{\"name\":\"futures-channel\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"hex\",\"req\":\"^0.4\"},{\"name\":\"httparse\",\"req\":\"^1.10\"},{\"name\":\"httpdate\",\"req\":\"^1.0\"},{\"features\":[\"std\"],\"name\":\"indexmap\",\"req\":\"^2\"},{\"name\":\"itoa\",\"req\":\"^1\"},{\"name\":\"parking_lot\",\"req\":\"^0.12\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.0\"},{\"name\":\"rama-core\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-http\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-http-types\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-utils\",\"req\":\"^0.3.0-alpha.4\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.9\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"name\":\"slab\",\"req\":\"^0.4\"},{\"features\":[\"io-util\"],\"name\":\"tokio\",\"req\":\"^1.48\"},{\"features\":[\"rt-multi-thread\",\"macros\",\"sync\",\"net\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.48\"},{\"default_features\":false,\"features\":[\"logging\",\"tls12\",\"aws_lc_rs\"],\"kind\":\"dev\",\"name\":\"tokio-rustls\",\"req\":\"^0.26\"},{\"name\":\"tokio-test\",\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"walkdir\",\"req\":\"^2.5\"},{\"name\":\"want\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"webpki-roots\",\"req\":\"^1.0\"}],\"features\":{\"default\":[],\"unstable\":[]}}",
--      "rama-http-headers_0.3.0-alpha.4": "{\"dependencies\":[{\"name\":\"ahash\",\"req\":\"^0.8\"},{\"name\":\"base64\",\"req\":\"^0.22\"},{\"default_features\":false,\"features\":[\"serde\",\"oldtime\",\"clock\"],\"name\":\"chrono\",\"req\":\"^0.4\"},{\"name\":\"const_format\",\"req\":\"^0.2\"},{\"name\":\"httpdate\",\"req\":\"^1.0\"},{\"name\":\"rama-core\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-error\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-http-types\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-macros\",\"req\":\"^0.3.0-alpha.4\"},{\"features\":[\"http\"],\"name\":\"rama-net\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-utils\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rand\",\"req\":\"^0.9\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"req\":\"^1.0\"},{\"name\":\"sha1\",\"req\":\"^0.10\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.48\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"tracing-test\",\"req\":\"^0.2\"}],\"features\":{}}",
--      "rama-http-types_0.3.0-alpha.4": "{\"dependencies\":[{\"name\":\"ahash\",\"req\":\"^0.8\"},{\"name\":\"bytes\",\"req\":\"^1\"},{\"name\":\"const_format\",\"req\":\"^0.2\"},{\"name\":\"fnv\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"hex\",\"req\":\"^0.4\"},{\"name\":\"http\",\"req\":\"^1\"},{\"name\":\"http-body\",\"req\":\"^1\"},{\"name\":\"http-body-util\",\"req\":\"^0.1\"},{\"name\":\"itoa\",\"req\":\"^1\"},{\"name\":\"memchr\",\"req\":\"^2.7\"},{\"name\":\"mime\",\"req\":\"^0.3.17\"},{\"default_features\":false,\"name\":\"mime_guess\",\"req\":\"^2\"},{\"name\":\"nom\",\"req\":\"^8.0.0\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.0\"},{\"name\":\"rama-core\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-error\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-macros\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-utils\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rand\",\"req\":\"^0.9\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.9\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"req\":\"^1.0\"},{\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"name\":\"sync_wrapper\",\"req\":\"^1.0\"},{\"features\":[\"macros\",\"io-std\"],\"name\":\"tokio\",\"req\":\"^1.48\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.48\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4\"}],\"features\":{\"default\":[]}}",
--      "rama-http_0.3.0-alpha.4": "{\"dependencies\":[{\"name\":\"ahash\",\"req\":\"^0.8\"},{\"features\":[\"tokio\",\"brotli\",\"zlib\",\"gzip\",\"zstd\"],\"name\":\"async-compression\",\"optional\":true,\"req\":\"^0.4\"},{\"name\":\"base64\",\"req\":\"^0.22\"},{\"name\":\"bitflags\",\"req\":\"^2.10\"},{\"kind\":\"dev\",\"name\":\"brotli\",\"req\":\"^8\"},{\"default_features\":false,\"features\":[\"serde\",\"oldtime\",\"clock\"],\"name\":\"chrono\",\"req\":\"^0.4\"},{\"features\":[\"brotli\",\"deflate\",\"gzip\",\"zstd\"],\"name\":\"compression-codecs\",\"optional\":true,\"req\":\"^0.4\"},{\"name\":\"compression-core\",\"optional\":true,\"req\":\"^0.4\"},{\"name\":\"const_format\",\"req\":\"^0.2\"},{\"name\":\"csv\",\"req\":\"^1.4\"},{\"name\":\"flate2\",\"optional\":true,\"req\":\"^1.1\"},{\"kind\":\"dev\",\"name\":\"flate2\",\"req\":\"^1.1\"},{\"name\":\"http\",\"req\":\"^1\"},{\"name\":\"http-range-header\",\"req\":\"^0.4\"},{\"name\":\"httpdate\",\"req\":\"^1.0\"},{\"name\":\"iri-string\",\"req\":\"^0.7\"},{\"kind\":\"dev\",\"name\":\"itertools\",\"req\":\"^0.14\"},{\"name\":\"matchit\",\"req\":\"^0.9\"},{\"default_features\":false,\"name\":\"opentelemetry-http\",\"optional\":true,\"req\":\"^0.31\"},{\"name\":\"parking_lot\",\"req\":\"^0.12\"},{\"kind\":\"dev\",\"name\":\"parking_lot\",\"req\":\"^0.12\"},{\"name\":\"percent-encoding\",\"req\":\"^2.3\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"name\":\"radix_trie\",\"req\":\"^0.3\"},{\"name\":\"rama-core\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-error\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-http-headers\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-http-types\",\"req\":\"^0.3.0-alpha.4\"},{\"features\":[\"http\"],\"name\":\"rama-net\",\"req\":\"^0.3.0-alpha.4\"},{\"kind\":\"dev\",\"name\":\"rama-tcp\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-utils\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rand\",\"req\":\"^0.9\"},{\"name\":\"rawzip\",\"optional\":true,\"req\":\"^0.4\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"req\":\"^1.0\"},{\"name\":\"serde_html_form\",\"req\":\"^0.3\"},{\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.23\"},{\"features\":[\"macros\",\"fs\",\"io-std\"],\"name\":\"tokio\",\"req\":\"^1.48\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.48\"},{\"kind\":\"dev\",\"name\":\"tokio-stream\",\"req\":\"^0.1\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4\"},{\"features\":[\"env-filter\"],\"kind\":\"dev\",\"name\":\"tracing-subscriber\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"tracing-test\",\"req\":\"^0.2\"},{\"features\":[\"v4\"],\"name\":\"uuid\",\"req\":\"^1.18\"},{\"kind\":\"dev\",\"name\":\"zstd\",\"req\":\"^0.13\"}],\"features\":{\"compression\":[\"dep:async-compression\",\"dep:compression-codecs\",\"dep:compression-core\",\"dep:rawzip\",\"dep:flate2\"],\"default\":[],\"opentelemetry\":[\"rama-core/opentelemetry\",\"rama-net/opentelemetry\",\"dep:opentelemetry-http\"],\"tls\":[\"rama-net/tls\"]}}",
--      "rama-macros_0.3.0-alpha.4": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"paste-test-suite\",\"req\":\"^0\"},{\"name\":\"proc-macro-crate\",\"req\":\"^3.4\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0\"},{\"name\":\"quote\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0\"},{\"features\":[\"full\"],\"name\":\"syn\",\"req\":\"^2.0\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0\"}],\"features\":{}}",
--      "rama-net_0.3.0-alpha.4": "{\"dependencies\":[{\"name\":\"ahash\",\"req\":\"^0.8\"},{\"name\":\"const_format\",\"req\":\"^0.2\"},{\"features\":[\"async\"],\"name\":\"flume\",\"req\":\"^0.12\"},{\"name\":\"hex\",\"optional\":true,\"req\":\"^0.4\"},{\"name\":\"ipnet\",\"req\":\"^2.11\"},{\"name\":\"itertools\",\"req\":\"^0.14\"},{\"kind\":\"dev\",\"name\":\"itertools\",\"req\":\"^0.14\"},{\"name\":\"md5\",\"optional\":true,\"req\":\"^0.8\"},{\"name\":\"nom\",\"req\":\"^8.0.0\"},{\"kind\":\"dev\",\"name\":\"nom\",\"req\":\"^8.0.0\"},{\"name\":\"parking_lot\",\"req\":\"^0.12\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"name\":\"psl\",\"req\":\"^2\"},{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.0\"},{\"name\":\"radix_trie\",\"req\":\"^0.3\"},{\"name\":\"rama-core\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-http-types\",\"optional\":true,\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-macros\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-utils\",\"req\":\"^0.3.0-alpha.4\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"name\":\"sha2\",\"optional\":true,\"req\":\"^0.10\"},{\"features\":[\"all\"],\"name\":\"socket2\",\"req\":\"^0.6\"},{\"features\":[\"macros\",\"fs\",\"io-std\",\"io-util\",\"net\"],\"name\":\"tokio\",\"req\":\"^1.48\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.48\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4\"},{\"name\":\"venndb\",\"optional\":true,\"req\":\"^0.6\"}],\"features\":{\"default\":[],\"http\":[\"dep:rama-http-types\",\"dep:sha2\",\"dep:hex\",\"dep:md5\"],\"opentelemetry\":[\"rama-core/opentelemetry\"],\"tls\":[\"dep:hex\",\"dep:md5\",\"dep:sha2\"]}}",
--      "rama-socks5_0.3.0-alpha.4": "{\"dependencies\":[{\"name\":\"byteorder\",\"req\":\"^1.5\"},{\"name\":\"rama-core\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-dns\",\"optional\":true,\"req\":\"^0.3.0-alpha.4\"},{\"features\":[\"http\"],\"name\":\"rama-net\",\"req\":\"^0.3.0-alpha.4\"},{\"features\":[\"http\"],\"name\":\"rama-tcp\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-udp\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-utils\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rand\",\"optional\":true,\"req\":\"^0.9\"},{\"name\":\"tokio\",\"req\":\"^1.48\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4\"}],\"features\":{\"default\":[],\"dns\":[\"dep:rama-dns\",\"dep:rand\"]}}",
--      "rama-tcp_0.3.0-alpha.4": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"ahash\",\"req\":\"^0.8\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"name\":\"rama-core\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-dns\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-http-types\",\"optional\":true,\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-net\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-utils\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rand\",\"req\":\"^0.9\"},{\"features\":[\"macros\",\"net\"],\"name\":\"tokio\",\"req\":\"^1.48\"}],\"features\":{\"default\":[],\"http\":[\"dep:rama-http-types\",\"rama-net/http\"]}}",
--      "rama-tls-rustls_0.3.0-alpha.4": "{\"dependencies\":[{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"name\":\"rama-core\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-http-types\",\"optional\":true,\"req\":\"^0.3.0-alpha.4\"},{\"features\":[\"tls\",\"http\"],\"name\":\"rama-net\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-utils\",\"req\":\"^0.3.0-alpha.4\"},{\"default_features\":false,\"features\":[\"pem\",\"aws_lc_rs\",\"x509-parser\"],\"name\":\"rcgen\",\"req\":\"^0.14\"},{\"default_features\":false,\"features\":[\"logging\",\"std\",\"tls12\",\"aws_lc_rs\"],\"name\":\"rustls\",\"req\":\"^0.23\"},{\"name\":\"rustls-native-certs\",\"req\":\"^0.8\"},{\"name\":\"rustls-pki-types\",\"req\":\"^1\"},{\"features\":[\"macros\",\"io-std\"],\"name\":\"tokio\",\"req\":\"^1.48\"},{\"default_features\":false,\"features\":[\"logging\",\"tls12\",\"aws_lc_rs\"],\"name\":\"tokio-rustls\",\"req\":\"^0.26\"},{\"name\":\"webpki-roots\",\"req\":\"^1.0\"},{\"default_features\":false,\"features\":[\"aws-lc-rs\",\"verify\",\"verify-aws\"],\"name\":\"x509-parser\",\"req\":\"^0.18\"}],\"features\":{\"default\":[],\"http\":[\"dep:rama-http-types\"]}}",
--      "rama-udp_0.3.0-alpha.4": "{\"dependencies\":[{\"name\":\"rama-core\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-net\",\"req\":\"^0.3.0-alpha.4\"},{\"features\":[\"macros\",\"net\"],\"name\":\"tokio\",\"req\":\"^1.48\"},{\"features\":[\"net\"],\"name\":\"tokio-util\",\"req\":\"^0.7\"}],\"features\":{\"default\":[]}}",
--      "rama-unix_0.3.0-alpha.4": "{\"dependencies\":[{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"name\":\"rama-core\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"rama-net\",\"req\":\"^0.3.0-alpha.4\"},{\"features\":[\"macros\",\"net\"],\"name\":\"tokio\",\"req\":\"^1.48\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.48\"}],\"features\":{\"default\":[]}}",
--      "rama-utils_0.3.0-alpha.4": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"ahash\",\"req\":\"^0.8\"},{\"name\":\"const_format\",\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"loom\",\"req\":\"^0.7\",\"target\":\"cfg(loom)\"},{\"name\":\"parking_lot\",\"req\":\"^0.12\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.0\"},{\"name\":\"rama-macros\",\"req\":\"^0.3.0-alpha.4\"},{\"name\":\"regex\",\"req\":\"^1.12\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1\"},{\"features\":[\"write\",\"serde\",\"const_generics\",\"const_new\"],\"name\":\"smallvec\",\"req\":\"^1.15\"},{\"name\":\"smol_str\",\"req\":\"^0.3\"},{\"features\":[\"time\",\"macros\"],\"name\":\"tokio\",\"req\":\"^1.48\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0\"},{\"name\":\"wildcard\",\"req\":\"^0.3\"}],\"features\":{}}",
-+      "rama-core_0.4.0": "{\"dependencies\":[{\"name\":\"ahash\",\"optional\":true,\"req\":\"^0.8\"},{\"name\":\"asynk-strim\",\"req\":\"^0.1\"},{\"default_features\":false,\"features\":[\"serde\"],\"name\":\"bytes\",\"req\":\"^1\"},{\"name\":\"dial9-tokio-telemetry\",\"optional\":true,\"req\":\"^0.3.15\"},{\"name\":\"dial9-trace-format\",\"optional\":true,\"req\":\"^0.4\"},{\"default_features\":false,\"features\":[\"alloc\",\"async-await\"],\"name\":\"futures\",\"req\":\"^0.3\"},{\"default_features\":false,\"features\":[\"trace\",\"internal-logs\"],\"name\":\"opentelemetry\",\"optional\":true,\"req\":\"^0.32\"},{\"features\":[\"semconv_experimental\"],\"name\":\"opentelemetry-semantic-conventions\",\"optional\":true,\"req\":\"^0.32\"},{\"default_features\":false,\"features\":[\"trace\",\"rt-tokio\",\"metrics\",\"logs\"],\"name\":\"opentelemetry_sdk\",\"optional\":true,\"req\":\"^0.32\"},{\"name\":\"parking_lot\",\"optional\":true,\"req\":\"^0.12\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"default_features\":false,\"name\":\"rama-error\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-macros\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.10\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"serde\",\"req\":\"^1.0\"},{\"name\":\"serde_json\",\"optional\":true,\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.27\"},{\"features\":[\"macros\",\"fs\",\"io-std\",\"rt\",\"rt-multi-thread\",\"sync\",\"time\"],\"name\":\"tokio\",\"optional\":true,\"req\":\"^1.53\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.53\"},{\"name\":\"tokio-graceful\",\"optional\":true,\"req\":\"^0.2\"},{\"features\":[\"full\"],\"name\":\"tokio-stream\",\"optional\":true,\"req\":\"^0.1\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4\"},{\"features\":[\"codec\",\"io\",\"io-util\"],\"name\":\"tokio-util\",\"optional\":true,\"req\":\"^0.7\"},{\"default_features\":false,\"features\":[\"attributes\"],\"name\":\"tracing\",\"req\":\"^0.1\"},{\"features\":[\"parking_lot\"],\"name\":\"tracing-appender\",\"optional\":true,\"req\":\"^0.2\"},{\"name\":\"tracing-opentelemetry\",\"optional\":true,\"req\":\"^0.33\"}],\"features\":{\"default\":[\"std\"],\"dial9\":[\"std\",\"dep:dial9-tokio-telemetry\",\"dep:dial9-trace-format\"],\"opentelemetry\":[\"std\",\"dep:opentelemetry\",\"dep:opentelemetry-semantic-conventions\",\"dep:opentelemetry_sdk\",\"dep:tracing-opentelemetry\"],\"std\":[\"bytes/std\",\"futures/executor\",\"futures/std\",\"rama-error/std\",\"rama-macros/std\",\"rama-utils/std\",\"tracing/std\",\"dep:ahash\",\"dep:parking_lot\",\"dep:serde_json\",\"dep:tokio\",\"dep:tokio-graceful\",\"dep:tokio-stream\",\"dep:tokio-util\",\"dep:tracing-appender\"]}}",
-+      "rama-crypto_0.4.0": "{\"dependencies\":[{\"name\":\"ahash\",\"optional\":true,\"req\":\"^0.8\",\"target\":\"cfg(target_os = \\\"macos\\\")\"},{\"features\":[\"bindgen\"],\"name\":\"aws-lc-rs\",\"optional\":true,\"req\":\"^1.18\"},{\"name\":\"base64\",\"req\":\"^0.23\"},{\"name\":\"openssl-probe\",\"optional\":true,\"req\":\"^0.2\",\"target\":\"cfg(all(unix, not(target_os = \\\"macos\\\")))\"},{\"default_features\":false,\"name\":\"rama-boring\",\"optional\":true,\"req\":\"^0.6.6\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-core\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-net\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"pem\",\"x509-parser\"],\"name\":\"rcgen\",\"optional\":true,\"req\":\"^0.14\"},{\"features\":[\"std\"],\"name\":\"rustls-pki-types\",\"req\":\"^1\"},{\"name\":\"schannel\",\"optional\":true,\"req\":\"^0.1\",\"target\":\"cfg(windows)\"},{\"name\":\"security-framework\",\"optional\":true,\"req\":\"^3\",\"target\":\"cfg(target_os = \\\"macos\\\")\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"serde\",\"req\":\"^1.0\"},{\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"name\":\"sha2\",\"req\":\"^0.11\"},{\"name\":\"time\",\"req\":\"=0.3.47\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4\"},{\"name\":\"webpki-root-certs\",\"optional\":true,\"req\":\"^1.0\"},{\"default_features\":false,\"name\":\"x509-parser\",\"req\":\"^0.18\"},{\"default_features\":false,\"features\":[\"time\"],\"name\":\"yasna\",\"req\":\"^0.6\"}],\"features\":{\"aws-lc\":[\"dep:aws-lc-rs\",\"rcgen/aws_lc_rs\",\"x509-parser/verify-aws\"],\"boring\":[\"dep:rama-boring\"],\"default\":[],\"native-certs\":[\"dep:webpki-root-certs\",\"dep:security-framework\",\"dep:schannel\",\"dep:openssl-probe\",\"dep:ahash\"],\"ring\":[\"rcgen/ring\",\"x509-parser/verify\"]}}",
-+      "rama-dns_0.4.0": "{\"dependencies\":[{\"name\":\"ahash\",\"req\":\"^0.8\"},{\"kind\":\"dev\",\"name\":\"ahash\",\"req\":\"^0.8\"},{\"name\":\"arc-swap\",\"req\":\"^1.9\"},{\"name\":\"base64\",\"req\":\"^0.23\",\"target\":\"cfg(target_os = \\\"linux\\\")\"},{\"kind\":\"dev\",\"name\":\"base64\",\"req\":\"^0.23\",\"target\":\"cfg(all(target_family = \\\"unix\\\", not(target_os = \\\"linux\\\")))\"},{\"kind\":\"build\",\"name\":\"bindgen\",\"req\":\"^0.72\"},{\"name\":\"dial9-tokio-telemetry\",\"optional\":true,\"req\":\"^0.3.15\"},{\"name\":\"dial9-trace-format\",\"optional\":true,\"req\":\"^0.4\"},{\"default_features\":false,\"features\":[\"tokio\",\"system-config\",\"serde\"],\"name\":\"hickory-resolver\",\"optional\":true,\"req\":\"^0.26.1\"},{\"name\":\"libc\",\"req\":\"^0.2\",\"target\":\"cfg(target_os = \\\"linux\\\")\"},{\"features\":[\"future\",\"sync\"],\"name\":\"moka\",\"req\":\"^0.12\"},{\"name\":\"parking_lot\",\"req\":\"^0.12\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-core\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-net\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-unix\",\"req\":\"^0.4.0\",\"target\":\"cfg(target_os = \\\"linux\\\")\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"rama-unix\",\"req\":\"^0.4.0\",\"target\":\"cfg(all(target_family = \\\"unix\\\", not(target_os = \\\"linux\\\")))\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"name\":\"rand\",\"req\":\"^0.10\"},{\"default_features\":false,\"features\":[\"alloc\",\"derive\"],\"name\":\"serde\",\"req\":\"^1.0\",\"target\":\"cfg(target_os = \\\"linux\\\")\"},{\"default_features\":false,\"features\":[\"alloc\",\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0\",\"target\":\"cfg(all(target_family = \\\"unix\\\", not(target_os = \\\"linux\\\")))\"},{\"name\":\"serde_json\",\"req\":\"^1.0\",\"target\":\"cfg(target_os = \\\"linux\\\")\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\",\"target\":\"cfg(all(target_family = \\\"unix\\\", not(target_os = \\\"linux\\\")))\"},{\"features\":[\"macros\",\"net\",\"rt\",\"sync\",\"time\"],\"name\":\"tokio\",\"req\":\"^1.53\"},{\"features\":[\"rt-multi-thread\",\"test-util\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.53\"},{\"features\":[\"Win32_Foundation\",\"Win32_NetworkManagement_Dns\"],\"name\":\"windows-sys\",\"req\":\"^0.61\",\"target\":\"cfg(target_os = \\\"windows\\\")\"}],\"features\":{\"default\":[],\"dial9\":[\"dep:dial9-tokio-telemetry\",\"dep:dial9-trace-format\",\"rama-net/dial9\"],\"hickory\":[\"dep:hickory-resolver\"]}}",
-+      "rama-error_0.4.0": "{\"dependencies\":[],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
-+      "rama-http-backend_0.4.0": "{\"dependencies\":[{\"name\":\"parking_lot\",\"req\":\"^0.12\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-core\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-http\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-http-core\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-http-headers\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-http-types\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\",\"http\"],\"name\":\"rama-net\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-tcp\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-tls\",\"optional\":true,\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-unix\",\"req\":\"^0.4.0\",\"target\":\"cfg(target_family = \\\"unix\\\")\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"rama-ws\",\"req\":\"^0.4.0\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.27\"},{\"features\":[\"macros\"],\"name\":\"tokio\",\"req\":\"^1.53\"},{\"name\":\"tokio-util\",\"req\":\"^0.7\"}],\"features\":{\"default\":[],\"opentelemetry\":[\"rama-core/opentelemetry\",\"rama-net/opentelemetry\"],\"tls\":[\"dep:rama-tls\",\"rama-tls/http\",\"rama-http-types/tls\"]}}",
-+      "rama-http-core_0.4.0": "{\"dependencies\":[{\"name\":\"ahash\",\"req\":\"^0.8\"},{\"name\":\"atomic-waker\",\"req\":\"^1.1\"},{\"name\":\"futures-channel\",\"req\":\"^0.3\"},{\"name\":\"httparse\",\"req\":\"^1.10\"},{\"name\":\"httpdate\",\"req\":\"^1.0\"},{\"features\":[\"std\"],\"name\":\"indexmap\",\"req\":\"^2\"},{\"name\":\"itoa\",\"req\":\"^1\"},{\"name\":\"parking_lot\",\"req\":\"^0.12\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-core\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-http\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-http-types\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-net\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"rama-tls\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"name\":\"slab\",\"req\":\"^0.4\"},{\"features\":[\"io-util\"],\"name\":\"tokio\",\"req\":\"^1.53\"},{\"features\":[\"rt-multi-thread\",\"macros\",\"sync\",\"net\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.53\"},{\"default_features\":false,\"features\":[\"logging\",\"tls12\"],\"kind\":\"dev\",\"name\":\"tokio-rustls\",\"req\":\"^0.26\"},{\"name\":\"tokio-test\",\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"tracing-test\",\"req\":\"^0.2\"},{\"name\":\"want\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"webpki-roots\",\"req\":\"^1.0\"}],\"features\":{\"default\":[],\"tls\":[\"rama-http-types/tls\"],\"unstable\":[]}}",
-+      "rama-http-headers_0.4.0": "{\"dependencies\":[{\"name\":\"ahash\",\"req\":\"^0.8\"},{\"name\":\"base64\",\"req\":\"^0.23\"},{\"name\":\"const_format\",\"req\":\"^0.2\"},{\"name\":\"httpdate\",\"req\":\"^1.0\"},{\"features\":[\"serde\"],\"name\":\"jiff\",\"req\":\"^0.2.35\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-core\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-http-types\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-macros\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\",\"http\"],\"name\":\"rama-net\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"name\":\"rand\",\"req\":\"^0.10\"},{\"default_features\":false,\"features\":[\"alloc\",\"derive\"],\"name\":\"serde\",\"req\":\"^1.0\"},{\"name\":\"sha1\",\"req\":\"^0.11\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.53\"},{\"kind\":\"dev\",\"name\":\"tracing-test\",\"req\":\"^0.2\"}],\"features\":{}}",
-+      "rama-http-types_0.4.0": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"serde\",\"std\"],\"name\":\"bytes\",\"req\":\"^1\"},{\"name\":\"const_format\",\"req\":\"^0.2\"},{\"name\":\"fnv\",\"req\":\"^1.0\"},{\"default_features\":false,\"name\":\"futures-core\",\"req\":\"^0.3\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"futures-util\",\"req\":\"^0.3\"},{\"name\":\"hex\",\"req\":\"^0.4\"},{\"name\":\"itoa\",\"req\":\"^1\"},{\"name\":\"md5\",\"req\":\"^0.8\"},{\"name\":\"memchr\",\"req\":\"^2.8\"},{\"name\":\"mime\",\"req\":\"^0.3.17\"},{\"default_features\":false,\"name\":\"mime_guess\",\"req\":\"^2\"},{\"name\":\"nom\",\"req\":\"^8.0.0\"},{\"name\":\"parking_lot\",\"req\":\"^0.12\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.1\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-core\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-json\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\",\"http\"],\"name\":\"rama-net\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-tls\",\"optional\":true,\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"name\":\"rand\",\"req\":\"^0.10\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.10\"},{\"default_features\":false,\"features\":[\"alloc\",\"derive\"],\"name\":\"serde\",\"req\":\"^1.0\"},{\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1\"},{\"name\":\"sha2\",\"req\":\"^0.11\"},{\"name\":\"sync_wrapper\",\"req\":\"^1.0\"},{\"features\":[\"macros\",\"io-std\",\"sync\"],\"name\":\"tokio\",\"req\":\"^1.53\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.53\"}],\"features\":{\"default\":[],\"tls\":[\"dep:rama-tls\",\"rama-tls/http\"]}}",
-+      "rama-http_0.4.0": "{\"dependencies\":[{\"name\":\"ahash\",\"req\":\"^0.8\"},{\"features\":[\"tokio\",\"brotli\",\"zlib\",\"gzip\",\"zstd\"],\"name\":\"async-compression\",\"optional\":true,\"req\":\"^0.4\"},{\"name\":\"base64\",\"req\":\"^0.23\"},{\"name\":\"bitflags\",\"req\":\"^2.13\"},{\"kind\":\"dev\",\"name\":\"brotli\",\"req\":\"^8\"},{\"features\":[\"brotli\",\"deflate\",\"gzip\",\"zstd\"],\"name\":\"compression-codecs\",\"optional\":true,\"req\":\"^0.4\"},{\"name\":\"compression-core\",\"optional\":true,\"req\":\"^0.4\"},{\"name\":\"const_format\",\"req\":\"^0.2\"},{\"name\":\"csv\",\"req\":\"^1.4\"},{\"name\":\"flate2\",\"optional\":true,\"req\":\"^1.1\"},{\"kind\":\"dev\",\"name\":\"flate2\",\"req\":\"^1.1\"},{\"name\":\"http-range-header\",\"req\":\"^0.4.2\"},{\"name\":\"httpdate\",\"req\":\"^1.0\"},{\"name\":\"iri-string\",\"req\":\"^0.7\"},{\"kind\":\"dev\",\"name\":\"itertools\",\"req\":\"^0.15\"},{\"features\":[\"serde\"],\"name\":\"jiff\",\"req\":\"^0.2.35\"},{\"name\":\"memchr\",\"optional\":true,\"req\":\"^2.8\"},{\"default_features\":false,\"name\":\"mime_guess\",\"optional\":true,\"req\":\"^2\"},{\"name\":\"multer\",\"optional\":true,\"req\":\"^3.1\"},{\"name\":\"parking_lot\",\"req\":\"^0.12\"},{\"kind\":\"dev\",\"name\":\"parking_lot\",\"req\":\"^0.12\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"percent-encoding\",\"req\":\"^2.3\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"features\":[\"async-tokio\"],\"name\":\"quick-xml\",\"optional\":true,\"req\":\"^0.41\"},{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.1\"},{\"kind\":\"dev\",\"name\":\"quickcheck_macros\",\"req\":\"^1.2\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-core\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-http-headers\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-http-hyperium\",\"optional\":true,\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-http-macros\",\"optional\":true,\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-http-types\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-json\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\",\"http\"],\"name\":\"rama-net\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"name\":\"rand\",\"req\":\"^0.10\"},{\"name\":\"rawzip\",\"optional\":true,\"req\":\"^0.5\"},{\"default_features\":false,\"features\":[\"alloc\",\"derive\"],\"name\":\"serde\",\"req\":\"^1.0\"},{\"name\":\"serde_html_form\",\"req\":\"^0.4\"},{\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.27\"},{\"kind\":\"dev\",\"name\":\"time\",\"req\":\"=0.3.47\"},{\"features\":[\"macros\",\"fs\",\"io-std\"],\"name\":\"tokio\",\"req\":\"^1.53\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.53\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"tracing-subscriber\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"tracing-test\",\"req\":\"^0.2\"},{\"features\":[\"v4\"],\"name\":\"uuid\",\"req\":\"^1.24\"},{\"kind\":\"dev\",\"name\":\"zstd\",\"req\":\"^0.13\"}],\"features\":{\"compression\":[\"dep:async-compression\",\"dep:compression-codecs\",\"dep:compression-core\",\"dep:rawzip\",\"dep:flate2\"],\"default\":[],\"dial9\":[\"rama-core/dial9\"],\"html\":[\"dep:rama-http-macros\",\"dep:memchr\"],\"hyperium\":[\"dep:rama-http-hyperium\"],\"multipart\":[\"dep:multer\",\"dep:mime_guess\",\"hyperium\"],\"opentelemetry\":[\"rama-core/opentelemetry\",\"rama-net/opentelemetry\"],\"rss\":[\"dep:quick-xml\"],\"tls\":[\"rama-http-types/tls\"]}}",
-+      "rama-json_0.4.0": "{\"dependencies\":[{\"name\":\"itoa\",\"req\":\"^1\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"name\":\"ryu\",\"req\":\"^1\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"serde\",\"req\":\"^1.0\"},{\"default_features\":false,\"features\":[\"alloc\",\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0\"},{\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"features\":[\"raw_value\"],\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"}],\"features\":{\"default\":[\"std\"],\"std\":[\"rama-utils/std\",\"serde/std\"]}}",
-+      "rama-macros_0.4.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"paste-test-suite\",\"req\":\"^0\"},{\"name\":\"proc-macro-crate\",\"req\":\"^3.5\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0\"},{\"name\":\"quote\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0\"},{\"features\":[\"full\"],\"name\":\"syn\",\"req\":\"^3.0\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
-+      "rama-net_0.4.0": "{\"dependencies\":[{\"name\":\"ahash\",\"optional\":true,\"req\":\"^0.8\"},{\"kind\":\"dev\",\"name\":\"ahash\",\"req\":\"^0.8\"},{\"name\":\"arc-swap\",\"optional\":true,\"req\":\"^1.9\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"base64\",\"optional\":true,\"req\":\"^0.23\"},{\"name\":\"bitflags\",\"req\":\"^2.13\"},{\"name\":\"const_format\",\"req\":\"^0.2\"},{\"name\":\"core-foundation\",\"optional\":true,\"req\":\"^0.10\",\"target\":\"cfg(target_vendor = \\\"apple\\\")\"},{\"name\":\"csv\",\"optional\":true,\"req\":\"^1.4\"},{\"name\":\"dial9-tokio-telemetry\",\"optional\":true,\"req\":\"^0.3.15\"},{\"name\":\"dial9-trace-format\",\"optional\":true,\"req\":\"^0.4\"},{\"name\":\"idna\",\"optional\":true,\"req\":\"^1\"},{\"default_features\":false,\"features\":[\"serde\"],\"name\":\"ipnet\",\"req\":\"^2.12\"},{\"default_features\":false,\"features\":[\"use_alloc\"],\"name\":\"itertools\",\"req\":\"^0.15\"},{\"kind\":\"dev\",\"name\":\"itertools\",\"req\":\"^0.15\"},{\"name\":\"itoa\",\"req\":\"^1\"},{\"name\":\"jni\",\"optional\":true,\"req\":\"^0.22\",\"target\":\"cfg(target_os = \\\"android\\\")\"},{\"name\":\"libc\",\"optional\":true,\"req\":\"^0.2\",\"target\":\"cfg(target_family = \\\"unix\\\")\"},{\"default_features\":false,\"name\":\"memchr\",\"req\":\"^2.8\"},{\"name\":\"memmap2\",\"optional\":true,\"req\":\"^0.9\"},{\"name\":\"mime\",\"optional\":true,\"req\":\"^0.3.17\"},{\"features\":[\"sync\"],\"name\":\"moka\",\"optional\":true,\"req\":\"^0.12\"},{\"name\":\"ndk-context\",\"optional\":true,\"req\":\"^0.1\",\"target\":\"cfg(target_os = \\\"android\\\")\"},{\"name\":\"parking_lot\",\"optional\":true,\"req\":\"^0.12\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"percent-encoding\",\"req\":\"^2.3\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"name\":\"psl\",\"req\":\"^2\"},{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.1\"},{\"kind\":\"dev\",\"name\":\"quickcheck_macros\",\"req\":\"^1.2\"},{\"name\":\"radix_trie\",\"optional\":true,\"req\":\"^0.3\"},{\"default_features\":false,\"name\":\"rama-core\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-macros\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"alloc\",\"derive\"],\"name\":\"serde\",\"req\":\"^1.0\"},{\"name\":\"serde_html_form\",\"optional\":true,\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"features\":[\"all\"],\"name\":\"socket2\",\"optional\":true,\"req\":\"^0.6\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.27\"},{\"features\":[\"macros\",\"fs\",\"io-std\",\"io-util\",\"net\",\"process\",\"sync\",\"time\"],\"name\":\"tokio\",\"optional\":true,\"req\":\"^1.53\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.53\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4\"},{\"name\":\"tokio-util\",\"optional\":true,\"req\":\"^0.7\"},{\"name\":\"venndb\",\"optional\":true,\"req\":\"^0.6\"},{\"features\":[\"Win32_Foundation\",\"Win32_NetworkManagement_IpHelper\",\"Win32_NetworkManagement_Ndis\",\"Win32_Networking_WinHttp\",\"Win32_Networking_WinSock\",\"Win32_System_IO\",\"Win32_System_Registry\",\"Win32_System_Threading\"],\"name\":\"windows-sys\",\"optional\":true,\"req\":\"^0.61\",\"target\":\"cfg(target_os = \\\"windows\\\")\"}],\"features\":{\"default\":[\"std\"],\"dial9\":[\"std\",\"dep:dial9-tokio-telemetry\",\"dep:dial9-trace-format\",\"rama-core/dial9\"],\"http\":[\"std\"],\"idna\":[\"dep:idna\"],\"mmap\":[\"std\",\"dep:memmap2\"],\"opentelemetry\":[\"std\",\"rama-core/opentelemetry\"],\"std\":[\"dep:arc-swap\",\"rama-macros/std\",\"rama-utils/std\",\"ipnet/std\",\"dep:csv\",\"dep:parking_lot\",\"dep:serde_html_form\",\"dep:socket2\",\"dep:tokio\",\"dep:tokio-util\",\"dep:libc\",\"dep:windows-sys\",\"dep:jni\",\"dep:ndk-context\",\"dep:core-foundation\",\"rama-core/std\",\"dep:ahash\",\"dep:radix_trie\",\"itertools/use_std\",\"memchr/std\",\"dep:moka\",\"percent-encoding/std\",\"dep:mime\",\"dep:base64\"]}}",
-+      "rama-socks5_0.4.0": "{\"dependencies\":[{\"name\":\"byteorder\",\"req\":\"^1.5\"},{\"name\":\"dial9-tokio-telemetry\",\"optional\":true,\"req\":\"^0.3.15\"},{\"name\":\"dial9-trace-format\",\"optional\":true,\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"parking_lot\",\"req\":\"^0.12\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-core\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-dns\",\"optional\":true,\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-net\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-tcp\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-udp\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"name\":\"tokio\",\"req\":\"^1.53\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4\"}],\"features\":{\"default\":[],\"dial9\":[\"dep:dial9-tokio-telemetry\",\"dep:dial9-trace-format\",\"rama-net/dial9\"],\"dns\":[\"dep:rama-dns\"]}}",
-+      "rama-tcp_0.4.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"ahash\",\"req\":\"^0.8\"},{\"name\":\"libc\",\"req\":\"^0.2\",\"target\":\"cfg(target_family = \\\"unix\\\")\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-core\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-net\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"name\":\"rand\",\"req\":\"^0.10\"},{\"features\":[\"macros\",\"net\",\"time\"],\"name\":\"tokio\",\"req\":\"^1.53\"}],\"features\":{\"default\":[]}}",
-+      "rama-tls-rustls_0.4.0": "{\"dependencies\":[{\"name\":\"dial9-tokio-telemetry\",\"optional\":true,\"req\":\"^0.3.15\"},{\"name\":\"dial9-trace-format\",\"optional\":true,\"req\":\"^0.4\"},{\"features\":[\"sync\"],\"name\":\"moka\",\"req\":\"^0.12\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-core\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"native-certs\"],\"name\":\"rama-crypto\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-net\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-tls\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"pem\",\"x509-parser\"],\"name\":\"rcgen\",\"optional\":true,\"req\":\"^0.14\"},{\"default_features\":false,\"features\":[\"logging\",\"std\",\"tls12\"],\"name\":\"rustls\",\"req\":\"^0.23\"},{\"features\":[\"macros\",\"io-std\"],\"name\":\"tokio\",\"req\":\"^1.53\"},{\"default_features\":false,\"features\":[\"logging\",\"tls12\"],\"name\":\"tokio-rustls\",\"req\":\"^0.26\"},{\"name\":\"webpki-roots\",\"req\":\"^1.0\"}],\"features\":{\"aws-lc\":[\"rustls/aws_lc_rs\",\"tokio-rustls/aws_lc_rs\",\"rcgen/aws_lc_rs\",\"rustls/prefer-post-quantum\",\"rama-crypto/aws-lc\"],\"default\":[],\"dial9\":[\"dep:dial9-tokio-telemetry\",\"dep:dial9-trace-format\",\"rama-net/dial9\",\"rama-tls/dial9\"],\"http\":[\"rama-net/http\",\"rama-tls/http\"],\"ring\":[\"rustls/ring\",\"tokio-rustls/ring\",\"rcgen/ring\",\"rama-crypto/ring\"]}}",
-+      "rama-tls_0.4.0": "{\"dependencies\":[{\"name\":\"ahash\",\"req\":\"^0.8\"},{\"name\":\"base64\",\"req\":\"^0.23\"},{\"default_features\":false,\"features\":[\"serde\",\"std\"],\"name\":\"bytes\",\"req\":\"^1\"},{\"name\":\"dial9-trace-format\",\"optional\":true,\"req\":\"^0.4\"},{\"features\":[\"async\"],\"name\":\"flume\",\"req\":\"^0.12\"},{\"name\":\"hex\",\"req\":\"^0.4\"},{\"features\":[\"serde\"],\"name\":\"jiff\",\"req\":\"^0.2.35\"},{\"name\":\"md5\",\"req\":\"^0.8\"},{\"name\":\"nom\",\"req\":\"^8.0.0\"},{\"name\":\"parking_lot\",\"req\":\"^0.12\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-core\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"rama-crypto\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-net\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"alloc\",\"derive\"],\"name\":\"serde\",\"req\":\"^1.0\"},{\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"name\":\"sha2\",\"req\":\"^0.11\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.27\"},{\"features\":[\"macros\",\"io-util\",\"net\"],\"name\":\"tokio\",\"req\":\"^1.53\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.53\"}],\"features\":{\"default\":[],\"dial9\":[\"dep:dial9-trace-format\",\"rama-core/dial9\"],\"http\":[\"rama-net/http\"]}}",
-+      "rama-udp_0.4.0": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-core\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-net\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"features\":[\"macros\",\"net\"],\"name\":\"tokio\",\"req\":\"^1.53\"},{\"features\":[\"macros\",\"net\",\"rt\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.53\"},{\"features\":[\"net\"],\"name\":\"tokio-util\",\"req\":\"^0.7\"}],\"features\":{\"default\":[]}}",
-+      "rama-unix_0.4.0": "{\"dependencies\":[{\"name\":\"libc\",\"req\":\"^0.2\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-core\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-net\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"rama-utils\",\"req\":\"^0.4.0\"},{\"features\":[\"macros\",\"net\"],\"name\":\"tokio\",\"req\":\"^1.53\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.53\"}],\"features\":{\"default\":[]}}",
-+      "rama-utils_0.4.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"ahash\",\"req\":\"^0.8\"},{\"name\":\"const_format\",\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"loom\",\"req\":\"^0.7\",\"target\":\"cfg(loom)\"},{\"default_features\":false,\"name\":\"memchr\",\"req\":\"^2.8\"},{\"name\":\"parking_lot\",\"optional\":true,\"req\":\"^0.12\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.1\"},{\"default_features\":false,\"name\":\"rama-macros\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"perf\",\"unicode\"],\"name\":\"regex\",\"optional\":true,\"req\":\"^1.13\"},{\"default_features\":false,\"features\":[\"alloc\",\"derive\"],\"name\":\"serde\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1\"},{\"default_features\":false,\"features\":[\"serde\",\"const_generics\",\"const_new\"],\"name\":\"smallvec\",\"req\":\"^1.15\"},{\"default_features\":false,\"features\":[\"serde\"],\"name\":\"smol_str\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.27\"},{\"features\":[\"fs\",\"time\",\"macros\",\"sync\"],\"name\":\"tokio\",\"optional\":true,\"req\":\"^1.53\"},{\"features\":[\"fs\",\"io-util\",\"time\",\"macros\",\"sync\",\"rt-multi-thread\",\"test-util\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.53\"},{\"default_features\":false,\"name\":\"tracing\",\"req\":\"^0.1\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0\"},{\"name\":\"wildcard\",\"req\":\"^0.3\"}],\"features\":{\"default\":[\"std\"],\"std\":[\"rama-macros/std\",\"smallvec/write\",\"smol_str/std\",\"dep:tokio\",\"serde/std\",\"dep:parking_lot\",\"dep:regex\",\"memchr/std\",\"tracing/std\"]}}",
-       "rancor_0.1.3": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"derive\"],\"name\":\"ptr_meta\",\"req\":\"^0.3\"}],\"features\":{\"alloc\":[],\"default\":[\"alloc\"]}}",
-       "rand_0.10.3": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"rng\"],\"name\":\"chacha20\",\"optional\":true,\"req\":\"^0.10.0\"},{\"name\":\"getrandom\",\"optional\":true,\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"alloc\"],\"kind\":\"dev\",\"name\":\"postcard\",\"req\":\"^1.1.3\"},{\"default_features\":false,\"name\":\"rand_core\",\"req\":\"^0.10.0\"},{\"kind\":\"dev\",\"name\":\"rand_pcg\",\"req\":\"^0.10\"},{\"kind\":\"dev\",\"name\":\"rayon\",\"req\":\"^1.7\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0.103\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.140\"}],\"features\":{\"alloc\":[],\"chacha\":[\"dep:chacha20\"],\"default\":[\"std\",\"std_rng\",\"sys_rng\",\"thread_rng\"],\"log\":[],\"serde\":[\"dep:serde\"],\"simd_support\":[],\"std\":[\"alloc\",\"getrandom?/std\"],\"std_rng\":[\"dep:chacha20\"],\"sys_rng\":[\"dep:getrandom\",\"getrandom/sys_rng\"],\"thread_rng\":[\"std\",\"std_rng\",\"sys_rng\"],\"unbiased\":[]}}",
-       "rand_0.8.6": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"bincode\",\"req\":\"^1.2.1\"},{\"default_features\":false,\"name\":\"libc\",\"optional\":true,\"req\":\"^0.2.22\",\"target\":\"cfg(unix)\"},{\"default_features\":false,\"name\":\"rand_chacha\",\"optional\":true,\"req\":\"^0.3.0\"},{\"name\":\"rand_core\",\"req\":\"^0.6.0\"},{\"kind\":\"dev\",\"name\":\"rand_pcg\",\"req\":\"^0.3.0\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0.103\"}],\"features\":{\"alloc\":[\"rand_core/alloc\"],\"default\":[\"std\",\"std_rng\"],\"getrandom\":[\"rand_core/getrandom\"],\"log\":[],\"min_const_gen\":[],\"nightly\":[],\"serde1\":[\"serde\",\"rand_core/serde1\"],\"small_rng\":[],\"std\":[\"rand_core/std\",\"rand_chacha/std\",\"alloc\",\"getrandom\",\"libc\"],\"std_rng\":[\"rand_chacha\"]}}",
-@@ -1957,7 +1957,6 @@
-       "reqwest_0.12.28": "{\"dependencies\":[{\"name\":\"base64\",\"req\":\"^0.22\"},{\"kind\":\"dev\",\"name\":\"brotli_crate\",\"package\":\"brotli\",\"req\":\"^8\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"bytes\",\"req\":\"^1.2\"},{\"name\":\"cookie_crate\",\"optional\":true,\"package\":\"cookie\",\"req\":\"^0.18.0\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"cookie_store\",\"optional\":true,\"req\":\"^0.22.0\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"kind\":\"dev\",\"name\":\"doc-comment\",\"req\":\"^0.3\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"encoding_rs\",\"optional\":true,\"req\":\"^0.8\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"kind\":\"dev\",\"name\":\"env_logger\",\"req\":\"^0.10\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"kind\":\"dev\",\"name\":\"flate2\",\"req\":\"^1.0.13\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"futures-channel\",\"optional\":true,\"req\":\"^0.3\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"name\":\"futures-core\",\"req\":\"^0.3.28\"},{\"default_features\":false,\"name\":\"futures-util\",\"optional\":true,\"req\":\"^0.3.28\"},{\"default_features\":false,\"features\":[\"std\",\"alloc\"],\"kind\":\"dev\",\"name\":\"futures-util\",\"req\":\"^0.3.28\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"h2\",\"optional\":true,\"req\":\"^0.4\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"h3\",\"optional\":true,\"req\":\"^0.0.8\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"h3-quinn\",\"optional\":true,\"req\":\"^0.0.10\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"features\":[\"tokio\"],\"name\":\"hickory-resolver\",\"optional\":true,\"req\":\"^0.25\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"http\",\"req\":\"^1.1\"},{\"name\":\"http-body\",\"req\":\"^1\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"http-body-util\",\"req\":\"^0.1.2\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"features\":[\"http1\",\"client\"],\"name\":\"hyper\",\"req\":\"^1.1\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"features\":[\"http1\",\"http2\",\"client\",\"server\"],\"kind\":\"dev\",\"name\":\"hyper\",\"req\":\"^1.1.0\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"features\":[\"http1\",\"tls12\"],\"name\":\"hyper-rustls\",\"optional\":true,\"req\":\"^0.27.0\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"hyper-tls\",\"optional\":true,\"req\":\"^0.6\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"features\":[\"http1\",\"client\",\"client-legacy\",\"client-proxy\",\"tokio\"],\"name\":\"hyper-util\",\"req\":\"^0.1.12\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"features\":[\"http1\",\"http2\",\"client\",\"client-legacy\",\"server-auto\",\"server-graceful\",\"tokio\"],\"kind\":\"dev\",\"name\":\"hyper-util\",\"req\":\"^0.1.12\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"js-sys\",\"req\":\"^0.3.77\",\"target\":\"cfg(target_arch = \\\"wasm32\\\")\"},{\"kind\":\"dev\",\"name\":\"libc\",\"req\":\"^0\"},{\"name\":\"log\",\"req\":\"^0.4.17\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"mime\",\"optional\":true,\"req\":\"^0.3.16\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"name\":\"mime_guess\",\"optional\":true,\"req\":\"^2.0\"},{\"name\":\"native-tls-crate\",\"optional\":true,\"package\":\"native-tls\",\"req\":\"^0.2.10\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"kind\":\"dev\",\"name\":\"num_cpus\",\"req\":\"^1.0\"},{\"name\":\"once_cell\",\"optional\":true,\"req\":\"^1.18\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"percent-encoding\",\"req\":\"^2.3\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2.11\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"features\":[\"rustls\",\"runtime-tokio\"],\"name\":\"quinn\",\"optional\":true,\"req\":\"^0.11.1\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"features\":[\"std\",\"tls12\"],\"name\":\"rustls\",\"optional\":true,\"req\":\"^0.23.4\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"rustls-native-certs\",\"optional\":true,\"req\":\"^0.8.0\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"features\":[\"std\"],\"name\":\"rustls-pki-types\",\"optional\":true,\"req\":\"^1.9.0\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"serde\",\"req\":\"^1.0\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"serde_json\",\"req\":\"^1.0\",\"target\":\"cfg(target_arch = \\\"wasm32\\\")\"},{\"name\":\"serde_json\",\"optional\":true,\"req\":\"^1.0\"},{\"name\":\"serde_urlencoded\",\"req\":\"^0.7.1\"},{\"features\":[\"futures\"],\"name\":\"sync_wrapper\",\"req\":\"^1.0\"},{\"default_features\":false,\"features\":[\"net\",\"time\"],\"name\":\"tokio\",\"req\":\"^1.0\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"features\":[\"macros\",\"rt-multi-thread\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.0\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"tokio-native-tls\",\"optional\":true,\"req\":\"^0.3.0\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"features\":[\"tls12\"],\"name\":\"tokio-rustls\",\"optional\":true,\"req\":\"^0.26\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"features\":[\"io\"],\"name\":\"tokio-util\",\"optional\":true,\"req\":\"^0.7.9\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"features\":[\"retry\",\"timeout\",\"util\"],\"name\":\"tower\",\"req\":\"^0.5.2\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"features\":[\"limit\"],\"kind\":\"dev\",\"name\":\"tower\",\"req\":\"^0.5.2\"},{\"default_features\":false,\"features\":[\"follow-redirect\"],\"name\":\"tower-http\",\"req\":\"^0.6.8\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"tower-service\",\"req\":\"^0.3\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"name\":\"url\",\"req\":\"^2.4\"},{\"name\":\"wasm-bindgen\",\"req\":\"^0.2.89\",\"target\":\"cfg(target_arch = \\\"wasm32\\\")\"},{\"features\":[\"serde-serialize\"],\"kind\":\"dev\",\"name\":\"wasm-bindgen\",\"req\":\"^0.2.89\",\"target\":\"cfg(target_arch = \\\"wasm32\\\")\"},{\"name\":\"wasm-bindgen-futures\",\"req\":\"^0.4.18\",\"target\":\"cfg(target_arch = \\\"wasm32\\\")\"},{\"kind\":\"dev\",\"name\":\"wasm-bindgen-test\",\"req\":\"^0.3\",\"target\":\"cfg(target_arch = \\\"wasm32\\\")\"},{\"name\":\"wasm-streams\",\"optional\":true,\"req\":\"^0.4\",\"target\":\"cfg(target_arch = \\\"wasm32\\\")\"},{\"features\":[\"AbortController\",\"AbortSignal\",\"Headers\",\"Request\",\"RequestInit\",\"RequestMode\",\"Response\",\"Window\",\"FormData\",\"Blob\",\"BlobPropertyBag\",\"ServiceWorkerGlobalScope\",\"RequestCredentials\",\"File\",\"ReadableStream\",\"RequestCache\"],\"name\":\"web-sys\",\"req\":\"^0.3.28\",\"target\":\"cfg(target_arch = \\\"wasm32\\\")\"},{\"name\":\"webpki-roots\",\"optional\":true,\"req\":\"^1\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"kind\":\"dev\",\"name\":\"zstd_crate\",\"package\":\"zstd\",\"req\":\"^0.13\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"}],\"features\":{\"__rustls\":[\"dep:hyper-rustls\",\"dep:tokio-rustls\",\"dep:rustls\",\"__tls\"],\"__rustls-ring\":[\"hyper-rustls?/ring\",\"tokio-rustls?/ring\",\"rustls?/ring\",\"quinn?/ring\"],\"__tls\":[\"dep:rustls-pki-types\",\"tokio/io-util\"],\"blocking\":[\"dep:futures-channel\",\"futures-channel?/sink\",\"dep:futures-util\",\"futures-util?/io\",\"futures-util?/sink\",\"tokio/sync\"],\"brotli\":[\"tower-http/decompression-br\"],\"charset\":[\"dep:encoding_rs\",\"dep:mime\"],\"cookies\":[\"dep:cookie_crate\",\"dep:cookie_store\"],\"default\":[\"default-tls\",\"charset\",\"http2\",\"system-proxy\"],\"default-tls\":[\"dep:hyper-tls\",\"dep:native-tls-crate\",\"__tls\",\"dep:tokio-native-tls\"],\"deflate\":[\"tower-http/decompression-deflate\"],\"gzip\":[\"tower-http/decompression-gzip\"],\"hickory-dns\":[\"dep:hickory-resolver\",\"dep:once_cell\"],\"http2\":[\"h2\",\"hyper/http2\",\"hyper-util/http2\",\"hyper-rustls?/http2\"],\"http3\":[\"rustls-tls-manual-roots\",\"dep:h3\",\"dep:h3-quinn\",\"dep:quinn\",\"tokio/macros\"],\"json\":[\"dep:serde_json\"],\"macos-system-configuration\":[\"system-proxy\"],\"multipart\":[\"dep:mime_guess\",\"dep:futures-util\"],\"native-tls\":[\"default-tls\"],\"native-tls-alpn\":[\"native-tls\",\"native-tls-crate?/alpn\",\"hyper-tls?/alpn\"],\"native-tls-vendored\":[\"native-tls\",\"native-tls-crate?/vendored\"],\"rustls-tls\":[\"rustls-tls-webpki-roots\"],\"rustls-tls-manual-roots\":[\"rustls-tls-manual-roots-no-provider\",\"__rustls-ring\"],\"rustls-tls-manual-roots-no-provider\":[\"__rustls\"],\"rustls-tls-native-roots\":[\"rustls-tls-native-roots-no-provider\",\"__rustls-ring\"],\"rustls-tls-native-roots-no-provider\":[\"dep:rustls-native-certs\",\"hyper-rustls?/native-tokio\",\"__rustls\"],\"rustls-tls-no-provider\":[\"rustls-tls-manual-roots-no-provider\"],\"rustls-tls-webpki-roots\":[\"rustls-tls-webpki-roots-no-provider\",\"__rustls-ring\"],\"rustls-tls-webpki-roots-no-provider\":[\"dep:webpki-roots\",\"hyper-rustls?/webpki-tokio\",\"__rustls\"],\"socks\":[],\"stream\":[\"tokio/fs\",\"dep:futures-util\",\"dep:tokio-util\",\"dep:wasm-streams\"],\"system-proxy\":[\"hyper-util/client-proxy-system\"],\"trust-dns\":[],\"zstd\":[\"tower-http/decompression-zstd\"]}}",
-       "reqwest_0.13.5": "{\"dependencies\":[{\"name\":\"base64\",\"req\":\"^0.23\"},{\"kind\":\"dev\",\"name\":\"brotli_crate\",\"package\":\"brotli\",\"req\":\"^8\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"bytes\",\"req\":\"^1.2\"},{\"name\":\"cookie_crate\",\"optional\":true,\"package\":\"cookie\",\"req\":\"^0.18.0\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"cookie_store\",\"optional\":true,\"req\":\"^0.22.0\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"kind\":\"dev\",\"name\":\"doc-comment\",\"req\":\"^0.3\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"encoding_rs\",\"optional\":true,\"req\":\"^0.8\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"kind\":\"dev\",\"name\":\"env_logger\",\"req\":\"^0.10\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"kind\":\"dev\",\"name\":\"flate2\",\"req\":\"^1.0.13\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"futures-channel\",\"optional\":true,\"req\":\"^0.3\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"default_features\":false,\"name\":\"futures-core\",\"req\":\"^0.3.28\"},{\"default_features\":false,\"name\":\"futures-util\",\"optional\":true,\"req\":\"^0.3.28\"},{\"default_features\":false,\"features\":[\"std\",\"alloc\"],\"kind\":\"dev\",\"name\":\"futures-util\",\"req\":\"^0.3.28\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"h2\",\"optional\":true,\"req\":\"^0.4\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"h3\",\"optional\":true,\"req\":\"^0.0.8\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"h3-quinn\",\"optional\":true,\"req\":\"^0.0.10\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"features\":[\"tokio\"],\"name\":\"hickory-resolver\",\"optional\":true,\"req\":\"^0.26\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"http\",\"req\":\"^1.1\"},{\"name\":\"http-body\",\"req\":\"^1\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"http-body-util\",\"req\":\"^0.1.2\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"features\":[\"http1\",\"client\"],\"name\":\"hyper\",\"req\":\"^1.1\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"default_features\":false,\"features\":[\"http1\",\"http2\",\"client\",\"server\"],\"kind\":\"dev\",\"name\":\"hyper\",\"req\":\"^1.1.0\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"default_features\":false,\"features\":[\"http1\",\"tls12\"],\"name\":\"hyper-rustls\",\"optional\":true,\"req\":\"^0.27.0\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"hyper-tls\",\"optional\":true,\"req\":\"^0.6\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"features\":[\"http1\",\"client\",\"client-legacy\",\"client-proxy\",\"tokio\"],\"name\":\"hyper-util\",\"req\":\"^0.1.12\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"features\":[\"http1\",\"http2\",\"client\",\"client-legacy\",\"server-auto\",\"server-graceful\",\"tokio\"],\"kind\":\"dev\",\"name\":\"hyper-util\",\"req\":\"^0.1.12\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"js-sys\",\"req\":\"^0.3.77\",\"target\":\"cfg(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\")))\"},{\"kind\":\"dev\",\"name\":\"libc\",\"req\":\"^0\"},{\"name\":\"log\",\"req\":\"^0.4.17\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"mime\",\"optional\":true,\"req\":\"^0.3.16\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"default_features\":false,\"name\":\"mime_guess\",\"optional\":true,\"req\":\"^2.0\"},{\"name\":\"native-tls-crate\",\"optional\":true,\"package\":\"native-tls\",\"req\":\"^0.2.16\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"kind\":\"dev\",\"name\":\"num_cpus\",\"req\":\"^1.0\"},{\"name\":\"once_cell\",\"optional\":true,\"req\":\"^1.18\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"percent-encoding\",\"req\":\"^2.3\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2.11\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"default_features\":false,\"features\":[\"runtime-tokio\"],\"name\":\"quinn\",\"optional\":true,\"req\":\"^0.11.1\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"default_features\":false,\"features\":[\"std\",\"tls12\"],\"name\":\"rustls\",\"optional\":true,\"req\":\"^0.23.4\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"features\":[\"std\"],\"name\":\"rustls-pki-types\",\"optional\":true,\"req\":\"^1.9.0\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"rustls-platform-verifier\",\"optional\":true,\"req\":\">=0.6.0, <0.8.0\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"serde_json\",\"optional\":true,\"req\":\"^1.0\"},{\"name\":\"serde_urlencoded\",\"optional\":true,\"req\":\"^0.7.1\"},{\"features\":[\"futures\"],\"name\":\"sync_wrapper\",\"req\":\"^1.0\"},{\"default_features\":false,\"features\":[\"net\",\"time\"],\"name\":\"tokio\",\"req\":\"^1.0\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"default_features\":false,\"features\":[\"macros\",\"rt-multi-thread\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.0\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"tokio-native-tls\",\"optional\":true,\"req\":\"^0.3.0\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"default_features\":false,\"features\":[\"tls12\"],\"name\":\"tokio-rustls\",\"optional\":true,\"req\":\"^0.26\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"default_features\":false,\"features\":[\"io\"],\"name\":\"tokio-util\",\"optional\":true,\"req\":\"^0.7.9\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"default_features\":false,\"features\":[\"retry\",\"timeout\",\"util\"],\"name\":\"tower\",\"req\":\"^0.5.2\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"default_features\":false,\"features\":[\"limit\"],\"kind\":\"dev\",\"name\":\"tower\",\"req\":\"^0.5.2\"},{\"default_features\":false,\"features\":[\"follow-redirect\"],\"name\":\"tower-http\",\"req\":\"^0.6.8\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"tower-service\",\"req\":\"^0.3\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"},{\"name\":\"url\",\"req\":\"^2.4\"},{\"name\":\"wasm-bindgen\",\"req\":\"^0.2.89\",\"target\":\"cfg(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\")))\"},{\"features\":[\"serde-serialize\"],\"kind\":\"dev\",\"name\":\"wasm-bindgen\",\"req\":\"^0.2.89\",\"target\":\"cfg(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\")))\"},{\"name\":\"wasm-bindgen-futures\",\"req\":\"^0.4.18\",\"target\":\"cfg(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\")))\"},{\"kind\":\"dev\",\"name\":\"wasm-bindgen-test\",\"req\":\"^0.3\",\"target\":\"cfg(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\")))\"},{\"name\":\"wasm-streams\",\"optional\":true,\"req\":\"^0.5\",\"target\":\"cfg(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\")))\"},{\"features\":[\"AbortController\",\"AbortSignal\",\"Headers\",\"Request\",\"RequestInit\",\"RequestMode\",\"Response\",\"Window\",\"FormData\",\"Blob\",\"BlobPropertyBag\",\"ServiceWorkerGlobalScope\",\"RequestCredentials\",\"File\",\"ReadableStream\",\"ReferrerPolicy\",\"RequestCache\"],\"name\":\"web-sys\",\"req\":\"^0.3.28\",\"target\":\"cfg(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\")))\"},{\"kind\":\"dev\",\"name\":\"zstd_crate\",\"package\":\"zstd\",\"req\":\"^0.13\",\"target\":\"cfg(not(all(target_arch = \\\"wasm32\\\", any(target_os = \\\"unknown\\\", target_os = \\\"none\\\"))))\"}],\"features\":{\"__native-tls\":[\"dep:hyper-tls\",\"dep:native-tls-crate\",\"__tls\",\"dep:tokio-native-tls\"],\"__native-tls-alpn\":[\"native-tls-crate?/alpn\",\"hyper-tls?/alpn\"],\"__rustls\":[\"dep:hyper-rustls\",\"dep:tokio-rustls\",\"dep:rustls\",\"__tls\"],\"__rustls-aws-lc-rs\":[\"hyper-rustls?/aws-lc-rs\",\"tokio-rustls?/aws-lc-rs\",\"rustls?/aws-lc-rs\",\"quinn?/rustls-aws-lc-rs\"],\"__tls\":[\"dep:rustls-pki-types\",\"tokio/io-util\"],\"blocking\":[\"dep:futures-channel\",\"futures-channel?/sink\",\"dep:futures-util\",\"futures-util?/io\",\"futures-util?/sink\",\"tokio/sync\"],\"brotli\":[\"tower-http/decompression-br\"],\"charset\":[\"dep:encoding_rs\",\"dep:mime\"],\"cookies\":[\"dep:cookie_crate\",\"dep:cookie_store\"],\"default\":[\"default-tls\",\"charset\",\"http2\",\"system-proxy\"],\"default-tls\":[\"rustls\"],\"deflate\":[\"tower-http/decompression-deflate\"],\"form\":[\"dep:serde\",\"dep:serde_urlencoded\"],\"gzip\":[\"tower-http/decompression-gzip\"],\"hickory-dns\":[\"dep:hickory-resolver\",\"dep:once_cell\"],\"http2\":[\"dep:h2\",\"hyper/http2\",\"hyper-util/http2\",\"hyper-rustls?/http2\"],\"http3\":[\"rustls\",\"dep:h3\",\"dep:h3-quinn\",\"dep:quinn\",\"tokio/macros\"],\"json\":[\"dep:serde\",\"dep:serde_json\"],\"multipart\":[\"dep:mime_guess\",\"dep:futures-util\"],\"native-tls\":[\"__native-tls\",\"__native-tls-alpn\"],\"native-tls-no-alpn\":[\"__native-tls\"],\"native-tls-vendored\":[\"__native-tls\",\"native-tls-crate?/vendored\",\"__native-tls-alpn\"],\"native-tls-vendored-no-alpn\":[\"__native-tls\",\"native-tls-crate?/vendored\"],\"query\":[\"dep:serde\",\"dep:serde_urlencoded\"],\"rustls\":[\"__rustls-aws-lc-rs\",\"dep:rustls-platform-verifier\",\"__rustls\"],\"rustls-no-provider\":[\"dep:rustls-platform-verifier\",\"__rustls\"],\"socks\":[],\"stream\":[\"tokio/fs\",\"dep:futures-util\",\"dep:tokio-util\",\"dep:wasm-streams\"],\"system-proxy\":[\"hyper-util/client-proxy-system\"],\"zstd\":[\"tower-http/decompression-zstd\"]}}",
-       "resb_0.1.2": "{\"dependencies\":[{\"name\":\"indexmap\",\"optional\":true,\"req\":\"^2.0.0\"},{\"default_features\":false,\"name\":\"log\",\"optional\":true,\"req\":\"^0.4.17\"},{\"name\":\"nom\",\"optional\":true,\"req\":\"^7.0.0\"},{\"default_features\":false,\"name\":\"potential_utf\",\"req\":\"^0.1.3\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"serde_core\",\"req\":\"^1.0.220\"}],\"features\":{\"default\":[],\"logging\":[\"dep:log\"],\"serialize\":[\"std\"],\"std\":[],\"text\":[\"dep:indexmap\",\"dep:nom\",\"std\"]}}",
--      "resolv-conf_0.7.6": "{\"dependencies\":[],\"features\":{\"system\":[]}}",
-       "rfc6979_0.6.0": "{\"dependencies\":[{\"default_features\":false,\"name\":\"bigint\",\"package\":\"crypto-bigint\",\"req\":\"^0.7.5\"},{\"default_features\":false,\"features\":[\"alloc\"],\"kind\":\"dev\",\"name\":\"bigint\",\"package\":\"crypto-bigint\",\"req\":\"^0.7.5\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^1\"},{\"default_features\":false,\"name\":\"hmac\",\"req\":\"^0.13\"},{\"kind\":\"dev\",\"name\":\"sha2\",\"req\":\"^0.11\"},{\"kind\":\"dev\",\"name\":\"sha3\",\"req\":\"^0.12\"}],\"features\":{}}",
-       "ring_0.17.14": "{\"dependencies\":[{\"default_features\":false,\"kind\":\"build\",\"name\":\"cc\",\"req\":\"^1.2.8\"},{\"default_features\":false,\"name\":\"cfg-if\",\"req\":\"^1.0.0\"},{\"name\":\"getrandom\",\"req\":\"^0.2.10\"},{\"default_features\":false,\"name\":\"libc\",\"req\":\"^0.2.148\",\"target\":\"cfg(all(any(all(target_arch = \\\"aarch64\\\", target_endian = \\\"little\\\"), all(target_arch = \\\"arm\\\", target_endian = \\\"little\\\")), any(target_os = \\\"android\\\", target_os = \\\"linux\\\")))\"},{\"default_features\":false,\"name\":\"libc\",\"req\":\"^0.2.155\",\"target\":\"cfg(all(all(target_arch = \\\"aarch64\\\", target_endian = \\\"little\\\"), target_vendor = \\\"apple\\\", any(target_os = \\\"ios\\\", target_os = \\\"macos\\\", target_os = \\\"tvos\\\", target_os = \\\"visionos\\\", target_os = \\\"watchos\\\")))\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"libc\",\"req\":\"^0.2.148\",\"target\":\"cfg(any(unix, windows, target_os = \\\"wasi\\\"))\"},{\"name\":\"untrusted\",\"req\":\"^0.9\"},{\"default_features\":false,\"features\":[\"std\"],\"kind\":\"dev\",\"name\":\"wasm-bindgen-test\",\"req\":\"^0.3.37\",\"target\":\"cfg(all(target_arch = \\\"wasm32\\\", target_os = \\\"unknown\\\"))\"},{\"features\":[\"Win32_Foundation\",\"Win32_System_Threading\"],\"name\":\"windows-sys\",\"req\":\"^0.52\",\"target\":\"cfg(all(all(target_arch = \\\"aarch64\\\", target_endian = \\\"little\\\"), target_os = \\\"windows\\\"))\"}],\"features\":{\"alloc\":[],\"default\":[\"alloc\",\"dev_urandom_fallback\"],\"dev_urandom_fallback\":[],\"less-safe-getrandom-custom-or-rdrand\":[],\"less-safe-getrandom-espidf\":[],\"slow_tests\":[],\"std\":[\"alloc\"],\"test_logging\":[],\"unstable-testing-arm-no-hw\":[],\"unstable-testing-arm-no-neon\":[],\"wasm32_unknown_unknown_js\":[\"getrandom/js\"]}}",
-       "rkyv_0.8.18": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"ahash\",\"req\":\"^0.8\"},{\"default_features\":false,\"name\":\"arrayvec-0_7\",\"optional\":true,\"package\":\"arrayvec\",\"req\":\"^0.7\"},{\"default_features\":false,\"features\":[\"simdutf8\"],\"name\":\"bytecheck\",\"optional\":true,\"req\":\"^0.8\"},{\"default_features\":false,\"name\":\"bytes-1\",\"optional\":true,\"package\":\"bytes\",\"req\":\"^1\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"divan\",\"req\":\"^0.1\"},{\"default_features\":false,\"name\":\"hashbrown\",\"optional\":true,\"req\":\"^0.17\"},{\"default_features\":false,\"name\":\"hashbrown-0_14\",\"optional\":true,\"package\":\"hashbrown\",\"req\":\"^0.14\"},{\"default_features\":false,\"name\":\"hashbrown-0_15\",\"optional\":true,\"package\":\"hashbrown\",\"req\":\"^0.15\"},{\"default_features\":false,\"name\":\"hashbrown-0_16\",\"optional\":true,\"package\":\"hashbrown\",\"req\":\"^0.16\"},{\"default_features\":false,\"name\":\"indexmap-2\",\"optional\":true,\"package\":\"indexmap\",\"req\":\"^2\"},{\"default_features\":false,\"name\":\"munge\",\"req\":\"^0.4\"},{\"default_features\":false,\"name\":\"ptr_meta\",\"req\":\"^0.3\"},{\"default_features\":false,\"name\":\"rancor\",\"req\":\"^0.1\"},{\"default_features\":false,\"name\":\"rend\",\"req\":\"^0.5\"},{\"default_features\":false,\"name\":\"rkyv_derive\",\"req\":\"=0.8.18\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1\"},{\"default_features\":false,\"name\":\"smallvec-1\",\"optional\":true,\"package\":\"smallvec\",\"req\":\"^1\"},{\"default_features\":false,\"name\":\"smol_str-0_2\",\"optional\":true,\"package\":\"smol_str\",\"req\":\"^0.2\"},{\"default_features\":false,\"name\":\"smol_str-0_3\",\"optional\":true,\"package\":\"smol_str\",\"req\":\"^0.3\"},{\"default_features\":false,\"name\":\"thin-vec-0_2\",\"optional\":true,\"package\":\"thin-vec\",\"req\":\"^0.2.12\"},{\"default_features\":false,\"name\":\"tinyvec-1\",\"optional\":true,\"package\":\"tinyvec\",\"req\":\"^1\"},{\"default_features\":false,\"name\":\"triomphe-0_1\",\"optional\":true,\"package\":\"triomphe\",\"req\":\"^0.1\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1\"},{\"default_features\":false,\"name\":\"uuid-1\",\"optional\":true,\"package\":\"uuid\",\"req\":\"^1\"}],\"features\":{\"aligned\":[],\"alloc\":[\"dep:hashbrown\",\"tinyvec-1?/alloc\",\"rancor/alloc\"],\"big_endian\":[],\"bytecheck\":[\"dep:bytecheck\",\"rend/bytecheck\",\"rkyv_derive/bytecheck\"],\"default\":[\"std\",\"bytecheck\"],\"hashbrown-0_17\":[\"dep:hashbrown\"],\"indexmap-2\":[\"dep:indexmap-2\",\"alloc\"],\"little_endian\":[],\"pointer_width_16\":[],\"pointer_width_32\":[],\"pointer_width_64\":[],\"std\":[\"alloc\",\"bytes-1?/std\",\"indexmap-2?/std\",\"ptr_meta/std\",\"uuid-1?/std\"],\"triomphe-0_1\":[\"dep:triomphe-0_1\",\"alloc\"],\"unaligned\":[],\"uuid-1\":[\"dep:uuid-1\",\"bytecheck?/uuid-1\"]}}",
-@@ -2046,7 +2045,7 @@
-       "serde_derive_1.0.228": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"proc-macro\"],\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"default_features\":false,\"features\":[\"proc-macro\"],\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1\"},{\"default_features\":false,\"features\":[\"clone-impls\",\"derive\",\"parsing\",\"printing\",\"proc-macro\"],\"name\":\"syn\",\"req\":\"^2.0.81\"}],\"features\":{\"default\":[],\"deserialize_in_place\":[]}}",
-       "serde_derive_1.0.229": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"proc-macro\"],\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"default_features\":false,\"features\":[\"proc-macro\"],\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1\"},{\"default_features\":false,\"features\":[\"clone-impls\",\"derive\",\"parsing\",\"printing\",\"proc-macro\"],\"name\":\"syn\",\"req\":\"^3\"}],\"features\":{\"default\":[],\"deserialize_in_place\":[]}}",
-       "serde_derive_internals_0.30.0": "{\"dependencies\":[{\"default_features\":false,\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"default_features\":false,\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"default_features\":false,\"features\":[\"clone-impls\",\"derive\",\"parsing\",\"printing\"],\"name\":\"syn\",\"req\":\"^3\"}],\"features\":{}}",
--      "serde_html_form_0.3.2": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"assert_matches2\",\"req\":\"^0.1.0\"},{\"kind\":\"dev\",\"name\":\"divan\",\"req\":\"^0.1.11\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"form_urlencoded\",\"req\":\"^1.0.1\"},{\"default_features\":false,\"name\":\"indexmap\",\"req\":\"^2.0.0\"},{\"kind\":\"dev\",\"name\":\"insta\",\"req\":\"^1.45.0\"},{\"name\":\"itoa\",\"req\":\"^1.0.1\"},{\"name\":\"ryu\",\"optional\":true,\"req\":\"^1.0.9\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.221\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"serde_core\",\"req\":\"^1.0.221\"},{\"kind\":\"dev\",\"name\":\"serde_urlencoded\",\"req\":\"^0.7.1\"}],\"features\":{\"default\":[\"ryu\",\"std\"],\"std\":[]}}",
-+      "serde_html_form_0.4.1": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"form_urlencoded\",\"req\":\"^1.0.1\"},{\"default_features\":false,\"name\":\"indexmap\",\"optional\":true,\"req\":\"^2.0.0\"},{\"kind\":\"dev\",\"name\":\"insta\",\"req\":\"^1.43.1\"},{\"name\":\"itoa\",\"optional\":true,\"req\":\"^1.0.1\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.221\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"serde_core\",\"req\":\"^1.0.221\"},{\"name\":\"zmij\",\"optional\":true,\"req\":\"^1.0.14\"}],\"features\":{\"de\":[\"dep:indexmap\"],\"default\":[\"ser\",\"de\",\"std\"],\"ser\":[\"dep:itoa\",\"dep:zmij\"],\"std\":[]}}",
-       "serde_ignored_0.1.14": "{\"dependencies\":[{\"default_features\":false,\"name\":\"serde\",\"req\":\"^1.0.220\",\"target\":\"cfg(any())\"},{\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.220\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"serde_core\",\"req\":\"^1.0.220\"},{\"kind\":\"dev\",\"name\":\"serde_derive\",\"req\":\"^1.0.220\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.110\"}],\"features\":{}}",
-       "serde_json_1.0.145": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"automod\",\"req\":\"^1.0.11\"},{\"name\":\"indexmap\",\"optional\":true,\"req\":\"^2.2.3\"},{\"kind\":\"dev\",\"name\":\"indoc\",\"req\":\"^2.0.2\"},{\"name\":\"itoa\",\"req\":\"^1.0\"},{\"default_features\":false,\"name\":\"memchr\",\"req\":\"^2\"},{\"kind\":\"dev\",\"name\":\"ref-cast\",\"req\":\"^1.0.18\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.13\"},{\"name\":\"ryu\",\"req\":\"^1.0\"},{\"default_features\":false,\"name\":\"serde\",\"req\":\"^1.0.220\",\"target\":\"cfg(any())\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.194\"},{\"kind\":\"dev\",\"name\":\"serde_bytes\",\"req\":\"^0.11.10\"},{\"default_features\":false,\"name\":\"serde_core\",\"req\":\"^1.0.220\"},{\"kind\":\"dev\",\"name\":\"serde_derive\",\"req\":\"^1.0.166\"},{\"kind\":\"dev\",\"name\":\"serde_stacker\",\"req\":\"^0.1.8\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.108\"}],\"features\":{\"alloc\":[\"serde_core/alloc\"],\"arbitrary_precision\":[],\"default\":[\"std\"],\"float_roundtrip\":[],\"preserve_order\":[\"indexmap\",\"std\"],\"raw_value\":[],\"std\":[\"memchr/std\",\"serde_core/std\"],\"unbounded_depth\":[]}}",
-       "serde_json_1.0.149": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"automod\",\"req\":\"^1.0.11\"},{\"name\":\"indexmap\",\"optional\":true,\"req\":\"^2.2.3\"},{\"kind\":\"dev\",\"name\":\"indoc\",\"req\":\"^2.0.2\"},{\"name\":\"itoa\",\"req\":\"^1.0\"},{\"default_features\":false,\"name\":\"memchr\",\"req\":\"^2\"},{\"kind\":\"dev\",\"name\":\"ref-cast\",\"req\":\"^1.0.18\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.13\"},{\"default_features\":false,\"name\":\"serde\",\"req\":\"^1.0.220\",\"target\":\"cfg(any())\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.194\"},{\"kind\":\"dev\",\"name\":\"serde_bytes\",\"req\":\"^0.11.10\"},{\"default_features\":false,\"name\":\"serde_core\",\"req\":\"^1.0.220\"},{\"kind\":\"dev\",\"name\":\"serde_derive\",\"req\":\"^1.0.166\"},{\"kind\":\"dev\",\"name\":\"serde_stacker\",\"req\":\"^0.1.8\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.108\"},{\"name\":\"zmij\",\"req\":\"^1.0\"}],\"features\":{\"alloc\":[\"serde_core/alloc\"],\"arbitrary_precision\":[],\"default\":[\"std\"],\"float_roundtrip\":[],\"preserve_order\":[\"indexmap\",\"std\"],\"raw_value\":[],\"std\":[\"memchr/std\",\"serde_core/std\"],\"unbounded_depth\":[]}}",
-@@ -2199,10 +2198,8 @@
-       "tikv-jemalloc-sys_0.7.1+5.3.1-0-g81034ce1f1373e37dc865038e1bc8eeecf559ce8": "{\"dependencies\":[{\"kind\":\"build\",\"name\":\"cc\",\"req\":\"^1.0.13\"},{\"default_features\":false,\"name\":\"libc\",\"req\":\"^0.2.8\"}],\"features\":{\"background_threads\":[\"background_threads_runtime_support\"],\"background_threads_runtime_support\":[],\"debug\":[],\"default\":[\"background_threads_runtime_support\"],\"disable_cache_oblivious\":[],\"disable_initial_exec_tls\":[],\"override_allocator_on_supported_platforms\":[\"unprefixed_malloc_on_supported_platforms\"],\"profiling\":[],\"profiling_libunwind\":[\"profiling\"],\"stats\":[],\"unprefixed_malloc_on_supported_platforms\":[]}}",
-       "tikv-jemallocator_0.7.0": "{\"dependencies\":[{\"default_features\":false,\"name\":\"libc\",\"req\":\"^0.2.8\"},{\"kind\":\"dev\",\"name\":\"paste\",\"req\":\"^1\"},{\"default_features\":false,\"name\":\"tikv-jemalloc-sys\",\"req\":\"^0.7.0\"}],\"features\":{\"alloc_trait\":[],\"background_threads\":[\"tikv-jemalloc-sys/background_threads\"],\"background_threads_runtime_support\":[\"tikv-jemalloc-sys/background_threads_runtime_support\"],\"debug\":[\"tikv-jemalloc-sys/debug\"],\"default\":[\"background_threads_runtime_support\"],\"disable_cache_oblivious\":[\"tikv-jemalloc-sys/disable_cache_oblivious\"],\"disable_initial_exec_tls\":[\"tikv-jemalloc-sys/disable_initial_exec_tls\"],\"override_allocator_on_supported_platforms\":[\"unprefixed_malloc_on_supported_platforms\",\"tikv-jemalloc-sys/override_allocator_on_supported_platforms\"],\"profiling\":[\"tikv-jemalloc-sys/profiling\"],\"profiling_libunwind\":[\"tikv-jemalloc-sys/profiling_libunwind\",\"profiling\"],\"stats\":[\"tikv-jemalloc-sys/stats\"],\"unprefixed_malloc_on_supported_platforms\":[\"tikv-jemalloc-sys/unprefixed_malloc_on_supported_platforms\"]}}",
-       "time-core_0.1.8": "{\"dependencies\":[],\"features\":{\"large-dates\":[]}}",
--      "time-core_0.1.9": "{\"dependencies\":[],\"features\":{\"large-dates\":[]}}",
--      "time-macros_0.2.32": "{\"dependencies\":[{\"name\":\"num-conv\",\"req\":\"^0.2.2\"},{\"name\":\"time-core\",\"req\":\"=0.1.9\"}],\"features\":{\"formatting\":[],\"large-dates\":[],\"parsing\":[],\"serde\":[]}}",
-+      "time-macros_0.2.27": "{\"dependencies\":[{\"name\":\"num-conv\",\"req\":\"^0.2.0\"},{\"name\":\"time-core\",\"req\":\"=0.1.8\"}],\"features\":{\"formatting\":[],\"large-dates\":[],\"parsing\":[],\"serde\":[]}}",
-       "time_0.3.47": "{\"dependencies\":[{\"default_features\":false,\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.8.1\",\"target\":\"cfg(bench)\"},{\"features\":[\"powerfmt\"],\"name\":\"deranged\",\"req\":\"^0.5.2\"},{\"name\":\"itoa\",\"optional\":true,\"req\":\"^1.0.1\"},{\"name\":\"js-sys\",\"optional\":true,\"req\":\"^0.3.58\",\"target\":\"cfg(all(target_family = \\\"wasm\\\", not(any(target_os = \\\"emscripten\\\", target_os = \\\"wasi\\\"))))\"},{\"name\":\"libc\",\"optional\":true,\"req\":\"^0.2.98\",\"target\":\"cfg(target_family = \\\"unix\\\")\"},{\"name\":\"num-conv\",\"req\":\"^0.2.0\"},{\"kind\":\"dev\",\"name\":\"num-conv\",\"req\":\"^0.2.0\"},{\"name\":\"num_threads\",\"optional\":true,\"req\":\"^0.1.2\",\"target\":\"cfg(target_family = \\\"unix\\\")\"},{\"default_features\":false,\"name\":\"powerfmt\",\"req\":\"^0.2.0\"},{\"default_features\":false,\"name\":\"quickcheck\",\"optional\":true,\"req\":\"^1.0.3\"},{\"kind\":\"dev\",\"name\":\"quickcheck_macros\",\"req\":\"^1.0.0\"},{\"default_features\":false,\"name\":\"rand08\",\"optional\":true,\"package\":\"rand\",\"req\":\"^0.8.4\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"rand08\",\"package\":\"rand\",\"req\":\"^0.8.4\"},{\"default_features\":false,\"name\":\"rand09\",\"optional\":true,\"package\":\"rand\",\"req\":\"^0.9.2\"},{\"default_features\":false,\"features\":[\"small_rng\"],\"kind\":\"dev\",\"name\":\"rand09\",\"package\":\"rand\",\"req\":\"^0.9.2\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"rstest\",\"req\":\"^0.26.1\"},{\"kind\":\"dev\",\"name\":\"rstest_reuse\",\"req\":\"^0.7.0\"},{\"default_features\":false,\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.184\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.220\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.68\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1.0.126\"},{\"name\":\"time-core\",\"req\":\"=0.1.8\"},{\"name\":\"time-macros\",\"optional\":true,\"req\":\"=0.2.27\"},{\"kind\":\"dev\",\"name\":\"time-macros\",\"req\":\"=0.2.27\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.102\",\"target\":\"cfg(__ui_tests)\"}],\"features\":{\"alloc\":[\"serde_core?/alloc\"],\"default\":[\"std\"],\"formatting\":[\"dep:itoa\",\"std\",\"time-macros?/formatting\"],\"large-dates\":[\"time-core/large-dates\",\"time-macros?/large-dates\"],\"local-offset\":[\"std\",\"dep:libc\",\"dep:num_threads\"],\"macros\":[\"dep:time-macros\"],\"parsing\":[\"time-macros?/parsing\"],\"quickcheck\":[\"dep:quickcheck\",\"alloc\",\"deranged/quickcheck\"],\"rand\":[\"rand08\",\"rand09\"],\"rand08\":[\"dep:rand08\",\"deranged/rand08\"],\"rand09\":[\"dep:rand09\",\"deranged/rand09\"],\"serde\":[\"dep:serde_core\",\"time-macros?/serde\",\"deranged/serde\"],\"serde-human-readable\":[\"serde\",\"formatting\",\"parsing\"],\"serde-well-known\":[\"serde\",\"formatting\",\"parsing\"],\"std\":[\"alloc\"],\"wasm-bindgen\":[\"dep:js-sys\"]}}",
--      "time_0.3.55": "{\"dependencies\":[{\"default_features\":false,\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.8.1\",\"target\":\"cfg(bench)\"},{\"name\":\"deranged\",\"req\":\"^0.5.8\"},{\"name\":\"js-sys\",\"optional\":true,\"req\":\"^0.3.58\",\"target\":\"cfg(all(target_family = \\\"wasm\\\", not(any(target_os = \\\"emscripten\\\", target_os = \\\"wasi\\\"))))\"},{\"name\":\"libc\",\"optional\":true,\"req\":\"^0.2.98\",\"target\":\"cfg(target_family = \\\"unix\\\")\"},{\"name\":\"num-conv\",\"req\":\"^0.2.2\"},{\"kind\":\"dev\",\"name\":\"num-conv\",\"req\":\"^0.2.2\"},{\"name\":\"num_threads\",\"optional\":true,\"req\":\"^0.1.2\",\"target\":\"cfg(target_family = \\\"unix\\\")\"},{\"default_features\":false,\"name\":\"powerfmt\",\"req\":\"^0.2.0\"},{\"default_features\":false,\"name\":\"quickcheck\",\"optional\":true,\"req\":\"^1.0.3\"},{\"kind\":\"dev\",\"name\":\"quickcheck_macros\",\"req\":\"^1.0.0\"},{\"default_features\":false,\"name\":\"rand010\",\"optional\":true,\"package\":\"rand\",\"req\":\"^0.10.1\"},{\"default_features\":false,\"name\":\"rand08\",\"optional\":true,\"package\":\"rand\",\"req\":\"^0.8.6\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"rand08\",\"package\":\"rand\",\"req\":\"^0.8.6\"},{\"default_features\":false,\"name\":\"rand09\",\"optional\":true,\"package\":\"rand\",\"req\":\"^0.9.4\"},{\"default_features\":false,\"features\":[\"small_rng\"],\"kind\":\"dev\",\"name\":\"rand09\",\"package\":\"rand\",\"req\":\"^0.9.4\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"rstest\",\"req\":\"^0.26.1\"},{\"kind\":\"dev\",\"name\":\"rstest_reuse\",\"req\":\"^0.7.0\"},{\"default_features\":false,\"features\":[\"derive\",\"alloc\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.184\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.220\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.68\"},{\"kind\":\"dev\",\"name\":\"serde_test2\",\"req\":\"^2.0.0\"},{\"name\":\"time-core\",\"req\":\"=0.1.9\"},{\"name\":\"time-macros\",\"optional\":true,\"req\":\"=0.2.32\"},{\"kind\":\"dev\",\"name\":\"time-macros\",\"req\":\"=0.2.32\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.102\",\"target\":\"cfg(__ui_tests)\"}],\"features\":{\"alloc\":[\"serde_core?/alloc\"],\"default\":[\"std\"],\"formatting\":[\"std\",\"time-macros?/formatting\"],\"large-dates\":[\"time-core/large-dates\",\"time-macros?/large-dates\"],\"local-offset\":[\"std\",\"dep:libc\",\"dep:num_threads\"],\"macros\":[\"dep:time-macros\"],\"parsing\":[\"time-macros?/parsing\"],\"quickcheck\":[\"dep:quickcheck\",\"alloc\",\"deranged/quickcheck\"],\"rand\":[\"rand08\",\"rand09\",\"rand010\"],\"rand010\":[\"dep:rand010\",\"deranged/rand010\"],\"rand08\":[\"dep:rand08\",\"deranged/rand08\"],\"rand09\":[\"dep:rand09\",\"deranged/rand09\"],\"serde\":[\"dep:serde_core\",\"time-macros?/serde\",\"deranged/serde\"],\"serde-human-readable\":[\"serde\",\"formatting\",\"parsing\"],\"serde-well-known\":[\"serde\",\"formatting\",\"parsing\"],\"std\":[\"alloc\"],\"wasm-bindgen\":[\"dep:js-sys\"]}}",
-       "timezone_provider_0.2.6": "{\"dependencies\":[{\"name\":\"combine\",\"optional\":true,\"req\":\"^4.6.7\"},{\"features\":[\"derive\"],\"name\":\"databake\",\"optional\":true,\"req\":\"^0.2.0\"},{\"features\":[\"compiled_data\"],\"kind\":\"dev\",\"name\":\"icu_time\",\"req\":\"^2\"},{\"name\":\"jiff-tzdb\",\"optional\":true,\"req\":\"^0.1.4\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0.225\"},{\"name\":\"serde_json\",\"optional\":true,\"req\":\"^1.0.145\"},{\"features\":[\"zerovec\"],\"name\":\"tinystr\",\"req\":\"^0.8.0\"},{\"name\":\"tzif\",\"optional\":true,\"req\":\"^0.4.0\"},{\"features\":[\"derive\"],\"name\":\"yoke\",\"optional\":true,\"req\":\"^0.8.0\"},{\"name\":\"zerofrom\",\"optional\":true,\"req\":\"^0.1.6\"},{\"name\":\"zerotrie\",\"req\":\"^0.2.0\"},{\"features\":[\"derive\",\"alloc\"],\"name\":\"zerovec\",\"req\":\"^0.11.0\"},{\"name\":\"zoneinfo64\",\"optional\":true,\"req\":\"^0.3.0\"},{\"default_features\":false,\"features\":[\"std\",\"unstable\"],\"name\":\"zoneinfo_rs\",\"optional\":true,\"req\":\"^0.1.0\"}],\"features\":{\"datagen\":[\"std\",\"dep:serde\",\"dep:databake\",\"dep:yoke\",\"dep:serde_json\",\"tinystr/serde\",\"tinystr/databake\",\"zerotrie/serde\",\"zerotrie/databake\",\"zerovec/serde\",\"zerovec/databake\",\"zerovec/derive\",\"dep:zoneinfo_rs\",\"experimental_tzif\"],\"default\":[],\"experimental_tzif\":[\"dep:zerofrom\",\"zerofrom/derive\"],\"std\":[],\"tzif\":[\"dep:tzif\",\"dep:jiff-tzdb\",\"dep:combine\",\"std\"],\"zoneinfo64\":[\"dep:zoneinfo64\"]}}",
-       "tiny_http_0.12.0": "{\"dependencies\":[{\"name\":\"ascii\",\"req\":\"^1.0\"},{\"name\":\"chunked_transfer\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"fdlimit\",\"req\":\"^0.1\"},{\"name\":\"httpdate\",\"req\":\"^1.0.2\"},{\"name\":\"log\",\"req\":\"^0.4.4\"},{\"name\":\"openssl\",\"optional\":true,\"req\":\"^0.10\"},{\"kind\":\"dev\",\"name\":\"rustc-serialize\",\"req\":\"^0.3\"},{\"name\":\"rustls\",\"optional\":true,\"req\":\"^0.20\"},{\"name\":\"rustls-pemfile\",\"optional\":true,\"req\":\"^0.2.1\"},{\"kind\":\"dev\",\"name\":\"sha1\",\"req\":\"^0.6.0\"},{\"name\":\"zeroize\",\"optional\":true,\"req\":\"^1\"}],\"features\":{\"default\":[],\"ssl\":[\"ssl-openssl\"],\"ssl-openssl\":[\"openssl\",\"zeroize\"],\"ssl-rustls\":[\"rustls\",\"rustls-pemfile\",\"zeroize\"]}}",
-       "tinystr_0.8.3": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"bincode\",\"req\":\"^1.3.1\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5.0\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"name\":\"databake\",\"optional\":true,\"req\":\"^0.2.0\"},{\"default_features\":false,\"name\":\"displaydoc\",\"req\":\"^0.2.3\"},{\"default_features\":false,\"features\":[\"use-std\"],\"kind\":\"dev\",\"name\":\"postcard\",\"req\":\"^1.0.3\"},{\"features\":[\"small_rng\"],\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.9\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.220\"},{\"features\":[\"alloc\"],\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.45\"},{\"default_features\":false,\"name\":\"zerovec\",\"optional\":true,\"req\":\"^0.11.6\"}],\"features\":{\"alloc\":[\"serde_core?/alloc\",\"zerovec?/alloc\"],\"databake\":[\"dep:databake\"],\"default\":[\"alloc\"],\"serde\":[\"dep:serde_core\"],\"std\":[],\"zerovec\":[\"dep:zerovec\"]}}",
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 1a6bc4a..df3555d 100644
+index 850e6bf..d1af773 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
-@@ -277,7 +277,7 @@ version = "1.1.5"
- source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
- dependencies = [
-- "windows-sys 0.60.2",
-+ "windows-sys 0.61.2",
- ]
- 
- [[package]]
-@@ -288,7 +288,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
- dependencies = [
-  "anstyle",
-  "once_cell_polyfill",
-- "windows-sys 0.60.2",
-+ "windows-sys 0.61.2",
- ]
- 
- [[package]]
-@@ -360,7 +360,7 @@ dependencies = [
-  "objc2-foundation",
-  "parking_lot",
-  "percent-encoding",
-- "windows-sys 0.52.0",
-+ "windows-sys 0.61.2",
-  "wl-clipboard-rs",
-  "x11rb",
- ]
-@@ -806,12 +806,28 @@ dependencies = [
+@@ -821,12 +821,28 @@ dependencies = [
   "zeroize",
  ]
  
@@ -242,23 +90,23 @@ index 1a6bc4a..df3555d 100644
 +
  [[package]]
  name = "aws-lc-rs"
- version = "1.19.0"
+ version = "1.18.1"
  source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "048006790404103c488e6c5616b3e7e702a71292aadda08e8f7698a9e0d2eb53"
+ checksum = "b281d307588d634de920874890732659e2e7672f72b5e10e81badc1a8a83621e"
  dependencies = [
 + "aws-lc-fips-sys",
   "aws-lc-sys",
   "untrusted 0.7.1",
   "zeroize",
-@@ -823,6 +839,7 @@ version = "0.47.0"
+@@ -838,6 +854,7 @@ version = "0.45.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "8bfbe32ac36b3c428696ce315464181bc4029d689fd58e3f2a4e58c252242f52"
+ checksum = "9bff6c3b54fad79a2e60b8102caf565819711497c1f5f092f49508e2f5c31b27"
  dependencies = [
-+ "bindgen 0.73.2",
++ "bindgen 0.72.1",
   "cc",
   "cmake",
   "dunce",
-@@ -1189,7 +1206,7 @@ dependencies = [
+@@ -1204,7 +1221,7 @@ dependencies = [
   "hyper",
   "hyper-util",
   "itoa",
@@ -267,7 +115,7 @@ index 1a6bc4a..df3555d 100644
   "memchr",
   "mime",
   "percent-encoding",
-@@ -1329,6 +1346,25 @@ dependencies = [
+@@ -1344,6 +1361,25 @@ dependencies = [
   "syn 2.0.119",
  ]
  
@@ -293,7 +141,7 @@ index 1a6bc4a..df3555d 100644
  [[package]]
  name = "bit-set"
  version = "0.5.3"
-@@ -1573,6 +1609,9 @@ name = "bytes"
+@@ -1587,6 +1623,9 @@ name = "bytes"
  version = "1.12.1"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
@@ -303,7 +151,43 @@ index 1a6bc4a..df3555d 100644
  
  [[package]]
  name = "bytes-utils"
-@@ -4444,14 +4483,17 @@ dependencies = [
+@@ -2247,7 +2286,7 @@ dependencies = [
+  "tokio-tungstenite 0.28.0",
+  "tokio-util",
+  "toml 1.2.1+spec-1.1.0",
+- "toml_edit 0.25.19+spec-1.1.0",
++ "toml_edit",
+  "tracing",
+  "tracing-opentelemetry",
+  "tracing-subscriber",
+@@ -2953,7 +2992,7 @@ dependencies = [
+  "tokio-stream",
+  "tokio-util",
+  "toml 1.2.1+spec-1.1.0",
+- "toml_edit 0.25.19+spec-1.1.0",
++ "toml_edit",
+  "tonic",
+  "tonic-prost",
+  "tonic-prost-build",
+@@ -3155,7 +3194,7 @@ dependencies = [
+  "tokio-tungstenite 0.28.0",
+  "tokio-util",
+  "toml 1.2.1+spec-1.1.0",
+- "toml_edit 0.25.19+spec-1.1.0",
++ "toml_edit",
+  "tonic",
+  "tower",
+  "tracing",
+@@ -3934,7 +3973,7 @@ dependencies = [
+  "serde_json",
+  "serde_urlencoded",
+  "sha2 0.11.1",
+- "socket2 0.6.5",
++ "socket2",
+  "system-configuration 0.8.0",
+  "tempfile",
+  "thiserror 2.0.21",
+@@ -4458,14 +4497,17 @@ dependencies = [
   "rama-net",
   "rama-socks5",
   "rama-tcp",
@@ -321,25 +205,25 @@ index 1a6bc4a..df3555d 100644
   "schannel",
   "schemars 1.2.3",
   "security-framework 3.7.0",
-@@ -6391,7 +6433,7 @@ dependencies = [
+@@ -5254,7 +5296,7 @@ dependencies = [
+  "tokio-tungstenite 0.28.0",
+  "tokio-util",
+  "toml 1.2.1+spec-1.1.0",
+- "toml_edit 0.25.19+spec-1.1.0",
++ "toml_edit",
+  "tracing",
+  "tracing-appender",
+  "tracing-subscriber",
+@@ -6403,7 +6445,7 @@ dependencies = [
+  "openssl-probe 0.1.6",
   "openssl-sys",
   "schannel",
-  "socket2",
-- "windows-sys 0.59.0",
-+ "windows-sys 0.61.2",
+- "socket2 0.6.5",
++ "socket2",
+  "windows-sys 0.61.2",
  ]
  
- [[package]]
-@@ -6406,7 +6448,7 @@ dependencies = [
-  "openssl-sys",
-  "pkg-config",
-  "vcpkg",
-- "windows-sys 0.59.0",
-+ "windows-sys 0.61.2",
- ]
- 
- [[package]]
-@@ -6727,6 +6769,7 @@ version = "0.5.9"
+@@ -6774,6 +6816,7 @@ version = "0.5.9"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "9e9de72ce2ad1f90dc62fa25f0f430ef85eb4b0d8fa0be4f30373bc40a21d28e"
  dependencies = [
@@ -347,25 +231,16 @@ index 1a6bc4a..df3555d 100644
   "serde_core",
  ]
  
-@@ -6897,7 +6940,7 @@ dependencies = [
-  "libc",
-  "option-ext",
-  "redox_users 0.5.3",
-- "windows-sys 0.59.0",
-+ "windows-sys 0.61.2",
- ]
- 
- [[package]]
-@@ -6976,7 +7019,7 @@ dependencies = [
+@@ -7022,7 +7065,7 @@ checksum = "263c0ccfc6b3b6a93e959edad4f985779e76c0b36dbb2e13e3d27c690974adf1"
+ dependencies = [
   "cfg-if",
   "libc",
-  "socket2",
-- "windows-sys 0.60.2",
-+ "windows-sys 0.61.2",
+- "socket2 0.6.5",
++ "socket2",
+  "windows-sys 0.61.2",
  ]
  
- [[package]]
-@@ -7180,18 +7223,6 @@ version = "0.2.0"
+@@ -7227,18 +7270,6 @@ version = "0.2.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "869b0adbda23651a9c5c0c3d270aac9fcb52e8622a8f2b17e57802d7791962f2"
  
@@ -384,25 +259,7 @@ index 1a6bc4a..df3555d 100644
  [[package]]
  name = "enumflags2"
  version = "0.7.12"
-@@ -7268,7 +7299,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
- dependencies = [
-  "libc",
-- "windows-sys 0.52.0",
-+ "windows-sys 0.61.2",
- ]
- 
- [[package]]
-@@ -7903,7 +7934,7 @@ dependencies = [
-  "gobject-sys",
-  "libc",
-  "system-deps",
-- "windows-sys 0.52.0",
-+ "windows-sys 0.61.2",
- ]
- 
- [[package]]
-@@ -8974,52 +9005,6 @@ version = "0.4.3"
+@@ -9045,52 +9076,6 @@ version = "0.4.3"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
  
@@ -455,59 +312,59 @@ index 1a6bc4a..df3555d 100644
  [[package]]
  name = "hkdf"
  version = "0.12.4"
-@@ -9763,24 +9748,14 @@ version = "0.1.1"
- source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -9314,7 +9299,7 @@ dependencies = [
+  "libc",
+  "percent-encoding",
+  "pin-project-lite",
+- "socket2 0.6.5",
++ "socket2",
+  "system-configuration 0.7.0",
+  "tokio",
+  "tower-service",
+@@ -9839,23 +9824,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "4b3f7cef34251886990511df1c61443aa928499d598a9473929ab5a90a527304"
  
--[[package]]
+ [[package]]
 -name = "ipconfig"
--version = "0.3.4"
--source = "registry+https://github.com/rust-lang/crates.io-index"
--checksum = "4d40460c0ce33d6ce4b0630ad68ff63d6661961c48b6dba35e5a4d81cfb48222"
--dependencies = [
-- "socket2",
-- "widestring",
-- "windows-registry",
-- "windows-result 0.4.1",
-- "windows-sys 0.61.2",
--]
--
- [[package]]
- name = "ipnet"
- version = "2.12.2"
+-version = "0.3.2"
++name = "ipnet"
++version = "2.12.2"
  source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "791930b43c0d5973160d90a8f3894509f2b273430f5c5c73b668636d0287c5c0"
-+dependencies = [
-+ "serde",
-+]
- 
- [[package]]
- name = "iri-string"
-@@ -9800,7 +9775,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
+-checksum = "b58db92f96b720de98181bbbe63c831e87005ab460c1bf306eb2622b4707997f"
++checksum = "791930b43c0d5973160d90a8f3894509f2b273430f5c5c73b668636d0287c5c0"
  dependencies = [
-  "hermit-abi",
-  "libc",
-- "windows-sys 0.52.0",
-+ "windows-sys 0.61.2",
+- "socket2 0.5.10",
+- "widestring",
+- "windows-sys 0.48.0",
+- "winreg 0.50.0",
++ "serde",
  ]
  
+-[[package]]
+-name = "ipnet"
+-version = "2.11.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
+-
  [[package]]
-@@ -10424,12 +10399,6 @@ version = "0.8.4"
+ name = "iri-string"
+ version = "0.7.10"
+@@ -10494,12 +10470,6 @@ version = "0.8.4"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
  
 -[[package]]
 -name = "matchit"
--version = "0.9.2"
+-version = "0.9.1"
 -source = "registry+https://github.com/rust-lang/crates.io-index"
--checksum = "8863b587001c1b9a8a4e36008cebc6b3612cb1226fe2de94858e06092687b608"
+-checksum = "b3eede3bdf92f3b4f9dc04072a9ce5ab557d5ec9038773bf9ffcd5588b3cc05b"
 -
  [[package]]
  name = "md-5"
  version = "0.10.6"
-@@ -10559,10 +10528,13 @@ version = "0.12.16"
+@@ -10629,10 +10599,13 @@ version = "0.12.13"
  source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "4293f18e7567a1caf3c584855554377025c65e0aa445344d04171f5ad63d19b9"
+ checksum = "b4ac832c50ced444ef6be0767a008b02c106a909ba79d1d830501e94b96f6b7e"
  dependencies = [
 + "async-lock",
   "crossbeam-channel",
@@ -519,16 +376,7 @@ index 1a6bc4a..df3555d 100644
   "parking_lot",
   "portable-atomic",
   "smallvec",
-@@ -10813,7 +10785,7 @@ version = "0.50.3"
- source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
- dependencies = [
-- "windows-sys 0.59.0",
-+ "windows-sys 0.61.2",
- ]
- 
- [[package]]
-@@ -11297,10 +11269,6 @@ name = "once_cell"
+@@ -11359,10 +11332,6 @@ name = "once_cell"
  version = "1.21.4"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
@@ -539,34 +387,49 @@ index 1a6bc4a..df3555d 100644
  
  [[package]]
  name = "once_cell_polyfill"
-@@ -11570,7 +11538,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
+@@ -12245,11 +12214,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "proc-macro-crate"
+-version = "3.4.0"
++version = "3.5.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "219cb19e96be00ab2e37d6e299658a0cfa83e52429179969b0f0121b4ac46983"
++checksum = "e67ba7e9b2b56446f1d419b1d807906278ffa1a658a8a5d8a39dcb1f5a78614f"
  dependencies = [
-  "libc",
-- "windows-sys 0.52.0",
-+ "windows-sys 0.61.2",
+- "toml_edit 0.23.10+spec-1.0.0",
++ "toml_edit",
  ]
  
  [[package]]
-@@ -12552,7 +12520,7 @@ dependencies = [
-  "once_cell",
-  "socket2",
+@@ -12558,7 +12527,7 @@ dependencies = [
+  "quinn-udp 0.5.14",
+  "rustc-hash",
+  "rustls",
+- "socket2 0.6.5",
++ "socket2",
+  "thiserror 2.0.21",
+  "tokio",
   "tracing",
-- "windows-sys 0.52.0",
-+ "windows-sys 0.61.2",
+@@ -12597,7 +12566,7 @@ dependencies = [
+  "cfg_aliases 0.2.1",
+  "libc",
+  "once_cell",
+- "socket2 0.6.5",
++ "socket2",
+  "tracing",
+  "windows-sys 0.60.2",
  ]
- 
- [[package]]
-@@ -12565,7 +12533,7 @@ dependencies = [
+@@ -12611,7 +12580,7 @@ dependencies = [
+  "cfg_aliases 0.2.1",
   "libc",
   "log",
-  "socket2",
-- "windows-sys 0.52.0",
-+ "windows-sys 0.61.2",
+- "socket2 0.6.5",
++ "socket2",
+  "windows-sys 0.61.2",
  ]
  
- [[package]]
-@@ -12611,9 +12579,9 @@ dependencies = [
+@@ -12658,9 +12627,9 @@ dependencies = [
  
  [[package]]
  name = "rama-core"
@@ -578,7 +441,7 @@ index 1a6bc4a..df3555d 100644
  dependencies = [
   "ahash",
   "asynk-strim",
-@@ -12628,59 +12596,94 @@ dependencies = [
+@@ -12675,59 +12644,94 @@ dependencies = [
   "serde_json",
   "tokio",
   "tokio-graceful",
@@ -597,7 +460,7 @@ index 1a6bc4a..df3555d 100644
 + "ahash",
 + "aws-lc-rs",
 + "base64 0.23.1",
-+ "openssl-probe 0.2.2",
++ "openssl-probe 0.2.1",
 + "rama-core",
 + "rama-net",
 + "rama-utils",
@@ -669,7 +532,7 @@ index 1a6bc4a..df3555d 100644
   "http-range-header",
   "httpdate",
   "iri-string",
-- "matchit 0.9.2",
+- "matchit 0.9.1",
 + "jiff",
   "parking_lot",
   "percent-encoding",
@@ -687,7 +550,7 @@ index 1a6bc4a..df3555d 100644
   "serde",
   "serde_html_form",
   "serde_json",
-@@ -12690,11 +12693,11 @@ dependencies = [
+@@ -12737,11 +12741,11 @@ dependencies = [
  
  [[package]]
  name = "rama-http-backend"
@@ -702,7 +565,7 @@ index 1a6bc4a..df3555d 100644
   "pin-project-lite",
   "rama-core",
   "rama-http",
-@@ -12703,16 +12706,18 @@ dependencies = [
+@@ -12750,16 +12754,18 @@ dependencies = [
   "rama-http-types",
   "rama-net",
   "rama-tcp",
@@ -723,7 +586,7 @@ index 1a6bc4a..df3555d 100644
  dependencies = [
   "ahash",
   "atomic-waker",
-@@ -12726,6 +12731,7 @@ dependencies = [
+@@ -12773,6 +12779,7 @@ dependencies = [
   "rama-core",
   "rama-http",
   "rama-http-types",
@@ -731,7 +594,7 @@ index 1a6bc4a..df3555d 100644
   "rama-utils",
   "slab",
   "tokio",
-@@ -12735,101 +12741,125 @@ dependencies = [
+@@ -12782,101 +12789,125 @@ dependencies = [
  
  [[package]]
  name = "rama-http-headers"
@@ -870,8 +733,9 @@ index 1a6bc4a..df3555d 100644
   "rama-utils",
   "serde",
 - "sha2 0.10.9",
+- "socket2 0.6.5",
 + "serde_html_form",
-  "socket2",
++ "socket2",
   "tokio",
 + "tokio-util",
 + "windows-sys 0.61.2",
@@ -887,7 +751,7 @@ index 1a6bc4a..df3555d 100644
  dependencies = [
   "byteorder",
   "rama-core",
-@@ -12842,72 +12872,100 @@ dependencies = [
+@@ -12889,72 +12920,100 @@ dependencies = [
  
  [[package]]
  name = "rama-tcp"
@@ -1005,7 +869,7 @@ index 1a6bc4a..df3555d 100644
   "parking_lot",
   "pin-project-lite",
   "rama-macros",
-@@ -12916,6 +12974,7 @@ dependencies = [
+@@ -12963,6 +13022,7 @@ dependencies = [
   "smallvec",
   "smol_str",
   "tokio",
@@ -1013,7 +877,7 @@ index 1a6bc4a..df3555d 100644
   "wildcard",
  ]
  
-@@ -13371,12 +13430,6 @@ dependencies = [
+@@ -13428,12 +13488,6 @@ dependencies = [
   "serde_core",
  ]
  
@@ -1026,25 +890,16 @@ index 1a6bc4a..df3555d 100644
  [[package]]
  name = "rfc6979"
  version = "0.6.0"
-@@ -13856,7 +13909,7 @@ dependencies = [
-  "errno",
-  "libc",
-  "linux-raw-sys 0.12.1",
-- "windows-sys 0.52.0",
-+ "windows-sys 0.61.2",
+@@ -13667,7 +13721,7 @@ dependencies = [
+  "log",
+  "rtc-shared",
+  "sansio",
+- "socket2 0.6.5",
++ "socket2",
  ]
  
  [[package]]
-@@ -13915,7 +13968,7 @@ dependencies = [
-  "security-framework 3.7.0",
-  "security-framework-sys",
-  "webpki-root-certs",
-- "windows-sys 0.52.0",
-+ "windows-sys 0.61.2",
- ]
- 
- [[package]]
-@@ -14325,15 +14378,15 @@ dependencies = [
+@@ -14381,15 +14435,15 @@ dependencies = [
  
  [[package]]
  name = "serde_html_form"
@@ -1063,52 +918,24 @@ index 1a6bc4a..df3555d 100644
  ]
  
  [[package]]
-@@ -14739,7 +14792,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
- dependencies = [
-  "libc",
-- "windows-sys 0.60.2",
-+ "windows-sys 0.61.2",
+@@ -14788,16 +14842,6 @@ dependencies = [
+  "serde_core",
  ]
  
- [[package]]
-@@ -15060,7 +15113,7 @@ dependencies = [
-  "cfg-if",
-  "libc",
-  "psm",
-- "windows-sys 0.60.2",
-+ "windows-sys 0.61.2",
- ]
- 
- [[package]]
-@@ -15601,7 +15654,7 @@ dependencies = [
-  "getrandom 0.4.3",
-  "once_cell",
-  "rustix 1.1.6",
+-[[package]]
+-name = "socket2"
+-version = "0.5.10"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e22376abed350d73dd1cd119b57ffccad95b4e585a7cda43e286245ce23c0678"
+-dependencies = [
+- "libc",
 - "windows-sys 0.52.0",
-+ "windows-sys 0.61.2",
- ]
- 
+-]
+-
  [[package]]
-@@ -15657,7 +15710,7 @@ dependencies = [
-  "parking_lot",
-  "rustix 1.1.6",
-  "signal-hook 0.3.18",
-- "windows-sys 0.60.2",
-+ "windows-sys 0.61.2",
- ]
- 
- [[package]]
-@@ -15667,7 +15720,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
- dependencies = [
-  "rustix 1.1.6",
-- "windows-sys 0.59.0",
-+ "windows-sys 0.61.2",
- ]
- 
- [[package]]
-@@ -15939,11 +15992,12 @@ dependencies = [
+ name = "socket2"
+ version = "0.6.5"
+@@ -15992,11 +16036,12 @@ dependencies = [
  
  [[package]]
  name = "time"
@@ -1123,7 +950,7 @@ index 1a6bc4a..df3555d 100644
   "js-sys",
   "libc",
   "num-conv",
-@@ -15956,15 +16010,15 @@ dependencies = [
+@@ -16009,15 +16054,15 @@ dependencies = [
  
  [[package]]
  name = "time-core"
@@ -1143,7 +970,88 @@ index 1a6bc4a..df3555d 100644
  dependencies = [
   "num-conv",
   "time-core",
-@@ -16367,6 +16421,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -16085,7 +16130,7 @@ dependencies = [
+  "parking_lot",
+  "pin-project-lite",
+  "signal-hook-registry",
+- "socket2 0.6.5",
++ "socket2",
+  "tokio-macros",
+  "tracing",
+  "windows-sys 0.61.2",
+@@ -16220,19 +16265,10 @@ dependencies = [
+  "indexmap 2.14.2",
+  "serde_core",
+  "serde_spanned",
+- "toml_datetime 1.1.3+spec-1.1.0",
++ "toml_datetime",
+  "toml_parser",
+  "toml_writer",
+- "winnow 1.0.4",
+-]
+-
+-[[package]]
+-name = "toml_datetime"
+-version = "0.7.5+spec-1.1.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "92e1cfed4a3038bc5a127e35a2d360f145e1f4b971b551a2ba5fd7aedf7e1347"
+-dependencies = [
+- "serde_core",
++ "winnow",
+ ]
+ 
+ [[package]]
+@@ -16244,18 +16280,6 @@ dependencies = [
+  "serde_core",
+ ]
+ 
+-[[package]]
+-name = "toml_edit"
+-version = "0.23.10+spec-1.0.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "84c8b9f757e028cee9fa244aea147aab2a9ec09d5325a9b01e0a49730c2b5269"
+-dependencies = [
+- "indexmap 2.14.2",
+- "toml_datetime 0.7.5+spec-1.1.0",
+- "toml_parser",
+- "winnow 0.7.14",
+-]
+-
+ [[package]]
+ name = "toml_edit"
+ version = "0.25.19+spec-1.1.0"
+@@ -16263,10 +16287,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "dd43688c4858d7264ae1cf9a9f874a67c3feb74a883b1cd7bebd6a4ea8307218"
+ dependencies = [
+  "indexmap 2.14.2",
+- "toml_datetime 1.1.3+spec-1.1.0",
++ "toml_datetime",
+  "toml_parser",
+  "toml_writer",
+- "winnow 1.0.4",
++ "winnow",
+ ]
+ 
+ [[package]]
+@@ -16275,7 +16299,7 @@ version = "1.1.5+spec-1.1.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
+ dependencies = [
+- "winnow 1.0.4",
++ "winnow",
+ ]
+ 
+ [[package]]
+@@ -16304,7 +16328,7 @@ dependencies = [
+  "percent-encoding",
+  "pin-project",
+  "rustls-native-certs",
+- "socket2 0.6.5",
++ "socket2",
+  "sync_wrapper",
+  "tokio",
+  "tokio-rustls",
+@@ -16450,6 +16474,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "050686193eb999b4bb3bc2acfa891a13da00f79734704c4b8b4ef1a10b368a3c"
  dependencies = [
   "crossbeam-channel",
@@ -1151,16 +1059,7 @@ index 1a6bc4a..df3555d 100644
   "symlink",
   "thiserror 2.0.21",
   "time",
-@@ -16661,7 +16716,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
- dependencies = [
-  "memoffset",
-  "tempfile",
-- "windows-sys 0.60.2",
-+ "windows-sys 0.61.2",
- ]
- 
- [[package]]
-@@ -16856,7 +16911,7 @@ name = "v8"
+@@ -16936,7 +16961,7 @@ name = "v8"
  version = "152.2.0"
  source = "git+https://github.com/seanh-oai/rusty_v8.git?rev=350c5a859a9b3c84ab8701b3ad51e3b7699b30c0#350c5a859a9b3c84ab8701b3ad51e3b7699b30c0"
  dependencies = [
@@ -1169,26 +1068,204 @@ index 1a6bc4a..df3555d 100644
   "bitflags 2.13.2",
   "fslock",
   "gzip-header",
-@@ -17373,7 +17428,7 @@ version = "0.1.11"
+@@ -17694,15 +17719,6 @@ dependencies = [
+  "windows-link",
+ ]
+ 
+-[[package]]
+-name = "windows-sys"
+-version = "0.48.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "677d2418bec65e3338edb076e806bc1ec15693c5d0104683f2efe857f61056a9"
+-dependencies = [
+- "windows-targets 0.48.5",
+-]
+-
+ [[package]]
+ name = "windows-sys"
+ version = "0.52.0"
+@@ -17739,21 +17755,6 @@ dependencies = [
+  "windows-link",
+ ]
+ 
+-[[package]]
+-name = "windows-targets"
+-version = "0.48.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "9a2fa6e2155d7247be68c096456083145c183cbbbc2764150dda45a87197940c"
+-dependencies = [
+- "windows_aarch64_gnullvm 0.48.5",
+- "windows_aarch64_msvc 0.48.5",
+- "windows_i686_gnu 0.48.5",
+- "windows_i686_msvc 0.48.5",
+- "windows_x86_64_gnu 0.48.5",
+- "windows_x86_64_gnullvm 0.48.5",
+- "windows_x86_64_msvc 0.48.5",
+-]
+-
+ [[package]]
+ name = "windows-targets"
+ version = "0.52.6"
+@@ -17796,12 +17797,6 @@ dependencies = [
+  "windows-link",
+ ]
+ 
+-[[package]]
+-name = "windows_aarch64_gnullvm"
+-version = "0.48.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "2b38e32f0abccf9987a4e3079dfb67dcd799fb61361e53e2882c3cbaf0d905d8"
+-
+ [[package]]
+ name = "windows_aarch64_gnullvm"
+ version = "0.52.6"
+@@ -17814,12 +17809,6 @@ version = "0.53.1"
  source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
- dependencies = [
-- "windows-sys 0.52.0",
-+ "windows-sys 0.61.2",
+ checksum = "a9d8416fa8b42f5c947f8482c43e7d89e73a173cead56d044f6a56104a6d1b53"
+ 
+-[[package]]
+-name = "windows_aarch64_msvc"
+-version = "0.48.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "dc35310971f3b2dbbf3f0690a219f40e2d9afcf64f9ab7cc1be722937c26b4bc"
+-
+ [[package]]
+ name = "windows_aarch64_msvc"
+ version = "0.52.6"
+@@ -17832,12 +17821,6 @@ version = "0.53.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "b9d782e804c2f632e395708e99a94275910eb9100b2114651e04744e9b125006"
+ 
+-[[package]]
+-name = "windows_i686_gnu"
+-version = "0.48.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a75915e7def60c94dcef72200b9a8e58e5091744960da64ec734a6c6e9b3743e"
+-
+ [[package]]
+ name = "windows_i686_gnu"
+ version = "0.52.6"
+@@ -17862,12 +17845,6 @@ version = "0.53.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "fa7359d10048f68ab8b09fa71c3daccfb0e9b559aed648a8f95469c27057180c"
+ 
+-[[package]]
+-name = "windows_i686_msvc"
+-version = "0.48.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "8f55c233f70c4b27f66c523580f78f1004e8b5a8b659e05a4eb49d4166cca406"
+-
+ [[package]]
+ name = "windows_i686_msvc"
+ version = "0.52.6"
+@@ -17880,12 +17857,6 @@ version = "0.53.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "1e7ac75179f18232fe9c285163565a57ef8d3c89254a30685b57d83a38d326c2"
+ 
+-[[package]]
+-name = "windows_x86_64_gnu"
+-version = "0.48.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "53d40abd2583d23e4718fddf1ebec84dbff8381c07cae67ff7768bbf19c6718e"
+-
+ [[package]]
+ name = "windows_x86_64_gnu"
+ version = "0.52.6"
+@@ -17898,12 +17869,6 @@ version = "0.53.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9c3842cdd74a865a8066ab39c8a7a473c0778a3f29370b5fd6b4b9aa7df4a499"
+ 
+-[[package]]
+-name = "windows_x86_64_gnullvm"
+-version = "0.48.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "0b7b52767868a23d5bab768e390dc5f5c55825b6d30b86c844ff2dc7414044cc"
+-
+ [[package]]
+ name = "windows_x86_64_gnullvm"
+ version = "0.52.6"
+@@ -17916,12 +17881,6 @@ version = "0.53.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "0ffa179e2d07eee8ad8f57493436566c7cc30ac536a3379fdf008f47f6bb7ae1"
+ 
+-[[package]]
+-name = "windows_x86_64_msvc"
+-version = "0.48.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ed94fce61571a4006852b7389a063ab983c02eb1bb37b47f8272ce92d06d9538"
+-
+ [[package]]
+ name = "windows_x86_64_msvc"
+ version = "0.52.6"
+@@ -17934,15 +17893,6 @@ version = "0.53.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
+ 
+-[[package]]
+-name = "winnow"
+-version = "0.7.14"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5a5364e9d77fcdeeaa6062ced926ee3381faa2ee02d3eb83a5c27a8825540829"
+-dependencies = [
+- "memchr",
+-]
+-
+ [[package]]
+ name = "winnow"
+ version = "1.0.4"
+@@ -17961,16 +17911,6 @@ dependencies = [
+  "winapi",
+ ]
+ 
+-[[package]]
+-name = "winreg"
+-version = "0.50.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "524e57b2c537c0f9b1e69f1965311ec12182b4122e45035b1508cd24d2adadb1"
+-dependencies = [
+- "cfg-if",
+- "windows-sys 0.48.0",
+-]
+-
+ [[package]]
+ name = "winreg"
+ version = "0.55.0"
+@@ -18333,13 +18273,13 @@ dependencies = [
+  "rustix 1.1.6",
+  "serde",
+  "serde_repr",
+- "socket2 0.6.5",
++ "socket2",
+  "tokio",
+  "tracing",
+  "uds_windows",
+  "uuid",
+  "windows-sys 0.61.2",
+- "winnow 1.0.4",
++ "winnow",
+  "zbus_macros 6.2.1",
+  "zbus_utils",
+  "zcheapstr",
+@@ -18392,7 +18332,7 @@ dependencies = [
+  "quote",
+  "serde",
+  "syn 3.0.10",
+- "winnow 1.0.4",
++ "winnow",
  ]
  
  [[package]]
-@@ -17835,7 +17890,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
- dependencies = [
-  "cfg-if",
-- "windows-sys 0.59.0",
-+ "windows-sys 0.61.2",
+@@ -18576,7 +18516,7 @@ dependencies = [
+  "futures-core",
+  "futures-io",
+  "rustix 1.1.6",
+- "socket2 0.6.5",
++ "socket2",
+  "tracing",
+  "windows-sys 0.61.2",
  ]
- 
- [[package]]
 diff --git a/codex-rs/deny.toml b/codex-rs/deny.toml
-index dcc55c3..27e57e9 100644
+index 4c92308..4615f3f 100644
 --- a/codex-rs/deny.toml
 +++ b/codex-rs/deny.toml
 @@ -78,8 +78,6 @@ ignore = [
@@ -1197,9 +1274,9 @@ index dcc55c3..27e57e9 100644
      { id = "RUSTSEC-2025-0141", reason = "bincode is unmaintained; pulled in via syntect v5.3.0 used by codex-tui for syntax highlighting; no fixed release yet" },
 -    { id = "RUSTSEC-2026-0118", reason = "hickory-proto v0.25.2 is pulled in via rama-dns/rama-tcp used by codex-network-proxy; DNSSEC features are not enabled; remove when rama updates to hickory 0.26.1 or hickory-net" },
 -    { id = "RUSTSEC-2026-0119", reason = "hickory-proto v0.25.2 is pulled in via rama-dns/rama-tcp used by codex-network-proxy; no fixed rama release is available yet; remove when rama updates to hickory 0.26.1 or hickory-net" },
+     { id = "RUSTSEC-2026-0194", reason = "quick-xml v0.39.4 remains via plist/syntect and wayland-scanner; plist does not exercise the affected APIs and wayland-scanner parses trusted build-time XML; remove when rust-plist#191 and wayland-rs#938 are released" },
+     { id = "RUSTSEC-2026-0195", reason = "quick-xml v0.39.4 remains via plist/syntect and wayland-scanner; plist does not exercise the affected APIs and wayland-scanner parses trusted build-time XML; remove when rust-plist#191 and wayland-rs#938 are released" },
      { id = "RUSTSEC-2026-0370", reason = "zvariant 4.2.0 is unmaintained; pulled in via zbus 4.4.0 by Linux TUI accessibility integration and keyring/secret-service; remove when those paths migrate off the retired standalone crates" },
-     { id = "RUSTSEC-2026-0371", reason = "zbus_names 3.0.0 is unmaintained; pulled in via zbus 4.4.0 by Linux TUI accessibility integration and keyring/secret-service; remove when those paths migrate off the retired standalone crates" },
-     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive 4.2.0 is unmaintained; pulled in via zbus 4.4.0 by Linux TUI accessibility integration and keyring/secret-service; remove when those paths migrate off the retired standalone crates" },
 diff --git a/codex-rs/network-proxy/Cargo.toml b/codex-rs/network-proxy/Cargo.toml
 index e3dc247..8b1881b 100644
 --- a/codex-rs/network-proxy/Cargo.toml

@@ -1,6 +1,6 @@
 # Rama 0.4 port
 
-- Applies to: the CP7 queue through `dependency-upgrades/transitive-updates-bazel-lock-3.patch` (patch 35), which sits on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
+- Applies to: the CP7 queue through `dependency-upgrades/transitive-updates.patch` (patch 32), which sits on upstream `openai/codex` tag `rust-v0.167.0`, commit `086ccc833bc9cf01024ad2dd6af7dbd421b6bf9a`.
 - Prerequisites: every earlier patch in the queue, through `dependency-upgrades/transitive-updates.patch`.
 - Patches: `rama-0.4.patch`.
 
@@ -20,7 +20,7 @@
 - `ConnectMitmMode` implements `Extension` by hand. rama's derive finds `rama-core` by reading the crate's `Cargo.toml`, which the Bazel compile sandbox does not contain, so under Bazel it expanded to a `compile_error!` block (Bazel Clippy run `42749913658`).
 - rama-dns 0.4.0 links `Dnsapi`, but the MinGW import library is `libdnsapi.a`, so the Bazel Windows builds linked on Linux could not find it (Bazel Clippy run `42754696627`, native Bazel test run `42754700653`). A Bazel crate patch, `patches/rama-dns_windows_dnsapi_link_name.patch`, lowercases the name; Windows resolves either spelling to the same DLL. Cargo builds on Windows are unaffected.
 - GitHub host hints are parsed by hand, because 0.4's authority parser rejects IPv6 zone ids such as `[fe80::1%en0]:8443`.
-- `Cargo.toml`: `rama-*` `=0.4.0`, plus the new `rama-tls`. `Cargo.lock` moves the rama crates and adds rama-crypto, rama-json, rama-tls, aws-lc-fips-sys and bindgen 0.73. `MODULE.bazel.lock` is regenerated.
+- `Cargo.toml`: `rama-*` `=0.4.0`, plus the new `rama-tls`. `Cargo.lock` moves the rama crates and adds rama-crypto, rama-json, rama-tls, aws-lc-fips-sys and bindgen 0.73. The patch does not regenerate `MODULE.bazel.lock`; regenerate it once on the full queue (see the `dependency-upgrades` README).
 
 ## Behavior that is not preserved
 
@@ -34,12 +34,14 @@
 ## Dependency effects
 
 - `rama-crypto 0.4.0` requires `time =0.3.47`, so `Cargo.lock` takes `time` from 0.3.55 to 0.3.47, `time-core` from 0.1.9 to 0.1.8 and `time-macros` from 0.2.32 to 0.2.27. `Cargo.toml` does not pin them.
-- hickory-proto 0.25.2, hickory-resolver, enum-as-inner, resolv-conf, ipconfig and matchit 0.9.2 leave `Cargo.lock` entirely: rama-dns 0.4 pulls hickory only through a feature Codex does not enable. This clears RUSTSEC-2026-0118 and RUSTSEC-2026-0119. `deny.toml` drops their two exceptions, which cargo-deny would otherwise report as not encountered.
+- hickory-proto 0.25.2, hickory-resolver, enum-as-inner, resolv-conf, ipconfig and matchit 0.9.1 leave `Cargo.lock` entirely: rama-dns 0.4 pulls hickory only through a feature Codex does not enable. This clears RUSTSEC-2026-0118 and RUSTSEC-2026-0119. `deny.toml` drops their two exceptions, which cargo-deny would otherwise report as not encountered.
 - `rama-crypto 0.4.0` enables aws-lc-rs's `bindgen` feature, so `aws-lc-sys` now generates its bindings with bindgen 0.73.2 and libclang at build time on every target instead of using its pregenerated ones. `aws-lc-fips-sys` is recorded in `Cargo.lock` but no target builds it (`cargo tree -i aws-lc-fips-sys --target all` prints nothing).
-- bindgen 0.73.2 accepts `syn >=2, <4` but only compiles against syn 2, so `Cargo.lock` records its `syn` as 2.0.119 (the transitive update had picked 3.0.10, which fails with a `ParseQuote` error; platform lint run `42732311440`).
+- bindgen 0.73.2 accepts `syn >=2, <4` but only compiles against syn 2, so `Cargo.lock` records its `syn` as 2.0.119 (the lockfile already holds syn 3.0.10, which cargo picks for it and which fails with a `ParseQuote` error; platform lint run `42732311440`; `cargo update --workspace --locked` accepts the edit).
 - ipnet 2.12.2, proc-macro-crate 3.5.0 and serde_html_form 0.4.1 move with rama; rama-error, rama-macros and rama-utils 0.3.0-alpha.4 leave the lock.
 
 ## Verification
+
+The remote runs below ran on the queue before `transitive-updates.patch` was trimmed to the hunks the direct upgrades force; repeat them on the current queue.
 
 ```sh
 cd codex-rs
