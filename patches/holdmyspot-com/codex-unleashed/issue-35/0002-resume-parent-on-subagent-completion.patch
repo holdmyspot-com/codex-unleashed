@@ -18,14 +18,14 @@ A child's completion or failure now starts a turn on an idle parent, unless the 
  .../core/tests/suite/guardian_root_handoff.rs |   5 +
  .../suite/guardian_subagent_authorization.rs  |   4 +
  .../core/tests/suite/multi_agent_resume.rs    |   4 +
- codex-rs/core/tests/suite/scenarios.rs        |   1 +
+ codex-rs/core/tests/suite/scenarios.rs        |   6 +-
  .../suite/scenarios_agent_eviction_tests.rs   |   5 +
  .../suite/scenarios_agent_message_board.rs    |   5 +
  codex-rs/core/tests/suite/step_settings.rs    |   4 +
  .../tests/suite/subagent_notifications.rs     |   7 +
  .../core/tests/suite/subagent_service_tier.rs |   4 +
  codex-rs/features/src/lib.rs                  |   8 +
- 20 files changed, 889 insertions(+), 33 deletions(-)
+ 20 files changed, 890 insertions(+), 37 deletions(-)
  create mode 100644 codex-rs/core/tests/suite/background_subagent_tests.rs
 
 diff --git a/codex-rs/app-server/tests/suite/v2/guardian_goal_tests.rs b/codex-rs/app-server/tests/suite/v2/guardian_goal_tests.rs
@@ -1190,7 +1190,7 @@ index 4e074544db..c9b090457b 100644
          .features
          .enable(Feature::Collab)
 diff --git a/codex-rs/core/tests/suite/scenarios.rs b/codex-rs/core/tests/suite/scenarios.rs
-index ff87eb5acc..b1f0f2e2ab 100644
+index ff87eb5acc..5ad765456b 100644
 --- a/codex-rs/core/tests/suite/scenarios.rs
 +++ b/codex-rs/core/tests/suite/scenarios.rs
 @@ -4185,6 +4185,7 @@ async fn astra_async_compaction_keeps_work_added_after_its_snapshot(
@@ -1201,6 +1201,18 @@ index ff87eb5acc..b1f0f2e2ab 100644
              .filter_map(|(i, item)| item.to_string().contains(text).then_some(i))
              .collect::<Vec<_>>();
          assert_eq!(positions.len(), 1, "{text}");
+@@ -4555,10 +4556,7 @@ async fn async_compaction_reuses_pending_work(
+     const BACKGROUND_TOKENS: i64 = 3_001;
+ 
+     skip_if_no_network!(Ok(()));
+-    let over_budget = match outcome {
+-        PendingCompactionOutcome::SuccessOverBudget => true,
+-        _ => false,
+-    };
++    let over_budget = matches!(outcome, PendingCompactionOutcome::SuccessOverBudget);
+     let retained_output = format!("LATE_OUTPUT {}", "x ".repeat(12_000));
+     let manual = matches!(trigger, CompactionTrigger::Manual);
+     let has_background = outcome != PendingCompactionOutcome::Absent;
 diff --git a/codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs b/codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs
 index dc525f88cc..3538025584 100644
 --- a/codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs

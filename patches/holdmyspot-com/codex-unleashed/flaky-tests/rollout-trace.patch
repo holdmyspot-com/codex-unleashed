@@ -20,8 +20,8 @@ dropped the mock server, whose unmet-expectation panic replaced the real
   one reported.
 ---
  .../tests/common/test_app_server.rs           |  21 +-
- codex-rs/cli/tests/rollout_trace.rs           | 296 ++++++++++--------
- 2 files changed, 190 insertions(+), 127 deletions(-)
+ codex-rs/cli/tests/rollout_trace.rs           | 294 ++++++++++--------
+ 2 files changed, 188 insertions(+), 127 deletions(-)
 
 diff --git a/codex-rs/app-server/tests/common/test_app_server.rs b/codex-rs/app-server/tests/common/test_app_server.rs
 index 7f1465d1db..07bd4557a5 100644
@@ -112,7 +112,7 @@ index 7f1465d1db..07bd4557a5 100644
          app_server._owned_codex_home = owned_codex_home;
          app_server._delayed_exec_server = delayed_exec_server;
 diff --git a/codex-rs/cli/tests/rollout_trace.rs b/codex-rs/cli/tests/rollout_trace.rs
-index 9b290a2b2c..a7ab3c5c68 100644
+index 9b290a2b2c..cce283f5d2 100644
 --- a/codex-rs/cli/tests/rollout_trace.rs
 +++ b/codex-rs/cli/tests/rollout_trace.rs
 @@ -1,9 +1,10 @@
@@ -156,7 +156,7 @@ index 9b290a2b2c..a7ab3c5c68 100644
          .with_env_overrides(&[("CODEX_ROLLOUT_TRACE_ROOT", trace_root.to_str())])
          .build_initialized()
          .await?;
-@@ -99,136 +106,174 @@ async fn enabled_recording_cannot_silently_fail_to_start() -> Result<()> {
+@@ -99,136 +106,172 @@ async fn enabled_recording_cannot_silently_fail_to_start() -> Result<()> {
      Ok(())
  }
  
@@ -400,9 +400,7 @@ index 9b290a2b2c..a7ab3c5c68 100644
 +    assert!(
 +        prepared["input"]
 +            .as_array()
-+            .unwrap()
-+            .iter()
-+            .any(|item| item["role"] == "user")
++            .is_some_and(|items| items.iter().any(|item| item["role"] == "user"))
 +    );
 +    assert_eq!(
 +        request.headers["x-codex-inference-call-id"].to_str()?,
@@ -454,7 +452,7 @@ index 9b290a2b2c..a7ab3c5c68 100644
  #[tokio::test]
  async fn accepted_output_survives_interruption_and_shutdown() -> Result<()> {
      let codex = codex_utils_cargo_bin::cargo_bin("codex")?;
-@@ -259,6 +304,7 @@ async fn accepted_output_survives_interruption_and_shutdown() -> Result<()> {
+@@ -259,6 +302,7 @@ async fn accepted_output_survives_interruption_and_shutdown() -> Result<()> {
          .with_args(&["app-server"])
          .with_codex_home(home.path())
          .with_env_overrides(&[("CODEX_ROLLOUT_TRACE_ROOT", traces.path().to_str())])
