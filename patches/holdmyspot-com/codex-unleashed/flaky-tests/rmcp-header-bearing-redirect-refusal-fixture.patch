@@ -5,19 +5,20 @@ Subject: [PATCH] test: refuse cross-origin redirects for RMCP clients with
  configured headers or auth providers
 
 ---
- .../rmcp-client/tests/mcp_2026_discovery.rs   | 89 +++++++++++++++++++
- 1 file changed, 89 insertions(+)
+ .../rmcp-client/tests/mcp_2026_discovery.rs   | 90 +++++++++++++++++++
+ 1 file changed, 90 insertions(+)
 
 diff --git a/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs b/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
-index 90ecdda533..962b5b430a 100644
+index 90ecdda533..99e34d0bf6 100644
 --- a/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
 +++ b/codex-rs/rmcp-client/tests/mcp_2026_discovery.rs
-@@ -4,15 +4,21 @@ use std::sync::Arc;
+@@ -4,15 +4,22 @@ use std::sync::Arc;
  use std::sync::Mutex;
  use std::time::Duration;
  
 +use codex_api::AuthError;
 +use codex_api::AuthProvider;
++use codex_api::SharedAuthProvider;
  use codex_config::types::AuthKeyringBackendKind;
  use codex_config::types::OAuthCredentialsStoreMode;
  use codex_exec_server::Environment;
@@ -34,7 +35,7 @@ index 90ecdda533..962b5b430a 100644
  use pretty_assertions::assert_eq;
  use rmcp::model::ClientCapabilities;
  use rmcp::model::Implementation;
-@@ -170,6 +176,89 @@ async fn ordinary_modern_http_discovery_stops_at_same_origin_redirect() -> anyho
+@@ -170,6 +177,89 @@ async fn ordinary_modern_http_discovery_stops_at_same_origin_redirect() -> anyho
      Ok(())
  }
  
@@ -52,7 +53,7 @@ index 90ecdda533..962b5b430a 100644
 +
 +async fn assert_cross_origin_redirect_is_refused(
 +    http_headers: Option<HashMap<String, String>>,
-+    auth_provider: Option<Arc<StaticBearerAuth>>,
++    auth_provider: Option<SharedAuthProvider>,
 +) -> anyhow::Result<()> {
 +    let target = MockServer::start().await;
 +    Mock::given(path("/redirect-target"))
@@ -81,7 +82,7 @@ index 90ecdda533..962b5b430a 100644
 +        OAuthCredentialsStoreMode::File,
 +        AuthKeyringBackendKind::default(),
 +        Environment::default_for_tests().get_http_client(),
-+        auth_provider.map(|auth| auth as _),
++        auth_provider.map(|auth| Arc::new(auth) as _),
 +        McpProtocolMode::Legacy,
 +        StreamableHttpRedirectMode::AgentPluginV1,
 +        McpOAuthRefreshMode::Legacy,

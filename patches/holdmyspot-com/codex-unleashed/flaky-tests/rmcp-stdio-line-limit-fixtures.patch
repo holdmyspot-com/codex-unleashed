@@ -7,9 +7,9 @@ Subject: [PATCH] test: cover the stdio line limit for local and executor
 Check that a JSON-RPC line exactly at MAX_MCP_STDIO_LINE_BYTES is accepted and that one byte more ends the stream (local) or yields LineTooLong and closes the transport (executor).
 ---
  .../src/bounded_stdio_transport.rs            |  4 ++
- .../src/bounded_stdio_transport_tests.rs      | 68 +++++++++++++++++++
- .../src/executor_process_transport_tests.rs   | 59 ++++++++++++++++
- 3 files changed, 131 insertions(+)
+ .../src/bounded_stdio_transport_tests.rs      | 72 +++++++++++++++++++
+ .../src/executor_process_transport_tests.rs   | 59 +++++++++++++++
+ 3 files changed, 135 insertions(+)
  create mode 100644 codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
 
 diff --git a/codex-rs/rmcp-client/src/bounded_stdio_transport.rs b/codex-rs/rmcp-client/src/bounded_stdio_transport.rs
@@ -26,10 +26,10 @@ index 3a6164d03c..f3af7b6b8e 100644
 +mod tests;
 diff --git a/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs b/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
 new file mode 100644
-index 0000000000..b3210d8361
+index 0000000000..e3bac17f13
 --- /dev/null
 +++ b/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,72 @@
 +//! Line-limit tests for the local bounded stdio transport.
 +//!
 +//! The transport only accepts `ChildStdin` and `ChildStdout`, so these tests wrap anonymous
@@ -55,6 +55,10 @@ index 0000000000..b3210d8361
 +/// Build a transport whose stdout yields `line` plus a newline, written from a separate thread
 +/// because the line is larger than the pipe buffer. The returned stdin reader keeps the stdin
 +/// pipe open for the lifetime of the test.
++#[expect(
++    clippy::expect_used,
++    reason = "clippy exempts `expect` only in `#[cfg(test)]` code, not in this `cfg(all(test, unix))` module"
++)]
 +fn transport_with_stdout_line(line: Vec<u8>) -> (BoundedStdioTransport, std::io::PipeReader) {
 +    let (stdout_reader, mut stdout_writer) = std::io::pipe().expect("stdout pipe");
 +    let (stdin_reader, stdin_writer) = std::io::pipe().expect("stdin pipe");

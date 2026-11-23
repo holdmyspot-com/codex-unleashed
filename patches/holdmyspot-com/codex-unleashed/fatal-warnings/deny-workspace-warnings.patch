@@ -16,9 +16,10 @@ rustc for target and exec builds. It leaves linker messages allowed: the
 hermetic LLVM toolchain's own link flags make clang++ warn that
 --unwindlib=none is unused on every link.
 ---
- .bazelrc            | 6 ++++++
- codex-rs/Cargo.toml | 5 +++++
- 2 files changed, 11 insertions(+)
+ .bazelrc                                    | 6 ++++++
+ codex-rs/Cargo.toml                         | 5 +++++
+ codex-rs/app-server/tests/suite/v2/sleep.rs | 3 ---
+ 3 files changed, 11 insertions(+), 3 deletions(-)
 
 diff --git a/.bazelrc b/.bazelrc
 index 1f804fcd9f..c6d9f2b61f 100644
@@ -53,6 +54,22 @@ index 01d075adec..baefbc2f5a 100644
  
  [workspace.lints.clippy]
  await_holding_invalid_type = "deny"
+diff --git a/codex-rs/app-server/tests/suite/v2/sleep.rs b/codex-rs/app-server/tests/suite/v2/sleep.rs
+index 66e5d7ea01..4fa5bae1cb 100644
+--- a/codex-rs/app-server/tests/suite/v2/sleep.rs
++++ b/codex-rs/app-server/tests/suite/v2/sleep.rs
+@@ -5,11 +5,8 @@ use codex_app_server_protocol::ClientRequest;
+ use codex_app_server_protocol::ItemStartedNotification;
+ use codex_app_server_protocol::ThreadItemPayload;
+ use codex_app_server_protocol::ThreadStartParams;
+-use codex_app_server_protocol::ThreadStartResponse;
+-use codex_app_server_protocol::TurnCompletedNotification;
+ use codex_app_server_protocol::TurnStartParams;
+ use codex_app_server_protocol::TurnStartResponse;
+-use codex_app_server_protocol::TurnStatus;
+ use codex_app_server_protocol::UserInput as V2UserInput;
+ use core_test_support::responses;
+ use pretty_assertions::assert_eq;
 -- 
 2.43.0
 

@@ -194,6 +194,7 @@ The patch is split in two to stay under the repository's blob size limit. Part 1
  codex-rs/tui/src/transcript_view/copy_mode.rs |    8 +-
  .../tui/src/tui/alternate_screen_tests.rs     |   28 +-
  .../src/tui/alternate_screen_windows_tests.rs |    4 +-
+ .../tui/src/tui/inline_image_history_tests.rs |    4 +-
  codex-rs/tui/src/tui/owned_screen_tests.rs    |    4 +-
  codex-rs/tui/tests/suite/focus_palette.rs     |    4 +-
  codex-rs/user-verification/Cargo.toml         |    4 +-
@@ -222,7 +223,7 @@ The patch is split in two to stay under the repository's blob size limit. Part 1
  .../windows-sandbox-rs/src/no_reparse_dir.rs  |    4 +-
  .../src/setup_provisioning/sandbox_users.rs   |   11 +-
  .../src/uninstall_windows/principals_tests.rs |    6 +-
- 214 files changed, 2076 insertions(+), 1513 deletions(-)
+ 215 files changed, 2079 insertions(+), 1514 deletions(-)
  create mode 100644 codex-rs/ext/extension-api/src/json_schema.rs
 
 diff --git a/codex-rs/.cargo/audit.toml b/codex-rs/.cargo/audit.toml
@@ -7185,7 +7186,7 @@ index ed5b22cfc9..eb27978827 100644
          .find(|name| !name.is_empty())
          .unwrap_or_else(|| "there".to_string())
 diff --git a/codex-rs/core/tests/suite/skills_extension.rs b/codex-rs/core/tests/suite/skills_extension.rs
-index cc8d3f0f90..d0ae4269ed 100644
+index c915c4f8d3..53ef91f958 100644
 --- a/codex-rs/core/tests/suite/skills_extension.rs
 +++ b/codex-rs/core/tests/suite/skills_extension.rs
 @@ -2567,7 +2567,7 @@ async fn executor_skill_invocation_is_environment_scoped_and_deduplicated() -> R
@@ -10022,6 +10023,21 @@ index 6ae454c0a9..b5ecc35cd7 100644
  
      screen
          .configure_input(&mut output, /*capture_mouse*/ true)
+diff --git a/codex-rs/tui/src/tui/inline_image_history_tests.rs b/codex-rs/tui/src/tui/inline_image_history_tests.rs
+index 6137eb6fd9..2eb35fcec1 100644
+--- a/codex-rs/tui/src/tui/inline_image_history_tests.rs
++++ b/codex-rs/tui/src/tui/inline_image_history_tests.rs
+@@ -118,7 +118,9 @@ fn inline_history_erases_preview_before_scrolling_and_preserves_draft() {
+         "preview must be erased before history: {flush:?}"
+     );
+     let mut parser = vt100::Parser::new(
+-        /*rows*/ 8, /*cols*/ 32, /*scrollback_len*/ 32,
++        std::num::NonZeroU16::new(8).expect("rows"),
++        std::num::NonZeroU16::new(32).expect("cols"),
++        /*scrollback_len*/ 32,
+     );
+     parser.process(output);
+     let contents = parser.screen().contents();
 diff --git a/codex-rs/tui/src/tui/owned_screen_tests.rs b/codex-rs/tui/src/tui/owned_screen_tests.rs
 index 7e189bdd89..d601d1c4c0 100644
 --- a/codex-rs/tui/src/tui/owned_screen_tests.rs

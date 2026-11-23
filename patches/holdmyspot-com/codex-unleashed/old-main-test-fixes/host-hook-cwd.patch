@@ -14,8 +14,8 @@ The regression selects a remote-only environment and expects the hook
 working directory to be the host working directory.
 ---
  codex-rs/core/src/hook_runtime.rs  | 39 +++++++++++++++---------------
- codex-rs/core/src/session/tests.rs | 20 +++++++++++++++
- 2 files changed, 40 insertions(+), 19 deletions(-)
+ codex-rs/core/src/session/tests.rs | 27 +++++++++++++++++++++
+ 2 files changed, 47 insertions(+), 19 deletions(-)
 
 diff --git a/codex-rs/core/src/hook_runtime.rs b/codex-rs/core/src/hook_runtime.rs
 index c0e7fe3d18..d21e8b26fd 100644
@@ -127,10 +127,10 @@ index c0e7fe3d18..d21e8b26fd 100644
                  model: turn_context.model_info().slug.clone(),
                  permission_mode: hook_permission_mode(turn_context.approval_policy()),
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 82b9f5c28c..91b1342c21 100644
+index 82b9f5c28c..b12a187d20 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -13763,5 +13763,25 @@ async fn rejected_mcp_refresh_then_corrected_user_config_blocks_ordinary_replace
+@@ -13763,5 +13763,32 @@ async fn rejected_mcp_refresh_then_corrected_user_config_blocks_ordinary_replace
          "rejection must not permit same-name ordinary-auth replacement in this session"
      );
  }
@@ -143,9 +143,16 @@ index 82b9f5c28c..91b1342c21 100644
 +    let TurnEnvironmentState::Ready(environment) = &mut remote_only.environments[0] else {
 +        panic!("fixture should have a ready environment");
 +    };
-+    environment.environment = Arc::new(
-+        codex_exec_server::Environment::create_for_tests(Some("ws://127.0.0.1:8765".to_string()))
++    *environment = TurnEnvironment::new(
++        environment.selection.clone(),
++        environment.config_origin,
++        Arc::new(
++            codex_exec_server::Environment::create_for_tests(Some(
++                "ws://127.0.0.1:8765".to_string(),
++            ))
 +            .expect("remote environment"),
++        ),
++        environment.shell.clone(),
 +    );
 +
 +    assert_eq!(

@@ -14,7 +14,7 @@ Collapsed command previews keep executable names and arguments visible, shorteni
  codex-rs/tui/src/exec_cell/compact.rs         |  40 ++
  codex-rs/tui/src/exec_cell/mod.rs             |   2 +
  codex-rs/tui/src/exec_cell/model.rs           |  35 +-
- codex-rs/tui/src/exec_cell/preview.rs         | 227 +++++++++++
+ codex-rs/tui/src/exec_cell/preview.rs         | 227 ++++++++++
  codex-rs/tui/src/exec_cell/readable.rs        |  80 ++++
  codex-rs/tui/src/exec_cell/render.rs          |  21 +
  codex-rs/tui/src/exec_cell/transcript.rs      |  18 +-
@@ -29,8 +29,8 @@ Collapsed command previews keep executable names and arguments visible, shorteni
  codex-rs/tui/src/transcript_view/input.rs     |   8 +
  codex-rs/tui/src/transcript_view/layout.rs    |  40 +-
  codex-rs/tui/src/transcript_view/text.rs      |  36 ++
- codex-rs/tui/src/transcript_view_tests.rs     | 385 ++++++++++++++++++
- 25 files changed, 1261 insertions(+), 12 deletions(-)
+ codex-rs/tui/src/transcript_view_tests.rs     | 389 ++++++++++++++++++
+ 25 files changed, 1265 insertions(+), 12 deletions(-)
  create mode 100644 codex-rs/tui/src/exec_cell/preview.rs
  create mode 100644 codex-rs/tui/src/exec_cell/readable.rs
  create mode 100644 codex-rs/tui/src/transcript_view/commands.rs
@@ -1433,7 +1433,7 @@ index 7739be5530..d0959c3bee 100644
              leading_blank_hidden: false,
              disclosure_control: None,
 diff --git a/codex-rs/tui/src/transcript_view_tests.rs b/codex-rs/tui/src/transcript_view_tests.rs
-index 9495ea2445..97618faa87 100644
+index 9495ea2445..58c10a48a4 100644
 --- a/codex-rs/tui/src/transcript_view_tests.rs
 +++ b/codex-rs/tui/src/transcript_view_tests.rs
 @@ -182,6 +182,275 @@ fn detailed_only_reasoning_separates_user_prompts() {
@@ -1712,7 +1712,7 @@ index 9495ea2445..97618faa87 100644
  #[test]
  fn page_keys_follow_pager_scroll_bindings() {
      let cells = [cell(
-@@ -1934,3 +2203,119 @@ fn unleashed_collapsed_tool_activity_live_output_count_and_narrow_failure_stay_v
+@@ -1934,3 +2203,123 @@ fn unleashed_collapsed_tool_activity_live_output_count_and_narrow_failure_stay_v
      );
      assert!(raw.contains("failure details"));
  }
@@ -1807,6 +1807,10 @@ index 9495ea2445..97618faa87 100644
 +    );
 +}
 +
++fn focused_ids(view: &TranscriptView) -> Option<Vec<String>> {
++    view.disclosure.focused.as_ref().map(|(_, ids)| ids.clone())
++}
++
 +#[test]
 +fn readable_command_preview_up_down_select_independent_sections() {
 +    let cells: Vec<Arc<dyn HistoryCell>> = vec![
@@ -1816,14 +1820,14 @@ index 9495ea2445..97618faa87 100644
 +    let mut view = TranscriptView::default();
 +    render(&mut view, &cells, /*width*/ 80, /*height*/ 30);
 +    view.handle_key(KeyCode::F(4).into(), &cells);
-+    assert_eq!(view.disclosure.focused, Some(cells[1].activity_ids()));
++    assert_eq!(focused_ids(&view), Some(cells[1].activity_ids()));
 +    view.handle_key(KeyCode::Up.into(), &cells);
-+    assert_eq!(view.disclosure.focused, Some(cells[0].activity_ids()));
++    assert_eq!(focused_ids(&view), Some(cells[0].activity_ids()));
 +    view.handle_key(KeyCode::Right.into(), &cells);
 +    assert!(view.disclosure.is_expanded(&cells[0].activity_ids()));
 +    assert!(!view.disclosure.is_expanded(&cells[1].activity_ids()));
 +    view.handle_key(KeyCode::Down.into(), &cells);
-+    assert_eq!(view.disclosure.focused, Some(cells[1].activity_ids()));
++    assert_eq!(focused_ids(&view), Some(cells[1].activity_ids()));
 +    view.handle_key(KeyCode::Enter.into(), &cells);
 +    assert!(view.disclosure.is_expanded(&cells[0].activity_ids()));
 +    assert!(view.disclosure.is_expanded(&cells[1].activity_ids()));

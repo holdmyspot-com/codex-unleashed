@@ -9,16 +9,17 @@ The original independent patch tree differs only by the 15 tracing-guard lines. 
 ---
  .../request_processors/thread_lifecycle.rs    |  78 +++++-
  .../request_processors/thread_processor.rs    |  11 +-
+ .../thread_processor_tests.rs                 |   2 +
  .../src/request_processors/turn_processor.rs  |   1 +
  codex-rs/app-server/src/thread_state.rs       |  54 ++++
  .../app-server/tests/suite/v2/skills_list.rs  |  69 +++++
  codex-rs/core/src/session/mod.rs              |   4 +-
  .../core/src/session/resume_warmup_tests.rs   | 243 ++++++++++++++++++
- codex-rs/core/src/session/session.rs          |  71 +++--
+ codex-rs/core/src/session/session.rs          |  82 ++++--
  codex-rs/core/src/session/tests.rs            |   4 +
  codex-rs/core/src/session/turn_context.rs     |  60 ++++-
- codex-rs/core/tests/suite/skills_extension.rs |  23 ++
- 11 files changed, 570 insertions(+), 48 deletions(-)
+ codex-rs/core/tests/suite/skills_extension.rs |  25 ++
+ 12 files changed, 580 insertions(+), 53 deletions(-)
  create mode 100644 codex-rs/core/src/session/resume_warmup_tests.rs
 
 diff --git a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
@@ -249,6 +250,26 @@ index 333c1c70bc..d974c9bf2f 100644
              }
              Err(err) => {
                  let error = match err.details() {
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
+index d0695f55bf..2f391d89f0 100644
+--- a/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor_tests.rs
+@@ -1202,6 +1202,7 @@ mod thread_processor_behavior_tests {
+     #[tokio::test]
+     async fn late_turn_completion_keeps_the_next_command_approval_answerable() -> Result<()> {
+         use crate::request_processors::thread_lifecycle::ListenerTaskContext;
++        use crate::request_processors::thread_lifecycle::SkillWatchStartup;
+         use crate::request_processors::thread_lifecycle::ensure_conversation_listener;
+         use codex_app_server_protocol::ThreadActiveFlag;
+         use codex_extension_api::ExtensionFuture;
+@@ -1297,6 +1298,7 @@ mod thread_processor_behavior_tests {
+             thread_id,
+             connection_id,
+             /*raw_events_enabled*/ false,
++            SkillWatchStartup::BeforeAvailability,
+         )
+         .await
+         .expect("listener should attach to the test thread");
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
 index cacecd27ac..c56435e55b 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
@@ -694,7 +715,7 @@ index 0000000000..0a25f481d1
 +    assert!(!context.model_info().slug.is_empty());
 +}
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index c8d6395de3..e7cf91d8bd 100644
+index c8d6395de3..8213583140 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
 @@ -53,9 +53,16 @@ use codex_sandboxing::SandboxType;
@@ -780,7 +801,25 @@ index c8d6395de3..e7cf91d8bd 100644
              session_configuration.thread_name = thread_name.clone();
              let mut state = SessionState::new_with_auto_compact_window_ids(
                  session_configuration.clone(),
-@@ -1991,6 +1984,37 @@ impl Session {
+@@ -1813,11 +1806,12 @@ impl Session {
+             let mut account = crate::rollout_budget::ThreadBudgetAccount::Shared(Arc::clone(
+                 &local_agent_runtime.rollout_budget,
+             ));
+-            if startup_error.is_none() && matches!(&agent_runtime, AgentRuntimeServices::Controller) {
+-                if let Some(native) = agent_control.native_rollout_budget() {
+-                    local_agent_runtime.rollout_budget = Arc::clone(&native);
+-                    account = crate::rollout_budget::ThreadBudgetAccount::Native(native);
+-                }
++            if startup_error.is_none()
++                && matches!(&agent_runtime, AgentRuntimeServices::Controller)
++                && let Some(native) = agent_control.native_rollout_budget()
++            {
++                local_agent_runtime.rollout_budget = Arc::clone(&native);
++                account = crate::rollout_budget::ThreadBudgetAccount::Native(native);
+             }
+             let budget_policy = crate::rollout_budget::ThreadBudgetPolicy::new(
+                 account,
+@@ -1991,6 +1985,37 @@ impl Session {
                  turn_environments: Arc::clone(&turn_environments),
              };
              let (mcp_prewarm_tx, mcp_prewarm_rx) = async_channel::bounded(1);
@@ -818,7 +857,7 @@ index c8d6395de3..e7cf91d8bd 100644
              let sess = Arc::new(Session {
                  thread_id,
                  item_id_generator,
-@@ -2015,8 +2039,9 @@ impl Session {
+@@ -2015,8 +2040,9 @@ impl Session {
                  mcp_elicitation_reviewer_handle: OnceLock::new(),
                  mcp_elicitation_lifecycle_handle: OnceLock::new(),
                  mcp_prewarm_tx,
@@ -959,10 +998,10 @@ index a21c2c95c9..9320f69ed2 100644
      /// This context must not be used to capture or execute a step.
      pub(crate) async fn new_inject_items_context(&self) -> Arc<TurnContext> {
 diff --git a/codex-rs/core/tests/suite/skills_extension.rs b/codex-rs/core/tests/suite/skills_extension.rs
-index bb68c4be1d..cc8d3f0f90 100644
+index bb68c4be1d..c915c4f8d3 100644
 --- a/codex-rs/core/tests/suite/skills_extension.rs
 +++ b/codex-rs/core/tests/suite/skills_extension.rs
-@@ -3425,6 +3425,29 @@ async fn production_turn_warns_and_omits_unreadable_host_skill() -> Result<()> {
+@@ -3425,6 +3425,31 @@ async fn production_turn_warns_and_omits_unreadable_host_skill() -> Result<()> {
          .with_config(configure_catalog_test);
      let test = builder.build_with_auto_env(&server).await?;
  
@@ -976,10 +1015,12 @@ index bb68c4be1d..cc8d3f0f90 100644
 +        test.config.config_layer_stack.clone(),
 +    )
 +    .with_plugin_skill_snapshots(plugins.plugin_skill_snapshots_for_config(&plugins_input));
++    let skill_fs = test.fs();
++    let open = FileSystemEnvironmentAccessor::unrestricted(&skill_fs);
 +    let snapshot = test
 +        .thread_manager
 +        .skills_service()
-+        .snapshot_for_config(&skills_input, Some(test.fs()))
++        .snapshot_for_config(&skills_input, Some(&open))
 +        .await;
 +    assert!(
 +        snapshot

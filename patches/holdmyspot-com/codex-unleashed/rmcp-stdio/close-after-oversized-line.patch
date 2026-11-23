@@ -73,10 +73,10 @@ index f3af7b6b8e..2c39e4ffeb 100644
              }
  
 diff --git a/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs b/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
-index b3210d8361..8c1978bce4 100644
+index e3bac17f13..45fdbf31f3 100644
 --- a/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
 +++ b/codex-rs/rmcp-client/src/bounded_stdio_transport_tests.rs
-@@ -20,10 +20,18 @@ fn padded_ping(content_len: usize) -> Vec<u8> {
+@@ -20,14 +20,22 @@ fn padded_ping(content_len: usize) -> Vec<u8> {
      line
  }
  
@@ -91,6 +91,10 @@ index b3210d8361..8c1978bce4 100644
 +/// Build a transport whose stdout yields exactly `stdout_bytes`, written from a separate thread
 +/// because the data can be larger than the pipe buffer. The returned stdin reader keeps the stdin
  /// pipe open for the lifetime of the test.
+ #[expect(
+     clippy::expect_used,
+     reason = "clippy exempts `expect` only in `#[cfg(test)]` code, not in this `cfg(all(test, unix))` module"
+ )]
 -fn transport_with_stdout_line(line: Vec<u8>) -> (BoundedStdioTransport, std::io::PipeReader) {
 +fn transport_with_stdout_bytes(
 +    stdout_bytes: Vec<u8>,
@@ -98,7 +102,7 @@ index b3210d8361..8c1978bce4 100644
      let (stdout_reader, mut stdout_writer) = std::io::pipe().expect("stdout pipe");
      let (stdin_reader, stdin_writer) = std::io::pipe().expect("stdin pipe");
      let stdout = tokio::process::ChildStdout::from_std(std::process::ChildStdout::from(
-@@ -35,10 +43,8 @@ fn transport_with_stdout_line(line: Vec<u8>) -> (BoundedStdioTransport, std::io:
+@@ -39,10 +47,8 @@ fn transport_with_stdout_line(line: Vec<u8>) -> (BoundedStdioTransport, std::io:
      ))
      .expect("tokio stdin");
      std::thread::spawn(move || {
@@ -111,7 +115,7 @@ index b3210d8361..8c1978bce4 100644
      });
      (
          BoundedStdioTransport::new(stdin, stdout, "line-limit-test".to_string()),
-@@ -48,21 +54,53 @@ fn transport_with_stdout_line(line: Vec<u8>) -> (BoundedStdioTransport, std::io:
+@@ -52,21 +58,53 @@ fn transport_with_stdout_line(line: Vec<u8>) -> (BoundedStdioTransport, std::io:
  
  #[tokio::test]
  async fn local_stdio_accepts_a_line_exactly_at_the_limit() {
