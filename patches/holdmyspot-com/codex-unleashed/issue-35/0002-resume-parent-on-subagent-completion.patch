@@ -15,7 +15,7 @@ A child's completion or failure now starts a turn on an idle parent, unless the 
  codex-rs/core/tests/suite/abort_tasks.rs      |   5 +
  codex-rs/core/tests/suite/agent_execution.rs  |   8 +
  .../tests/suite/background_subagent_tests.rs  | 702 ++++++++++++++++++
- .../core/tests/suite/cyber_access_program.rs  |   4 +
+ .../core/tests/suite/cyber_access_program.rs  |  10 +
  .../core/tests/suite/guardian_root_handoff.rs |   5 +
  .../suite/guardian_subagent_authorization.rs  |   4 +
  .../guardian_subagent_notification_tests.rs   |   5 +
@@ -23,11 +23,13 @@ A child's completion or failure now starts a turn on an idle parent, unless the 
  codex-rs/core/tests/suite/scenarios.rs        |   6 +-
  .../suite/scenarios_agent_eviction_tests.rs   |   5 +
  .../suite/scenarios_agent_message_board.rs    |   5 +
+ .../tests/suite/scenarios_compaction_tests.rs |   4 +
+ .../scenarios_turn_input_agent_message.rs     |   4 +
  codex-rs/core/tests/suite/step_settings.rs    |   4 +
  .../tests/suite/subagent_notifications.rs     |   7 +
  .../core/tests/suite/subagent_service_tier.rs |   4 +
  codex-rs/features/src/lib.rs                  |   8 +
- 22 files changed, 900 insertions(+), 37 deletions(-)
+ 24 files changed, 914 insertions(+), 37 deletions(-)
  create mode 100644 codex-rs/core/tests/suite/background_subagent_tests.rs
 
 diff --git a/codex-rs/app-server/tests/suite/v2/guardian_goal_tests.rs b/codex-rs/app-server/tests/suite/v2/guardian_goal_tests.rs
@@ -1147,7 +1149,7 @@ index 0000000000..9cdc27d87c
 +    Ok(())
 +}
 diff --git a/codex-rs/core/tests/suite/cyber_access_program.rs b/codex-rs/core/tests/suite/cyber_access_program.rs
-index bea1bb086d..45637b9b5b 100644
+index bea1bb086d..a6a0677793 100644
 --- a/codex-rs/core/tests/suite/cyber_access_program.rs
 +++ b/codex-rs/core/tests/suite/cyber_access_program.rs
 @@ -451,6 +451,10 @@ async fn cyber_access_program_is_inherited_by_child_turns() -> Result<()> {
@@ -1161,6 +1163,19 @@ index bea1bb086d..45637b9b5b 100644
                  config
                      .features
                      .enable(Feature::Collab)
+@@ -686,6 +690,12 @@ async fn saved_daybreak_rejection_records_child_input(
+             model.use_responses_lite = false;
+         })
+         .with_config(|config| {
++            // A parent turn started by the child's completion would add a request after the
++            // rejection point that this test counts.
++            config
++                .features
++                .disable(Feature::UnleashedBackgroundSubagents)
++                .expect("rejection fixture uses explicit user turns");
+             for feature in [
+                 Feature::Collab,
+                 Feature::MultiAgentV2,
 diff --git a/codex-rs/core/tests/suite/guardian_root_handoff.rs b/codex-rs/core/tests/suite/guardian_root_handoff.rs
 index 77c696dac7..a601d28ced 100644
 --- a/codex-rs/core/tests/suite/guardian_root_handoff.rs
@@ -1279,6 +1294,36 @@ index 258da2debd..0c69a3b9d8 100644
      config
          .features
          .enable(Feature::AgentMessageBoard)
+diff --git a/codex-rs/core/tests/suite/scenarios_compaction_tests.rs b/codex-rs/core/tests/suite/scenarios_compaction_tests.rs
+index 61ffaf7104..f2b79e988a 100644
+--- a/codex-rs/core/tests/suite/scenarios_compaction_tests.rs
++++ b/codex-rs/core/tests/suite/scenarios_compaction_tests.rs
+@@ -90,6 +90,10 @@ async fn interrupt_during_remote_compaction_preserves_summary_on_resume() -> Res
+                 .features
+                 .disable(Feature::WakeOnAgentMessages)
+                 .unwrap();
++            config
++                .features
++                .disable(Feature::UnleashedBackgroundSubagents)
++                .unwrap();
+             config
+                 .features
+                 .disable(Feature::EnableRequestCompression)
+diff --git a/codex-rs/core/tests/suite/scenarios_turn_input_agent_message.rs b/codex-rs/core/tests/suite/scenarios_turn_input_agent_message.rs
+index 236c583de3..9f7064707c 100644
+--- a/codex-rs/core/tests/suite/scenarios_turn_input_agent_message.rs
++++ b/codex-rs/core/tests/suite/scenarios_turn_input_agent_message.rs
+@@ -106,6 +106,10 @@ async fn agent_followup_preserves_native_boundaries(
+                 .features
+                 .disable(Feature::WakeOnAgentMessages)
+                 .expect("disable queue-only message wakeups");
++            config
++                .features
++                .disable(Feature::UnleashedBackgroundSubagents)
++                .expect("disable parent turns started by child completion");
+             config
+                 .features
+                 .disable(Feature::DeferMailboxPreemption)
 diff --git a/codex-rs/core/tests/suite/step_settings.rs b/codex-rs/core/tests/suite/step_settings.rs
 index 15394819dc..fef673a526 100644
 --- a/codex-rs/core/tests/suite/step_settings.rs

@@ -7,10 +7,11 @@ Subject: [PATCH] Update direct dependencies to their latest semver-compatible
 Each direct dependency moves to its latest release compatible with its requirement and Rust 1.95. Transitive
 dependencies change only where those releases require it. The tonic annotation follows tonic 0.14.9.
 ---
- MODULE.bazel                             |    2 +-
- codex-rs/Cargo.lock                      | 2017 ++++++++++++----------
- codex-rs/cloud-client/src/turns_tests.rs |    6 +-
- 3 files changed, 1069 insertions(+), 956 deletions(-)
+ MODULE.bazel                                  |    2 +-
+ codex-rs/Cargo.lock                           | 2017 +++++++++--------
+ .../src/cloud_backend/connection_tests.rs     |   11 +-
+ codex-rs/cloud-client/src/turns_tests.rs      |    6 +-
+ 4 files changed, 1078 insertions(+), 958 deletions(-)
 
 diff --git a/MODULE.bazel b/MODULE.bazel
 index e7eb55b07b..f476a9cda7 100644
@@ -6169,6 +6170,36 @@ index 7ec62b896e..32632c8aed 100644
 - "syn 2.0.117",
 + "syn 2.0.119",
  ]
+diff --git a/codex-rs/app-server-client/src/cloud_backend/connection_tests.rs b/codex-rs/app-server-client/src/cloud_backend/connection_tests.rs
+index 0b1dc1c539..845e0c6afb 100644
+--- a/codex-rs/app-server-client/src/cloud_backend/connection_tests.rs
++++ b/codex-rs/app-server-client/src/cloud_backend/connection_tests.rs
+@@ -311,9 +311,15 @@ async fn failed_archive_loaded_list_tracks_attachment_not_cached_metadata() -> R
+                 let index = attempt.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                 let response =
+                     ResponseTemplate::new(200).insert_header("content-type", "application/grpc");
++                // Tonic 0.14.6 and later fail an HTTP 200 body that ends without a final status.
++                // Wiremock cannot send trailers, so the header supplies the status.
+                 match statuses[index] {
+-                    "quiet" => response.set_body_bytes(b"\x00\x00\x00\x00\x02\x0a\x00".to_vec()),
+-                    "busy" => response.set_body_bytes(vec![0, 0, 0, 0, 2, 18, 0]),
++                    "quiet" => response
++                        .insert_header("grpc-status", "0")
++                        .set_body_bytes(b"\x00\x00\x00\x00\x02\x0a\x00".to_vec()),
++                    "busy" => response
++                        .insert_header("grpc-status", "0")
++                        .set_body_bytes(vec![0, 0, 0, 0, 2, 18, 0]),
+                     status => response
+                         .insert_header("grpc-status", status)
+                         .insert_header("grpc-message", "private backend details"),
+@@ -402,6 +408,7 @@ async fn failed_archive_loaded_list_tracks_attachment_not_cached_metadata() -> R
+                     };
+                     let response = ResponseTemplate::new(200)
+                         .insert_header("content-type", "application/grpc")
++                        .insert_header("grpc-status", "0")
+                         .set_body_bytes(body);
+                     if outcome == "slow-history" {
+                         response.set_delay(std::time::Duration::from_secs(10))
 diff --git a/codex-rs/cloud-client/src/turns_tests.rs b/codex-rs/cloud-client/src/turns_tests.rs
 index 94a34ef8ec..98686bfeaf 100644
 --- a/codex-rs/cloud-client/src/turns_tests.rs
