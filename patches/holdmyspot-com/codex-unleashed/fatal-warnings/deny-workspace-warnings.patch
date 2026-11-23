@@ -15,12 +15,20 @@ Bazel does not read Cargo's lint table, so .bazelrc passes -Dwarnings to
 rustc for target and exec builds. It leaves linker messages allowed: the
 hermetic LLVM toolchain's own link flags make clang++ warn that
 --unwindlib=none is unused on every link.
+
+The x86-64 musl release link passes --icf=safe to lld. lld warns for each
+C object that zig cc built, because the object's .llvm_addrsig section is
+not linked to a symbol table (sh_link=0), and the denied linker_messages
+lint turned those warnings into a failed link of codex-bwrap. The musl
+tools script now compiles C and C++ for that link with -fno-addrsig, so the
+objects carry no such section and lld treats their symbols as
+address-significant without a warning. Rust objects keep their tables.
 ---
- .bazelrc                                    | 6 ++++++
- .github/scripts/install-musl-build-tools.sh | 7 +++++--
- codex-rs/Cargo.toml                         | 5 +++++
- codex-rs/app-server/tests/suite/v2/sleep.rs | 3 ---
- 4 files changed, 16 insertions(+), 5 deletions(-)
+ .bazelrc                                    |  6 ++++++
+ .github/scripts/install-musl-build-tools.sh | 19 +++++++++++++++++--
+ codex-rs/Cargo.toml                         |  5 +++++
+ codex-rs/app-server/tests/suite/v2/sleep.rs |  3 ---
+ 4 files changed, 28 insertions(+), 5 deletions(-)
 
 diff --git a/.bazelrc b/.bazelrc
 index 1f804fcd9f..c6d9f2b61f 100644
@@ -40,24 +48,44 @@ index 1f804fcd9f..c6d9f2b61f 100644
  build:windows --workspace_status_command=./scripts/workspace-status.cmd
  
 diff --git a/.github/scripts/install-musl-build-tools.sh b/.github/scripts/install-musl-build-tools.sh
-index da8d3e31a1..07022c8c9a 100644
+index da8d3e31a1..663dab3401 100644
 --- a/.github/scripts/install-musl-build-tools.sh
 +++ b/.github/scripts/install-musl-build-tools.sh
-@@ -261,9 +261,12 @@ target_cxx_var="CXX_${TARGET}"
+@@ -240,8 +240,23 @@ if [[ -n "${sysroot}" && "${sysroot}" != "/" ]]; then
+   echo "${boring_sysroot_var}=${sysroot}" >> "$GITHUB_ENV"
+ fi
+ 
++# Fold identical code and pack relocations for x86-64 musl release packages.
++musl_release_link=0
++if [[ "${TARGET}" == "x86_64-unknown-linux-musl" && "${CODEX_MUSL_RELEASE_LINK_FLAGS:-}" == "1" ]]; then
++  musl_release_link=1
++fi
++
+ cflags="-pthread"
+ cxxflags="-pthread"
++if [[ "${musl_release_link}" == "1" ]]; then
++  # lld reports the .llvm_addrsig section of an object that zig cc built as not linked to a symbol table
++  # (sh_link=0) and warns for it under --icf=safe; the workspace denies linker_messages, so each warning
++  # fails the link. Nothing in this build rewrites objects with objcopy or ld -r. Compile without the
++  # section instead: lld treats every symbol of an object that has none as address-significant, with no
++  # warning, which is how it already treats these objects.
++  cflags="${cflags} -fno-addrsig"
++  cxxflags="${cxxflags} -fno-addrsig"
++fi
+ if [[ "${TARGET}" == "aarch64-unknown-linux-musl" ]]; then
+   # BoringSSL enables -Wframe-larger-than=25344 under clang and treats warnings as errors.
+   cflags="${cflags} -Wno-error=frame-larger-than"
+@@ -261,8 +276,8 @@ target_cxx_var="CXX_${TARGET}"
  target_cxx_var="${target_cxx_var//-/_}"
  echo "${target_cxx_var}=${cxx}" >> "$GITHUB_ENV"
  
 -# Fold identical code and pack relocations for x86-64 musl release packages.
-+# Fold identical code and pack relocations for x86-64 musl release packages. The C objects that zig cc builds carry
-+# an address-significance section that lld cannot match to a symbol table, so --icf=safe warns about every such
-+# object. The workspace denies linker_messages, which would turn those warnings into a failed link, so
-+# --no-warnings drops lld's warnings for this link; lld errors still fail it.
- if [[ "${TARGET}" == "x86_64-unknown-linux-musl" && "${CODEX_MUSL_RELEASE_LINK_FLAGS:-}" == "1" ]]; then
--  link_flags=(-Cllvm-args=--addrsig -Clink-arg=-fuse-ld=lld -Clink-arg=-Wl,--icf=safe,-z,pack-relative-relocs)
-+  link_flags=(-Cllvm-args=--addrsig -Clink-arg=-fuse-ld=lld -Clink-arg=-Wl,--icf=safe,-z,pack-relative-relocs,--no-warnings)
+-if [[ "${TARGET}" == "x86_64-unknown-linux-musl" && "${CODEX_MUSL_RELEASE_LINK_FLAGS:-}" == "1" ]]; then
++# Rust objects keep their address-significance tables, so --icf=safe still folds identical Rust code.
++if [[ "${musl_release_link}" == "1" ]]; then
+   link_flags=(-Cllvm-args=--addrsig -Clink-arg=-fuse-ld=lld -Clink-arg=-Wl,--icf=safe,-z,pack-relative-relocs)
    echo "RUSTFLAGS=${RUSTFLAGS:+$RUSTFLAGS }${link_flags[*]}" >> "$GITHUB_ENV"
  fi
- 
 diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
 index 01d075adec..baefbc2f5a 100644
 --- a/codex-rs/Cargo.toml
