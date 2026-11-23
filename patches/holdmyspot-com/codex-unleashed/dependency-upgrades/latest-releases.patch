@@ -261,6 +261,7 @@ Raise every direct dependency requirement to its latest stable release under Rus
  codex-rs/app-server-protocol/src/lib.rs       |    7 +
  .../src/protocol/common.rs                    |    6 +-
  .../src/protocol/serde_helpers.rs             |    4 +-
+ .../src/protocol/v2/item.rs                   |    1 +
  .../src/protocol/v2/permissions.rs            |    2 +
  .../src/protocol/v2/shared.rs                 |   34 +-
  .../src/protocol/v2/thread_data.rs            |    8 +-
@@ -401,11 +402,11 @@ Raise every direct dependency requirement to its latest stable release under Rus
  codex-rs/protocol/src/config_types.rs         |   34 +-
  codex-rs/protocol/src/dynamic_tools.rs        |    4 +
  codex-rs/protocol/src/exec_output.rs          |    6 +-
- codex-rs/protocol/src/items.rs                |    4 +
+ codex-rs/protocol/src/items.rs                |    5 +
  codex-rs/protocol/src/items/display.rs        |   18 +-
  codex-rs/protocol/src/models.rs               |    2 +
  codex-rs/protocol/src/openai_models.rs        |   46 +-
- codex-rs/protocol/src/protocol.rs             |    2 +-
+ codex-rs/protocol/src/protocol.rs             |    3 +-
  codex-rs/protocol/src/session_id.rs           |    8 +-
  codex-rs/protocol/src/thread_id.rs            |    8 +-
  codex-rs/realtime-webrtc/tests/common/mod.rs  |    2 +-
@@ -473,7 +474,7 @@ Raise every direct dependency requirement to its latest stable release under Rus
  .../windows-sandbox-rs/src/no_reparse_dir.rs  |    4 +-
  .../src/setup_provisioning/sandbox_users.rs   |   11 +-
  .../src/uninstall_windows/principals_tests.rs |    6 +-
- 468 files changed, 3183 insertions(+), 2604 deletions(-)
+ 469 files changed, 3186 insertions(+), 2604 deletions(-)
  create mode 100644 codex-rs/ext/extension-api/src/json_schema.rs
 
 diff --git a/codex-rs/.cargo/audit.toml b/codex-rs/.cargo/audit.toml
@@ -13836,6 +13837,18 @@ index 57a2ce1004..091b28dfae 100644
      generator.subschema_for::<Option<String>>()
  }
  
+diff --git a/codex-rs/app-server-protocol/src/protocol/v2/item.rs b/codex-rs/app-server-protocol/src/protocol/v2/item.rs
+index 2602c20b91..0af982e596 100644
+--- a/codex-rs/app-server-protocol/src/protocol/v2/item.rs
++++ b/codex-rs/app-server-protocol/src/protocol/v2/item.rs
+@@ -155,6 +155,7 @@ pub enum CommandAction {
+ #[serde(rename_all = "camelCase")]
+ #[ts(export_to = "v2/")]
+ #[serde(from = "CoreAgentMessageModeration")]
++#[schemars(!from)]
+ pub struct AgentMessageModeration {
+     pub moderated: bool,
+     pub display: Option<AgentMessageDisplay>,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/permissions.rs b/codex-rs/app-server-protocol/src/protocol/v2/permissions.rs
 index fd13791112..96c7a9c30d 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/permissions.rs
@@ -17109,10 +17122,18 @@ index 63675fe1d1..a01a9cdcd1 100644
      // chardetng occasionally reports IBM866 for short strings that only contain Windows-1252 “smart
      // punctuation” bytes (0x80-0x9F) because that range maps to Cyrillic letters in IBM866. When
 diff --git a/codex-rs/protocol/src/items.rs b/codex-rs/protocol/src/items.rs
-index 424ba6e562..e8fc891d55 100644
+index 424ba6e562..4203434575 100644
 --- a/codex-rs/protocol/src/items.rs
 +++ b/codex-rs/protocol/src/items.rs
-@@ -401,6 +401,8 @@ pub struct SubAgentActivityItem {
+@@ -163,6 +163,7 @@ pub struct AsyncUserInputQuestion {
+ 
+ #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, TS, JsonSchema)]
+ #[serde(from = "display::StoredModeration")]
++#[schemars(!from)]
+ pub struct AgentMessageModeration {
+     pub moderated: bool,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+@@ -401,6 +402,8 @@ pub struct SubAgentActivityItem {
  }
  
  #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq)]
@@ -17121,7 +17142,7 @@ index 424ba6e562..e8fc891d55 100644
  pub struct WebSearchItem {
      pub id: String,
      pub query: String,
-@@ -426,6 +428,8 @@ pub struct ImageViewItem {
+@@ -426,6 +429,8 @@ pub struct ImageViewItem {
  }
  
  #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq)]
@@ -17259,10 +17280,18 @@ index 12cea206a4..14e31eacf4 100644
          );
      }
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 192d3187af..60d5d8e306 100644
+index 192d3187af..3fd902b941 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -5053,7 +5053,7 @@ mod tests {
+@@ -2432,6 +2432,7 @@ pub struct ModelVerificationEvent {
+ 
+ #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
+ #[serde(from = "StoredTargetedModeration")]
++#[schemars(!from)]
+ pub struct TargetedAnswerModeration {
+     pub item_id: String,
+     pub moderated: bool,
+@@ -5053,7 +5054,7 @@ mod tests {
                  .expect("hook properties")
                  .contains_key("builtin")
          );
