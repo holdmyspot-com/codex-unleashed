@@ -467,6 +467,8 @@ public final class CheckTestSkips
 		rules.add(rule("python(?:3)? (?:not found|not installed)|PowerShell 7 is not installed", Verdict.MISSING_SETUP,
 			"a required Windows test tool is not installed", platforms(Platform.WINDOWS), null, null));
 		rules.add(rule("WSL|WSLg", Verdict.ALLOWED, "WSL-only test; the runner is not WSL"));
+		rules.add(rule("root metadata test as namespace UID 0: nested UID map refused", Verdict.ALLOWED,
+			"the host refuses a nested UID map for namespace UID 0; the test's caller-identity pass still runs"));
 		rules.add(rule("requires a remote test environment", Verdict.ALLOWED,
 			"upstream's Bazel jobs run no remote test environment either; only its x64 nextest job does", null,
 			runners(Runner.BAZEL), null));

@@ -143,6 +143,19 @@ public final class CheckTestSkipsTest
 			CheckTestSkips.Environment.REMOTE).verdict(), "allowedByKernelPolicy").isEqualTo(CheckTestSkips.Verdict.ALLOWED);
 	}
 
+	/** Only the namespace-UID-0 pass of the root metadata test may skip on a nested UID-map refusal. */
+	@Test public void rootIdentityUidMapSkipIsAllowedButWholeTestSkipIsNot()
+	{
+		var rootPass = new CheckTestSkips.Skip(Path.of("junit.xml"), "test", "skipping root metadata test as " +
+			"namespace UID 0: nested UID map refused: bwrap: setting up uid map: Operation not permitted");
+		requireThat(CheckTestSkips.classify(rootPass, CheckTestSkips.Platform.LINUX, CheckTestSkips.Runner.NEXTEST,
+			CheckTestSkips.Environment.LOCAL).verdict(), "rootPass").isEqualTo(CheckTestSkips.Verdict.ALLOWED);
+		var wholeTest = new CheckTestSkips.Skip(Path.of("junit.xml"), "test",
+			"skipping root metadata test: bwrap: setting up uid map: Operation not permitted");
+		requireThat(CheckTestSkips.classify(wholeTest, CheckTestSkips.Platform.LINUX, CheckTestSkips.Runner.NEXTEST,
+			CheckTestSkips.Environment.LOCAL).verdict(), "wholeTest").isEqualTo(CheckTestSkips.Verdict.MISSING_SETUP);
+	}
+
 	/** Owns temporary XML and log reports. */
 	private static final class Fixture implements AutoCloseable
 	{

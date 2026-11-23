@@ -127,6 +127,7 @@ The release applies these patches in this order:
 113. [regenerated-outputs/regenerate-app-server-exports-1.patch](holdmyspot-com/codex-unleashed/regenerated-outputs/regenerate-app-server-exports-1.patch)
 114. [regenerated-outputs/regenerate-app-server-exports-2.patch](holdmyspot-com/codex-unleashed/regenerated-outputs/regenerate-app-server-exports-2.patch)
 115. [regenerated-outputs/regenerate-bindings-and-config-schemas.patch](holdmyspot-com/codex-unleashed/regenerated-outputs/regenerate-bindings-and-config-schemas.patch)
+116. [issue-63/root-metadata-identities.patch](holdmyspot-com/codex-unleashed/issue-63/root-metadata-identities.patch)
 
 These patches from the `rust-v0.167.0` queue are not applied on `rust-v0.171.0`:
 
