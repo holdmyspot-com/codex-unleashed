@@ -9,7 +9,7 @@ Fix what the upgraded releases change at run time or in test expectations: rtc 0
  codex-rs/Cargo.toml                           |  6 +-
  .../protocol/v2/model_provider_error_tests.rs |  3 +-
  .../remote_control/server_api_tests.rs        | 19 +++++-
- .../tests/suite/v2/git_attribution.rs         |  9 +--
+ .../tests/suite/v2/git_attribution.rs         |  7 +--
  .../tests/suite/v2/plugin_runtime_auth.rs     |  2 +-
  .../app-server/tests/suite/v2/rate_limits.rs  |  4 +-
  .../tests/suite/v2/realtime_conversation.rs   | 14 ++---
@@ -20,7 +20,7 @@ Fix what the upgraded releases change at run time or in test expectations: rtc 0
  .../src/ui/transport_tests.rs                 |  2 +-
  codex-rs/code-mode-runtime/src/ui/workers.rs  |  7 ++-
  codex-rs/core/tests/common/runtime_auth.rs    | 14 +++++
- .../tests/suite/realtime_sideband_endpoint.rs |  9 +--
+ .../tests/suite/realtime_sideband_endpoint.rs |  7 +--
  .../request_plugin_install_runtime_auth.rs    |  6 +-
  ...s__astra_active_environment_selection.snap |  4 +-
  ...tra_async_compaction_with_live_suffix.snap | 12 ++--
@@ -83,7 +83,7 @@ Fix what the upgraded releases change at run time or in test expectations: rtc 0
  codex-rs/utils/cargo-bin/Cargo.toml           |  1 -
  codex-rs/utils/cargo-bin/src/lib.rs           | 41 +++++++------
  .../voice-host/src/capture_worker_tests.rs    | 58 ++++++++++++++-----
- 78 files changed, 374 insertions(+), 265 deletions(-)
+ 78 files changed, 370 insertions(+), 265 deletions(-)
 
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
 index b8dde3b324..3a4f981dd1 100644
@@ -276,10 +276,10 @@ index a871b696e8..bb2dffa453 100644
                  .write_all(partial_response)
                  .await
 diff --git a/codex-rs/app-server/tests/suite/v2/git_attribution.rs b/codex-rs/app-server/tests/suite/v2/git_attribution.rs
-index 73456974e9..4dc26ae456 100644
+index 73456974e9..90971d18ef 100644
 --- a/codex-rs/app-server/tests/suite/v2/git_attribution.rs
 +++ b/codex-rs/app-server/tests/suite/v2/git_attribution.rs
-@@ -171,14 +171,11 @@ async fn git_attribution_runtime_auth_uses_request_destination(
+@@ -171,14 +171,9 @@ async fn git_attribution_runtime_auth_uses_request_destination(
          .expect(1)
          .mount(&server)
          .await;
@@ -291,14 +291,12 @@ index 73456974e9..4dc26ae456 100644
      run_harness_through_proxy(
          &server,
 -        &format!("suite::v2::git_attribution::git_attribution_runtime_auth_uses_request_destination::{case}"),
-+        &format!(
-+            "suite::v2::git_attribution::git_attribution_runtime_auth_uses_request_destination"
-+        ),
++        "suite::v2::git_attribution::git_attribution_runtime_auth_uses_request_destination",
          /*realtime_target*/ None,
      )
      .await?;
 diff --git a/codex-rs/app-server/tests/suite/v2/plugin_runtime_auth.rs b/codex-rs/app-server/tests/suite/v2/plugin_runtime_auth.rs
-index 0732ffb615..791fc2766e 100644
+index 0732ffb615..f65d4000b2 100644
 --- a/codex-rs/app-server/tests/suite/v2/plugin_runtime_auth.rs
 +++ b/codex-rs/app-server/tests/suite/v2/plugin_runtime_auth.rs
 @@ -155,7 +155,7 @@ async fn direct_mutation_initializes_runtime_after_config_reload(
@@ -306,7 +304,7 @@ index 0732ffb615..791fc2766e 100644
      run_harness_through_proxy(
          &server,
 -        &format!("suite::v2::plugin_install::runtime_auth_tests::direct_mutation_initializes_runtime_after_config_reload::{operation}_{mode}"),
-+        &format!("suite::v2::plugin_install::runtime_auth_tests::direct_mutation_initializes_runtime_after_config_reload"),
++        "suite::v2::plugin_install::runtime_auth_tests::direct_mutation_initializes_runtime_after_config_reload",
          /*realtime_target*/ None,
      ).await?;
      let requests = server
@@ -550,10 +548,10 @@ index 9eec29bbad..f78ffe9dbe 100644
      let result = observer_completion.await;
      proxy_tasks.shutdown().await;
 diff --git a/codex-rs/core/tests/suite/realtime_sideband_endpoint.rs b/codex-rs/core/tests/suite/realtime_sideband_endpoint.rs
-index 7d0381cd6d..37d8ed7dcc 100644
+index 7d0381cd6d..121515aa0b 100644
 --- a/codex-rs/core/tests/suite/realtime_sideband_endpoint.rs
 +++ b/codex-rs/core/tests/suite/realtime_sideband_endpoint.rs
-@@ -258,14 +258,11 @@ async fn existing_call_runtime_auth_reconnects_and_stops(external_headers: bool)
+@@ -258,14 +258,9 @@ async fn existing_call_runtime_auth_reconnects_and_stops(external_headers: bool)
          }
          Ok::<_, anyhow::Error>(())
      }));
@@ -565,14 +563,12 @@ index 7d0381cd6d..37d8ed7dcc 100644
      run_harness_through_proxy_until(
          &server,
 -        &format!("suite::realtime_sideband_endpoint::existing_call_runtime_auth_reconnects_and_stops::{case}"),
-+        &format!(
-+            "suite::realtime_sideband_endpoint::existing_call_runtime_auth_reconnects_and_stops"
-+        ),
++        "suite::realtime_sideband_endpoint::existing_call_runtime_auth_reconnects_and_stops",
          Some(address),
          &[],
          async move {
 diff --git a/codex-rs/core/tests/suite/request_plugin_install_runtime_auth.rs b/codex-rs/core/tests/suite/request_plugin_install_runtime_auth.rs
-index eb0e51ece2..54c9dacd42 100644
+index eb0e51ece2..a2f7f6ea1f 100644
 --- a/codex-rs/core/tests/suite/request_plugin_install_runtime_auth.rs
 +++ b/codex-rs/core/tests/suite/request_plugin_install_runtime_auth.rs
 @@ -205,13 +205,9 @@ async fn resumed_plugin_install_uses_the_threads_account(mode: RuntimeAuthMode)
@@ -586,7 +582,7 @@ index eb0e51ece2..54c9dacd42 100644
      run_harness_through_proxy(
          &server,
 -        &format!("suite::request_plugin_install::runtime_auth_tests::resumed_plugin_install_uses_the_threads_account::{case}"),
-+        &format!("suite::request_plugin_install::runtime_auth_tests::resumed_plugin_install_uses_the_threads_account"),
++        "suite::request_plugin_install::runtime_auth_tests::resumed_plugin_install_uses_the_threads_account",
          /*realtime_target*/ None,
      ).await?;
      let requests = server
