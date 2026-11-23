@@ -4,25 +4,6 @@
 - Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
 - Prerequisites: the skill patches have none and apply independently. [avoid-slow-agent-switching-and-resume.patch](avoid-slow-agent-switching-and-resume.patch) applies after [base-configuration](../base-configuration/README.md), [issue-47390](../issue-47390/README.md) and [collapsed-tool-activity](../collapsed-tool-activity/README.md), whose feature and schema entries surround its own.
 
-## Deferred implicit skill index
-
-[defer-implicit-skill-index.patch](defer-implicit-skill-index.patch)
-
-Status: left out of the `rust-v0.171.0` queue and not rebased; the file still applies to `rust-v0.167.0`. Upstream #59280 builds the implicit skill index asynchronously through each skill's `EnvironmentAccess`, so deferring the build to its first lookup needs a new design.
-
-### Intent
-
-Startup and resume build the implicit skill index for every loaded skill outcome, canonicalizing each skill's document and scripts paths, even when no command ever triggers implicit skill detection. The patch builds the index on its first lookup and shares it between unchanged clones of the outcome. Changing the disabled skill paths starts a new index. Map keys stay `PathUri` values of the canonical host paths, so lookups match what they matched before. The index now reflects the filesystem at the first lookup instead of at load time, which `implicit_skill_index_resolves_aliases_on_first_use` checks on Unix.
-
-### Verification
-
-From the patched upstream checkout root:
-
-```sh
-cd codex-rs && cargo nextest run -p codex-skills-extension
-just fmt-check
-```
-
 ## Single startup skills refresh
 
 [avoid-duplicate-startup-skills-refresh.patch](avoid-duplicate-startup-skills-refresh.patch)

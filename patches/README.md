@@ -130,7 +130,7 @@ The release applies these patches in this order:
 
 These patches from the `rust-v0.167.0` queue are not applied on `rust-v0.171.0`:
 
-- [issue-34776/defer-implicit-skill-index.patch](holdmyspot-com/codex-unleashed/issue-34776/defer-implicit-skill-index.patch) is left out. Upstream now builds the implicit skill index asynchronously through per-skill environment access (#59280), so deferring it needs a new design. The file still targets `rust-v0.167.0`.
+- `issue-34776/defer-implicit-skill-index.patch` is dropped. Upstream #59280 builds the implicit skill index asynchronously, once per cached skill snapshot, from paths the loader already canonicalizes. Deferring it would need asynchronous lookups or retained environment access, and the patch's benefit was never measured.
 - `rama-0.4/rama-0.4.patch` is dropped. Every rama release after `0.3.0-alpha.4` depends on `rama-crypto`, which pins `time =0.3.47`, while the upstream `sqlx-core` git override needs `time ^0.3.48`. The network proxy stays on upstream's rama `0.3.0-alpha.4` with upstream's Hickory advisory exceptions, and the lockfile keeps `time` 0.3.55. Reassess when rama 0.5 is released.
 - `release-build-warnings/bazel-module-versions.patch` is dropped: `rust-v0.171.0` requires `platforms` 1.1.0 and `rules_cc` 0.2.25.
 - `old-main-test-fixes/conpty-lifecycle-input-fixture.patch` is dropped: upstream #60872 made the same fix.
