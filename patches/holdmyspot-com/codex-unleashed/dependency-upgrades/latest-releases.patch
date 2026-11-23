@@ -352,6 +352,7 @@ Raise every direct dependency requirement to its latest stable release under Rus
  codex-rs/history/src/guardian_history.rs      |    6 +-
  codex-rs/history/src/lib.rs                   |   12 +-
  codex-rs/history/src/retained_context.rs      |    2 +
+ codex-rs/history/src/rollout_payload.rs       |    2 +
  codex-rs/history/src/tests.rs                 |    8 +-
  codex-rs/hooks/Cargo.toml                     |    1 +
  .../interrupt.command.input.schema.json       |    8 +-
@@ -474,7 +475,7 @@ Raise every direct dependency requirement to its latest stable release under Rus
  .../windows-sandbox-rs/src/no_reparse_dir.rs  |    4 +-
  .../src/setup_provisioning/sandbox_users.rs   |   11 +-
  .../src/uninstall_windows/principals_tests.rs |    6 +-
- 469 files changed, 3186 insertions(+), 2604 deletions(-)
+ 470 files changed, 3188 insertions(+), 2604 deletions(-)
  create mode 100644 codex-rs/ext/extension-api/src/json_schema.rs
 
 diff --git a/codex-rs/.cargo/audit.toml b/codex-rs/.cargo/audit.toml
@@ -15941,6 +15942,19 @@ index 9868b3af7a..3d55c24d1f 100644
  struct Ordered<T> {
      #[serde(default, skip_serializing_if = "Option::is_none")]
      revision: Option<codex_protocol::ResponseItemId>,
+diff --git a/codex-rs/history/src/rollout_payload.rs b/codex-rs/history/src/rollout_payload.rs
+index bebb049358..11db5af18a 100644
+--- a/codex-rs/history/src/rollout_payload.rs
++++ b/codex-rs/history/src/rollout_payload.rs
+@@ -143,6 +143,8 @@ pub(super) struct DynamicToolsUpdatedPayload<'a> {
+ 
+ /// The protocol item keeps its wire ID. The optional allocation lets replay resume the sequence.
+ #[derive(Serialize, Deserialize, JsonSchema)]
++// schemars 1 names every instantiation "ItemPayload"; keep schemars 0.8's per-type names.
++#[schemars(rename = "ItemPayload_for_{T}")]
+ pub(super) struct ItemPayload<'a, T: Clone> {
+     #[serde(flatten)]
+     item: Cow<'a, T>,
 diff --git a/codex-rs/history/src/tests.rs b/codex-rs/history/src/tests.rs
 index 267a732fb3..bcd29ec3f8 100644
 --- a/codex-rs/history/src/tests.rs
