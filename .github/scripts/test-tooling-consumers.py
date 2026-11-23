@@ -58,6 +58,10 @@ class ToolingConsumerTest(unittest.TestCase):
                 "# Queue\n\n1. [one.patch](vendor/one.patch)\n2. [two.patch](vendor/two.patch)\n",
                 encoding="utf-8",
             )
+            vendor = root / "vendor"
+            vendor.mkdir()
+            for name in ("one.patch", "two.patch"):
+                (vendor / name).write_bytes(b"From 0000 Mon Sep 17 00:00:00 2001\n")
             result = run_tooling("upstream-auto-release", "patches", "--readme", readme)
 
             self.assertEqual(result.returncode, 0, result.stderr)
