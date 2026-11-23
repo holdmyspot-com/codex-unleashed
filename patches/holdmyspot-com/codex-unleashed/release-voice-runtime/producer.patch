@@ -7,7 +7,8 @@ Build the target voice runtime and retain its verified output for packaging.
 ---
  .github/scripts/codex-voice-runtime.sh      | 525 +++++++++++++++++++
  .github/scripts/test-codex-voice-runtime.sh | 534 ++++++++++++++++++++
- 2 files changed, 1059 insertions(+)
+ MODULE.bazel                                |   4 +
+ 3 files changed, 1063 insertions(+)
  create mode 100755 .github/scripts/codex-voice-runtime.sh
  create mode 100755 .github/scripts/test-codex-voice-runtime.sh
 
@@ -1082,6 +1083,21 @@ index 0000000000..c879eca30f
 +fi
 +assert_equal caller-owned "$(cat "$existing_result/sentinel")" 'preexisting result sentinel'
 +assert_absent "$existing_result/completed" 'preexisting result completion marker'
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 73c5c7a676..980722af7e 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -162,6 +162,10 @@ use_repo(osx, "macos_sdk")
+ # Needed to disable xcode...
+ bazel_dep(name = "apple_support", version = "2.1.0")
+ bazel_dep(name = "rules_cc", version = "0.2.25")
++
++# Windows voice jobs explicitly select the installed MSVC C toolchains.
++cc_configure = use_extension("@rules_cc//cc:extensions.bzl", "cc_configure_extension")
++use_repo(cc_configure, "local_config_cc")
+ bazel_dep(name = "rules_platform", version = "0.1.0")
+ bazel_dep(name = "rules_pkg", version = "1.0.1")
+ bazel_dep(name = "aws-lc", version = "5.1.0.bcr.3")
 -- 
 2.43.0
 

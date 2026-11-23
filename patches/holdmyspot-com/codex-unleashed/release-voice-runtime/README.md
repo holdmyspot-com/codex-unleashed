@@ -4,6 +4,8 @@ Apply these patches to upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9
 
 `producer.patch` adds `.github/scripts/codex-voice-runtime.sh` and its focused fixture test to the selected upstream source. The producer builds the helper, native runtime, and both runtime test binaries for one supported application target, stages and seals the runtime through upstream voice tooling, then writes a completed result directory with identity and hash evidence.
 
+`producer.patch` also declares the `rules_cc` `local_config_cc` repository in `MODULE.bazel`, which the Windows `--extra_toolchains` selection requires.
+
 The producer accepts only a fresh result directory and requires the patched source commit and runner target explicitly. Windows builds also require the verified native voice tool repository and host environment prepared by the release workflow. On failure, incomplete release and verification outputs are removed while evidence remains available for diagnosis.
 
 Run the focused shell checks from the patched upstream checkout:
