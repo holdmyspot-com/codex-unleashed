@@ -104,7 +104,7 @@ The patch deletes seven entries from `codex-rs/deny.toml` that match nothing in 
 | `reqwest` wrapper `sentry` | `sentry` 0.49.5 no longer depends on `reqwest` directly |
 | `reqwest` wrapper `webrtc-sys-build` and allowed Git source `juberti-oai/rust-sdks` | Already absent from the base lockfile |
 
-`rust-v0.171.0` already removed the exceptions for `RUSTSEC-2026-0410` (`zstd-sys`) and `RUSTSEC-2026-0418` (`libz-sys`). The `async-trait` wrapper for `hickory-proto` stays, because `rama-0.4.patch` is left out of this queue and rama 0.3 keeps `hickory-proto` 0.25.2, which depends on `async-trait`.
+`rust-v0.171.0` already removed the exceptions for `RUSTSEC-2026-0410` (`zstd-sys`) and `RUSTSEC-2026-0418` (`libz-sys`). The `async-trait` wrapper for `hickory-proto` stays, because the rama 0.4 port is dropped and upstream's rama 0.3 keeps `hickory-proto` 0.25.2, which depends on `async-trait`.
 
 Verification: derived from the lockfile, the advisory database and each crate's published license; `cargo deny check` has not run on this queue yet. After applying the queue, run it in `codex-rs`; it must report none of the seven warnings.
 

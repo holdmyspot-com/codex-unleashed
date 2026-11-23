@@ -131,7 +131,7 @@ The release applies these patches in this order:
 These patches from the `rust-v0.167.0` queue are not applied on `rust-v0.171.0`:
 
 - [issue-34776/defer-implicit-skill-index.patch](holdmyspot-com/codex-unleashed/issue-34776/defer-implicit-skill-index.patch) is left out. Upstream now builds the implicit skill index asynchronously through per-skill environment access (#59280), so deferring it needs a new design. The file still targets `rust-v0.167.0`.
-- [rama-0.4/rama-0.4.patch](holdmyspot-com/codex-unleashed/rama-0.4/rama-0.4.patch) is left out. `rama-crypto` 0.4.0, the only 0.4 release, pins `time =0.3.47`, and the upstream `sqlx-core` git override needs `time ^0.3.48`, so no lockfile resolves both. The network proxy stays on rama 0.3 with its Hickory advisory exceptions. The file still targets `rust-v0.167.0`.
+- `rama-0.4/rama-0.4.patch` is dropped. Every rama release after `0.3.0-alpha.4` depends on `rama-crypto`, which pins `time =0.3.47`, while the upstream `sqlx-core` git override needs `time ^0.3.48`. The network proxy stays on upstream's rama `0.3.0-alpha.4` with upstream's Hickory advisory exceptions, and the lockfile keeps `time` 0.3.55. Reassess when rama 0.5 is released.
 - `release-build-warnings/bazel-module-versions.patch` is dropped: `rust-v0.171.0` requires `platforms` 1.1.0 and `rules_cc` 0.2.25.
 - `old-main-test-fixes/conpty-lifecycle-input-fixture.patch` is dropped: upstream #60872 made the same fix.
 - `old-main-test-fixes/conpty-interrupt-readiness-fixture.patch` is dropped: upstream #59369 rewrote the fixture around a Python child that resets its own Ctrl+C disposition.
