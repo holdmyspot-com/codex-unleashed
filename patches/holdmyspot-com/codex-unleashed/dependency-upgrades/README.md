@@ -2,7 +2,7 @@
 
 - Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
 - Prerequisites: every earlier patch in the queue, through `rust-toolchain/rust-1.99.patch` (patch 25).
-- Patches, in order: `compatible-updates.patch`, `latest-releases.patch`, `serde-saphyr.patch`, `release-adaptations.patch`, `transitive-updates.patch`.
+- Patches, in order: `compatible-updates.patch`, `latest-releases-1.patch`, `latest-releases-2.patch`, `serde-saphyr.patch`, `release-adaptations.patch`, `transitive-updates.patch`.
 
 ## Intent
 
@@ -14,7 +14,9 @@ Codex builds against the latest stable release of each direct dependency. A tran
 
 Moves each direct dependency to its newest semver-compatible release with `cargo update -p <package>` per direct package, which changes 360 lockfile entries where a whole-lockfile `cargo update` changes 614. It also updates the tonic annotation version and regenerates `MODULE.bazel.lock`.
 
-### latest-releases.patch
+### latest-releases-1.patch and latest-releases-2.patch
+
+The patch is split in two to stay under the repository's 512000-byte blob limit: part 1 carries `Cargo.lock`, the manifests and the source adaptations, and part 2 carries the generated schemas and bindings. The tree after part 1 alone has stale generated outputs and need not pass the schema checks.
 
 Raises the direct requirements to their latest stable major releases under Rust 1.99.1 and adapts Codex to them:
 - rand 0.10, digest 0.11, hmac 0.13, p256 0.14, reqwest 0.13, tokio 1.54 (`AsyncFd::register`), ctor 1, vt100 0.18, tree-sitter 0.27, whoami 2, base64 0.23, zbus 6, ed25519-dalek 3 (which now needs the `alloc` feature), webrtc and rtc 0.21, landlock, sentry 0.49 and opentelemetry_sdk 0.33;
@@ -29,7 +31,7 @@ The upgrade moves 148 direct dependencies, which forces 177 transitive packages 
 
 ### Regenerated outputs
 
-There is no separate regenerated-outputs patch. Each patch carries the files its own change regenerates, produced with upstream's generators on the queue up to that patch (`baseline-platform-lints.yml` with `generators="app-server-schema config-schema hooks-schema bazel-lock"`, runs `42934098328` to `42934201124` and `42935939271`). `latest-releases.patch` holds the app-server JSON schemas and TypeScript bindings, the Python SDK models and the `config.schema.json` changes that schemars 1 and ts-rs 12 cause, and `MODULE.bazel.lock` followed in whichever patch changed the lockfile. On `rust-v0.171.0` these generated files are stale: the rebase regenerated `Cargo.lock` with lockfile-only Cargo commands but none of the generated outputs, so `MODULE.bazel.lock` is stale from `rust-toolchain/rust-1.99.patch` onward, and the app-server schemas, TypeScript bindings, Python SDK models and the hooks model-request schema do not reflect `latest-releases.patch`; regenerate it once on the full queue with `baseline-platform-lints.yml` and `generators="bazel-lock"` and add the result as a patch.
+There is no separate regenerated-outputs patch. Each patch carries the files its own change regenerates, produced with upstream's generators on the queue up to that patch (`baseline-platform-lints.yml` with `generators="app-server-schema config-schema hooks-schema bazel-lock"`, runs `42934098328` to `42934201124` and `42935939271`). `latest-releases-2.patch` holds the app-server JSON schemas and TypeScript bindings, the Python SDK models and the `config.schema.json` changes that schemars 1 and ts-rs 12 cause, and `MODULE.bazel.lock` followed in whichever patch changed the lockfile. On `rust-v0.171.0` these generated files are stale: the rebase regenerated `Cargo.lock` with lockfile-only Cargo commands but none of the generated outputs, so `MODULE.bazel.lock` is stale from `rust-toolchain/rust-1.99.patch` onward, and the app-server schemas, TypeScript bindings, Python SDK models and the hooks model-request schema do not reflect `latest-releases-1.patch`; the patches in [../regenerated-outputs](../regenerated-outputs/README.md), at the end of the queue, regenerate them.
 
 The web.run tool schema changes only in form under schemars 1: `minimum` is written `0` instead of `0.0`, and `required` lists fields in declaration order instead of alphabetical order (schema dump runs `42673538018` against `42673542514`). `release-adaptations.patch` accepts the new thread-sample hashes.
 
@@ -58,7 +60,7 @@ Fixes what the new releases change at run time or in test expectations:
 
 Adapts the Bazel build to the direct upgrades and changes nothing else. A transitive dependency moves only where an upgraded direct dependency requires it, so `Cargo.lock` stays as `release-adaptations.patch` leaves it. Two hunks are forced:
 - cc is 1.11.1 (the direct upgrade in `compatible-updates.patch`), so the MXC annotation in `MODULE.bazel` names `@crates//:cc-1.11.1` (Bazel Clippy run `42737946018` failed on the old label).
-- zbus 6.2.1 (the direct upgrade in `latest-releases.patch`) turns on the zruntime `event`, `broadcast` and `lock` features through its default features, but the Bazel crate resolver builds zruntime 0.2.2 without them, so a Linux-only `annotation_select` adds the features zbus's defaults request (native Bazel test run `42749909191`).
+- zbus 6.2.1 (the direct upgrade in `latest-releases-1.patch`) turns on the zruntime `event`, `broadcast` and `lock` features through its default features, but the Bazel crate resolver builds zruntime 0.2.2 without them, so a Linux-only `annotation_select` adds the features zbus's defaults request (native Bazel test run `42749909191`).
 
 Owner decision 2026-11-22: a whole-lockfile `cargo update`, which an earlier version of this patch carried, is not part of the queue. Its security fixes (openssl 0.10.82, libz-sys 1.1.32, event-listener 5.4.2, quick-xml 0.41 through plist 1.10.3 and wayland-scanner 0.31.11) are not taken; "Audits" below lists what stays open. What followed from the sweep is dropped with it: the `-sys` version labels for GStreamer and the removed glib-sys, gobject-sys and gio-sys entries in `MODULE.bazel`, the `prost-types` label in `bazel/toolchains/prost/BUILD.bazel`, the `std` feature that `codex-utils-pty` requested from winapi (the locked serial2 0.2.33 still turns it on), the `deny.toml` exception changes, and the three `MODULE.bazel.lock` patches (`transitive-updates-bazel-lock-1.patch` to `-3.patch`), which the sweep made necessary. `stale-cargo-deny-entries.patch` removes the `deny.toml` entries that the direct upgrades made stale.
 
@@ -104,13 +106,13 @@ The platform, macOS and Windows lint workflows and the Linux test workflow run o
 
 ## Rebase onto rust-v0.167.0
 
-`latest-releases.patch`, `serde-saphyr.patch`, `transitive-updates.patch` and the regenerated-outputs patch (now folded into the patches above) needed conflict resolution; `compatible-updates.patch` applied after its lockfile was regenerated. Beyond the conflicts, the rebase needed these source changes: `latest-releases.patch` adds `register_with_interest` in `exec-server/src/server/missing_watch.rs` for tokio 1.54's `AsyncFd`, and `release-adaptations.patch` adapts tokio-util's `Bytes::from` and the OpenTelemetry data in the exec-server harness tests. `AsyncFd::new` is deprecated at this base, so the queue does not compile between `compatible-updates.patch` and `latest-releases.patch`.
+`latest-releases-1.patch`, `latest-releases-2.patch`, `serde-saphyr.patch`, `transitive-updates.patch` and the regenerated-outputs patch (now folded into the patches above) needed conflict resolution; `compatible-updates.patch` applied after its lockfile was regenerated. Beyond the conflicts, the rebase needed these source changes: `latest-releases-1.patch` adds `register_with_interest` in `exec-server/src/server/missing_watch.rs` for tokio 1.54's `AsyncFd`, and `release-adaptations.patch` adapts tokio-util's `Bytes::from` and the OpenTelemetry data in the exec-server harness tests. `AsyncFd::new` is deprecated at this base, so the queue does not compile between `compatible-updates.patch` and `latest-releases-1.patch`.
 
 ## Rebase onto rust-v0.171.0
 
 Every patch's `Cargo.lock` was regenerated with lockfile-only commands (`cargo update -p NAME --precise VERSION`), and `cargo update --workspace --locked` passes after each one. No native build has run.
 - `compatible-updates.patch`: bumps that `rust-v0.171.0` already reaches are gone. image, moxcms and tiff stay where upstream has them, because upstream pins `image =0.25.9` in `utils/image` (openai/codex#61341).
-- `latest-releases.patch`: rmcp stays at upstream's `=3.6.0`. reqwest 0.13's HTTP client uses the features `gzip`, `json`, `rustls`, `stream` and `zstd`. The Windows sandbox's random password is ported to rand 0.10's `SysRng`, and schemars 1 is ported in the new upstream code in `protocol` (`items` and `display.rs`), `features` (`feature_configs.rs`) and history notes (a `x-keep-null` marker with `remove_null_variants`). The patch no longer carries the generated schemas, bindings and SDK models.
+- `latest-releases-1.patch`: rmcp stays at upstream's `=3.6.0`. reqwest 0.13's HTTP client uses the features `gzip`, `json`, `rustls`, `stream` and `zstd`. The Windows sandbox's random password is ported to rand 0.10's `SysRng`, and schemars 1 is ported in the new upstream code in `protocol` (`items` and `display.rs`), `features` (`feature_configs.rs`) and history notes (a `x-keep-null` marker with `remove_null_variants`). The patch no longer carries the generated schemas, bindings and SDK models.
 - `serde-saphyr.patch`: upstream's lockfile already reaches newer serde-saphyr, granit-parser and annotate-snippets releases.
 - `release-adaptations.patch`: the `web_search` `literature_search_and_open` and `thread_sample` `sample_inherits_parent_context` snapshots keep upstream's tool hashes, which need regenerating.
 - `transitive-updates.patch`: upstream openai/codex#59219 builds zstd-sys from Bazel's `@zstd` and deleted `patches/zstd-sys_windows_msvc_include_dirs.patch`, so that hunk is gone. The zruntime annotation uses `annotation_select`, the `rules_rs` 0.2.3 API, as upstream openai/codex#60507 did.
