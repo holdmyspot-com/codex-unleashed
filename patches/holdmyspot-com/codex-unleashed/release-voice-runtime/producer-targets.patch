@@ -13,14 +13,14 @@ Make the manifest writable first, as sealing does, and write it with line
 feeds so the Windows interpreter does not translate them.
 ---
  .github/scripts/codex-voice-runtime.sh      | 152 ++++++++---
- .github/scripts/test-codex-voice-runtime.sh | 282 +++++++++++++++-----
+ .github/scripts/test-codex-voice-runtime.sh | 281 +++++++++++++++-----
  third_party/voice/test_windows_crt.py       |  94 +++++++
  third_party/voice/windows_crt.py            |   5 +-
- 4 files changed, 438 insertions(+), 95 deletions(-)
+ 4 files changed, 437 insertions(+), 95 deletions(-)
  create mode 100644 third_party/voice/test_windows_crt.py
 
 diff --git a/.github/scripts/codex-voice-runtime.sh b/.github/scripts/codex-voice-runtime.sh
-index 4eb753048b..4b0cc380d0 100755
+index 56df78d69a..2d8287f705 100755
 --- a/.github/scripts/codex-voice-runtime.sh
 +++ b/.github/scripts/codex-voice-runtime.sh
 @@ -6,6 +6,11 @@ set -Eeuo pipefail
@@ -74,7 +74,7 @@ index 4eb753048b..4b0cc380d0 100755
    if [[ "$runner_os" == macOS ]]; then
      bazel_args+=(--macos_minimum_os=14.0)
    fi
-@@ -211,21 +206,114 @@ run_native_build() {
+@@ -210,21 +205,114 @@ run_native_build() {
        "--host_action_env=PROCESSOR_ARCHITECTURE=$windows_architecture"
      )
    fi
@@ -193,7 +193,7 @@ index 4eb753048b..4b0cc380d0 100755
  # Requires a regular build output before any release files are staged.
  # Arguments:
  # - Build output path and its caller-readable role.
-@@ -466,24 +554,20 @@ main() {
+@@ -465,24 +553,20 @@ main() {
    helper_name="codex-voice-host$helper_extension"
    helper_source="$upstream_root/bazel-bin/codex-rs/voice-host/$helper_name"
    runtime_source="$upstream_root/bazel-bin/third_party/voice/native_runtime_$runtime_suffix"
@@ -225,7 +225,7 @@ index 4eb753048b..4b0cc380d0 100755
      fail "voice runtime receipt sourceCommit does not match $build_commit"
    fi
 diff --git a/.github/scripts/test-codex-voice-runtime.sh b/.github/scripts/test-codex-voice-runtime.sh
-index c879eca30f..c5d2f37d7c 100755
+index feea108d92..f5981a1aed 100755
 --- a/.github/scripts/test-codex-voice-runtime.sh
 +++ b/.github/scripts/test-codex-voice-runtime.sh
 @@ -71,6 +71,15 @@ assert_build_argument() {
@@ -472,17 +472,15 @@ index c879eca30f..c5d2f37d7c 100755
    if [[ "$runner_os" == Windows ]]; then
      mkdir -p "$root/windows-tools/evidence" "$root/windows-tools/pkgconf-image" "$root/windows-tools/cygwin"
      printf '{"target": "%s", "pkgconf_version": "3.0.6"}\n' "$target" > "$root/windows-tools/evidence/tools.json"
-@@ -364,27 +456,56 @@ check_target_mapping() {
+@@ -364,26 +456,54 @@ check_target_mapping() {
    fi
    if [[ "$runner_os" == Windows ]]; then
      assert_build_argument --windows-msvc-host-platform
 +    assert_query_argument --windows-msvc-host-platform
      assert_build_argument --platforms=//:local_windows_msvc
 +    assert_query_argument --platforms=//:local_windows_msvc
-     assert_build_argument '--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows,//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain'
-+    assert_query_argument '--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows,//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain'
-     assert_build_argument --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
-+    assert_query_argument --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
+     assert_build_argument --extra_toolchains=//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain
++    assert_query_argument --extra_toolchains=//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain
      assert_build_argument --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
 +    assert_query_argument --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
      assert_build_argument "--inject_repository=voice_windows_tools=$root/windows-tools"
@@ -529,7 +527,7 @@ index c879eca30f..c5d2f37d7c 100755
  }
  
  # Runs a failure case and checks that its result directory contains evidence only.
-@@ -399,7 +520,7 @@ check_failed_case() {
+@@ -398,7 +518,7 @@ check_failed_case() {
  
    make_fixture "$name"
    root="$FIXTURE_ROOT"
@@ -538,7 +536,7 @@ index c879eca30f..c5d2f37d7c 100755
    if run_producer "$root" "$target" "$runner_os" "$machine" "$EXPECTED_COMMIT" "$result" "$@"; then
      fail "$name unexpectedly succeeded"
    fi
-@@ -407,6 +528,16 @@ check_failed_case() {
+@@ -406,6 +526,16 @@ check_failed_case() {
  }
  
  # Runs a preflight failure and requires that no result directory is created.
@@ -555,7 +553,7 @@ index c879eca30f..c5d2f37d7c 100755
  check_preflight_failure() {
    local name="$1"
    local target="$2"
-@@ -419,7 +550,7 @@ check_preflight_failure() {
+@@ -418,7 +548,7 @@ check_preflight_failure() {
  
    make_fixture "$name"
    root="$FIXTURE_ROOT"
@@ -564,7 +562,7 @@ index c879eca30f..c5d2f37d7c 100755
    if run_producer "$root" "$target" "$runner_os" "$machine" "$commit" "$result" "$@"; then
      fail "$name unexpectedly succeeded"
    fi
-@@ -430,13 +561,39 @@ check_preflight_failure() {
+@@ -429,13 +559,39 @@ check_preflight_failure() {
  }
  
  # The producer command maps all six application targets to native runtime targets and host runners.
@@ -605,7 +603,7 @@ index c879eca30f..c5d2f37d7c 100755
  # The producer rejects invalid targets and source identities before creating state or invoking Bazel.
  check_preflight_failure unsupported-target x86_64-wasm32-wasi Linux x86_64 "$EXPECTED_COMMIT"
  check_failed_case changed-source-before x86_64-unknown-linux-musl Linux x86_64 FAKE_GIT_COMMIT="$CHANGED_COMMIT"
-@@ -444,8 +601,13 @@ check_failed_case changed-source-before x86_64-unknown-linux-musl Linux x86_64 F
+@@ -443,8 +599,13 @@ check_failed_case changed-source-before x86_64-unknown-linux-musl Linux x86_64 F
  # The producer rejects missing helper, runtime, or native test outputs after a successful build.
  check_failed_case missing-helper x86_64-unknown-linux-musl Linux x86_64 FAKE_MISSING_RESOURCE=helper
  check_failed_case missing-runtime x86_64-unknown-linux-musl Linux x86_64 FAKE_MISSING_RESOURCE=runtime

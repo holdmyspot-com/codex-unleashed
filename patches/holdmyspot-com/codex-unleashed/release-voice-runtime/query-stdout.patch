@@ -12,10 +12,10 @@ The voice runtime parser requires one executable path on stdout, but the shared 
  4 files changed, 149 insertions(+), 13 deletions(-)
 
 diff --git a/.github/scripts/codex-voice-runtime.sh b/.github/scripts/codex-voice-runtime.sh
-index 4b0cc380d0..7151dad143 100755
+index 2d8287f705..463b313d4d 100755
 --- a/.github/scripts/codex-voice-runtime.sh
 +++ b/.github/scripts/codex-voice-runtime.sh
-@@ -289,7 +289,10 @@ query_native_executable() {
+@@ -288,7 +288,10 @@ query_native_executable() {
    local -a bazel_args=()
  
    configure_bazel_arguments cquery "$runner_os" "$windows_tools_root" "$system_root" "$windows_architecture"
@@ -144,7 +144,7 @@ index 4fa62cb0c0..802b2f19b7 100755
    exit "$bazel_status"
  fi
 diff --git a/.github/scripts/test-codex-voice-runtime.sh b/.github/scripts/test-codex-voice-runtime.sh
-index c5d2f37d7c..9419cd43ea 100755
+index f5981a1aed..5dea5398e3 100755
 --- a/.github/scripts/test-codex-voice-runtime.sh
 +++ b/.github/scripts/test-codex-voice-runtime.sh
 @@ -221,6 +221,9 @@ if ((separator < 0)); then
@@ -174,7 +174,7 @@ index c5d2f37d7c..9419cd43ea 100755
    if [[ "$runner_os" == Windows ]]; then
      mkdir -p "$root/windows-tools/evidence" "$root/windows-tools/pkgconf-image" "$root/windows-tools/cygwin"
      printf '{"target": "%s", "pkgconf_version": "3.0.6"}\n' "$target" > "$root/windows-tools/evidence/tools.json"
-@@ -497,8 +501,13 @@ check_target_mapping() {
+@@ -495,8 +499,13 @@ check_target_mapping() {
    assert_build_argument --print-failed-action-summary
    assert_query_argument --remote-download-toplevel
    assert_query_argument --print-failed-action-summary
@@ -188,7 +188,7 @@ index c5d2f37d7c..9419cd43ea 100755
    assert_query_argument --output=starlark
    assert_query_argument "--starlark:expr=providers(target)['DefaultInfo'].files_to_run.executable.path"
    assert_query_argument //codex-rs/voice-host:voice-host-packaged_runtime-test
-@@ -520,7 +529,7 @@ check_failed_case() {
+@@ -518,7 +527,7 @@ check_failed_case() {
  
    make_fixture "$name"
    root="$FIXTURE_ROOT"

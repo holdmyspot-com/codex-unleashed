@@ -9,10 +9,10 @@ Subject: [PATCH] Fix staged voice helper loader identity
  2 files changed, 48 insertions(+), 3 deletions(-)
 
 diff --git a/.github/scripts/codex-voice-runtime.sh b/.github/scripts/codex-voice-runtime.sh
-index 7151dad143..9a40d1c572 100755
+index 463b313d4d..dd943558f3 100755
 --- a/.github/scripts/codex-voice-runtime.sh
 +++ b/.github/scripts/codex-voice-runtime.sh
-@@ -434,6 +434,8 @@ main() {
+@@ -433,6 +433,8 @@ main() {
    local helper_commit
    local helper_bytes
    local helper_name
@@ -21,7 +21,7 @@ index 7151dad143..9a40d1c572 100755
    local argument
  
    if [[ "$operation" == build ]]; then :; else
-@@ -587,7 +589,25 @@ main() {
+@@ -586,7 +588,25 @@ main() {
    fi
    run_logged 'voice runtime sealing' "$evidence_root/seal.stdout.log" "$evidence_root/seal.stderr.log" \
      python "$upstream_root/third_party/voice/release_runtime.py" seal --target "$voice_target" --output "$release_root/runtime"
@@ -49,7 +49,7 @@ index 7151dad143..9a40d1c572 100755
    fi
    helper_bytes="$(wc -c < "$evidence_root/helper-build-commit.txt" | tr -d '[:space:]')"
 diff --git a/.github/scripts/test-codex-voice-runtime.sh b/.github/scripts/test-codex-voice-runtime.sh
-index 9419cd43ea..53b7bc66be 100755
+index 5dea5398e3..f56ff657c6 100755
 --- a/.github/scripts/test-codex-voice-runtime.sh
 +++ b/.github/scripts/test-codex-voice-runtime.sh
 @@ -266,9 +266,13 @@ if [[ "$command" == build ]]; then

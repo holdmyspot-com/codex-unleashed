@@ -5,19 +5,18 @@ Subject: [PATCH] build: produce native voice runtime resources
 
 Build the target voice runtime and retain its verified output for packaging.
 ---
- .github/scripts/codex-voice-runtime.sh      | 525 +++++++++++++++++++
- .github/scripts/test-codex-voice-runtime.sh | 534 ++++++++++++++++++++
- MODULE.bazel                                |   4 +
- 3 files changed, 1063 insertions(+)
+ .github/scripts/codex-voice-runtime.sh      | 524 +++++++++++++++++++
+ .github/scripts/test-codex-voice-runtime.sh | 533 ++++++++++++++++++++
+ 2 files changed, 1057 insertions(+)
  create mode 100755 .github/scripts/codex-voice-runtime.sh
  create mode 100755 .github/scripts/test-codex-voice-runtime.sh
 
 diff --git a/.github/scripts/codex-voice-runtime.sh b/.github/scripts/codex-voice-runtime.sh
 new file mode 100755
-index 0000000000..4eb753048b
+index 0000000000..56df78d69a
 --- /dev/null
 +++ b/.github/scripts/codex-voice-runtime.sh
-@@ -0,0 +1,525 @@
+@@ -0,0 +1,524 @@
 +#!/usr/bin/env bash
 +# Build and stage same-commit native voice resources for one primary release target.
 +set -Eeuo pipefail
@@ -220,8 +219,7 @@ index 0000000000..4eb753048b
 +    wrapper_args+=(--windows-msvc-host-platform)
 +    bazel_args+=(
 +      --platforms=//:local_windows_msvc
-+      '--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows,//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain'
-+      --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
++      --extra_toolchains=//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain
 +      --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
 +      "--inject_repository=voice_windows_tools=$windows_tools_root"
 +      --//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools
@@ -545,10 +543,10 @@ index 0000000000..4eb753048b
 +main "$@"
 diff --git a/.github/scripts/test-codex-voice-runtime.sh b/.github/scripts/test-codex-voice-runtime.sh
 new file mode 100755
-index 0000000000..c879eca30f
+index 0000000000..feea108d92
 --- /dev/null
 +++ b/.github/scripts/test-codex-voice-runtime.sh
-@@ -0,0 +1,534 @@
+@@ -0,0 +1,533 @@
 +#!/usr/bin/env bash
 +# Exercises the producer's target mapping, resource staging, identity checks and failure cleanup.
 +set -euo pipefail
@@ -916,8 +914,7 @@ index 0000000000..c879eca30f
 +  if [[ "$runner_os" == Windows ]]; then
 +    assert_build_argument --windows-msvc-host-platform
 +    assert_build_argument --platforms=//:local_windows_msvc
-+    assert_build_argument '--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows,//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain'
-+    assert_build_argument --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
++    assert_build_argument --extra_toolchains=//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain
 +    assert_build_argument --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
 +    assert_build_argument "--inject_repository=voice_windows_tools=$root/windows-tools"
 +    assert_build_argument --//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools
@@ -1083,21 +1080,6 @@ index 0000000000..c879eca30f
 +fi
 +assert_equal caller-owned "$(cat "$existing_result/sentinel")" 'preexisting result sentinel'
 +assert_absent "$existing_result/completed" 'preexisting result completion marker'
-diff --git a/MODULE.bazel b/MODULE.bazel
-index 73c5c7a676..980722af7e 100644
---- a/MODULE.bazel
-+++ b/MODULE.bazel
-@@ -162,6 +162,10 @@ use_repo(osx, "macos_sdk")
- # Needed to disable xcode...
- bazel_dep(name = "apple_support", version = "2.1.0")
- bazel_dep(name = "rules_cc", version = "0.2.25")
-+
-+# Windows voice jobs explicitly select the installed MSVC C toolchains.
-+cc_configure = use_extension("@rules_cc//cc:extensions.bzl", "cc_configure_extension")
-+use_repo(cc_configure, "local_config_cc")
- bazel_dep(name = "rules_platform", version = "0.1.0")
- bazel_dep(name = "rules_pkg", version = "1.0.1")
- bazel_dep(name = "aws-lc", version = "5.1.0.bcr.3")
 -- 
 2.43.0
 
