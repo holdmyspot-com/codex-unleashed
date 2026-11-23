@@ -122,5 +122,4 @@ The release applies these patches in this order:
 110. [flaky-tests/rmcp-oauth-issuer-and-origin-fixtures.patch](holdmyspot-com/codex-unleashed/flaky-tests/rmcp-oauth-issuer-and-origin-fixtures.patch)
 111. [flaky-tests/rmcp-limit-and-doctor-websocket-report-fixtures.patch](holdmyspot-com/codex-unleashed/flaky-tests/rmcp-limit-and-doctor-websocket-report-fixtures.patch)
 112. [flaky-tests/rmcp-configured-response-cap-fixture.patch](holdmyspot-com/codex-unleashed/flaky-tests/rmcp-configured-response-cap-fixture.patch)
-113. [flaky-tests/select-ordinary-websocket-probe-fixtures.patch](holdmyspot-com/codex-unleashed/flaky-tests/select-ordinary-websocket-probe-fixtures.patch)
-114. [flaky-tests/rmcp-oauth-authorization-origin-fixture.patch](holdmyspot-com/codex-unleashed/flaky-tests/rmcp-oauth-authorization-origin-fixture.patch)
+113. [flaky-tests/rmcp-oauth-authorization-origin-fixture.patch](holdmyspot-com/codex-unleashed/flaky-tests/rmcp-oauth-authorization-origin-fixture.patch)
