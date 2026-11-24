@@ -42,7 +42,22 @@ public final class ReleaseReproductionTest
 			int status = Main.run(new String[]{"release-reproduction", "--help"},
 				new ByteArrayInputStream(new byte[0]), stream, stream);
 			requireThat(status, "status").isEqualTo(0);
-			requireThat(bytes.toString(StandardCharsets.UTF_8), "help").contains("run-prepared");
+			requireThat(bytes.toString(StandardCharsets.UTF_8), "help").contains("run-prepared").contains("run-compile");
+		}
+	}
+
+	/** Accepts a compile handoff only on the packaging operation. */
+	@Test
+	public void compiledOutputsOnlyForPackaging()
+	{
+		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+		try (PrintStream stream = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+		{
+			int status = Main.run(new String[]{"release-reproduction", "run-compile", "--project-root", "root",
+				"--state", "state", "--release-dir", "release", "--workspace", "workspace", "--output-dir", "output",
+				"--compiled-outputs", "compiled"}, new ByteArrayInputStream(new byte[0]), stream, stream);
+			requireThat(status, "status").isEqualTo(2);
+			requireThat(bytes.toString(StandardCharsets.UTF_8), "diagnostic").contains("Expected options");
 		}
 	}
 

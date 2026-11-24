@@ -90,7 +90,7 @@ jobs:
           export JAVA_TOOL_OPTIONS="-Djava.io.tmpdir=$tooling_test_root/tmp"
           bash .github/scripts/maven-retry.sh "$tooling_test_root/maven" -q -f tooling/cli/pom.xml \
             "-Dtooling.build.directory=$tooling_test_root/build" \
-            -Dtest=UpstreamAutoReleaseTest,PackageLicenseTest,PackageIdentityTest,ReleaseManifestTest,ReleaseManifestNativeInputsTest,MainTest,BlobSizeCommandTest,BlobSizePolicyTest test
+            -Dtest=UpstreamAutoReleaseTest,PackageLicenseTest,PackageIdentityTest,ReleaseManifestTest,ReleaseManifestNativeInputsTest,CompiledOutputHandoffTest,MainTest,BlobSizeCommandTest,BlobSizePolicyTest test
 
       - name: Verify release helper behavior
         run: |
@@ -116,6 +116,7 @@ jobs:
       patches: ${{ steps.commit.outputs.patches }}
       live: ${{ steps.mode.outputs.live }}
       package_matrix: ${{ steps.mode.outputs.package_matrix }}
+      same_host_package_matrix: ${{ steps.mode.outputs.same_host_package_matrix }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -167,6 +168,10 @@ jobs:
             fi
           fi
           printf 'live=%s\npackage_matrix=%s\n' "$live" "$matrix" >> "$GITHUB_OUTPUT"
+          # Apple silicon compiles the Intel macOS executables and package-intel packages them, so the package job builds
+          # only the targets that compile and package on one host.
+          printf 'same_host_package_matrix=%s\n' \
+            "$(jq -c 'map(select(.target != "x86_64-apple-darwin"))' <<< "$matrix")" >> "$GITHUB_OUTPUT"
 
       - name: Restore the immutable selection from this run
         if: github.run_attempt != '1'
@@ -562,12 +567,172 @@ jobs:
 
   # Publication and draft rehearsal both require the strict gates and six packages.
 
+  compile:
+    name: Compile - x86_64-apple-darwin
+    needs: [detect, patch-check]
+    # Apple silicon cross-compiles the Intel macOS executables in about half an Intel runner's time. package-intel
+    # installs them on an Intel runner, which runs everything that must execute natively.
+    if: >-
+      ${{ !cancelled() && needs.detect.result == 'success' && needs.patch-check.result == 'success' &&
+          (needs.detect.outputs.live == 'true' || inputs.package_dry_run == true) &&
+          contains(fromJSON(needs.detect.outputs.package_matrix).*.target, 'x86_64-apple-darwin') }}
+    runs-on: macos-15
+    permissions:
+      contents: read
+    timeout-minutes: 360
+    outputs:
+      archive_sha256: ${{ steps.handoff.outputs.archive_sha256 }}
+      inputs_sha256: ${{ steps.handoff.outputs.inputs_sha256 }}
+    env:
+      TARGET: x86_64-apple-darwin
+      CODEX_UNLEASHED_BUILD_NUMBER: ${{ needs.detect.outputs.build }}
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+      - name: Select the maintained tooling JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Build the tooling runtime
+        env:
+          TOOLING_ROOT: restart-metadata
+        run: bash restart-metadata/.github/scripts/setup-tooling.sh
+
+      - name: Keep the patch queue outside the upstream checkout
+        run: cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ needs.detect.outputs.upstream_commit }}
+          persist-credentials: false
+
+      - name: Verify the pinned upstream release tag
+        env:
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+          UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin "refs/tags/$UPSTREAM_TAG:refs/tags/$UPSTREAM_TAG"
+          test "$(git rev-parse "$UPSTREAM_TAG^{commit}")" = "$UPSTREAM_COMMIT"
+
+      - name: Apply the patch queue
+        env:
+          PATCHES: ${{ needs.detect.outputs.patches }}
+        run: |
+          set -euo pipefail
+          read -r -a patch_paths <<< "$PATCHES"
+          # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
+          printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"
+          for patch in "${patch_paths[@]}"; do
+            git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
+          done
+
+      - name: Verify the package source version
+        env:
+          VERSION: ${{ needs.detect.outputs.version }}
+          BUILD: ${{ needs.detect.outputs.build }}
+        run: |
+          set -euo pipefail
+          bash "$CODEX_TOOLING" package-identity source \
+            --source-root "$GITHUB_WORKSPACE" --version "$VERSION" --build "$BUILD"
+
+      # The alignment commit is reproducible, so this checkout and the package job's checkout have the same HEAD, which
+      # the handoff records and the package job requires.
+      - name: Commit the lockfile's workspace package versions aligned with the release version
+        run: bash "$CODEX_TOOLING" align-workspace-lock --source-root "$GITHUB_WORKSPACE"
+
+      - name: Read upstream's pinned Rust toolchain
+        id: upstream-rust
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: ${{ steps.upstream-rust.outputs.channel }}
+          targets: x86_64-apple-darwin
+
+      - name: Select the cross-compile settings
+        run: |
+          set -euo pipefail
+          echo 'MACOSX_DEPLOYMENT_TARGET=14.0' >> "$GITHUB_ENV"
+          # ARM macOS (three CPUs, 7 GB) took 2,842 s with two jobs and 6,007 s with three in cold rebuilds of the
+          # heaviest libraries. The x86-64 target cross-compiles on this runner, so it takes the ARM limit.
+          case "$RUNNER_OS:$RUNNER_ARCH" in
+            macOS:ARM64)
+              echo 'CARGO_BUILD_JOBS=2' >> "$GITHUB_ENV"
+              printf 'Limiting ARM macOS Cargo compilation to two concurrent jobs, the fastest measured count.\n'
+              ;;
+          esac
+
+      - name: Select release binaries
+        run: |
+          set -euo pipefail
+          binaries="$(bash .github/scripts/codex-package-operations.sh select-binaries \
+            --runner-os "$RUNNER_OS" --build-mode release --build-system cargo)"
+          echo "NEEDED_BINARIES=$binaries" >> "$GITHUB_ENV"
+
+      - name: Compile the release executables
+        uses: ./.github/actions/build-cargo-package-binaries
+        with:
+          target: x86_64-apple-darwin
+          binaries: ${{ env.NEEDED_BINARIES }}
+          build-mode: release
+
+      - name: Record the compile host's native inputs
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/compiled-outputs"
+          native_options=(
+            --build-result "$CODEX_PACKAGE_BUILD_RESULT" --target "$TARGET"
+            --output "$RUNNER_TEMP/compiled-outputs/native-inputs.json"
+            --runner-arch "$RUNNER_ARCH"
+            --configured-v8-archive "$RUSTY_V8_ARCHIVE"
+          )
+          if [[ ${ImageOS+x} ]]; then native_options+=(--image-os "$ImageOS"); fi
+          if [[ ${ImageVersion+x} ]]; then native_options+=(--image-version "$ImageVersion"); fi
+          bash "$CODEX_TOOLING" release-native-inputs "${native_options[@]}"
+
+      - name: Hand over the pre-strip executables and their dSYM bundles
+        id: handoff
+        run: |
+          set -euo pipefail
+          handoff="$RUNNER_TEMP/compiled-outputs"
+          read -r -a binaries <<< "$NEEDED_BINARIES"
+          bash "$CODEX_TOOLING" compiled-output-handoff capture \
+            --release-dir "$CARGO_TARGET_DIR/$TARGET/release" --target "$TARGET" \
+            --source-commit "$(git rev-parse HEAD)" --output "$handoff/compiled-outputs.tar" --binaries "${binaries[@]}"
+          printf 'archive_sha256=%s\ninputs_sha256=%s\n' \
+            "$(shasum -a 256 "$handoff/compiled-outputs.tar" | cut -d ' ' -f 1)" \
+            "$(shasum -a 256 "$handoff/native-inputs.json" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: compiled-outputs-x86_64-apple-darwin
+          path: ${{ runner.temp }}/compiled-outputs/*
+          retention-days: 3
+          if-no-files-found: error
+
   package:
     name: Package - ${{ matrix.target }}
     needs: [detect, patch-check]
     # The successful patch check also establishes that draft status allows a new release.
     # Build workflow artifacts alongside the platform gates. Publish consumes both results.
-    if: ${{ !cancelled() && needs.detect.result == 'success' && needs.patch-check.result == 'success' && (needs.detect.outputs.live == 'true' || inputs.package_dry_run == true) }}
+    # Intel macOS packages in package-intel, so a dry run selecting only that target has no entry here.
+    if: >-
+      ${{ !cancelled() && needs.detect.result == 'success' && needs.patch-check.result == 'success' &&
+          (needs.detect.outputs.live == 'true' || inputs.package_dry_run == true) &&
+          needs.detect.outputs.same_host_package_matrix != '[]' }}
     runs-on: ${{ matrix.runner }}
     permissions:
       actions: read
@@ -577,7 +742,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.detect.outputs.package_matrix) }}
+        include: ${{ fromJSON(needs.detect.outputs.same_host_package_matrix) }}
     env:
       TARGET: ${{ matrix.target }}
       PACKAGE_FINAL_OUTPUT_CACHE: ${{ inputs.package_final_output_cache && matrix.target == 'x86_64-unknown-linux-musl' }}
@@ -1170,10 +1335,648 @@ jobs:
         if: always()
         run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
 
+  voice-intel:
+    name: Voice - x86_64-apple-darwin
+    needs: [detect, patch-check]
+    # Builds the Intel macOS voice runtime natively while the compile job runs. Its steps through the voice build are the
+    # package job's for this target.
+    if: >-
+      ${{ !cancelled() && needs.detect.result == 'success' && needs.patch-check.result == 'success' &&
+          (needs.detect.outputs.live == 'true' || inputs.package_dry_run == true) &&
+          contains(fromJSON(needs.detect.outputs.package_matrix).*.target, 'x86_64-apple-darwin') }}
+    runs-on: macos-15-intel
+    permissions:
+      contents: read
+    timeout-minutes: 360
+    outputs:
+      archive_sha256: ${{ steps.handoff.outputs.archive_sha256 }}
+    env:
+      TARGET: x86_64-apple-darwin
+      CODEX_UNLEASHED_BUILD_NUMBER: ${{ needs.detect.outputs.build }}
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Select the maintained tooling JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Build the tooling runtime
+        env:
+          TOOLING_ROOT: restart-metadata
+        run: bash restart-metadata/.github/scripts/setup-tooling.sh
+
+      - name: Preserve voice release metadata before upstream checkout
+        run: |
+          set -euo pipefail
+          voice_metadata="$RUNNER_TEMP/voice-release-metadata"
+          mkdir -p "$voice_metadata"
+          cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 \
+            restart-metadata/.github/scripts/verify-voice-installer.mjs \
+            restart-metadata/.github/scripts/codex-version-banner.mjs "$voice_metadata/"
+
+      - name: Keep the patch queue outside the upstream checkout
+        run: cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ needs.detect.outputs.upstream_commit }}
+          persist-credentials: false
+
+      - name: Verify the pinned upstream release tag
+        env:
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+          UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin "refs/tags/$UPSTREAM_TAG:refs/tags/$UPSTREAM_TAG"
+          test "$(git rev-parse "$UPSTREAM_TAG^{commit}")" = "$UPSTREAM_COMMIT"
+
+      - name: Apply the patch queue
+        env:
+          PATCHES: ${{ needs.detect.outputs.patches }}
+        run: |
+          set -euo pipefail
+          read -r -a patch_paths <<< "$PATCHES"
+          # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
+          printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"
+          for patch in "${patch_paths[@]}"; do
+            git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
+          done
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+
+      - name: Verify the package source version
+        env:
+          VERSION: ${{ needs.detect.outputs.version }}
+          BUILD: ${{ needs.detect.outputs.build }}
+        run: |
+          set -euo pipefail
+          bash "$CODEX_TOOLING" package-identity source \
+            --source-root "$GITHUB_WORKSPACE" --version "$VERSION" --build "$BUILD"
+
+      # Upstream's release commit stamps the tag version into codex-rs/Cargo.toml but leaves the lockfile at 0.0.0. Cargo
+      # would rewrite the lockfile during the build and dirty the checkout the release records, so the alignment is committed.
+
+      - name: Commit the lockfile's workspace package versions aligned with the release version
+        run: bash "$CODEX_TOOLING" align-workspace-lock --source-root "$GITHUB_WORKSPACE"
+
+      - name: Read upstream's pinned Rust toolchain
+        id: upstream-rust
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: ${{ steps.upstream-rust.outputs.channel }}
+          targets: x86_64-apple-darwin
+
+      - name: Verify and configure upstream V8 artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: x86_64-apple-darwin
+
+      - name: Prepare the upstream Bazel host for the selected target
+        id: voice-bazel-host
+        uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-apple-darwin
+          cache-scope: release-voice-x86_64-apple-darwin
+
+      - name: Select platform build settings
+        run: |
+          set -euo pipefail
+          echo 'MACOSX_DEPLOYMENT_TARGET=14.0' >> "$GITHUB_ENV"
+          # A voice helper identity query that fails keeps its stdout and stderr here; the evidence upload collects them.
+          echo "CODEX_VOICE_DIAGNOSTICS_DIR=$RUNNER_TEMP/voice-helper-identity-$TARGET" >> "$GITHUB_ENV"
+
+      - name: Build the sealed voice runtime for this patched source
+        id: voice-build
+        env:
+          SOURCE_ROOT: ${{ github.workspace }}
+          VOICE_METADATA: ${{ runner.temp }}/voice-release-metadata
+          RELEASE_VERSION: ${{ needs.detect.outputs.version }}
+          RELEASE_BUILD: ${{ needs.detect.outputs.build }}
+          VOICE_WINDOWS_SYSTEM_ROOT: ${{ env.VOICE_WINDOWS_SYSTEM_ROOT }}
+          VOICE_WINDOWS_HOST_ARCH: ${{ env.VOICE_WINDOWS_HOST_ARCH }}
+        run: |
+          set -euo pipefail
+          physical_source="$(cd "$SOURCE_ROOT" && pwd -P)"
+          test -z "$(git -C "$physical_source" status --porcelain --untracked-files=no)"
+          build_commit="$(git -C "$physical_source" rev-parse HEAD)"
+          [[ "$build_commit" =~ ^[0-9a-f]{40}$ ]]
+          result_parent="$(cd -- "$RUNNER_TEMP" && pwd -P)"
+          result_dir="$result_parent/voice-build-$TARGET"
+          test ! -e "$result_dir"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            test -n "$VOICE_WINDOWS_SYSTEM_ROOT"
+            test -n "$VOICE_WINDOWS_HOST_ARCH"
+            export SystemRoot="$VOICE_WINDOWS_SYSTEM_ROOT"
+            export PROCESSOR_ARCHITECTURE="$VOICE_WINDOWS_HOST_ARCH"
+          fi
+          cache_hit=false
+          if [[ -d "$RUNNER_TEMP/voice-cache-incoming" ]] && \
+            bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/macos-sealed-voice-cache.sh" restore \
+              "$TARGET" "$RELEASE_VERSION+$RELEASE_BUILD" "$result_dir" \
+              "$RUNNER_TEMP/voice-cache-incoming" "$RUNNER_TEMP/voice-cache-evidence"; then
+            cache_hit=true
+          else
+            bash .github/scripts/codex-voice-runtime.sh build \
+              --upstream-root "$physical_source" --target "$TARGET" --build-commit "$build_commit" \
+              --result-dir "$result_dir"
+          fi
+          test "$(git -C "$physical_source" rev-parse HEAD)" = "$build_commit"
+          test -z "$(git -C "$physical_source" status --porcelain --untracked-files=no)"
+          release_dir="$result_dir/release"
+          test -d "$release_dir"
+          suffix=''
+          if [[ "$RUNNER_OS" == Windows ]]; then suffix='.exe'; fi
+          test -f "$result_dir/verification/packaged-runtime-test-bin$suffix"
+          test -f "$result_dir/verification/installed-package-runtime-test-bin$suffix"
+          verification_artifact="$RUNNER_TEMP/voice-verification-$TARGET"
+          mkdir "$verification_artifact"
+          cp "$result_dir/verification/packaged-runtime-test-bin$suffix" \
+            "$result_dir/verification/installed-package-runtime-test-bin$suffix" "$verification_artifact/"
+          (cd "$verification_artifact" && sha256sum packaged-runtime-test-bin"$suffix" \
+            installed-package-runtime-test-bin"$suffix" > SHA256SUMS)
+          printf '%s\n' "$TARGET" > "$verification_artifact/target"
+          printf '%s\n' "$build_commit" > "$verification_artifact/source-commit"
+          printf 'result_dir=%s\nrelease_dir=%s\nbuild_commit=%s\nverification_artifact=%s\ntooling_launcher=%s\n' \
+            "$result_dir" "$release_dir" "$build_commit" "$verification_artifact" "$CODEX_TOOLING" >> "$GITHUB_OUTPUT"
+          printf 'cache_hit=%s\n' "$cache_hit" >> "$GITHUB_OUTPUT"
+
+      - name: Hand over the voice runtime and its verification binaries
+        id: handoff
+        env:
+          VOICE_RESULT: ${{ steps.voice-build.outputs.result_dir }}
+          VOICE_VERIFICATION: ${{ steps.voice-build.outputs.verification_artifact }}
+        run: |
+          set -euo pipefail
+          result_parent="$(cd -- "$RUNNER_TEMP" && pwd -P)"
+          test "$VOICE_RESULT" = "$result_parent/voice-build-$TARGET"
+          test "$(cd -- "$VOICE_VERIFICATION" && pwd -P)" = "$result_parent/voice-verification-$TARGET"
+          handoff="$RUNNER_TEMP/voice-runtime-handoff"
+          mkdir "$handoff"
+          gtar --format=pax -cf "$handoff/voice-runtime.tar" -C "$result_parent" \
+            "voice-build-$TARGET" "voice-verification-$TARGET"
+          printf 'archive_sha256=%s\n' "$(shasum -a 256 "$handoff/voice-runtime.tar" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: voice-runtime-x86_64-apple-darwin
+          path: ${{ runner.temp }}/voice-runtime-handoff/voice-runtime.tar
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Retain the failed voice build evidence
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: voice-build-evidence-x86_64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/voice-build-x86_64-apple-darwin/evidence
+            ${{ runner.temp }}/voice-helper-identity-x86_64-apple-darwin
+          retention-days: 3
+          if-no-files-found: warn
+
+      - name: Remove the tooling runtime
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
+
+  package-intel:
+    # Shares the package job's name so run readers that select jobs by name see all six packages.
+    name: Package - x86_64-apple-darwin
+    needs: [detect, patch-check, compile, voice-intel]
+    # Packages the executables compiled on Apple silicon with the voice runtime built on Intel, then runs every check that
+    # must execute natively. It runs only when every needed job succeeded. Its other steps are the package job's for this
+    # target.
+    runs-on: macos-15-intel
+    permissions:
+      contents: read
+    timeout-minutes: 360
+    env:
+      TARGET: x86_64-apple-darwin
+      CODEX_UNLEASHED_BUILD_NUMBER: ${{ needs.detect.outputs.build }}
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Select the maintained tooling JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Build the tooling runtime
+        env:
+          TOOLING_ROOT: restart-metadata
+        run: bash restart-metadata/.github/scripts/setup-tooling.sh
+
+      - name: Preserve voice release metadata before upstream checkout
+        run: |
+          set -euo pipefail
+          voice_metadata="$RUNNER_TEMP/voice-release-metadata"
+          mkdir -p "$voice_metadata"
+          cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 \
+            restart-metadata/.github/scripts/verify-voice-installer.mjs \
+            restart-metadata/.github/scripts/codex-version-banner.mjs "$voice_metadata/"
+
+      - name: Keep the patch queue outside the upstream checkout
+        run: |
+          set -euo pipefail
+          cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
+          mkdir -p "$RUNNER_TEMP/package-smoke-tools/test-baselines"
+          cp restart-metadata/.github/scripts/package-smoke-baseline.sh \
+            restart-metadata/.github/scripts/fit-linux-build-memory.sh "$RUNNER_TEMP/package-smoke-tools/"
+          if [[ -d restart-metadata/docs/test-baselines ]]; then
+            cp -R restart-metadata/docs/test-baselines/. "$RUNNER_TEMP/package-smoke-tools/test-baselines/"
+          fi
+          mkdir -p "$RUNNER_TEMP/package-legal-metadata/docs"
+          cp restart-metadata/LICENSE.md "$RUNNER_TEMP/package-legal-metadata/"
+          cp restart-metadata/docs/LICENSE.html restart-metadata/docs/terms.html restart-metadata/docs/privacy.html \
+            "$RUNNER_TEMP/package-legal-metadata/docs/"
+          cp -R restart-metadata/licenses "$RUNNER_TEMP/package-legal-metadata/"
+
+      - name: Retain pinned release verification metadata
+        run: |
+          set -euo pipefail
+          git clone --no-hardlinks restart-metadata "$RUNNER_TEMP/manifest-patch-repo"
+          test "$(git -C "$RUNNER_TEMP/manifest-patch-repo" rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ needs.detect.outputs.upstream_commit }}
+          persist-credentials: false
+
+      - name: Verify the pinned upstream release tag
+        env:
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+          UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin "refs/tags/$UPSTREAM_TAG:refs/tags/$UPSTREAM_TAG"
+          test "$(git rev-parse "$UPSTREAM_TAG^{commit}")" = "$UPSTREAM_COMMIT"
+
+      - name: Apply the patch queue
+        env:
+          PATCHES: ${{ needs.detect.outputs.patches }}
+        run: |
+          set -euo pipefail
+          read -r -a patch_paths <<< "$PATCHES"
+          # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
+          printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"
+          for patch in "${patch_paths[@]}"; do
+            git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
+              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
+          done
+
+      - name: Prepare retained package worker
+        if: needs.detect.outputs.live != 'true' && inputs.package_public_key != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          metadata="$RUNNER_TEMP/manifest-patch-repo/.github"
+          evidence="$RUNNER_TEMP/package-debug-evidence"
+          mkdir "$evidence"
+          bash "$metadata/scripts/release-debug-session.sh" prepare \
+            "$metadata/actions/debug-failed-runner" "$GITHUB_WORKSPACE" "$evidence"
+
+      - name: Open authenticated package worker
+        id: package-debug
+        if: needs.detect.outputs.live != 'true' && inputs.package_public_key != ''
+        uses: ./.github/actions/debug-failed-runner
+        with:
+          public-key: ${{ inputs.package_public_key }}
+          idle-timeout-minutes: '10'
+
+      - name: Wait for connected package client
+        if: steps.package-debug.outcome == 'success'
+        shell: bash
+        run: |
+          bash "$RUNNER_TEMP/manifest-patch-repo/.github/scripts/release-debug-session.sh" \
+            wait-for-client "$RUNNER_TEMP/package-debug-evidence"
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+
+      - name: Verify the package source version
+        env:
+          VERSION: ${{ needs.detect.outputs.version }}
+          BUILD: ${{ needs.detect.outputs.build }}
+        run: |
+          set -euo pipefail
+          bash "$CODEX_TOOLING" package-identity source \
+            --source-root "$GITHUB_WORKSPACE" --version "$VERSION" --build "$BUILD"
+
+      # Upstream's release commit stamps the tag version into codex-rs/Cargo.toml but leaves the lockfile at 0.0.0. Cargo
+      # would rewrite the lockfile during the build and dirty the checkout the release records, so the alignment is committed.
+
+      - name: Commit the lockfile's workspace package versions aligned with the release version
+        run: bash "$CODEX_TOOLING" align-workspace-lock --source-root "$GITHUB_WORKSPACE"
+
+      - name: Read upstream's pinned Rust toolchain
+        id: upstream-rust
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: ${{ steps.upstream-rust.outputs.channel }}
+          targets: x86_64-apple-darwin
+
+      - name: Select platform build settings
+        run: |
+          set -euo pipefail
+          echo 'MACOSX_DEPLOYMENT_TARGET=14.0' >> "$GITHUB_ENV"
+          # A voice helper identity query that fails keeps its stdout and stderr here; the evidence upload collects them.
+          echo "CODEX_VOICE_DIAGNOSTICS_DIR=$RUNNER_TEMP/voice-helper-identity-$TARGET" >> "$GITHUB_ENV"
+
+      - name: Download the executables compiled on Apple silicon
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: compiled-outputs-x86_64-apple-darwin
+          path: ${{ runner.temp }}/compiled-outputs
+
+      - name: Verify the downloaded compile handoff
+        id: compiled-outputs
+        env:
+          ARCHIVE_SHA256: ${{ needs.compile.outputs.archive_sha256 }}
+          INPUTS_SHA256: ${{ needs.compile.outputs.inputs_sha256 }}
+        run: |
+          set -euo pipefail
+          handoff="$RUNNER_TEMP/compiled-outputs"
+          test -f "$handoff/compiled-outputs.tar" && test -f "$handoff/native-inputs.json"
+          test "$(find "$handoff" -mindepth 1 | wc -l | tr -d ' ')" = 2
+          printf '%s  %s\n' "$ARCHIVE_SHA256" compiled-outputs.tar "$INPUTS_SHA256" native-inputs.json \
+            | (cd "$handoff" && shasum -a 256 --check --strict)
+          printf 'path=%s\n' "$handoff" >> "$GITHUB_OUTPUT"
+
+      # Intel macOS installs the handed-over executables, which the build operation checks against this checkout's
+      # target and source commit, instead of compiling them.
+
+      - name: Download the voice runtime built on Intel
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: voice-runtime-x86_64-apple-darwin
+          path: ${{ runner.temp }}/voice-runtime-handoff
+
+      # Restores the voice job's result at the path it was built in, which is this host kind's, so the package build and
+      # the final voice verification see the same producer outputs.
+      - name: Restore the verified voice runtime for this patched source
+        id: voice-build
+        env:
+          ARCHIVE_SHA256: ${{ needs.voice-intel.outputs.archive_sha256 }}
+        run: |
+          set -euo pipefail
+          handoff="$RUNNER_TEMP/voice-runtime-handoff"
+          test "$(find "$handoff" -mindepth 1 | wc -l | tr -d ' ')" = 1
+          printf '%s  %s\n' "$ARCHIVE_SHA256" voice-runtime.tar | (cd "$handoff" && shasum -a 256 --check --strict)
+          test -z "$(git status --porcelain --untracked-files=no)"
+          build_commit="$(git rev-parse HEAD)"
+          result_parent="$(cd -- "$RUNNER_TEMP" && pwd -P)"
+          result_dir="$result_parent/voice-build-$TARGET"
+          verification_artifact="$result_parent/voice-verification-$TARGET"
+          test ! -e "$result_dir" && test ! -e "$verification_artifact"
+          test "$(gtar -tf "$handoff/voice-runtime.tar" | cut -d / -f 1 | LC_ALL=C sort -u | tr '\n' ' ')" = \
+            "voice-build-$TARGET voice-verification-$TARGET "
+          gtar --no-same-owner --same-permissions -xf "$handoff/voice-runtime.tar" -C "$result_parent"
+          test "$(cat "$verification_artifact/target")" = "$TARGET"
+          test "$(cat "$verification_artifact/source-commit")" = "$build_commit"
+          (cd "$verification_artifact" && shasum -a 256 --check --strict SHA256SUMS)
+          for binary in packaged-runtime-test-bin installed-package-runtime-test-bin; do
+            cmp "$result_dir/verification/$binary" "$verification_artifact/$binary"
+          done
+          test -d "$result_dir/release"
+          printf 'result_dir=%s\nrelease_dir=%s\nbuild_commit=%s\nverification_artifact=%s\ntooling_launcher=%s\n' \
+            "$result_dir" "$result_dir/release" "$build_commit" "$verification_artifact" "$CODEX_TOOLING" >> "$GITHUB_OUTPUT"
+
+      # The build operation installs the handed-over executables, checking them against this checkout's target and
+      # source commit, instead of compiling them.
+      - name: Build and smoke-test upstream's package archives
+        id: package
+        uses: ./.github/actions/build-codex-packages
+        with:
+          target: x86_64-apple-darwin
+          package-version: ${{ needs.detect.outputs.version }}+${{ needs.detect.outputs.build }}
+          build-mode: release
+          restored-final-outputs: ${{ steps.compiled-outputs.outputs.path }}
+          voice-release-dir: ${{ steps.voice-build.outputs.release_dir }}
+          voice-build-commit: ${{ steps.voice-build.outputs.build_commit }}
+          tooling-launcher: ${{ steps.voice-build.outputs.tooling_launcher }}
+
+      - name: Collect diagnostic smoke-test baseline evidence
+        if: failure() && steps.package.outcome == 'failure'
+        continue-on-error: true
+        env:
+          UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
+          PACKAGE_SMOKE_TOOLS: ${{ runner.temp }}/package-smoke-tools
+          PACKAGE_SMOKE_EVIDENCE: ${{ runner.temp }}/package-smoke-evidence
+          PYTHONPATH: ${{ github.workspace }}/sdk/python/src${{ runner.os == 'Windows' && ';' || ':' }}${{ github.workspace }}/sdk/python/tests
+        run: bash "$PACKAGE_SMOKE_TOOLS/package-smoke-baseline.sh" compare
+
+      - name: Include supplied legal documents in final package archives
+        run: |
+          set -euo pipefail
+          bash "$CODEX_TOOLING" package-license finalize \
+            --metadata-root "$RUNNER_TEMP/package-legal-metadata" \
+            --upstream-root "$GITHUB_WORKSPACE" --package-root "$RUNNER_TEMP" \
+            --archive-root "$GITHUB_WORKSPACE/dist/$TARGET" --target "$TARGET"
+
+      - name: Verify both finalized voice archives and the installed package
+        id: voice-final-verification
+        env:
+          SOURCE_ROOT: ${{ github.workspace }}
+          VOICE_RESULT: ${{ steps.voice-build.outputs.result_dir }}
+          VOICE_BUILD_COMMIT: ${{ steps.voice-build.outputs.build_commit }}
+          PACKAGE_VERSION: ${{ needs.detect.outputs.version }}+${{ needs.detect.outputs.build }}
+          VOICE_METADATA: ${{ runner.temp }}/voice-release-metadata
+        run: |
+          set -euo pipefail
+          physical_source="$(cd "$SOURCE_ROOT" && pwd -P)"
+          test "$(git -C "$physical_source" rev-parse HEAD)" = "$VOICE_BUILD_COMMIT"
+          test -z "$(git -C "$physical_source" status --porcelain --untracked-files=no)"
+          native_temp="$(cd "$RUNNER_TEMP" && pwd -P)"
+          gzip_package="$native_temp/final primary gzip package $TARGET"
+          zstd_package="$native_temp/final primary zstd package $TARGET"
+          installed_package=''
+          installer_assets=''
+          resolver_scratch=''
+          cleanup_voice_packages() {
+            for owned_path in "$gzip_package" "$zstd_package" "$installed_package" "$installer_assets" "$resolver_scratch"; do
+              if [[ -n "$owned_path" && -e "$owned_path" ]]; then rm -rf -- "$owned_path"; fi
+            done
+          }
+          trap cleanup_voice_packages EXIT
+          mkdir "$gzip_package" "$zstd_package"
+          tar -xzf - -C "$gzip_package" < "$GITHUB_WORKSPACE/dist/$TARGET/codex-package-$TARGET.tar.gz"
+          resolver_scratch="$(mktemp -d "$native_temp/voice-zstd-argv-$TARGET.XXXXXX")"
+          resolver_json="$resolver_scratch/argv.json"
+          resolver_nul="$resolver_scratch/argv.nul"
+          bash "$CODEX_TOOLING" resolve-zstd --upstream-root "$physical_source" > "$resolver_json"
+          node -e 'const fs=require("node:fs");const a=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!Array.isArray(a)||a.length===0||a.some(x=>typeof x!=="string"||x.includes("\0")))process.exit(2);fs.writeFileSync(process.argv[2],Buffer.from(a.join("\0")+"\0"))' \
+            "$resolver_json" "$resolver_nul"
+          zstd_argv=()
+          while IFS= read -r -d '' arg; do zstd_argv+=("$arg"); done < "$resolver_nul"
+          test "${#zstd_argv[@]}" -gt 0
+          "${zstd_argv[@]}" -d -c "$GITHUB_WORKSPACE/dist/$TARGET/codex-package-$TARGET.tar.zst" | \
+            tar -xf - -C "$zstd_package"
+          suffix=''
+          if [[ "$RUNNER_OS" == Windows ]]; then suffix='.exe'; fi
+          for package in "$gzip_package" "$zstd_package"; do
+            evidence="$native_temp/voice-archive-evidence-$(basename "$package")"
+            bash "$CODEX_TOOLING" voice-runtime verify --package-dir "$package" \
+              --upstream-root "$physical_source" --target "$TARGET" --build-commit "$VOICE_BUILD_COMMIT" \
+              --package-version "$PACKAGE_VERSION" \
+              --test-binary "$VOICE_RESULT/verification/packaged-runtime-test-bin$suffix" \
+              --installed-test-binary "$VOICE_RESULT/verification/installed-package-runtime-test-bin$suffix" \
+              --evidence-dir "$evidence"
+          done
+          installer_assets="$native_temp/installer-fixture-assets-$TARGET"
+          mkdir "$installer_assets"
+          primary_archive="$GITHUB_WORKSPACE/dist/$TARGET/codex-package-$TARGET.tar.gz"
+          cp "$primary_archive" "$installer_assets/"
+          # GNU sha256sum on Windows writes binary-mode entries ("<digest> *<name>"). The release's SHA256SUMS uses
+          # text-mode entries, which the installer expects, so write that form on every platform.
+          primary_digest=$(sha256sum < "$primary_archive" | cut -d ' ' -f 1)
+          printf '%s  %s\n' "$primary_digest" "$(basename "$primary_archive")" > "$installer_assets/SHA256SUMS"
+          installed_package="$native_temp/installed voice package $TARGET"
+          installer_evidence="$native_temp/voice-installer-evidence-$TARGET"
+          node "$VOICE_METADATA/verify-voice-installer.mjs" --upstream-root "$physical_source" \
+            --assets "$installer_assets" --target "$TARGET" --package-version "$PACKAGE_VERSION" \
+            --scratch-root "$native_temp" --installed-package-output "$installed_package" \
+            --evidence-dir "$installer_evidence"
+          bash "$CODEX_TOOLING" voice-runtime verify --package-dir "$installed_package" \
+            --upstream-root "$physical_source" --target "$TARGET" --build-commit "$VOICE_BUILD_COMMIT" \
+            --package-version "$PACKAGE_VERSION" \
+            --test-binary "$VOICE_RESULT/verification/packaged-runtime-test-bin$suffix" \
+            --installed-test-binary "$VOICE_RESULT/verification/installed-package-runtime-test-bin$suffix" \
+            --evidence-dir "$native_temp/voice-installed-evidence-$TARGET"
+          test "$(git -C "$physical_source" rev-parse HEAD)" = "$VOICE_BUILD_COMMIT"
+          test -z "$(git -C "$physical_source" status --porcelain --untracked-files=no)"
+          printf 'verified=true\n' >> "$GITHUB_OUTPUT"
+
+      - name: Retain verification-only voice test binaries and evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: voice-verification-x86_64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ steps.voice-build.outputs.verification_artifact }}
+            ${{ runner.temp }}/voice-build-x86_64-apple-darwin/evidence
+            ${{ runner.temp }}/voice-archive-evidence-*
+            ${{ runner.temp }}/voice-installer-evidence-x86_64-apple-darwin
+            ${{ runner.temp }}/voice-installed-evidence-x86_64-apple-darwin
+            ${{ runner.temp }}/voice-helper-identity-x86_64-apple-darwin
+          retention-days: 3
+          if-no-files-found: warn
+
+      # The compile host's document becomes the receipt's compile_host. V8 is a compile input, so only the host that
+      # compiled the executables records it.
+      - name: Record completed native package inputs
+        env:
+          COMPILED_OUTPUTS: ${{ steps.compiled-outputs.outputs.path }}
+        run: |
+          set -euo pipefail
+          native_options=(
+            --build-result "$CODEX_PACKAGE_BUILD_RESULT"
+            --archive-result "$CODEX_PACKAGE_ARCHIVE_RESULT"
+            --target "$TARGET" --package-root "$RUNNER_TEMP"
+            --output "$RUNNER_TEMP/native-inputs.json"
+            --runner-arch "$RUNNER_ARCH"
+            --compile-inputs "$COMPILED_OUTPUTS/native-inputs.json"
+          )
+          if [[ ${ImageOS+x} ]]; then native_options+=(--image-os "$ImageOS"); fi
+          if [[ ${ImageVersion+x} ]]; then native_options+=(--image-version "$ImageVersion"); fi
+          bash "$CODEX_TOOLING" release-native-inputs "${native_options[@]}"
+
+      - name: Collect the release assets
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/assets"
+          cp "dist/$TARGET/codex-package-$TARGET.tar.gz" "$RUNNER_TEMP/assets/"
+          cp "dist/$TARGET/codex-app-server-package-$TARGET.tar.gz" "$RUNNER_TEMP/assets/"
+          # The dSYM bundles that the package action strips from the binaries, so crashes in released binaries can be
+          # symbolicated.
+          cp "symbols-dist/$TARGET/codex-symbols-$TARGET.tar.gz" "$RUNNER_TEMP/assets/"
+
+      - name: Verify the final archived CLI identity
+        env:
+          VERSION: ${{ needs.detect.outputs.version }}
+          BUILD: ${{ needs.detect.outputs.build }}
+        run: |
+          set -euo pipefail
+          native_temp="$(cd "$RUNNER_TEMP" && pwd)"
+          proof_package="$(mktemp -d "$native_temp/package-identity.XXXXXX")"
+          trap 'rm -rf -- "$proof_package"' EXIT
+          tar -xzf - -C "$proof_package" < "$native_temp/assets/codex-package-$TARGET.tar.gz"
+          bash "$CODEX_TOOLING" package-identity binary \
+            --package-dir "$proof_package" --version "$VERSION" --build "$BUILD" \
+            --output "$RUNNER_TEMP/assets/codex-version-$TARGET.txt"
+
+      - name: Record package receipt and source identity
+        env:
+          VERSION: ${{ needs.detect.outputs.version }}
+          BUILD: ${{ needs.detect.outputs.build }}
+          UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
+          UPSTREAM_COMMIT: ${{ needs.detect.outputs.upstream_commit }}
+        run: |
+          set -euo pipefail
+          # The manifest tool rejects any untracked file. The package build writes four directories into the checkout that
+          # upstream's .gitignore does not cover: symbols-dist/ and dist/ (package actions), .cargo-home/ (upstream's
+          # build-cargo-package-binaries action hard-codes it as the Linux Cargo home) and .zig-cache/ (zig cc, which
+          # writes it under the working directory of whichever compile runs, so it is excluded at any depth). Every other
+          # path it writes is already ignored upstream (codex-rs/target, bazel-*, __pycache__, .venv). Excluding exactly
+          # these directories keeps the tool's clean check strict for source files.
+          printf '/dist/\n/symbols-dist/\n/.cargo-home/\n.zig-cache/\n' >> "$(git rev-parse --git-path info/exclude)"
+          git status --porcelain --untracked-files=normal
+          bash "$CODEX_TOOLING" release-manifest receipt \
+            --source "$GITHUB_WORKSPACE" --patch-repo "$RUNNER_TEMP/manifest-patch-repo" \
+            --target "$TARGET" --version "$VERSION+$BUILD" --build-number "$BUILD" \
+            --upstream-tag "$UPSTREAM_TAG" --upstream-commit "$UPSTREAM_COMMIT" --fork-commit "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --assets "$RUNNER_TEMP/assets" --output "$RUNNER_TEMP/assets/package-receipt-$TARGET.json" \
+            --native-inputs "$RUNNER_TEMP/native-inputs.json"
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: assets-x86_64-apple-darwin
+          path: ${{ runner.temp }}/assets/*
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Remove the tooling runtime
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
+
   publish:
     name: Publish the release
-    needs: [detect, report, package]
-    if: ${{ !cancelled() && needs.detect.result == 'success' && needs.detect.outputs.live == 'true' && needs.report.result == 'success' && needs.report.outputs.passed == 'true' && needs.package.result == 'success' }}
+    needs: [detect, report, package, package-intel]
+    if: >-
+      ${{ !cancelled() && needs.detect.result == 'success' && needs.detect.outputs.live == 'true' &&
+          needs.report.result == 'success' && needs.report.outputs.passed == 'true' &&
+          needs.package.result == 'success' && needs.package-intel.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     # One publisher per upstream version. A rerun of this job reuses the artifacts the package jobs built.

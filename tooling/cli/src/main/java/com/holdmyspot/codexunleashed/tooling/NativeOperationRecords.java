@@ -66,6 +66,27 @@ public final class NativeOperationRecords
 	}
 
 	/**
+	 * Reads the completed build record of a host that only compiled the executables.
+	 *
+	 * @param scope    borrowed JSON services
+	 * @param build    build result root
+	 * @param target   expected target
+	 * @param runnerOs explicitly resolved producer host
+	 * @return the build diagnostic object as the only array element
+	 * @throws IOException if an explicit record cannot be read
+	 * @throws IllegalArgumentException if the record is incomplete, malformed or oversized
+	 */
+	public static JsonNode buildOperation(ToolingScope scope, Path build, String target, String runnerOs)
+		throws IOException
+	{
+		NativeOperationRecords reader = new NativeOperationRecords();
+		ArrayNode operations = scope.getJsonMapper().createArrayNode();
+		reader.metadata(build, "build_binaries", target, runnerOs);
+		operations.add(reader.operation(scope, build, "build_binaries"));
+		return operations;
+	}
+
+	/**
 	 * Validates completion and cross-operation metadata without interpreting auxiliary files.
 	 *
 	 * @param root explicit operation root

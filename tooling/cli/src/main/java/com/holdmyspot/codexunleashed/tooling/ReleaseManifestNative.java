@@ -51,6 +51,10 @@ public final class ReleaseManifestNative
 
 	/**
 	 * Validates the complete native observation document for one receipt target.
+	 * <p>
+	 * The top-level observations describe the packaging host. A target whose executables are compiled on a different
+	 * host also has {@code compile_host}, which records that host's runner, its {@code build_binaries} operation, its
+	 * tools and its configured V8 archive.
 	 *
 	 * @param value  parsed native_build document
 	 * @param target receipt's native target
@@ -58,16 +62,40 @@ public final class ReleaseManifestNative
 	 */
 	public static void validate(JsonNode value, String target)
 	{
-		fields(value, "native_build", "format_version", "target", "runner", "operations", "tools", "resources");
-		JsonNode format = value.get("format_version");
-		require(format.isIntegralNumber() && format.bigIntegerValue().equals(BigInteger.ONE),
-			"Unsupported native_build format_version");
-		require(textEquals(value.get("target"), target), "native_build target differs from receipt target");
-		boundedString(value.get("target"), "native_build target");
+		if (value != null && value.isObject() && value.has("compile_host"))
+		{
+			fields(value, "native_build", "format_version", "target", "runner", "operations", "tools", "resources",
+				"compile_host");
+			JsonNode compileHost = value.get("compile_host");
+			fields(compileHost, "native_build compile_host", "runner", "operations", "tools", "resources");
+			validateCompileHost(compileHost, "native_build compile_host");
+		}
+		else
+			fields(value, "native_build", "format_version", "target", "runner", "operations", "tools", "resources");
+		validateHeader(value, target, "native_build");
 		validateRunner(value.get("runner"));
-		validateOperations(value.get("operations"));
+		validateOperations(value.get("operations"), List.of("build_binaries", "archive_packages"),
+			"native_build requires build_binaries then archive_packages");
 		validateTools(value.get("tools"));
-		validateResources(value.get("resources"));
+		validateResources(value.get("resources"), Set.of("packaged_resource", "configured_v8_archive"));
+	}
+
+	/**
+	 * Validates the standalone observations of a host that only compiled a target's executables.
+	 * <p>
+	 * {@code release-native-inputs} writes this document on the compile host. The packaging host embeds its
+	 * {@code runner}, {@code operations}, {@code tools} and {@code resources} as {@code native_build.compile_host}.
+	 *
+	 * @param value  parsed compile-host document
+	 * @param target expected native target
+	 * @throws IllegalArgumentException if the document violates the compile-host observation contract
+	 */
+	public static void validateCompile(JsonNode value, String target)
+	{
+		fields(value, "compile-host native inputs", "format_version", "target", "runner", "operations", "tools",
+			"resources");
+		validateHeader(value, target, "compile-host native inputs");
+		validateCompileHost(value, "compile-host native inputs");
 	}
 
 	/**
@@ -96,6 +124,38 @@ public final class ReleaseManifestNative
 	}
 
 	/**
+	 * Validates the format version and target of a native observation document.
+	 *
+	 * @param value   parsed document
+	 * @param target  expected native target
+	 * @param subject diagnostic document name
+	 * @throws IllegalArgumentException if either field is invalid
+	 */
+	private static void validateHeader(JsonNode value, String target, String subject)
+	{
+		JsonNode format = value.get("format_version");
+		require(format.isIntegralNumber() && format.bigIntegerValue().equals(BigInteger.ONE),
+			"Unsupported " + subject + " format_version");
+		require(textEquals(value.get("target"), target), subject + " target differs from receipt target");
+		boundedString(value.get("target"), subject + " target");
+	}
+
+	/**
+	 * Validates the observations of a host that only compiled the executables.
+	 *
+	 * @param value   parsed object whose runner, operations, tools and resources describe the compile host
+	 * @param subject diagnostic object name
+	 * @throws IllegalArgumentException if an observation is invalid
+	 */
+	private static void validateCompileHost(JsonNode value, String subject)
+	{
+		validateRunner(value.get("runner"));
+		validateOperations(value.get("operations"), List.of("build_binaries"), subject + " requires only build_binaries");
+		validateTools(value.get("tools"));
+		validateResources(value.get("resources"), Set.of("configured_v8_archive"));
+	}
+
+	/**
 	 * Validates nullable runner observations.
 	 *
 	 * @param runner parsed runner object
@@ -112,13 +172,13 @@ public final class ReleaseManifestNative
 	 * Validates ordered operations and their cumulative entry limits.
 	 *
 	 * @param operations parsed operations array
+	 * @param expected   required operation names in order
+	 * @param diagnostic message for an operation list of the wrong length
 	 * @throws IllegalArgumentException if operation order, arguments, or environment entries are invalid
 	 */
-	private static void validateOperations(JsonNode operations)
+	private static void validateOperations(JsonNode operations, List<String> expected, String diagnostic)
 	{
-		require(operations.isArray() && operations.size() == 2,
-			"native_build requires build_binaries then archive_packages");
-		List<String> expected = List.of("build_binaries", "archive_packages");
+		require(operations.isArray() && operations.size() == expected.size(), diagnostic);
 		int commandCount = 0;
 		int environmentCount = 0;
 		for (int index = 0; index < expected.size(); ++index)
@@ -229,9 +289,10 @@ public final class ReleaseManifestNative
 	 * Validates resource identity, canonical archive paths, and deterministic order.
 	 *
 	 * @param resources parsed resource array
+	 * @param roles     resource roles that the document may contain
 	 * @throws IllegalArgumentException if a resource or its position is invalid
 	 */
-	private static void validateResources(JsonNode resources)
+	private static void validateResources(JsonNode resources, Set<String> roles)
 	{
 		require(resources.isArray(), "native_build resources must be an array");
 		String previousRole = "";
@@ -244,8 +305,7 @@ public final class ReleaseManifestNative
 		{
 			fields(resource, "native_build resource", "role", "path", "size", "sha256");
 			JsonNode roleNode = resource.get("role");
-			require(textEquals(roleNode, "packaged_resource") || textEquals(roleNode, "configured_v8_archive"),
-				"Unsupported native_build resource role");
+			require(roleNode.isString() && roles.contains(roleNode.stringValue()), "Unsupported native_build resource role");
 			String role = roleNode.stringValue();
 			String path = boundedString(resource.get("path"), "native_build resource path");
 			validateResourcePath(path);

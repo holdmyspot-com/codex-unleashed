@@ -90,6 +90,23 @@ public final class NativeResourceObservations
 	}
 
 	/**
+	 * Collects only an optional explicit V8 file, for a host that compiled the executables but did not package them.
+	 *
+	 * @param scope borrowed JSON services
+	 * @param v8    optional explicitly configured local archive
+	 * @return the V8 archive resource, or an empty array
+	 * @throws IOException if hashing fails
+	 * @throws IllegalArgumentException if the archive is not a regular nonsymbolic file
+	 */
+	public static JsonNode collectConfigured(ToolingScope scope, Path v8) throws IOException
+	{
+		ArrayNode resources = scope.getJsonMapper().createArrayNode();
+		if (v8 != null)
+			resources.add(hash(scope, v8, "configured_v8_archive", v8.getFileName().toString()));
+		return resources;
+	}
+
+	/**
 	 * Requires an explicit nonsymbolic resource directory.
 	 *
 	 * @param path explicit directory

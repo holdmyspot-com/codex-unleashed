@@ -8,6 +8,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -75,6 +76,7 @@ public final class VoiceReleaseWiringTest
 			writeShellBlocks(temporary, buildBody, verifyBody);
 			requireActionInputs(steps.get("package"));
 			requireTargetMatrix(packageJob);
+			requireIntelVoiceHandoff(document.path("jobs"), buildBody, verifyBody);
 			Path windowsWrapper = repository.resolve(".github/scripts/setup-baseline-windows-voice.ps1");
 			requireWindowsWrapper(windowsWrapper);
 			requireThat(environment.containsKey("PATH"), "actualEnvironment").isTrue();
@@ -811,14 +813,46 @@ public final class VoiceReleaseWiringTest
 	}
 
 	/**
-	 * Requires all six established release targets to remain selected.
+	 * Requires the package job to build every selected target that compiles and packages on one host.
 	 *
 	 * @param packageJob actual package job
 	 */
 	private static void requireTargetMatrix(JsonNode packageJob)
 	{
 		String matrix = packageJob.path("strategy").path("matrix").path("include").asText();
-		requireThat(matrix, "matrixOutput").contains("needs.detect.outputs.package_matrix");
+		requireThat(matrix, "matrixOutput").contains("needs.detect.outputs.same_host_package_matrix");
+	}
+
+	/**
+	 * Requires the Intel macOS voice job to run the package job's producer body and the Intel macOS package job to run
+	 * its final verification body on the restored producer outputs.
+	 *
+	 * @param jobs actual workflow jobs
+	 * @param buildBody the package job's producer body
+	 * @param verifyBody the package job's archive and installer verification body
+	 */
+	private static void requireIntelVoiceHandoff(JsonNode jobs, String buildBody, String verifyBody)
+	{
+		JsonNode voiceJob = jobs.path("voice-intel");
+		requireThat(voiceJob.path("runs-on").asText(), "voiceRunner").isEqualTo("macos-15-intel");
+		Map<String, JsonNode> voiceSteps = packageSteps(voiceJob.path("steps"));
+		requireThat(requiredRun(voiceSteps, "voice-build").path("run").asText(), "intelProducerBody").
+			isEqualTo(buildBody);
+		JsonNode packageJob = jobs.path("package-intel");
+		requireThat(packageJob.path("name").asText(), "intelPackageName").isEqualTo("Package - x86_64-apple-darwin");
+		requireThat(packageJob.path("runs-on").asText(), "intelPackageRunner").isEqualTo("macos-15-intel");
+		List<String> needs = new ArrayList<>();
+		for (JsonNode need : packageJob.path("needs"))
+			needs.add(need.asText());
+		requireThat(needs, "intelPackageNeeds").containsAll(List.of("compile", "voice-intel"));
+		Map<String, JsonNode> packageSteps = packageSteps(packageJob.path("steps"));
+		JsonNode restore = requiredRun(packageSteps, "voice-build");
+		requireThat(restore.path("env").path("ARCHIVE_SHA256").asText(), "intelHandoffDigest").
+			contains("needs.voice-intel.outputs.archive_sha256");
+		requireThat(restore.path("run").asText(), "intelRestore").contains("shasum -a 256 --check --strict");
+		requireThat(requiredRun(packageSteps, "voice-final-verification").path("run").asText(), "intelVerifyBody").
+			isEqualTo(verifyBody);
+		requireActionInputs(packageSteps.get("package"));
 	}
 
 	/**

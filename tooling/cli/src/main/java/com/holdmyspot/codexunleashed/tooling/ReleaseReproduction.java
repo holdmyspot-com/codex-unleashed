@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -20,6 +21,8 @@ public final class ReleaseReproduction
 {
 	/** Shared CLI command name. */
 	public static final String COMMAND = "release-reproduction";
+	/** Compile handoff directory inside a compile host's evidence directory. */
+	private static final String COMPILED_OUTPUTS = "compiled-outputs";
 
 	/** Prevents utility construction. */
 	private ReleaseReproduction()
@@ -61,7 +64,7 @@ public final class ReleaseReproduction
 		if (tokens.contains("--help") || tokens.contains("-h"))
 		{
 			out.println("usage: release-reproduction MANIFEST --target TARGET --output-dir OUTPUT --project-root ROOT");
-			out.println("       release-reproduction {prepare,run-prepared,cleanup} --project-root ROOT ...");
+			out.println("       release-reproduction {prepare,run-compile,run-prepared,cleanup} --project-root ROOT ...");
 			return 0;
 		}
 		ReleaseReproductionState state = null;
@@ -75,16 +78,21 @@ public final class ReleaseReproduction
 			if (tokens.isEmpty())
 				throw new IllegalArgumentException("Missing manifest or operation");
 			String operation = tokens.getFirst();
-			boolean internal = Set.of("prepare", "run-prepared", "cleanup").contains(operation);
+			boolean internal = Set.of("prepare", "run-compile", "run-prepared", "cleanup").contains(operation);
+			boolean prepared = Set.of("run-compile", "run-prepared").contains(operation);
 			Map<String, String> options = parse(tokens.subList(1, tokens.size()));
 			Set<String> expected = switch (operation)
 			{
 				case "prepare" -> Set.of("--project-root", "--manifest", "--target", "--workspace", "--output-dir");
-				case "run-prepared" -> Set.of("--project-root", "--state", "--release-dir", "--workspace", "--output-dir");
+				case "run-compile", "run-prepared" -> Set.of("--project-root", "--state", "--release-dir", "--workspace",
+					"--output-dir");
 				case "cleanup" -> Set.of("--project-root", "--state");
 				default -> Set.of("--project-root", "--target", "--output-dir");
 			};
-			if (!options.keySet().equals(expected))
+			Set<String> supplied = new HashSet<>(options.keySet());
+			if (operation.equals("run-prepared"))
+				supplied.remove("--compiled-outputs");
+			if (!supplied.equals(expected))
 				throw new IllegalArgumentException("Expected options: " + expected);
 			Path root = Path.of(options.get("--project-root")).toAbsolutePath().normalize();
 			if (!Files.isDirectory(root))
@@ -102,7 +110,7 @@ public final class ReleaseReproduction
 			Path output = Path.of(options.get("--output-dir")).toAbsolutePath().normalize();
 			Path workspace;
 			Path releaseDirectory;
-			if (operation.equals("run-prepared"))
+			if (prepared)
 			{
 				state = ReleaseReproductionState.load(scope, root, options.get("--state"));
 				state.output(scope, output, false);
@@ -142,6 +150,15 @@ public final class ReleaseReproduction
 			phase = "release_verification";
 			ReleaseReproductionSource.Release release = source.verifyPrepared(state, releaseDirectory, workspace);
 			expectedArchive = release.archiveDigest();
+			Path receipt = releaseDirectory.resolve(ReleaseManifestSchema.receiptName(release.target()));
+			JsonNode nativeBuild = ReleaseManifestSchema.read(scope, receipt).path("inputs").path("native_build");
+			JsonNode compileHost = nativeBuild.path("compile_host");
+			boolean split = !compileHost.isMissingNode();
+			if (operation.equals("run-compile") && !split)
+				throw new IllegalArgumentException("The receipt records no separate compile host");
+			if (operation.equals("run-prepared") && split != options.containsKey("--compiled-outputs"))
+				throw new IllegalArgumentException("Option --compiled-outputs is required exactly when the receipt " +
+					"records a separate compile host");
 			phase = "recipe";
 			String runnerOs = "Linux";
 			if (release.target().contains("windows"))
@@ -150,17 +167,24 @@ public final class ReleaseReproduction
 				runnerOs = "macOS";
 			ReleaseReproductionRecipe recipe = new ReleaseReproductionRecipe(scope, capture,
 				execute, variables, runnerOs);
+			if (operation.equals("run-compile"))
+				return compile(scope, recipe, release, state, workspace, output, compileHost, variables, out, err);
 			String actual = null;
 			String result = "build_failed";
 			String stage = "recipe";
 			String diagnostic = null;
 			try
 			{
-				Path archive = recipe.build(release, state, workspace);
+				Path compiled = null;
+				if (split)
+				{
+					compiled = Path.of(options.get("--compiled-outputs")).toAbsolutePath().normalize();
+					handoff(scope, release, nativeBuild, compiled, variables);
+				}
+				Path archive = recipe.build(release, state, workspace, compiled);
 				actual = Sha256.digest(archive);
 				status = compare(scope, release, releaseDirectory.resolve(archive.getFileName()), archive, output);
-				observations(scope, output, releaseDirectory.resolve(ReleaseManifestSchema.receiptName(release.target())),
-					state.root().resolve("scratch/native-inputs.json"));
+				observations(scope, output, receipt, state.root().resolve("scratch/native-inputs.json"));
 				actual = Sha256.digest(archive);
 				Files.copy(archive, output.resolve(archive.getFileName()), StandardCopyOption.REPLACE_EXISTING);
 				result = "digest_mismatch";
@@ -255,6 +279,102 @@ public final class ReleaseReproduction
 				}
 		}
 		return status;
+	}
+
+	/**
+	 * Compiles a split release's executables on its compile host and retains the handoff and evidence.
+	 *
+	 * @param scope       borrowed JSON services
+	 * @param recipe      configured recorded recipe
+	 * @param release     authenticated recipe
+	 * @param state       validated attempt ownership
+	 * @param workspace   verified current source directory
+	 * @param output      bound evidence directory that receives the {@code compiled-outputs} handoff
+	 * @param compileHost the receipt's compile host observations
+	 * @param variables   explicit current environment
+	 * @param out         caller-owned success output
+	 * @param err         caller-owned diagnostic output
+	 * @return zero when the handoff is complete, one otherwise
+	 * @throws IOException if evidence cannot be retained
+	 */
+	private static int compile(ToolingScope scope, ReleaseReproductionRecipe recipe,
+		ReleaseReproductionSource.Release release, ReleaseReproductionState state, Path workspace, Path output,
+		JsonNode compileHost, Map<String, String> variables, PrintStream out, PrintStream err) throws IOException
+	{
+		String result = "build_failed";
+		String diagnostic = null;
+		try
+		{
+			requireArchitecture(compileHost.path("runner"), variables, "compile host");
+			recipe.compile(release, state, workspace, output.resolve(COMPILED_OUTPUTS));
+		}
+		catch (IOException failure)
+		{
+			diagnostic = failure.getMessage();
+			if (diagnostic.startsWith("prerequisite_unavailable:"))
+				result = "prerequisite_unavailable";
+		}
+		finally
+		{
+			retain(state.root().resolve("build_result"), output.resolve("build_result"));
+			retain(state.root().resolve("scratch"), output.resolve("diagnostics"));
+		}
+		if (diagnostic == null)
+		{
+			out.println("Compiled the handed-over executables for " + release.target());
+			return 0;
+		}
+		writeResult(scope, output, release, null, result, "recipe", diagnostic);
+		err.println(COMMAND + ": " + diagnostic);
+		return 1;
+	}
+
+	/**
+	 * Rejects a packaging host or a compile handoff that differs in kind from the receipt's machines.
+	 *
+	 * @param scope       borrowed JSON services
+	 * @param release     authenticated recipe
+	 * @param nativeBuild the receipt's native build observations
+	 * @param compiled    handoff directory from the compile host
+	 * @param variables   explicit current environment
+	 * @throws IOException if this host, or the host that compiled the handoff, differs from the receipt
+	 */
+	private static void handoff(ToolingScope scope, ReleaseReproductionSource.Release release, JsonNode nativeBuild,
+		Path compiled, Map<String, String> variables) throws IOException
+	{
+		requireArchitecture(nativeBuild.path("runner"), variables, "packaging host");
+		JsonNode handed = ReleaseManifestSchema.read(scope, compiled.resolve("native-inputs.json"));
+		try
+		{
+			ReleaseManifestNative.validateCompile(handed, release.target());
+		}
+		catch (IllegalArgumentException failure)
+		{
+			throw new IOException("build_failed: invalid compile handoff: " + failure.getMessage(), failure);
+		}
+		JsonNode expected = nativeBuild.path("compile_host").path("runner").path("arch");
+		if (!ReleaseManifestSchema.same(expected, handed.path("runner").path("arch")))
+			throw new IOException("prerequisite_unavailable: the compile handoff came from a " +
+				ReleaseManifestSchema.text(handed.path("runner").path("arch")) + " host; the receipt's compile host is " +
+				ReleaseManifestSchema.text(expected));
+	}
+
+	/**
+	 * Requires this host to have the runner architecture that the receipt recorded for one of its machines.
+	 *
+	 * @param runner    the receipt's runner observations for that machine
+	 * @param variables explicit current environment
+	 * @param role      the machine's role, for diagnostics
+	 * @throws IOException if the architectures differ
+	 */
+	private static void requireArchitecture(JsonNode runner, Map<String, String> variables, String role)
+		throws IOException
+	{
+		String expected = ReleaseManifestSchema.text(runner.path("arch"));
+		String actual = variables.getOrDefault("RUNNER_ARCH", "");
+		if (expected.isEmpty() || !expected.equals(actual))
+			throw new IOException("prerequisite_unavailable: the receipt's " + role + " ran on " + expected +
+				"; this host reports RUNNER_ARCH " + actual);
 	}
 
 	/**
@@ -368,9 +488,15 @@ public final class ReleaseReproduction
 		ObjectNode value = (ObjectNode) ReleaseManifestSchema.read(scope, report);
 		ArrayNode differences = value.putArray("observed_input_differences");
 		for (String field : List.of("runner", "operations", "tools", "resources"))
+		{
 			if (!ReleaseManifestSchema.same(original.path(field), rebuilt.path(field)))
 				differences.add("native_build." + field +
 					" differs; see retained native-inputs.json and published receipt");
+			if (!ReleaseManifestSchema.same(original.path("compile_host").path(field),
+				rebuilt.path("compile_host").path(field)))
+				differences.add("native_build.compile_host." + field +
+					" differs; see retained native-inputs.json and published receipt");
+		}
 		ReleaseReproductionState.atomicWrite(scope, report, value);
 	}
 

@@ -118,6 +118,18 @@ exit 1 means authentication, source, prerequisite, build, cleanup, or digest fai
 unsupported target. Equal unpacked binary payloads cannot turn a compressed archive mismatch into success. Different
 observed host images, tool paths, or checkout paths are diagnostic and allow the unchanged recipe to attempt the build.
 
+A receipt whose `inputs.native_build` has a `compile_host` came from a release that compiled the executables on one
+machine and packaged them on another; x86_64 macOS compiles on Apple silicon (`macos-15`) and packages on Intel
+(`macos-15-intel`). Reproduce each part on the same kind of machine as the release. Run `release-reproduction prepare`
+and then `run-compile` on a host whose `RUNNER_ARCH` equals the compile host's `runner.arch`. That step writes the
+handoff directory `compiled-outputs` into its output directory, holding `compiled-outputs.tar` and the compile host's
+`native-inputs.json`. Then, on a host whose `RUNNER_ARCH` equals the receipt's top-level `runner.arch`, run `prepare`
+and pass the handoff to `run-prepared --compiled-outputs DIR`. `run-prepared` requires that option exactly when the
+receipt records a compile host. A host of the wrong architecture, or a handoff from one, fails as
+`prerequisite_unavailable`. The reproduction workflow runs both jobs for that target and verifies the handoff's
+SHA-256 digests between them. Its packaging job builds the voice runtime itself, on the same kind of machine as the
+release's voice job. Observed differences include the compile host's fields as `native_build.compile_host.FIELD`.
+
 A result applies to that target and release. Other targets remain unverified until their own native reproduction runs.
 Two builds can help diagnose a mismatch; they are not a prerequisite for attempting the authenticated comparison.
 
@@ -158,6 +170,21 @@ bash "$CODEX_TOOLING" release-native-inputs "${native_options[@]}"
 ```
 
 The optional runner architecture and image fields preserve a supplied empty string; omitted fields remain null.
+
+The x86_64 macOS release compiles its executables on Apple silicon and packages them on Intel. Its compile host runs
+`release-native-inputs` without `--archive-result` and `--package-root`; the result describes that host, its
+`build_binaries` operation and the V8 archive alone. The compile host then runs `compiled-output-handoff capture` on
+the Cargo release directory. That command writes a tar of each selected pre-strip executable and every file in its
+packed `.dSYM` bundle, plus a manifest binding the target, the patched source commit and each file's mode, size and
+SHA-256. The packaging host passes the handoff directory to the patched build operation as `--restored-final-outputs`,
+which runs `compiled-output-handoff install` instead of Cargo. `install` creates the release directory only after every
+file matches the manifest and each executable is an x86_64 Mach-O executable. The packaging host then records its own
+inputs with `--compile-inputs` naming the compile host's document and without `--configured-v8-archive`.
+The release builds that target's voice runtime in a separate job on the packaging host's kind of machine
+(`macos-15-intel`), alongside the compile host. That job hands its result directory and verification binaries to the
+packaging job, which checks their SHA-256 digest, restores them at the path they were built in and verifies the voice
+runtime in the final archives. The receipt has no separate voice host: the packaging host's `runner` describes the
+machine kind that built the voice runtime.
 The producer also probes its current host's fixed tool list for availability, path and version. Those are observations
 at collection time; the recorded build and archive argument vectors and approved environment values come from the
 completed operations. The output stays outside the release assets and becomes the required input to `receipt`:
@@ -179,6 +206,9 @@ The package receipt records archive hashes and executable-member hashes separate
 file supplies the `inputs.native_build` record: runner observations, the `build_binaries` and `archive_packages`
 argument vectors and approved diagnostic environment values, one status/path/version record for each named tool, and
 sorted resource path/size/SHA256 observations. Present empty environment values remain distinct from omitted keys.
+A release that compiled on a separate host also has `compile_host`, with that host's `runner`, its `build_binaries`
+operation, its `tools` and its `resources` (the configured V8 archive). The top-level fields then describe the packaging
+host, whose `build_binaries` operation installed the handed-over executables.
 These observations support diagnosis; they do not establish complete compiler input capture or require a reproduction
 host to use the same image, tool path or environment. The receipt also records
 the receipt operation and current Git and host observations. Its Python version comes from the supplied native-inputs

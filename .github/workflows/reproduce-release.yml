@@ -20,7 +20,124 @@ on:
 permissions:
   contents: read
 jobs:
+  # A release whose receipt records a separate compile host compiled its executables there. This job repeats that
+  # compile on the same kind of machine, and the reproduce job packages the handoff on the packaging host's kind.
+  compile:
+    if: inputs.target == 'x86_64-apple-darwin'
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET: ${{ inputs.target }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      GH_TOKEN: ${{ github.token }}
+    outputs:
+      split: ${{ steps.split.outputs.split }}
+      archive_sha256: ${{ steps.compile.outputs.archive_sha256 }}
+      inputs_sha256: ${{ steps.compile.outputs.inputs_sha256 }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Retain independent trusted driver
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/reproduction-driver"
+          git clone --no-local --no-hardlinks "$GITHUB_WORKSPACE" "$root"
+          test ! -e "$root/.git/objects/info/alternates"
+          {
+            printf 'REPRODUCTION_ROOT=%s\n' "$root"
+            printf 'REPRODUCTION_RELEASE=%s\n' "$RUNNER_TEMP/reproduction-release"
+            printf 'REPRODUCTION_OUTPUT=%s\n' "$RUNNER_TEMP/reproduction-output"
+          } >> "$GITHUB_ENV"
+      - uses: ./.github/actions/setup-tooling
+        with:
+          tooling-root: ${{ env.REPRODUCTION_ROOT }}
+      - name: Download complete published release
+        run: |
+          set -euo pipefail
+          mkdir "$REPRODUCTION_RELEASE"
+          gh release download "$RELEASE_TAG" --repo holdmyspot-com/codex-unleashed --dir "$REPRODUCTION_RELEASE"
+      - name: Authenticate and reconstruct recorded source
+        id: prepare
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          shopt -s dotglob nullglob
+          entries=(*)
+          if (( ${#entries[@]} )); then rm -rf -- "${entries[@]}"; fi
+          state="$(bash "$CODEX_TOOLING" release-reproduction prepare \
+            --project-root "$REPRODUCTION_ROOT" --manifest "$REPRODUCTION_RELEASE/release-manifest.json" \
+            --target "$TARGET" --workspace "$GITHUB_WORKSPACE" --output-dir "$REPRODUCTION_OUTPUT")"
+          printf 'state=%s\n' "$state" >> "$GITHUB_OUTPUT"
+      # Only routes the jobs; run-compile and run-prepared check the authenticated receipt again.
+      - name: Detect a separate compile host
+        id: split
+        run: |
+          set -euo pipefail
+          split=false
+          if jq -e '.inputs.native_build | has("compile_host")' "$REPRODUCTION_RELEASE/package-receipt-$TARGET.json" \
+            > /dev/null; then
+            split=true
+          fi
+          printf 'split=%s\n' "$split" >> "$GITHUB_OUTPUT"
+      - name: Read recorded source Rust toolchain
+        id: rust
+        if: steps.split.outputs.split == 'true'
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^" ]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        if: steps.split.outputs.split == 'true'
+        with:
+          toolchain: ${{ steps.rust.outputs.channel }}
+          targets: ${{ inputs.target }}
+      - uses: ./.github/actions/setup-rusty-v8
+        if: steps.split.outputs.split == 'true'
+        with:
+          target: ${{ inputs.target }}
+      - name: Compile and hand over the recorded executables
+        id: compile
+        if: steps.split.outputs.split == 'true'
+        env:
+          PREPARED_STATE: ${{ steps.prepare.outputs.state }}
+        run: |
+          set -euo pipefail
+          # The release's compile job uses the same ARM macOS limit.
+          export CARGO_BUILD_JOBS=2
+          bash "$CODEX_TOOLING" release-reproduction run-compile \
+            --project-root "$REPRODUCTION_ROOT" --state "$PREPARED_STATE" \
+            --release-dir "$REPRODUCTION_RELEASE" --workspace "$GITHUB_WORKSPACE" \
+            --output-dir "$REPRODUCTION_OUTPUT"
+          handoff="$REPRODUCTION_OUTPUT/compiled-outputs"
+          printf 'archive_sha256=%s\ninputs_sha256=%s\n' \
+            "$(shasum -a 256 "$handoff/compiled-outputs.tar" | cut -d ' ' -f 1)" \
+            "$(shasum -a 256 "$handoff/native-inputs.json" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - name: Hand over the compiled executables
+        if: steps.compile.outcome == 'success'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: compiled-outputs-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.REPRODUCTION_OUTPUT }}/compiled-outputs/*
+          if-no-files-found: error
+      - name: Retain compile evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: reproduction-compile-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.REPRODUCTION_OUTPUT }}
+            !${{ env.REPRODUCTION_OUTPUT }}/compiled-outputs
+          if-no-files-found: warn
+      - name: Remove only validated owned attempt
+        if: always() && steps.prepare.outputs.state != ''
+        env:
+          PREPARED_STATE: ${{ steps.prepare.outputs.state }}
+        run: |
+          bash "$CODEX_TOOLING" release-reproduction cleanup \
+            --project-root "$REPRODUCTION_ROOT" --state "$PREPARED_STATE"
   reproduce:
+    needs: compile
+    if: ${{ !cancelled() && (needs.compile.result == 'success' || needs.compile.result == 'skipped') }}
     runs-on: ${{ fromJSON('{"x86_64-unknown-linux-musl":"ubuntu-24.04","aarch64-unknown-linux-musl":"ubuntu-24.04-arm","aarch64-apple-darwin":"macos-15-arm64","x86_64-apple-darwin":"macos-15-intel","x86_64-pc-windows-msvc":"windows-2025","aarch64-pc-windows-msvc":"windows-11-arm"}')[inputs.target] }}
     defaults:
       run:
@@ -116,15 +233,35 @@ jobs:
       - name: Fit Linux build memory
         if: runner.os == 'Linux'
         run: bash "$REPRODUCTION_FORK/.github/scripts/fit-linux-build-memory.sh"
+      - name: Download the executables compiled on the compile host
+        if: needs.compile.outputs.split == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: compiled-outputs-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/compiled-outputs
+      - name: Verify the downloaded compile handoff
+        if: needs.compile.outputs.split == 'true'
+        env:
+          ARCHIVE_SHA256: ${{ needs.compile.outputs.archive_sha256 }}
+          INPUTS_SHA256: ${{ needs.compile.outputs.inputs_sha256 }}
+        run: |
+          set -euo pipefail
+          handoff="$RUNNER_TEMP/compiled-outputs"
+          test "$(find "$handoff" -mindepth 1 | wc -l | tr -d ' ')" = 2
+          printf '%s  %s\n' "$ARCHIVE_SHA256" compiled-outputs.tar "$INPUTS_SHA256" native-inputs.json \
+            | (cd "$handoff" && shasum -a 256 --check --strict)
       - name: Run shared recorded recipe and compare compressed archive
         env:
           PREPARED_STATE: ${{ steps.prepare.outputs.state }}
+          SPLIT: ${{ needs.compile.outputs.split }}
         run: |
           set -euo pipefail
+          handoff_options=()
+          if [[ "$SPLIT" == true ]]; then handoff_options=(--compiled-outputs "$RUNNER_TEMP/compiled-outputs"); fi
           bash "$CODEX_TOOLING" release-reproduction run-prepared \
             --project-root "$REPRODUCTION_ROOT" --state "$PREPARED_STATE" \
             --release-dir "$REPRODUCTION_RELEASE" --workspace "$GITHUB_WORKSPACE" \
-            --output-dir "$REPRODUCTION_OUTPUT"
+            --output-dir "$REPRODUCTION_OUTPUT" ${handoff_options[@]+"${handoff_options[@]}"}
       - name: Retain reproduction evidence
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f

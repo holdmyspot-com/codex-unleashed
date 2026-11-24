@@ -30,6 +30,26 @@ public final class ReleaseReproductionRecipe
 		int run(List<String> command, Path directory, Map<String, String> environment, Path log) throws IOException;
 	}
 
+	/** Native-inputs document in the attempt scratch directory and in a compile handoff. */
+	private static final String NATIVE_INPUTS = "native-inputs.json";
+	/** Archive of the handed-over executables in a compile handoff. */
+	private static final String COMPILED_OUTPUTS = "compiled-outputs.tar";
+
+	/**
+	 * Values that the operations after {@link #prepare} share.
+	 *
+	 * @param scratch    owned attempt scratch directory
+	 * @param operations recorded shared package operations script
+	 * @param voice      recorded voice runtime script
+	 * @param launcher   recorded fork tooling launcher
+	 * @param selected   space-separated selected binaries
+	 * @param variables  mutable explicit process environment
+	 */
+	private record Prepared(Path scratch, Path operations, Path voice, Path launcher, String selected,
+		Map<String, String> variables)
+	{
+	}
+
 	/** Borrowed bounded JSON services. */
 	private final ToolingScope scope;
 	/** Small output process boundary. */
@@ -61,15 +81,127 @@ public final class ReleaseReproductionRecipe
 	}
 
 	/**
-	 * Runs the recorded fork runtime and fresh native operations in production order.
+	 * Compiles the executables of a target whose release compiled them on a separate host, and hands them over.
+	 * <p>
+	 * The handoff directory receives {@code native-inputs.json}, which describes this compile host, and
+	 * {@code compiled-outputs.tar}, which holds the pre-strip executables and their dSYM bundles. Pass the directory to
+	 * {@link #build} on the packaging host.
 	 *
 	 * @param release independently authenticated recipe
-	 * @param state exclusively owned fresh attempt
-	 * @param source verified current source directory
+	 * @param state   exclusively owned fresh attempt
+	 * @param source  verified current source directory
+	 * @param handoff directory to create for the handoff
+	 * @throws IOException if a required operation is missing or fails
+	 */
+	public void compile(ReleaseReproductionSource.Release release, ReleaseReproductionState state, Path source,
+		Path handoff) throws IOException
+	{
+		Prepared prepared = prepare(release, state, source);
+		Path root = state.root();
+		run("build-binaries", buildBinaries(release, prepared, root, null), source.resolve("codex-rs"),
+			prepared.variables(), prepared.scratch());
+		Files.createDirectory(handoff);
+		List<String> recorder = new ArrayList<>(helper(prepared.launcher(), "release-native-inputs", "--build-result",
+			root.resolve("build_result").toString(), "--target", release.target(), "--output",
+			handoff.resolve(NATIVE_INPUTS).toString()));
+		recorder.addAll(observations(prepared.variables(), true));
+		run("native-inputs", recorder, source, prepared.variables(), prepared.scratch());
+		List<String> capture = new ArrayList<>(helper(prepared.launcher(), "compiled-output-handoff", "capture",
+			"--release-dir", root.resolve("cargo_target").resolve(release.target()).resolve("release").toString(),
+			"--target", release.target(), "--source-commit", release.sourceCommit(), "--output",
+			handoff.resolve(COMPILED_OUTPUTS).toString(), "--binaries"));
+		capture.addAll(List.of(prepared.selected().split(" ")));
+		run("compiled-output-handoff", capture, source, prepared.variables(), prepared.scratch());
+		required(handoff.resolve(NATIVE_INPUTS));
+		required(handoff.resolve(COMPILED_OUTPUTS));
+	}
+
+	/**
+	 * Runs the recorded fork runtime and fresh native operations in production order.
+	 * <p>
+	 * With a handoff from {@link #compile}, the build operation installs the handed-over executables instead of
+	 * compiling them, and the recorded native inputs embed the compile host's observations.
+	 *
+	 * @param release  independently authenticated recipe
+	 * @param state    exclusively owned fresh attempt
+	 * @param source   verified current source directory
+	 * @param compiled handoff directory from the compile host, or {@code null} to compile on this host
 	 * @return finalized compressed CLI archive
 	 * @throws IOException if a required operation is missing or fails
 	 */
-	public Path build(ReleaseReproductionSource.Release release, ReleaseReproductionState state, Path source)
+	public Path build(ReleaseReproductionSource.Release release, ReleaseReproductionState state, Path source,
+		Path compiled) throws IOException
+	{
+		Prepared prepared = prepare(release, state, source);
+		Path root = state.root();
+		Path scratch = prepared.scratch();
+		Path fork = root.resolve("fork_checkout");
+		Path launcher = prepared.launcher();
+		Map<String, String> variables = prepared.variables();
+		Path voiceBuild = scratch.resolve("voice-build");
+		run("voice-build", List.of("bash", prepared.voice().toString(), "build", "--upstream-root", source.toString(),
+			"--target", release.target(), "--build-commit", release.sourceCommit(), "--result-dir",
+			voiceBuild.toString()), source, variables, scratch);
+		run("build-binaries", buildBinaries(release, prepared, root, compiled), source.resolve("codex-rs"), variables,
+			scratch);
+		Path staging = scratch.resolve("staging");
+		run("archive-packages", List.of("bash", prepared.operations().toString(), "archive-packages", "--target",
+			release.target(), "--runner-os", runnerOs, "--binaries", prepared.selected(), "--target-dir",
+			root.resolve("cargo_target").toString(), "--source-root", source.toString(), "--workspace",
+			source.toString(), "--runner-temp", staging.toString(), "--package-version", release.version(),
+			"--result-dir", root.resolve("archive_result").toString(), "--voice-release-dir",
+			voiceBuild.resolve("release").toString(), "--voice-build-commit", release.sourceCommit(),
+			"--tooling-launcher", launcher.toString()), source.resolve("codex-rs"), variables, scratch);
+		Path archiveRoot = source.resolve("dist").resolve(release.target());
+		String separator = ":";
+		if (runnerOs.equals("Windows"))
+			separator = ";";
+		String pythonPath = source.resolve("scripts") + separator + source.resolve("sdk/python/src") +
+			separator + source.resolve("sdk/python/tests");
+		if (environment.containsKey("PYTHONPATH"))
+			pythonPath += separator + environment.get("PYTHONPATH");
+		variables.put("PYTHONPATH", pythonPath);
+		for (String compression : List.of("gzip", "zstd"))
+		{
+			String extension = "zst";
+			if (compression.equals("gzip"))
+				extension = "gz";
+			run("smoke-" + compression, List.of("uv", "run", "--frozen", "pytest", "-v", "--package-target",
+				release.target(), "--symbols-archive", source.resolve("symbols-dist").resolve(release.target()).
+					resolve("codex-symbols-" + release.target() + ".tar.gz").toString(), "--basetemp",
+				scratch.resolve("package-smoke-" + compression).toString(), "--compression", compression,
+				"--cli-archive", archiveRoot.resolve("codex-package-" + release.target() + ".tar." + extension).toString(),
+				"--app-server-archive", archiveRoot.resolve("codex-app-server-package-" + release.target() + ".tar." +
+					extension).toString(), "test_codex_package.py"), source.resolve("scripts/codex_package/smoke_tests"),
+				variables, scratch);
+		}
+		run("legal-finalize", helper(launcher, "package-license", "finalize", "--metadata-root", fork.toString(),
+			"--upstream-root", source.toString(), "--package-root", staging.toString(), "--archive-root",
+			archiveRoot.toString(), "--target", release.target()), source, variables, scratch);
+		Path archive = archiveRoot.resolve(ReleaseManifestSchema.packageName(release.target()));
+		verifyVoice(release, source, launcher, voiceBuild, archive, variables, scratch);
+		List<String> recorder = new ArrayList<>(helper(launcher, "release-native-inputs", "--build-result",
+			root.resolve("build_result").toString(), "--archive-result", root.resolve("archive_result").toString(),
+			"--target", release.target(), "--package-root", staging.toString(), "--output",
+			scratch.resolve(NATIVE_INPUTS).toString()));
+		if (compiled != null)
+			recorder.addAll(List.of("--compile-inputs", compiled.resolve(NATIVE_INPUTS).toString()));
+		recorder.addAll(observations(variables, compiled == null));
+		run("native-inputs", recorder, source, variables, scratch);
+		required(archive);
+		return archive;
+	}
+
+	/**
+	 * Builds the recorded fork runtime and runs the operations that precede compilation.
+	 *
+	 * @param release independently authenticated recipe
+	 * @param state   exclusively owned fresh attempt
+	 * @param source  verified current source directory
+	 * @return values that the later operations share
+	 * @throws IOException if a required operation is missing or fails
+	 */
+	private Prepared prepare(ReleaseReproductionSource.Release release, ReleaseReproductionState state, Path source)
 		throws IOException
 	{
 		Path root = state.root();
@@ -136,63 +268,48 @@ public final class ReleaseReproductionRecipe
 			variables.put("PROCESSOR_ARCHITECTURE", variables.get("VOICE_WINDOWS_HOST_ARCH"));
 			variables.put("GIT_REDIRECT_STDIN", "NUL");
 		}
-		Path voiceBuild = scratch.resolve("voice-build");
-		run("voice-build", List.of("bash", voice.toString(), "build", "--upstream-root", source.toString(),
-			"--target", release.target(), "--build-commit", release.sourceCommit(), "--result-dir",
-			voiceBuild.toString()), source, variables, scratch);
-		run("build-binaries", List.of("bash", operations.toString(), "build-binaries", "--target",
-			release.target(), "--runner-os", runnerOs, "--build-mode", "release", "--binaries", selected,
-			"--target-dir", root.resolve("cargo_target").toString(), "--result-dir",
-			root.resolve("build_result").toString()), source.resolve("codex-rs"), variables, scratch);
-		Path staging = scratch.resolve("staging");
-		run("archive-packages", List.of("bash", operations.toString(), "archive-packages", "--target",
-			release.target(), "--runner-os", runnerOs, "--binaries", selected, "--target-dir",
-			root.resolve("cargo_target").toString(), "--source-root", source.toString(), "--workspace",
-			source.toString(), "--runner-temp", staging.toString(), "--package-version", release.version(),
-			"--result-dir", root.resolve("archive_result").toString(), "--voice-release-dir",
-			voiceBuild.resolve("release").toString(), "--voice-build-commit", release.sourceCommit(),
-			"--tooling-launcher", launcher.toString()), source.resolve("codex-rs"), variables, scratch);
-		Path archiveRoot = source.resolve("dist").resolve(release.target());
-		String separator = ":";
-		if (runnerOs.equals("Windows"))
-			separator = ";";
-		String pythonPath = source.resolve("scripts") + separator + source.resolve("sdk/python/src") +
-			separator + source.resolve("sdk/python/tests");
-		if (environment.containsKey("PYTHONPATH"))
-			pythonPath += separator + environment.get("PYTHONPATH");
-		variables.put("PYTHONPATH", pythonPath);
-		for (String compression : List.of("gzip", "zstd"))
-		{
-			String extension = "zst";
-			if (compression.equals("gzip"))
-				extension = "gz";
-			run("smoke-" + compression, List.of("uv", "run", "--frozen", "pytest", "-v", "--package-target",
-				release.target(), "--symbols-archive", source.resolve("symbols-dist").resolve(release.target()).
-					resolve("codex-symbols-" + release.target() + ".tar.gz").toString(), "--basetemp",
-				scratch.resolve("package-smoke-" + compression).toString(), "--compression", compression,
-				"--cli-archive", archiveRoot.resolve("codex-package-" + release.target() + ".tar." + extension).toString(),
-				"--app-server-archive", archiveRoot.resolve("codex-app-server-package-" + release.target() + ".tar." +
-					extension).toString(), "test_codex_package.py"), source.resolve("scripts/codex_package/smoke_tests"),
-				variables, scratch);
-		}
-		run("legal-finalize", helper(launcher, "package-license", "finalize", "--metadata-root", fork.toString(),
-			"--upstream-root", source.toString(), "--package-root", staging.toString(), "--archive-root",
-			archiveRoot.toString(), "--target", release.target()), source, variables, scratch);
-		Path archive = archiveRoot.resolve(ReleaseManifestSchema.packageName(release.target()));
-		verifyVoice(release, source, launcher, voiceBuild, archive, variables, scratch);
-		List<String> recorder = new ArrayList<>(helper(launcher, "release-native-inputs", "--build-result",
-			root.resolve("build_result").toString(), "--archive-result", root.resolve("archive_result").toString(),
-			"--target", release.target(), "--package-root", staging.toString(), "--output",
-			scratch.resolve("native-inputs.json").toString()));
+		return new Prepared(scratch, operations, voice, launcher, selected, variables);
+	}
+
+	/**
+	 * Returns the shared build operation's argument vector.
+	 *
+	 * @param release  independently authenticated recipe
+	 * @param prepared values from {@link #prepare}
+	 * @param root     owned attempt directory
+	 * @param compiled handoff directory from the compile host, or {@code null} to compile on this host
+	 * @return literal argument vector
+	 */
+	private List<String> buildBinaries(ReleaseReproductionSource.Release release, Prepared prepared, Path root,
+		Path compiled)
+	{
+		List<String> command = new ArrayList<>(List.of("bash", prepared.operations().toString(), "build-binaries",
+			"--target", release.target(), "--runner-os", runnerOs, "--build-mode", "release", "--binaries",
+			prepared.selected(), "--target-dir", root.resolve("cargo_target").toString(), "--result-dir",
+			root.resolve("build_result").toString()));
+		if (compiled != null)
+			command.addAll(List.of("--restored-final-outputs", compiled.toString()));
+		return command;
+	}
+
+	/**
+	 * Returns the runner and V8 options that the native-inputs recorder observes from the current environment.
+	 *
+	 * @param variables explicit process environment
+	 * @param v8        whether to pass the configured V8 archive
+	 * @return option tokens
+	 */
+	private static List<String> observations(Map<String, String> variables, boolean v8)
+	{
+		List<String> options = new ArrayList<>();
 		for (Map.Entry<String, String> option : Map.of("RUNNER_ARCH", "--runner-arch", "ImageOS", "--image-os",
-			"ImageVersion",
-			"--image-version", "RUSTY_V8_ARCHIVE", "--configured-v8-archive").entrySet())
-			if (variables.containsKey(option.getKey()) && (!option.getKey().equals("RUSTY_V8_ARCHIVE") ||
-				!variables.get(option.getKey()).isEmpty()))
-				recorder.addAll(List.of(option.getValue(), variables.get(option.getKey())));
-		run("native-inputs", recorder, source, variables, scratch);
-		required(archive);
-		return archive;
+			"ImageVersion", "--image-version").entrySet())
+			if (variables.containsKey(option.getKey()))
+				options.addAll(List.of(option.getValue(), variables.get(option.getKey())));
+		String archive = variables.get("RUSTY_V8_ARCHIVE");
+		if (v8 && archive != null && !archive.isEmpty())
+			options.addAll(List.of("--configured-v8-archive", archive));
+		return options;
 	}
 
 	/**

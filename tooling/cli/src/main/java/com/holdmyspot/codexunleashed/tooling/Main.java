@@ -202,6 +202,8 @@ public final class Main
 					Arrays.copyOfRange(arguments, 1, arguments.length), in, environment, out, err);
 				case AptInstallWithFallback.NAME -> AptInstallWithFallback.run(
 					Arrays.copyOfRange(arguments, 1, arguments.length), err);
+				case CompiledOutputHandoff.NAME -> CompiledOutputHandoff.run(scope,
+					Arrays.copyOfRange(arguments, 1, arguments.length), out, err);
 				case "package-final-output-bundle" ->
 				{
 					PackageFinalOutputBundle.execute(Arrays.copyOfRange(arguments, 1, arguments.length), environment);
@@ -412,6 +414,7 @@ public final class Main
 			" <receipt|assemble|verify|authenticate> [options]");
 		err.println("       codex-tooling " + RELEASE_NATIVE_INPUTS_COMMAND + " [options]");
 		err.println("       codex-tooling package-final-output-bundle <capture|restore|install> [options]");
+		err.println("       codex-tooling " + CompiledOutputHandoff.NAME + " <capture|install> [options]");
 		err.println("       codex-tooling " + PruneWorkspaceOutputs.NAME + " [options]");
 		err.println("       codex-tooling " + COMPARE_TEST_BASELINE_COMMAND + " [options] <report.xml>...");
 		err.println("       codex-tooling " + CHECK_TEST_SKIPS_COMMAND + " [options] <report.xml>...");

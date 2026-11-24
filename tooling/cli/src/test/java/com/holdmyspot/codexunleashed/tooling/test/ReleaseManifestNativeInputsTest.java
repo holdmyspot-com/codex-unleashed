@@ -128,7 +128,9 @@ public final class ReleaseManifestNativeInputsTest
 		return new Object[][]{{new String[0]}, {new String[]{"--unknown", "value"}},
 			{new String[]{"--target"}}, {new String[]{"--target", ""}},
 			{new String[]{"--target", TARGET, "--target", TARGET}}, {new String[]{"--target=bad"}},
-			{new String[]{"positional"}}, {new String[]{"--output", "\0"}}};
+			{new String[]{"positional"}}, {new String[]{"--output", "\0"}},
+			{new String[]{"--build-result", "build", "--target", TARGET, "--output", "out", "--archive-result", "a"}},
+			{new String[]{"--build-result", "build", "--target", TARGET, "--output", "out", "--compile-inputs", "c"}}};
 	}
 
 	/**
@@ -147,6 +149,51 @@ public final class ReleaseManifestNativeInputsTest
 			fixture.invoke(2);
 			requireThat(fixture.commands, "probeEffects").isEmpty();
 			requireThat(Files.exists(fixture.output), "publishedOutput").isFalse();
+		}
+	}
+
+	/**
+	 * Records a host that only compiled the executables, then embeds its document in the packaging host's document.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void embedsCompileHost() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path v8 = Files.writeString(fixture.root.resolve("librusty_v8.a"), "v8 bytes");
+			Path compiled = fixture.root.resolve("compile-inputs.json");
+			List<String> packaging = List.copyOf(fixture.arguments);
+			fixture.arguments.clear();
+			fixture.arguments.addAll(List.of("--build-result", fixture.build.toString(), "--target", TARGET, "--output",
+				compiled.toString(), "--runner-arch", "ARM64", "--configured-v8-archive", v8.toString()));
+			fixture.invoke(0);
+			JsonNode compile = ReleaseManifestSchema.read(fixture.scope, compiled);
+			ReleaseManifestNative.validateCompile(compile, TARGET);
+			requireThat(compile.path("operations").size(), "compileOperations").isEqualTo(1);
+			requireThat(compile.path("resources").get(0).path("role").asString(), "compileResource").
+				isEqualTo("configured_v8_archive");
+
+			fixture.arguments.clear();
+			fixture.arguments.addAll(packaging);
+			fixture.arguments.addAll(List.of("--runner-arch", "X64", "--compile-inputs", compiled.toString()));
+			fixture.invoke(0);
+			JsonNode value = fixture.read();
+			ReleaseManifestNative.validate(value, TARGET);
+			requireThat(value.path("runner").path("arch").asString(), "packagingArchitecture").isEqualTo("X64");
+			requireThat(value.path("compile_host").path("runner").path("arch").asString(), "compileArchitecture").
+				isEqualTo("ARM64");
+			requireThat(ReleaseManifestSchema.same(value.path("compile_host").path("tools"), compile.path("tools")),
+				"compileTools").isTrue();
+			requireThat(value.path("operations").size(), "packagingOperations").isEqualTo(2);
+
+			Path packaged = fixture.root.resolve("packaged-inputs.json");
+			Files.copy(fixture.output, packaged);
+			Files.delete(fixture.output);
+			fixture.arguments.set(fixture.arguments.indexOf(compiled.toString()), packaged.toString());
+			fixture.invoke(1);
+			requireThat(Files.exists(fixture.output), "packagingAsCompileHost").isFalse();
 		}
 	}
 

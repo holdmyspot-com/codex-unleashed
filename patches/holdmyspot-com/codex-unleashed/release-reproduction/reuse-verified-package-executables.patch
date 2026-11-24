@@ -1,31 +1,34 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 21 Nov 2026 09:13:49 -0500
-Subject: [PATCH] Reuse verified pre-strip executables in Linux package builds
+Subject: [PATCH] Reuse verified pre-strip executables in Linux and Intel macOS
+ package builds
 
 ---
- .../build-cargo-package-binaries/action.yml   | 16 ++++++-
- .../actions/build-codex-packages/action.yml   | 19 ++++++++
- .github/scripts/codex-package-operations.sh   | 44 ++++++++++++++++---
- .../scripts/test-codex-package-operations.sh  | 44 +++++++++++++++++++
- 4 files changed, 117 insertions(+), 6 deletions(-)
+ .../build-cargo-package-binaries/action.yml   | 18 +++-
+ .../actions/build-codex-packages/action.yml   | 21 +++++
+ .github/scripts/codex-package-operations.sh   | 59 +++++++++++--
+ .../scripts/test-codex-package-operations.sh  | 85 +++++++++++++++++++
+ 4 files changed, 177 insertions(+), 6 deletions(-)
 
 diff --git a/.github/actions/build-cargo-package-binaries/action.yml b/.github/actions/build-cargo-package-binaries/action.yml
-index 6ce8b47f02..0b4ee839f9 100644
+index 6ce8b47f02..39eec9a134 100644
 --- a/.github/actions/build-cargo-package-binaries/action.yml
 +++ b/.github/actions/build-cargo-package-binaries/action.yml
-@@ -10,6 +10,10 @@ inputs:
+@@ -10,6 +10,12 @@ inputs:
    build-mode:
      description: Release optimizations, or debug for faster package smoke builds.
      default: release
 +  restored-final-outputs:
-+    description: Validated native executable bundle for the current Linux release.
++    description: >-
++      Validated executables for the current release, either a Linux x86_64 musl cache bundle or an Intel macOS
++      compile handoff directory.
 +  final-output-cache-tag:
-+    description: Exact Cargo package input tag used to restore native executable output.
++    description: Exact Cargo package input tag of a restored Linux x86_64 musl cache bundle.
    prepared-musl-zig:
      description: Verified Zig executable from the caller's completed musl build preparation.
  
-@@ -108,10 +112,19 @@ runs:
+@@ -108,10 +114,19 @@ runs:
          BUILD_MODE: ${{ inputs.build-mode }}
          BINARIES: ${{ inputs.binaries }}
          PACKAGE_ACTION_PATH: ${{ github.action_path }}
@@ -37,15 +40,15 @@ index 6ce8b47f02..0b4ee839f9 100644
          build_result="${RUNNER_TEMP}/codex-build-operations-${TARGET}"
 +        restore_arguments=()
 +        if [[ -n "$RESTORED_FINAL_OUTPUTS" ]]; then
-+          restore_arguments=(
-+            --restored-final-outputs "$RESTORED_FINAL_OUTPUTS"
-+            --final-output-cache-tag "$FINAL_OUTPUT_CACHE_TAG"
-+          )
++          restore_arguments=(--restored-final-outputs "$RESTORED_FINAL_OUTPUTS")
++          if [[ -n "$FINAL_OUTPUT_CACHE_TAG" ]]; then
++            restore_arguments+=(--final-output-cache-tag "$FINAL_OUTPUT_CACHE_TAG")
++          fi
 +        fi
          bash "${package_source_root}/.github/scripts/codex-package-operations.sh" \
            build-binaries \
            --target "$TARGET" \
-@@ -119,6 +132,7 @@ runs:
+@@ -119,6 +134,7 @@ runs:
            --build-mode "$BUILD_MODE" \
            --binaries "$BINARIES" \
            --target-dir "$CARGO_TARGET_DIR" \
@@ -55,21 +58,23 @@ index 6ce8b47f02..0b4ee839f9 100644
          cat "${build_result}/export.env" >> "$GITHUB_ENV"
          echo "CODEX_PACKAGE_BUILD_RESULT=${build_result}" >> "$GITHUB_ENV"
 diff --git a/.github/actions/build-codex-packages/action.yml b/.github/actions/build-codex-packages/action.yml
-index 86e2e3e01f..3aa2d9bf02 100644
+index 86e2e3e01f..af3742c54f 100644
 --- a/.github/actions/build-codex-packages/action.yml
 +++ b/.github/actions/build-codex-packages/action.yml
-@@ -13,6 +13,10 @@ inputs:
+@@ -13,6 +13,12 @@ inputs:
    build-system:
      description: Build package binaries with Cargo or Bazel.
      default: cargo
 +  restored-final-outputs:
-+    description: Validated native executable bundle restored for an exact Linux release build.
++    description: >-
++      Validated executables for the current release, either a Linux x86_64 musl cache bundle or an Intel macOS
++      compile handoff directory.
 +  final-output-cache-tag:
-+    description: Exact Cargo package input tag used to restore or capture native executable output.
++    description: Exact Linux x86_64 musl Cargo package input tag used to restore or capture native executable output.
    prepared-musl-zig:
      description: Verified Zig executable from the caller's completed musl build preparation.
    voice-release-dir:
-@@ -72,6 +76,8 @@ runs:
+@@ -72,6 +78,8 @@ runs:
          binaries: ${{ env.NEEDED_BINARIES }}
          build-mode: ${{ inputs.build-mode }}
          prepared-musl-zig: ${{ inputs.prepared-musl-zig }}
@@ -78,7 +83,7 @@ index 86e2e3e01f..3aa2d9bf02 100644
  
      - name: Build Bazel package binaries
        if: inputs.build-system == 'bazel'
-@@ -80,6 +86,19 @@ runs:
+@@ -80,6 +88,19 @@ runs:
          target: ${{ inputs.target }}
          build-mode: ${{ inputs.build-mode }}
  
@@ -99,7 +104,7 @@ index 86e2e3e01f..3aa2d9bf02 100644
        shell: bash
        working-directory: codex-rs
 diff --git a/.github/scripts/codex-package-operations.sh b/.github/scripts/codex-package-operations.sh
-index 5fdac81055..d571d85992 100644
+index 5fdac81055..1eb87d90b3 100644
 --- a/.github/scripts/codex-package-operations.sh
 +++ b/.github/scripts/codex-package-operations.sh
 @@ -42,6 +42,8 @@ parse_arguments() {
@@ -136,21 +141,30 @@ index 5fdac81055..d571d85992 100644
    validate_runner_os "$runner_os" || return $?
    case "$build_mode" in
      release|debug) ;;
-@@ -298,6 +302,13 @@ build_binaries() {
+@@ -298,6 +302,22 @@ build_binaries() {
      argument_error 'Option --binaries requires at least one binary name'
      return 2
    fi
 +  if [[ -n "$restored_final_outputs" || -n "$final_output_cache_tag" ]]; then
-+    if [[ "$runner_os:$target:$build_mode" != Linux:x86_64-unknown-linux-musl:release ||
-+      -z "$restored_final_outputs" || ! "$final_output_cache_tag" =~ ^cargo-v3-x86_64-unknown-linux-musl-pkg-[0-9a-f]{64}$ ]]; then
-+      argument_error 'Restored executables require an exact Linux x86_64 musl release cache and input tag'
++    if [[ -z "$restored_final_outputs" ]]; then
++      argument_error 'Option --final-output-cache-tag requires --restored-final-outputs'
++      return 2
++    fi
++    if [[ "$runner_os:$target:$build_mode" == macOS:x86_64-apple-darwin:release ]]; then
++      if [[ -n "$final_output_cache_tag" ]]; then
++        argument_error 'An Intel macOS compile handoff takes no cache input tag'
++        return 2
++      fi
++    elif [[ "$runner_os:$target:$build_mode" != Linux:x86_64-unknown-linux-musl:release ||
++      ! "$final_output_cache_tag" =~ ^cargo-v3-x86_64-unknown-linux-musl-pkg-[0-9a-f]{64}$ ]]; then
++      argument_error 'Restored executables require a Linux x86_64 musl release cache and tag, or an Intel macOS handoff'
 +      return 2
 +    fi
 +  fi
    prepare_result_directory "$result_dir" || return $?
    write_common_metadata build_binaries "$target" "$runner_os" "$binaries" || return $?
    printf '%s\n' "$build_mode" > "${result_dir}/build-mode" || return $?
-@@ -310,9 +321,28 @@ build_binaries() {
+@@ -310,9 +330,28 @@ build_binaries() {
    done < "$profile_file"
  
    if [[ "$runner_os" == Linux ]]; then
@@ -181,7 +195,7 @@ index 5fdac81055..d571d85992 100644
      bwrap_digest_file="${result_dir}/.bwrap-sha256sum.out"
      run_recorded sha256sum "$bwrap_path" > "$bwrap_digest_file" || return $?
      IFS=' ' read -r digest_value _ < "$bwrap_digest_file"
-@@ -338,7 +368,11 @@ build_binaries() {
+@@ -338,7 +377,17 @@ build_binaries() {
    for build_argument in "${selected_binaries[@]}"; do
      build_arguments+=(--bin "$build_argument")
    done
@@ -189,16 +203,22 @@ index 5fdac81055..d571d85992 100644
 +  if [[ -z "$restored_final_outputs" ]]; then
 +    run_recorded "${build_arguments[@]}" || return $?
 +  else
++    if [[ "$runner_os" == macOS ]]; then
++      mkdir -p -- "${target_dir}/${target}" || return $?
++      run_recorded bash "${CODEX_TOOLING:?}" compiled-output-handoff install \
++        --archive "${restored_final_outputs}/compiled-outputs.tar" --release-dir "${target_dir}/${target}/release" \
++        --target "$target" --source-commit "$STABLE_GIT_COMMIT" --binaries "${selected_binaries[@]}" || return $?
++    fi
 +    printf 'CODEX_PACKAGE_FINAL_OUTPUT_REUSED=true\n' >> "$export_file" || return $?
 +  fi
    complete_result
  }
  
 diff --git a/.github/scripts/test-codex-package-operations.sh b/.github/scripts/test-codex-package-operations.sh
-index 44c58f1104..a07179c2da 100644
+index 44c58f1104..e0510024bb 100644
 --- a/.github/scripts/test-codex-package-operations.sh
 +++ b/.github/scripts/test-codex-package-operations.sh
-@@ -221,6 +221,50 @@ assert values[b"STABLE_GIT_COMMIT"] == b"fixture-commit-123"
+@@ -221,6 +221,91 @@ assert values[b"STABLE_GIT_COMMIT"] == b"fixture-commit-123"
  assert b"GH_TOKEN" not in values
  PY
  
@@ -244,6 +264,47 @@ index 44c58f1104..a07179c2da 100644
 +  if grep -q '^CODEX_PACKAGE_FINAL_OUTPUT_REUSED=' "${result_dir}/export.env"; then
 +    fail 'Fallback unexpectedly reported use of restored executables'
 +  fi
++
++  cat > "$CODEX_TOOLING" <<'STUB'
++#!/usr/bin/env bash
++set -euo pipefail
++[[ "$1" == compiled-output-handoff && "$2" == install && "$5" == --release-dir && "${11}" == --binaries ]]
++destination="$6"
++shift 11
++mkdir -- "$destination"
++for name in "$@"; do
++  printf 'compiled-%s' "$name" > "$destination/$name"
++done
++STUB
++  local darwin=x86_64-apple-darwin rejected_case
++  local -a rejected=()
++  result_dir="${test_root}/handoff build result"
++  export CARGO_TARGET_DIR="${test_root}/handoff target"
++  bash "$operations_script" build-binaries \
++    --target "$darwin" --runner-os macOS --build-mode release \
++    --binaries 'codex codex-app-server' --target-dir "$CARGO_TARGET_DIR" --result-dir "$result_dir" \
++    --restored-final-outputs "$restored_dir"
++  grep -qx 'CODEX_PACKAGE_FINAL_OUTPUT_REUSED=true' "${result_dir}/export.env" || fail 'Handoff reuse marker is absent'
++  assert_equal 'handoff result is complete' true "$(cat "${result_dir}/completed")"
++  assert_equal 'handoff result uses compiled codex' compiled-codex \
++    "$(cat "${CARGO_TARGET_DIR}/${darwin}/release/codex")"
++  assert_equal 'handoff build skipped Cargo' 4 "$(cat "${fixture_logs}/cargo.count")"
++  assert_argv "${result_dir}/commands/0002.argv" bash "$CODEX_TOOLING" compiled-output-handoff install \
++    --archive "${restored_dir}/compiled-outputs.tar" --release-dir "${CARGO_TARGET_DIR}/${darwin}/release" \
++    --target "$darwin" --source-commit fixture-commit-123 --binaries codex codex-app-server
++  for rejected_case in "$darwin macOS --final-output-cache-tag $cache_tag" 'aarch64-apple-darwin macOS'; do
++    read -r -a rejected <<< "$rejected_case"
++    result_dir="${test_root}/rejected handoff result"
++    if bash "$operations_script" build-binaries \
++      --target "${rejected[0]}" --runner-os "${rejected[1]}" --build-mode release \
++      --binaries 'codex codex-app-server' --target-dir "$CARGO_TARGET_DIR" --result-dir "$result_dir" \
++      --restored-final-outputs "$restored_dir" "${rejected[@]:2}" 2>/dev/null; then
++      fail "Unsupported handoff unexpectedly succeeded: ${rejected[*]}"
++    else
++      status=$?
++    fi
++    assert_equal "rejected handoff status: ${rejected[*]}" 2 "$status"
++  done
 +  export CARGO_TARGET_DIR="$target_dir"
 +
    result_dir="${test_root}/Windows build result"

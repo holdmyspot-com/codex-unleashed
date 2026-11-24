@@ -10,19 +10,26 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Produces validated native-build diagnostic inputs from completed package operation records and fresh observations.
+ * <p>
+ * With {@code --archive-result} and {@code --package-root}, the command describes the host that packaged the target.
+ * A packaging host that installed executables compiled elsewhere also passes that compile host's document through
+ * {@code --compile-inputs}. Without either packaging option, the command describes a host that only compiled the
+ * executables.
  */
 public final class ReleaseManifestNativeInputs
 {
-	/** Required command options. */
-	private static final Set<String> REQUIRED = Set.of("build-result", "archive-result", "target", "package-root",
-		"output");
-	/** Optional explicit current-boundary observations. */
+	/** Options that every invocation requires. */
+	private static final Set<String> REQUIRED = Set.of("build-result", "target", "output");
+	/** Options that a packaging host supplies together. */
+	private static final Set<String> PACKAGING = Set.of("archive-result", "package-root");
+	/** Optional explicit current-boundary observations and the compile host's document. */
 	private static final Set<String> OPTIONAL = Set.of("runner-arch", "image-os", "image-version",
-		"configured-v8-archive");
+		"configured-v8-archive", "compile-inputs");
 
 	/**
 	 * Immutable current process settings supplied independently of historical observations.
@@ -139,15 +146,37 @@ public final class ReleaseManifestNativeInputs
 					field = "arch";
 				runner.put(field, options.get(name));
 			}
-			document.set("operations", NativeOperationRecords.operations(scope, Path.of(options.get("build-result")),
-				Path.of(options.get("archive-result")), target, environment.runnerOs()));
+			Path build = Path.of(options.get("build-result"));
 			Path v8 = null;
 			if (options.containsKey("configured-v8-archive"))
 				v8 = Path.of(options.get("configured-v8-archive"));
-			document.set("resources", NativeResourceObservations.collect(scope, Path.of(options.get("package-root")),
-				target, v8));
+			boolean packaging = options.containsKey("package-root");
+			if (packaging)
+			{
+				document.set("operations", NativeOperationRecords.operations(scope, build,
+					Path.of(options.get("archive-result")), target, environment.runnerOs()));
+				document.set("resources", NativeResourceObservations.collect(scope, Path.of(options.get("package-root")),
+					target, v8));
+			}
+			else
+			{
+				document.set("operations", NativeOperationRecords.buildOperation(scope, build, target,
+					environment.runnerOs()));
+				document.set("resources", NativeResourceObservations.collectConfigured(scope, v8));
+			}
 			document.set("tools", NativeToolObservations.collect(scope, capture, environment));
-			ReleaseManifestNative.validate(document, target);
+			if (options.containsKey("compile-inputs"))
+			{
+				JsonNode compiled = ReleaseManifestSchema.read(scope, Path.of(options.get("compile-inputs")));
+				ReleaseManifestNative.validateCompile(compiled, target);
+				ObjectNode compileHost = document.putObject("compile_host");
+				for (String field : List.of("runner", "operations", "tools", "resources"))
+					compileHost.set(field, compiled.get(field));
+			}
+			if (packaging)
+				ReleaseManifestNative.validate(document, target);
+			else
+				ReleaseManifestNative.validateCompile(document, target);
 			String encoded = ArtifactJson.format(scope, scope.getJsonMapper().convertValue(document, Object.class));
 			ReleaseManifestSchema.require(encoded.getBytes(StandardCharsets.US_ASCII).length <=
 				ReleaseManifestSchema.MAX_DOCUMENT_BYTES, "Native inputs JSON exceeds 4 MiB");
@@ -177,19 +206,25 @@ public final class ReleaseManifestNativeInputs
 			String token = arguments[index];
 			ReleaseManifestSchema.require(token.startsWith("--"), "Expected a named option");
 			String name = token.substring(2);
-			ReleaseManifestSchema.require(REQUIRED.contains(name) || OPTIONAL.contains(name), "Unknown option: " + token);
+			ReleaseManifestSchema.require(REQUIRED.contains(name) || PACKAGING.contains(name) || OPTIONAL.contains(name),
+				"Unknown option: " + token);
 			ReleaseManifestSchema.require(!options.containsKey(name), "Duplicate option: " + token);
 			ReleaseManifestSchema.require(index + 1 < arguments.length && !arguments[index + 1].startsWith("--"),
 				"Missing value for " + token);
 			String value = arguments[index + 1];
-			if (REQUIRED.contains(name) || name.equals("configured-v8-archive"))
+			if (!Set.of("runner-arch", "image-os", "image-version").contains(name))
 				ReleaseManifestSchema.require(!value.isEmpty(), "Empty value for " + token);
 			if (!Set.of("target", "runner-arch", "image-os", "image-version").contains(name))
 				Path.of(value);
 			options.put(name, value);
 		}
 		ReleaseManifestSchema.require(options.keySet().containsAll(REQUIRED),
-			"Required options: build-result, archive-result, target, package-root, output");
+			"Required options: build-result, target, output");
+		boolean packaging = options.containsKey("archive-result");
+		ReleaseManifestSchema.require(packaging == options.containsKey("package-root"),
+			"Options --archive-result and --package-root must be supplied together");
+		ReleaseManifestSchema.require(packaging || !options.containsKey("compile-inputs"),
+			"Option --compile-inputs requires --archive-result and --package-root");
 		ReleaseManifestSchema.require(ReleaseManifestSchema.TARGETS.contains(options.get("target")),
 			"Unsupported release target");
 		return options;
@@ -206,9 +241,9 @@ public final class ReleaseManifestNativeInputs
 	{
 		if (!List.of(arguments).contains("--help") && !List.of(arguments).contains("-h"))
 			return false;
-		out.println("Usage: release-native-inputs --build-result PATH --archive-result PATH --target TARGET " +
-			"--package-root PATH --output PATH [--runner-arch TEXT] [--image-os TEXT] [--image-version TEXT] " +
-			"[--configured-v8-archive PATH]");
+		out.println("Usage: release-native-inputs --build-result PATH --target TARGET --output PATH " +
+			"[--archive-result PATH --package-root PATH [--compile-inputs PATH]] [--runner-arch TEXT] " +
+			"[--image-os TEXT] [--image-version TEXT] [--configured-v8-archive PATH]");
 		return true;
 	}
 
