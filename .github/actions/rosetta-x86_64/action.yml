@@ -11,9 +11,6 @@ description: >
   that verifies the installer's x86_64 package can also install a sysctl command that reports "not translated" to the
   processes of a step that sets CODEX_INSTALLER_NOT_TRANSLATED; every other caller and step sees the real answer.
 inputs:
-  homebrew:
-    description: Install Intel Homebrew under /usr/local and put it ahead of the arm64 one on PATH, for jobs that brew install x86_64 libraries
-    default: "false"
   installer-sysctl:
     description: Install the sysctl command that reports an Intel host to the steps that set CODEX_INSTALLER_NOT_TRANSLATED
     default: "false"
@@ -36,20 +33,6 @@ runs:
           exit 1
         fi
         printf 'Rosetta 2 runs x86_64 programs on this runner.\n'
-
-    - name: Install Intel Homebrew under Rosetta
-      if: ${{ inputs.homebrew == 'true' }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        if [[ ! -x /usr/local/bin/brew ]]; then
-          installer="$RUNNER_TEMP/homebrew-install.sh"
-          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
-            --output "$installer" https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh
-          NONINTERACTIVE=1 /usr/bin/arch -x86_64 /bin/bash "$installer"
-        fi
-        test "$(/usr/local/bin/brew --prefix)" = /usr/local
-        printf '%s\n' /usr/local/sbin /usr/local/bin >> "$GITHUB_PATH"
 
     - name: Route bash through Rosetta
       shell: bash

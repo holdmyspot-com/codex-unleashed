@@ -63,7 +63,8 @@ jobs:
         include:
           - runner: macos-15
             target: aarch64-apple-darwin
-          # Apple silicon runs the Intel target under Rosetta 2 as x86_64 programs, with Intel Homebrew for the native libraries.
+          # Apple silicon runs the Intel target under Rosetta 2 as x86_64 programs, with GStreamer's universal packages for the native
+          # libraries because Homebrew no longer installs for Intel.
           - runner: macos-15
             rosetta: true
             target: x86_64-apple-darwin
@@ -107,8 +108,6 @@ jobs:
       - name: Run the rest of the job as x86_64 under Rosetta 2
         if: ${{ matrix.rosetta }}
         uses: ./restart-metadata/.github/actions/rosetta-x86_64
-        with:
-          homebrew: 'true'
 
       - name: Validate the selection and preserve restart inputs outside the source checkout
         id: inputs
@@ -209,11 +208,39 @@ jobs:
 
       # voice-host links GStreamer through pkg-config, which the hosted macOS image does not provide.
       - name: Install the GStreamer development libraries that voice-host links
+        if: ${{ !matrix.rosetta }}
         run: |
           set -euo pipefail
           brew install pkgconf gstreamer gst-plugins-base
           pkg-config --modversion gstreamer-1.0 gstreamer-app-1.0 gstreamer-audio-1.0
           printf 'PKG_CONFIG_PATH=%s\n' "$(brew --prefix)/lib/pkgconfig:$(brew --prefix)/share/pkgconfig" >> "$GITHUB_ENV"
+
+      # Homebrew's installer and its gstreamer bottles no longer cover Intel macOS, so the x86_64 build links GStreamer's own
+      # universal packages, the version that Homebrew currently ships. Homebrew refuses to run as x86_64 in its arm64 prefix,
+      # so pkgconf, which only reads text files, comes from that prefix as an arm64 program.
+      - name: Install the universal GStreamer development libraries that the x86_64 voice-host links
+        if: ${{ matrix.rosetta }}
+        run: |
+          set -euo pipefail
+          arch -arm64 /opt/homebrew/bin/brew install pkgconf
+          version=1.28.9
+          base="https://gstreamer.freedesktop.org/data/pkg/osx/$version"
+          packages="$RUNNER_TEMP/gstreamer-packages"
+          mkdir -p "$packages"
+          while read -r digest name; do
+            curl --fail --location --retry 3 --retry-all-errors --output "$packages/$name" "$base/$name" < /dev/null
+            printf '%s  %s\n' "$digest" "$packages/$name" | shasum -a 256 -c -
+            sudo installer -pkg "$packages/$name" -target / < /dev/null
+          done <<'EOF_DIGESTS'
+          05d27c8e9b4374bbcf1788cf1604bb4b1a4bdcbdc13bc37b67d3a225c8aa86a6 gstreamer-1.0-1.28.9-universal.pkg
+          54e27ccc9af096f7f12cff32b6111b7f1b867d968cb8888e80719ad46a97c777 gstreamer-1.0-devel-1.28.9-universal.pkg
+          EOF_DIGESTS
+          rm -rf -- "$packages"
+          framework=/Library/Frameworks/GStreamer.framework/Versions/1.0
+          printf 'PKG_CONFIG_PATH=%s\n' "$framework/lib/pkgconfig:$framework/lib/gstreamer-1.0/pkgconfig" >> "$GITHUB_ENV"
+          PKG_CONFIG_PATH="$framework/lib/pkgconfig" pkg-config --modversion gstreamer-1.0 gstreamer-app-1.0 gstreamer-audio-1.0
+          lipo -archs "$framework/lib/libgstreamer-1.0.0.dylib" | tee "$RUNNER_TEMP/baseline-gstreamer-archs.txt"
+          grep -qw x86_64 "$RUNNER_TEMP/baseline-gstreamer-archs.txt"
 
       # macOS ships no setsid binary; codex-utils-pty's pipe_terminate_aborts_detached_readers skips itself without
       # one. This stand-in detaches the command into its own session like `setsid -f`, so the test runs.
