@@ -42,9 +42,10 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
  * packaging host.
  * <p>
  * {@code capture} writes an uncompressed tar whose first member, {@code manifest.json}, binds the target, the patched
- * source commit, the selected executables, and every file's mode, size and SHA-256. {@code install} verifies each
- * member against that manifest and the caller's expected identity before it publishes a new Cargo release directory
- * with one atomic rename. The class is stateless; concurrent invocations must use distinct destinations.
+ * source commit, the selected executables, and every file's path, mode, size and SHA-256; the remaining members are
+ * named by their position in that inventory. {@code install} verifies each member against that manifest and the
+ * caller's expected identity before it publishes a new Cargo release directory with one atomic rename. The class is
+ * stateless; concurrent invocations must use distinct destinations.
  */
 public final class CompiledOutputHandoff
 {
@@ -62,8 +63,11 @@ public final class CompiledOutputHandoff
 	private static final long MAX_FILE_BYTES = 4L << 30;
 	/** Maximum combined size of all files, in bytes. */
 	private static final long MAX_CONTENT_BYTES = 16L << 30;
-	/** Longest member name that a plain ustar header stores without an extension header. */
-	private static final int MAX_NAME_BYTES = 100;
+	/**
+	 * Longest recorded file path, in bytes. Paths live in the manifest; tar members are named by position, because a
+	 * dSYM bundle path can exceed the 100 bytes that a plain ustar header stores without an extension header.
+	 */
+	private static final int MAX_PATH_BYTES = 1024;
 	/** One safe relative path component. */
 	private static final Pattern COMPONENT = Pattern.compile("[A-Za-z0-9_+-][A-Za-z0-9._+-]*");
 	/** One Cargo binary target name. */
@@ -242,9 +246,10 @@ public final class CompiledOutputHandoff
 				putMember(tar, MANIFEST, manifest.length, 0644);
 				tar.write(manifest);
 				tar.closeArchiveEntry();
-				for (Member member : members)
+				for (int index = 0; index < members.size(); ++index)
 				{
-					putMember(tar, member.path(), member.size(), member.mode());
+					Member member = members.get(index);
+					putMember(tar, memberName(index), member.size(), member.mode());
 					String digest;
 					try (InputStream input = Files.newInputStream(member.source(), NOFOLLOW_LINKS))
 					{
@@ -394,10 +399,12 @@ public final class CompiledOutputHandoff
 					with(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY).
 					with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).
 					readTree(new String(bytes, StandardCharsets.UTF_8));
-				for (Member member : members(manifest, identity))
+				List<Member> members = members(manifest, identity);
+				for (int index = 0; index < members.size(); ++index)
 				{
+					Member member = members.get(index);
 					entry = tar.getNextEntry();
-					require(regularMember(entry, member.path()) && entry.getSize() == member.size() &&
+					require(regularMember(entry, memberName(index)) && entry.getSize() == member.size() &&
 						(entry.getMode() & 07777) == member.mode(), "Unexpected handoff member: " + member.path());
 					Path destination = scratch.resolve(member.path());
 					Files.createDirectories(destination.getParent());
@@ -491,8 +498,8 @@ public final class CompiledOutputHandoff
 	 */
 	private static void validatePath(String path, List<String> binaries) throws IOException
 	{
-		require(path.getBytes(StandardCharsets.UTF_8).length <= MAX_NAME_BYTES, "Handoff path exceeds " +
-			MAX_NAME_BYTES + " bytes: " + path);
+		require(path.getBytes(StandardCharsets.UTF_8).length <= MAX_PATH_BYTES, "Handoff path exceeds " +
+			MAX_PATH_BYTES + " bytes: " + path);
 		String[] components = path.split("/", -1);
 		for (String component : components)
 			require(COMPONENT.matcher(component).matches(), "Unsafe handoff path: " + path);
@@ -550,6 +557,17 @@ public final class CompiledOutputHandoff
 		if (!(input instanceof TarArchiveInputStream))
 			require(input.read() == -1, "File grew while it was read");
 		return HexFormat.of().formatHex(hash.digest());
+	}
+
+	/**
+	 * Returns the tar member name of one inventory file.
+	 *
+	 * @param index the file's position in the manifest inventory
+	 * @return the member name
+	 */
+	private static String memberName(int index)
+	{
+		return "files/" + String.format("%06d", index);
 	}
 
 	/**

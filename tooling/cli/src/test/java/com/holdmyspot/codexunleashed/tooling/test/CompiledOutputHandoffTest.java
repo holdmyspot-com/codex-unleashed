@@ -26,6 +26,8 @@ public final class CompiledOutputHandoffTest
 	private static final String COMMIT = "a".repeat(40);
 	/** Fixture DWARF content that occurs once in the archive. */
 	private static final String DWARF = "dwarf-bytes-for-codex";
+	/** Relocation map content of each fixture dSYM bundle. */
+	private static final String RELOCATIONS = "relocations: []\n";
 
 	/** Creates handoff checks. */
 	public CompiledOutputHandoffTest()
@@ -61,6 +63,10 @@ public final class CompiledOutputHandoffTest
 				requireThat(Files.isSymbolicLink(bundle), binary + "BundleLink").isFalse();
 				requireThat(Files.readString(bundle.resolve("Contents/Resources/DWARF/" + binary + "-0123")),
 					binary + "Dwarf").isEqualTo(DWARF.replace("codex", binary));
+				String relocations = "Contents/Resources/Relocations/x86_64/" + binary.replace('-', '_') +
+					"-f72a2863fc53fb00f72a2863fc53fb00.yml";
+				requireThat(Files.readString(bundle.resolve(relocations)), binary + "Relocations").
+					isEqualTo(RELOCATIONS);
 			}
 			try (var listing = Files.list(installed))
 			{
@@ -141,6 +147,9 @@ public final class CompiledOutputHandoffTest
 			Path dwarf = Files.createDirectories(bundle.resolve("Contents/Resources/DWARF"));
 			Files.writeString(dwarf.resolve(binary + "-0123"), DWARF.replace("codex", binary));
 			Files.writeString(bundle.resolve("Contents/Info.plist"), "<plist/>");
+			// Real bundles carry relocation maps whose member paths exceed the 100 bytes of a plain ustar name.
+			Path relocations = Files.createDirectories(bundle.resolve("Contents/Resources/Relocations/x86_64"));
+			Files.writeString(relocations.resolve(binary.replace('-', '_') + "-f72a2863fc53fb00f72a2863fc53fb00.yml"), RELOCATIONS);
 			Files.createSymbolicLink(release.resolve(binary + ".dSYM"), Path.of("deps", binary + "-0123.dSYM"));
 		}
 		return release;
