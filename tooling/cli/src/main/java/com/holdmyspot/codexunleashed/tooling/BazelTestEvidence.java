@@ -22,10 +22,20 @@ public final class BazelTestEvidence
 	public static final String NAME = "validate-bazel-test-evidence";
 	/** Exact supported nondefault tag filter. */
 	private static final String TAG_FILTER = "-argument-comment-lint";
-	/** Repeatable canonical options that do not determine the target selection. */
+	/**
+	 * Repeatable canonical options that do not determine the target selection.
+	 * <p>
+	 * Bazel's canonical command line keeps only the last value of a single-valued option but lists every value of a
+	 * repeatable one, so a repeated option name is rejected unless it is listed here; otherwise a repeated selection
+	 * option could hide a filter behind the one value that the profile check reads. Each listed option only configures
+	 * how selected targets build or run: {@code features} and {@code host_features} toggle C++ toolchain features, as
+	 * upstream's {@code .bazelrc} does with {@code --features=static_link_msvcrt} and
+	 * {@code --features=-dynamic_link_msvcrt}, and {@code inject_repository} adds an external repository, which the
+	 * Windows CI invocation passes twice with one value.
+	 */
 	private static final Set<String> REPEATABLE_OPTIONS = Set.of("action_env", "build_metadata", "client_env",
-		"config", "default_override", "extra_toolchains", "flag_alias", "host_action_env", "rc_source", "repo_env",
-		"strategy", "test_env");
+		"config", "default_override", "extra_toolchains", "features", "flag_alias", "host_action_env", "host_features",
+		"inject_repository", "rc_source", "repo_env", "strategy", "test_env");
 	/** Usage text and status meanings. */
 	private static final String HELP = "Usage: codex-tooling " + NAME +
 		" --bep PATH --expected-patterns PATH --bazel-exit-code INTEGER [--interrupted]\n" +

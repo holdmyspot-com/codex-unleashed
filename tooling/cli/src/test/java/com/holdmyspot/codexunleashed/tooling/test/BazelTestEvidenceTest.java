@@ -329,6 +329,52 @@ public final class BazelTestEvidenceTest
 	}
 
 	/**
+	 * Accepts the repeated toolchain-feature and repository-injection options of the upstream {@code .bazelrc} and
+	 * Windows CI invocation in their canonical command-line form.
+	 *
+	 * @throws IOException if the fixture files cannot be created or removed
+	 */
+	@Test
+	public void acceptsRepeatedFeatureAndRepositoryOptions() throws IOException
+	{
+		String tagFilter = "{\"optionName\":\"test_tag_filters\",\"optionValue\":\"-argument-comment-lint\"}";
+		StringBuilder repeated = new StringBuilder();
+		for (String name : List.of("features", "host_features"))
+			for (String value : List.of("-dynamic_link_msvcrt", "static_link_msvcrt"))
+				repeated.append(",{\"optionName\":\"").append(name).append("\",\"optionValue\":\"").append(value).
+					append("\",\"combinedForm\":\"--").append(name).append('=').append(value).append("\"}");
+		String injection = ",{\"optionName\":\"inject_repository\"," +
+			"\"optionValue\":\"voice_windows_tools=D:\\\\a\\\\_temp\\\\voice-windows-build-tools\"}";
+		repeated.append(injection).append(injection);
+		String invocation = BASE.replace(tagFilter, tagFilter + repeated);
+		try (Fixture fixture = new Fixture())
+		{
+			Result result = invoke(fixture, invocation, "//:pass\n", "0");
+			requireThat(result.output, "report").contains("\"coverage\":\"complete\"");
+			requireThat(result.status, "status").isEqualTo(0);
+		}
+	}
+
+	/**
+	 * Rejects a repeated selection option whose second value the profile check would not read.
+	 *
+	 * @throws IOException if the fixture files cannot be created or removed
+	 */
+	@Test
+	public void rejectsRepeatedSelectionOption() throws IOException
+	{
+		String tagFilter = "{\"optionName\":\"test_tag_filters\",\"optionValue\":\"-argument-comment-lint\"}";
+		String invocation = BASE.replace(tagFilter, tagFilter + "," +
+			"{\"optionName\":\"test_tag_filters\",\"optionValue\":\"-manual\"}");
+		try (Fixture fixture = new Fixture())
+		{
+			Result result = invoke(fixture, invocation, "//:pass\n", "0");
+			requireThat(result.status, "status").isEqualTo(1);
+			requireThat(result.output, "report").contains("\"failure_code\":\"unsupported_selection\"");
+		}
+	}
+
+	/**
 	 * Counts a repeated, identical fetch event once in the evidence graph.
 	 *
 	 * @throws IOException if the fixture files cannot be created or removed
