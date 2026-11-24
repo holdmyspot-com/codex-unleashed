@@ -7,9 +7,15 @@ description: >
   and the tests, inherit x86_64. Selects the x86_64-apple-darwin host for rustup. Steps that run before this action, and
   JavaScript actions, stay arm64. A job that installs a JDK, Python or other tool that its own commands must run as x86_64
   selects that tool's x64 build after this action. Writes the host evidence to $RUNNER_TEMP/rosetta-host.txt.
+  The shipped installer installs the arm64 package into a translated process, which an Intel user never is, so a job
+  that verifies the installer's x86_64 package can also install a sysctl command that reports "not translated" to the
+  processes of a step that sets CODEX_INSTALLER_NOT_TRANSLATED; every other caller and step sees the real answer.
 inputs:
   homebrew:
     description: Install Intel Homebrew under /usr/local and put it ahead of the arm64 one on PATH, for jobs that brew install x86_64 libraries
+    default: "false"
+  installer-sysctl:
+    description: Install the sysctl command that reports an Intel host to the steps that set CODEX_INSTALLER_NOT_TRANSLATED
     default: "false"
 runs:
   using: composite
@@ -47,12 +53,25 @@ runs:
 
     - name: Route bash through Rosetta
       shell: bash
+      env:
+        INSTALLER_SYSCTL: ${{ inputs.installer-sysctl }}
       run: |
         set -euo pipefail
         shims="$RUNNER_TEMP/rosetta-shims"
         mkdir -p "$shims"
         printf '%s\n' '#!/bin/bash' 'exec /usr/bin/arch -x86_64 /bin/bash "$@"' > "$shims/bash"
         chmod +x "$shims/bash"
+        if [[ "$INSTALLER_SYSCTL" == true ]]; then
+          cat > "$shims/sysctl" <<'SHIM'
+        #!/bin/bash
+        if [[ -n "${CODEX_INSTALLER_NOT_TRANSLATED:-}" && "$*" == "-n sysctl.proc_translated" ]]; then
+          echo 0
+        else
+          exec /usr/sbin/sysctl "$@"
+        fi
+        SHIM
+          chmod +x "$shims/sysctl"
+        fi
         if command -v rustup > /dev/null; then
           rustup set default-host x86_64-apple-darwin
         fi
@@ -64,11 +83,11 @@ runs:
         set -euo pipefail
         test "$(command -v bash)" = "$RUNNER_TEMP/rosetta-shims/bash"
         test "$(uname -m)" = x86_64
-        test "$(sysctl -n sysctl.proc_translated)" = 1
+        test "$(/usr/sbin/sysctl -n sysctl.proc_translated)" = 1
         {
           printf 'runner=macos-15 (Apple silicon) with Rosetta 2, x86_64 translated\n'
-          printf 'uname_m=%s\nproc_translated=%s\n' "$(uname -m)" "$(sysctl -n sysctl.proc_translated)"
-          printf 'cpu=%s\n' "$(sysctl -n machdep.cpu.brand_string)"
+          printf 'uname_m=%s\nproc_translated=%s\n' "$(uname -m)" "$(/usr/sbin/sysctl -n sysctl.proc_translated)"
+          printf 'cpu=%s\n' "$(/usr/sbin/sysctl -n machdep.cpu.brand_string)"
           printf 'bash=%s\nbash_archs=%s\n' "$(command -v bash)" "$(lipo -archs /bin/bash)"
           if command -v rustup > /dev/null; then rustup show | sed -n '1,/^$/p'; fi
         } | tee "$RUNNER_TEMP/rosetta-host.txt"
