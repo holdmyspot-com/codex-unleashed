@@ -39,5 +39,10 @@ sudo mkswap "$swapfile"
 sudo swapon "$swapfile"
 free -h
 echo 'CARGO_BUILD_JOBS=3' >> "$GITHUB_ENV"
+# A lost runner leaves no log, so keep the runner's own processes out of the kernel's OOM choice: a memory peak then
+# kills a build or test process, which fails visibly, instead of the runner (runs 45363974415 and 45364179895).
+for runner_pid in $(pgrep -f 'Runner\.(Listener|Worker)' || true); do
+  echo -1000 | sudo tee "/proc/$runner_pid/oom_score_adj" > /dev/null || true
+done
 nohup setsid bash -c 'while true; do date -u +%H:%M:%S; free -m | sed -n "1,3p"; ps -eo rss,comm --sort=-rss | sed -n "1,4p"; sleep 20; done' \
   > "$RUNNER_TEMP/memory-samples.log" 2>&1 < /dev/null &

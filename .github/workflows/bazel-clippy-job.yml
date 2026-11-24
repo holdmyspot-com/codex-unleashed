@@ -84,7 +84,7 @@ jobs:
             restart-metadata/.github/scripts/size-windows-dev-drive.ps1 "$RUNNER_TEMP/"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
-          cp restart-metadata/.github/scripts/buildbuddy-cache.sh "$RUNNER_TEMP/"
+          cp restart-metadata/.github/scripts/buildbuddy-cache.sh restart-metadata/.github/scripts/fit-linux-build-memory.sh "$RUNNER_TEMP/"
           cp restart-metadata/.github/cargo-cache-package "$evidence/cargo-cache-package"
           cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh restart-metadata/.github/scripts/bazel-cc-disk-cache.sh "$RUNNER_TEMP/"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
@@ -294,6 +294,11 @@ jobs:
           bash "$RUNNER_TEMP/bazel-cc-disk-cache.sh" restore "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bazel-cc-cache" \
             "ghcr.io/$owner/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" "$CC_CACHE_LANE" \
             ${CC_SHARED_LANE:+"$CC_SHARED_LANE"} 2>&1 | tee "$evidence/cc-cache-restore.log"
+
+      - name: Fit the build into the hosted Linux runner's memory
+        if: runner.os == 'Linux' && steps.shared.outputs.exists != 'true'
+        # Linux Clippy lost its runner mid-build (runs 45334048243 and 45364179895); see the script for the measurements.
+        run: bash "$RUNNER_TEMP/fit-linux-build-memory.sh"
 
       - name: Run the maintained Bazel Clippy selection with fatal warnings
         if: steps.shared.outputs.exists != 'true'
