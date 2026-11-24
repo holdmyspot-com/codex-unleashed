@@ -71,7 +71,8 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
           mkdir -p "$evidence"
           cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
-          cp restart-metadata/.github/scripts/add-windows-page-file.ps1 "$RUNNER_TEMP/add-windows-page-file.ps1"
+          cp restart-metadata/.github/scripts/add-windows-page-file.ps1 restart-metadata/.github/scripts/add-windows-bazel-page-file.ps1 \
+            restart-metadata/.github/scripts/size-windows-dev-drive.ps1 "$RUNNER_TEMP/"
           mkdir -p "$RUNNER_TEMP/test-baselines"
           if [[ -d restart-metadata/docs/test-baselines ]]; then cp -R restart-metadata/docs/test-baselines/. "$RUNNER_TEMP/test-baselines/"; fi
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
@@ -165,80 +166,21 @@ jobs:
 
       - name: Add a page file
         id: bazel-page-file
-        # Four native MSVC test targets failed with "The paging file is too small" (os error 1455): rustc commits several
-        # times the memory it touches, and the runner's commit limit is its 16 GB of memory plus a 3 GB page file.
-        # bazel-clippy-job.yml adds the same page file for the same failure. Windows allocates the 32 GB minimum at once,
-        # and on D: it takes space from the Dev Drive, whose VHD also lives there: a 94 GB and then a 78 GB Dev Drive
-        # filled with os error 112 behind a page file on D:. C: had about 29 GB free, too little for the whole page file,
-        # so C: takes as much of the minimum as leaves it 12 GB for the toolchains and Cargo registry installed there
-        # later, and D: takes the rest and the 16 GB of growth. The page file step runs before the Dev Drive is sized.
-        if: matrix.target == 'x86_64-pc-windows-msvc'
+        # Native MSVC test targets failed with "The paging file is too small" (os error 1455). In run 45320758830 gnullvm
+        # shard 3 failed with that error, "memory allocation failed" and "failed to mmap file" for the sysroot's libtest,
+        # and shard 2 with a bare "can't find crate for `codex_exec`", which rustc reports when a declared rlib briefly
+        # stops passing its exists check. The script says why the page file is split between C: and D:; it runs before
+        # the Dev Drive is sized.
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $minimumMiB = 32768
-          $growthMiB = 16384
-          $systemHeadroomMiB = 12288
-          $systemFreeMiB = [long][math]::Floor((Get-PSDrive -Name C).Free / 1MB)
-          $hasSecondary = $null -ne (Get-PSDrive -Name D -ErrorAction SilentlyContinue)
-          $systemMiB = if ($hasSecondary) {
-            [long][math]::Max(0, [math]::Min($minimumMiB, $systemFreeMiB - $systemHeadroomMiB))
-          } else { $minimumMiB }
-          $secondaryMiB = $minimumMiB - $systemMiB
-          # The growth goes on C: only when C: holds the whole minimum, and then only into C:'s space beyond the headroom.
-          $systemMaximumMiB = if ($secondaryMiB -gt 0) { $systemMiB } elseif ($hasSecondary) {
-            [long][math]::Min($minimumMiB + $growthMiB, $systemFreeMiB - $systemHeadroomMiB)
-          } else { $minimumMiB + $growthMiB }
-          Write-Output ("C: has {0} GB free; the page file puts {1} MiB on C: and {2} MiB on D:." -f `
-            [math]::Floor($systemFreeMiB / 1024), $systemMiB, $secondaryMiB)
-          if ($systemMiB -gt 0) {
-            & "$env:RUNNER_TEMP/add-windows-page-file.ps1" `
-              -Path 'C:\pagefile-bazel.sys' -MinimumMiB $systemMiB -MaximumMiB $systemMaximumMiB
-          }
-          if ($secondaryMiB -gt 0) {
-            & "$env:RUNNER_TEMP/add-windows-page-file.ps1" `
-              -Path 'D:\pagefile-bazel.sys' -MinimumMiB $secondaryMiB -MaximumMiB ($secondaryMiB + $growthMiB)
-          }
+          & "$env:RUNNER_TEMP/add-windows-bazel-page-file.ps1"
 
       - name: Size the Dev Drive for the Bazel output
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Upstream's setup-dev-drive.ps1 provisions a fixed 64 GB Dev Drive when D: is not one. The native MSVC job's
-          # 523 targets filled it ("LLVM ERROR: no space on device"), and gnullvm shard 3 did too. Upstream runs this
-          # job on a larger runner whose D: is already a Dev Drive. The VHD is dynamic and lives on the runner-temp
-          # drive (D:, about 150 GB free on windows-2025), so size it from that drive's free space instead.
-          # In run 45285935516 the 78 GB Dev Drive filled with 67.5 GB of execroot, 8.9 GB of repository contents cache
-          # and 2.2 GB of repository cache, while the 36 GB that the sizing then kept back on D: stayed unused: the files
-          # outside the VHD grew by under 2 GB and the page file never grew. So the sizing keeps back 4 GB for those
-          # files and nothing for page file growth. The page file and the VHD each grow only into what the other leaves,
-          # so one that grows after D: has filled fails, as os error 1455 or as a write error on the Dev Drive.
-          $tempDrive = (Get-Item -LiteralPath $env:RUNNER_TEMP).PSDrive
-          $freeGb = [math]::Floor($tempDrive.Free / 1GB)
-          $sizeGb = [math]::Min($freeGb - 4, 240)
-          Write-Output "The runner-temp drive has $freeGb GB free."
-          if ($sizeGb -lt 1) { throw 'Insufficient runner-temp space to provision a Dev Drive.' }
-          Write-Output "A provisioned Dev Drive will be $sizeGb GB."
-          $script = Join-Path $PWD '.github/scripts/setup-dev-drive.ps1'
-          $text = [System.IO.File]::ReadAllText($script)
-          if ($text -notmatch '\$SizeBytes = 64GB') { throw 'upstream setup-dev-drive.ps1 no longer sets a 64GB size' }
-          # On this Windows runner fsutil returns zero even for a regular volume.
-          $oldProbe = '(?m)^    & fsutil devdrv query \$Drive \*> \$null\r?\n    return \$LASTEXITCODE -eq 0\r?$'
-          $oldProbeCount = [regex]::Matches($text, $oldProbe).Count
-          if ($oldProbeCount -eq 1) {
-              $newProbe = @'
-          $state = & fsutil devdrv query $Drive 2>$null
-          return ($LASTEXITCODE -eq 0) -and [bool]($state -match '^(?:This is a trusted developer volume|The volume is formatted as a developer volume but is not trusted on this machine)\.$')
-          '@
-              $text = [regex]::Replace($text, $oldProbe, [System.Text.RegularExpressions.MatchEvaluator]{
-                param($match)
-                ($newProbe -split '\r?\n' | ForEach-Object { '    ' + $_ }) -join "`n"
-              })
-          } elseif ($oldProbeCount -ne 0 -or
-              !$text.Contains('$volumeFlags = $script:DevDriveVolumeStateType::QueryVolumeFlags($Drive)') -or
-              !$text.Contains('$isDevVolume = ($volumeFlags -band $devVolumeMask) -gt 0')) {
-              throw 'setup-dev-drive.ps1 has neither the pinned upstream probe nor the downstream volume-state probe'
-          }
-          [System.IO.File]::WriteAllText($script, ($text -replace '\$SizeBytes = 64GB', "`$SizeBytes = ${sizeGb}GB"))
+          & "$env:RUNNER_TEMP/size-windows-dev-drive.ps1" -SetupScript (Join-Path $PWD '.github/scripts/setup-dev-drive.ps1')
 
       - name: Prepare upstream's Bazel host and toolchain
         uses: ./.github/actions/prepare-bazel-ci

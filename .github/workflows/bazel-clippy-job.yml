@@ -80,7 +80,8 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-bazel-lint-evidence"
           mkdir -p "$evidence"
           cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
-          cp restart-metadata/.github/scripts/add-windows-page-file.ps1 "$RUNNER_TEMP/add-windows-page-file.ps1"
+          cp restart-metadata/.github/scripts/add-windows-page-file.ps1 restart-metadata/.github/scripts/add-windows-bazel-page-file.ps1 \
+            restart-metadata/.github/scripts/size-windows-dev-drive.ps1 "$RUNNER_TEMP/"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           cp restart-metadata/.github/scripts/buildbuddy-cache.sh "$RUNNER_TEMP/"
@@ -91,15 +92,15 @@ jobs:
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
-      - name: Add a page file on the Windows build volume
+      - name: Add a page file
         # A cold Windows lint failed with "memory allocation failed" and "The paging file is too small" while about
         # 8 GB of memory was free: rustc commits several times the memory it touches, and the runner's commit limit is
-        # its 16 GB of memory plus a 3 GB page file. The page file grows by itself, but not fast enough.
+        # its 16 GB of memory plus a 3 GB page file. The page file grows by itself, but not fast enough. With the whole
+        # page file on D:, the lint filled its 64 GB Dev Drive while D: kept 52 GB free; the script splits it with C:.
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          & "$env:RUNNER_TEMP/add-windows-page-file.ps1" `
-            -Path D:\pagefile-bazel.sys -MinimumMiB 32768 -MaximumMiB 49152
+          & "$env:RUNNER_TEMP/add-windows-bazel-page-file.ps1"
 
       - name: Retrieve the exact stable upstream source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -163,6 +164,14 @@ jobs:
           bash "$RUNNER_TEMP/bazel-cc-disk-cache.sh" exists "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bazel-cc-cache" \
             "ghcr.io/$owner/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" "$CC_CACHE_LANE" \
             2>&1 | tee "$evidence/cc-cache-exists.log"
+
+      - name: Size the Dev Drive for the Bazel output
+        # Run 45292055552's Windows lint filled upstream's fixed 64 GB Dev Drive ("LLVM ERROR: IO failure on output
+        # stream: No space left on device" from lld-link) while D:, which holds its dynamic VHD, kept 52 GB free.
+        if: runner.os == 'Windows' && steps.shared.outputs.exists != 'true'
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP/size-windows-dev-drive.ps1" -SetupScript (Join-Path $PWD '.github/scripts/setup-dev-drive.ps1')
 
       - name: Prepare upstream's Bazel host and toolchain
         if: steps.shared.outputs.exists != 'true'

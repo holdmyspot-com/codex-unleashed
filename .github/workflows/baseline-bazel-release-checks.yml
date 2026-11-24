@@ -50,12 +50,25 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-bazel-release-evidence"
           mkdir -p "$evidence"
           cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
+          cp restart-metadata/.github/scripts/add-windows-page-file.ps1 restart-metadata/.github/scripts/add-windows-bazel-page-file.ps1 "$RUNNER_TEMP/"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           cp restart-metadata/.github/scripts/buildbuddy-cache.sh "$RUNNER_TEMP/"
           cp restart-metadata/.github/scripts/fit-linux-build-memory.sh "$RUNNER_TEMP/"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Add a page file
+        # Run 45292051191 failed with "can't find crate for `app_test_support`" while core-unit-tests-bin compiled
+        # beside the test, although Bazel had built that rlib and app-server-all-test-bin had compiled against it. rustc
+        # reports that error with no note only when its second check that the --extern file exists fails after the first
+        # passed.
+        # The likeliest cause is the commit limit, 16 GB of memory plus a 3 GB page file on windows-2025: Bazel test
+        # shards on the same image failed with "The paging file is too small" and "failed to mmap file" for rlibs.
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP/add-windows-bazel-page-file.ps1"
 
       - name: Retrieve the exact stable upstream source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
