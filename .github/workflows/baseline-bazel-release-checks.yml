@@ -222,7 +222,9 @@ jobs:
           if [[ "$RUNNER_OS" == Linux ]]; then
             # Bazel ignores CARGO_BUILD_JOBS, so with one action per CPU the 4-CPU, 16 GB runner was lost mid-compile
             # even with 12 GB of swap (run 45334044973). Three concurrent actions match the Cargo limit that fits.
-            build_args+=(--jobs=3)
+            # Upstream's CI config downloads only what later actions need (--remote_download_minimal). Without it the
+            # top-level test binaries from cache hits filled the 145 GB root disk (runs 45347028263, 45353890051).
+            build_args+=(--jobs=3 --remote_download_minimal)
           fi
           if [[ "$RUNNER_OS" == Windows ]]; then
             build_args+=(--workspace_status_command=./scripts/workspace-status.cmd --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1)
