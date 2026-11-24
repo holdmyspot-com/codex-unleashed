@@ -64,4 +64,4 @@ jobs:
             --remote_executor=grpcs://remote.buildbuddy.io --remote_local_fallback=false \
             --noremote_accept_cached --noremote_upload_local_results --jobs=24 --color=no --curses=no \
             //codex-rs/agent-identity:agent-identity 2>&1 | tee "$RUNNER_TEMP/buildbuddy-pilot.log"
-          rg 'processes:.*[1-9][0-9]* remote([,.]|$)' "$RUNNER_TEMP/buildbuddy-pilot.log"
+          grep -E 'processes:.*[1-9][0-9]* remote([,.]|$)' "$RUNNER_TEMP/buildbuddy-pilot.log"
