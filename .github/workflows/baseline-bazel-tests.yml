@@ -6,7 +6,7 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -48,7 +48,7 @@ jobs:
           printf '%s  %s\n' 7668a95db1250f12c40407251e4e203b4ec8bf39bc495d2f485b2d8c99048694 "$RUNNER_TEMP/bazel" | sha256sum -c -
           chmod +x "$RUNNER_TEMP/bazel"
           printf '%s\n' "$RUNNER_TEMP" >> "$GITHUB_PATH"
-      - name: Build an upstream Rust library using remote execution
+      - name: Run the maintained Linux Clippy selection on BuildBuddy
         working-directory: upstream
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -60,8 +60,13 @@ jobs:
           cache_helper="$GITHUB_WORKSPACE/.github/scripts/buildbuddy-cache.sh"
           trap 'bash "$cache_helper" finish "$PWD"' EXIT
           bash "$cache_helper" configure "$PWD"
-          env -u BUILDBUDDY_API_KEY bazel build --config=ci-linux --config=remote \
+          env -u BUILDBUDDY_API_KEY scripts/list-bazel-clippy-targets.sh > "$RUNNER_TEMP/clippy-targets.txt"
+          test -s "$RUNNER_TEMP/clippy-targets.txt"
+          mapfile -t targets < "$RUNNER_TEMP/clippy-targets.txt"
+          printf 'Selected %s upstream Clippy target patterns.\n' "${#targets[@]}"
+          env -u BUILDBUDDY_API_KEY .github/scripts/run-bazel-ci.sh --print-failed-action-summary -- \
+            build --config=clippy --config=ci-linux --config=remote \
             --remote_executor=grpcs://remote.buildbuddy.io --remote_local_fallback=false \
-            --noremote_accept_cached --noremote_upload_local_results --jobs=24 --color=no --curses=no \
-            //codex-rs/agent-identity:agent-identity 2>&1 | tee "$RUNNER_TEMP/buildbuddy-pilot.log"
+            --remote_download_minimal --jobs=24 --color=no --curses=no \
+            -- "${targets[@]}" 2>&1 | tee "$RUNNER_TEMP/buildbuddy-pilot.log"
           grep -E 'processes:.*[1-9][0-9]* remote([,.]|$)' "$RUNNER_TEMP/buildbuddy-pilot.log"
