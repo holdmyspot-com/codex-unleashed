@@ -191,6 +191,10 @@ jobs:
       # and release builds did. Reuse the release builds' swap file and memory sampler.
       - name: Fit the build into the hosted Linux runner's memory
         if: runner.os == 'Linux'
+        # The compile nearly fills the root disk (77 GB of Bazel output); a 12 GB swap file left 67 MB free and the build
+        # failed one hundred actions from the end (run 45347028263). With three actions at most 2.2 GB of swap was used.
+        env:
+          SWAP_GB: "4"
         run: bash "$RUNNER_TEMP/fit-linux-build-memory.sh"
 
       - name: Compile the maintained release selection with debug assertions disabled

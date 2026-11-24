@@ -14,6 +14,8 @@ set -euo pipefail
 # unchanged. Swap absorbs the link-time peaks.
 #
 # usage: fit-linux-build-memory.sh
+# Environment: SWAP_GB, the swap file size in GB (default 12). A job whose build output nearly fills the root disk
+# passes a smaller size, because the swap file shares that disk.
 # Exit status: 0 on success; 2 when not run on a Linux runner; otherwise the failing tool's.
 if [[ $# != 0 || "${RUNNER_OS:-}" != Linux ]]; then
   printf 'usage: %s (on a Linux GitHub Actions runner)\n' "$0" >&2
@@ -26,7 +28,12 @@ swapfile=/mnt/codex-build-swap
 if [[ ! -d /mnt ]] || [[ "$(df --output=avail -BG /mnt | tail -1 | tr -dc 0-9)" -lt 20 ]]; then
   swapfile=/codex-build-swap
 fi
-sudo fallocate -l 12G "$swapfile"
+swap_gb="${SWAP_GB:-12}"
+if [[ ! "$swap_gb" =~ ^[1-9][0-9]*$ ]]; then
+  printf 'SWAP_GB must be a positive whole number of GB: %s\n' "$swap_gb" >&2
+  exit 2
+fi
+sudo fallocate -l "${swap_gb}G" "$swapfile"
 sudo chmod 600 "$swapfile"
 sudo mkswap "$swapfile"
 sudo swapon "$swapfile"
