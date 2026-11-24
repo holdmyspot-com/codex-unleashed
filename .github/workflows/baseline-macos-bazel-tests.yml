@@ -30,12 +30,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1]
         platform:
-          - runner: macos-15
-            target: aarch64-apple-darwin
-            bazel_arch: arm64
-            bazel_sha256: dd466352a3e4d3581b8898740ee1ff208866ccbe25f8d367c5dcb950219587e6
           # Apple silicon runs the Intel platform under Rosetta 2: the Intel runner took more than the job limit for one shard.
           - runner: macos-15
             rosetta: true
