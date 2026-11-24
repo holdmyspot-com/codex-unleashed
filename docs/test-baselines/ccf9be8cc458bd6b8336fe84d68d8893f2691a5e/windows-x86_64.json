@@ -1,0 +1,22 @@
+{
+  "failed": [
+    "codex-app-server::all suite::v2::attestation::attestation_generate_round_trip_adds_header_to_responses_websocket_handshake::ephemeral",
+    "codex-core::all suite::subagent_notifications::subagent_stop_replaces_stop_and_skips_internal_subagents",
+    "codex-tui app::sidebar_subagents::status::tests::opens_agent_transcript_beside_parent_and_returns_to_chooser",
+    "codex-v8-poc tests::sandbox_feature_matches_linked_v8",
+    "codex-windows-sandbox unified_exec::tests::legacy_workspace_write_delete_is_limited_to_writable_roots"
+  ],
+  "platform": "windows-x86_64",
+  "runner": "nextest",
+  "tests_executed": 23838,
+  "timed_out": [
+    "codex-cli::worktree interactive_worktree_start_and_fork_bind_owner_before_turn",
+    "codex-core client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits",
+    "codex-core compact::tests::local_compaction_retries_preserve_instructions_and_tool_metadata::metadata_enabled",
+    "codex-core::all suite::code_mode::code_mode_excludes_mcp_servers_using_their_configured_identity",
+    "codex-core::windows_sandbox windows_elevated_approved_git_pull_preserves_deny_read",
+    "codex-tui app::tests::background_task_defaults_tests::command_center_new_checkout_and_worktree_preserve_source_and_default_branch",
+    "codex-tui app::tests::session_lifecycle_requests::managed_worktree_transitions_bind_owner_and_preserve_only_fork_history"
+  ],
+  "upstream_commit": "ccf9be8cc458bd6b8336fe84d68d8893f2691a5e"
+}

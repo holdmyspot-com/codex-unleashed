@@ -1,0 +1,25 @@
+{
+  "failed": [
+    "codex-app-server::all suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::optional_batched",
+    "codex-app-server::all suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::optional_direct",
+    "codex-app-server::all suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::plugin_link_batched",
+    "codex-app-server::all suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::plugin_link_direct",
+    "codex-app-server::all suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::structured_mention_batched",
+    "codex-app-server::all suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::structured_mention_direct",
+    "codex-core::all suite::scenarios::multi_environment_mcp::same_named_executor_mcps_keep_calls_and_approvals_separate",
+    "codex-exec-server::capability_discovery sandboxed_discovery_batches_roots_without_combining_different_permissions",
+    "codex-multi-env-copy-file::copy_file suite::copy_file_uses_each_environments_permissions::environment_profiles",
+    "codex-multi-env-copy-file::copy_file suite::copy_file_uses_each_environments_permissions::turn_and_session_grants",
+    "codex-v8-poc tests::reads_typed_array_contents_with_the_compiled_binding_size",
+    "codex-v8-poc tests::sandbox_feature_matches_linked_v8"
+  ],
+  "platform": "macos-x86_64",
+  "runner": "nextest",
+  "tests_executed": 25070,
+  "timed_out": [
+    "codex-core compact::tests::local_compaction_retries_preserve_instructions_and_tool_metadata::metadata_enabled",
+    "codex-core shell_snapshot::tests::snapshot_discovers_and_restores_inherited_credential_aliases",
+    "codex-exec::all suite::daybreak::exec_resumes_and_forks_the_saved_daybreak_choice"
+  ],
+  "upstream_commit": "ccf9be8cc458bd6b8336fe84d68d8893f2691a5e"
+}

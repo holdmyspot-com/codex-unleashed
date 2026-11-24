@@ -1,0 +1,17 @@
+{
+  "failed": [
+    "codex-v8-poc tests::reads_typed_array_contents_with_the_compiled_binding_size",
+    "codex-v8-poc tests::sandbox_feature_matches_linked_v8"
+  ],
+  "platform": "macos-aarch64",
+  "runner": "nextest",
+  "tests_executed": 25070,
+  "timed_out": [
+    "codex-cli::app_server_daemon explicit_restart_applies_feature_overrides_and_preserves_saved_settings",
+    "codex-cli::app_server_daemon managed_daemon_restarts_from_deleted_working_directory",
+    "codex-cli::app_server_daemon managed_identity_survives_locale_and_timezone_changes",
+    "codex-cli::app_server_daemon managed_starts_ensure_one_updater_and_recover_a_missing_one",
+    "codex-cli::app_server_daemon restart_applies_saved_updater_preference"
+  ],
+  "upstream_commit": "ccf9be8cc458bd6b8336fe84d68d8893f2691a5e"
+}

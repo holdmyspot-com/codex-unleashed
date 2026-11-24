@@ -1,0 +1,16 @@
+{
+  "failed": [
+    "codex-core::all suite::network_approval::user_network_approval_once_session_and_denial_semantics::proxy_requirements",
+    "codex-exec-server::exec_process shell_snapshot::shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path",
+    "codex-exec-server::exec_process shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_pipe_recovery",
+    "codex-exec-server::exec_process shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_tty_recovery",
+    "codex-exec-server::exec_process shell_snapshot_v2_filters_profile_exports_and_stays_in_memory::remote_sandbox",
+    "codex-v8-poc tests::reads_typed_array_contents_with_the_compiled_binding_size",
+    "codex-v8-poc tests::sandbox_feature_matches_linked_v8"
+  ],
+  "platform": "linux",
+  "runner": "nextest",
+  "tests_executed": 25228,
+  "timed_out": [],
+  "upstream_commit": "ccf9be8cc458bd6b8336fe84d68d8893f2691a5e"
+}
