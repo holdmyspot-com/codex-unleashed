@@ -17,6 +17,27 @@ jobs:
           ref: ccf9be8cc458bd6b8336fe84d68d8893f2691a5e
           path: upstream
           persist-credentials: false
+      - name: Read the pinned Rust toolchain
+        id: upstream-rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          channel="$(awk -F '"' '/^channel = / {print $2}' upstream/codex-rs/rust-toolchain.toml)"
+          test -n "$channel"
+          printf 'channel=%s\n' "$channel" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: ${{ steps.upstream-rust.outputs.channel }}
+          targets: x86_64-unknown-linux-gnu
+      - name: Synchronize the release workspace lockfile
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --format-version 1 --filter-platform x86_64-unknown-linux-gnu \
+            --manifest-path codex-rs/Cargo.toml > "$RUNNER_TEMP/buildbuddy-cargo-metadata.json"
+          git diff --check
+          git diff --exit-code -- . ':(exclude)codex-rs/Cargo.lock'
       - name: Install the pinned Linux Bazel binary
         shell: bash
         run: |
