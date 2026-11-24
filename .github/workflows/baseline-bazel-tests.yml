@@ -179,12 +179,14 @@ jobs:
         run: |
           set -euo pipefail
           # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
-          sudo bash "$CODEX_TOOLING" apt-install-with-fallback build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex zsh ripgrep
+          # No system bubblewrap: upstream's Bazel job installs none, and with one installed
+          # unsupported_system_bwrap_falls_back_to_bundled_bwrap links it in as the bundled bwrap and fails its digest
+          # check (run 45331158305).
+          sudo bash "$CODEX_TOOLING" apt-install-with-fallback build-essential pkg-config libcap-dev libasound2-dev bison flex zsh ripgrep
           # Tests skip themselves when a shell or interpreter is missing, so assert each one here.
           zsh --version
           /bin/zsh --version
           python3 --version
-          bwrap --version
 
       - name: Read upstream's pinned Rust toolchain
         id: upstream-rust
