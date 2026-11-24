@@ -53,6 +53,7 @@ jobs:
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           cp restart-metadata/.github/scripts/buildbuddy-cache.sh "$RUNNER_TEMP/"
+          cp restart-metadata/.github/scripts/fit-linux-build-memory.sh "$RUNNER_TEMP/"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
@@ -172,6 +173,13 @@ jobs:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" configure "$GITHUB_WORKSPACE"
 
+      # The Linux job lost its hosted runner ("lost communication with the server") in run 45292051191 while compiling
+      # exec-server test binaries with up to seven actions running on the 16 GB runner, as the Linux Bazel test shards
+      # and release builds did. Reuse the release builds' swap file and memory sampler.
+      - name: Fit the build into the hosted Linux runner's memory
+        if: runner.os == 'Linux'
+        run: bash "$RUNNER_TEMP/fit-linux-build-memory.sh"
+
       - name: Compile the maintained release selection with debug assertions disabled
         run: |
           set -euo pipefail
@@ -275,6 +283,10 @@ jobs:
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" finish "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-bazel-release-evidence"
+
+      - name: Keep the memory samples with the evidence
+        if: always() && runner.os == 'Linux'
+        run: cp "$RUNNER_TEMP/memory-samples.log" "$RUNNER_TEMP/baseline-bazel-release-evidence/" 2>/dev/null || true
 
       - name: Retain build evidence for one day
         if: always()
