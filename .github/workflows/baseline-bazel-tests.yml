@@ -48,6 +48,11 @@ jobs:
           printf '%s  %s\n' 7668a95db1250f12c40407251e4e203b4ec8bf39bc495d2f485b2d8c99048694 "$RUNNER_TEMP/bazel" | sha256sum -c -
           chmod +x "$RUNNER_TEMP/bazel"
           printf '%s\n' "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Resolve upstream's compatibility releases
+        working-directory: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/resolve_exec_server_releases.py > "$RUNNER_TEMP/compat-releases.json"
       - name: Run the maintained Linux Clippy selection on BuildBuddy
         working-directory: upstream
         env:
@@ -63,6 +68,8 @@ jobs:
           env -u BUILDBUDDY_API_KEY scripts/list-bazel-clippy-targets.sh > "$RUNNER_TEMP/clippy-targets.txt"
           test -s "$RUNNER_TEMP/clippy-targets.txt"
           mapfile -t targets < "$RUNNER_TEMP/clippy-targets.txt"
+          CODEX_COMPAT_RELEASES="$(cat "$RUNNER_TEMP/compat-releases.json")"
+          export CODEX_COMPAT_RELEASES
           printf 'Selected %s upstream Clippy target patterns.\n' "${#targets[@]}"
           env -u BUILDBUDDY_API_KEY .github/scripts/run-bazel-ci.sh --print-failed-action-summary -- \
             build --config=clippy --config=ci-linux --config=remote \
