@@ -1562,7 +1562,11 @@ jobs:
     needs: [detect, patch-check, compile, voice-intel]
     # Packages the executables compiled on Apple silicon with the voice runtime built on Intel, then runs every check that
     # must execute natively. It runs only when every needed job succeeded. Its other steps are the package job's for this
-    # target.
+    # target. The condition is explicit because the implicit success() also requires every skipped transitive job, such
+    # as gates skipped by skip_gates, so the job was skipped in package dry run 45361748246.
+    if: >-
+      ${{ !cancelled() && needs.detect.result == 'success' && needs.patch-check.result == 'success' &&
+          needs.compile.result == 'success' && needs.voice-intel.result == 'success' }}
     runs-on: macos-15-intel
     permissions:
       contents: read
