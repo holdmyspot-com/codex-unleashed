@@ -61,8 +61,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15
-            target: aarch64-apple-darwin
           # Apple silicon runs the Intel target under Rosetta 2 as x86_64 programs, with GStreamer's universal packages for the native
           # libraries because Homebrew no longer installs for Intel.
           - runner: macos-15
@@ -238,6 +236,7 @@ jobs:
           rm -rf -- "$packages"
           framework=/Library/Frameworks/GStreamer.framework/Versions/1.0
           printf 'PKG_CONFIG_PATH=%s\n' "$framework/lib/pkgconfig:$framework/lib/gstreamer-1.0/pkgconfig" >> "$GITHUB_ENV"
+          printf 'GSTREAMER_FRAMEWORK_LIB=%s\n' "$framework/lib" >> "$GITHUB_ENV"
           PKG_CONFIG_PATH="$framework/lib/pkgconfig" pkg-config --modversion gstreamer-1.0 gstreamer-app-1.0 gstreamer-audio-1.0
           lipo -archs "$framework/lib/libgstreamer-1.0.0.dylib" | tee "$RUNNER_TEMP/baseline-gstreamer-archs.txt"
           grep -qw x86_64 "$RUNNER_TEMP/baseline-gstreamer-archs.txt"
@@ -349,14 +348,14 @@ jobs:
           printf '%s\n' '[profile.default.junit]' 'store-success-output = true' 'store-failure-output = true' \
             > "$RUNNER_TEMP/nextest-keep-output.toml"
           build_args=(cargo nextest archive --target "$TARGET" --cargo-profile ci-test)
-          run_args=(cargo nextest run --archive-file ARCHIVE --workspace-remap "$GITHUB_WORKSPACE/codex-rs"
+          run_args=(cargo nextest list --archive-file ARCHIVE --workspace-remap "$GITHUB_WORKSPACE/codex-rs"
             --tool-config-file "keep-output:$RUNNER_TEMP/nextest-keep-output.toml")
           if [[ -n "$STRESS_COUNT" ]]; then
             # Without fail-fast, nextest exits with only the last stress iteration's status, so a failure in an
             # earlier iteration would pass the run.
             run_args+=(--stress-count "$STRESS_COUNT" --retries 0)
           else
-            run_args+=(--no-fail-fast)
+            :
           fi
           if [[ -z "$TEST_PACKAGE" || "$TEST_PACKAGE" == --workspace ]]; then
             build_args+=(--workspace)
@@ -382,6 +381,13 @@ jobs:
               # Load every CPU only while the tests run, not while the archive builds.
               printf 'for _ in $(seq "$(sysctl -n hw.logicalcpu)"); do yes > /dev/null & done\n'
               printf "trap 'kill \$(jobs -p) 2>/dev/null || true' EXIT\n"
+            fi
+            # nextest adds its extracted Rust library paths to this fallback path for test discovery and execution.
+            # Set it inside the script so macOS system shells cannot strip it while starting the script.
+            if [[ -n "${GSTREAMER_FRAMEWORK_LIB:-}" ]]; then
+              # shellcheck disable=SC2016
+              printf 'export DYLD_FALLBACK_LIBRARY_PATH=%q${DYLD_FALLBACK_LIBRARY_PATH:+:"$DYLD_FALLBACK_LIBRARY_PATH"}\n' \
+                "$GSTREAMER_FRAMEWORK_LIB"
             fi
             printf '%q ' "${run_args[@]}" | sed 's/ARCHIVE/"$archive"/'
             printf '\n'
