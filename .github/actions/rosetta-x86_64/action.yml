@@ -75,6 +75,10 @@ runs:
         if command -v rustup > /dev/null; then
           rustup set default-host x86_64-apple-darwin
         fi
+        # The image's rustup is an arm64 program, which takes the host to be aarch64 and refuses `rustup default` of an
+        # x86_64 toolchain as one that may not run here. The override names the host this job stands in for.
+        printf '%s\n' RUSTUP_OVERRIDE_HOST_TUPLE=x86_64-apple-darwin RUSTUP_OVERRIDE_HOST_TRIPLE=x86_64-apple-darwin \
+          >> "$GITHUB_ENV"
         printf '%s\n' "$shims" >> "$GITHUB_PATH"
 
     - name: Verify that the job now runs translated as x86_64

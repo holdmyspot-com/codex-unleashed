@@ -78,7 +78,7 @@ jobs:
             https://raw.githubusercontent.com/openai/codex/rust-v0.171.0/scripts/install/install.sh
           sed -n '1279,1283p' "$RUNNER_TEMP/install.sh"
           export CODEX_INSTALL_DIR="$RUNNER_TEMP/codex-bin" CODEX_NON_INTERACTIVE=1
-          timeout 180 bash "$RUNNER_TEMP/install.sh" 2>&1 | sed -n '1,25p'
+          bash "$RUNNER_TEMP/install.sh" 2>&1 | sed -n '1,25p'
           file "$CODEX_INSTALL_DIR/codex" 2>/dev/null || true
 
       - name: Prepare isolated temporary state
