@@ -8,11 +8,15 @@ Keeps only the hunks that the direct dependency upgrades force. The lockfile,
 deny.toml and every other crate version stay as the earlier patches left them.
 
 - cc is now 1.11.1, so the MXC annotation's build-script label follows it.
+- The openssl-sys replacement build names cc 1.11.1, libc 0.2.191 and
+  pkg-config 0.3.34, the versions the lockfile now resolves; the crate hub
+  has no packages for the old ones, so Bazel analysis of openssl-sys failed.
 - zbus 6 turns on zruntime features that the Bazel crate resolver leaves
   off, so a Linux-only annotation_select adds them.
 ---
- MODULE.bazel | 24 +++++++++++++++++++++++-
- 1 file changed, 23 insertions(+), 1 deletion(-)
+ MODULE.bazel                                | 24 ++++++++++++++++++++-
+ third_party/openssl/openssl_sys.BUILD.bazel |  6 +++---
+ 2 files changed, 26 insertions(+), 4 deletions(-)
 
 diff --git a/MODULE.bazel b/MODULE.bazel
 index f476a9cda7..73c5c7a676 100644
@@ -56,6 +60,29 @@ index f476a9cda7..73c5c7a676 100644
          "@crates//winresource-0.1.34",
      ],
      build_script_env = {
+diff --git a/third_party/openssl/openssl_sys.BUILD.bazel b/third_party/openssl/openssl_sys.BUILD.bazel
+index 723428fc7c..f328419fea 100644
+--- a/third_party/openssl/openssl_sys.BUILD.bazel
++++ b/third_party/openssl/openssl_sys.BUILD.bazel
+@@ -28,8 +28,8 @@ cargo_build_script(
+     rustc_env = {"CARGO_PKG_VERSION": "0.9.118"},
+     version = "0.9.118",
+     deps = [
+-        "@crates//cc-1.2.55",
+-        "@crates//pkg-config-0.3.32",
++        "@crates//cc-1.11.1",
++        "@crates//pkg-config-0.3.34",
+         "@crates//vcpkg-0.2.15",
+     ],
+ )
+@@ -45,6 +45,6 @@ rust_library(
+     version = "0.9.118",
+     deps = [
+         "build_script",
+-        "@crates//libc-0.2.186",
++        "@crates//libc-0.2.191",
+     ],
+ )
 -- 
 2.43.0
 
