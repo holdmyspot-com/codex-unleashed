@@ -149,7 +149,7 @@ jobs:
           all='[{"runner":"ubuntu-24.04","target":"x86_64-unknown-linux-musl"},
             {"runner":"ubuntu-24.04-arm","target":"aarch64-unknown-linux-musl"},
             {"runner":"macos-15","target":"aarch64-apple-darwin"},
-            {"runner":"macos-15-intel","target":"x86_64-apple-darwin"},
+            {"runner":"macos-15","target":"x86_64-apple-darwin"},
             {"runner":"windows-2025","target":"x86_64-pc-windows-msvc"},
             {"runner":"windows-11-arm","target":"aarch64-pc-windows-msvc"}]'
           # Only a dry run may narrow the targets; a live release always builds all six.
@@ -570,8 +570,9 @@ jobs:
   compile:
     name: Compile - x86_64-apple-darwin
     needs: [detect, patch-check]
-    # Apple silicon cross-compiles the Intel macOS executables in about half an Intel runner's time. package-intel
-    # installs them on an Intel runner, which runs everything that must execute natively.
+    # Apple silicon cross-compiles the Intel macOS executables natively, in about half an Intel runner's time.
+    # package-intel installs them on an Apple silicon runner that runs everything that must execute as x86_64 under
+    # Rosetta 2.
     if: >-
       ${{ !cancelled() && needs.detect.result == 'success' && needs.patch-check.result == 'success' &&
           (needs.detect.outputs.live == 'true' || inputs.package_dry_run == true) &&
@@ -1338,13 +1339,13 @@ jobs:
   voice-intel:
     name: Voice - x86_64-apple-darwin
     needs: [detect, patch-check]
-    # Builds the Intel macOS voice runtime natively while the compile job runs. Its steps through the voice build are the
-    # package job's for this target.
+    # Builds the Intel macOS voice runtime as x86_64 programs under Rosetta 2 on Apple silicon while the compile job runs.
+    # Its steps through the voice build are the package job's for this target.
     if: >-
       ${{ !cancelled() && needs.detect.result == 'success' && needs.patch-check.result == 'success' &&
           (needs.detect.outputs.live == 'true' || inputs.package_dry_run == true) &&
           contains(fromJSON(needs.detect.outputs.package_matrix).*.target, 'x86_64-apple-darwin') }}
-    runs-on: macos-15-intel
+    runs-on: macos-15
     permissions:
       contents: read
     timeout-minutes: 360
@@ -1356,6 +1357,8 @@ jobs:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
+      # Bazelisk is an Apple silicon program here and would download the arm64 Bazel; name the Intel one instead.
+      BAZELISK_FORMAT_URL: https://github.com/bazelbuild/bazel/releases/download/%v/bazel-%v-darwin-x86_64
     defaults:
       run:
         shell: bash
@@ -1375,6 +1378,14 @@ jobs:
         env:
           TOOLING_ROOT: restart-metadata
         run: bash restart-metadata/.github/scripts/setup-tooling.sh
+
+      # Every later run step executes as x86_64 programs, so the voice build sees an Intel host. The tooling runtime above
+      # runs natively; it only drives the steps below.
+      - name: Run the rest of the job as x86_64 under Rosetta 2
+        uses: ./restart-metadata/.github/actions/rosetta-x86_64
+
+      - name: Isolate the Intel Bazelisk download cache
+        run: printf 'BAZELISK_HOME_DARWIN=%s\n' "$RUNNER_TEMP/voice-bazelisk-x86_64" >> "$GITHUB_ENV"
 
       - name: Preserve voice release metadata before upstream checkout
         run: |
@@ -1419,6 +1430,7 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: '3.12'
+          architecture: x64
 
       - name: Verify the package source version
         env:
@@ -1455,6 +1467,25 @@ jobs:
         with:
           target: x86_64-apple-darwin
           cache-scope: release-voice-x86_64-apple-darwin
+
+      - name: Verify that Bazel is an x86_64 executable
+        run: |
+          set -euo pipefail
+          bazel --version
+          shopt -s nullglob
+          binaries=("$BAZELISK_HOME_DARWIN"/downloads/sha256/*/bin/bazel)
+          if (( ${#binaries[@]} != 1 )); then
+            printf '::error::Expected one Bazel executable in %s, found %s\n' "$BAZELISK_HOME_DARWIN" "${#binaries[@]}"
+            exit 1
+          fi
+          binary="${binaries[0]}"
+          test -f "$binary"
+          test -x "$binary"
+          architectures="$(xcrun lipo -archs "$binary")"
+          if [[ "$architectures" != x86_64 ]]; then
+            printf '::error::Expected x86_64 Bazel at %s, found %s\n' "$binary" "$architectures"
+            exit 1
+          fi
 
       - name: Select platform build settings
         run: |
@@ -1549,6 +1580,7 @@ jobs:
           path: |
             ${{ runner.temp }}/voice-build-x86_64-apple-darwin/evidence
             ${{ runner.temp }}/voice-helper-identity-x86_64-apple-darwin
+            ${{ runner.temp }}/rosetta-host.txt
           retention-days: 3
           if-no-files-found: warn
 
@@ -1560,14 +1592,16 @@ jobs:
     # Shares the package job's name so run readers that select jobs by name see all six packages.
     name: Package - x86_64-apple-darwin
     needs: [detect, patch-check, compile, voice-intel]
-    # Packages the executables compiled on Apple silicon with the voice runtime built on Intel, then runs every check that
-    # must execute natively. It runs only when every needed job succeeded. Its other steps are the package job's for this
-    # target. The condition is explicit because the implicit success() also requires every skipped transitive job, such
-    # as gates skipped by skip_gates, so the job was skipped in package dry run 45361748246.
+    # Packages the executables compiled on Apple silicon with the voice runtime built as x86_64 under Rosetta 2, then runs
+    # every check that must execute as x86_64 programs. It runs only when every needed job succeeded. Its other steps are
+    # the package job's for this target. The compile job stays separate because it cross-compiles at native speed and
+    # overlaps the voice job, while the same work under Rosetta would lengthen the critical path. The condition is
+    # explicit because the implicit success() also requires every skipped transitive job, such as gates skipped by
+    # skip_gates, so the job was skipped in package dry run 45361748246.
     if: >-
       ${{ !cancelled() && needs.detect.result == 'success' && needs.patch-check.result == 'success' &&
           needs.compile.result == 'success' && needs.voice-intel.result == 'success' }}
-    runs-on: macos-15-intel
+    runs-on: macos-15
     permissions:
       contents: read
     timeout-minutes: 360
@@ -1596,6 +1630,21 @@ jobs:
         env:
           TOOLING_ROOT: restart-metadata
         run: bash restart-metadata/.github/scripts/setup-tooling.sh
+
+      # Every later run step executes as x86_64 programs, so the package build, the smoke tests and the installer
+      # fixture see an Intel host.
+      # The installer fixture step alone reports an Intel host's sysctl answer, because the shipped installer would install
+      # the arm64 package into a translated process.
+      - name: Run the rest of the job as x86_64 under Rosetta 2
+        uses: ./restart-metadata/.github/actions/rosetta-x86_64
+        with:
+          installer-sysctl: 'true'
+
+      # The installer fixture is a Node program that selects its package from process.arch.
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version-file: restart-metadata/.nvmrc
+          architecture: x64
 
       - name: Preserve voice release metadata before upstream checkout
         run: |
@@ -1685,6 +1734,7 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: '3.12'
+          architecture: x64
 
       - name: Verify the package source version
         env:
@@ -1737,10 +1787,10 @@ jobs:
             | (cd "$handoff" && shasum -a 256 --check --strict)
           printf 'path=%s\n' "$handoff" >> "$GITHUB_OUTPUT"
 
-      # Intel macOS installs the handed-over executables, which the build operation checks against this checkout's
-      # target and source commit, instead of compiling them.
+      # The x86_64 macOS package job installs the handed-over executables, which the build operation checks against this
+      # checkout's target and source commit, instead of compiling them.
 
-      - name: Download the voice runtime built on Intel
+      - name: Download the voice runtime built as x86_64
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: voice-runtime-x86_64-apple-darwin
@@ -1811,6 +1861,8 @@ jobs:
       - name: Verify both finalized voice archives and the installed package
         id: voice-final-verification
         env:
+          # Makes the Rosetta action's sysctl command answer as an Intel host for this step's installer fixture.
+          CODEX_INSTALLER_NOT_TRANSLATED: "1"
           SOURCE_ROOT: ${{ github.workspace }}
           VOICE_RESULT: ${{ steps.voice-build.outputs.result_dir }}
           VOICE_BUILD_COMMIT: ${{ steps.voice-build.outputs.build_commit }}
@@ -1893,6 +1945,7 @@ jobs:
             ${{ runner.temp }}/voice-installer-evidence-x86_64-apple-darwin
             ${{ runner.temp }}/voice-installed-evidence-x86_64-apple-darwin
             ${{ runner.temp }}/voice-helper-identity-x86_64-apple-darwin
+            ${{ runner.temp }}/rosetta-host.txt
           retention-days: 3
           if-no-files-found: warn
 
@@ -2155,7 +2208,7 @@ jobs:
           - {runner: ubuntu-24.04, target: x86_64-unknown-linux-musl}
           - {runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl}
           - {runner: macos-15, target: aarch64-apple-darwin}
-          - {runner: macos-15-intel, target: x86_64-apple-darwin}
+          - {runner: macos-15, target: x86_64-apple-darwin, rosetta: true}
           - {runner: windows-2025, target: x86_64-pc-windows-msvc}
           - {runner: windows-11-arm, target: aarch64-pc-windows-msvc}
     env:
@@ -2169,9 +2222,20 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: ./.github/actions/rosetta-x86_64
+        if: matrix.rosetta
+        with:
+          installer-sysctl: 'true'
+
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
         with:
           node-version-file: .nvmrc
+          architecture: ${{ matrix.rosetta && 'x64' || '' }}
+
+      - name: Verify x64 Node for the Intel installer and npm checks
+        if: matrix.rosetta
+        shell: bash
+        run: node -e 'if (process.platform !== "darwin" || process.arch !== "x64") throw new Error("Expected x64 Node on macOS")'
 
       - name: Obtain the independently verified CLI archives
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -2180,11 +2244,16 @@ jobs:
           path: ${{ runner.temp }}/npm-release-archives
 
       - name: Install with the one-line command on Linux or macOS
+        env:
+          CODEX_INSTALLER_NOT_TRANSLATED: ${{ matrix.rosetta && '1' || '' }}
         if: runner.os != 'Windows' && inputs.draft_rehearsal != true
         run: |
           set -euo pipefail
           export CODEX_INSTALL_DIR="$RUNNER_TEMP/codex-bin"
           curl -fsSL "$RELEASE_BASE/$TAG_URL/install.sh" | bash
+          if [[ "$TARGET" == x86_64-apple-darwin ]]; then
+            test "$(xcrun lipo -archs "$CODEX_INSTALL_DIR/codex")" = x86_64
+          fi
           "$CODEX_INSTALL_DIR/codex" --version | tee "$RUNNER_TEMP/version.txt"
           node .github/scripts/codex-version-banner.mjs "$CODEX_RELEASE" < "$RUNNER_TEMP/version.txt"
 
@@ -2212,6 +2281,8 @@ jobs:
           path: ${{ runner.temp }}/npm-release-archives
 
       - name: Install with the shipped draft installer through loopback
+        env:
+          CODEX_INSTALLER_NOT_TRANSLATED: ${{ matrix.rosetta && '1' || '' }}
         if: inputs.draft_rehearsal
         shell: bash
         run: |

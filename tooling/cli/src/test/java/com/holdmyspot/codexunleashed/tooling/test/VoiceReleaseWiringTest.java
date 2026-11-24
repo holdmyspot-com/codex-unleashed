@@ -825,7 +825,8 @@ public final class VoiceReleaseWiringTest
 
 	/**
 	 * Requires the Intel macOS voice job to run the package job's producer body and the Intel macOS package job to run
-	 * its final verification body on the restored producer outputs.
+	 * its final verification body on the restored producer outputs. Both jobs run on Apple silicon and route every later
+	 * step through Rosetta 2, so their executables and native checks are x86_64.
 	 *
 	 * @param jobs actual workflow jobs
 	 * @param buildBody the package job's producer body
@@ -834,13 +835,15 @@ public final class VoiceReleaseWiringTest
 	private static void requireIntelVoiceHandoff(JsonNode jobs, String buildBody, String verifyBody)
 	{
 		JsonNode voiceJob = jobs.path("voice-intel");
-		requireThat(voiceJob.path("runs-on").asText(), "voiceRunner").isEqualTo("macos-15-intel");
+		requireThat(voiceJob.path("runs-on").asText(), "voiceRunner").isEqualTo("macos-15");
+		requireRosetta(voiceJob, "voiceRosetta");
 		Map<String, JsonNode> voiceSteps = packageSteps(voiceJob.path("steps"));
 		requireThat(requiredRun(voiceSteps, "voice-build").path("run").asText(), "intelProducerBody").
 			isEqualTo(buildBody);
 		JsonNode packageJob = jobs.path("package-intel");
 		requireThat(packageJob.path("name").asText(), "intelPackageName").isEqualTo("Package - x86_64-apple-darwin");
-		requireThat(packageJob.path("runs-on").asText(), "intelPackageRunner").isEqualTo("macos-15-intel");
+		requireThat(packageJob.path("runs-on").asText(), "intelPackageRunner").isEqualTo("macos-15");
+		requireRosetta(packageJob, "intelPackageRosetta");
 		List<String> needs = new ArrayList<>();
 		for (JsonNode need : packageJob.path("needs"))
 			needs.add(need.asText());
@@ -853,6 +856,20 @@ public final class VoiceReleaseWiringTest
 		requireThat(requiredRun(packageSteps, "voice-final-verification").path("run").asText(), "intelVerifyBody").
 			isEqualTo(verifyBody);
 		requireActionInputs(packageSteps.get("package"));
+	}
+
+	/**
+	 * Requires a job to route its later steps through Rosetta 2 with the repository's action.
+	 *
+	 * @param job actual workflow job
+	 * @param name the name of the checked value
+	 */
+	private static void requireRosetta(JsonNode job, String name)
+	{
+		List<String> actions = new ArrayList<>();
+		for (JsonNode step : job.path("steps"))
+			actions.add(step.path("uses").asText());
+		requireThat(actions, name).contains("./restart-metadata/.github/actions/rosetta-x86_64");
 	}
 
 	/**

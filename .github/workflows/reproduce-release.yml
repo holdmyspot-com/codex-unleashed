@@ -138,7 +138,7 @@ jobs:
   reproduce:
     needs: compile
     if: ${{ !cancelled() && (needs.compile.result == 'success' || needs.compile.result == 'skipped') }}
-    runs-on: ${{ fromJSON('{"x86_64-unknown-linux-musl":"ubuntu-24.04","aarch64-unknown-linux-musl":"ubuntu-24.04-arm","aarch64-apple-darwin":"macos-15-arm64","x86_64-apple-darwin":"macos-15-intel","x86_64-pc-windows-msvc":"windows-2025","aarch64-pc-windows-msvc":"windows-11-arm"}')[inputs.target] }}
+    runs-on: ${{ fromJSON('{"x86_64-unknown-linux-musl":"ubuntu-24.04","aarch64-unknown-linux-musl":"ubuntu-24.04-arm","aarch64-apple-darwin":"macos-15-arm64","x86_64-apple-darwin":"macos-15","x86_64-pc-windows-msvc":"windows-2025","aarch64-pc-windows-msvc":"windows-11-arm"}')[inputs.target] }}
     defaults:
       run:
         shell: bash
@@ -146,6 +146,7 @@ jobs:
       TARGET: ${{ inputs.target }}
       RELEASE_TAG: ${{ inputs.release_tag }}
       GH_TOKEN: ${{ github.token }}
+      CODEX_INSTALLER_NOT_TRANSLATED: ${{ inputs.target == 'x86_64-apple-darwin' && '1' || '' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -164,6 +165,19 @@ jobs:
       - uses: ./.github/actions/setup-tooling
         with:
           tooling-root: ${{ env.REPRODUCTION_ROOT }}
+      # The x86_64 macOS release packages as x86_64 programs under Rosetta 2 on Apple silicon, so this job does too. The
+      # reproduction's installer verification runs inside one tooling command, so the whole job reports an Intel host's
+      # sysctl answer to the installer, which would otherwise install the arm64 package into a translated process.
+      - name: Run the rest of the job as x86_64 under Rosetta 2
+        if: ${{ inputs.target == 'x86_64-apple-darwin' }}
+        uses: ./.github/actions/rosetta-x86_64
+        with:
+          installer-sysctl: 'true'
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        if: ${{ inputs.target == 'x86_64-apple-darwin' }}
+        with:
+          node-version-file: .nvmrc
+          architecture: x64
       - name: Download complete published release
         run: |
           set -euo pipefail

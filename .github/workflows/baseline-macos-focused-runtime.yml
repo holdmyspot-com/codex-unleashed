@@ -19,7 +19,8 @@ permissions:
 jobs:
   test:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ${{ (inputs.target == 'x86_64-apple-darwin' && 'macos-15-intel') || 'macos-15' }}
+    # The Intel target runs on Apple silicon under Rosetta 2.
+    runs-on: macos-15
     timeout-minutes: 360
     permissions:
       contents: read
@@ -46,11 +47,15 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Run the rest of the job as x86_64 under Rosetta 2
+        if: ${{ inputs.target == 'x86_64-apple-darwin' }}
+        uses: ./.github/actions/rosetta-x86_64
+
       - name: Read exact source and runner selection
         id: source
         run: |
           set -euo pipefail
-          node -e 'const m=require("./.github/release-matrix.json"); const runners={"aarch64-apple-darwin":"macos-15","x86_64-apple-darwin":"macos-15-intel"}; if (!m.some(x=>x.target===process.env.TARGET && x.runner===runners[process.env.TARGET])) throw Error("Target must use an existing free native macOS runner");'
+          node -e 'const m=require("./.github/release-matrix.json"); const runners={"aarch64-apple-darwin":"macos-15","x86_64-apple-darwin":"macos-15"}; if (!m.some(x=>x.target===process.env.TARGET && x.runner===runners[process.env.TARGET])) throw Error("Target must use an existing free native macOS runner");'
           printf 'commit=%s\n' "$(cat .github/upstream-commit)" >> "$GITHUB_OUTPUT"
 
       - name: Retrieve pristine selected upstream
@@ -131,6 +136,7 @@ jobs:
           /usr/bin/sandbox-exec -p '(version 1)(allow default)' /usr/bin/true
           sw_vers > "$FOCUSED_RUNTIME/evidence/platform.txt"
           uname -m >> "$FOCUSED_RUNTIME/evidence/platform.txt"
+          if [[ -f "$RUNNER_TEMP/rosetta-host.txt" ]]; then cat "$RUNNER_TEMP/rosetta-host.txt" >> "$FOCUSED_RUNTIME/evidence/platform.txt"; fi
           df -h "$FOCUSED_RUNTIME" >> "$FOCUSED_RUNTIME/evidence/platform.txt"
 
       - name: Prepare verified V8 and bundled freshness tooling

@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Stream;
 import org.apache.commons.io.file.PathUtils;
 import org.testng.annotations.Test;
 
@@ -42,6 +43,8 @@ public final class CompiledOutputHandoffTest
 	@Test
 	public void roundTripsExecutablesAndBundles() throws IOException
 	{
+		TestRequirements.requirePosixFileSystem();
+
 		Path root = Files.createTempDirectory("compiled-output-handoff-");
 		try (DefaultToolingScope scope = new DefaultToolingScope())
 		{
@@ -68,7 +71,7 @@ public final class CompiledOutputHandoffTest
 				requireThat(Files.readString(bundle.resolve(relocations)), binary + "Relocations").
 					isEqualTo(RELOCATIONS);
 			}
-			try (var listing = Files.list(installed))
+			try (Stream<Path> listing = Files.list(installed))
 			{
 				requireThat(listing.map(path -> path.getFileName().toString()).sorted().toList(), "installed").
 					isEqualTo(List.of("codex", "codex-exec-server", "codex-exec-server.dSYM", "codex.dSYM"));
@@ -88,6 +91,8 @@ public final class CompiledOutputHandoffTest
 	@Test
 	public void rejectsMismatchedHandoffs() throws IOException
 	{
+		TestRequirements.requirePosixFileSystem();
+
 		Path root = Files.createTempDirectory("compiled-output-handoff-reject-");
 		try (DefaultToolingScope scope = new DefaultToolingScope())
 		{
@@ -149,7 +154,8 @@ public final class CompiledOutputHandoffTest
 			Files.writeString(bundle.resolve("Contents/Info.plist"), "<plist/>");
 			// Real bundles carry relocation maps whose member paths exceed the 100 bytes of a plain ustar name.
 			Path relocations = Files.createDirectories(bundle.resolve("Contents/Resources/Relocations/x86_64"));
-			Files.writeString(relocations.resolve(binary.replace('-', '_') + "-f72a2863fc53fb00f72a2863fc53fb00.yml"), RELOCATIONS);
+			Files.writeString(relocations.resolve(binary.replace('-', '_') + "-f72a2863fc53fb00f72a2863fc53fb00.yml"),
+				RELOCATIONS);
 			Files.createSymbolicLink(release.resolve(binary + ".dSYM"), Path.of("deps", binary + "-0123.dSYM"));
 		}
 		return release;

@@ -190,7 +190,7 @@ jobs:
           - {runner: ubuntu-24.04, target: x86_64-unknown-linux-musl}
           - {runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl}
           - {runner: macos-15, target: aarch64-apple-darwin}
-          - {runner: macos-15-intel, target: x86_64-apple-darwin}
+          - {runner: macos-15, target: x86_64-apple-darwin, rosetta: true}
           - {runner: windows-2025, target: x86_64-pc-windows-msvc}
           - {runner: windows-11-arm, target: aarch64-pc-windows-msvc}
     env:
@@ -218,9 +218,20 @@ jobs:
             /docs/privacy.html
           sparse-checkout-cone-mode: false
 
+      - uses: ./.github/actions/rosetta-x86_64
+        if: matrix.rosetta
+        with:
+          installer-sysctl: 'true'
+
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
         with:
           node-version-file: .nvmrc
+          architecture: ${{ matrix.rosetta && 'x64' || '' }}
+
+      - name: Verify x64 Node for the Intel installer and npm checks
+        if: matrix.rosetta
+        shell: bash
+        run: node -e 'if (process.platform !== "darwin" || process.arch !== "x64") throw new Error("Expected x64 Node on macOS")'
 
       - name: Obtain the verified CLI archives, installers and checksums
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -238,6 +249,8 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Install with the shipped installer from a locally served copy of the dry-run release
+        env:
+          CODEX_INSTALLER_NOT_TRANSLATED: ${{ matrix.rosetta && '1' || '' }}
         run: |
           set -euo pipefail
           native_temp="$(cd "$RUNNER_TEMP" && pwd -P)"
