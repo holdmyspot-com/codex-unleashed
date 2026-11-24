@@ -308,6 +308,10 @@ jobs:
           fi
           wrapper_args=(--print-failed-action-summary)
           clippy_args=(--config=clippy --disk_cache=)
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            # One action per CPU lost the 4-CPU, 16 GB runner mid-build (run 45334048243), as in the Bazel tests.
+            clippy_args+=(--jobs=3)
+          fi
           if [[ -f "$RUNNER_TEMP/bazel-cc-cache.restored" ]]; then
             cc_cache="$RUNNER_TEMP/bazel-cc-cache"
             if [[ "$RUNNER_OS" == Windows ]]; then
@@ -415,7 +419,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
-          git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+          # The Dev Drive sizing step edits setup-dev-drive.ps1 in place; no other tracked file may differ.
+          git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock' ':(exclude).github/scripts/setup-dev-drive.ps1'
 
       - name: Keep the BuildBuddy key out of the retained evidence
         if: always()
