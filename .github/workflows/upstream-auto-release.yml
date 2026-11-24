@@ -1357,6 +1357,8 @@ jobs:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
+      # Bazelisk is an Apple silicon program here and would download the arm64 Bazel; name the Intel one instead.
+      BAZELISK_FORMAT_URL: https://github.com/bazelbuild/bazel/releases/download/%v/bazel-%v-darwin-x86_64
     defaults:
       run:
         shell: bash
@@ -1459,9 +1461,6 @@ jobs:
       - name: Prepare the upstream Bazel host for the selected target
         id: voice-bazel-host
         uses: ./.github/actions/prepare-bazel-ci
-        env:
-          # Bazelisk is an Apple silicon program here and would download the arm64 Bazel; name the Intel one instead.
-          BAZELISK_FORMAT_URL: https://github.com/bazelbuild/bazel/releases/download/%v/bazel-%v-darwin-x86_64
         with:
           target: x86_64-apple-darwin
           cache-scope: release-voice-x86_64-apple-darwin
