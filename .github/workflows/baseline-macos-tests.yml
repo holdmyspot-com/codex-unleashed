@@ -421,7 +421,7 @@ jobs:
           cat "$evidence/archived-executable-archs.txt"
           rm -rf "$probe"
           grep -q "Mach-O 64-bit executable $expected" "$evidence/archived-executable-archs.txt"
-          ! grep -v "Mach-O 64-bit executable $expected" "$evidence/archived-executable-archs.txt"
+          if grep -v "Mach-O 64-bit executable $expected" "$evidence/archived-executable-archs.txt"; then exit 1; fi
 
       - name: Keep the test archive for reruns
         if: ${{ !cancelled() && inputs.archive_run_id == '' }}

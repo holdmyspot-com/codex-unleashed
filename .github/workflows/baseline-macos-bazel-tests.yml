@@ -335,7 +335,7 @@ jobs:
             "$(grep -c 'arm64' "$evidence/built-executable-archs.txt" || true)" | tee "$evidence/built-executable-archs-summary.txt"
           if [[ "$BAZEL_ARCH" == x86_64 ]]; then
             grep -q 'Mach-O 64-bit executable x86_64' "$evidence/built-executable-archs.txt"
-            ! grep -q 'arm64' "$evidence/built-executable-archs.txt"
+            if grep -q 'arm64' "$evidence/built-executable-archs.txt"; then exit 1; fi
           fi
 
       - name: Save the compiled C++ actions

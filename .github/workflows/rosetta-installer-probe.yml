@@ -1,0 +1,34 @@
+name: Rosetta installer probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: macos-15
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Run the rest of the job as x86_64 under Rosetta 2
+        uses: ./.github/actions/rosetta-x86_64
+
+      - name: Show which package the shipped installer selects under Rosetta
+        run: |
+          set -uo pipefail
+          uname -m
+          sysctl -n sysctl.proc_translated
+          curl --fail --location --silent --show-error --output "$RUNNER_TEMP/install.sh" \
+            https://raw.githubusercontent.com/openai/codex/rust-v0.171.0/scripts/install/install.sh
+          sed -n '1279,1283p' "$RUNNER_TEMP/install.sh"
+          export CODEX_INSTALL_DIR="$RUNNER_TEMP/codex-bin" CODEX_NON_INTERACTIVE=1
+          timeout 180 bash "$RUNNER_TEMP/install.sh" 2>&1 | sed -n '1,25p'
+          file "$CODEX_INSTALL_DIR/codex" 2>/dev/null || true
