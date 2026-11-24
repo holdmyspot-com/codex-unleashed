@@ -63,7 +63,9 @@ jobs:
         include:
           - runner: macos-15
             target: aarch64-apple-darwin
-          - runner: macos-15-intel
+          # Apple silicon runs the Intel target under Rosetta 2 as x86_64 programs, with Intel Homebrew for the native libraries.
+          - runner: macos-15
+            rosetta: true
             target: x86_64-apple-darwin
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
@@ -100,6 +102,13 @@ jobs:
         uses: ./restart-metadata/.github/actions/setup-tooling
         with:
           tooling-root: ${{ github.workspace }}/restart-metadata
+
+      # Every later shell step, and every process it starts, runs as x86_64 under Rosetta 2. The tooling above stays arm64.
+      - name: Run the rest of the job as x86_64 under Rosetta 2
+        if: ${{ matrix.rosetta }}
+        uses: ./restart-metadata/.github/actions/rosetta-x86_64
+        with:
+          homebrew: 'true'
 
       - name: Validate the selection and preserve restart inputs outside the source checkout
         id: inputs
@@ -252,6 +261,13 @@ jobs:
             launchctl limit maxfiles
             ulimit -Hn
           } | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/host.txt"
+          if [[ -f "$RUNNER_TEMP/rosetta-host.txt" ]]; then
+            cp "$RUNNER_TEMP/rosetta-host.txt" "$RUNNER_TEMP/baseline-macos-nextest-evidence/rosetta-host.txt"
+          fi
+          case "$TARGET:$(uname -m)" in
+            x86_64-apple-darwin:x86_64 | aarch64-apple-darwin:arm64) ;;
+            *) printf '::error::This host runs %s programs, not %s ones.\n' "$(uname -m)" "$TARGET"; exit 1 ;;
+          esac
 
       # Upstream runs these tests on macos-15-xlarge. The standard runner's per-process limit is too low for
       # codex-utils-pty's descriptor test, which must open descriptors at or above Darwin's OPEN_MAX (10240).
@@ -381,6 +397,31 @@ jobs:
             exit 0
           fi
           exit "$status"
+
+      # The archived test executables are Mach-O files of the target's architecture, never arm64 ones that an arm64 host would
+      # also run.
+      - name: Verify that the archived test executables match the target
+        if: ${{ !cancelled() && hashFiles(format('{0}/nextest-archive/tests.tar.zst', runner.temp)) != '' }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-nextest-evidence"
+          archive="$RUNNER_TEMP/nextest-archive/tests.tar.zst"
+          expected=x86_64
+          if [[ "$TARGET" == aarch64-* ]]; then expected=arm64; fi
+          archive_tar=tar
+          if command -v gtar > /dev/null; then archive_tar=gtar; fi
+          probe="$RUNNER_TEMP/archive-probe"
+          rm -rf "$probe"
+          mkdir -p "$probe"
+          "$archive_tar" --zstd -tf "$archive" > "$probe/members.txt"
+          grep -E "/$TARGET/ci-test/deps/[^/.]+$" "$probe/members.txt" | sed -n '1,25p' > "$probe/selected.txt"
+          test -s "$probe/selected.txt"
+          "$archive_tar" --zstd -xf "$archive" -C "$probe" -T "$probe/selected.txt"
+          (cd "$probe" && xargs file < selected.txt) > "$evidence/archived-executable-archs.txt"
+          cat "$evidence/archived-executable-archs.txt"
+          rm -rf "$probe"
+          grep -q "Mach-O 64-bit executable $expected" "$evidence/archived-executable-archs.txt"
+          ! grep -v "Mach-O 64-bit executable $expected" "$evidence/archived-executable-archs.txt"
 
       - name: Keep the test archive for reruns
         if: ${{ !cancelled() && inputs.archive_run_id == '' }}

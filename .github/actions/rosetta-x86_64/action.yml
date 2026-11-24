@@ -1,0 +1,74 @@
+name: Run the job's shell steps as x86_64 under Rosetta 2
+description: >
+  Make the rest of an Apple silicon macOS job run as genuine x86_64 processes under Rosetta 2, so that it can stand in for an
+  Intel runner. Installs Rosetta when the image lacks it and fails when it cannot be used. Puts a bash command ahead of every
+  other on PATH that runs the real /bin/bash as x86_64; the runner resolves each later run step's bash, including the
+  steps of other composite actions, through PATH, so their commands and every process they start, such as Cargo, Bazel
+  and the tests, inherit x86_64. Selects the x86_64-apple-darwin host for rustup. Steps that run before this action, and
+  JavaScript actions, stay arm64. A job that installs a JDK, Python or other tool that its own commands must run as x86_64
+  selects that tool's x64 build after this action. Writes the host evidence to $RUNNER_TEMP/rosetta-host.txt.
+inputs:
+  homebrew:
+    description: Install Intel Homebrew under /usr/local and put it ahead of the arm64 one on PATH, for jobs that brew install x86_64 libraries
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - name: Install and verify Rosetta 2
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "$RUNNER_OS:$RUNNER_ARCH" != macOS:ARM64 ]]; then
+          printf '::error::Rosetta 2 stands in for Intel only on an Apple silicon macOS runner, not %s %s.\n' "$RUNNER_OS" "$RUNNER_ARCH"
+          exit 1
+        fi
+        if ! /usr/bin/arch -x86_64 /usr/bin/true 2> /dev/null; then
+          sudo softwareupdate --install-rosetta --agree-to-license
+        fi
+        if ! /usr/bin/arch -x86_64 /usr/bin/true; then
+          printf '::error::Rosetta 2 is not usable on this runner, so x86_64 programs cannot run.\n'
+          exit 1
+        fi
+        printf 'Rosetta 2 runs x86_64 programs on this runner.\n'
+
+    - name: Install Intel Homebrew under Rosetta
+      if: ${{ inputs.homebrew == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ ! -x /usr/local/bin/brew ]]; then
+          installer="$RUNNER_TEMP/homebrew-install.sh"
+          curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+            --output "$installer" https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh
+          NONINTERACTIVE=1 /usr/bin/arch -x86_64 /bin/bash "$installer"
+        fi
+        test "$(/usr/local/bin/brew --prefix)" = /usr/local
+        printf '%s\n' /usr/local/sbin /usr/local/bin >> "$GITHUB_PATH"
+
+    - name: Route bash through Rosetta
+      shell: bash
+      run: |
+        set -euo pipefail
+        shims="$RUNNER_TEMP/rosetta-shims"
+        mkdir -p "$shims"
+        printf '%s\n' '#!/bin/bash' 'exec /usr/bin/arch -x86_64 /bin/bash "$@"' > "$shims/bash"
+        chmod +x "$shims/bash"
+        if command -v rustup > /dev/null; then
+          rustup set default-host x86_64-apple-darwin
+        fi
+        printf '%s\n' "$shims" >> "$GITHUB_PATH"
+
+    - name: Verify that the job now runs translated as x86_64
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(command -v bash)" = "$RUNNER_TEMP/rosetta-shims/bash"
+        test "$(uname -m)" = x86_64
+        test "$(sysctl -n sysctl.proc_translated)" = 1
+        {
+          printf 'runner=macos-15 (Apple silicon) with Rosetta 2, x86_64 translated\n'
+          printf 'uname_m=%s\nproc_translated=%s\n' "$(uname -m)" "$(sysctl -n sysctl.proc_translated)"
+          printf 'cpu=%s\n' "$(sysctl -n machdep.cpu.brand_string)"
+          printf 'bash=%s\nbash_archs=%s\n' "$(command -v bash)" "$(lipo -archs /bin/bash)"
+          if command -v rustup > /dev/null; then rustup show | sed -n '1,/^$/p'; fi
+        } | tee "$RUNNER_TEMP/rosetta-host.txt"

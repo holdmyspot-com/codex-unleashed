@@ -36,7 +36,9 @@ jobs:
             target: aarch64-apple-darwin
             bazel_arch: arm64
             bazel_sha256: dd466352a3e4d3581b8898740ee1ff208866ccbe25f8d367c5dcb950219587e6
-          - runner: macos-15-intel
+          # Apple silicon runs the Intel platform under Rosetta 2: the Intel runner took more than the job limit for one shard.
+          - runner: macos-15
+            rosetta: true
             target: x86_64-apple-darwin
             bazel_arch: x86_64
             bazel_sha256: 14c9bcb01303b38192e0e2895051c1bcf19bf89d7e416f5aeeeb48b6b624cfbf
@@ -73,6 +75,12 @@ jobs:
         env:
           TOOLING_ROOT: restart-metadata
         run: bash restart-metadata/.github/scripts/setup-tooling.sh
+
+      # Every later shell step, and every process it starts, runs as x86_64 under Rosetta 2, so the Intel platform builds and tests
+      # real x86_64 programs. The tooling above stays arm64.
+      - name: Run the rest of the job as x86_64 under Rosetta 2
+        if: ${{ matrix.platform.rosetta }}
+        uses: ./restart-metadata/.github/actions/rosetta-x86_64
 
       - name: Preserve restart inputs outside the source checkout
         id: inputs
@@ -160,6 +168,7 @@ jobs:
             sysctl -n hw.memsize hw.logicalcpu
             df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP"
           } | tee "$evidence/host.txt"
+          if [[ -f "$RUNNER_TEMP/rosetta-host.txt" ]]; then cp "$RUNNER_TEMP/rosetta-host.txt" "$evidence/rosetta-host.txt"; fi
 
       - name: Read upstream's pinned Rust toolchain
         id: upstream-rust
@@ -313,6 +322,21 @@ jobs:
             exit 0
           fi
           exit "$result"
+
+      # The executables that Bazel built and ran are x86_64 Mach-O files, never arm64 ones that an arm64 host would also run.
+      - name: Verify that the built executables are x86_64
+        if: ${{ !cancelled() && steps.bazel_tests.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
+          find -L bazel-bin/codex-rs -maxdepth 3 -type f -perm -u+x -exec file {} + | grep 'Mach-O' > "$evidence/built-executable-archs.txt" || true
+          printf 'x86_64 executables: %s\narm64 executables: %s\n' \
+            "$(grep -c 'Mach-O 64-bit executable x86_64' "$evidence/built-executable-archs.txt" || true)" \
+            "$(grep -c 'arm64' "$evidence/built-executable-archs.txt" || true)" | tee "$evidence/built-executable-archs-summary.txt"
+          if [[ "$BAZEL_ARCH" == x86_64 ]]; then
+            grep -q 'Mach-O 64-bit executable x86_64' "$evidence/built-executable-archs.txt"
+            ! grep -q 'arm64' "$evidence/built-executable-archs.txt"
+          fi
 
       - name: Save the compiled C++ actions
         if: ${{ !cancelled() && steps.cc_cache.outcome == 'success' }}
