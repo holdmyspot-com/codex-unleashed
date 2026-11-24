@@ -381,6 +381,9 @@ jobs:
           disk_monitor=$!
           trap 'kill "$disk_monitor" $(jobs -p) 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
           mapfile -t ci_args < "$evidence/ci-flags.txt"
+          # Bazel ignores CARGO_BUILD_JOBS; with one action per CPU the 4-CPU, 16 GB runner was lost while compiling even
+          # with 12 GB of swap (run 45348760758, shard 2). Three concurrent actions fit, as in the release checks.
+          ci_args+=(--jobs=3)
           comparison_args=()
           if [[ -n "$STRESS_COUNT" ]]; then
             comparison_args+=(--runs_per_test="$STRESS_COUNT" --flaky_test_attempts=1)
