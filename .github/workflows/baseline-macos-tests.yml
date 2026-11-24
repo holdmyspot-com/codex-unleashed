@@ -238,6 +238,7 @@ jobs:
           rm -rf -- "$packages"
           framework=/Library/Frameworks/GStreamer.framework/Versions/1.0
           printf 'PKG_CONFIG_PATH=%s\n' "$framework/lib/pkgconfig:$framework/lib/gstreamer-1.0/pkgconfig" >> "$GITHUB_ENV"
+          printf 'GSTREAMER_FRAMEWORK_LIB=%s\n' "$framework/lib" >> "$GITHUB_ENV"
           PKG_CONFIG_PATH="$framework/lib/pkgconfig" pkg-config --modversion gstreamer-1.0 gstreamer-app-1.0 gstreamer-audio-1.0
           lipo -archs "$framework/lib/libgstreamer-1.0.0.dylib" | tee "$RUNNER_TEMP/baseline-gstreamer-archs.txt"
           grep -qw x86_64 "$RUNNER_TEMP/baseline-gstreamer-archs.txt"
@@ -382,6 +383,13 @@ jobs:
               # Load every CPU only while the tests run, not while the archive builds.
               printf 'for _ in $(seq "$(sysctl -n hw.logicalcpu)"); do yes > /dev/null & done\n'
               printf "trap 'kill \$(jobs -p) 2>/dev/null || true' EXIT\n"
+            fi
+            # nextest adds its extracted Rust library paths to this fallback path for test discovery and execution.
+            # Set it inside the script so macOS system shells cannot strip it while starting the script.
+            if [[ -n "${GSTREAMER_FRAMEWORK_LIB:-}" ]]; then
+              # shellcheck disable=SC2016
+              printf 'export DYLD_FALLBACK_LIBRARY_PATH=%q${DYLD_FALLBACK_LIBRARY_PATH:+:"$DYLD_FALLBACK_LIBRARY_PATH"}\n' \
+                "$GSTREAMER_FRAMEWORK_LIB"
             fi
             printf '%q ' "${run_args[@]}" | sed 's/ARCHIVE/"$archive"/'
             printf '\n'
