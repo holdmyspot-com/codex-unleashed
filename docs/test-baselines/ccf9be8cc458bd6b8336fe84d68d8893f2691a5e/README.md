@@ -11,8 +11,8 @@ patches. Per `.cat/rules/include/common/upstream-test-failures.md`, this file re
 | `windows-bazel-gnullvm-shard-{1,2,3,4}.json` | page-file run 45333894851 | 80/0, 77/0, 100/22, 105/0 |
 | `windows-bazel-msvc-shard-1.json` | 45320758830, artifact 14896209964 (shard 1 of 1) | 238/20 |
 
-No report has a `timed_out` entry. The macOS x86_64 Bazel baselines are not recorded yet: the jobs moved to Rosetta,
-whose shard 1 timed out at the 290-minute step limit and left no test report.
+No report has a `timed_out` entry. The macOS x86_64 Bazel baselines are not recorded yet. They need complete native
+Intel reports for both shards; the saved native shard 1 report predates this pin's runs, and shard 2 timed out.
 
 ## Unverified upstream behavior
 
