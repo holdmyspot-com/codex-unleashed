@@ -39,3 +39,13 @@ These pass in upstream's CI:
   `docs/upstream-failure-comparison.md` (`blocked_descriptor_path`, `remote_pipe_recovery`, `remote_tty_recovery`,
   `remote_sandbox`); the fifth, `remote_process_preserves_empty_workspace_roots`, is documented there as a separate
   historical timeout. Those historical diagnoses do not by themselves establish each current cause.
+
+## Clippy
+
+`clippy.json` lists the upstream Clippy diagnostics that the Bazel Clippy jobs accept, written as
+`path:line: message`, with paths relative to `codex-rs/`. Upstream's source at this commit has all of them:
+- `core/src/session/session.rs:1816` `collapsible_if` (Linux and Windows).
+- `app-server/tests/suite/v2/sleep.rs:8, 9, 12` unused imports. Upstream commit 4aac2eacc5 (#61382) left them
+  behind, and they are still on upstream main. Upstream's Bazel Clippy jobs at 4aac2eacc5 (blocking-ci 43514491801)
+  failed or were cancelled before reaching this target. The rust-v0.171.0 release ran no Clippy job.
+A run passes only if Bazel's sole errors are failed Clippy actions and each of their diagnostics is listed here.

@@ -1,0 +1,8 @@
+{
+  "accepted": [
+    "core/src/session/session.rs:1816: this `if` statement can be collapsed",
+    "app-server/tests/suite/v2/sleep.rs:8: unused import: `codex_app_server_protocol::ThreadStartResponse`",
+    "app-server/tests/suite/v2/sleep.rs:9: unused import: `codex_app_server_protocol::TurnCompletedNotification`",
+    "app-server/tests/suite/v2/sleep.rs:12: unused import: `codex_app_server_protocol::TurnStatus`"
+  ]
+}

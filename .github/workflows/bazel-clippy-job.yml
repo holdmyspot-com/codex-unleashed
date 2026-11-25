@@ -83,6 +83,9 @@ jobs:
           cp restart-metadata/.github/scripts/add-windows-page-file.ps1 restart-metadata/.github/scripts/add-windows-bazel-page-file.ps1 \
             restart-metadata/.github/scripts/size-windows-dev-drive.ps1 "$RUNNER_TEMP/"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          cp restart-metadata/.github/scripts/check-clippy-baseline.py "$RUNNER_TEMP/"
+          clippy_baseline="restart-metadata/docs/test-baselines/$(cat "$evidence/upstream-commit")/clippy.json"
+          if [[ -f "$clippy_baseline" ]]; then cp "$clippy_baseline" "$RUNNER_TEMP/clippy-baseline.json"; fi
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           cp restart-metadata/.github/scripts/buildbuddy-cache.sh restart-metadata/.github/scripts/fit-linux-build-memory.sh "$RUNNER_TEMP/"
           cp restart-metadata/.github/cargo-cache-package "$evidence/cargo-cache-package"
@@ -383,6 +386,8 @@ jobs:
             LC_ALL=C sort "$evidence/candidate-targets.txt" > "$evidence/expected-targets.txt"
             cmp "$evidence/expected-targets.txt" "$evidence/expanded-package-targets.txt"
           fi
+          # Keep going past a failed Clippy action so that the baseline check below sees every diagnostic.
+          clippy_args+=(--keep_going)
           if [[ "$CLIPPY_ROLE" == shared-v8 ]]; then
             # Compile V8 for the lint shards: this package's V8 dependency covers both the target and the exec
             # configuration that the lint compiles. Keep going past a lint failure so that every V8 action still runs.
@@ -416,7 +421,16 @@ jobs:
           printf 'exit_code=%s\n' "$result" > "$evidence/bazel-clippy.receipt"
           git diff --binary > "$evidence/source-after.diff"
           cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
-          exit "$result"
+          if [[ "$CLIPPY_ROLE" == shared-v8 ]]; then
+            exit "$result"
+          fi
+          # Accept a run whose only errors are upstream diagnostics classified in docs/test-baselines/<commit>/clippy.json.
+          baseline=missing
+          if [[ -f "$RUNNER_TEMP/clippy-baseline.json" ]]; then baseline="$RUNNER_TEMP/clippy-baseline.json"; fi
+          # Windows images name the interpreter python.
+          python="$(command -v python3 || command -v python)"
+          "$python" "$RUNNER_TEMP/check-clippy-baseline.py" "$evidence/bazel-clippy.log" "$result" "$baseline" \
+            "$evidence/clippy-baseline-check.txt"
 
       - name: Save the compiled C++ actions
         if: ${{ !cancelled() && steps.cc_cache.outcome == 'success' }}
