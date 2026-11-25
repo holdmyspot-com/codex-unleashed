@@ -382,6 +382,7 @@ jobs:
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
 
       - name: Keep the BuildBuddy key out of the retained evidence
+        id: scrub-evidence
         if: always()
         shell: bash
         env:
@@ -389,7 +390,7 @@ jobs:
         run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" finish "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-macos-bazel-evidence"
 
       - name: Retain test evidence for one day
-        if: always()
+        if: always() && steps.scrub-evidence.outcome == 'success'
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: baseline-macos-bazel-tests-${{ matrix.platform.target }}-shard-${{ matrix.shard }}

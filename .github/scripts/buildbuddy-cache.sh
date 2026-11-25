@@ -22,8 +22,8 @@ set -euo pipefail
 # Trust gate: configure writes the key only for a push, workflow_dispatch or schedule run in TRUSTED_REPOSITORY. A
 # pull_request run never gets it; the workflows do not run on pull requests and GitHub withholds repository secrets from
 # fork pull requests, so this check is a second barrier. The key must be alphanumeric, so that it cannot add rc lines.
-# Exit status: 0 on success or when nothing is configured; 1 when the key is malformed or a copy of it remains in an
-# evidence directory; 2 for invalid arguments.
+# Exit status: 0 on success or when nothing is configured; 1 when the key is malformed or evidence redaction cannot
+# be verified; 2 for invalid arguments.
 TRUSTED_REPOSITORY="holdmyspot-com/codex-unleashed"
 REMOTE_ENDPOINT="grpcs://remote.buildbuddy.io"
 
@@ -80,14 +80,29 @@ finish() {
   key_file="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/buildbuddy-key.XXXXXX")"
   trap 'rm -f -- "$key_file"' RETURN
   printf '%s' "$BUILDBUDDY_API_KEY" > "$key_file"
-  local directory file leaked=0
+  local directory file matches scan_status leaked=0
   for directory in "$@"; do
     [[ -d "$directory" ]] || continue
+    scan_status=0
+    matches="$(grep -rlaF -f "$key_file" -- "$directory")" || scan_status=$?
+    if (( scan_status > 1 )); then
+      printf '::error::Unable to scan BuildBuddy output for the key.\n' >&2
+      return 1
+    fi
+    if (( scan_status == 1 )); then
+      continue
+    fi
     while IFS= read -r file; do
       printf '::warning::Redacting the BuildBuddy key from %s\n' "$file"
       perl -pi -e 's/\Q$ENV{BUILDBUDDY_API_KEY}\E/***/g' "$file"
-    done < <(grep -rlaF -f "$key_file" -- "$directory" || true)
-    if [[ -n "$(grep -rlaF -f "$key_file" -- "$directory" || true)" ]]; then
+    done <<< "$matches"
+    scan_status=0
+    grep -rlaF -f "$key_file" -- "$directory" >/dev/null || scan_status=$?
+    if (( scan_status > 1 )); then
+      printf '::error::Unable to verify BuildBuddy key redaction.\n' >&2
+      return 1
+    fi
+    if (( scan_status == 0 )); then
       leaked=1
     fi
   done
