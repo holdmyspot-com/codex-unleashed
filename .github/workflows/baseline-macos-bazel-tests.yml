@@ -30,16 +30,27 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
         platform:
           - runner: macos-15
             target: aarch64-apple-darwin
             bazel_arch: arm64
             bazel_sha256: dd466352a3e4d3581b8898740ee1ff208866ccbe25f8d367c5dcb950219587e6
+            shard_count: 2
+            test_jobs: ''
           - runner: macos-15-intel
             target: x86_64-apple-darwin
             bazel_arch: x86_64
             bazel_sha256: 14c9bcb01303b38192e0e2895051c1bcf19bf89d7e416f5aeeeb48b6b624cfbf
+            # The 4-CPU Intel runner ran 25 tests at once, so tests missed their 10-second startup deadlines, and
+            # shard 2 of 2 hit the 290-minute limit (run 45573260043). Upstream tests x86_64 on macos-15-xlarge.
+            shard_count: 4
+            test_jobs: '4'
+        exclude:
+          - shard: 3
+            platform: {runner: macos-15, target: aarch64-apple-darwin, bazel_arch: arm64, bazel_sha256: dd466352a3e4d3581b8898740ee1ff208866ccbe25f8d367c5dcb950219587e6, shard_count: 2, test_jobs: ''}
+          - shard: 4
+            platform: {runner: macos-15, target: aarch64-apple-darwin, bazel_arch: arm64, bazel_sha256: dd466352a3e4d3581b8898740ee1ff208866ccbe25f8d367c5dcb950219587e6, shard_count: 2, test_jobs: ''}
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
@@ -50,7 +61,8 @@ jobs:
       BAZEL_ARCH: ${{ matrix.platform.bazel_arch }}
       BAZEL_SHA256: ${{ matrix.platform.bazel_sha256 }}
       BAZEL_TEST_SHARD: ${{ matrix.shard }}
-      BAZEL_TEST_SHARD_COUNT: '2'
+      BAZEL_TEST_SHARD_COUNT: ${{ matrix.platform.shard_count }}
+      BAZEL_LOCAL_TEST_JOBS: ${{ matrix.platform.test_jobs }}
       CC_CACHE_LANE: bazel-test-${{ matrix.platform.target }}-${{ matrix.shard }}
     defaults:
       run:
@@ -289,6 +301,9 @@ jobs:
               "--disk_cache=$RUNNER_TEMP/bazel-cc-cache"
               '--modify_execution_info=^(?!(CppCompile|CppArchive|CppLink|ObjcCompile)$).*$=+no-cache'
             )
+          fi
+          if [[ -n "$BAZEL_LOCAL_TEST_JOBS" ]]; then
+            cache_args+=("--local_test_jobs=$BAZEL_LOCAL_TEST_JOBS")
           fi
           set +e
           .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- \
