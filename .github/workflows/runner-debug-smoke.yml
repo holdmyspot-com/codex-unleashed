@@ -64,10 +64,6 @@ jobs:
           persist-credentials: false
           sparse-checkout: .github/actions
 
-      - name: Run the rest of the job as x86_64 under Rosetta 2
-        if: ${{ matrix.rosetta }}
-        uses: ./.github/actions/rosetta-x86_64
-
       - name: Create owned partial build state
         uses: ./.github/actions/runner-debug-smoke
 

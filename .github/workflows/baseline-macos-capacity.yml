@@ -14,9 +14,7 @@ jobs:
         include:
           - runner: macos-15
             target: aarch64-apple-darwin
-          # The Intel baselines run on Apple silicon under Rosetta 2, so that is the host whose capacity this probes.
-          - runner: macos-15
-            rosetta: true
+          - runner: macos-15-intel
             target: x86_64-apple-darwin
     runs-on: ${{ matrix.runner }}
     defaults:
@@ -41,10 +39,6 @@ jobs:
         uses: ./restart-metadata/.github/actions/setup-tooling
         with:
           tooling-root: ${{ github.workspace }}/restart-metadata
-
-      - name: Run the rest of the job as x86_64 under Rosetta 2
-        if: ${{ matrix.rosetta }}
-        uses: ./restart-metadata/.github/actions/rosetta-x86_64
 
       - name: Preserve exact source identities
         id: inputs
@@ -98,7 +92,6 @@ jobs:
             xcrun clang --version
             bash --version
           } | tee "$evidence/host-and-tools.txt"
-          if [[ -f "$RUNNER_TEMP/rosetta-host.txt" ]]; then cp "$RUNNER_TEMP/rosetta-host.txt" "$evidence/rosetta-host.txt"; fi
           diskutil apfs list > "$evidence/apfs-volumes.txt"
           for directory in /Applications /Library/Developer /opt/homebrew /usr/local; do
             if [[ -d "$directory" ]]; then

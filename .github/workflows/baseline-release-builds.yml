@@ -955,18 +955,6 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Retrieve the local actions
-        if: ${{ matrix.rosetta }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          persist-credentials: false
-          sparse-checkout: .github/actions
-
-      # Apple silicon runs the Intel executable under Rosetta 2, as an Intel machine would run it natively.
-      - name: Run the rest of the job as x86_64 under Rosetta 2
-        if: ${{ matrix.rosetta }}
-        uses: ./.github/actions/rosetta-x86_64
-
       - name: Retrieve the cross-compiled executable
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -982,7 +970,6 @@ jobs:
           chmod +x "$executable"
           {
             uname -m
-            if [[ -f "$RUNNER_TEMP/rosetta-host.txt" ]]; then cat "$RUNNER_TEMP/rosetta-host.txt"; fi
             file "$executable"
             "$executable" --version
           } | tee "$RUNNER_TEMP/smoke/version.log"

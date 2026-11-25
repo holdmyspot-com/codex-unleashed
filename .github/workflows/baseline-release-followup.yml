@@ -18,9 +18,7 @@ jobs:
             target: aarch64-apple-darwin
             split-debug-info: packed
             binary-suffix: ""
-          # Apple silicon runs the Intel target under Rosetta 2 as x86_64 programs.
-          - runner: macos-15
-            rosetta: true
+          - runner: macos-15-intel
             target: x86_64-apple-darwin
             split-debug-info: packed
             binary-suffix: ""
@@ -49,10 +47,6 @@ jobs:
         with:
           tooling-root: restart-metadata
 
-      - name: Run the rest of the job as x86_64 under Rosetta 2
-        if: ${{ matrix.rosetta }}
-        uses: ./restart-metadata/.github/actions/rosetta-x86_64
-
       - name: Preserve restart inputs outside the source checkout
         id: inputs
         run: |
@@ -66,7 +60,6 @@ jobs:
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
-          if [[ -f "$RUNNER_TEMP/rosetta-host.txt" ]]; then cp "$RUNNER_TEMP/rosetta-host.txt" "$evidence/rosetta-host.txt"; fi
 
       - name: Retrieve the exact stable upstream source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd

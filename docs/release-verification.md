@@ -119,11 +119,8 @@ unsupported target. Equal unpacked binary payloads cannot turn a compressed arch
 observed host images, tool paths, or checkout paths are diagnostic and allow the unchanged recipe to attempt the build.
 
 A receipt whose `inputs.native_build` has a `compile_host` came from a release that compiled the executables on one
-machine and packaged them on another; x86_64 macOS compiles on Apple silicon (`macos-15`) and packages on Apple silicon
-running x86_64 programs under Rosetta 2 (`macos-15` with the `rosetta-x86_64` action). Both hosts therefore record
-`runner.arch` `ARM64`; the receipt does not record Rosetta, which the job's `rosetta-host.txt` evidence does. Receipts of
-releases that packaged on an Intel runner record `X64` for the packaging host, and a Rosetta reproduction fails them as
-`prerequisite_unavailable`. Reproduce each part on the same kind of machine as the release. Run `release-reproduction prepare`
+machine and packaged them on another; x86_64 macOS compiles on Apple silicon (`macos-15`) and packages on Intel
+(`macos-15-intel`). Reproduce each part on the same kind of machine as the release. Run `release-reproduction prepare`
 and then `run-compile` on a host whose `RUNNER_ARCH` equals the compile host's `runner.arch`. That step writes the
 handoff directory `compiled-outputs` into its output directory, holding `compiled-outputs.tar` and the compile host's
 `native-inputs.json`. Then, on a host whose `RUNNER_ARCH` equals the receipt's top-level `runner.arch`, run `prepare`
@@ -174,8 +171,7 @@ bash "$CODEX_TOOLING" release-native-inputs "${native_options[@]}"
 
 The optional runner architecture and image fields preserve a supplied empty string; omitted fields remain null.
 
-The x86_64 macOS release compiles its executables on Apple silicon and packages them as x86_64 programs under Rosetta 2 on
-Apple silicon. Its compile host runs
+The x86_64 macOS release compiles its executables on Apple silicon and packages them on Intel. Its compile host runs
 `release-native-inputs` without `--archive-result` and `--package-root`; the result describes that host, its
 `build_binaries` operation and the V8 archive alone. The compile host then runs `compiled-output-handoff capture` on
 the Cargo release directory. That command writes a tar of each selected pre-strip executable and every file in its
@@ -185,7 +181,7 @@ which runs `compiled-output-handoff install` instead of Cargo. `install` creates
 file matches the manifest and each executable is an x86_64 Mach-O executable. The packaging host then records its own
 inputs with `--compile-inputs` naming the compile host's document and without `--configured-v8-archive`.
 The release builds that target's voice runtime in a separate job on the packaging host's kind of machine
-(`macos-15` under Rosetta 2, with an x86_64 Bazel), alongside the compile host. That job hands its result directory and verification binaries to the
+(`macos-15-intel`), alongside the compile host. That job hands its result directory and verification binaries to the
 packaging job, which checks their SHA-256 digest, restores them at the path they were built in and verifies the voice
 runtime in the final archives. The receipt has no separate voice host: the packaging host's `runner` describes the
 machine kind that built the voice runtime.

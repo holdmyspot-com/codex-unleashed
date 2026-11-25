@@ -86,10 +86,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run the rest of the job as x86_64 under Rosetta 2
-        if: ${{ matrix.rosetta }}
-        uses: ./.github/actions/rosetta-x86_64
-
       - name: Prepare owned build and evidence directories
         run: |
           set -euo pipefail
@@ -102,7 +98,6 @@ jobs:
         with:
           distribution: zulu
           java-version: 27.0.1
-          architecture: ${{ matrix.rosetta && 'x64' || '' }}
 
       - name: Set up the fixture's native Rust toolchain
         uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
