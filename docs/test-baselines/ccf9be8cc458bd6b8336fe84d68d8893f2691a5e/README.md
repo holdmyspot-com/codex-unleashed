@@ -48,4 +48,6 @@ These pass in upstream's CI:
 - `app-server/tests/suite/v2/sleep.rs:8, 9, 12` unused imports. Upstream commit 4aac2eacc5 (#61382) left them
   behind, and they are still on upstream main. Upstream's Bazel Clippy jobs at 4aac2eacc5 (blocking-ci 43514491801)
   failed or were cancelled before reaching this target. The rust-v0.171.0 release ran no Clippy job.
+- `core/tests/suite/scenarios.rs:4558` `match_like_matches_macro`. Upstream's macOS Bazel Clippy fails on the same
+  code, at line 4441 at 4aac2eacc5 (blocking-ci 43514491801, job 132192817164).
 A run passes only if Bazel's sole errors are failed Clippy actions and each of their diagnostics is listed here.
