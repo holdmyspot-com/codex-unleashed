@@ -1,0 +1,54 @@
+From f345ac24a554892184e641266c1b4445f366a129 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 25 Nov 2026 16:10:52 -0500
+Subject: [PATCH] Preserve Windows executable extensions in Bazel tests
+
+Forward the native client's PATHEXT alongside SYSTEMROOT, COMSPEC, and
+WINDIR. Extensionless executable discovery uses this environment input;
+Bazel's sanitized test environment otherwise drops it.
+
+Existing native regression: cli-doctor_path_safety-test fails to discover
+the git.cmd fixture with which8, while retaining the no-helper-execution
+assertions. It fails on the Windows Bazel baseline at rust-v0.167.0
+(gnullvm shard 4, msvc shard 1). Windows execution with the restored
+environment remains a hosted acceptance gate.
+
+This configuration repair does not change product lookup semantics or relax
+the diagnostic safety assertions. Base rust-v0.171.0 (ccf9be8cc458bd6b8336fe84d68d8893f2691a5e) with the
+queue through `issue-63/root-metadata-identities.patch`.
+---
+ .bazelrc                                 | 2 ++
+ codex-rs/cli/tests/doctor_path_safety.rs | 4 +++-
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/.bazelrc b/.bazelrc
+index c6d9f2b61f..d17762bc0e 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -56,6 +56,8 @@ common:macos --strategy=CcConfigureMakeRule=remote,sandboxed,local
+ common:windows --test_env=SYSTEMROOT
+ common:windows --test_env=COMSPEC
+ common:windows --test_env=WINDIR
++# Windows executable discovery uses PATHEXT when resolving extensionless names.
++common:windows --test_env=PATHEXT
+ common:windows --test_env=SystemDrive
+ common:windows --test_env=LOCALAPPDATA
+ # Rust's libtest harness runs test bodies on std-spawned threads. The default
+diff --git a/codex-rs/cli/tests/doctor_path_safety.rs b/codex-rs/cli/tests/doctor_path_safety.rs
+index 86a1a1b35d..360628fd3f 100644
+--- a/codex-rs/cli/tests/doctor_path_safety.rs
++++ b/codex-rs/cli/tests/doctor_path_safety.rs
+@@ -190,7 +190,9 @@ fn startup_and_doctor_do_not_execute_path_helpers() -> Result<()> {
+         );
+         assert_eq!(
+             report["checks"]["git.environment"]["summary"],
+-            "git executable found; execution not verified"
++            "git executable found; execution not verified",
++            "extensionless helper discovery uses PATHEXT on Windows: {:?}",
++            std::env::var_os("PATHEXT")
+         );
+         assert!(!fixture.marker.exists(), "doctor executed a PATH helper");
+     }
+-- 
+2.43.0
+

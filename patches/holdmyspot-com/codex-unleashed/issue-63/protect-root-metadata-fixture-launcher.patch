@@ -1,0 +1,72 @@
+From 7993ffc218158c303c813459ce12c0702cca0f47 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 25 Nov 2026 16:12:36 -0500
+Subject: [PATCH] test(linux-sandbox): protect the root metadata fixture
+ launcher
+
+Bind the selected bubblewrap executable into the fixture root filesystem
+and expose its location on PATH. Give that dependency a read-only policy
+entry so trusted-executable lookup accepts it under namespace UID 0. Keep
+every metadata denial and approved-write assertion unchanged.
+
+Track: https://github.com/holdmyspot-com/codex-unleashed/issues/63
+
+root_metadata_symlinks_cannot_reopen_approved_denials fails on the Linux
+nextest and Bazel baselines at rust-v0.167.0. Upstream rust-v0.171.0
+already copies a bundled launcher into the fixture's `codex-resources`
+directory, so a rust-v0.171.0 Linux run must confirm that this change is
+still required.
+
+Base rust-v0.171.0 (ccf9be8cc458bd6b8336fe84d68d8893f2691a5e) with the
+queue through `issue-63/root-metadata-identities.patch`, whose caller-
+identity pass it keeps: the launcher is bound and the policy entry added
+for both passes.
+---
+ .../linux-sandbox/tests/suite/root_metadata_tests.rs | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/linux-sandbox/tests/suite/root_metadata_tests.rs b/codex-rs/linux-sandbox/tests/suite/root_metadata_tests.rs
+index 2b79e1bc95..e09db65b39 100644
+--- a/codex-rs/linux-sandbox/tests/suite/root_metadata_tests.rs
++++ b/codex-rs/linux-sandbox/tests/suite/root_metadata_tests.rs
+@@ -76,12 +76,18 @@ async fn root_metadata_symlinks_cannot_reopen_approved_denials() {
+                 .push(path_entry(denied, FileSystemAccessMode::Deny));
+             policy.for_approved_command(&context)
+         };
++        let sandbox_bwrap_path = "/bwrap";
+         let run = |policy: &FileSystemSandboxPolicy,
+                    private_mount: &str,
+                    codex_target: &str,
+                    script: &str| {
++            // Keep the selected launcher available and immutable inside the fixture.
++            let mut policy = policy.clone();
++            policy
++                .entries
++                .push(path_entry(sandbox_bwrap_path, FileSystemAccessMode::Read));
+             let profile =
+-                PermissionProfile::from_runtime_permissions(policy, NetworkSandboxPolicy::Enabled);
++                PermissionProfile::from_runtime_permissions(&policy, NetworkSandboxPolicy::Enabled);
+             let mut command = Command::new(&bwrap);
+             command.arg("--unshare-user");
+             if force_root {
+@@ -92,6 +98,7 @@ async fn root_metadata_symlinks_cannot_reopen_approved_denials() {
+                 "--ro-bind /usr /usr --ro-bind /etc /etc --proc /proc --dev /dev"
+                     .split_whitespace(),
+             );
++            command.arg("--ro-bind").arg(&bwrap).arg(sandbox_bwrap_path);
+             command
+                 .args("--dir /run --dir /.agents --symlink /private-link /.git".split_whitespace());
+             command.args(["--symlink", codex_target, "/.codex"]);
+@@ -114,7 +121,8 @@ async fn root_metadata_symlinks_cannot_reopen_approved_denials() {
+                 command.args(["--symlink", private_mount, "/private"]);
+             }
+             command.args(
+-                "--chdir /tmp --setenv TMPDIR /tmp --setenv PATH /usr/bin:/bin".split_whitespace(),
++                "--chdir /tmp --setenv TMPDIR /tmp --setenv PATH /:/usr/bin:/bin"
++                    .split_whitespace(),
+             );
+             command.args(
+                 "-- /tmp/sandbox --sandbox-policy-cwd /tmp --permission-profile".split_whitespace(),
+-- 
+2.43.0
+

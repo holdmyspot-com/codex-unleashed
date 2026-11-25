@@ -1,0 +1,59 @@
+From adfff0e4110e9da4b8e47422212ea722ebb02cd8 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 25 Nov 2026 16:11:20 -0500
+Subject: [PATCH] fix(test): wait for a pending Windows profile hive deletion
+
+Keep polling when the owned profile hive is marked for deletion, rather
+than failing on ERROR_KEY_DELETED before the profile service finishes
+unloading it. Retain the existing deadline, polling interval and every
+account/profile deletion assertion, and keep any other registry status
+failing.
+
+profile_cleanup_preserves_account_until_profile_can_be_deleted fails on
+the Windows Bazel baseline at rust-v0.167.0 with "read owned profile hive:
+1018". The old-main run that fixed it passed the exact regression on
+rust-v0.163.0; re-running it on Windows Bazel remains a hosted acceptance
+gate.
+
+Base rust-v0.171.0 (ccf9be8cc458bd6b8336fe84d68d8893f2691a5e) with the
+queue through `issue-63/root-metadata-identities.patch`; the `use` lines
+are re-based on upstream's current imports.
+---
+ .../src/uninstall_windows/principals_tests.rs       | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/codex-rs/windows-sandbox-rs/src/uninstall_windows/principals_tests.rs b/codex-rs/windows-sandbox-rs/src/uninstall_windows/principals_tests.rs
+index 9ea1fbf79c..7d33c9b95e 100644
+--- a/codex-rs/windows-sandbox-rs/src/uninstall_windows/principals_tests.rs
++++ b/codex-rs/windows-sandbox-rs/src/uninstall_windows/principals_tests.rs
+@@ -19,6 +19,7 @@ use rand::TryRng;
+ use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
+ use windows_sys::Win32::Foundation::ERROR_DELETE_PENDING;
+ use windows_sys::Win32::Foundation::ERROR_FILE_NOT_FOUND;
++use windows_sys::Win32::Foundation::ERROR_KEY_DELETED;
+ use windows_sys::Win32::Foundation::ERROR_SHARING_VIOLATION;
+ use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+ use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
+@@ -66,11 +67,15 @@ impl ProfileFixture {
+                         &mut key,
+                     )
+                 };
+-                if status == ERROR_FILE_NOT_FOUND {
+-                    break;
++                match status {
++                    ERROR_FILE_NOT_FOUND => break,
++                    ERROR_SUCCESS => {
++                        unsafe { registry::RegCloseKey(key) };
++                    }
++                    // The profile service can mark the hive for deletion before it disappears.
++                    ERROR_KEY_DELETED => {}
++                    _ => anyhow::bail!("read owned profile hive: {status}"),
+                 }
+-                ensure!(status == ERROR_SUCCESS, "read owned profile hive: {status}");
+-                unsafe { registry::RegCloseKey(key) };
+                 ensure!(Instant::now() < deadline, "owned profile did not unload");
+                 std::thread::sleep(Duration::from_millis(50));
+             }
+-- 
+2.43.0
+
