@@ -28,7 +28,7 @@ if [[ "$operation" == inputs ]]; then
   test "$(git rev-parse HEAD)" = "$VOICE_BUILD_COMMIT"
   test -z "$(git status --porcelain --untracked-files=no)"
   read -r -a patch_paths <<< "$PATCHES"
-  for patch in "${patch_paths[@]}"; do
+  for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
     sha256sum "$RUNNER_TEMP/downstream-$patch"
   done > "$inputs/patches"
   sha256sum "$metadata/.github/workflows/upstream-auto-release.yml" \

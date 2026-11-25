@@ -91,7 +91,7 @@ jobs:
             git -C upstream -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               commit -q -m "Test with upstream's development version 0.0.0" -- codex-rs/Cargo.toml
           fi
-          for patch in "${patch_paths[@]}"; do
+          for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
             sha256sum "$patch" | tee -a "$FOCUSED_RUNTIME/evidence/applied-patches.txt"
             git -C upstream -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$GITHUB_WORKSPACE/$patch"

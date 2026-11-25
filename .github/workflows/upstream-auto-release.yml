@@ -360,7 +360,7 @@ jobs:
           index=0
           # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
           printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"
-          for patch in "${patch_paths[@]}"; do
+          for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
             index=$((index + 1))
             if ! git -C upstream -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$GITHUB_WORKSPACE/$patch"; then
@@ -634,7 +634,7 @@ jobs:
           read -r -a patch_paths <<< "$PATCHES"
           # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
           printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"
-          for patch in "${patch_paths[@]}"; do
+          for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
             git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
           done
@@ -823,7 +823,7 @@ jobs:
           read -r -a patch_paths <<< "$PATCHES"
           # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
           printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"
-          for patch in "${patch_paths[@]}"; do
+          for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
             git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
           done
@@ -1411,7 +1411,7 @@ jobs:
           read -r -a patch_paths <<< "$PATCHES"
           # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
           printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"
-          for patch in "${patch_paths[@]}"; do
+          for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
             git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
           done
@@ -1651,7 +1651,7 @@ jobs:
           read -r -a patch_paths <<< "$PATCHES"
           # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
           printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"
-          for patch in "${patch_paths[@]}"; do
+          for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
             git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
           done
@@ -2357,7 +2357,7 @@ jobs:
           git -C "$source" checkout --detach "$upstream_commit"
           read -r -a patch_paths <<< "$(bash "$CODEX_TOOLING" upstream-auto-release patches --readme "$patch_repo/patches/README.md")"
           printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git -C "$source" rev-parse --absolute-git-dir)/info/attributes"
-          for patch in "${patch_paths[@]}"; do
+          for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
             git -C "$source" -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$patch_repo/$patch"
           done

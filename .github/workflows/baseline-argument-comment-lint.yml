@@ -85,7 +85,7 @@ jobs:
             git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               commit -q -m "Test with upstream's development version 0.0.0" -- codex-rs/Cargo.toml
           fi
-          for patch in "${patch_paths[@]}"; do
+          for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
             printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
             git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
@@ -245,7 +245,7 @@ jobs:
             git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               commit -q -m "Test with upstream's development version 0.0.0" -- codex-rs/Cargo.toml
           fi
-          for patch in "${patch_paths[@]}"; do
+          for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
             printf '%s  %s\n' "$(sha256sum < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
             git -c core.longpaths=true -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
               am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
