@@ -1,0 +1,10 @@
+{
+  "failed": [
+    "//codex-rs/exec-server:exec-server-exec_process-test"
+  ],
+  "platform": "linux-bazel-shard2",
+  "runner": "bazel",
+  "tests_executed": 198,
+  "timed_out": [],
+  "upstream_commit": "ccf9be8cc458bd6b8336fe84d68d8893f2691a5e"
+}

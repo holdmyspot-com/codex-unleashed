@@ -1,0 +1,31 @@
+{
+  "failed": [
+    "//codex-rs/app-server:app-server-all-test",
+    "//codex-rs/app-server:app-server-all-test suite::v2::code_mode_host::code_mode_model_output_uses_structured_host_timing::exec_grpc_host_only",
+    "//codex-rs/app-server:app-server-all-test suite::v2::code_mode_host::code_mode_model_output_uses_structured_host_timing::exec_stdio_with_overhead",
+    "//codex-rs/app-server:app-server-all-test suite::v2::code_mode_host::code_mode_model_output_uses_structured_host_timing::wait_stdio_host_only",
+    "//codex-rs/app-server:app-server-all-test suite::v2::guardian_v2::code_mode::model_guardian_policy_scores_code_mode_cells::adaptive_shell_does_not_score_browser_wrappers",
+    "//codex-rs/app-server:app-server-all-test suite::v2::guardian_v2::code_mode::model_guardian_policy_scores_code_mode_cells::legacy_models_without_cua_review_still_do_not_score",
+    "//codex-rs/app-server:app-server-all-test suite::v2::guardian_v2::code_mode::model_guardian_policy_scores_code_mode_cells::legacy_off_still_uses_synchronous_cua_review",
+    "//codex-rs/app-server:app-server-all-test suite::v2::guardian_v2::code_mode::model_guardian_policy_scores_code_mode_cells::model_policy_scores_cua_and_preserves_its_cache_across_cells",
+    "//codex-rs/app-server:app-server-all-test suite::v2::guardian_v2::code_mode::model_guardian_policy_scores_code_mode_cells::required_legacy_all_tools_still_uses_synchronous_review",
+    "//codex-rs/app-server:app-server-all-test suite::v2::guardian_v2::code_mode::model_guardian_policy_scores_code_mode_cells::required_legacy_cua_only_still_ignores_wrappers",
+    "//codex-rs/app-server:app-server-all-test suite::v2::guardian_v2::code_mode::model_guardian_policy_scores_code_mode_cells::required_model_preserves_cua_cache_across_cells",
+    "//codex-rs/app-server:app-server-all-test suite::v2::guardian_v2::code_mode::model_guardian_policy_scores_code_mode_cells::synchronous_policies_do_not_score_wrappers",
+    "//codex-rs/app-server:app-server-all-test suite::v2::request_permissions::background_cell_uses_permissions_requested_after_next_turn_starts::strict_review",
+    "//codex-rs/app-server:app-server-all-test suite::v2::request_permissions::background_cell_uses_permissions_requested_after_next_turn_starts::turn_grant",
+    "//codex-rs/app-server:app-server-all-test suite::v2::request_permissions::code_mode_uses_permissions_approved_in_the_same_cell::strict_review",
+    "//codex-rs/app-server:app-server-all-test suite::v2::request_permissions::code_mode_uses_permissions_approved_in_the_same_cell::turn",
+    "//codex-rs/app-server:app-server-all-test suite::v2::request_permissions::steps_capture_permission_grants_and_preserve_their_scope::session",
+    "//codex-rs/app-server:app-server-all-test suite::v2::thread_unsubscribe::v2_child_idle_eviction_preserves_mail_and_followup_context",
+    "//codex-rs/core:core-all-test",
+    "//codex-rs/core:core-all-test suite::skills_extension::opted_in_executor_provider_skips_host_discovery_but_injects_discovered_skill",
+    "//codex-rs/windows-sandbox-rs:windows-sandbox-rs-unit-tests",
+    "//codex-rs/windows-sandbox-rs:windows-sandbox-rs-unit-tests unified_exec::tests::legacy_workspace_write_delete_is_limited_to_writable_roots"
+  ],
+  "platform": "windows-bazel-gnullvm-shard-3",
+  "runner": "bazel",
+  "tests_executed": 100,
+  "timed_out": [],
+  "upstream_commit": "ccf9be8cc458bd6b8336fe84d68d8893f2691a5e"
+}

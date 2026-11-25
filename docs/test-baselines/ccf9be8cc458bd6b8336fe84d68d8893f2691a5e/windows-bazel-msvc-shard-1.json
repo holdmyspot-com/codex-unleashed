@@ -1,0 +1,29 @@
+{
+  "failed": [
+    "//codex-rs/app-server:app-server-all-test",
+    "//codex-rs/app-server:app-server-all-test suite::v2::guardian_v2::code_mode::model_guardian_policy_scores_code_mode_cells::required_model_preserves_cua_cache_across_cells",
+    "//codex-rs/app-server:app-server-all-test suite::v2::request_permissions::steps_capture_permission_grants_and_preserve_their_scope::session",
+    "//codex-rs/cli:codex-bin-unit-tests",
+    "//codex-rs/cli:codex-bin-unit-tests mcp_cmd::tests::application_network_mcp_add_denies_initial_oauth_discovery_before_connect",
+    "//codex-rs/cli:codex-bin-unit-tests mcp_cmd::tests::application_network_mcp_add_discovers_when_policy_is_disabled",
+    "//codex-rs/core:core-all-test",
+    "//codex-rs/core:core-all-test suite::cli_stream::exec_cli_applies_model_instructions_file",
+    "//codex-rs/core:core-all-test suite::skills_extension::opted_in_executor_provider_skips_host_discovery_but_injects_discovered_skill",
+    "//codex-rs/core:core-mcp_trace_propagation-test",
+    "//codex-rs/core:core-mcp_trace_propagation-test mcp_requests_preserve_trace_context_across_workers_and_continuations",
+    "//codex-rs/rmcp-client:rmcp-client-streamable_http_recovery-test",
+    "//codex-rs/rmcp-client:rmcp-client-streamable_http_recovery-test streamable_http_401_challenge_is_a_tool_error_without_replay",
+    "//codex-rs/rmcp-client:rmcp-client-streamable_http_recovery-test streamable_http_401_does_not_trigger_recovery",
+    "//codex-rs/rmcp-client:rmcp-client-streamable_http_recovery-test streamable_http_403_finds_bearer_challenge_in_later_header_value",
+    "//codex-rs/rmcp-client:rmcp-client-streamable_http_recovery-test streamable_http_403_scope_challenge_returns_insufficient_scope",
+    "//codex-rs/rmcp-client:rmcp-client-streamable_http_user_agent-test",
+    "//codex-rs/rmcp-client:rmcp-client-streamable_http_user_agent-test streamable_http_requests_preserve_configured_user_agent",
+    "//codex-rs/windows-sandbox-rs:windows-sandbox-rs-unit-tests",
+    "//codex-rs/windows-sandbox-rs:windows-sandbox-rs-unit-tests unified_exec::tests::legacy_workspace_write_delete_is_limited_to_writable_roots"
+  ],
+  "platform": "windows-bazel-msvc-shard-1",
+  "runner": "bazel",
+  "tests_executed": 238,
+  "timed_out": [],
+  "upstream_commit": "ccf9be8cc458bd6b8336fe84d68d8893f2691a5e"
+}
