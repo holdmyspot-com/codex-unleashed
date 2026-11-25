@@ -350,6 +350,20 @@ jobs:
               --host_action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH"
             )
           fi
+          if [[ "$RUNNER_OS" == Linux ]] && grep -q 'x-buildbuddy-api-key' "$GITHUB_WORKSPACE/user.bazelrc" 2>/dev/null; then
+            # With the trusted key, lint on BuildBuddy remote execution as upstream does (//:rbe through ci-linux and
+            # remote), so the hosted runner no longer runs out of memory; trial run 45494102572 ran 19,514 remote
+            # processes. The key-less --jobs=3 limit does not apply to remote actions.
+            filtered=()
+            for argument in "${clippy_args[@]}"; do
+              [[ "$argument" == --jobs=3 ]] || filtered+=("$argument")
+            done
+            clippy_args=(
+              "${filtered[@]}" --config=ci-linux --config=remote --remote_executor=grpcs://remote.buildbuddy.io
+              --remote_local_fallback=false --remote_download_minimal --jobs=24
+            )
+            printf 'remote_execution=buildbuddy\n' > "$evidence/clippy-execution-mode.txt"
+          fi
           if [[ "$RUNNER_OS" == Windows ]]; then
             scripts/list-bazel-clippy-targets.sh --windows-cross-compile > "$evidence/clippy-targets.txt"
           else
