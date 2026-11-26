@@ -3,6 +3,11 @@ name: Stable upstream Windows tests
 # Runs a selected Cargo test set or an upstream PowerShell test script on a native Windows runner against the pinned
 # upstream with downstream patches applied. A red phase can first restore production files to their state before the
 # patches under test and require the same selection to fail, so the patched pass proves the patches fix it.
+#
+# As upstream's rust-ci-full-nextest-platform.yml, a Cargo selection builds its nextest archive once, on x64 for both
+# targets, and a shard matrix runs it natively. Only a whole-workspace run is sharded, into hash partitions: 4 on x64 and
+# 6 on arm64. Every other selection runs as the single shard 1. The last job merges the shards' JUnit reports and
+# judges them once: the skip check, then the comparison with the committed unpatched baseline.
 
 on:
   workflow_dispatch:
@@ -68,16 +73,74 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: ${{ (inputs.target == 'aarch64-pc-windows-msvc' && 'windows-11-arm') || 'windows-2025' }}
+  plan:
+    name: Plan the test jobs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+      shards: ${{ steps.source.outputs.shards }}
+      shard_count: ${{ steps.source.outputs.shard_count }}
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Validate the selection, read the pinned upstream commit and choose the shards
+        id: source
+        env:
+          UPSTREAM_COMMIT: ${{ inputs.upstream_commit }}
+          TARGET: ${{ inputs.target }}
+          TEST_PACKAGE: ${{ inputs.package }}
+          TEST_FILTER: ${{ inputs.filter }}
+          TEST_SCRIPT: ${{ inputs.script }}
+          RED_RESTORE: ${{ inputs.red_restore }}
+          RED_PATCH_COUNT: ${{ inputs.red_patch_count }}
+          STRESS_COUNT: ${{ inputs.stress_count }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$TEST_PACKAGE" && -n "$TEST_SCRIPT" ]] || [[ -z "$TEST_PACKAGE" && -z "$TEST_SCRIPT" ]]; then
+            printf 'Select exactly one of package or script.\n' >&2
+            exit 1
+          fi
+          if [[ -n "$TEST_FILTER" && -z "$TEST_PACKAGE" ]]; then
+            printf 'filter requires package.\n' >&2
+            exit 1
+          fi
+          # Only a red phase uses the count, and the workflow_call inputs, which never run one, leave it empty.
+          if [[ -n "$RED_RESTORE" ]] && ! [[ "$RED_PATCH_COUNT" =~ ^[1-9][0-9]*$ ]]; then
+            printf 'red_patch_count must be a positive integer, not %s.\n' "$RED_PATCH_COUNT" >&2
+            exit 1
+          fi
+          if [[ -n "$STRESS_COUNT" ]] && { ! [[ "$STRESS_COUNT" =~ ^[1-9][0-9]*$ ]] || [[ -z "$TEST_PACKAGE" || "$TEST_PACKAGE" == --workspace ]]; }; then
+            printf 'stress_count must be a positive integer and requires a package other than --workspace, not %s.\n' "$STRESS_COUNT" >&2
+            exit 1
+          fi
+          printf 'commit=%s\n' "${UPSTREAM_COMMIT:-$(cat .github/upstream-commit)}" >> "$GITHUB_OUTPUT"
+          # Only the whole workspace is partitioned, as in upstream: 4 shards on x64 and 6 on arm64, about 20 minutes each.
+          # Every other selection is one shard that runs it all.
+          shard_count=1
+          if [[ "$TEST_PACKAGE" == --workspace && -z "$TEST_FILTER" && -z "$STRESS_COUNT" ]]; then
+            if [[ "$TARGET" == aarch64-pc-windows-msvc ]]; then shard_count=6; else shard_count=4; fi
+          fi
+          printf 'shard_count=%s\nshards=[%s]\n' "$shard_count" "$(seq -s, 1 "$shard_count")" >> "$GITHUB_OUTPUT"
+
+  # A Cargo selection is compiled once, on x64 for both targets as upstream does, and the shards run the archive.
+  # A script selection and a rerun that reuses an earlier archive build nothing.
+  archive:
+    name: Build the test archive - ${{ inputs.target }}
+    needs: plan
+    if: ${{ inputs.package != '' && inputs.archive_run_id == '' }}
+    runs-on: windows-2025
     timeout-minutes: 240
     permissions:
-      actions: read
       contents: read
       packages: write
     env:
       TARGET: ${{ inputs.target }}
-      ARCHIVE_RUN_ID: ${{ inputs.archive_run_id }}
       CARGO_CACHE_PARTS: '1'
       TEST_PACKAGE: ${{ inputs.package }}
       TEST_FILTER: ${{ inputs.filter }}
@@ -104,73 +167,263 @@ jobs:
         uses: ./.github/actions/setup-tooling
 
       - name: Own build state, evidence and temporary directories
-        if: inputs.package != ''
         uses: ./.github/actions/focused-runtime-storage
 
-      - name: Validate the selection and read the pinned upstream commit
-        id: source
-        env:
-          UPSTREAM_COMMIT: ${{ inputs.upstream_commit }}
-        run: |
-          set -euo pipefail
-          git config --global core.longpaths true
-          if [[ -n "$TEST_PACKAGE" && -n "$TEST_SCRIPT" ]] || [[ -z "$TEST_PACKAGE" && -z "$TEST_SCRIPT" ]]; then
-            printf 'Select exactly one of package or script.\n' >&2
-            exit 1
-          fi
-          if [[ -n "$TEST_FILTER" && -z "$TEST_PACKAGE" ]]; then
-            printf 'filter requires package.\n' >&2
-            exit 1
-          fi
-          # Only a red phase uses the count, and the workflow_call inputs, which never run one, leave it empty.
-          if [[ -n "$RED_RESTORE" ]] && ! [[ "$RED_PATCH_COUNT" =~ ^[1-9][0-9]*$ ]]; then
-            printf 'red_patch_count must be a positive integer, not %s.\n' "$RED_PATCH_COUNT" >&2
-            exit 1
-          fi
-          if [[ -n "$STRESS_COUNT" ]] && { ! [[ "$STRESS_COUNT" =~ ^[1-9][0-9]*$ ]] || [[ -z "$TEST_PACKAGE" || "$TEST_PACKAGE" == --workspace ]]; }; then
-            printf 'stress_count must be a positive integer and requires a package other than --workspace, not %s.\n' "$STRESS_COUNT" >&2
-            exit 1
-          fi
-          printf 'commit=%s\n' "${UPSTREAM_COMMIT:-$(cat .github/upstream-commit)}" >> "$GITHUB_OUTPUT"
+      - name: Allow long paths
+        run: git config --global core.longpaths true
 
       - name: Retrieve pristine selected upstream
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           repository: openai/codex
-          ref: ${{ steps.source.outputs.commit }}
+          ref: ${{ needs.plan.outputs.commit }}
           path: upstream
           persist-credentials: false
 
       - name: Apply the selected downstream patches
         env:
           DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+        run: bash .github/scripts/apply-windows-test-patches.sh
+
+      - name: Read upstream's pinned Rust toolchain
+        id: upstream-rust
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' upstream/codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up matching Rust
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: ${{ steps.upstream-rust.outputs.channel }}
+          targets: ${{ env.TARGET }}
+
+      - name: Install upstream's nextest version
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: nextest@0.9.103
+
+      - name: Expose the matching MSVC environment
+        uses: ./upstream/.github/actions/setup-msvc-env
+        with:
+          target: ${{ env.TARGET }}
+
+      # The following steps reproduce upstream's setup-ci effects for Windows. The composite action itself resolves
+      # ./.github/scripts relative to the workspace root, which here holds the restart checkout rather than upstream.
+      - name: Prepare the Dev Drive setup script
+        id: dev-drive-script
+        shell: pwsh
+        run: |
+          # Upstream's script provisions a fixed 64 GB Dev Drive, and the hosted runners filled it holding the
+          # workspace's test binaries twice (the Cargo target and the extracted nextest archive). The VHD is dynamic and
+          # the script creates it under RUNNER_TEMP, so size it from the free space of that volume, keeping room for the
+          # nextest archive written there; the script itself is otherwise run unchanged.
+          $hostDrive = (Split-Path -Qualifier $env:RUNNER_TEMP).TrimEnd(':')
+          $freeGb = [math]::Floor((Get-PSDrive $hostDrive).Free / 1GB)
+          $sizeGb = [math]::Min([math]::Max($freeGb - 16, 64), 240)
+          Write-Output "${hostDrive}: has $freeGb GB free; a provisioned Dev Drive will be $sizeGb GB."
+          $script = Join-Path $env:RUNNER_TEMP 'setup-dev-drive-sized.ps1'
+          $text = Get-Content -Raw ./upstream/.github/scripts/setup-dev-drive.ps1
+          if ($text -notmatch '\$SizeBytes = 64GB') { throw 'upstream setup-dev-drive.ps1 no longer sets a 64GB size' }
+          Set-Content -Path $script -Value ($text -replace '\$SizeBytes = 64GB', "`$SizeBytes = ${sizeGb}GB")
+          "path=$script" >> $env:GITHUB_OUTPUT
+
+      - name: Configure a Dev Drive for the build and temporary directories
+        id: dev-drive
+        continue-on-error: true
+        shell: pwsh
+        env:
+          DEV_DRIVE_SCRIPT: ${{ steps.dev-drive-script.outputs.path }}
+        run: '& $env:DEV_DRIVE_SCRIPT'
+
+      - name: Point Cargo's target directory and the temporary directory at the Dev Drive
+        if: steps.dev-drive.outcome == 'success'
         run: |
           set -euo pipefail
-          read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
-          # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
-          printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"
-          # Upstream's CI tests main, whose workspace version is 0.0.0; a stable tag's release commit changes only that
-          # version. Test the same source, so version strings in snapshots and fixtures match what upstream tested.
-          perl -pi -e '$w = /^\[workspace\.package\]\r?$/ ? 1 : /^\[/ ? 0 : $w;' \
-            -e 's/^version = "[^"]+"(\r?)$/version = "0.0.0"$1/ if $w' upstream/codex-rs/Cargo.toml
-          if ! git -C upstream diff --quiet -- codex-rs/Cargo.toml; then
-            git -C upstream -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
-              commit -q -m "Test with upstream's development version 0.0.0" -- codex-rs/Cargo.toml
-          fi
-          for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
-            sha256sum "$patch"
-            git -C upstream -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
-              am --committer-date-is-author-date "$GITHUB_WORKSPACE/$patch"
-          done
-          if [[ -n "$RED_RESTORE" ]] && (( ${#patch_paths[@]} < RED_PATCH_COUNT )); then
-            printf 'red_patch_count %s exceeds the %s applied patches.\n' "$RED_PATCH_COUNT" "${#patch_paths[@]}" >&2
+          build_root="$CI_BUILD_ROOT"
+          mkdir -p "$build_root/cargo-target" "$build_root/tmp"
+          {
+            printf 'CARGO_TARGET_DIR=%s\n' "$build_root/cargo-target"
+            printf 'TEMP=%s\n' "$build_root/tmp"
+            printf 'TMP=%s\n' "$build_root/tmp"
+            printf 'TMPDIR=%s\n' "$build_root/tmp"
+          } >> "$GITHUB_ENV"
+
+      # As upstream's rust-ci-full-nextest-platform.yml: debug symbols for hundreds of test binaries exhaust the disk.
+      - name: Build the test profile without debug information
+        run: printf 'CARGO_PROFILE_CI_TEST_DEBUG=0\n' >> "$GITHUB_ENV"
+
+      - name: Warn when no Dev Drive is available
+        if: steps.dev-drive.outcome != 'success'
+        run: printf '::warning::Dev Drive setup failed on this runner; building and testing on the default volume.\n'
+
+      # Only a red phase runs tests here, and its tests spawn DotSlash.
+      - name: Configure curl retries for DotSlash
+        if: inputs.red_restore != ''
+        run: mkdir -p "$RUNNER_TEMP/dotslash-curl" && echo retry-all-errors > "$RUNNER_TEMP/dotslash-curl/.curlrc"
+
+      - name: Install DotSlash
+        if: inputs.red_restore != ''
+        uses: facebook/install-dotslash@1e4e7b3e07eaca387acb98f1d4720e0bee8dbb6a # v2
+        env:
+          CURL_HOME: ${{ runner.temp }}/dotslash-curl
+
+      # Some integration tests spawn DotSlash from a stable system path rather than the action-local PATH entry.
+      - name: Make DotSlash available at a stable system path
+        if: inputs.red_restore != ''
+        shell: pwsh
+        run: Copy-Item (Get-Command dotslash).Source -Destination "$env:LOCALAPPDATA\Microsoft\WindowsApps\dotslash.exe"
+
+      - name: Preserve the accepted x86-64 SQLite build configuration
+        if: inputs.target == 'x86_64-pc-windows-msvc'
+        run: echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
+
+      - name: Prepare verified V8 and bundled freshness tooling
+        uses: ./.github/actions/focused-runtime-cache-setup
+
+      - name: Set up the compiled-state cache transport
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          version: 1.3.1
+          url: https://github.com/oras-project/oras/releases/download/v1.3.1/oras_1.3.1_windows_amd64.zip
+          checksum: 8cf69e46f966e592ad36261c05b8f59c02125743b7261c03f6badc3919b40cb0
+
+      - name: Authenticate private GHCR access
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+          printf 'CARGO_CACHE_REPOSITORY=ghcr.io/%s/%s\n' "$owner" "$(cat .github/cargo-cache-package)" >> "$GITHUB_ENV"
+
+      - name: Restore compiled dependencies and test outputs
+        id: cache
+        uses: ./.github/actions/test-compiled-cache-restore
+        with:
+          patches: ${{ inputs.patches }}
+          workflow: .github/workflows/baseline-windows-tests.yml
+          command-line: cargo nextest archive --target ${{ inputs.target }} --cargo-profile ci-test ${{ inputs.package }}
+
+      # The shards run the archive beside these helpers, built from the same source for the same target.
+      - name: Build the Windows sandbox helper binaries and export their paths
+        run: |
+          set -euo pipefail
+          cd upstream/codex-rs
+          cargo build --target "$TARGET" --profile ci-test -p codex-windows-sandbox \
+            --bin codex-windows-sandbox-setup --bin codex-command-runner
+          target_dir="${CARGO_TARGET_DIR:-$PWD/target}/$TARGET/ci-test"
+          mkdir -p "$RUNNER_TEMP/nextest-archive"
+          cp "$target_dir/codex-windows-sandbox-setup.exe" "$target_dir/codex-command-runner.exe" "$RUNNER_TEMP/nextest-archive/"
+          {
+            printf 'CARGO_BIN_EXE_codex_windows_sandbox_setup=%s\n' "$(cygpath -w "$target_dir/codex-windows-sandbox-setup.exe")"
+            printf 'CARGO_BIN_EXE_codex_command_runner=%s\n' "$(cygpath -w "$target_dir/codex-command-runner.exe")"
+          } >> "$GITHUB_ENV"
+
+      - name: Require the selection to fail without the production changes
+        if: inputs.red_restore != ''
+        run: |
+          set -euo pipefail
+          read -r -a red_paths <<< "$RED_RESTORE"
+          git -C upstream checkout "HEAD~$RED_PATCH_COUNT" -- "${red_paths[@]}"
+          set +e
+          # The red phase compiles different sources, so it builds its own archive, and runs its selection as one shard.
+          bash .github/scripts/run-windows-selected-test.sh archive "$RUNNER_TEMP/red-archive/tests.tar.zst" &&
+            bash .github/scripts/run-windows-selected-test.sh run "$RUNNER_TEMP/red-archive/tests.tar.zst"
+          result=$?
+          set -e
+          git -C upstream checkout HEAD -- "${red_paths[@]}"
+          rm -rf "$RUNNER_TEMP/red-archive"
+          if (( result == 0 )); then
+            printf 'The selection passed with the production changes withheld, so it does not prove the patches.\n' >&2
             exit 1
           fi
+          printf 'The selection failed with exit %s without the production changes.\n' "$result"
+
+      - name: Build the test archive with the patches applied
+        run: |
+          set -euo pipefail
+          git -C upstream diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+          bash .github/scripts/run-windows-selected-test.sh archive "$RUNNER_TEMP/nextest-archive/tests.tar.zst"
+
+      # The archive is already compressed, so storing it uncompressed saves the upload and download minutes.
+      - name: Keep the test archive and helpers for the shards and for reruns
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: nextest-archive-${{ inputs.target }}
+          path: ${{ runner.temp }}/nextest-archive
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: ignore
+
+      - name: Save compiled dependencies and test outputs
+        if: ${{ always() && steps.cache.outcome == 'success' }}
+        uses: ./.github/actions/test-compiled-cache-save
+        with:
+          tag: ${{ steps.cache.outputs.tag }}
+          seed-tag: ${{ steps.cache.outputs.seed-tag }}
+          build-succeeded: ${{ hashFiles(format('{0}/nextest-archive/tests.tar.zst', runner.temp)) != '' }}
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
+
+  shard:
+    name: Tests shard ${{ matrix.shard }}/${{ needs.plan.outputs.shard_count }} - ${{ inputs.target }}
+    needs: [plan, archive]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.archive.result == 'success' || needs.archive.result == 'skipped') }}
+    runs-on: ${{ (inputs.target == 'aarch64-pc-windows-msvc' && 'windows-11-arm') || 'windows-2025' }}
+    # A whole-workspace shard targets about 20 minutes; any other selection runs everything in its one shard.
+    timeout-minutes: ${{ needs.plan.outputs.shard_count == '1' && 240 || 90 }}
+    permissions:
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    env:
+      TARGET: ${{ inputs.target }}
+      TEST_PACKAGE: ${{ inputs.package }}
+      TEST_FILTER: ${{ inputs.filter }}
+      TEST_SCRIPT: ${{ inputs.script }}
+      RED_RESTORE: ${{ inputs.red_restore }}
+      RED_PATCH_COUNT: ${{ inputs.red_patch_count }}
+      STRESS_COUNT: ${{ inputs.stress_count }}
+      SHARD_INDEX: ${{ matrix.shard }}
+      SHARD_COUNT: ${{ needs.plan.outputs.shard_count }}
+      CARGO_INCREMENTAL: '0'
+      RUST_BACKTRACE: '1'
+      # Keep panic backtraces without changing the CLI errors that tests assert, as upstream's nextest job does.
+      RUST_LIB_BACKTRACE: '0'
+      RUST_MIN_STACK: '8388608'
+      GIT_REDIRECT_STDIN: NUL
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Allow long paths
+        run: git config --global core.longpaths true
+
+      - name: Retrieve pristine selected upstream
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ needs.plan.outputs.commit }}
+          path: upstream
+          persist-credentials: false
+
+      - name: Apply the selected downstream patches
+        env:
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+        run: bash .github/scripts/apply-windows-test-patches.sh
 
       - name: Read upstream's pinned Rust toolchain
         if: inputs.package != ''
         id: upstream-rust
-        shell: bash
         run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' upstream/codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
 
       - name: Set up matching Rust
@@ -235,14 +488,9 @@ jobs:
             printf 'TMPDIR=%s\n' "$build_root/tmp"
           } >> "$GITHUB_ENV"
 
-      # As upstream's rust-ci-full-nextest-platform.yml: debug symbols for hundreds of test binaries exhaust the disk.
-      - name: Build the test profile without debug information
-        if: inputs.package != ''
-        run: printf 'CARGO_PROFILE_CI_TEST_DEBUG=0\n' >> "$GITHUB_ENV"
-
       - name: Warn when no Dev Drive is available
         if: inputs.package != '' && steps.dev-drive.outcome != 'success'
-        run: printf '::warning::Dev Drive setup failed on this runner; building and testing on the default volume.\n'
+        run: printf '::warning::Dev Drive setup failed on this runner; testing on the default volume.\n'
 
       - name: Configure curl retries for DotSlash
         if: inputs.package != ''
@@ -260,40 +508,12 @@ jobs:
         shell: pwsh
         run: Copy-Item (Get-Command dotslash).Source -Destination "$env:LOCALAPPDATA\Microsoft\WindowsApps\dotslash.exe"
 
-      - name: Preserve the accepted x86-64 SQLite build configuration
-        if: inputs.package != '' && inputs.target == 'x86_64-pc-windows-msvc'
-        run: echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
-
-      - name: Prepare verified V8 and bundled freshness tooling
-        if: inputs.package != ''
-        uses: ./.github/actions/focused-runtime-cache-setup
-
-      - name: Set up the compiled-state cache transport
-        if: inputs.package != ''
-        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+      - name: Download the test archive and helpers
+        if: inputs.package != '' && inputs.archive_run_id == ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          version: 1.3.1
-          url: https://github.com/oras-project/oras/releases/download/v1.3.1/oras_1.3.1_windows_amd64.zip
-          checksum: 8cf69e46f966e592ad36261c05b8f59c02125743b7261c03f6badc3919b40cb0
-
-      - name: Authenticate private GHCR access
-        if: inputs.package != ''
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          printf '%s' "$GHCR_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
-          printf 'CARGO_CACHE_REPOSITORY=ghcr.io/%s/%s\n' "$owner" "$(cat .github/cargo-cache-package)" >> "$GITHUB_ENV"
-
-      - name: Restore compiled dependencies and test outputs
-        id: cache
-        if: inputs.package != ''
-        uses: ./.github/actions/test-compiled-cache-restore
-        with:
-          patches: ${{ inputs.patches }}
-          workflow: .github/workflows/baseline-windows-tests.yml
-          command-line: cargo nextest archive --target ${{ inputs.target }} --cargo-profile ci-test ${{ inputs.package }}
+          name: nextest-archive-${{ inputs.target }}
+          path: ${{ runner.temp }}/nextest-archive
 
       - name: Download the earlier test archive
         if: inputs.package != '' && inputs.archive_run_id != ''
@@ -305,7 +525,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Export the archived sandbox helper paths
-        if: inputs.package != '' && inputs.archive_run_id != ''
+        if: inputs.package != ''
         run: |
           set -euo pipefail
           {
@@ -313,158 +533,136 @@ jobs:
             printf 'CARGO_BIN_EXE_codex_command_runner=%s\n' "$(cygpath -w "$RUNNER_TEMP/nextest-archive/codex-command-runner.exe")"
           } >> "$GITHUB_ENV"
 
-      - name: Build the Windows sandbox helper binaries and export their paths
-        if: inputs.package != '' && inputs.archive_run_id == ''
-        run: |
-          set -euo pipefail
-          cd upstream/codex-rs
-          cargo build --target "$TARGET" --profile ci-test -p codex-windows-sandbox \
-            --bin codex-windows-sandbox-setup --bin codex-command-runner
-          target_dir="${CARGO_TARGET_DIR:-$PWD/target}/$TARGET/ci-test"
-          # Keep copies beside the test archive so a rerun can reuse both.
-          mkdir -p "$RUNNER_TEMP/nextest-archive"
-          cp "$target_dir/codex-windows-sandbox-setup.exe" "$target_dir/codex-command-runner.exe" "$RUNNER_TEMP/nextest-archive/"
-          {
-            printf 'CARGO_BIN_EXE_codex_windows_sandbox_setup=%s\n' "$(cygpath -w "$target_dir/codex-windows-sandbox-setup.exe")"
-            printf 'CARGO_BIN_EXE_codex_command_runner=%s\n' "$(cygpath -w "$target_dir/codex-command-runner.exe")"
-          } >> "$GITHUB_ENV"
-
-      - name: Write the selected test command
-        run: |
-          set -euo pipefail
-          # Keep passing tests' output in the JUnit report, where the skip check reads it.
-          printf '%s\n' '[profile.default.junit]' 'store-success-output = true' 'store-failure-output = true' \
-            > "$RUNNER_TEMP/nextest-keep-output.toml"
-          {
-            printf '#!/usr/bin/env bash\nset -euo pipefail\n'
-            if [[ -n "$TEST_SCRIPT" ]]; then
-              printf 'cd "%s/upstream"\n' "$GITHUB_WORKSPACE"
-              printf 'pwsh -NoProfile -NonInteractive -File %q\n' "$TEST_SCRIPT"
-            else
-              printf 'cd "%s/upstream/codex-rs"\n' "$GITHUB_WORKSPACE"
-              printf 'archive=${1:?archive path}\n'
-              build_args=(cargo nextest archive --target "$TARGET" --cargo-profile ci-test)
-              run_args=(cargo nextest run --archive-file ARCHIVE_WINDOWS --workspace-remap "$(cygpath -w "$GITHUB_WORKSPACE/upstream/codex-rs")"
-                --test-threads 8 --no-fail-fast
-                --tool-config-file "keep-output:$(cygpath -w "$RUNNER_TEMP/nextest-keep-output.toml")")
-              if [[ "$TEST_PACKAGE" == --workspace ]]; then
-                # voice-host links GStreamer through pkg-config, which hosted Windows runners cannot provide; the
-                # native voice runtime is covered by the Bazel and release builds.
-                build_args+=(--workspace --exclude codex-voice-host)
-              else
-                read -r -a packages <<< "$TEST_PACKAGE"
-                for package in "${packages[@]}"; do build_args+=(-p "$package"); done
-              fi
-              if [[ -n "$TEST_FILTER" ]]; then run_args+=(-E "$TEST_FILTER"); fi
-              printf 'archive_windows=$(cygpath -w "$archive")\n'
-              # Build the tests once into an archive; a rerun that supplies the archive skips the build.
-              printf 'if [[ ! -f "$archive" ]]; then\n  mkdir -p "$(dirname "$archive")"\n  '
-              printf '%q ' "${build_args[@]}"
-              printf -- '--archive-file "$archive_windows"\nfi\n'
-              if [[ -n "$STRESS_COUNT" ]]; then
-                # nextest 0.9.103 exits with only the last stress iteration's status when fail-fast is off, so a stress
-                # run keeps fail-fast: the first failing iteration ends the run with a failing status.
-                filtered=()
-                for argument in "${run_args[@]}"; do [[ "$argument" == --no-fail-fast ]] || filtered+=("$argument"); done
-                run_args=("${filtered[@]}" --stress-count "$STRESS_COUNT" --retries 0)
-                # Load every CPU only while the tests run, not while the archive builds.
-                printf 'for _ in $(seq "$(nproc)"); do yes > /dev/null & done\n'
-                printf "trap 'kill \$(jobs -p) 2>/dev/null || true' EXIT\n"
-              fi
-              printf '%q ' "${run_args[@]}" | sed 's/ARCHIVE_WINDOWS/"$archive_windows"/'
-              printf '\n'
-            fi
-          } > "$RUNNER_TEMP/selected-test.sh"
-          cat "$RUNNER_TEMP/selected-test.sh"
-
-      - name: Require the selection to fail without the production changes
-        if: inputs.red_restore != ''
+      # A Cargo selection's red phase runs in the archive job, which builds; a script selection needs no build.
+      - name: Require the script to fail without the production changes
+        if: inputs.red_restore != '' && inputs.script != ''
         run: |
           set -euo pipefail
           read -r -a red_paths <<< "$RED_RESTORE"
           git -C upstream checkout "HEAD~$RED_PATCH_COUNT" -- "${red_paths[@]}"
           set +e
-          # The red phase compiles different sources, so it builds its own archive.
-          bash "$RUNNER_TEMP/selected-test.sh" "$RUNNER_TEMP/red-archive/tests.tar.zst"
+          bash .github/scripts/run-windows-selected-test.sh run
           result=$?
           set -e
           git -C upstream checkout HEAD -- "${red_paths[@]}"
-          rm -rf "$RUNNER_TEMP/red-archive"
           if (( result == 0 )); then
             printf 'The selection passed with the production changes withheld, so it does not prove the patches.\n' >&2
             exit 1
           fi
           printf 'The selection failed with exit %s without the production changes.\n' "$result"
 
-      - name: Run the selection with the patches applied
+      - name: Run the shard with the patches applied
         id: tests
         run: |
           set -euo pipefail
           git -C upstream diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
           set +e
-          bash "$RUNNER_TEMP/selected-test.sh" "$RUNNER_TEMP/nextest-archive/tests.tar.zst"
+          bash .github/scripts/run-windows-selected-test.sh run "$RUNNER_TEMP/nextest-archive/tests.tar.zst"
           status=$?
           set -e
           # Nextest exits 100 when tests failed. A whole-workspace run is judged by the comparison with the unpatched
-          # baseline below (an unpatched run records that baseline), so those failures alone do not fail this step.
-          # Any other failure, such as a full disk or a build error, does.
+          # baseline in the report job (an unpatched run records that baseline), so those failures alone do not fail
+          # this step. Any other failure, such as a full disk or a build error, does.
           if [[ "$status" == 100 && "$TEST_PACKAGE" == --workspace && -z "$TEST_FILTER" ]]; then
             printf 'Nextest reported failing tests; the baseline comparison decides the outcome.\n'
             exit 0
           fi
           exit "$status"
 
-      - name: Keep the test archive for reruns
-        if: ${{ !cancelled() && inputs.package != '' && inputs.archive_run_id == '' }}
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
-        with:
-          name: nextest-archive-${{ inputs.target }}
-          path: ${{ runner.temp }}/nextest-archive
-          retention-days: 3
-          if-no-files-found: ignore
-
-      - name: Save compiled dependencies and test outputs
-        if: ${{ always() && inputs.package != '' && inputs.archive_run_id == '' && steps.cache.outcome == 'success' }}
-        uses: ./.github/actions/test-compiled-cache-save
-        with:
-          tag: ${{ steps.cache.outputs.tag }}
-          seed-tag: ${{ steps.cache.outputs.seed-tag }}
-          build-succeeded: ${{ hashFiles(format('{0}/nextest-archive/tests.tar.zst', runner.temp)) != '' }}
-
-      - name: Fail on tests that skipped themselves for missing setup
+      - name: Collect the nextest reports
         if: ${{ !cancelled() }}
-        env:
-          TESTS_OUTCOME: ${{ steps.tests.outcome }}
         run: |
           set -euo pipefail
-          reports=()
+          out="$RUNNER_TEMP/junit-out"
+          mkdir -p "$out"
+          count=0
           # An archive run stores its reports under the extraction directory, wherever nextest placed it.
-          while IFS= read -r report; do reports+=("$report"); done < <(
+          while IFS= read -r report; do
+            count=$((count + 1))
+            mkdir -p "$out/$count"
+            cp "$report" "$out/$count/junit.xml"
+          done < <(
             find "$(cygpath -u "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/upstream/codex-rs/target}")" "$GITHUB_WORKSPACE/upstream/codex-rs/target" "$(cygpath -u "$RUNNER_TEMP")" \
-              -path '*/nextest/*' -name junit.xml 2>/dev/null | sort -u)
-          printf 'Found %s nextest report(s).\n' "${#reports[@]}"
+              -path '*/nextest/*' -name junit.xml -not -path "$out/*" 2>/dev/null | sort -u)
+          printf 'Collected %s nextest report(s).\n' "$count"
+
+      - name: Upload the nextest JUnit reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: nextest-junit-windows-${{ inputs.target }}-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/junit-out
+          retention-days: 3
+          if-no-files-found: warn
+
+  report:
+    name: Merge the shard reports and compare with the baseline - ${{ inputs.target }}
+    needs: [plan, archive, shard]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      TARGET: ${{ inputs.target }}
+      SHARD_COUNT: ${{ needs.plan.outputs.shard_count }}
+      EVIDENCE: ${{ github.workspace }}/windows-tests-evidence
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Set up the Java tooling runtime
+        uses: ./.github/actions/setup-tooling
+
+      # A selection that wrote no report leaves nothing to download; the checks below decide whether that matters.
+      - name: Download the shards' nextest reports
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: nextest-junit-windows-${{ inputs.target }}-shard-*
+          path: ${{ runner.temp }}/shard-reports
+
+      - name: Fail on tests that skipped themselves for missing setup
+        env:
+          TESTS_OUTCOME: ${{ needs.shard.result }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          reports=()
+          while IFS= read -r report; do reports+=("$report"); done < <(find "$RUNNER_TEMP/shard-reports" -name junit.xml 2>/dev/null | sort -u)
+          printf 'Found %s nextest report(s) from %s shard(s).\n' "${#reports[@]}" "$SHARD_COUNT"
           if (( ${#reports[@]} == 0 )); then
             # A build that failed before nextest ran leaves nothing to check; a passing test step with no reports would be a vacuous check.
             if [[ "$TESTS_OUTCOME" == success ]]; then printf '::error::The tests passed but wrote no nextest report.\n'; exit 1; fi
             printf 'The test step ended %s before any report was written; nothing to check.\n' "$TESTS_OUTCOME"
             exit 0
           fi
-          bash "$CODEX_TOOLING" check-test-skips --platform windows "${reports[@]}"
+          # Every shard that passed wrote its report; a missing one would leave its tests out of both checks.
+          shards_reporting="$(find "$RUNNER_TEMP/shard-reports" -mindepth 1 -maxdepth 1 -type d | wc -l)"
+          if [[ "$TESTS_OUTCOME" == success ]] && (( shards_reporting < SHARD_COUNT )); then
+            printf '::error::Only %s of %s shards uploaded a nextest report.\n' "$shards_reporting" "$SHARD_COUNT"
+            exit 1
+          fi
+          printf '%s\n' "${reports[@]}" > "$EVIDENCE/reports.txt"
+          bash "$CODEX_TOOLING" check-test-skips --platform windows "${reports[@]}" 2>&1 | tee "$EVIDENCE/skip-check.log"
 
       - name: Compare the failures with the committed unpatched baseline
         if: ${{ !cancelled() && inputs.package == '--workspace' && inputs.filter == '' }}
         env:
-          UPSTREAM_COMMIT: ${{ steps.source.outputs.commit }}
+          UPSTREAM_COMMIT: ${{ needs.plan.outputs.commit }}
           PATCHES: ${{ inputs.patches }}
-          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+          TESTS_OUTCOME: ${{ needs.shard.result }}
         run: |
           set -euo pipefail
           platform="windows-${TARGET%%-*}"
+          mkdir -p "$EVIDENCE"
           reports=()
-          # An archive run stores its reports under the extraction directory, wherever nextest placed it.
-          while IFS= read -r report; do reports+=("$report"); done < <(
-            find "$(cygpath -u "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/upstream/codex-rs/target}")" "$GITHUB_WORKSPACE/upstream/codex-rs/target" "$(cygpath -u "$RUNNER_TEMP")" \
-              -path '*/nextest/*' -name junit.xml 2>/dev/null | sort -u)
+          while IFS= read -r report; do reports+=("$report"); done < <(find "$RUNNER_TEMP/shard-reports" -name junit.xml 2>/dev/null | sort -u)
           printf 'Found %s nextest report(s).\n' "${#reports[@]}"
           if (( ${#reports[@]} == 0 )); then
             # A build that failed before nextest ran leaves nothing to check; a passing test step with no reports would be a vacuous check.
@@ -476,10 +674,10 @@ jobs:
             # An unpatched run is the source of a baseline: write it for committing under docs/test-baselines.
             mkdir -p "$RUNNER_TEMP/baseline"
             bash "$CODEX_TOOLING" compare-test-baseline --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
-              --write-baseline --output "$RUNNER_TEMP/baseline/$platform.json" "${reports[@]}"
+              --write-baseline --output "$RUNNER_TEMP/baseline/$platform.json" "${reports[@]}" 2>&1 | tee "$EVIDENCE/baseline-comparison.log"
           else
             bash "$CODEX_TOOLING" compare-test-baseline --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
-              --baseline-dir docs/test-baselines "${reports[@]}"
+              --baseline-dir docs/test-baselines "${reports[@]}" 2>&1 | tee "$EVIDENCE/baseline-comparison.log"
           fi
 
       - name: Upload the unpatched baseline
@@ -491,7 +689,27 @@ jobs:
           retention-days: 3
           if-no-files-found: ignore
 
+      - name: Upload the report evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: windows-tests-evidence-${{ inputs.target }}
+          path: ${{ env.EVIDENCE }}
+          retention-days: 3
+          if-no-files-found: ignore
+
+      # The checks above treat a build or shard that ended before any report as having nothing to check; the job still fails.
+      - name: Fail when planning, the archive build or a shard failed
+        if: ${{ !cancelled() }}
+        env:
+          PLAN_RESULT: ${{ needs.plan.result }}
+          ARCHIVE_RESULT: ${{ needs.archive.result }}
+          SHARD_RESULT: ${{ needs.shard.result }}
+        run: |
+          set -euo pipefail
+          printf 'plan: %s; archive: %s; shards: %s\n' "$PLAN_RESULT" "$ARCHIVE_RESULT" "$SHARD_RESULT"
+          [[ "$PLAN_RESULT" == success && ( "$ARCHIVE_RESULT" == success || "$ARCHIVE_RESULT" == skipped ) && "$SHARD_RESULT" == success ]]
+
       - name: Remove the job-owned tooling runtime
         if: always()
-        shell: bash
         run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
