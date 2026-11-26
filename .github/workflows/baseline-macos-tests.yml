@@ -1,8 +1,11 @@
 name: Stable upstream macOS tests
 
 # Runs upstream's Cargo nextest suite on native macOS (aarch64 and x86_64) against the pinned upstream with downstream
-# patches applied, the way upstream's macOS nextest job does. One job per architecture: hosted macOS runner capacity is
-# capped, so the suite is not sharded. A red phase can first restore production files to their state before the patches
+# patches applied, the way upstream's rust-ci-full-nextest-platform.yml does: one job per architecture builds the test
+# archive once and uploads it, four shard jobs per architecture run `--partition hash:N/4` of it, and one job per
+# architecture merges the shards' JUnit reports and runs the skip check and the baseline comparison once. Hosted macOS
+# runner capacity is limited, so the suite is not split further. A selection by package or filter, and a stress run, use
+# a single shard. A red phase, in the archive job, can first restore production files to their state before the patches
 # under test and require the same selection to fail, so the patched pass proves the patches fix it.
 
 on:
@@ -51,12 +54,80 @@ on:
         type: string
         default: ""
 
+
 permissions:
   contents: read
 
+env:
+  TEST_PACKAGE: ${{ inputs.package }}
+  TEST_FILTER: ${{ inputs.filter }}
+  STRESS_COUNT: ${{ inputs.stress_count }}
+  CARGO_INCREMENTAL: '0'
+  RUST_BACKTRACE: '1'
+  # Keep panic backtraces without changing the CLI errors that tests assert, as upstream's nextest job does.
+  RUST_LIB_BACKTRACE: '0'
+  RUST_MIN_STACK: '8388608'
+  NEXTEST_STATUS_LEVEL: leak
+
 jobs:
-  test:
-    name: nextest - ${{ matrix.target }}
+  plan:
+    name: Plan the macOS nextest run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      commit: ${{ steps.plan.outputs.commit }}
+      shards: ${{ steps.plan.outputs.shards }}
+      shard_count: ${{ steps.plan.outputs.shard_count }}
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Validate the selection and choose the shards
+        id: plan
+        env:
+          UPSTREAM_COMMIT: ${{ inputs.upstream_commit }}
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+          RED_RESTORE: ${{ inputs.red_restore }}
+          RED_PATCH_COUNT: ${{ inputs.red_patch_count }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${RED_PATCH_COUNT:-1}" =~ ^[1-9][0-9]*$ ]]; then
+            printf 'red_patch_count must be a positive integer, not %s.\n' "$RED_PATCH_COUNT" >&2
+            exit 1
+          fi
+          if [[ "$TEST_PACKAGE" == *--workspace* && "$TEST_PACKAGE" != --workspace ]]; then
+            printf 'Use --workspace alone, not with other packages.\n' >&2
+            exit 1
+          fi
+          if [[ -n "$STRESS_COUNT" ]] && { ! [[ "$STRESS_COUNT" =~ ^[1-9][0-9]*$ ]] || [[ -z "$TEST_PACKAGE" || "$TEST_PACKAGE" == --workspace ]]; }; then
+            printf 'stress_count must be a positive integer and requires a package other than --workspace, not %s.\n' "$STRESS_COUNT" >&2
+            exit 1
+          fi
+          patch_paths=()
+          read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
+          if [[ -n "$RED_RESTORE" ]] && (( ${#patch_paths[@]} < ${RED_PATCH_COUNT:-1} )); then
+            printf 'red_patch_count %s exceeds the %s applied patches.\n' "${RED_PATCH_COUNT:-1}" "${#patch_paths[@]}" >&2
+            exit 1
+          fi
+          printf 'commit=%s\n' "${UPSTREAM_COMMIT:-$(cat .github/upstream-commit)}" >> "$GITHUB_OUTPUT"
+          # The whole suite is split into four partitions of nextest's stable test hash; any narrower selection is
+          # small enough for one job, and a stress run must see all of its selected tests in one run.
+          if [[ ( -z "$TEST_PACKAGE" || "$TEST_PACKAGE" == --workspace ) && -z "$TEST_FILTER" ]]; then
+            printf 'shards=[1,2,3,4]\nshard_count=4\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'shards=[1]\nshard_count=1\n' >> "$GITHUB_OUTPUT"
+          fi
+
+  # Builds each architecture's test archive once for its shards. A rerun that names an earlier run's archive skips the
+  # build, but a red phase still needs this job, which builds its own archive from the withheld sources.
+  archive:
+    name: Build nextest archive - ${{ matrix.target }}
+    needs: plan
+    if: ${{ inputs.archive_run_id == '' || inputs.red_restore != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -73,19 +144,9 @@ jobs:
       packages: write
     env:
       TARGET: ${{ matrix.target }}
-      ARCHIVE_RUN_ID: ${{ inputs.archive_run_id }}
       CARGO_CACHE_PARTS: '1'
-      TEST_PACKAGE: ${{ inputs.package }}
-      TEST_FILTER: ${{ inputs.filter }}
       RED_RESTORE: ${{ inputs.red_restore }}
       RED_PATCH_COUNT: ${{ inputs.red_patch_count }}
-      STRESS_COUNT: ${{ inputs.stress_count }}
-      CARGO_INCREMENTAL: '0'
-      RUST_BACKTRACE: '1'
-      # Keep panic backtraces without changing the CLI errors that tests assert, as upstream's nextest job does.
-      RUST_LIB_BACKTRACE: '0'
-      RUST_MIN_STACK: '8388608'
-      NEXTEST_STATUS_LEVEL: leak
     defaults:
       run:
         shell: bash
@@ -101,41 +162,23 @@ jobs:
         with:
           tooling-root: ${{ github.workspace }}/restart-metadata
 
-      - name: Validate the selection and preserve restart inputs outside the source checkout
-        id: inputs
+      - name: Preserve restart inputs outside the source checkout
         env:
-          UPSTREAM_COMMIT: ${{ inputs.upstream_commit }}
+          UPSTREAM_COMMIT: ${{ needs.plan.outputs.commit }}
         run: |
           set -euo pipefail
-          if ! [[ "${RED_PATCH_COUNT:-1}" =~ ^[1-9][0-9]*$ ]]; then
-            printf 'red_patch_count must be a positive integer, not %s.\n' "$RED_PATCH_COUNT" >&2
-            exit 1
-          fi
-          if [[ "$TEST_PACKAGE" == *--workspace* && "$TEST_PACKAGE" != --workspace ]]; then
-            printf 'Use --workspace alone, not with other packages.\n' >&2
-            exit 1
-          fi
-          if [[ -n "$STRESS_COUNT" ]] && { ! [[ "$STRESS_COUNT" =~ ^[1-9][0-9]*$ ]] || [[ -z "$TEST_PACKAGE" || "$TEST_PACKAGE" == --workspace ]]; }; then
-            printf 'stress_count must be a positive integer and requires a package other than --workspace, not %s.\n' "$STRESS_COUNT" >&2
-            exit 1
-          fi
           evidence="$RUNNER_TEMP/baseline-macos-nextest-evidence"
           mkdir -p "$evidence"
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
-          if [[ -d restart-metadata/docs/test-baselines ]]; then
-            cp -R restart-metadata/docs/test-baselines "$RUNNER_TEMP/test-baselines"
-          fi
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
-          commit="${UPSTREAM_COMMIT:-$(cat restart-metadata/.github/upstream-commit)}"
-          printf '%s\n' "$commit" > "$evidence/upstream-commit"
-          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$UPSTREAM_COMMIT" > "$evidence/upstream-commit"
 
       - name: Retrieve the exact stable upstream source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           repository: openai/codex
-          ref: ${{ steps.inputs.outputs.commit }}
+          ref: ${{ needs.plan.outputs.commit }}
           persist-credentials: false
 
       # The upstream checkout cleaned the workspace; check the restart repository out again beside it for its local
@@ -154,35 +197,9 @@ jobs:
           test -z "$(git status --porcelain)"
 
       - name: Apply the selected downstream patches
-        id: patched
         env:
           DOWNSTREAM_PATCHES: ${{ inputs.patches }}
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-macos-nextest-evidence"
-          : > "$evidence/applied-patches.txt"
-          patch_paths=()
-          read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
-          if [[ -n "$RED_RESTORE" ]] && (( ${#patch_paths[@]} < ${RED_PATCH_COUNT:-1} )); then
-            printf 'red_patch_count %s exceeds the %s applied patches.\n' "${RED_PATCH_COUNT:-1}" "${#patch_paths[@]}" >&2
-            exit 1
-          fi
-          # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
-          printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"
-          # Upstream's CI tests main, whose workspace version is 0.0.0; a stable tag's release commit changes only that
-          # version. Test the same source, so version strings in snapshots and fixtures match what upstream tested.
-          perl -pi -e '$w = /^\[workspace\.package\]\r?$/ ? 1 : /^\[/ ? 0 : $w;' \
-            -e 's/^version = "[^"]+"(\r?)$/version = "0.0.0"$1/ if $w' codex-rs/Cargo.toml
-          if ! git diff --quiet -- codex-rs/Cargo.toml; then
-            git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
-              commit -q -m "Test with upstream's development version 0.0.0" -- codex-rs/Cargo.toml
-          fi
-          for patch in ${patch_paths[@]+"${patch_paths[@]}"}; do
-            printf '%s  %s\n' "$(shasum -a 256 < "$RUNNER_TEMP/downstream-$patch" | cut -d' ' -f1)" "$patch" | tee -a "$evidence/applied-patches.txt"
-            git -c user.name='Gili Tzabari' -c user.email='cowwoc2020@gmail.com' \
-              am --committer-date-is-author-date "$RUNNER_TEMP/downstream-$patch"
-          done
-          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: bash restart-metadata/.github/scripts/macos-nextest.sh apply-patches
 
       - name: Prepare upstream's native test host
         uses: ./.github/actions/setup-ci
@@ -290,61 +307,6 @@ jobs:
           workflow: .github/workflows/baseline-macos-tests.yml
           command-line: cargo nextest archive --target ${{ matrix.target }} --cargo-profile ci-test ${{ inputs.package }}
 
-      - name: Download the earlier test archive
-        if: inputs.archive_run_id != ''
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: nextest-archive-${{ matrix.target }}
-          path: ${{ runner.temp }}/nextest-archive
-          run-id: ${{ inputs.archive_run_id }}
-          github-token: ${{ github.token }}
-
-      - name: Write the selected test command
-        run: |
-          set -euo pipefail
-          # Keep passing tests' output in the JUnit report, where the skip check reads it.
-          printf '%s\n' '[profile.default.junit]' 'store-success-output = true' 'store-failure-output = true' \
-            > "$RUNNER_TEMP/nextest-keep-output.toml"
-          build_args=(cargo nextest archive --target "$TARGET" --cargo-profile ci-test)
-          run_args=(cargo nextest run --archive-file ARCHIVE --workspace-remap "$GITHUB_WORKSPACE/codex-rs"
-            --tool-config-file "keep-output:$RUNNER_TEMP/nextest-keep-output.toml")
-          if [[ -n "$STRESS_COUNT" ]]; then
-            # Without fail-fast, nextest exits with only the last stress iteration's status, so a failure in an
-            # earlier iteration would pass the run.
-            run_args+=(--stress-count "$STRESS_COUNT" --retries 0)
-          else
-            run_args+=(--no-fail-fast)
-          fi
-          if [[ -z "$TEST_PACKAGE" || "$TEST_PACKAGE" == --workspace ]]; then
-            build_args+=(--workspace)
-          else
-            read -r -a packages <<< "$TEST_PACKAGE"
-            for package in "${packages[@]}"; do build_args+=(-p "$package"); done
-          fi
-          if [[ -n "$TEST_FILTER" ]]; then run_args+=(-E "$TEST_FILTER"); fi
-          {
-            printf '#!/usr/bin/env bash\nset -euo pipefail\n'
-            printf 'cd "%s/codex-rs"\narchive=${1:?archive path}\n' "$GITHUB_WORKSPACE"
-            # Build the tests once into an archive; a rerun that supplies the archive skips the build.
-            printf 'if [[ ! -f "$archive" ]]; then\n  mkdir -p "$(dirname "$archive")"\n  '
-            printf '%q ' "${build_args[@]}"
-            printf -- '--archive-file "$archive"\n'
-            # The archive carries every test executable, and extracting it for the run needs that space again. Free
-            # the executables the build left in the target directory (library outputs stay for the compiled-state
-            # cache); the aarch64 runner otherwise ran out of disk extracting the archive.
-            printf '  find %q/%s/ci-test -maxdepth 2 -type f -perm -u+x ! -name "*.*" -delete\n' \
-              "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/codex-rs/target}" "$TARGET"
-            printf 'fi\n'
-            if [[ -n "$STRESS_COUNT" ]]; then
-              # Load every CPU only while the tests run, not while the archive builds.
-              printf 'for _ in $(seq "$(sysctl -n hw.logicalcpu)"); do yes > /dev/null & done\n'
-              printf "trap 'kill \$(jobs -p) 2>/dev/null || true' EXIT\n"
-            fi
-            printf '%q ' "${run_args[@]}" | sed 's/ARCHIVE/"$archive"/'
-            printf '\n'
-          } > "$RUNNER_TEMP/selected-test.sh"
-          cat "$RUNNER_TEMP/selected-test.sh"
-
       - name: Require the selection to fail without the production changes
         if: inputs.red_restore != ''
         run: |
@@ -352,8 +314,9 @@ jobs:
           read -r -a red_paths <<< "$RED_RESTORE"
           git checkout "HEAD~$RED_PATCH_COUNT" -- "${red_paths[@]}"
           set +e
-          # The red phase compiles different sources, so it builds its own archive.
-          bash "$RUNNER_TEMP/selected-test.sh" "$RUNNER_TEMP/red-archive/tests.tar.zst"
+          # The red phase compiles different sources, so it builds and runs its own archive, unsharded.
+          bash restart-metadata/.github/scripts/macos-nextest.sh build "$RUNNER_TEMP/red-archive/tests.tar.zst" &&
+            bash restart-metadata/.github/scripts/macos-nextest.sh run "$RUNNER_TEMP/red-archive/tests.tar.zst"
           result=$?
           set -e
           git checkout HEAD -- "${red_paths[@]}"
@@ -364,32 +327,24 @@ jobs:
           fi
           printf 'The selection failed with exit %s without the production changes.\n' "$result"
 
-      - name: Run the selection
-        id: tests
+      - name: Build the test archive
+        if: inputs.archive_run_id == ''
         run: |
           set -euo pipefail
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
-          set +e
-          bash "$RUNNER_TEMP/selected-test.sh" "$RUNNER_TEMP/nextest-archive/tests.tar.zst" 2>&1 | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/nextest.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          # Nextest exits 100 when tests failed. A whole-workspace run is judged by the comparison with the unpatched
-          # baseline below (an unpatched run records that baseline), so those failures alone do not fail this step.
-          # Any other failure, such as a full disk or a build error, does.
-          if [[ "$status" == 100 && ( -z "$TEST_PACKAGE" || "$TEST_PACKAGE" == --workspace ) && -z "$TEST_FILTER" ]]; then
-            printf 'Nextest reported failing tests; the baseline comparison decides the outcome.\n'
-            exit 0
-          fi
-          exit "$status"
+          bash restart-metadata/.github/scripts/macos-nextest.sh build "$RUNNER_TEMP/nextest-archive/tests.tar.zst"
 
-      - name: Keep the test archive for reruns
-        if: ${{ !cancelled() && inputs.archive_run_id == '' }}
+      # The archive is already zstd-compressed, so storing it uncompressed in the artifact saves the time of a second
+      # pass over several gigabytes on the upload here and on the download in every shard.
+      - name: Keep the test archive for the shards and for reruns
+        if: ${{ success() && inputs.archive_run_id == '' }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: nextest-archive-${{ matrix.target }}
           path: ${{ runner.temp }}/nextest-archive
           retention-days: 3
-          if-no-files-found: ignore
+          compression-level: 0
+          if-no-files-found: error
 
       - name: Save compiled dependencies and test outputs
         if: ${{ always() && inputs.archive_run_id == '' && steps.cache.outcome == 'success' }}
@@ -400,33 +355,325 @@ jobs:
           seed-tag: ${{ steps.cache.outputs.seed-tag }}
           build-succeeded: ${{ hashFiles(format('{0}/nextest-archive/tests.tar.zst', runner.temp)) != '' }}
 
+      - name: Retain archive evidence for three days
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-macos-nextest-archive-${{ matrix.target }}
+          path: ${{ runner.temp }}/baseline-macos-nextest-evidence
+          retention-days: 3
+          if-no-files-found: warn
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
+
+  shard:
+    name: nextest - ${{ matrix.target }} - shard ${{ matrix.shard }}/${{ needs.plan.outputs.shard_count }}
+    needs: [plan, archive]
+    # The archive job is skipped when an earlier run's archive is reused without a red phase.
+    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.archive.result == 'success' || needs.archive.result == 'skipped') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    permissions:
+      actions: read
+      contents: read
+    env:
+      TARGET: ${{ matrix.target }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Set up the Java tooling runtime
+        uses: ./restart-metadata/.github/actions/setup-tooling
+        with:
+          tooling-root: ${{ github.workspace }}/restart-metadata
+
+      - name: Preserve restart inputs outside the source checkout
+        env:
+          UPSTREAM_COMMIT: ${{ needs.plan.outputs.commit }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-nextest-evidence"
+          mkdir -p "$evidence"
+          # The upstream checkout below cleans the workspace, removing restart-metadata.
+          cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf '%s\n' "$UPSTREAM_COMMIT" > "$evidence/upstream-commit"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ needs.plan.outputs.commit }}
+          persist-credentials: false
+
+      - name: Retrieve restart inputs beside the upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Verify pristine upstream source identity
+        run: |
+          set -euo pipefail
+          printf '/restart-metadata/\n' >> .git/info/exclude
+          test "$(git rev-parse HEAD)" = "$(cat "$RUNNER_TEMP/baseline-macos-nextest-evidence/upstream-commit")"
+          test -z "$(git status --porcelain)"
+
+      - name: Apply the selected downstream patches
+        env:
+          DOWNSTREAM_PATCHES: ${{ inputs.patches }}
+        run: bash restart-metadata/.github/scripts/macos-nextest.sh apply-patches
+
+      - name: Prepare upstream's native test host
+        uses: ./.github/actions/setup-ci
+
+      # The tests link GStreamer's libraries for voice-host at run time as well as build time.
+      - name: Install the GStreamer libraries that voice-host links
+        run: |
+          set -euo pipefail
+          brew install pkgconf gstreamer gst-plugins-base
+          pkg-config --modversion gstreamer-1.0 gstreamer-app-1.0 gstreamer-audio-1.0
+          printf 'PKG_CONFIG_PATH=%s\n' "$(brew --prefix)/lib/pkgconfig:$(brew --prefix)/share/pkgconfig" >> "$GITHUB_ENV"
+
+      # macOS ships no setsid binary; codex-utils-pty's pipe_terminate_aborts_detached_readers skips itself without
+      # one. This stand-in detaches the command into its own session like `setsid -f`, so the test runs.
+      - name: Provide a setsid command for the detached-reader test
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/setsid-bin"
+          cc -O2 -Wall -Wextra -Werror -o "$RUNNER_TEMP/setsid-bin/setsid" restart-metadata/.github/scripts/setsid-shim.c
+          printf '%s\n' "$RUNNER_TEMP/setsid-bin" >> "$GITHUB_PATH"
+
+      - name: Read upstream's pinned Rust toolchain
+        id: upstream-rust
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up matching Rust
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: ${{ steps.upstream-rust.outputs.channel }}
+          targets: ${{ matrix.target }}
+
+      - name: Install upstream's nextest version
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: nextest@0.9.103
+
+      # The downloaded archive and its extracted test executables need more disk than the hosted image leaves free.
+      - name: Reclaim inactive Xcode versions
+        run: |
+          bash "$CODEX_TOOLING" reclaim-baseline-macos-xcodes \
+            --evidence-directory "$RUNNER_TEMP/baseline-macos-nextest-evidence"
+
+      - name: Record the native host and capacity
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          {
+            uname -a
+            sw_vers
+            sysctl -n hw.memsize hw.logicalcpu
+            df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP"
+            echo "open-file limits before raising:"
+            sysctl kern.maxfiles kern.maxfilesperproc
+            launchctl limit maxfiles
+            ulimit -Hn
+          } | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/host.txt"
+
+      # Upstream runs these tests on macos-15-xlarge. The standard runner's per-process limit is too low for
+      # codex-utils-pty's descriptor test, which must open descriptors at or above Darwin's OPEN_MAX (10240).
+      - name: Raise the open-file limits that upstream's descriptor tests need
+        run: |
+          set -euo pipefail
+          sudo sysctl -w kern.maxfiles=65536 kern.maxfilesperproc=32768
+          sudo launchctl limit maxfiles 32768 65536
+          {
+            echo "open-file limits after raising:"
+            sysctl kern.maxfiles kern.maxfilesperproc
+            launchctl limit maxfiles
+          } | tee -a "$RUNNER_TEMP/baseline-macos-nextest-evidence/host.txt"
+          test "$(sysctl -n kern.maxfilesperproc)" -ge 16384
+
+      - name: Download the test archive built by this run
+        if: inputs.archive_run_id == ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: nextest-archive-${{ matrix.target }}
+          path: ${{ runner.temp }}/nextest-archive
+
+      - name: Download the earlier test archive
+        if: inputs.archive_run_id != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: nextest-archive-${{ matrix.target }}
+          path: ${{ runner.temp }}/nextest-archive
+          run-id: ${{ inputs.archive_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Run the selection
+        id: tests
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARD_COUNT: ${{ needs.plan.outputs.shard_count }}
+        run: |
+          set -euo pipefail
+          git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+          set +e
+          bash restart-metadata/.github/scripts/macos-nextest.sh run "$RUNNER_TEMP/nextest-archive/tests.tar.zst" "$SHARD" "$SHARD_COUNT" \
+            2>&1 | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/nextest.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          # Nextest exits 100 when tests failed. A whole-workspace run is judged by the comparison with the unpatched
+          # baseline in the report job (an unpatched run records that baseline), so those failures alone do not fail this
+          # step. Any other failure, such as a full disk or a build error, does.
+          if [[ "$status" == 100 && ( -z "$TEST_PACKAGE" || "$TEST_PACKAGE" == --workspace ) && -z "$TEST_FILTER" ]]; then
+            printf 'Nextest reported failing tests; the baseline comparison decides the outcome.\n'
+            exit 0
+          fi
+          exit "$status"
+
+      - name: Keep the shard's JUnit report for the merged checks
+        if: ${{ !cancelled() }}
+        env:
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-nextest-evidence"
+          reports=()
+          # An archive run stores its reports under the extraction directory, wherever nextest placed it.
+          while IFS= read -r report; do reports+=("$report"); done < <(
+            find "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/codex-rs/target}" "$GITHUB_WORKSPACE/codex-rs/target" "$RUNNER_TEMP" \
+              -path '*/nextest/*' -name junit.xml 2>/dev/null | sort -u)
+          if (( ${#reports[@]} == 0 )); then
+            # A passing test step with no report would let the shard's tests escape the merged checks.
+            if [[ "$TESTS_OUTCOME" == success ]]; then printf '::error::The tests passed but wrote no nextest report.\n'; exit 1; fi
+            printf 'The test step ended %s before any report was written.\n' "$TESTS_OUTCOME"
+            exit 0
+          fi
+          index=0
+          for report in "${reports[@]}"; do
+            cp "$report" "$evidence/junit-$index.xml"
+            index=$((index + 1))
+          done
+
+      - name: Retain the shard's evidence for three days
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-macos-nextest-${{ matrix.target }}-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/baseline-macos-nextest-evidence
+          retention-days: 3
+          if-no-files-found: warn
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
+
+  # Merges every shard's report so that the skip check and the baseline comparison judge the whole suite once, as they
+  # judged the single job's one report. Neither needs a macOS host, so this runs on the plentiful Linux runners.
+  report:
+    name: Compare with the baseline - ${{ matrix.target }}
+    needs: [plan, shard]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.shard.result != 'skipped' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+    env:
+      TARGET: ${{ matrix.target }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Set up the Java tooling runtime
+        uses: ./restart-metadata/.github/actions/setup-tooling
+        with:
+          tooling-root: ${{ github.workspace }}/restart-metadata
+
+      - name: Download the shards' evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: baseline-macos-nextest-${{ matrix.target }}-shard-*
+          path: ${{ runner.temp }}/shard-evidence
+
+      - name: Gather the shards' evidence
+        env:
+          UPSTREAM_COMMIT: ${{ needs.plan.outputs.commit }}
+          SHARD_COUNT: ${{ needs.plan.outputs.shard_count }}
+          SHARDS_OUTCOME: ${{ needs.shard.result }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-nextest-evidence"
+          mkdir -p "$evidence/shards"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf '%s\n' "$UPSTREAM_COMMIT" > "$evidence/upstream-commit"
+          if [[ -d "$RUNNER_TEMP/shard-evidence" ]]; then cp -R "$RUNNER_TEMP/shard-evidence/." "$evidence/shards/"; fi
+          first="$evidence/shards/baseline-macos-nextest-$TARGET-shard-1"
+          if [[ -f "$first/applied-patches.txt" ]]; then cp "$first/applied-patches.txt" "$evidence/applied-patches.txt"; fi
+          # Every shard that passed must have contributed its report, or its tests would escape the merged checks.
+          if [[ "$SHARDS_OUTCOME" == success ]]; then
+            for ((shard = 1; shard <= SHARD_COUNT; shard++)); do
+              if ! compgen -G "$evidence/shards/baseline-macos-nextest-$TARGET-shard-$shard/junit-*.xml" > /dev/null; then
+                printf '::error::Shard %s of %s passed but left no nextest report.\n' "$shard" "$SHARD_COUNT"
+                exit 1
+              fi
+            done
+          fi
+
       - name: Fail on tests that skipped themselves for missing setup
         if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-nextest-evidence"
           reports=()
-          # An archive run stores its reports under the extraction directory, wherever nextest placed it.
-          while IFS= read -r report; do reports+=("$report"); done < <(
-            find "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/codex-rs/target}" "$GITHUB_WORKSPACE/codex-rs/target" "$RUNNER_TEMP" \
-              -path '*/nextest/*' -name junit.xml 2>/dev/null | sort -u)
+          while IFS= read -r report; do reports+=("$report"); done < <(find "$evidence/shards" -name 'junit-*.xml' | sort)
           if (( ${#reports[@]} == 0 )); then printf 'No nextest reports to check.\n'; exit 0; fi
           bash "$CODEX_TOOLING" check-test-skips --platform macos "${reports[@]}" \
-            2>&1 | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/skip-check.log"
+            2>&1 | tee "$evidence/skip-check.log"
 
       - name: Compare the failures with the committed unpatched baseline
         if: ${{ !cancelled() && (inputs.package == '' || inputs.package == '--workspace') && inputs.filter == '' }}
         env:
-          UPSTREAM_COMMIT: ${{ steps.inputs.outputs.commit }}
+          UPSTREAM_COMMIT: ${{ needs.plan.outputs.commit }}
           PATCHES: ${{ inputs.patches }}
-          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+          TESTS_OUTCOME: ${{ needs.shard.result }}
         run: |
           set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-nextest-evidence"
           platform="macos-${TARGET%%-*}"
           reports=()
-          # An archive run stores its reports under the extraction directory, wherever nextest placed it.
-          while IFS= read -r report; do reports+=("$report"); done < <(
-            find "${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/codex-rs/target}" "$GITHUB_WORKSPACE/codex-rs/target" "$RUNNER_TEMP" \
-              -path '*/nextest/*' -name junit.xml 2>/dev/null | sort -u)
+          while IFS= read -r report; do reports+=("$report"); done < <(find "$evidence/shards" -name 'junit-*.xml' | sort)
           if (( ${#reports[@]} == 0 )); then
             # A run that failed before nextest wrote a report leaves nothing to compare; a passing test step with no
             # report would be a vacuous check.
@@ -438,15 +685,15 @@ jobs:
             # An unpatched run is the source of a baseline; the evidence artifact carries it for committing under
             # docs/test-baselines.
             bash "$CODEX_TOOLING" compare-test-baseline --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
-              --write-baseline --output "$RUNNER_TEMP/baseline-macos-nextest-evidence/$platform.json" "${reports[@]}"
+              --write-baseline --output "$evidence/$platform.json" "${reports[@]}"
           else
             bash "$CODEX_TOOLING" compare-test-baseline --platform "$platform" --upstream-commit "$UPSTREAM_COMMIT" \
-              --baseline-dir "$RUNNER_TEMP/test-baselines" "${reports[@]}" \
-              2>&1 | tee "$RUNNER_TEMP/baseline-macos-nextest-evidence/baseline-comparison.log"
+              --baseline-dir restart-metadata/docs/test-baselines "${reports[@]}" \
+              2>&1 | tee "$evidence/baseline-comparison.log"
             exit "${PIPESTATUS[0]}"
           fi
 
-      - name: Retain test evidence for one day
+      - name: Retain test evidence for three days
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
@@ -457,5 +704,4 @@ jobs:
 
       - name: Remove the job-owned tooling runtime
         if: always()
-        shell: bash
         run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
