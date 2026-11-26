@@ -18,6 +18,18 @@ on:
         type: choice
         default: x86_64-pc-windows-msvc
         options: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
+      package:
+        description: Cargo package of the focused test
+        type: string
+        default: codex-cli
+      test_binary:
+        description: Integration test target of the focused test
+        type: string
+        default: app_server_daemon_windows
+      test_name:
+        description: Exact test name
+        type: string
+        default: winget_package_starts_and_reselects_daemon
 
 permissions:
   contents: read
@@ -35,6 +47,9 @@ jobs:
       cancel-in-progress: false
       queue: max
     env:
+      FOCUS_PACKAGE: ${{ inputs.package }}
+      FOCUS_TEST_BINARY: ${{ inputs.test_binary }}
+      FOCUS_TEST_NAME: ${{ inputs.test_name }}
       TARGET: ${{ inputs.target }}
       CODEX_CI_TARGET: ${{ inputs.target }}
       CODEX_CI_PROFILE: ci-test
@@ -215,7 +230,7 @@ jobs:
             cargo --version
             cargo nextest --version
             printf 'profile=ci-test\ntarget=%s\n' "$TARGET"
-            printf 'cargo nextest run --target %s --cargo-profile ci-test -p codex-cli --test app_server_daemon_windows --no-fail-fast --test-threads 8 --success-output immediate -E test(=winget_package_starts_and_reselects_daemon)\n' "$TARGET"
+            printf 'cargo nextest run --target %s --cargo-profile ci-test -p %s --test %s --no-fail-fast --test-threads 8 --success-output immediate -E test(=%s)\n' "$TARGET" "$FOCUS_PACKAGE" "$FOCUS_TEST_BINARY" "$FOCUS_TEST_NAME"
             printf '%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}" "${ImageVersion:-}"
             env | LC_ALL=C sort | grep -E '^(RUSTFLAGS|RUSTDOCFLAGS|RUSTC|RUSTC_WRAPPER|CARGO_INCREMENTAL|CARGO_PROFILE_[A-Z0-9_]+|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CC|CXX|AR|CFLAGS|CXXFLAGS|LIBSQLITE3_FLAGS|INCLUDE|LIB|LIBPATH|WindowsSdkDir|WindowsSDKVersion|VCToolsInstallDir|VCToolsVersion)='
             sha256sum upstream/codex-rs/Cargo.lock upstream/codex-rs/rust-toolchain.toml upstream/codex-rs/Cargo.toml
@@ -265,14 +280,14 @@ jobs:
         working-directory: upstream/codex-rs
         run: |
           set -euo pipefail
-          cargo nextest list --target "$TARGET" --cargo-profile ci-test -p codex-cli --test app_server_daemon_windows --list-type binaries-only --message-format json > "$FOCUSED_RUNTIME/evidence/binaries.json" 2> "$FOCUSED_RUNTIME/evidence/compile.log"
+          cargo nextest list --target "$TARGET" --cargo-profile ci-test -p "$FOCUS_PACKAGE" --test "$FOCUS_TEST_BINARY" --list-type binaries-only --message-format json > "$FOCUSED_RUNTIME/evidence/binaries.json" 2> "$FOCUSED_RUNTIME/evidence/compile.log"
           cargo metadata --format-version 1 > "$FOCUSED_RUNTIME/evidence/cargo.json"
 
       - name: Run the compiled Windows case as a native standard user
         id: test
         shell: pwsh
         run: |
-          & .github/scripts/run-windows-runtime-standard-user.ps1 -TestBinary app_server_daemon_windows -TestName winget_package_starts_and_reselects_daemon
+          & .github/scripts/run-windows-runtime-standard-user.ps1 -TestBinary $env:FOCUS_TEST_BINARY -TestName $env:FOCUS_TEST_NAME
           exit $LASTEXITCODE
 
       - name: Verify source and dependency identity
