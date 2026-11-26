@@ -120,7 +120,6 @@ jobs:
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           cp restart-metadata/.github/scripts/fail-on-cargo-warnings.sh "$RUNNER_TEMP/fail-on-cargo-warnings.sh"
-          cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh "$RUNNER_TEMP/ghcr-cargo-target-cache.sh"
           cp restart-metadata/.github/cargo-cache-package "$evidence/cargo-cache-package"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
@@ -318,43 +317,32 @@ jobs:
         with:
           version: 1.3.1
 
-      - name: Restore compiled dependencies
-        id: dependency-cache
+      - name: Configure the compiled-state cache
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          CACHE_PACKAGES: ${{ inputs.package }}
           GH_OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-test-evidence"
           printf '%s' "$GITHUB_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          repository="ghcr.io/${GH_OWNER,,}/$(cat "$evidence/cargo-cache-package")"
-          digest="$(
-            {
-              rustc -vV; cargo --version
-              printf 'profile=ci-test packages=%s\n' "$CACHE_PACKAGES"
-              printf '%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}" "${ImageVersion:-}"
-              cat "$evidence/upstream-commit"
-              sha256sum codex-rs/Cargo.lock codex-rs/rust-toolchain.toml codex-rs/Cargo.toml
-              cat "$evidence/applied-patches.txt"
-              env | LC_ALL=C sort | grep -E '^(RUSTFLAGS|RUSTDOCFLAGS|CARGO_INCREMENTAL|CARGO_PROFILE_[A-Z0-9_]+|CC|CXX|CFLAGS|CXXFLAGS)=' || true
-            } | sha256sum | cut -d' ' -f1
-          )"
-          tag="cargo-v3-x86_64-unknown-linux-gnu-$digest"
+          mkdir -p "$RUNNER_TEMP/compiled-cache/evidence"
           {
-            printf 'repository=%s\n' "$repository"
-            printf 'tag=%s\n' "$tag"
-          } >> "$GITHUB_OUTPUT"
-          set +e
-          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull "$repository" "$tag" "$CARGO_TARGET_DIR" "$(cat "$evidence/upstream-ref")" 2>&1 | tee "$evidence/dependency-cache-restore.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          case "$status" in
-            0) printf 'hit=true\n' >> "$GITHUB_OUTPUT" ;;
-            3) printf 'hit=false\n' >> "$GITHUB_OUTPUT" ;;
-            *) exit "$status" ;;
-          esac
-          du -sh "$CARGO_TARGET_DIR" | tee -a "$evidence/dependency-cache-restore.log"
+            printf 'CARGO_CACHE_REPOSITORY=ghcr.io/%s/%s\n' "${GH_OWNER,,}" "$(cat restart-metadata/.github/cargo-cache-package)"
+            printf 'CODEX_REPO_ROOT=%s\n' "$GITHUB_WORKSPACE"
+            printf 'CODEX_SOURCE_CACHE_TOOL=%s\n' "$CODEX_TOOLING"
+            printf 'FOCUSED_RUNTIME=%s\n' "$RUNNER_TEMP/compiled-cache"
+            printf 'TARGET=x86_64-unknown-linux-gnu\n'
+          } >> "$GITHUB_ENV"
+
+      # Restores dependencies and workspace-crate outputs, then puts back the recorded timestamps of unchanged sources so
+      # Cargo rebuilds only the crates whose sources changed.
+      - name: Restore compiled dependencies and test outputs
+        id: cache
+        uses: ./restart-metadata/.github/actions/test-compiled-cache-restore
+        with:
+          restart-root: ${{ github.workspace }}/restart-metadata
+          patches: ${{ inputs.patches }}
+          workflow: .github/workflows/baseline-linux-tests.yml
+          command-line: cargo nextest archive --target x86_64-unknown-linux-gnu --cargo-profile ci-test ${{ inputs.package }}
 
       - name: Build the maintained Linux test helper and bundled executable
         working-directory: codex-rs
@@ -451,24 +439,15 @@ jobs:
             cargo-nextest nextest "${archive_args[@]}" 2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/archive.log"
           sha256sum "$RUNNER_TEMP/baseline-test-archive.tar.zst" > "$RUNNER_TEMP/baseline-test-evidence/archive.sha256"
 
-      - name: Save compiled dependencies
-        if: steps.dependency-cache.outputs.hit == 'false'
+      - name: Save compiled dependencies and test outputs
+        if: ${{ always() && steps.cache.outcome == 'success' }}
         continue-on-error: true
-        env:
-          CACHE_REPOSITORY: ${{ steps.dependency-cache.outputs.repository }}
-          CACHE_TAG: ${{ steps.dependency-cache.outputs.tag }}
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-test-evidence"
-          copy="$RUNNER_TEMP/dependency-cache"
-          rm -rf "$copy"
-          mkdir -p "$copy"
-          # Hard links keep the live target intact while the copy is pruned of workspace-crate outputs.
-          cp -al "$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu" "$copy/x86_64-unknown-linux-gnu"
-          bash "$CODEX_TOOLING" prune-workspace-outputs --workspace-manifest-dir "$GITHUB_WORKSPACE/codex-rs" --target-copy "$copy" --live-target "$CARGO_TARGET_DIR" 2>&1 | tee "$evidence/dependency-cache-prune.log"
-          du -sh "$copy" | tee -a "$evidence/dependency-cache-prune.log"
-          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "$CACHE_REPOSITORY" "$CACHE_TAG" "$copy" "$(cat "$evidence/upstream-ref")" 2>&1 | tee "$evidence/dependency-cache-save.log"
-          rm -rf "$copy"
+        uses: ./restart-metadata/.github/actions/test-compiled-cache-save
+        with:
+          restart-root: ${{ github.workspace }}/restart-metadata
+          tag: ${{ steps.cache.outputs.tag }}
+          seed-tag: ${{ steps.cache.outputs.seed-tag }}
+          build-succeeded: ${{ steps.archive.outcome == 'success' }}
 
       - name: Regenerate the precomputed stable app-server exports
         if: inputs.regenerate_app_server_schema
@@ -600,6 +579,7 @@ jobs:
           name: baseline-linux-tests-evidence-archive
           path: |
             ${{ runner.temp }}/baseline-test-evidence
+            ${{ runner.temp }}/compiled-cache/evidence
             ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings
           retention-days: 3
           if-no-files-found: warn
