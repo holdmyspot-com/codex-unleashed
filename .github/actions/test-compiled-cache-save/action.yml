@@ -42,6 +42,7 @@ runs:
         set -euo pipefail
         evidence="$FOCUSED_RUNTIME/evidence"
         operation=push-partial
+        cp "$evidence/native-abi.txt" "$CARGO_TARGET_DIR/.codex-native-abi"
         if [[ "$BUILD_SUCCEEDED" == true ]]; then
           bash "$CODEX_SOURCE_CACHE_TOOL" clean-cached-release-binaries --record-source-inputs --profile ci-test \
             "$CODEX_REPO_ROOT/codex-rs" "$TARGET" 2>&1 | tee "$evidence/cache-record.log"
