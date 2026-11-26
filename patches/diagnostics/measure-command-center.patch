@@ -1,0 +1,25 @@
+From ec266cf4a54ea183b6fb5ddc7809fc240ca20024 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 26 Nov 2026 17:24:19 -0500
+Subject: [PATCH] diag: allow ten minutes for the command-center test
+
+---
+ codex-rs/.config/nextest.toml | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
+index 14f4e481d7..cee109a9b6 100644
+--- a/codex-rs/.config/nextest.toml
++++ b/codex-rs/.config/nextest.toml
+@@ -175,3 +175,8 @@ slow-timeout = { period = "45s", terminate-after = 2 }
+ # DIAGNOSTIC: let the 15 MiB message-budget test run to completion so its duration can be measured.
+ filter = 'package(codex-core) & test(=client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits)'
+ slow-timeout = { period = "60s", terminate-after = 10 }
++
++[[profile.default.overrides]]
++# DIAGNOSTIC: measure the full duration on an Intel macOS runner.
++filter = 'package(codex-tui) & test(=app::tests::background_task_defaults_tests::command_center_new_checkout_and_worktree_preserve_source_and_default_branch)'
++slow-timeout = { period = "30s", terminate-after = 20 }
+-- 
+2.43.0
+
