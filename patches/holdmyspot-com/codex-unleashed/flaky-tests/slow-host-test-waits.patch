@@ -1,0 +1,98 @@
+From 7352a68e8823902ce81772e43fd866c253687b79 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 26 Nov 2026 13:33:50 -0500
+Subject: [PATCH] Give slow-host test waits enough time on loaded CI runners
+
+
+These upstream tests failed both nextest attempts in full CI rehearsals but are not
+logic failures; each fixed wait is shorter than the work it covers on a loaded runner:
+
+- pty_dropped_output_receiver_keeps_draining_child: 2s for 4 MiB through a PTY on
+  native Intel macOS; now 10s, matching the child's own alarm.
+- command_center_new_checkout_and_worktree_preserve_source_and_default_branch: 3s
+  for permission discovery, which has its own 10s budget; now 30s like the next wait.
+- legacy_non_tty_powershell_interrupt_terminates_process: 5s for cold PowerShell
+  startup plus the Add-Type console probe; now 30s. The interrupt deadline stays 5s.
+- v2_rpc_refreshes_metadata_and_enforces_sandbox: joins the serialized Windows
+  sandbox-account group; it passes alone but misses its 5s event wait under load.
+- message_budget_removes_residual_values_and_markers_when_ordinary_input_fits: gets
+  a 4-minute ceiling; it serializes a 15 MiB request repeatedly and exceeds 60s on
+  Intel macOS.
+---
+ codex-rs/.config/nextest.toml                              | 7 +++++++
+ .../tui/src/app/tests/background_task_defaults_tests.rs    | 3 ++-
+ codex-rs/utils/pty/src/tests.rs                            | 3 ++-
+ codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs      | 4 +++-
+ 4 files changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
+index b73315a090..c7fbf056fb 100644
+--- a/codex-rs/.config/nextest.toml
++++ b/codex-rs/.config/nextest.toml
+@@ -99,6 +99,7 @@ test-group = 'core_apply_patch_cli_integration'
+ platform = 'cfg(windows)'
+ filter = '''
+     (package(codex-core) & binary(windows_sandbox)) |
++    (package(codex-exec-server) & test(=v2_rpc_refreshes_metadata_and_enforces_sandbox)) |
+     (package(codex-exec-server) & test(file_system_elevated_relative_read_denial_uses_policy_cwd)) |
+     (package(codex-windows-sandbox) & test(elevated_non_tty_cmd_forwards_env_output_and_exit))
+ '''
+@@ -134,6 +135,12 @@ slow-timeout = { period = "30s", terminate-after = 4 }
+ filter = 'package(codex-feedback) & test(=tests::feedback_upload_delivers_large_files_intact)'
+ slow-timeout = { period = "30s", terminate-after = 8 }
+ 
++[[profile.default.overrides]]
++# Each of 12 iterations serializes a 15 MiB request several times, which exceeds the 60-second ceiling on an
++# Intel macOS runner.
++filter = 'package(codex-core) & test(=client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits)'
++slow-timeout = { period = "30s", terminate-after = 8 }
++
+ [[profile.default.overrides]]
+ # These cases take 5 to 50 seconds alone on a loaded Windows ARM64 runner, but more than 90 seconds
+ # while the rest of the workspace runs beside them.
+diff --git a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
+index 0337fd0fe8..99bf027a41 100644
+--- a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
++++ b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
+@@ -1215,7 +1215,8 @@ async fn command_center_new_checkout_and_worktree_preserve_source_and_default_br
+         app.chat_widget
+             .set_feature_enabled(Feature::GuardianApproval, /*enabled*/ true);
+         Box::pin(app.handle_event(&mut tui, &mut server, AppEvent::OpenPermissionsPopup)).await?;
+-        tokio::time::timeout(Duration::from_secs(3), async {
++        // Permission discovery makes two app-server round trips with its own 10-second budget.
++        tokio::time::timeout(Duration::from_secs(30), async {
+             while let Some(event) = events.recv().await {
+                 let loaded = matches!(&event, AppEvent::PermissionProfilesLoaded { .. });
+                 Box::pin(app.handle_event(&mut tui, &mut server, event)).await?;
+diff --git a/codex-rs/utils/pty/src/tests.rs b/codex-rs/utils/pty/src/tests.rs
+index d34ad0a673..bf7d022966 100644
+--- a/codex-rs/utils/pty/src/tests.rs
++++ b/codex-rs/utils/pty/src/tests.rs
+@@ -1129,7 +1129,8 @@ async fn pty_dropped_output_receiver_keeps_draining_child() -> anyhow::Result<()
+         )
+         .await?;
+         drop(stdout_rx);
+-        let code = tokio::time::timeout(std::time::Duration::from_secs(2), exit_rx).await??;
++        // The child writes 4 MiB through the PTY; a loaded 4-CPU Intel macOS runner needs more than 2 seconds.
++        let code = tokio::time::timeout(std::time::Duration::from_secs(10), exit_rx).await??;
+         assert_eq!(code, 0, "child should finish even when output is discarded");
+     }
+     Ok(())
+diff --git a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+index 6237748fe0..b9b2711d3c 100644
+--- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
++++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+@@ -525,7 +525,9 @@ fn legacy_non_tty_powershell_interrupt_terminates_process() {
+             stderr_rx: _stderr_rx,
+             exit_rx,
+         } = spawned;
+-        timeout(Duration::from_secs(5), async {
++        // Cold PowerShell startup compiles the console probe before printing the readiness marker.
++        // The interrupt deadline below stays 5 seconds.
++        timeout(Duration::from_secs(30), async {
+             let mut stdout = Vec::new();
+             while let Some(chunk) = stdout_rx.recv().await {
+                 stdout.extend(chunk);
+-- 
+2.43.0
+

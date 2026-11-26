@@ -133,6 +133,7 @@ The release applies these patches in this order:
 119. [regenerated-outputs/regenerate-bindings-and-config-schemas.patch](holdmyspot-com/codex-unleashed/regenerated-outputs/regenerate-bindings-and-config-schemas.patch)
 120. [issue-63/root-metadata-identities.patch](holdmyspot-com/codex-unleashed/issue-63/root-metadata-identities.patch)
 121. [issue-63/protect-root-metadata-fixture-launcher.patch](holdmyspot-com/codex-unleashed/issue-63/protect-root-metadata-fixture-launcher.patch)
+122. [flaky-tests/slow-host-test-waits.patch](holdmyspot-com/codex-unleashed/flaky-tests/slow-host-test-waits.patch)
 
 These patches from the `rust-v0.167.0` queue are not applied on `rust-v0.171.0`:
 
