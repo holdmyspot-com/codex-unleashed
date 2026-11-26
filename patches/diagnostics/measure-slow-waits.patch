@@ -1,0 +1,126 @@
+From 88910248ee1e516b137b5ebe7cd76ee9bc7aec44 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 26 Nov 2026 14:01:19 -0500
+Subject: [PATCH] DIAGNOSTIC: measure the slow test waits that failed in CI
+ rehearsals
+
+---
+ codex-rs/.config/nextest.toml                          |  5 +++++
+ codex-rs/exec-server/tests/common/exec_server.rs       | 10 ++++++++--
+ .../src/app/tests/background_task_defaults_tests.rs    |  9 ++++++++-
+ codex-rs/utils/pty/src/tests.rs                        |  4 +++-
+ codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs  |  7 ++++++-
+ 5 files changed, 30 insertions(+), 5 deletions(-)
+
+diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
+index b73315a090..14f4e481d7 100644
+--- a/codex-rs/.config/nextest.toml
++++ b/codex-rs/.config/nextest.toml
+@@ -170,3 +170,8 @@ platform = 'cfg(windows)'
+ filter = 'test(suite::resume::) | test(suite::cli_stream::) | test(suite::auth_env::) | test(start_thread_uses_all_default_environments_from_codex_home) | test(connect_stdio_command_initializes_json_rpc_client_on_windows)'
+ test-group = 'windows_process_heavy'
+ slow-timeout = { period = "45s", terminate-after = 2 }
++
++[[profile.default.overrides]]
++# DIAGNOSTIC: let the 15 MiB message-budget test run to completion so its duration can be measured.
++filter = 'package(codex-core) & test(=client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits)'
++slow-timeout = { period = "60s", terminate-after = 10 }
+diff --git a/codex-rs/exec-server/tests/common/exec_server.rs b/codex-rs/exec-server/tests/common/exec_server.rs
+index 51c99f1ffa..63bef4b15a 100644
+--- a/codex-rs/exec-server/tests/common/exec_server.rs
++++ b/codex-rs/exec-server/tests/common/exec_server.rs
+@@ -29,7 +29,7 @@ use tokio_tungstenite::tungstenite::Message;
+ 
+ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+ const CONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(25);
+-const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
++const EVENT_TIMEOUT: Duration = Duration::from_secs(60);
+ 
+ pub(crate) struct ExecServerHarness {
+     codex_home: TempDir,
+@@ -206,9 +206,11 @@ impl ExecServerHarness {
+     where
+         F: FnMut(&JSONRPCMessage) -> bool,
+     {
+-        let deadline = Instant::now() + EVENT_TIMEOUT;
++        let wait_started = Instant::now();
++        let deadline = wait_started + EVENT_TIMEOUT;
+         loop {
+             let now = Instant::now();
++
+             if now >= deadline {
+                 return Err(anyhow!(
+                     "timed out waiting for matching exec-server event after {EVENT_TIMEOUT:?}"
+@@ -217,6 +219,10 @@ impl ExecServerHarness {
+             let remaining = deadline.duration_since(now);
+             let event = self.next_event_with_timeout(remaining).await?;
+             if predicate(&event) {
++                eprintln!(
++                    "SLOW-WAIT-DIAG exec_server_event elapsed_ms={}",
++                    wait_started.elapsed().as_millis()
++                );
+                 return Ok(event);
+             }
+         }
+diff --git a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
+index 0337fd0fe8..c0116ea7f9 100644
+--- a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
++++ b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
+@@ -1215,9 +1215,16 @@ async fn command_center_new_checkout_and_worktree_preserve_source_and_default_br
+         app.chat_widget
+             .set_feature_enabled(Feature::GuardianApproval, /*enabled*/ true);
+         Box::pin(app.handle_event(&mut tui, &mut server, AppEvent::OpenPermissionsPopup)).await?;
+-        tokio::time::timeout(Duration::from_secs(3), async {
++        let wait_started = std::time::Instant::now();
++        tokio::time::timeout(Duration::from_secs(60), async {
+             while let Some(event) = events.recv().await {
+                 let loaded = matches!(&event, AppEvent::PermissionProfilesLoaded { .. });
++                if loaded {
++                    eprintln!(
++                        "SLOW-WAIT-DIAG tui_permission_profiles_loaded elapsed_ms={}",
++                        wait_started.elapsed().as_millis()
++                    );
++                }
+                 Box::pin(app.handle_event(&mut tui, &mut server, event)).await?;
+                 if loaded {
+                     return Ok::<_, color_eyre::Report>(());
+diff --git a/codex-rs/utils/pty/src/tests.rs b/codex-rs/utils/pty/src/tests.rs
+index d34ad0a673..5b14dd6587 100644
+--- a/codex-rs/utils/pty/src/tests.rs
++++ b/codex-rs/utils/pty/src/tests.rs
+@@ -1129,7 +1129,9 @@ async fn pty_dropped_output_receiver_keeps_draining_child() -> anyhow::Result<()
+         )
+         .await?;
+         drop(stdout_rx);
+-        let code = tokio::time::timeout(std::time::Duration::from_secs(2), exit_rx).await??;
++        let wait_started = std::time::Instant::now();
++        let code = tokio::time::timeout(std::time::Duration::from_secs(60), exit_rx).await??;
++        eprintln!("SLOW-WAIT-DIAG pty_drain_exit elapsed_ms={}", wait_started.elapsed().as_millis());
+         assert_eq!(code, 0, "child should finish even when output is discarded");
+     }
+     Ok(())
+diff --git a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+index 6237748fe0..1705eceb80 100644
+--- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
++++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+@@ -525,11 +525,16 @@ fn legacy_non_tty_powershell_interrupt_terminates_process() {
+             stderr_rx: _stderr_rx,
+             exit_rx,
+         } = spawned;
+-        timeout(Duration::from_secs(5), async {
++        let wait_started = std::time::Instant::now();
++        timeout(Duration::from_secs(60), async {
+             let mut stdout = Vec::new();
+             while let Some(chunk) = stdout_rx.recv().await {
+                 stdout.extend(chunk);
+                 if String::from_utf8_lossy(&stdout).contains("LEGACY-NONTTY-DIRECT") {
++                    eprintln!(
++                        "SLOW-WAIT-DIAG powershell_readiness elapsed_ms={}",
++                        wait_started.elapsed().as_millis()
++                    );
+                     return;
+                 }
+             }
+-- 
+2.43.0
+
