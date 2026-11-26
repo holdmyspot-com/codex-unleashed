@@ -1,0 +1,38 @@
+name: Set up sccache
+description: >-
+  Install upstream's sccache version, route rustc through it with a local-disk cache restored from GHCR, and
+  disable incremental compilation, which sccache cannot cache. Run it before the compiled-state cache step so
+  that step's key records the wrapper. Requires CARGO_CACHE_REPOSITORY and an oras login.
+inputs:
+  target:
+    description: Rust target triple whose cache to restore
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install sccache
+      uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+      with:
+        tool: sccache
+        version: 0.7.5
+    - name: Restore the sccache directory and enable the wrapper
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+      run: |
+        set -euo pipefail
+        dir="$RUNNER_TEMP/sccache"
+        wrapper="$(command -v sccache)"
+        if [[ "$RUNNER_OS" == Windows ]]; then
+          wrapper="$(cygpath -w "$wrapper")"
+          printf 'SCCACHE_DIR=%s\n' "$(cygpath -w "$dir")" >> "$GITHUB_ENV"
+        else
+          printf 'SCCACHE_DIR=%s\n' "$dir" >> "$GITHUB_ENV"
+        fi
+        bash "$GITHUB_ACTION_PATH/../../scripts/ghcr-sccache.sh" pull "$CARGO_CACHE_REPOSITORY" "$TARGET" "$dir"
+        {
+          printf 'SCCACHE_CACHE_SIZE=10G\n'
+          printf 'CARGO_INCREMENTAL=0\n'
+          printf 'RUSTC_WRAPPER=%s\n' "$wrapper"
+          printf 'CARGO_BUILD_RUSTC_WRAPPER=%s\n' "$wrapper"
+        } >> "$GITHUB_ENV"
