@@ -346,6 +346,18 @@ jobs:
           compression-level: 0
           if-no-files-found: error
 
+      # hashFiles() matches only files under the workspace, so it cannot see the archive in the runner's temporary directory.
+      - name: Check whether the test build finished
+        id: build-result
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/nextest-archive/tests.tar.zst" ]]; then
+            printf 'succeeded=true\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'succeeded=false\n' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Save compiled dependencies and test outputs
         if: ${{ always() && inputs.archive_run_id == '' && steps.cache.outcome == 'success' }}
         uses: ./restart-metadata/.github/actions/test-compiled-cache-save
@@ -353,7 +365,7 @@ jobs:
           restart-root: ${{ github.workspace }}/restart-metadata
           tag: ${{ steps.cache.outputs.tag }}
           seed-tag: ${{ steps.cache.outputs.seed-tag }}
-          build-succeeded: ${{ hashFiles(format('{0}/nextest-archive/tests.tar.zst', runner.temp)) != '' }}
+          build-succeeded: ${{ steps.build-result.outputs.succeeded == 'true' }}
 
       - name: Retain archive evidence for three days
         if: always()
