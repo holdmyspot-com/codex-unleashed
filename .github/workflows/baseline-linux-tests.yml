@@ -120,7 +120,6 @@ jobs:
           # The upstream checkout below cleans the workspace, removing restart-metadata.
           cp -R restart-metadata/patches "$RUNNER_TEMP/downstream-patches"
           cp restart-metadata/.github/scripts/fail-on-cargo-warnings.sh "$RUNNER_TEMP/fail-on-cargo-warnings.sh"
-          cp restart-metadata/.github/scripts/ghcr-sccache.sh "$RUNNER_TEMP/ghcr-sccache.sh"
           cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh "$RUNNER_TEMP/ghcr-cargo-target-cache.sh"
           cp restart-metadata/.github/cargo-cache-package "$evidence/cargo-cache-package"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
@@ -357,30 +356,6 @@ jobs:
           esac
           du -sh "$CARGO_TARGET_DIR" | tee -a "$evidence/dependency-cache-restore.log"
 
-      # Matches restart-metadata/.github/actions/sccache-setup, inlined because the upstream checkout removes
-      # restart-metadata before this point.
-      - name: Install sccache
-        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
-        with:
-          tool: sccache
-          version: 0.7.5
-
-      - name: Restore the sccache directory and enable the wrapper
-        env:
-          CARGO_CACHE_REPOSITORY: ${{ steps.dependency-cache.outputs.repository }}
-        run: |
-          set -euo pipefail
-          dir="$RUNNER_TEMP/sccache"
-          bash "$RUNNER_TEMP/ghcr-sccache.sh" pull "$CARGO_CACHE_REPOSITORY" x86_64-unknown-linux-gnu "$dir"
-          wrapper="$(command -v sccache)"
-          {
-            printf 'SCCACHE_DIR=%s\n' "$dir"
-            printf 'SCCACHE_CACHE_SIZE=10G\n'
-            printf 'CARGO_INCREMENTAL=0\n'
-            printf 'RUSTC_WRAPPER=%s\n' "$wrapper"
-            printf 'CARGO_BUILD_RUSTC_WRAPPER=%s\n' "$wrapper"
-          } >> "$GITHUB_ENV"
-
       - name: Build the maintained Linux test helper and bundled executable
         working-directory: codex-rs
         run: |
@@ -475,16 +450,6 @@ jobs:
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
             cargo-nextest nextest "${archive_args[@]}" 2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/archive.log"
           sha256sum "$RUNNER_TEMP/baseline-test-archive.tar.zst" > "$RUNNER_TEMP/baseline-test-evidence/archive.sha256"
-
-      - name: Save the sccache directory
-        if: always() && env.SCCACHE_DIR != ''
-        continue-on-error: true
-        env:
-          CARGO_CACHE_REPOSITORY: ${{ steps.dependency-cache.outputs.repository }}
-        run: |
-          set -euo pipefail
-          sccache --show-stats || true
-          bash "$RUNNER_TEMP/ghcr-sccache.sh" push "$CARGO_CACHE_REPOSITORY" x86_64-unknown-linux-gnu "$RUNNER_TEMP/sccache"
 
       - name: Save compiled dependencies
         if: steps.dependency-cache.outputs.hit == 'false'

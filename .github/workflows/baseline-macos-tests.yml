@@ -298,11 +298,6 @@ jobs:
           owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
           printf 'CARGO_CACHE_REPOSITORY=ghcr.io/%s/%s\n' "$owner" "$(cat restart-metadata/.github/cargo-cache-package)" >> "$GITHUB_ENV"
 
-      - name: Set up sccache
-        uses: ./restart-metadata/.github/actions/sccache-setup
-        with:
-          target: ${{ matrix.target }}
-
       - name: Restore compiled dependencies and test outputs
         id: cache
         uses: ./restart-metadata/.github/actions/test-compiled-cache-restore
@@ -350,17 +345,6 @@ jobs:
           retention-days: 3
           compression-level: 0
           if-no-files-found: error
-
-      - name: Save the sccache directory
-        if: always() && env.SCCACHE_DIR != ''
-        continue-on-error: true
-        shell: bash
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          set -euo pipefail
-          sccache --show-stats || true
-          bash restart-metadata/.github/scripts/ghcr-sccache.sh push "$CARGO_CACHE_REPOSITORY" "$TARGET" "$RUNNER_TEMP/sccache"
 
       - name: Save compiled dependencies and test outputs
         if: ${{ always() && inputs.archive_run_id == '' && steps.cache.outcome == 'success' }}
