@@ -65,11 +65,21 @@ on:
 permissions:
   contents: read
   packages: write # compiled-dependency cache in GHCR
-
 jobs:
-  test:
+  # Builds everything the tests need once and hands it to the shard jobs, as upstream's rust-ci-full-nextest-platform.yml
+  # does: the nextest archive, the patched source tree, the voice runtime and the helper executables. The red phase, the
+  # schema regeneration and the build-time warning check run here because they need the build's own target directory.
+  archive:
+    name: Build nextest archive
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 150
+    outputs:
+      upstream_commit: ${{ steps.inputs.outputs.commit }}
+      patched_commit: ${{ steps.patched.outputs.commit }}
+      lane_local: ${{ steps.lanes.outputs.local }}
+      lane_remote: ${{ steps.lanes.outputs.remote }}
+      shard_count: ${{ steps.lanes.outputs.shard_count }}
+      shard_matrix: ${{ steps.lanes.outputs.shard_matrix }}
     env:
       CARGO_INCREMENTAL: "0"
       # As upstream's rust-ci-full-nextest-platform.yml: debug symbols for hundreds of test binaries exhaust the disk
@@ -112,8 +122,6 @@ jobs:
           cp restart-metadata/.github/scripts/fail-on-cargo-warnings.sh "$RUNNER_TEMP/fail-on-cargo-warnings.sh"
           cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh "$RUNNER_TEMP/ghcr-cargo-target-cache.sh"
           cp restart-metadata/.github/cargo-cache-package "$evidence/cargo-cache-package"
-          mkdir -p "$RUNNER_TEMP/test-baselines"
-          if [[ -d restart-metadata/docs/test-baselines ]]; then cp -R restart-metadata/docs/test-baselines/. "$RUNNER_TEMP/test-baselines/"; fi
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
@@ -360,16 +368,23 @@ jobs:
             -p codex-rmcp-client --bins \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/test-helper-build.log"
           test -x "$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/test_stdio_server"
-
       # Upstream splits its Linux tests by environment: the Bazel jobs and its other platforms run with no remote
       # environment, and its x86-64 nextest job (rust-ci-full's tests_linux_x64_remote) runs with the Docker one. The
       # tests built for one environment fail in the other (a local stdio MCP server needs a local environment that a
-      # remote run does not register), so this job runs the archive twice, once per lane.
-      - name: Select the test lanes
+      # remote run does not register), so each shard runs its part of the archive twice, once per lane.
+      #
+      # A full-suite run is split into six shards, as upstream splits its nextest platform jobs. Every run that selects
+      # packages or tests, repeats them under load, withholds production changes, or rewrites snapshots or compares
+      # environments runs as one shard: those modes record a single tree's changes or a bounded selection.
+      - name: Select the test lanes and shards
         id: lanes
         env:
           REQUESTED_LANES: ${{ inputs.lanes }}
           SINGLE_LANE_MODE: ${{ inputs.accept_snapshots || inputs.compare_upstream_image || inputs.trace_shell_startup }}
+          SELECTED_PACKAGE: ${{ inputs.package }}
+          SELECTED_FILTER: ${{ inputs.filter }}
+          SELECTED_STRESS_COUNT: ${{ inputs.stress_count }}
+          SELECTED_RED_RESTORE: ${{ inputs.red_restore }}
         run: |
           set -euo pipefail
           lanes="$REQUESTED_LANES"
@@ -393,29 +408,28 @@ jobs:
               *) printf 'Unknown test lane: %s\n' "$lane" >&2; exit 1 ;;
             esac
           done
-          printf 'local=%s\nremote=%s\n' "$local_lane" "$remote_lane" | tee -a "$GITHUB_OUTPUT"
+          shard_count=6
+          if [[ "$SINGLE_LANE_MODE" == true || -n "$SELECTED_PACKAGE$SELECTED_FILTER$SELECTED_STRESS_COUNT$SELECTED_RED_RESTORE" ]]; then
+            shard_count=1
+          fi
+          printf 'local=%s\nremote=%s\nshard_count=%s\nshard_matrix=%s\n' "$local_lane" "$remote_lane" "$shard_count" \
+            "$(jq -cn --argjson count "$shard_count" '[range(1; $count + 1)]')" | tee -a "$GITHUB_OUTPUT"
 
       # Mirrors upstream's rust-ci-full-nextest-platform.yml: the debug codex binary runs `codex exec-server` in a
-      # privileged ubuntu container. The environment variables go into a file that only the remote lane sources.
-      - name: Set up the remote test environment (Docker)
+      # privileged ubuntu container. Each shard starts its own container, so this job builds the binary once for all of
+      # them to download.
+      - name: Build the codex binary for the remote test environment
         if: steps.lanes.outputs.remote == 'true'
         working-directory: codex-rs
         run: |
           set -euo pipefail
           cargo build -p codex-cli --bin codex
-          export CODEX_TEST_REMOTE_ENV_CONTAINER_NAME="codex-remote-test-env-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          source "${GITHUB_WORKSPACE}/scripts/test-remote-env.sh"
-          {
-            printf 'export CODEX_TEST_ENVIRONMENT=%q\n' "${CODEX_TEST_ENVIRONMENT}"
-            printf 'export CODEX_TEST_REMOTE_ENV=%q\n' "${CODEX_TEST_REMOTE_ENV}"
-            printf 'export CODEX_TEST_REMOTE_ENV_CONTAINER_NAME=%q\n' "${CODEX_TEST_REMOTE_ENV_CONTAINER_NAME}"
-            printf 'export CODEX_TEST_REMOTE_EXEC_SERVER_URL=%q\n' "${CODEX_TEST_REMOTE_EXEC_SERVER_URL}"
-          } > "$RUNNER_TEMP/remote-test-env.sh"
-          # Only the codex binary inside the container is needed. The debug build of its dependency graph filled the
-          # runner's disk before the ci-test build of the test binaries, so drop it now.
+          mkdir -p "$RUNNER_TEMP/baseline-test-inputs/helpers"
+          cp "$CARGO_TARGET_DIR/debug/codex" "$RUNNER_TEMP/baseline-test-inputs/helpers/codex"
+          # Only the codex binary is needed. The debug build of its dependency graph filled the runner's disk before
+          # the ci-test build of the test binaries, so drop it now.
           rm -rf "$CARGO_TARGET_DIR/debug"
           df -h / | tee -a "$RUNNER_TEMP/baseline-test-evidence/disk-after-remote-env.txt"
-
       # Every run, whatever its mode, builds its test binaries once into this archive and runs from it. Stress and
       # comparison runs reuse it instead of compiling again.
       - name: Build the nextest archive
@@ -536,17 +550,252 @@ jobs:
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-test-evidence"
           bash "$RUNNER_TEMP/fail-on-cargo-warnings.sh" "$evidence/test-helper-build.log" "$evidence/archive.log"
+      - name: Verify the tested source matches its upstream and patch commits
+        if: always()
+        env:
+          BASELINE_REGENERATE_APP_SERVER_SCHEMA: ${{ inputs.regenerate_app_server_schema }}
+          BASELINE_ACCEPT_SNAPSHOTS: ${{ inputs.accept_snapshots }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
+          pathspec=(. ':(exclude)codex-rs/Cargo.lock')
+          # Gathering runs change only the outputs they record as evidence diffs.
+          if [[ "$BASELINE_REGENERATE_APP_SERVER_SCHEMA" == true ]]; then
+            pathspec+=(':(exclude)codex-rs/app-server-protocol/schema')
+          fi
+          if [[ "$BASELINE_ACCEPT_SNAPSHOTS" == true ]]; then
+            pathspec+=(':(exclude,glob)**/*.snap' ':(exclude,glob)**/*.snap.new' ':(exclude,glob)**/*.pending-snap')
+          fi
+          git diff --exit-code HEAD -- "${pathspec[@]}"
+      # The shards test the exact tree that this job built, so the red phase's restored files, the regenerated
+      # schema and the applied patches reach them unchanged. Artifacts drop file modes, so the shards restore them.
+      - name: Package the inputs of the test shards
+        run: |
+          set -euo pipefail
+          inputs="$RUNNER_TEMP/baseline-test-inputs"
+          native="$RUNNER_TEMP/baseline-test-native"
+          built="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test"
+          mkdir -p "$inputs/helpers"
+          mv "$RUNNER_TEMP/baseline-test-archive.tar.zst" "$inputs/"
+          cp "$RUNNER_TEMP/baseline-test-evidence/archive.sha256" "$inputs/"
+          cp "$built/codex-linux-sandbox" "$built/bwrap" "$inputs/helpers/"
+          tar --use-compress-program 'zstd -T0 -3' -C "$native/build" -cf "$inputs/native-prefix.tar.zst" prefix
+          tar --use-compress-program 'zstd -T0 -3' --exclude=./restart-metadata -C "$GITHUB_WORKSPACE" -cf "$inputs/source.tar.zst" .
+          find "$inputs" -type f -printf '%s %p\n' | sort -k2 | tee "$RUNNER_TEMP/baseline-test-evidence/shard-inputs.txt"
 
+      # The inputs are already compressed, so the artifact stores them as they are.
+      - name: Upload the inputs of the test shards
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-linux-test-inputs
+          path: ${{ runner.temp }}/baseline-test-inputs
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Retain archive job evidence for three days
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-linux-tests-evidence-archive
+          path: |
+            ${{ runner.temp }}/baseline-test-evidence
+            ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings
+          retention-days: 3
+          if-no-files-found: warn
+
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
+
+  # Each shard restores the archive job's tree and runs its part of the archive, as upstream's shard jobs do, and sets up
+  # only what the tests use: the host packages, the pinned toolchain and nextest, the voice runtime and, for the remote
+  # lane, its own Docker container.
+  shard:
+    name: Linux tests shard ${{ matrix.shard }}/${{ needs.archive.outputs.shard_count }}
+    needs: archive
+    runs-on: ubuntu-24.04
+    # A single-shard run covers a stress, snapshot, comparison or full-length selection that one job executes alone.
+    timeout-minutes: ${{ needs.archive.outputs.shard_count == '1' && 240 || 90 }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.archive.outputs.shard_matrix) }}
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_CI_TEST_DEBUG: "0"
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      RUST_MIN_STACK: "8388608"
+      RUST_BACKTRACE: "1"
+      RUST_LIB_BACKTRACE: "0"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Reclaim unused hosted-image toolchains and record capacity
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          mkdir -p "$evidence"
+          df -h / "$RUNNER_TEMP" | tee "$evidence/disk-before.txt"
+          for unused in /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift /opt/ghc; do
+            if [[ -d "$unused" ]]; then
+              sudo du -sh "$unused" | tee -a "$evidence/reclaimed-toolchains.txt"
+              sudo rm -rf -- "$unused"
+            fi
+          done
+          df -h / "$RUNNER_TEMP" | tee "$evidence/disk-after.txt"
+
+      - name: Set up the Java tooling runtime
+        uses: ./restart-metadata/.github/actions/setup-tooling
+        with:
+          tooling-root: ${{ github.workspace }}/restart-metadata
+
+      - name: Download the test inputs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: baseline-linux-test-inputs
+          path: ${{ runner.temp }}/baseline-test-inputs
+
+      # The tree goes to the path it was built at, because the archive's workspace remap and the tests' fixtures use it.
+      - name: Restore the tested source and the nextest archive
+        env:
+          UPSTREAM_COMMIT: ${{ needs.archive.outputs.upstream_commit }}
+          PATCHED_COMMIT: ${{ needs.archive.outputs.patched_commit }}
+        run: |
+          set -euo pipefail
+          inputs="$RUNNER_TEMP/baseline-test-inputs"
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          printf '%s\n' "$UPSTREAM_COMMIT" > "$evidence/upstream-commit"
+          mv "$inputs/baseline-test-archive.tar.zst" "$RUNNER_TEMP/baseline-test-archive.tar.zst"
+          cp "$inputs/archive.sha256" "$evidence/archive.sha256"
+          sha256sum --check "$evidence/archive.sha256"
+          tar --use-compress-program 'zstd -d -T0' -xf "$inputs/source.tar.zst" -C "$GITHUB_WORKSPACE"
+          rm -f "$inputs/source.tar.zst"
+          test "$(git rev-parse HEAD)" = "$PATCHED_COMMIT"
+          df -h / | tee "$evidence/disk-after-restore.txt"
+      - name: Prepare upstream's native test host
+        uses: ./.github/actions/setup-ci
+
+      # Upstream's setup-ci action: Ubuntu 24.04's AppArmor blocks unprivileged user namespaces, which bubblewrap needs, so
+      # without this the sandbox tests that find the installed bwrap fail instead of exercising the sandbox.
+      - name: Enable unprivileged user namespaces
+        run: |
+          sudo sysctl -w kernel.unprivileged_userns_clone=1
+          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.apparmor_restrict_unprivileged_userns'; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
+      - name: Install Linux development prerequisites
+        run: |
+          set -euo pipefail
+          # Retries from a mirror outside ubuntu.com when the image's Ubuntu servers fail.
+          sudo bash "$CODEX_TOOLING" apt-install-with-fallback build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex strace zsh ripgrep
+          # Tests skip themselves when a shell or interpreter is missing, so assert each one here.
+          zsh --version
+          /bin/zsh --version
+          python3 --version
+          bwrap --version
+          mkdir -p "$RUNNER_TEMP/baseline-test-cargo-home"
+          printf 'CARGO_HOME=%s\n' "$RUNNER_TEMP/baseline-test-cargo-home" >> "$GITHUB_ENV"
+
+      - name: Read upstream's pinned Rust toolchain
+        id: upstream-rust
+        shell: bash
+        run: printf 'channel=%s\n' "$(sed -n 's/^channel = "\([^"]*\)".*/\1/p' codex-rs/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up upstream's Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: ${{ steps.upstream-rust.outputs.channel }}
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Install upstream's nextest version
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: nextest@0.9.103
+
+      # The archive job built the helpers and the voice runtime that the tests expect at these paths.
+      - name: Install the test helpers and the voice runtime
+        run: |
+          set -euo pipefail
+          inputs="$RUNNER_TEMP/baseline-test-inputs"
+          built="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test"
+          mkdir -p "$built"
+          cp "$inputs/helpers/codex-linux-sandbox" "$inputs/helpers/bwrap" "$built/"
+          chmod +x "$built/codex-linux-sandbox" "$built/bwrap"
+          native="$RUNNER_TEMP/baseline-test-native"
+          mkdir -p "$native/build"
+          tar --use-compress-program 'zstd -d -T0' -xf "$inputs/native-prefix.tar.zst" -C "$native/build"
+          rm -f "$inputs/native-prefix.tar.zst"
+          {
+            printf 'PKG_CONFIG_PATH=%s\n' "$native/build/prefix/lib/pkgconfig:$native/build/prefix/share/pkgconfig"
+            printf 'LD_LIBRARY_PATH=%s\n' "$native/build/prefix/lib"
+            printf 'CODEX_TEST_VOICE_RUNTIME=%s\n' "$native/build/prefix"
+          } >> "$GITHUB_ENV"
+          # Tests run curl and expect a refused or timed-out connection to fail at once, so curl keeps no retry
+          # configuration.
+          directory="$RUNNER_TEMP/curl-test-configuration"
+          mkdir -p "$directory"
+          : > "$directory/.curlrc"
+          printf 'CURL_HOME=%s\n' "$directory" >> "$GITHUB_ENV"
+
+      # Mirrors upstream's rust-ci-full-nextest-platform.yml: the debug codex binary runs `codex exec-server` in a
+      # privileged ubuntu container. The environment variables go into a file that only the remote lane sources. The
+      # container name is unique to the shard. The archive job built the binary that upstream's script would build
+      # here, so a cargo shim that answers only that build command lets the script find it without a second build.
+      - name: Set up the remote test environment (Docker)
+        if: needs.archive.outputs.lane_remote == 'true'
+        working-directory: codex-rs
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$CARGO_TARGET_DIR/debug"
+          cp "$RUNNER_TEMP/baseline-test-inputs/helpers/codex" "$CARGO_TARGET_DIR/debug/codex"
+          chmod +x "$CARGO_TARGET_DIR/debug/codex"
+          shim="$RUNNER_TEMP/prebuilt-codex-shim"
+          mkdir -p "$shim"
+          printf '%s\n' '#!/usr/bin/env bash' \
+            "if [[ \"\$*\" == 'build -p codex-cli --bin codex' ]]; then exit 0; fi" \
+            "exec '$(command -v cargo)' \"\$@\"" > "$shim/cargo"
+          chmod +x "$shim/cargo"
+          original_path="$PATH"
+          export CODEX_TEST_REMOTE_ENV_CONTAINER_NAME="codex-remote-test-env-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${SHARD}"
+          export PATH="$shim:$PATH"
+          source "${GITHUB_WORKSPACE}/scripts/test-remote-env.sh"
+          export PATH="$original_path"
+          {
+            printf 'export CODEX_TEST_ENVIRONMENT=%q\n' "${CODEX_TEST_ENVIRONMENT}"
+            printf 'export CODEX_TEST_REMOTE_ENV=%q\n' "${CODEX_TEST_REMOTE_ENV}"
+            printf 'export CODEX_TEST_REMOTE_ENV_CONTAINER_NAME=%q\n' "${CODEX_TEST_REMOTE_ENV_CONTAINER_NAME}"
+            printf 'export CODEX_TEST_REMOTE_EXEC_SERVER_URL=%q\n' "${CODEX_TEST_REMOTE_EXEC_SERVER_URL}"
+          } > "$RUNNER_TEMP/remote-test-env.sh"
+          df -h / | tee -a "$RUNNER_TEMP/baseline-test-evidence/disk-after-remote-env.txt"
+      # A full-suite shard runs its hash partition of every selected test and records its JUnit reports and statuses; the
+      # results job judges the merged reports. Every other mode runs as the only shard.
       - name: Run the maintained nextest suite or focused comparison
         id: native_tests
         env:
+          SHARD: ${{ matrix.shard }}
+          SHARD_COUNT: ${{ needs.archive.outputs.shard_count }}
           BASELINE_TEST_PACKAGE: ${{ inputs.package }}
           BASELINE_TEST_FILTER: ${{ inputs.filter }}
           BASELINE_ARCHIVE_COMPARE: ${{ inputs.compare_upstream_image || inputs.trace_shell_startup }}
           BASELINE_ACCEPT_SNAPSHOTS: ${{ inputs.accept_snapshots }}
           STRESS_COUNT: ${{ inputs.stress_count }}
-          LANE_LOCAL: ${{ steps.lanes.outputs.local }}
-          LANE_REMOTE: ${{ steps.lanes.outputs.remote }}
+          LANE_LOCAL: ${{ needs.archive.outputs.lane_local }}
+          LANE_REMOTE: ${{ needs.archive.outputs.lane_remote }}
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -610,14 +859,12 @@ jobs:
               for package in $BASELINE_TEST_PACKAGE; do selection+="${selection:+ | }package(=$package)"; done
               expression="($selection)${BASELINE_TEST_FILTER:+ & ($BASELINE_TEST_FILTER)}"
             fi
-            # The archive carries every test binary, so the build outputs only duplicate it. Free their disk space.
-            cp "$helper" "$RUNNER_TEMP/codex-linux-sandbox"
-            rm -rf "${CARGO_TARGET_DIR:?}"/*
-            mkdir -p "$(dirname "$helper")"
-            cp "$RUNNER_TEMP/codex-linux-sandbox" "$helper"
           fi
           if [[ -n "$expression" ]]; then
             nextest_args+=(-E "$expression")
+          fi
+          if (( SHARD_COUNT > 1 )); then
+            nextest_args+=(--partition "hash:${SHARD}/${SHARD_COUNT}")
           fi
           if [[ -n "$STRESS_COUNT" ]]; then
             nextest_args+=(--stress-count "$STRESS_COUNT" --retries 0)
@@ -627,7 +874,7 @@ jobs:
           lanes=()
           if [[ "$LANE_LOCAL" == true ]]; then lanes+=(local); fi
           if [[ "$LANE_REMOTE" == true ]]; then lanes+=(remote); fi
-          reports="$RUNNER_TEMP/nextest-reports"
+          reports="$RUNNER_TEMP/baseline-test-evidence/nextest-reports"
           status=0
           for lane in "${lanes[@]}"; do
             rm -rf "$CARGO_TARGET_DIR/nextest" "$GITHUB_WORKSPACE/codex-rs/target/nextest"
@@ -640,73 +887,20 @@ jobs:
             ) 2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/nextest-$lane.log"
             lane_status=${PIPESTATUS[0]}
             set -e
-            printf 'nextest_status_%s=%s\n' "$lane" "$lane_status" | tee -a "$GITHUB_OUTPUT" "$RUNNER_TEMP/baseline-test-evidence/nextest-status.txt"
+            printf 'nextest_status_%s=%s\n' "$lane" "$lane_status" | tee -a "$RUNNER_TEMP/baseline-test-evidence/nextest-status.txt"
             if [[ "$status" == 0 ]]; then status="$lane_status"; fi
             mkdir -p "$reports/$lane"
             if [[ -d "$CARGO_TARGET_DIR/nextest" ]]; then mv "$CARGO_TARGET_DIR/nextest" "$reports/$lane/target-dir"; fi
             if [[ -d "$GITHUB_WORKSPACE/codex-rs/target/nextest" ]]; then mv "$GITHUB_WORKSPACE/codex-rs/target/nextest" "$reports/$lane/workspace"; fi
+            # Keep only the reports; the results job reads nothing else from the lane directory.
+            find "$reports/$lane" -type f ! -name junit.xml -delete
           done
-          printf 'nextest_status=%s\n' "$status" | tee -a "$GITHUB_OUTPUT"
+          printf 'nextest_status=%s\n' "$status" >> "$RUNNER_TEMP/baseline-test-evidence/nextest-status.txt"
           # A full run is judged against the unpatched baseline in the step below, not by its failures alone.
           if [[ "$BASELINE_ARCHIVE_COMPARE" != true && -z "$STRESS_COUNT" && "$BASELINE_ACCEPT_SNAPSHOTS" != true ]]; then
             exit 0
           fi
           exit "$status"
-
-      - name: Fail on skips caused by missing test setup
-        if: ${{ !cancelled() && steps.native_tests.outcome != 'skipped' && !inputs.compare_upstream_image && !inputs.trace_shell_startup }}
-        run: |
-          set -euo pipefail
-          status=0
-          for lane in local remote; do
-            if [[ ! -d "$RUNNER_TEMP/nextest-reports/$lane" ]]; then continue; fi
-            bash "$CODEX_TOOLING" check-test-skips --platform linux --environment "$lane" "$RUNNER_TEMP/nextest-reports/$lane" \
-              2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/skip-check-$lane.log" || status=1
-          done
-          exit "$status"
-
-      # The tests run to completion whatever fails; this step decides the result. A patched run fails only on tests that
-      # the unpatched baseline for this upstream commit does not list. An unpatched run with write_baseline records its
-      # failures instead. Runs without a baseline file, and stress, snapshot and comparison runs, fail on any failure.
-      - name: Compare failures with the unpatched baseline
-        if: ${{ !cancelled() && steps.native_tests.outcome == 'success' && !inputs.compare_upstream_image && !inputs.trace_shell_startup }}
-        env:
-          NEXTEST_STATUS_LOCAL: ${{ steps.native_tests.outputs.nextest_status_local }}
-          NEXTEST_STATUS_REMOTE: ${{ steps.native_tests.outputs.nextest_status_remote }}
-          WRITE_BASELINE: ${{ inputs.write_baseline }}
-          PATCHES: ${{ inputs.patches }}
-          GATED: ${{ inputs.stress_count == '' && !inputs.accept_snapshots }}
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/baseline-test-evidence"
-          commit="$(cat "$evidence/upstream-commit")"
-          if [[ "$WRITE_BASELINE" == true && -n "${PATCHES// /}" ]]; then
-            printf 'A baseline must come from an unpatched run.\n' >&2
-            exit 1
-          fi
-          # The local lane's baseline is linux.json; the remote lane's is linux-remote.json.
-          result=0
-          for lane in local remote; do
-            if [[ ! -d "$RUNNER_TEMP/nextest-reports/$lane" ]]; then continue; fi
-            platform=linux
-            if [[ "$lane" == remote ]]; then platform=linux-remote; fi
-            lane_status_name="NEXTEST_STATUS_${lane^^}"
-            lane_status="${!lane_status_name:-0}"
-            common=(--platform "$platform" --upstream-commit "$commit" --baseline-dir "$RUNNER_TEMP/test-baselines")
-            if [[ "$WRITE_BASELINE" == true ]]; then
-              bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" --write-baseline \
-                --output "$evidence/test-baselines/$commit/$platform.json" "$RUNNER_TEMP/nextest-reports/$lane"
-            elif [[ "$GATED" != true ]]; then
-              if [[ "$lane_status" != 0 ]]; then result="$lane_status"; fi
-            elif [[ ! -f "$RUNNER_TEMP/test-baselines/$commit/$platform.json" ]]; then
-              printf 'No committed baseline for %s on %s; failing on the %s lane status (%s).\n' "$commit" "$platform" "$lane" "$lane_status" >&2
-              if [[ "$lane_status" != 0 ]]; then result="$lane_status"; fi
-            else
-              bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" "$RUNNER_TEMP/nextest-reports/$lane" \
-                2>&1 | tee "$evidence/baseline-comparison-$lane.log" || result=1
-            fi
-          done
-          exit "$result"
 
       - name: Record the accepted snapshot changes
         if: always() && inputs.accept_snapshots
@@ -720,7 +914,7 @@ jobs:
       - name: Trace the same unmodified remote shell selection
         env:
           TRACE_FILTER: ${{ inputs.filter }}
-        if: ${{ !cancelled() && inputs.trace_shell_startup && steps.archive.outcome == 'success' }}
+        if: ${{ !cancelled() && inputs.trace_shell_startup }}
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -761,7 +955,7 @@ jobs:
       - name: Diagnose the null-device peer-lookup errno
         env:
           TRACE_FILTER: ${{ inputs.filter }}
-        if: ${{ !cancelled() && inputs.trace_shell_startup && steps.archive.outcome == 'success' }}
+        if: ${{ !cancelled() && inputs.trace_shell_startup }}
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -785,7 +979,7 @@ jobs:
       - name: Diagnose the TTY stdin peer-lookup errno
         env:
           TRACE_FILTER: ${{ inputs.filter }}
-        if: ${{ (!cancelled() && inputs.trace_shell_startup) && (steps.archive.outcome == 'success' && inputs.filter == 'test(shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_tty_recovery)') }}
+        if: ${{ !cancelled() && inputs.trace_shell_startup && inputs.filter == 'test(shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_tty_recovery)' }}
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -817,7 +1011,7 @@ jobs:
           exit "$result"
 
       - name: Run the same archive in upstream's pinned Linux image
-        if: ${{ !cancelled() && inputs.compare_upstream_image && steps.archive.outcome == 'success' }}
+        if: ${{ !cancelled() && inputs.compare_upstream_image }}
         env:
           BASELINE_TEST_FILTER: ${{ inputs.filter }}
         run: |
@@ -882,11 +1076,10 @@ jobs:
             fi
           done
           exit "$comparison_result"
-
       - name: Remove the remote test environment
-        if: ${{ always() && steps.lanes.outputs.remote == 'true' }}
+        if: ${{ always() && needs.archive.outputs.lane_remote == 'true' }}
         env:
-          REMOTE_ENV_CONTAINER: codex-remote-test-env-${{ github.run_id }}-${{ github.run_attempt }}
+          REMOTE_ENV_CONTAINER: codex-remote-test-env-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
         run: |
           set -euo pipefail
           containers="$(docker container ls --all --format '{{.Names}}')"
@@ -903,7 +1096,7 @@ jobs:
           BASELINE_ACCEPT_SNAPSHOTS: ${{ inputs.accept_snapshots }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ steps.patched.outputs.commit }}"
+          test "$(git rev-parse HEAD)" = "${{ needs.archive.outputs.patched_commit }}"
           pathspec=(. ':(exclude)codex-rs/Cargo.lock')
           # Gathering runs change only the outputs they record as evidence diffs.
           if [[ "$BASELINE_REGENERATE_APP_SERVER_SCHEMA" == true ]]; then
@@ -913,18 +1106,138 @@ jobs:
             pathspec+=(':(exclude,glob)**/*.snap' ':(exclude,glob)**/*.snap.new' ':(exclude,glob)**/*.pending-snap')
           fi
           git diff --exit-code HEAD -- "${pathspec[@]}"
+      - name: Retain shard test evidence for three days
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-linux-tests-evidence-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/baseline-test-evidence
+          retention-days: 3
+          if-no-files-found: warn
 
-      - name: Retain test evidence for one day
+      - name: Remove the job-owned tooling runtime
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
+
+  # The tests run to completion whatever fails; this job decides the result from every shard's reports at once. A
+  # patched run fails only on tests that the unpatched baseline for this upstream commit does not list. An unpatched run
+  # with write_baseline records its failures instead, covering every shard's tests. Runs without a baseline file, and
+  # stress, snapshot and comparison runs, fail on any failure.
+  results:
+    name: Linux test results
+    needs: [archive, shard]
+    if: ${{ !cancelled() && needs.archive.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Set up the Java tooling runtime
+        uses: ./.github/actions/setup-tooling
+
+      - name: Download the archive and shard evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: baseline-linux-tests-evidence-*
+          path: ${{ runner.temp }}/baseline-test-evidence/jobs
+
+      - name: Merge the shard reports
+        id: merge
+        if: ${{ !inputs.compare_upstream_image && !inputs.trace_shell_startup }}
+        env:
+          UPSTREAM_COMMIT: ${{ needs.archive.outputs.upstream_commit }}
+          SHARD_COUNT: ${{ needs.archive.outputs.shard_count }}
+          LANE_LOCAL: ${{ needs.archive.outputs.lane_local }}
+          LANE_REMOTE: ${{ needs.archive.outputs.lane_remote }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          printf '%s\n' "$UPSTREAM_COMMIT" > "$evidence/upstream-commit"
+          mkdir -p "$RUNNER_TEMP/test-baselines"
+          if [[ -d docs/test-baselines ]]; then cp -R docs/test-baselines/. "$RUNNER_TEMP/test-baselines/"; fi
+          lanes=()
+          if [[ "$LANE_LOCAL" == true ]]; then lanes+=(local); fi
+          if [[ "$LANE_REMOTE" == true ]]; then lanes+=(remote); fi
+          bash .github/scripts/merge-linux-shard-reports.sh "$evidence" "$RUNNER_TEMP/nextest-reports" "$SHARD_COUNT" "${lanes[@]}" \
+            | tee -a "$GITHUB_OUTPUT"
+
+      - name: Fail on skips caused by missing test setup
+        if: ${{ !cancelled() && steps.merge.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          status=0
+          for lane in local remote; do
+            if [[ ! -d "$RUNNER_TEMP/nextest-reports/$lane" ]]; then continue; fi
+            bash "$CODEX_TOOLING" check-test-skips --platform linux --environment "$lane" "$RUNNER_TEMP/nextest-reports/$lane" \
+              2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/skip-check-$lane.log" || status=1
+          done
+          exit "$status"
+
+      - name: Compare failures with the unpatched baseline
+        if: ${{ !cancelled() && steps.merge.outcome == 'success' && needs.shard.result == 'success' }}
+        env:
+          NEXTEST_STATUS_LOCAL: ${{ steps.merge.outputs.nextest_status_local }}
+          NEXTEST_STATUS_REMOTE: ${{ steps.merge.outputs.nextest_status_remote }}
+          WRITE_BASELINE: ${{ inputs.write_baseline }}
+          PATCHES: ${{ inputs.patches }}
+          GATED: ${{ inputs.stress_count == '' && !inputs.accept_snapshots }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          commit="$(cat "$evidence/upstream-commit")"
+          if [[ "$WRITE_BASELINE" == true && -n "${PATCHES// /}" ]]; then
+            printf 'A baseline must come from an unpatched run.\n' >&2
+            exit 1
+          fi
+          # The local lane's baseline is linux.json; the remote lane's is linux-remote.json.
+          result=0
+          for lane in local remote; do
+            if [[ ! -d "$RUNNER_TEMP/nextest-reports/$lane" ]]; then continue; fi
+            platform=linux
+            if [[ "$lane" == remote ]]; then platform=linux-remote; fi
+            lane_status_name="NEXTEST_STATUS_${lane^^}"
+            lane_status="${!lane_status_name:-0}"
+            common=(--platform "$platform" --upstream-commit "$commit" --baseline-dir "$RUNNER_TEMP/test-baselines")
+            if [[ "$WRITE_BASELINE" == true ]]; then
+              bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" --write-baseline \
+                --output "$evidence/test-baselines/$commit/$platform.json" "$RUNNER_TEMP/nextest-reports/$lane"
+            elif [[ "$GATED" != true ]]; then
+              if [[ "$lane_status" != 0 ]]; then result="$lane_status"; fi
+            elif [[ ! -f "$RUNNER_TEMP/test-baselines/$commit/$platform.json" ]]; then
+              printf 'No committed baseline for %s on %s; failing on the %s lane status (%s).\n' "$commit" "$platform" "$lane" "$lane_status" >&2
+              if [[ "$lane_status" != 0 ]]; then result="$lane_status"; fi
+            else
+              bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" "$RUNNER_TEMP/nextest-reports/$lane" \
+                2>&1 | tee "$evidence/baseline-comparison-$lane.log" || result=1
+            fi
+          done
+          exit "$result"
+
+      # A shard that failed or never reported leaves part of the suite unjudged, so the run fails whatever the merged
+      # reports show.
+      - name: Confirm that every test shard succeeded
+        if: ${{ !cancelled() && needs.shard.result != 'success' }}
+        env:
+          SHARD_RESULT: ${{ needs.shard.result }}
+        run: |
+          printf 'The test shard jobs finished with result %s; see their logs.\n' "$SHARD_RESULT" >&2
+          exit 1
+
+      - name: Retain test evidence for three days
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: baseline-linux-tests
-          path: |
-            ${{ runner.temp }}/baseline-test-evidence
-            ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings
-            ${{ runner.temp }}/nextest-reports/**/junit.xml
-            ${{ env.CARGO_TARGET_DIR }}/nextest/**/junit.xml
-            codex-rs/target/nextest/**/junit.xml
+          path: ${{ runner.temp }}/baseline-test-evidence
           retention-days: 3
           if-no-files-found: warn
 
