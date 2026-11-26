@@ -1,0 +1,21 @@
+{
+  "failed": [
+    "//codex-rs/app-server:app-server-all-test",
+    "//codex-rs/app-server:app-server-all-test suite::v2::request_permissions::background_cell_uses_permissions_requested_after_next_turn_starts::strict_review",
+    "//codex-rs/app-server:app-server-all-test suite::v2::request_permissions::code_mode_uses_permissions_approved_in_the_same_cell::turn",
+    "//codex-rs/app-server:app-server-all-test suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::optional_batched",
+    "//codex-rs/app-server:app-server-all-test suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::optional_direct",
+    "//codex-rs/app-server:app-server-all-test suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::plugin_link_batched",
+    "//codex-rs/app-server:app-server-all-test suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::plugin_link_direct",
+    "//codex-rs/app-server:app-server-all-test suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::structured_mention_batched",
+    "//codex-rs/app-server:app-server-all-test suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::structured_mention_direct",
+    "//codex-rs/cli:cli-daemon_startup-test",
+    "//codex-rs/cli:cli-daemon_startup-test daemon_exclusion_survives_fork_picker",
+    "//codex-rs/cli:cli-daemon_startup-test daemon_exclusion_survives_resume_picker"
+  ],
+  "platform": "macos-bazel-x86_64-shard-1",
+  "runner": "bazel",
+  "tests_executed": 113,
+  "timed_out": [],
+  "upstream_commit": "ccf9be8cc458bd6b8336fe84d68d8893f2691a5e"
+}

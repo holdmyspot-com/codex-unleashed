@@ -11,10 +11,7 @@ patches. Per `.cat/rules/include/common/upstream-test-failures.md`, this file re
 | `windows-bazel-gnullvm-shard-{1,2,3,4}.json` | page-file run 45333894851 | 80/0, 77/0, 100/22, 105/0 |
 | `windows-bazel-msvc-shard-1.json` | 45320758830, artifact 14896209964 (shard 1 of 1) | 238/20 |
 
-No report has a `timed_out` entry. The macOS x86_64 Bazel baselines are not recorded yet. They need complete native
-Intel reports for both shards; the saved native shard 1 report predates this pin's runs, and shard 2 timed out.
-
-## Unverified upstream behavior
+No report has a `timed_out` entry. ## Unverified upstream behavior
 
 Upstream's records show no status for these tests on the matching platform:
 
@@ -51,3 +48,16 @@ These pass in upstream's CI:
 - `core/tests/suite/scenarios.rs:4558` `match_like_matches_macro`. Upstream's macOS Bazel Clippy fails on the same
   code, at line 4441 at 4aac2eacc5 (blocking-ci 43514491801, job 132192817164).
 A run passes only if Bazel's sole errors are failed Clippy actions and each of their diagnostics is listed here.
+
+## macOS x86_64 Bazel (native Intel)
+
+`macos-bazel-x86_64-shard-1..4.json` come from unpatched run 45651600030 on macos-15-intel, which uses four shards and
+`--local_test_jobs=4`. They record 113/12, 61/36, 61/0 and 123/7 (executed/failed), with no timeouts.
+They are classified as native-Intel environment failures, not upstream failures. Upstream runs its x86_64-apple-darwin
+Bazel tests on macos-15-xlarge (Apple silicon), not on Intel hardware, so upstream's behavior here is unverified.
+- 36 failures are code-mode-host tests (grpc, grpc_tcp, grpc_notifications, grpc_timing, capacity, settled). The host
+  does not print its endpoint within the 10-second wait in `code-mode-host/tests/support/host.rs:32-37`. The same tests
+  pass on arm64.
+- The rest are app-server-all-test (9), cli-daemon_startup (3), multi-env-copy-file (3), codex-api websocket probe (2)
+  and core-all-test (2).
+They are accepted only so patched runs can be compared; the slow host start is an open investigation.

@@ -1,0 +1,16 @@
+{
+  "failed": [
+    "//codex-rs/codex-api:codex-api-responses_websocket_probe-test",
+    "//codex-rs/codex-api:codex-api-responses_websocket_probe-test probe_preserves_evidence_and_redacts_wire_secrets",
+    "//codex-rs/core:core-all-test",
+    "//codex-rs/core:core-all-test suite::scenarios::multi_environment_mcp::same_named_executor_mcps_keep_calls_and_approvals_separate",
+    "//codex-rs/ext/multi-env-copy-file:multi-env-copy-file-copy_file-test",
+    "//codex-rs/ext/multi-env-copy-file:multi-env-copy-file-copy_file-test suite::copy_file_uses_each_environments_permissions::environment_profiles",
+    "//codex-rs/ext/multi-env-copy-file:multi-env-copy-file-copy_file-test suite::copy_file_uses_each_environments_permissions::turn_and_session_grants"
+  ],
+  "platform": "macos-bazel-x86_64-shard-4",
+  "runner": "bazel",
+  "tests_executed": 123,
+  "timed_out": [],
+  "upstream_commit": "ccf9be8cc458bd6b8336fe84d68d8893f2691a5e"
+}

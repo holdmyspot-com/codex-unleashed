@@ -1,0 +1,8 @@
+{
+  "failed": [],
+  "platform": "macos-bazel-x86_64-shard-3",
+  "runner": "bazel",
+  "tests_executed": 61,
+  "timed_out": [],
+  "upstream_commit": "ccf9be8cc458bd6b8336fe84d68d8893f2691a5e"
+}
