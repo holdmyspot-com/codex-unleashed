@@ -68,7 +68,10 @@ runs:
           cargo nextest --version
           printf 'profile=ci-test\ntarget=%s\n' "$TARGET"
           printf '%s\n' "$COMMAND_LINE"
-          printf '%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}" "${ImageVersion:-}"
+          # The image version is left out, so an image update that keeps the ABI reuses the cache. What decides ABI
+          # compatibility is keyed instead, so an update that changes it misses.
+          printf '%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}"
+          bash "$RESTART_ROOT/.github/scripts/native-abi-identity.sh"
           env | LC_ALL=C sort | grep -E '^(RUSTFLAGS|RUSTDOCFLAGS|RUSTC|RUSTC_WRAPPER|CARGO_INCREMENTAL|CARGO_PROFILE_[A-Z0-9_]+|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CC|CXX|AR|CFLAGS|CXXFLAGS|LIBSQLITE3_FLAGS|INCLUDE|LIB|LIBPATH|WindowsSdkDir|WindowsSDKVersion|VCToolsInstallDir|VCToolsVersion|DEVELOPER_DIR|MACOSX_DEPLOYMENT_TARGET)=' || true
           sha256sum "$CODEX_REPO_ROOT/codex-rs/Cargo.lock" "$CODEX_REPO_ROOT/codex-rs/rust-toolchain.toml" "$CODEX_REPO_ROOT/codex-rs/Cargo.toml"
         } > "$evidence/compiler.txt"
