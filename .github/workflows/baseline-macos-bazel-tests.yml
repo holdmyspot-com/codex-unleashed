@@ -303,7 +303,9 @@ jobs:
             )
           fi
           if [[ -n "$BAZEL_LOCAL_TEST_JOBS" ]]; then
-            cache_args+=("--local_test_jobs=$BAZEL_LOCAL_TEST_JOBS")
+            # Native Intel only. Its contention failures differ every run (runs 45729006472 and 45788476235), so retry a
+            # failed test once, as upstream's nextest profile does with retries = 1.
+            cache_args+=("--local_test_jobs=$BAZEL_LOCAL_TEST_JOBS" --flaky_test_attempts=2)
           fi
           set +e
           .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- \
