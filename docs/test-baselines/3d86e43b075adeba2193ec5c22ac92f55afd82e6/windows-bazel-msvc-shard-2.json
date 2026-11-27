@@ -1,0 +1,8 @@
+{
+  "failed": [],
+  "platform": "windows-bazel-msvc-shard-2",
+  "runner": "bazel",
+  "tests_executed": 151,
+  "timed_out": [],
+  "upstream_commit": "3d86e43b075adeba2193ec5c22ac92f55afd82e6"
+}
