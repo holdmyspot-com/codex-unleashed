@@ -863,7 +863,9 @@ jobs:
           fi
           if [[ -n "$STRESS_COUNT" ]]; then
             nextest_args+=(--stress-count "$STRESS_COUNT" --retries 0)
-            for _ in $(seq "$(nproc)"); do yes > /dev/null & done
+            # Diagnostic: heavier than full-suite load. Two CPU spinners per core plus process-spawn churn.
+            for _ in $(seq $(( 2 * $(nproc) ))); do yes > /dev/null & done
+            for _ in $(seq "$(nproc)"); do ( while :; do /bin/true; done ) & done
           fi
           printf '%s\n' "${nextest_args[@]}" > "$RUNNER_TEMP/baseline-test-evidence/nextest-arguments.txt"
           lanes=()
@@ -877,8 +879,22 @@ jobs:
             (
               # Only the remote lane selects the Docker exec-server, as upstream's remote job alone does.
               if [[ "$lane" == remote ]]; then source "$RUNNER_TEMP/remote-test-env.sh"; fi
-              exec env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
-                cargo-nextest nextest "${nextest_args[@]}"
+              if [[ -z "$STRESS_COUNT" ]]; then
+                exec env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
+                  cargo-nextest nextest "${nextest_args[@]}"
+              fi
+              # Diagnostic: four concurrent stress loops of the selected tests, each extracting its own archive copy.
+              pids=()
+              for copy in 1 2 3 4; do
+                mkdir -p "$RUNNER_TEMP/extract-$copy"
+                env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
+                  cargo-nextest nextest "${nextest_args[@]}" --extract-to "$RUNNER_TEMP/extract-$copy" \
+                  --success-output never --failure-output immediate 2>&1 | sed "s/^/[copy $copy] /" &
+                pids+=($!)
+              done
+              copy_status=0
+              for pid in "${pids[@]}"; do wait "$pid" || copy_status=1; done
+              exit "$copy_status"
             ) 2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/nextest-$lane.log"
             lane_status=${PIPESTATUS[0]}
             set -e
