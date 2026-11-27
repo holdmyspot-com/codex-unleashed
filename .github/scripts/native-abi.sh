@@ -23,12 +23,19 @@ identity() {
       printf 'sdk=%s\n' "$(xcrun --show-sdk-version)"
       ;;
     Windows)
-      local program_files vswhere installation
-      program_files="$(cygpath -u "${ProgramFiles} (x86)")"
-      vswhere="$program_files/Microsoft Visual Studio/Installer/vswhere.exe"
-      installation="$(cygpath -u "$("$vswhere" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | tr -d '\r')")"
-      printf 'compiler=msvc-%s\n' "$(ls "$installation/VC/Tools/MSVC" | sort -V | tail -n 1)"
-      printf 'sdk=%s\n' "$(ls "$program_files/Windows Kits/10/Lib" | sort -V | tail -n 1)"
+      # The MSVC developer environment names both versions; outside it, ask the Visual Studio installer.
+      local msvc="${VCToolsVersion:-}" sdk="${WindowsSDKVersion:-}" installer installation
+      installer="/c/Program Files (x86)/Microsoft Visual Studio/Installer"
+      if [[ -z "$msvc" ]]; then
+        installation="$(cygpath -u "$("$installer/vswhere.exe" -latest -products '*' \
+          -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | tr -d '\r')")"
+        msvc="$(ls "$installation/VC/Tools/MSVC" | sort -V | tail -n 1)"
+      fi
+      if [[ -z "$sdk" ]]; then
+        sdk="$(ls "/c/Program Files (x86)/Windows Kits/10/Lib" | sort -V | tail -n 1)"
+      fi
+      printf 'compiler=msvc-%s\n' "${msvc%\\}"
+      printf 'sdk=%s\n' "${sdk%\\}"
       ;;
     *)
       printf 'Unsupported runner OS: %s\n' "${RUNNER_OS:-unknown}" >&2
