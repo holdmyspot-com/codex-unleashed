@@ -7,6 +7,19 @@ on:
         description: Space-separated repository paths of downstream patches to apply with git am, in order; empty tests pristine upstream and records its failures as the baseline
         type: string
         default: ""
+      targets:
+        description: Space-separated Bazel test labels to run on one runner per selected toolchain instead of partitioning every target; skips the coverage and baseline comparison
+        type: string
+        default: ""
+      stress_count:
+        description: Optional repeat count; each selected test runs this many times under CPU load, with no retries, to measure flakiness; skips the baseline comparison
+        type: string
+        default: ""
+      toolchains:
+        description: Which Windows toolchains to run
+        type: choice
+        options: [both, gnullvm, msvc]
+        default: both
       public_key:
         description: Optional SSH public key; connect to each Windows worker before starting its Bazel checks
         type: string
@@ -25,11 +38,19 @@ jobs:
     steps:
       - name: Define the shards
         id: plan
+        env:
+          TOOLCHAINS: ${{ inputs.toolchains }}
+          FOCUSED_TARGETS: ${{ inputs.targets }}
         run: |
           set -euo pipefail
           # One msvc shard built 100 GB of outputs for //... and filled a 133 GB Dev Drive (run 45949570933); halving the
           # selection keeps each shard near the 60-75 GB that the gnullvm shards use.
           targets='[{"target":"x86_64-pc-windows-gnullvm","shard_count":4},{"target":"x86_64-pc-windows-msvc","shard_count":2}]'
+          # A focused run (explicit targets) uses one shard per selected toolchain, and the toolchains input narrows the groups.
+          targets="$(jq -c --arg toolchains "$TOOLCHAINS" --arg focused "${FOCUSED_TARGETS// /}" '
+            [.[] | select($toolchains == "both" or ($toolchains == "gnullvm" and (.target | endswith("gnullvm"))) or ($toolchains == "msvc" and (.target | endswith("msvc"))))
+              | if $focused != "" then .shard_count = 1 else . end]' <<< "$targets")"
+          test "$targets" != '[]'
           printf 'matrix=%s\n' "$(jq -c '{include: [.[] | . as $entry | range(1; $entry.shard_count + 1) | {target: $entry.target, shard: ., shard_count: $entry.shard_count}]}' <<< "$targets")" >> "$GITHUB_OUTPUT"
           printf 'expect=%s\n' "$(jq -r '[.[] | "--expect \(.target)=\(.shard_count)"] | join(" ")' <<< "$targets")" >> "$GITHUB_OUTPUT"
 
@@ -241,6 +262,9 @@ jobs:
 
       - name: Run the maintained Windows Bazel test selection
         id: bazel_tests
+        env:
+          FOCUSED_TARGETS: ${{ inputs.targets }}
+          STRESS_COUNT: ${{ inputs.stress_count }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
@@ -280,20 +304,30 @@ jobs:
             test_args+=(--config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --build_metadata=TAG_windows_native_main=true)
             test_args+=(--skip_incompatible_explicit_targets)
           fi
-          query='tests(//...) except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...))'
-          if [[ "$TARGET" == x86_64-pc-windows-msvc ]]; then
-            query+=' except //codex-rs/v8-poc:v8-poc-unit-tests'
+          if [[ -n "${FOCUSED_TARGETS// /}" ]]; then
+            read -r -a requested <<< "$FOCUSED_TARGETS"
+            printf '%s\n' "${requested[@]}" > "$evidence/selected-targets.txt"
+          else
+            query='tests(//...) except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...))'
+            if [[ "$TARGET" == x86_64-pc-windows-msvc ]]; then
+              query+=' except //codex-rs/v8-poc:v8-poc-unit-tests'
+            fi
+            .github/scripts/run-bazel-query-ci.sh --output=label -- "$query" \
+              | LC_ALL=C sort > "$evidence/candidate-targets.txt"
+            bash "$CODEX_TOOLING" select-windows-bazel-targets \
+              --shard "$BAZEL_TEST_SHARD" --shard-count "$BAZEL_TEST_SHARD_COUNT" \
+              --durations "$GITHUB_WORKSPACE/.github/scripts/windows_bazel_test_durations.tsv" \
+              < "$evidence/candidate-targets.txt" > "$evidence/selected-targets.txt"
           fi
-          .github/scripts/run-bazel-query-ci.sh --output=label -- "$query" \
-            | LC_ALL=C sort > "$evidence/candidate-targets.txt"
-          bash "$CODEX_TOOLING" select-windows-bazel-targets \
-            --shard "$BAZEL_TEST_SHARD" --shard-count "$BAZEL_TEST_SHARD_COUNT" \
-            --durations "$GITHUB_WORKSPACE/.github/scripts/windows_bazel_test_durations.tsv" \
-            < "$evidence/candidate-targets.txt" > "$evidence/selected-targets.txt"
           test -s "$evidence/selected-targets.txt"
           while IFS= read -r target; do
             targets+=("$target")
           done < "$evidence/selected-targets.txt"
+          if [[ -n "$STRESS_COUNT" ]]; then
+            # Repeat each test without retries while every core is busy, to measure flakiness.
+            test_args+=(--runs_per_test="$STRESS_COUNT" --flaky_test_attempts=1)
+            for _ in $(seq "$(nproc)"); do yes > /dev/null & done
+          fi
           if [[ "$RUNNER_OS" == Windows ]]; then
             test_args+=(
               "--extra_toolchains=//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain"
@@ -353,8 +387,24 @@ jobs:
           fi
           exit "$result"
 
+      - name: Report each focused target's per-attempt status
+        if: ${{ always() && steps.bazel_tests.outcome != 'skipped' && (inputs.targets != '' || inputs.stress_count != '') }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
+          {
+            printf '### Per-attempt test status (%s)\n\n```\n' "$TARGET"
+            jq -r 'select(.id.testResult != null) | "\(.id.testResult.label) run=\(.id.testResult.run) shard=\(.id.testResult.shard) attempt=\(.id.testResult.attempt) \(.testResult.status)"' \
+              "$evidence/bazel-tests.bep.json" | LC_ALL=C sort
+            jq -r 'select(.id.testSummary != null) | "\(.id.testSummary.label) overall=\(.testSummary.overallStatus) runs=\(.testSummary.totalRunCount)"' \
+              "$evidence/bazel-tests.bep.json" | LC_ALL=C sort
+            jq -r 'select(.aborted.reason == "SKIPPED") | "\(.id.targetCompleted.label // "?") SKIPPED as incompatible"' \
+              "$evidence/bazel-tests.bep.json" | LC_ALL=C sort
+            printf '```\n'
+          } | tee "$evidence/per-attempt-status.txt" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Record the shard's candidate, selected, executed and skipped lists
-        if: always() && steps.bazel_tests.outcome != 'skipped'
+        if: always() && steps.bazel_tests.outcome != 'skipped' && inputs.targets == '' && inputs.stress_count == ''
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
@@ -429,7 +479,7 @@ jobs:
       - name: Record this shard's results
         # An unpatched run is pristine upstream, so its failures are the baseline that patched runs are compared with;
         # the evidence artifact carries the file for committing under docs/test-baselines.
-        if: ${{ !cancelled() && steps.bazel_tests.outcome == 'success' && steps.bazel_tests.outputs['bep-complete'] == 'true' }}
+        if: ${{ !cancelled() && steps.bazel_tests.outcome == 'success' && steps.bazel_tests.outputs['bep-complete'] == 'true' && inputs.targets == '' && inputs.stress_count == '' }}
         env:
           PATCHES: ${{ inputs.patches }}
         run: |
@@ -449,7 +499,7 @@ jobs:
           fi
 
       - name: Upload this shard's coverage lists
-        if: always() && steps.bazel_tests.outcome != 'skipped'
+        if: always() && steps.bazel_tests.outcome != 'skipped' && inputs.targets == '' && inputs.stress_count == ''
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: bazel-shard-coverage-windows-${{ matrix.target }}-${{ matrix.shard }}
@@ -490,7 +540,7 @@ jobs:
     # Fails unless every shard uploaded, all saw the same candidate list, the selections partition it exactly, and every
     # incompatible skip is allowlisted.
     needs: [plan, test]
-    if: always()
+    if: ${{ always() && inputs.targets == '' && inputs.stress_count == '' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
