@@ -91,7 +91,7 @@ schemas copy these doc comments, so they are regenerated with upstream's generat
  81 files changed, 178 insertions(+), 177 deletions(-)
 
 diff --git a/codex-rs/app-server-protocol/schema/json/ClientRequest.json b/codex-rs/app-server-protocol/schema/json/ClientRequest.json
-index a4a3231dc7..c62e2d09ef 100644
+index c55670c6ce..6e1f234e6c 100644
 --- a/codex-rs/app-server-protocol/schema/json/ClientRequest.json
 +++ b/codex-rs/app-server-protocol/schema/json/ClientRequest.json
 @@ -2081,7 +2081,7 @@
@@ -112,7 +112,7 @@ index a4a3231dc7..c62e2d09ef 100644
            "properties": {
              "apiKey": {
                "type": "string"
-@@ -2140,7 +2140,7 @@
+@@ -2151,7 +2151,7 @@
            "type": "object"
          },
          {
@@ -121,7 +121,7 @@ index a4a3231dc7..c62e2d09ef 100644
            "properties": {
              "accessKeyId": {
                "type": "string"
-@@ -3263,7 +3263,7 @@
+@@ -3285,7 +3285,7 @@
        ]
      },
      "ReasoningSummary": {
@@ -170,7 +170,7 @@ index b69ad9b288..1486188bfc 100644
          "file_name": {
            "type": "string"
 diff --git a/codex-rs/app-server-protocol/schema/json/ServerNotification.json b/codex-rs/app-server-protocol/schema/json/ServerNotification.json
-index fbfb065b7a..d35724eb52 100644
+index 02d3fc8039..32097d937b 100644
 --- a/codex-rs/app-server-protocol/schema/json/ServerNotification.json
 +++ b/codex-rs/app-server-protocol/schema/json/ServerNotification.json
 @@ -737,7 +737,7 @@
@@ -191,7 +191,7 @@ index fbfb065b7a..d35724eb52 100644
        "enum": [
          "agent"
        ],
-@@ -2121,7 +2121,7 @@
+@@ -2124,7 +2124,7 @@
        "type": "string"
      },
      "FuzzyFileSearchResult": {
@@ -200,7 +200,7 @@ index fbfb065b7a..d35724eb52 100644
        "properties": {
          "file_name": {
            "type": "string"
-@@ -2262,7 +2262,7 @@
+@@ -2265,7 +2265,7 @@
        "type": "object"
      },
      "GuardianApprovalReview": {
@@ -209,7 +209,7 @@ index fbfb065b7a..d35724eb52 100644
        "properties": {
          "rationale": {
            "type": [
-@@ -2529,7 +2529,7 @@
+@@ -2532,7 +2532,7 @@
        ]
      },
      "GuardianApprovalReviewStatus": {
@@ -218,7 +218,7 @@ index fbfb065b7a..d35724eb52 100644
        "enum": [
          "inProgress",
          "approved",
-@@ -2547,7 +2547,7 @@
+@@ -2550,7 +2550,7 @@
        "type": "string"
      },
      "GuardianRiskLevel": {
@@ -227,7 +227,7 @@ index fbfb065b7a..d35724eb52 100644
        "enum": [
          "low",
          "medium",
-@@ -2557,7 +2557,7 @@
+@@ -2560,7 +2560,7 @@
        "type": "string"
      },
      "GuardianUserAuthorization": {
@@ -236,7 +236,7 @@ index fbfb065b7a..d35724eb52 100644
        "enum": [
          "unknown",
          "low",
-@@ -2913,7 +2913,7 @@
+@@ -2916,7 +2916,7 @@
        "type": "object"
      },
      "ItemGuardianApprovalReviewCompletedNotification": {
@@ -245,7 +245,7 @@ index fbfb065b7a..d35724eb52 100644
        "properties": {
          "action": {
            "$ref": "#/definitions/GuardianApprovalReviewAction"
-@@ -2965,7 +2965,7 @@
+@@ -2968,7 +2968,7 @@
        "type": "object"
      },
      "ItemGuardianApprovalReviewStartedNotification": {
@@ -254,7 +254,7 @@ index fbfb065b7a..d35724eb52 100644
        "properties": {
          "action": {
            "$ref": "#/definitions/GuardianApprovalReviewAction"
-@@ -3937,7 +3937,7 @@
+@@ -3940,7 +3940,7 @@
        "type": "string"
      },
      "ReasoningSummary": {
@@ -263,7 +263,7 @@ index fbfb065b7a..d35724eb52 100644
        "oneOf": [
          {
            "enum": [
-@@ -4612,7 +4612,7 @@
+@@ -4615,7 +4615,7 @@
            ]
          },
          "path": {
@@ -286,7 +286,7 @@ index e96baf73ce..89d91df0e9 100644
              "string",
              "null"
 diff --git a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
-index d1ed08d677..5cacd0f780 100644
+index 8874038ff7..1482858c66 100644
 --- a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
 +++ b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
 @@ -3317,7 +3317,7 @@
@@ -307,7 +307,7 @@ index d1ed08d677..5cacd0f780 100644
        "properties": {
          "file_name": {
            "type": "string"
-@@ -8635,7 +8635,7 @@
+@@ -8645,7 +8645,7 @@
              "type": "string"
            },
            {
@@ -316,7 +316,7 @@ index d1ed08d677..5cacd0f780 100644
              "enum": [
                "chatgptAuthTokens"
              ],
-@@ -8723,7 +8723,7 @@
+@@ -8733,7 +8733,7 @@
          ]
        },
        "AutoReviewDecisionSource": {
@@ -325,7 +325,7 @@ index d1ed08d677..5cacd0f780 100644
          "enum": [
            "agent"
          ],
-@@ -10089,7 +10089,7 @@
+@@ -10102,7 +10102,7 @@
                  "type": "null"
                }
              ],
@@ -334,7 +334,7 @@ index d1ed08d677..5cacd0f780 100644
            },
            "browser_use": {
              "anyOf": [
-@@ -13912,7 +13912,7 @@
+@@ -13935,7 +13935,7 @@
          "type": "object"
        },
        "GuardianApprovalReview": {
@@ -343,7 +343,7 @@ index d1ed08d677..5cacd0f780 100644
          "properties": {
            "rationale": {
              "type": [
-@@ -14179,7 +14179,7 @@
+@@ -14202,7 +14202,7 @@
          ]
        },
        "GuardianApprovalReviewStatus": {
@@ -352,7 +352,7 @@ index d1ed08d677..5cacd0f780 100644
          "enum": [
            "inProgress",
            "approved",
-@@ -14197,7 +14197,7 @@
+@@ -14220,7 +14220,7 @@
          "type": "string"
        },
        "GuardianRiskLevel": {
@@ -361,7 +361,7 @@ index d1ed08d677..5cacd0f780 100644
          "enum": [
            "low",
            "medium",
-@@ -14207,7 +14207,7 @@
+@@ -14230,7 +14230,7 @@
          "type": "string"
        },
        "GuardianUserAuthorization": {
@@ -370,7 +370,7 @@ index d1ed08d677..5cacd0f780 100644
          "enum": [
            "unknown",
            "low",
-@@ -14914,7 +14914,7 @@
+@@ -14937,7 +14937,7 @@
        },
        "ItemGuardianApprovalReviewCompletedNotification": {
          "$schema": "http://json-schema.org/draft-07/schema#",
@@ -379,7 +379,7 @@ index d1ed08d677..5cacd0f780 100644
          "properties": {
            "action": {
              "$ref": "#/definitions/v2/GuardianApprovalReviewAction"
-@@ -14968,7 +14968,7 @@
+@@ -14991,7 +14991,7 @@
        },
        "ItemGuardianApprovalReviewStartedNotification": {
          "$schema": "http://json-schema.org/draft-07/schema#",
@@ -388,7 +388,7 @@ index d1ed08d677..5cacd0f780 100644
          "properties": {
            "action": {
              "$ref": "#/definitions/v2/GuardianApprovalReviewAction"
-@@ -15254,7 +15254,7 @@
+@@ -15277,7 +15277,7 @@
              "type": "object"
            },
            {
@@ -397,7 +397,7 @@ index d1ed08d677..5cacd0f780 100644
              "properties": {
                "accessToken": {
                  "description": "Access token (JWT) supplied by the client. This token is used for backend API requests and email extraction.",
-@@ -15288,7 +15288,7 @@
+@@ -15311,7 +15311,7 @@
              "type": "object"
            },
            {
@@ -406,7 +406,7 @@ index d1ed08d677..5cacd0f780 100644
              "properties": {
                "apiKey": {
                  "type": "string"
-@@ -15313,7 +15313,7 @@
+@@ -15347,7 +15347,7 @@
              "type": "object"
            },
            {
@@ -415,7 +415,7 @@ index d1ed08d677..5cacd0f780 100644
              "properties": {
                "accessKeyId": {
                  "type": "string"
-@@ -20231,7 +20231,7 @@
+@@ -20285,7 +20285,7 @@
          ]
        },
        "ReasoningSummary": {
@@ -424,7 +424,7 @@ index d1ed08d677..5cacd0f780 100644
          "oneOf": [
            {
              "enum": [
-@@ -22865,7 +22865,7 @@
+@@ -22919,7 +22919,7 @@
              ]
            },
            "path": {
@@ -434,10 +434,10 @@ index d1ed08d677..5cacd0f780 100644
                "string",
                "null"
 diff --git a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
-index 593c272992..09a1e9c874 100644
+index 7e5251909a..2caa816546 100644
 --- a/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
 +++ b/codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
-@@ -1699,7 +1699,7 @@
+@@ -1709,7 +1709,7 @@
            "type": "string"
          },
          {
@@ -446,7 +446,7 @@ index 593c272992..09a1e9c874 100644
            "enum": [
              "chatgptAuthTokens"
            ],
-@@ -1787,7 +1787,7 @@
+@@ -1797,7 +1797,7 @@
        ]
      },
      "AutoReviewDecisionSource": {
@@ -455,7 +455,7 @@ index 593c272992..09a1e9c874 100644
        "enum": [
          "agent"
        ],
-@@ -5843,7 +5843,7 @@
+@@ -5856,7 +5856,7 @@
                "type": "null"
              }
            ],
@@ -464,7 +464,7 @@ index 593c272992..09a1e9c874 100644
          },
          "browser_use": {
            "anyOf": [
-@@ -9250,7 +9250,7 @@
+@@ -9273,7 +9273,7 @@
        "type": "object"
      },
      "FuzzyFileSearchResult": {
@@ -473,7 +473,7 @@ index 593c272992..09a1e9c874 100644
        "properties": {
          "file_name": {
            "type": "string"
-@@ -9777,7 +9777,7 @@
+@@ -9800,7 +9800,7 @@
        "type": "object"
      },
      "GuardianApprovalReview": {
@@ -482,7 +482,7 @@ index 593c272992..09a1e9c874 100644
        "properties": {
          "rationale": {
            "type": [
-@@ -10044,7 +10044,7 @@
+@@ -10067,7 +10067,7 @@
        ]
      },
      "GuardianApprovalReviewStatus": {
@@ -491,7 +491,7 @@ index 593c272992..09a1e9c874 100644
        "enum": [
          "inProgress",
          "approved",
-@@ -10062,7 +10062,7 @@
+@@ -10085,7 +10085,7 @@
        "type": "string"
      },
      "GuardianRiskLevel": {
@@ -500,7 +500,7 @@ index 593c272992..09a1e9c874 100644
        "enum": [
          "low",
          "medium",
-@@ -10072,7 +10072,7 @@
+@@ -10095,7 +10095,7 @@
        "type": "string"
      },
      "GuardianUserAuthorization": {
@@ -509,7 +509,7 @@ index 593c272992..09a1e9c874 100644
        "enum": [
          "unknown",
          "low",
-@@ -10848,7 +10848,7 @@
+@@ -10871,7 +10871,7 @@
      },
      "ItemGuardianApprovalReviewCompletedNotification": {
        "$schema": "http://json-schema.org/draft-07/schema#",
@@ -518,7 +518,7 @@ index 593c272992..09a1e9c874 100644
        "properties": {
          "action": {
            "$ref": "#/definitions/GuardianApprovalReviewAction"
-@@ -10902,7 +10902,7 @@
+@@ -10925,7 +10925,7 @@
      },
      "ItemGuardianApprovalReviewStartedNotification": {
        "$schema": "http://json-schema.org/draft-07/schema#",
@@ -527,7 +527,7 @@ index 593c272992..09a1e9c874 100644
        "properties": {
          "action": {
            "$ref": "#/definitions/GuardianApprovalReviewAction"
-@@ -11188,7 +11188,7 @@
+@@ -11211,7 +11211,7 @@
            "type": "object"
          },
          {
@@ -536,7 +536,7 @@ index 593c272992..09a1e9c874 100644
            "properties": {
              "accessToken": {
                "description": "Access token (JWT) supplied by the client. This token is used for backend API requests and email extraction.",
-@@ -11222,7 +11222,7 @@
+@@ -11245,7 +11245,7 @@
            "type": "object"
          },
          {
@@ -545,7 +545,7 @@ index 593c272992..09a1e9c874 100644
            "properties": {
              "apiKey": {
                "type": "string"
-@@ -11247,7 +11247,7 @@
+@@ -11281,7 +11281,7 @@
            "type": "object"
          },
          {
@@ -554,7 +554,7 @@ index 593c272992..09a1e9c874 100644
            "properties": {
              "accessKeyId": {
                "type": "string"
-@@ -16165,7 +16165,7 @@
+@@ -16219,7 +16219,7 @@
        ]
      },
      "ReasoningSummary": {
@@ -563,7 +563,7 @@ index 593c272992..09a1e9c874 100644
        "oneOf": [
          {
            "enum": [
-@@ -20561,7 +20561,7 @@
+@@ -20615,7 +20615,7 @@
            ]
          },
          "path": {
@@ -586,10 +586,10 @@ index 701ac842f3..6e944e77a6 100644
              "chatgptAuthTokens"
            ],
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ConfigReadResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ConfigReadResponse.json
-index 4fd6ad209c..4010bdcba6 100644
+index 0b36ab1240..df0d4e3857 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ConfigReadResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ConfigReadResponse.json
-@@ -499,7 +499,7 @@
+@@ -509,7 +509,7 @@
                "type": "null"
              }
            ],
@@ -598,7 +598,7 @@ index 4fd6ad209c..4010bdcba6 100644
          },
          "browser_use": {
            "anyOf": [
-@@ -979,7 +979,7 @@
+@@ -989,7 +989,7 @@
        "type": "string"
      },
      "ReasoningSummary": {
@@ -715,10 +715,10 @@ index 869c6c899a..d92a9eb203 100644
      "action": {
        "$ref": "#/definitions/GuardianApprovalReviewAction"
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/LoginAccountParams.json b/codex-rs/app-server-protocol/schema/json/v2/LoginAccountParams.json
-index 80164cc562..5c0367765c 100644
+index 80ccaba0fc..1a7a4c6d19 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/LoginAccountParams.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/LoginAccountParams.json
-@@ -80,7 +80,7 @@
+@@ -87,7 +87,7 @@
        "type": "object"
      },
      {
@@ -727,7 +727,7 @@ index 80164cc562..5c0367765c 100644
        "properties": {
          "accessToken": {
            "description": "Access token (JWT) supplied by the client. This token is used for backend API requests and email extraction.",
-@@ -114,7 +114,7 @@
+@@ -121,7 +121,7 @@
        "type": "object"
      },
      {
@@ -736,7 +736,7 @@ index 80164cc562..5c0367765c 100644
        "properties": {
          "apiKey": {
            "type": "string"
-@@ -139,7 +139,7 @@
+@@ -157,7 +157,7 @@
        "type": "object"
      },
      {
@@ -746,10 +746,10 @@ index 80164cc562..5c0367765c 100644
          "accessKeyId": {
            "type": "string"
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadForkResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadForkResponse.json
-index 4c53c1712f..e8c6e9d9a1 100644
+index bedf099526..e302337630 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadForkResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadForkResponse.json
-@@ -1693,7 +1693,7 @@
+@@ -1696,7 +1696,7 @@
            ]
          },
          "path": {
@@ -759,10 +759,10 @@ index 4c53c1712f..e8c6e9d9a1 100644
              "string",
              "null"
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadListResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadListResponse.json
-index 9cd75945f0..4c4e84718f 100644
+index 7430b080f8..44cf84d8c4 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadListResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadListResponse.json
-@@ -1484,7 +1484,7 @@
+@@ -1487,7 +1487,7 @@
            ]
          },
          "path": {
@@ -772,10 +772,10 @@ index 9cd75945f0..4c4e84718f 100644
              "string",
              "null"
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateResponse.json
-index 82e29c0b46..d418966af9 100644
+index 5809d3ee7c..af29b26032 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateResponse.json
-@@ -1484,7 +1484,7 @@
+@@ -1487,7 +1487,7 @@
            ]
          },
          "path": {
@@ -785,10 +785,10 @@ index 82e29c0b46..d418966af9 100644
              "string",
              "null"
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadReadResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadReadResponse.json
-index 695aea77b9..beaf990637 100644
+index cbbc50f0ce..82d334b34b 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadReadResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadReadResponse.json
-@@ -1484,7 +1484,7 @@
+@@ -1487,7 +1487,7 @@
            ]
          },
          "path": {
@@ -798,10 +798,10 @@ index 695aea77b9..beaf990637 100644
              "string",
              "null"
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadResumeResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadResumeResponse.json
-index 38e4bbc5c0..776b837751 100644
+index e028239607..c265ea81c6 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadResumeResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadResumeResponse.json
-@@ -1745,7 +1745,7 @@
+@@ -1748,7 +1748,7 @@
            ]
          },
          "path": {
@@ -811,10 +811,10 @@ index 38e4bbc5c0..776b837751 100644
              "string",
              "null"
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadRevertResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadRevertResponse.json
-index dc4f01d00b..2e55b61800 100644
+index f78ba13763..418483d3e9 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadRevertResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadRevertResponse.json
-@@ -1484,7 +1484,7 @@
+@@ -1487,7 +1487,7 @@
            ]
          },
          "path": {
@@ -837,10 +837,10 @@ index ee890d3273..5c400514c1 100644
          {
            "enum": [
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadStartResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadStartResponse.json
-index 7ab593fa01..280a06d79a 100644
+index ed0c1bcf7a..c24ac3a4a4 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadStartResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadStartResponse.json
-@@ -1693,7 +1693,7 @@
+@@ -1696,7 +1696,7 @@
            ]
          },
          "path": {
@@ -850,10 +850,10 @@ index 7ab593fa01..280a06d79a 100644
              "string",
              "null"
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadStartedNotification.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadStartedNotification.json
-index 983fa1eaac..13af5c8281 100644
+index 8fd68bf341..cd9149a504 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadStartedNotification.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadStartedNotification.json
-@@ -1484,7 +1484,7 @@
+@@ -1487,7 +1487,7 @@
            ]
          },
          "path": {
@@ -863,10 +863,10 @@ index 983fa1eaac..13af5c8281 100644
              "string",
              "null"
 diff --git a/codex-rs/app-server-protocol/schema/json/v2/ThreadUnarchiveResponse.json b/codex-rs/app-server-protocol/schema/json/v2/ThreadUnarchiveResponse.json
-index 43fec6fcaa..7648798fdc 100644
+index e9345c0db0..59d568dc58 100644
 --- a/codex-rs/app-server-protocol/schema/json/v2/ThreadUnarchiveResponse.json
 +++ b/codex-rs/app-server-protocol/schema/json/v2/ThreadUnarchiveResponse.json
-@@ -1484,7 +1484,7 @@
+@@ -1487,7 +1487,7 @@
            ]
          },
          "path": {
@@ -1051,7 +1051,7 @@ index 9a0f865d7b..3d6147329b 100644
  path: string | null, /**
   * Working directory captured for the thread.
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index e284f9138c..524d0083e2 100644
+index a1c6feec5f..762ce14576 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
 @@ -26,7 +26,7 @@ pub enum AuthMode {
@@ -1089,10 +1089,10 @@ index 3f100534d7..05e2b0047a 100644
  /// Stdin reviews are child approvals and must not change the parent item lifecycle.
  pub fn build_item_from_guardian_event(
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/account.rs b/codex-rs/app-server-protocol/src/protocol/v2/account.rs
-index 9d675411f1..155eb5d676 100644
+index 84ea960b27..395832f826 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/account.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/account.rs
-@@ -95,7 +95,7 @@ pub enum LoginAccountParams {
+@@ -96,7 +96,7 @@ pub enum LoginAccountParams {
      #[serde(rename = "chatgptDeviceCode")]
      #[ts(rename = "chatgptDeviceCode")]
      ChatgptDeviceCode,
@@ -1101,7 +1101,7 @@ index 9d675411f1..155eb5d676 100644
      /// The access token must contain the same scopes that Codex-managed ChatGPT auth tokens have.
      #[experimental("account/login/start.chatgptAuthTokens")]
      #[serde(rename = "chatgptAuthTokens", rename_all = "camelCase")]
-@@ -113,12 +113,12 @@ pub enum LoginAccountParams {
+@@ -114,7 +114,7 @@ pub enum LoginAccountParams {
          #[ts(optional = nullable)]
          chatgpt_plan_type: Option<String>,
      },
@@ -1110,17 +1110,20 @@ index 9d675411f1..155eb5d676 100644
      #[experimental("account/login/start.amazonBedrock")]
      #[serde(rename = "amazonBedrock", rename_all = "camelCase")]
      #[ts(rename = "amazonBedrock", rename_all = "camelCase")]
-     AmazonBedrock { api_key: String, region: String },
+@@ -125,7 +125,7 @@ pub enum LoginAccountParams {
+         #[ts(optional = nullable)]
+         provider_id: Option<BedrockProviderId>,
+     },
 -    /// [UNSTABLE] Managed Amazon Bedrock AWS access key login is experimental.
 +    /// \[UNSTABLE\] Managed Amazon Bedrock AWS access key login is experimental.
      #[experimental("account/login/start.amazonBedrockAccessKeys")]
      #[serde(rename = "amazonBedrockAccessKeys", rename_all = "camelCase")]
      #[ts(rename = "amazonBedrockAccessKeys", rename_all = "camelCase")]
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/config.rs b/codex-rs/app-server-protocol/src/protocol/v2/config.rs
-index 949c1cc12c..55da271f1a 100644
+index c8a9f6c842..3abafb1add 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/config.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/config.rs
-@@ -289,7 +289,7 @@ pub struct Config {
+@@ -290,7 +290,7 @@ pub struct Config {
      pub model_provider: Option<String>,
      #[experimental(nested)]
      pub approval_policy: Option<AskForApproval>,
@@ -1206,10 +1209,10 @@ index c4eef0021d..2602c20b91 100644
      #[ts(optional = nullable)]
      pub grant_root: Option<PathBuf>,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 0f2bb10f5e..774a57c0c3 100644
+index 482d54d640..e32aba17da 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -368,14 +368,14 @@ pub struct ThreadSettingsUpdatedNotification {
+@@ -380,14 +380,14 @@ pub struct ThreadSettingsUpdatedNotification {
  pub struct ThreadResumeParams {
      pub thread_id: String,
  
@@ -1226,7 +1229,7 @@ index 0f2bb10f5e..774a57c0c3 100644
      /// If specified for a non-running thread, the thread_id param will be ignored.
      /// If thread_id identifies a running thread, the path must match the active
      /// rollout path.
-@@ -586,7 +586,7 @@ pub struct ThreadForkParams {
+@@ -604,7 +604,7 @@ pub struct ThreadForkParams {
      #[ts(optional = nullable)]
      pub before_turn_id: Option<String>,
  
@@ -1236,7 +1239,7 @@ index 0f2bb10f5e..774a57c0c3 100644
      #[experimental("thread/fork.path")]
      #[serde(
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs
-index 33aa92edd3..62f560850f 100644
+index 226decc13c..8b697d271a 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs
 @@ -262,7 +262,7 @@ pub struct Thread {
@@ -1247,9 +1250,9 @@ index 33aa92edd3..62f560850f 100644
 +    /// \[UNSTABLE\] Path to the thread on disk.
      pub path: Option<PathBuf>,
      /// Working directory captured for the thread.
-     pub cwd: AbsolutePathBuf,
+     // Preserve the published SDK type for this server-native absolute path.
 diff --git a/codex-rs/app-server/src/in_process.rs b/codex-rs/app-server/src/in_process.rs
-index a0d03a9de1..4f0fec35d4 100644
+index b1d2b8575d..362d433a09 100644
 --- a/codex-rs/app-server/src/in_process.rs
 +++ b/codex-rs/app-server/src/in_process.rs
 @@ -1,6 +1,6 @@
@@ -1274,7 +1277,7 @@ index 315a6425d0..1b55ddd3b3 100644
  ///
  /// Although this constant lives in `codex-apply-patch` (to avoid forcing
 diff --git a/codex-rs/arg0/src/lib.rs b/codex-rs/arg0/src/lib.rs
-index 1abf467835..95e12a40f1 100644
+index 74d41d1c12..dc18c5cd4d 100644
 --- a/codex-rs/arg0/src/lib.rs
 +++ b/codex-rs/arg0/src/lib.rs
 @@ -187,7 +187,7 @@ fn prepare_path_env_var_with_aliases(
@@ -1287,10 +1290,10 @@ index 1abf467835..95e12a40f1 100644
  /// This function should be used to wrap any `main()` function in binary crates
  /// in this workspace that depends on these helper CLIs.
 diff --git a/codex-rs/cli/src/lib.rs b/codex-rs/cli/src/lib.rs
-index 48422dcb14..4b58a558a5 100644
+index 4fc840f48f..86a24396f5 100644
 --- a/codex-rs/cli/src/lib.rs
 +++ b/codex-rs/cli/src/lib.rs
-@@ -65,7 +65,7 @@ pub struct SeatbeltCommand {
+@@ -67,7 +67,7 @@ pub struct SeatbeltCommand {
      )]
      pub permissions_profile: Option<String>,
  
@@ -1299,7 +1302,7 @@ index 48422dcb14..4b58a558a5 100644
      #[arg(long = "profile", short = 'p')]
      pub config_profile: Option<ProfileV2Name>,
  
-@@ -125,7 +125,7 @@ pub struct LandlockCommand {
+@@ -127,7 +127,7 @@ pub struct LinuxSandboxCommand {
      )]
      pub permissions_profile: Option<String>,
  
@@ -1308,7 +1311,7 @@ index 48422dcb14..4b58a558a5 100644
      #[arg(long = "profile", short = 'p')]
      pub config_profile: Option<ProfileV2Name>,
  
-@@ -168,7 +168,7 @@ pub struct WindowsCommand {
+@@ -170,7 +170,7 @@ pub struct WindowsCommand {
      )]
      pub permissions_profile: Option<String>,
  
@@ -1318,7 +1321,7 @@ index 48422dcb14..4b58a558a5 100644
      pub config_profile: Option<ProfileV2Name>,
  
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 712b979885..21380779d9 100644
+index 9c82828a28..1d09b5f035 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
 @@ -187,10 +187,10 @@ enum Subcommand {
@@ -1424,10 +1427,10 @@ index 1999710f4a..0f7b1a2f02 100644
      /// auto (default): Use the OS-specific keyring service if available, otherwise use a file.
      #[serde(default)]
 diff --git a/codex-rs/config/src/loader/mod.rs b/codex-rs/config/src/loader/mod.rs
-index ec769d6b5a..cc64305c63 100644
+index e47a9faad5..74f248aa25 100644
 --- a/codex-rs/config/src/loader/mod.rs
 +++ b/codex-rs/config/src/loader/mod.rs
-@@ -138,7 +138,7 @@ async fn first_layer_config_error_from_entries(layers: &[ConfigLayerEntry]) -> O
+@@ -139,7 +139,7 @@ async fn first_layer_config_error_from_entries(layers: &[ConfigLayerEntry]) -> O
  ///
  /// (*) Only available on macOS via managed device profiles.
  ///
@@ -1472,10 +1475,10 @@ index 53f32f3fba..1420323f64 100644
      #[schemars(with = "Option<crate::schema::ConfigAskForApproval>")]
      pub approval_policy: Option<AskForApproval>,
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index eb511b87ab..72d4afae28 100644
+index eb1afb6029..95c094cd16 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -1045,7 +1045,7 @@ pub struct Tui {
+@@ -1058,7 +1058,7 @@ pub struct Tui {
  
      /// Pet id to preselect in the terminal pet picker.
      ///
@@ -1485,10 +1488,10 @@ index eb511b87ab..72d4afae28 100644
      pub pet: Option<String>,
  
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 21cfc3b903..c5f3645ff5 100644
+index 88ecb1b4cc..b7b16c23cc 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1600,7 +1600,7 @@
+@@ -1614,7 +1614,7 @@
            "description": "Optional path to a file containing model instructions."
          },
          "model_provider": {
@@ -1497,7 +1500,7 @@ index 21cfc3b903..c5f3645ff5 100644
            "type": "string"
          },
          "model_reasoning_effort": {
-@@ -4720,7 +4720,7 @@
+@@ -4784,7 +4784,7 @@
        "type": "string"
      },
      "ReasoningSummary": {
@@ -1506,7 +1509,7 @@ index 21cfc3b903..c5f3645ff5 100644
        "oneOf": [
          {
            "enum": [
-@@ -5771,7 +5771,7 @@
+@@ -5837,7 +5837,7 @@
          },
          "pet": {
            "default": null,
@@ -1515,7 +1518,7 @@ index 21cfc3b903..c5f3645ff5 100644
            "type": "string"
          },
          "pet_anchor": {
-@@ -9022,7 +9022,7 @@
+@@ -9112,7 +9112,7 @@
          }
        ],
        "default": null,
@@ -1538,10 +1541,10 @@ index 79b62688bf..39a2ba1c7d 100644
      ConfigEdit::SetPath {
          segments: vec!["tui".to_string(), "pet".to_string()],
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index fe3821d57f..e32b84e66c 100644
+index e57f77fb99..b80261076f 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -972,7 +972,7 @@ pub struct Config {
+@@ -975,7 +975,7 @@ pub struct Config {
      /// Preferred store for MCP OAuth credentials.
      /// keyring: Use an OS-specific keyring service.
      ///          Credentials stored in the keyring will only be readable by Codex unless the user explicitly grants access via OS-level keyring access.
@@ -1551,7 +1554,7 @@ index fe3821d57f..e32b84e66c 100644
      ///       This file will be readable to Codex and other applications running as the same user.
      /// auto (default): keyring if available, otherwise file.
 diff --git a/codex-rs/exec-server-cli/src/command.rs b/codex-rs/exec-server-cli/src/command.rs
-index fd630310c0..b93a368c03 100644
+index 14bfe3ed67..fdf91b2908 100644
 --- a/codex-rs/exec-server-cli/src/command.rs
 +++ b/codex-rs/exec-server-cli/src/command.rs
 @@ -21,8 +21,8 @@ use crate::exec_server_credential::ExecutorCredentialPipe;
@@ -1690,10 +1693,10 @@ index 87ffe6dc8b..88096f4881 100644
      Debug, Serialize, Deserialize, Default, Clone, Copy, PartialEq, Eq, Display, JsonSchema, TS,
  )]
 diff --git a/codex-rs/protocol/src/openai_models.rs b/codex-rs/protocol/src/openai_models.rs
-index 8653a1cbc9..12cea206a4 100644
+index 19b53badd5..83e771ff2f 100644
 --- a/codex-rs/protocol/src/openai_models.rs
 +++ b/codex-rs/protocol/src/openai_models.rs
-@@ -68,7 +68,7 @@ pub use guardian_v2::GuardianV2TranscriptModelConfig;
+@@ -69,7 +69,7 @@ pub use guardian_v2::GuardianV2TranscriptModelConfig;
  pub const MODEL_SPECIALTY_CYBER: &str = "cyber";
  pub const SPEED_TIER_FAST: &str = "fast";
  
@@ -1729,7 +1732,7 @@ index 8fb7a0c73e..7f1974ec3f 100644
      pub server_info: Option<PathBuf>,
  
 diff --git a/codex-rs/rollout/src/lib.rs b/codex-rs/rollout/src/lib.rs
-index f172337107..31df158ee4 100644
+index 123f22532b..ef4854938d 100644
 --- a/codex-rs/rollout/src/lib.rs
 +++ b/codex-rs/rollout/src/lib.rs
 @@ -45,8 +45,8 @@ pub(crate) use codex_protocol::protocol;
@@ -1773,10 +1776,10 @@ index 4ae3394ed6..bff3d19680 100644
 +/// SQLite log entries discarded before they can be queued. Tags: \[reason\]
  pub const LOG_QUEUE_DROPPED_METRIC: &str = "codex.sqlite.logs.queue.dropped";
 diff --git a/codex-rs/thread-store/src/live_thread.rs b/codex-rs/thread-store/src/live_thread.rs
-index bb11518b5c..25ffd28466 100644
+index 6d0d267ba2..acbe47c3bb 100644
 --- a/codex-rs/thread-store/src/live_thread.rs
 +++ b/codex-rs/thread-store/src/live_thread.rs
-@@ -48,7 +48,7 @@ pub struct LiveThread {
+@@ -50,7 +50,7 @@ pub struct LiveThread {
  /// Owns persistence acquisition and its live thread while initialization is still fallible.
  ///
  /// If initialization returns early after persistence has been opened, dropping this guard discards
@@ -1799,7 +1802,7 @@ index 530da1be16..c006b53945 100644
      tools: &[ToolSpec],
  ) -> Result<Vec<Value>, serde_json::Error> {
 diff --git a/codex-rs/tui/src/custom_terminal.rs b/codex-rs/tui/src/custom_terminal.rs
-index 992bd26bd9..9d5c8b5e35 100644
+index 51511e9f50..cd0886ded8 100644
 --- a/codex-rs/tui/src/custom_terminal.rs
 +++ b/codex-rs/tui/src/custom_terminal.rs
 @@ -189,7 +189,7 @@ where
@@ -1821,7 +1824,7 @@ index 992bd26bd9..9d5c8b5e35 100644
      /// - move the cursor to the last known position if it was set during the rendering closure
      ///
 diff --git a/codex-rs/tui/src/markdown_render.rs b/codex-rs/tui/src/markdown_render.rs
-index 8e6cced3f0..8412cd4dbd 100644
+index e5d2830ce2..c7c0c65576 100644
 --- a/codex-rs/tui/src/markdown_render.rs
 +++ b/codex-rs/tui/src/markdown_render.rs
 @@ -414,7 +414,7 @@ struct TableColumnMetrics {
@@ -1886,10 +1889,10 @@ index f64c3897d3..17a152ff58 100644
      "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
  pub const SUPPORTED_AGENT_PLUGIN_SCHEMA_URIS: &[&str] = &[AGENT_PLUGIN_SCHEMA_URI];
 diff --git a/sdk/python/src/openai_codex/generated/v2_all.py b/sdk/python/src/openai_codex/generated/v2_all.py
-index f7b8b46c35..1157705ee4 100644
+index 5c6a39119a..c5dce43a1e 100644
 --- a/sdk/python/src/openai_codex/generated/v2_all.py
 +++ b/sdk/python/src/openai_codex/generated/v2_all.py
-@@ -448,7 +448,7 @@ class AutoReviewDecisionSource(RootModel[Literal["agent"]]):
+@@ -440,7 +440,7 @@ class AutoReviewDecisionSource(RootModel[Literal["agent"]]):
      root: Annotated[
          Literal["agent"],
          Field(
@@ -1898,7 +1901,7 @@ index f7b8b46c35..1157705ee4 100644
          ),
      ]
  
-@@ -4168,7 +4168,7 @@ class ReasoningSummary(RootModel[ReasoningSummaryValue | Literal["none"]]):
+@@ -4194,7 +4194,7 @@ class ReasoningSummary(RootModel[ReasoningSummaryValue | Literal["none"]]):
      root: Annotated[
          ReasoningSummaryValue | Literal["none"],
          Field(
@@ -1907,7 +1910,7 @@ index f7b8b46c35..1157705ee4 100644
          ),
      ]
  
-@@ -12053,7 +12053,7 @@ class Config(BaseModel):
+@@ -12094,7 +12094,7 @@ class Config(BaseModel):
      approvals_reviewer: Annotated[
          ApprovalsReviewer | None,
          Field(
@@ -1916,7 +1919,7 @@ index f7b8b46c35..1157705ee4 100644
          ),
      ] = None
      browser_use: BrowserUseConfig | None = None
-@@ -13572,7 +13572,9 @@ class Thread(BaseModel):
+@@ -13613,7 +13613,9 @@ class Thread(BaseModel):
              description="The ID of the parent thread. This will only be set if this thread is a subagent.",
          ),
      ] = None

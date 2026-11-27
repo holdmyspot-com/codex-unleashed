@@ -1,6 +1,6 @@
 # Dependency upgrades (CP7)
 
-- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
+- Applies to: upstream `openai/codex` tag `rust-v0.172.0`, commit `3d86e43b075adeba2193ec5c22ac92f55afd82e6`.
 - Prerequisites: every earlier patch in the queue, through `rust-toolchain/rust-1.99.patch` (patch 25).
 - Patches, in order: `compatible-updates.patch`, `latest-releases-1.patch`, `latest-releases-2.patch`, `serde-saphyr.patch`, `release-adaptations.patch`, `transitive-updates.patch`.
 

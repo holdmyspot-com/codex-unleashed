@@ -1,6 +1,6 @@
 # Codex Unleashed branding and build information
 
-- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
+- Applies to: upstream `openai/codex` tag `rust-v0.172.0`, commit `3d86e43b075adeba2193ec5c22ac92f55afd82e6`.
 - Prerequisites: the release queue through `issue-70/readable-commands.patch`. The CLI hunks share `MultitoolCli` with the earlier queue patches.
 - Upstream status: fork-specific; not proposed upstream.
 

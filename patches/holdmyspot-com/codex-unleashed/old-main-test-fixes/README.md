@@ -1,6 +1,6 @@
 # Old-main test fixes (T9)
 
-- Applies to: the queue through `flaky-tests/focus-palette.patch` (patch 34), which sits on upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
+- Applies to: the queue through `flaky-tests/focus-palette.patch` (patch 34), which sits on upstream `openai/codex` tag `rust-v0.172.0`, commit `3d86e43b075adeba2193ec5c22ac92f55afd82e6`.
 - Prerequisites: every earlier patch in the queue. The patches below apply in the order listed. `legacy-powershell-environment.patch` needs `windows-capture-reader-drain.patch`; the others do not depend on each other.
 - Patches: the 14 files listed under "What changed", in that order. Three more patches, `windows-test-executable-extensions.patch`, `gov-cloud-quit-closed-pty.patch` and `windows-profile-unload-polling.patch`, apply later in the queue (entries 105 to 107, after `rmcp-stdio/close-after-oversized-line.patch`) and are listed under "Owner-approved additions (2026-11-25)".
 
@@ -59,7 +59,7 @@ Eighteen of the twenty patches apply with `git am -3` unchanged. `interrupt-host
 
 The owner approved migrating three more old-main test fixes in the per-item review of 2026-11-25. Each fails in the recorded Windows or macOS Bazel baseline at `rust-v0.167.0` (`docs/test-baselines/086ccc833b.../*.json`; no `rust-v0.171.0` baseline exists). None has run on a native runner at `rust-v0.171.0`.
 
-- Applies to: the queue through `rmcp-stdio/close-after-oversized-line.patch` (entry 104), on upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`. The patches apply in the order listed and do not depend on each other.
+- Applies to: the queue through `rmcp-stdio/close-after-oversized-line.patch` (entry 104), on upstream `openai/codex` tag `rust-v0.172.0`, commit `3d86e43b075adeba2193ec5c22ac92f55afd82e6`. The patches apply in the order listed and do not depend on each other.
 - `windows-test-executable-extensions.patch`: forwards `PATHEXT` into Bazel's Windows test environment (`.bazelrc`) and adds a diagnostic message to the `git.environment` assertion of `doctor_path_safety`. The baseline fails `cli-doctor_path_safety-test` on Windows Bazel (gnullvm shard 4, msvc shard 1). Verify by re-running that target on Windows Bazel (MSVC and gnullvm).
 - `gov-cloud-quit-closed-pty.patch`: `gov_cloud_startup_persists_only_acknowledgment` accepts a quit whose repeated input reaches a PTY that already closed (EIO), only after an earlier input succeeded and the child exits successfully within the original deadline. Other write errors and unsuccessful exits still fail. The baseline fails this test on macOS x86 Bazel. Verify by re-running `tui` `gov_cloud_guidance_tests` on Intel macOS Bazel.
 - `windows-profile-unload-polling.patch`: the profile fixture keeps polling while the profile hive is marked deleted (`ERROR_KEY_DELETED`) instead of failing; the deadline and every other error still fail. The `use` lines are re-based on upstream's imports. The baseline fails `profile_cleanup_preserves_account_until_profile_can_be_deleted` on Windows Bazel. Verify by re-running that test on Windows Bazel.

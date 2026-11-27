@@ -4,7 +4,7 @@ Date: Mon, 23 Nov 2026 01:00:00 -0500
 Subject: [PATCH] Regenerate TypeScript bindings, config schemas and the Python
  SDK models for the patch queue
 
-Generator output for the whole patch queue on rust-v0.171.0, produced by upstream's app-server-schema, config-schema, hooks-schema and bazel-lock generators (baseline-platform-lints.yml, run 45114435647). See regenerated-outputs/README.md.
+Generator output for the whole patch queue on rust-v0.172.0, produced by running upstream's app-server-schema, config-schema, hooks-schema and bazel-lock generators locally with the commands of baseline-platform-lints.yml. See regenerated-outputs/README.md.
 ---
  .../schema/typescript/v2/Config.ts            |   2 +-
  .../typescript/v2/McpResourceReadParams.ts    |   2 +-
@@ -12,10 +12,10 @@ Generator output for the whole patch queue on rust-v0.171.0, produced by upstrea
  .../schema/typescript/v2/OtelRequirements.ts  |   2 +-
  .../schema/typescript/v2/Project.ts           |   2 +-
  .../schema/typescript/v2/QueuedSubmission.ts  |   2 +-
- codex-rs/core/config.schema.json              | 562 +++++++++---------
+ codex-rs/core/config.schema.json              | 568 +++++++++---------
  .../model-request.command.input.schema.json   |  20 +-
- .../src/openai_codex/generated/v2_all.py      | 455 +++++++-------
- 9 files changed, 544 insertions(+), 505 deletions(-)
+ .../src/openai_codex/generated/v2_all.py      | 459 +++++++-------
+ 9 files changed, 549 insertions(+), 510 deletions(-)
 
 diff --git a/codex-rs/app-server-protocol/schema/typescript/v2/Config.ts b/codex-rs/app-server-protocol/schema/typescript/v2/Config.ts
 index c4aade1e79..bc02108839 100644
@@ -84,7 +84,7 @@ index 70c66280db..72510c21bf 100644
 -responsesapiClientMetadata: { [key in string]?: string } | null, };
 +responsesapiClientMetadata: { [key in string]: string } | null, };
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 940c3386a7..e4664d8e0e 100644
+index ab8d8fc651..6b024bc866 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
 @@ -3,7 +3,7 @@
@@ -158,7 +158,7 @@ index 940c3386a7..e4664d8e0e 100644
            "items": {
              "$ref": "#/definitions/ToolExposureSurface"
            },
-@@ -314,7 +314,7 @@
+@@ -322,7 +322,7 @@
        "type": "object"
      },
      "AskForApproval": {
@@ -167,7 +167,7 @@ index 940c3386a7..e4664d8e0e 100644
        "oneOf": [
          {
            "description": "The model decides when to ask the user for approval.",
-@@ -325,7 +325,7 @@
+@@ -333,7 +333,7 @@
          },
          {
            "additionalProperties": false,
@@ -176,7 +176,7 @@ index 940c3386a7..e4664d8e0e 100644
            "properties": {
              "granular": {
                "$ref": "#/definitions/GranularApprovalConfig"
-@@ -337,7 +337,7 @@
+@@ -345,7 +345,7 @@
            "type": "object"
          },
          {
@@ -185,7 +185,7 @@ index 940c3386a7..e4664d8e0e 100644
            "enum": [
              "never"
            ],
-@@ -361,10 +361,10 @@
+@@ -369,10 +369,10 @@
            "type": "boolean"
          },
          "model_async_compact_threshold_percent": {
@@ -199,7 +199,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          }
        },
-@@ -404,7 +404,7 @@
+@@ -412,7 +412,7 @@
        ]
      },
      "AutoCompactTokenLimitScope": {
@@ -208,7 +208,7 @@ index 940c3386a7..e4664d8e0e 100644
        "oneOf": [
          {
            "description": "Count the full active context against the limit.",
-@@ -430,16 +430,16 @@
+@@ -438,16 +438,16 @@
                "$ref": "#/definitions/CircuitBreakAction"
              }
            ],
@@ -229,7 +229,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "string"
          },
          "policy": {
-@@ -447,9 +447,9 @@
+@@ -455,9 +455,9 @@
            "type": "string"
          },
          "timeout_ms": {
@@ -241,7 +241,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          }
        },
-@@ -463,6 +463,7 @@
+@@ -471,6 +471,7 @@
            "default": [],
            "description": "Arguments passed to the refresh command.",
            "items": {
@@ -249,7 +249,7 @@ index 940c3386a7..e4664d8e0e 100644
              "type": "string"
            },
            "type": "array"
-@@ -475,7 +476,7 @@
+@@ -483,7 +484,7 @@
            "default": 300000,
            "description": "Maximum time to wait for the refresh command to complete.",
            "format": "uint64",
@@ -258,7 +258,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          }
        },
-@@ -494,7 +495,7 @@
+@@ -502,7 +503,7 @@
          "max_body_bytes": {
            "default": 8388608,
            "format": "uint",
@@ -267,7 +267,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "placeholder_access_key_id": {
-@@ -504,7 +505,8 @@
+@@ -512,7 +513,8 @@
          "port": {
            "default": 443,
            "format": "uint16",
@@ -277,7 +277,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "region": {
-@@ -521,11 +523,11 @@
+@@ -529,11 +531,11 @@
          }
        },
        "required": [
@@ -292,7 +292,7 @@ index 940c3386a7..e4664d8e0e 100644
        ],
        "type": "object"
      },
-@@ -552,13 +554,14 @@
+@@ -560,13 +562,14 @@
          "max_body_bytes": {
            "default": 8388608,
            "format": "uint",
@@ -309,7 +309,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "replacements": {
-@@ -664,11 +667,11 @@
+@@ -672,11 +675,11 @@
          "default_exec_yield_time_ms": {
            "description": "Default yield timeout for code-mode exec calls, in milliseconds.",
            "format": "uint64",
@@ -323,7 +323,7 @@ index 940c3386a7..e4664d8e0e 100644
            "items": {
              "type": "string"
            },
-@@ -685,13 +688,13 @@
+@@ -693,13 +696,13 @@
            "type": "array"
          },
          "experimental_show_cell_overhead": {
@@ -340,7 +340,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          }
        },
-@@ -716,7 +719,7 @@
+@@ -724,7 +727,7 @@
          "heartbeat_interval_s": {
            "description": "Idle seconds between gRPC stream heartbeats. Zero (the default) disables them.",
            "format": "uint32",
@@ -349,7 +349,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          }
        },
-@@ -799,15 +802,15 @@
+@@ -807,15 +810,15 @@
          }
        },
        "required": [
@@ -368,7 +368,7 @@ index 940c3386a7..e4664d8e0e 100644
        "properties": {
          "analytics": {
            "$ref": "#/definitions/AnalyticsConfigToml"
-@@ -1600,7 +1603,7 @@
+@@ -1614,7 +1617,7 @@
            "description": "Optional path to a file containing model instructions."
          },
          "model_provider": {
@@ -377,7 +377,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "string"
          },
          "model_reasoning_effort": {
-@@ -1630,7 +1633,7 @@
+@@ -1644,7 +1647,7 @@
            "$ref": "#/definitions/SandboxMode"
          },
          "service_tier": {
@@ -386,7 +386,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "string"
          },
          "tools": {
-@@ -1713,6 +1716,7 @@
+@@ -1727,6 +1730,7 @@
            "default": [],
            "description": "Arguments passed to the credential export command.",
            "items": {
@@ -394,7 +394,7 @@ index 940c3386a7..e4664d8e0e 100644
              "type": "string"
            },
            "type": "array"
-@@ -1725,7 +1729,7 @@
+@@ -1739,7 +1743,7 @@
            "default": 30000,
            "description": "Maximum time to wait for the credential export command to complete.",
            "format": "uint64",
@@ -403,7 +403,16 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          }
        },
-@@ -1771,7 +1775,7 @@
+@@ -1750,7 +1754,7 @@
+     },
+     "CredentialPermissionsToml": {
+       "additionalProperties": false,
+-      "description": "In `requirements.toml`, `[permissions.credentials]` sets shared credential policy and `[permissions.<profile>.credentials]` sets policy for a named profile. Omit the shared table until it contains a supported policy setting. In `config.toml`, credentials use the named-profile form alongside filesystem and network.",
++      "description": "In `requirements.toml`, `[permissions.credentials]` sets shared credential policy and\n`[permissions.<profile>.credentials]` sets policy for a named profile.\nOmit the shared table until it contains a supported policy setting.\nIn `config.toml`, credentials use the named-profile form alongside filesystem and network.",
+       "type": "object"
+     },
+     "CredentialProviderConfig": {
+@@ -1790,7 +1794,7 @@
          },
          "url_prefixes": {
            "default": [],
@@ -412,7 +421,7 @@ index 940c3386a7..e4664d8e0e 100644
            "items": {
              "type": "string"
            },
-@@ -1794,7 +1798,7 @@
+@@ -1813,7 +1817,7 @@
          },
          "reminder_interval_seconds": {
            "format": "uint64",
@@ -421,7 +430,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "sleep_tool": {
-@@ -1842,7 +1846,7 @@
+@@ -1861,7 +1865,7 @@
      },
      "ExternalConfigMigrationPrompts": {
        "additionalProperties": false,
@@ -430,7 +439,7 @@ index 940c3386a7..e4664d8e0e 100644
        "properties": {
          "home": {
            "description": "Tracks whether home-level external config migration prompts are hidden.",
-@@ -2034,7 +2038,7 @@
+@@ -2053,7 +2057,7 @@
        "type": "object"
      },
      "FileSystemAccessMode": {
@@ -439,7 +448,7 @@ index 940c3386a7..e4664d8e0e 100644
        "oneOf": [
          {
            "enum": [
-@@ -2066,11 +2070,14 @@
+@@ -2085,11 +2089,14 @@
        ]
      },
      "FilesystemPermissionsToml": {
@@ -456,7 +465,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          }
        },
-@@ -2215,7 +2222,8 @@
+@@ -2234,7 +2241,8 @@
          },
          "redirect_port": {
            "format": "uint16",
@@ -466,7 +475,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "resource": {
-@@ -2234,8 +2242,8 @@
+@@ -2253,8 +2261,8 @@
        },
        "required": [
          "authorization_url",
@@ -477,7 +486,7 @@ index 940c3386a7..e4664d8e0e 100644
        ],
        "type": "object"
      },
-@@ -2265,7 +2273,7 @@
+@@ -2284,7 +2292,7 @@
          "max_goal_token_budget": {
            "description": "Maximum token budget allowed for a goal and default budget for new goals.",
            "format": "uint64",
@@ -486,7 +495,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          }
        },
-@@ -2287,7 +2295,7 @@
+@@ -2306,7 +2314,7 @@
            "type": "boolean"
          },
          "sandbox_approval": {
@@ -495,7 +504,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "boolean"
          },
          "skill_approval": {
-@@ -2297,9 +2305,9 @@
+@@ -2316,9 +2324,9 @@
          }
        },
        "required": [
@@ -507,7 +516,7 @@ index 940c3386a7..e4664d8e0e 100644
        ],
        "type": "object"
      },
-@@ -2308,18 +2316,18 @@
+@@ -2327,18 +2335,18 @@
        "properties": {
          "max_section_entry_tokens": {
            "format": "uint",
@@ -530,7 +539,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "nested_tool_names": {
-@@ -2331,8 +2339,8 @@
+@@ -2350,8 +2358,8 @@
          }
        },
        "required": [
@@ -541,7 +550,7 @@ index 940c3386a7..e4664d8e0e 100644
        ],
        "type": "object"
      },
-@@ -2341,9 +2349,9 @@
+@@ -2360,9 +2368,9 @@
        "description": "User-configurable prompt, approval, and context settings for Guardian v2.",
        "properties": {
          "async_classifier_conversation_token_limit": {
@@ -553,7 +562,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "async_classifier_mode": {
-@@ -2377,25 +2385,25 @@
+@@ -2396,25 +2404,25 @@
          },
          "max_action_tokens": {
            "format": "uint",
@@ -586,7 +595,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "persist_scores": {
-@@ -2471,31 +2479,31 @@
+@@ -2490,31 +2498,31 @@
          },
          "max_message_entry_tokens": {
            "format": "uint",
@@ -627,7 +636,25 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "sources": {
-@@ -2532,9 +2540,9 @@
+@@ -2548,7 +2556,7 @@
+         "max_instruction_tokens": {
+           "description": "Maximum estimated tokens per custom routing or retrieval prompt. Unset means uncapped. Ignored in project config.",
+           "format": "uint",
+-          "minimum": 0.0,
++          "minimum": 0,
+           "type": "integer"
+         },
+         "message_board_in_memory": {
+@@ -2567,7 +2575,7 @@
+         "batch_timeout_ms": {
+           "description": "Time budget for routing one batch, in milliseconds. Defaults to 90,000.",
+           "format": "uint32",
+-          "minimum": 1.0,
++          "minimum": 1,
+           "type": "integer"
+         },
+         "routing_instructions": {
+@@ -2593,9 +2601,9 @@
        "properties": {
          "max_bytes": {
            "default": null,
@@ -639,7 +666,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "persistence": {
-@@ -2572,9 +2580,9 @@
+@@ -2633,9 +2641,9 @@
          {
            "properties": {
              "additionalContextLimit": {
@@ -651,7 +678,7 @@ index 940c3386a7..e4664d8e0e 100644
                "type": "integer"
              },
              "async": {
-@@ -2595,7 +2603,7 @@
+@@ -2656,7 +2664,7 @@
              "timeout": {
                "default": null,
                "format": "uint64",
@@ -660,7 +687,7 @@ index 940c3386a7..e4664d8e0e 100644
                "type": "integer"
              },
              "type": {
-@@ -2606,8 +2614,8 @@
+@@ -2667,8 +2675,8 @@
              }
            },
            "required": [
@@ -671,7 +698,7 @@ index 940c3386a7..e4664d8e0e 100644
            ],
            "type": "object"
          },
-@@ -2628,7 +2636,7 @@
+@@ -2689,7 +2697,7 @@
              "timeout": {
                "default": null,
                "format": "uint64",
@@ -680,7 +707,7 @@ index 940c3386a7..e4664d8e0e 100644
                "type": "integer"
              },
              "tool": {
-@@ -2642,9 +2650,9 @@
+@@ -2703,9 +2711,9 @@
              }
            },
            "required": [
@@ -692,7 +719,7 @@ index 940c3386a7..e4664d8e0e 100644
            ],
            "type": "object"
          },
-@@ -2802,19 +2810,23 @@
+@@ -2863,19 +2871,23 @@
        },
        "type": "object"
      },
@@ -719,7 +746,7 @@ index 940c3386a7..e4664d8e0e 100644
      },
      "LegacyAppPathString": {
        "type": "string"
-@@ -2916,24 +2928,24 @@
+@@ -2977,24 +2989,24 @@
        "type": "object"
      },
      "McpServerAuth": {
@@ -748,7 +775,7 @@ index 940c3386a7..e4664d8e0e 100644
            "enum": [
              "ema_auth"
            ],
-@@ -2971,7 +2983,7 @@
+@@ -3032,7 +3044,7 @@
            "type": "string"
          },
          "client_secret": {
@@ -757,7 +784,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "string"
          },
          "issuer": {
-@@ -2984,12 +2996,12 @@
+@@ -3045,12 +3057,12 @@
                "$ref": "#/definitions/McpEmaTokenEndpointAuthMethod"
              }
            ],
@@ -773,7 +800,7 @@ index 940c3386a7..e4664d8e0e 100644
        ],
        "type": "object"
      },
-@@ -3004,7 +3016,8 @@
+@@ -3065,7 +3077,8 @@
          "callback_port": {
            "description": "Fixed callback port that takes precedence over Codex's global OAuth callback port.",
            "format": "uint16",
@@ -783,7 +810,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "callback_url": {
-@@ -3025,7 +3038,7 @@
+@@ -3086,7 +3099,7 @@
                "$ref": "#/definitions/McpEmaTokenEndpointAuthMethod"
              }
            ],
@@ -792,7 +819,7 @@ index 940c3386a7..e4664d8e0e 100644
          }
        },
        "type": "object"
-@@ -3045,7 +3058,7 @@
+@@ -3106,7 +3119,7 @@
          "output_token_limit": {
            "description": "Token budget for this tool's output, before the standard 20% serialization allowance.",
            "format": "uint",
@@ -801,7 +828,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          }
        },
-@@ -3062,7 +3075,7 @@
+@@ -3123,7 +3136,7 @@
            "type": "string"
          },
          {
@@ -810,7 +837,7 @@ index 940c3386a7..e4664d8e0e 100644
            "enum": [
              "catalog"
            ],
-@@ -3105,8 +3118,8 @@
+@@ -3166,8 +3179,8 @@
          "max_raw_memories_for_consolidation": {
            "description": "Maximum number of recent raw memories retained for global consolidation.",
            "format": "uint",
@@ -821,7 +848,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "max_rollout_age_days": {
-@@ -3117,8 +3130,8 @@
+@@ -3178,8 +3191,8 @@
          "max_rollouts_per_startup": {
            "description": "Maximum number of rollout candidates processed per pass.",
            "format": "uint",
@@ -832,7 +859,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "max_unused_days": {
-@@ -3129,8 +3142,8 @@
+@@ -3190,8 +3203,8 @@
          "min_rate_limit_remaining_percent": {
            "description": "Minimum remaining percentage required in Codex rate-limit windows before memory startup runs.",
            "format": "int64",
@@ -843,7 +870,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "min_rollout_idle_hours": {
-@@ -3148,7 +3161,7 @@
+@@ -3209,7 +3222,7 @@
                "$ref": "#/definitions/MemoryVersion"
              }
            ],
@@ -852,7 +879,7 @@ index 940c3386a7..e4664d8e0e 100644
          }
        },
        "type": "object"
-@@ -3164,13 +3177,15 @@
+@@ -3225,13 +3238,15 @@
        "anyOf": [
          {
            "format": "uint16",
@@ -870,7 +897,7 @@ index 940c3386a7..e4664d8e0e 100644
              "type": "integer"
            },
            "type": "array"
-@@ -3181,7 +3196,7 @@
+@@ -3242,7 +3257,7 @@
      "ModelAvailabilityNuxConfig": {
        "additionalProperties": {
          "format": "uint32",
@@ -879,7 +906,7 @@ index 940c3386a7..e4664d8e0e 100644
          "type": "integer"
        },
        "type": "object"
-@@ -3194,6 +3209,7 @@
+@@ -3255,6 +3270,7 @@
            "default": [],
            "description": "Command arguments.",
            "items": {
@@ -887,7 +914,7 @@ index 940c3386a7..e4664d8e0e 100644
              "type": "string"
            },
            "type": "array"
-@@ -3212,16 +3228,16 @@
+@@ -3273,16 +3289,16 @@
          },
          "refresh_interval_ms": {
            "default": 300000,
@@ -907,7 +934,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          }
        },
-@@ -3266,7 +3282,7 @@
+@@ -3327,7 +3343,7 @@
        "description": "Overrides for the optional API features supported by a custom provider.",
        "properties": {
          "cyber_access_programs": {
@@ -916,7 +943,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "boolean"
          },
          "external_web_access": {
-@@ -3314,17 +3330,17 @@
+@@ -3375,17 +3391,17 @@
                "$ref": "#/definitions/ModelProviderCapabilities"
              }
            ],
@@ -937,7 +964,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "object"
          },
          "env_key": {
-@@ -3332,11 +3348,11 @@
+@@ -3393,11 +3409,11 @@
            "type": "string"
          },
          "env_key_instructions": {
@@ -951,7 +978,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "string"
          },
          "gateway_oauth": {
-@@ -3349,17 +3365,18 @@
+@@ -3410,17 +3426,18 @@
          },
          "http_headers": {
            "additionalProperties": {
@@ -973,7 +1000,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "string"
          },
          "name": {
-@@ -3368,11 +3385,12 @@
+@@ -3429,11 +3446,12 @@
            "type": "string"
          },
          "project_id": {
@@ -987,7 +1014,7 @@ index 940c3386a7..e4664d8e0e 100644
              "type": "string"
            },
            "description": "Optional query parameters to append to the base URL.",
-@@ -3381,24 +3399,24 @@
+@@ -3442,24 +3460,24 @@
          "request_max_retries": {
            "description": "Maximum number of times to retry a failed HTTP request to this provider.",
            "format": "uint64",
@@ -1017,7 +1044,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "supports_standalone_web_search": {
-@@ -3412,9 +3430,9 @@
+@@ -3473,9 +3491,9 @@
            "type": "boolean"
          },
          "websocket_connect_timeout_ms": {
@@ -1029,7 +1056,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "wire_api": {
-@@ -3434,8 +3452,8 @@
+@@ -3495,8 +3513,8 @@
        "properties": {
          "default_wait_timeout_ms": {
            "format": "int64",
@@ -1040,7 +1067,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "disable_direct_message": {
-@@ -3450,7 +3468,7 @@
+@@ -3511,7 +3529,7 @@
            "type": "boolean"
          },
          "expose_spawn_agent_model_overrides": {
@@ -1049,7 +1076,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "boolean"
          },
          "hide_spawn_agent_metadata": {
-@@ -3462,13 +3480,13 @@
+@@ -3523,13 +3541,13 @@
          },
          "max_concurrent_threads_per_session": {
            "format": "uint",
@@ -1066,7 +1093,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "message_board_in_memory": {
-@@ -3485,8 +3503,8 @@
+@@ -3546,8 +3564,8 @@
          },
          "min_wait_timeout_ms": {
            "format": "int64",
@@ -1077,7 +1104,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "multi_agent_mode_hint_text": {
-@@ -3496,7 +3514,7 @@
+@@ -3557,7 +3575,7 @@
            "type": "boolean"
          },
          "preserve_fork_prefix": {
@@ -1086,7 +1113,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "boolean"
          },
          "root_agent_usage_hint_text": {
-@@ -3537,6 +3555,9 @@
+@@ -3598,6 +3616,9 @@
        "type": "string"
      },
      "NetworkDomainPermissionsToml": {
@@ -1096,7 +1123,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "object"
      },
      "NetworkMitmActionToml": {
-@@ -3614,7 +3635,8 @@
+@@ -3675,7 +3696,8 @@
            "default": [],
            "items": {
              "format": "uint16",
@@ -1106,7 +1133,7 @@ index 940c3386a7..e4664d8e0e 100644
              "type": "integer"
            },
            "type": "array"
-@@ -3638,10 +3660,10 @@
+@@ -3699,10 +3721,10 @@
          }
        },
        "required": [
@@ -1119,7 +1146,7 @@ index 940c3386a7..e4664d8e0e 100644
        ],
        "type": "object"
      },
-@@ -3689,8 +3711,8 @@
+@@ -3750,8 +3772,8 @@
          "version": {
            "description": "Set to 2 when using origin-scoped hooks or credential substitution.",
            "format": "uint8",
@@ -1130,7 +1157,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          }
        },
-@@ -3707,7 +3729,7 @@
+@@ -3768,7 +3790,7 @@
        "additionalProperties": false,
        "properties": {
          "allow_local_binding": {
@@ -1139,7 +1166,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "boolean"
          },
          "allow_upstream_proxy": {
-@@ -3790,7 +3812,7 @@
+@@ -3851,7 +3873,7 @@
        "additionalProperties": false,
        "properties": {
          "allow_local_binding": {
@@ -1148,7 +1175,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "boolean"
          },
          "allow_upstream_proxy": {
-@@ -3844,6 +3866,9 @@
+@@ -3905,6 +3927,9 @@
        "type": "string"
      },
      "NetworkUnixSocketPermissionsToml": {
@@ -1158,7 +1185,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "object"
      },
      "NonPrefixedMcpToolNamesConfigToml": {
-@@ -3980,14 +4005,14 @@
+@@ -4041,14 +4066,14 @@
        "description": "Determine where Codex should store and read MCP credentials.",
        "oneOf": [
          {
@@ -1175,7 +1202,7 @@ index 940c3386a7..e4664d8e0e 100644
            "enum": [
              "file"
            ],
-@@ -4037,25 +4062,25 @@
+@@ -4098,25 +4123,25 @@
            "description": "Optional log exporter"
          },
          "headers_helper": {
@@ -1206,7 +1233,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "boolean"
          },
          "log_user_prompt": {
-@@ -4068,7 +4093,7 @@
+@@ -4129,7 +4154,7 @@
                "$ref": "#/definitions/OtelExporterKind"
              }
            ],
@@ -1215,7 +1242,7 @@ index 940c3386a7..e4664d8e0e 100644
          },
          "span_attributes": {
            "additionalProperties": {
-@@ -4249,6 +4274,9 @@
+@@ -4313,6 +4338,9 @@
        "type": "object"
      },
      "PermissionsToml": {
@@ -1225,7 +1252,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "object"
      },
      "Personality": {
-@@ -4267,11 +4295,11 @@
+@@ -4331,11 +4359,11 @@
            "additionalProperties": {
              "$ref": "#/definitions/AppConfig"
            },
@@ -1239,7 +1266,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "boolean"
          },
          "enabled": {
-@@ -4286,11 +4314,11 @@
+@@ -4350,11 +4378,11 @@
            "type": "object"
          },
          "release_id": {
@@ -1253,7 +1280,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "string"
          }
        },
-@@ -4298,7 +4326,7 @@
+@@ -4362,7 +4390,7 @@
      },
      "PluginMcpServerConfig": {
        "additionalProperties": false,
@@ -1262,7 +1289,7 @@ index 940c3386a7..e4664d8e0e 100644
        "properties": {
          "default_tools_approval_mode": {
            "allOf": [
-@@ -4349,7 +4377,7 @@
+@@ -4413,7 +4441,7 @@
                "$ref": "#/definitions/PluginsDefaultConfig"
              }
            ],
@@ -1271,7 +1298,7 @@ index 940c3386a7..e4664d8e0e 100644
          }
        },
        "type": "object"
-@@ -4439,7 +4467,7 @@
+@@ -4503,7 +4531,7 @@
      },
      "RawMcpServerConfig": {
        "additionalProperties": false,
@@ -1280,7 +1307,7 @@ index 940c3386a7..e4664d8e0e 100644
        "properties": {
          "args": {
            "default": null,
-@@ -4577,7 +4605,7 @@
+@@ -4641,7 +4669,7 @@
          "startup_timeout_ms": {
            "default": null,
            "format": "uint64",
@@ -1289,7 +1316,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "startup_timeout_sec": {
-@@ -4591,9 +4619,9 @@
+@@ -4655,9 +4683,9 @@
          },
          "tool_input_schema_max_bytes": {
            "default": null,
@@ -1301,7 +1328,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "tool_timeout_sec": {
-@@ -4720,7 +4748,7 @@
+@@ -4784,7 +4812,7 @@
        "type": "string"
      },
      "ReasoningSummary": {
@@ -1310,7 +1337,7 @@ index 940c3386a7..e4664d8e0e 100644
        "oneOf": [
          {
            "enum": [
-@@ -4789,7 +4817,7 @@
+@@ -4853,7 +4881,7 @@
            "type": "string"
          },
          {
@@ -1319,7 +1346,7 @@ index 940c3386a7..e4664d8e0e 100644
            "enum": [
              "after_complete_response"
            ],
-@@ -4867,7 +4895,7 @@
+@@ -4931,7 +4959,7 @@
            "type": "boolean"
          },
          "limit_budget": {
@@ -1328,7 +1355,7 @@ index 940c3386a7..e4664d8e0e 100644
            "exclusiveMinimum": 0.0,
            "format": "double",
            "type": "number"
-@@ -4875,7 +4903,7 @@
+@@ -4939,7 +4967,7 @@
          "limit_tokens": {
            "description": "Positive whole-token allowance. Set either limit_tokens or limit_budget.",
            "format": "int64",
@@ -1337,7 +1364,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "prefill_token_weight": {
-@@ -4884,7 +4912,7 @@
+@@ -4948,7 +4976,7 @@
            "type": "number"
          },
          "reminder_at_context_start": {
@@ -1346,7 +1373,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "boolean"
          },
          "reminder_at_remaining_tokens": {
-@@ -4910,13 +4938,13 @@
+@@ -4974,13 +5002,13 @@
          "max_bytes": {
            "description": "Maximum bytes for the manifest, event log, and compressed payload shards. Defaults to 256 MiB.",
            "format": "uint64",
@@ -1362,7 +1389,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          }
        },
-@@ -4994,7 +5022,7 @@
+@@ -5058,7 +5086,7 @@
        "type": "string"
      },
      "ShellEnvironmentPolicyFilter": {
@@ -1371,7 +1398,7 @@ index 940c3386a7..e4664d8e0e 100644
        "enum": [
          "include",
          "exclude"
-@@ -5004,7 +5032,7 @@
+@@ -5068,7 +5096,7 @@
      "ShellEnvironmentPolicyInherit": {
        "oneOf": [
          {
@@ -1380,7 +1407,7 @@ index 940c3386a7..e4664d8e0e 100644
            "enum": [
              "core"
            ],
-@@ -5062,7 +5090,7 @@
+@@ -5126,7 +5154,7 @@
            "additionalProperties": {
              "$ref": "#/definitions/ShellEnvironmentPolicyFilter"
            },
@@ -1389,7 +1416,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "object"
          },
          "ignore_default_excludes": {
-@@ -5128,9 +5156,9 @@
+@@ -5192,9 +5220,9 @@
            "type": "boolean"
          },
          "max_context_tokens": {
@@ -1401,7 +1428,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          }
        },
-@@ -5219,7 +5247,7 @@
+@@ -5283,7 +5311,7 @@
          "auto_compact_fallback_buffer_tokens": {
            "description": "Additional tokens available after the compaction threshold for fallback note-taking.",
            "format": "int64",
@@ -1410,7 +1437,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "auto_compact_fallback_prompt": {
-@@ -5240,7 +5268,7 @@
+@@ -5304,7 +5332,7 @@
            "type": "string"
          },
          "reminder_message_template": {
@@ -1419,7 +1446,7 @@ index 940c3386a7..e4664d8e0e 100644
            "maxLength": 2000,
            "minLength": 1,
            "type": "string"
-@@ -5248,7 +5276,7 @@
+@@ -5312,7 +5340,7 @@
          "reminder_threshold_tokens": {
            "description": "Number of tokens remaining before auto-compaction when the wrap-up reminder is emitted.",
            "format": "int64",
@@ -1428,7 +1455,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          },
          "use_history_notes_extension": {
-@@ -5299,13 +5327,13 @@
+@@ -5363,13 +5391,13 @@
        "type": "object"
      },
      "ToolResultLogConfig": {
@@ -1444,7 +1471,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "integer"
          }
        },
-@@ -5342,8 +5370,8 @@
+@@ -5406,8 +5434,8 @@
          }
        },
        "required": [
@@ -1455,7 +1482,7 @@ index 940c3386a7..e4664d8e0e 100644
        ],
        "type": "object"
      },
-@@ -5358,8 +5386,8 @@
+@@ -5422,8 +5450,8 @@
          }
        },
        "required": [
@@ -1466,7 +1493,7 @@ index 940c3386a7..e4664d8e0e 100644
        ],
        "type": "object"
      },
-@@ -5418,7 +5446,7 @@
+@@ -5482,7 +5510,7 @@
        ]
      },
      "TrustLevel": {
@@ -1475,7 +1502,7 @@ index 940c3386a7..e4664d8e0e 100644
        "enum": [
          "trusted",
          "untrusted"
-@@ -5445,16 +5473,16 @@
+@@ -5509,16 +5537,16 @@
              }
            ],
            "default": "auto",
@@ -1495,7 +1522,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "boolean"
          },
          "collapse_turn_details": {
-@@ -5469,11 +5497,11 @@
+@@ -5533,11 +5561,11 @@
              }
            ],
            "default": "auto",
@@ -1509,7 +1536,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "boolean"
          },
          "default_hosts": {
-@@ -5484,11 +5512,11 @@
+@@ -5548,11 +5576,11 @@
              "type": "object"
            },
            "default": {},
@@ -1523,7 +1550,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "boolean"
          },
          "effects": {
-@@ -5509,7 +5537,7 @@
+@@ -5573,7 +5601,7 @@
          },
          "fullscreen_transcript": {
            "default": true,
@@ -1532,7 +1559,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "boolean"
          },
          "keymap": {
-@@ -5724,7 +5752,7 @@
+@@ -5790,7 +5818,7 @@
                "word": null
              }
            },
@@ -1541,7 +1568,7 @@ index 940c3386a7..e4664d8e0e 100644
          },
          "model_availability_nux": {
            "allOf": [
-@@ -5737,7 +5765,7 @@
+@@ -5803,7 +5831,7 @@
          },
          "mouse_scroll_speed": {
            "default": null,
@@ -1550,7 +1577,7 @@ index 940c3386a7..e4664d8e0e 100644
            "exclusiveMinimum": 0.0,
            "format": "double",
            "type": "number"
-@@ -5749,7 +5777,7 @@
+@@ -5815,7 +5843,7 @@
              }
            ],
            "default": "unfocused",
@@ -1559,7 +1586,7 @@ index 940c3386a7..e4664d8e0e 100644
          },
          "notification_method": {
            "allOf": [
-@@ -5758,7 +5786,7 @@
+@@ -5824,7 +5852,7 @@
              }
            ],
            "default": "auto",
@@ -1568,7 +1595,7 @@ index 940c3386a7..e4664d8e0e 100644
          },
          "notifications": {
            "allOf": [
-@@ -5767,7 +5795,7 @@
+@@ -5833,7 +5861,7 @@
              }
            ],
            "default": true,
@@ -1577,7 +1604,7 @@ index 940c3386a7..e4664d8e0e 100644
          },
          "pet": {
            "default": null,
-@@ -5798,7 +5826,7 @@
+@@ -5864,7 +5892,7 @@
          },
          "raw_output_mode": {
            "default": false,
@@ -1586,7 +1613,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "boolean"
          },
          "rendering": {
-@@ -5822,7 +5850,7 @@
+@@ -5888,7 +5916,7 @@
              }
            ],
            "default": null,
@@ -1595,7 +1622,7 @@ index 940c3386a7..e4664d8e0e 100644
          },
          "right_click_paste": {
            "allOf": [
-@@ -5831,7 +5859,7 @@
+@@ -5897,7 +5925,7 @@
              }
            ],
            "default": "auto",
@@ -1604,7 +1631,7 @@ index 940c3386a7..e4664d8e0e 100644
          },
          "screen_reader_detection_done": {
            "description": "Records the one-time screen-reader detection attempt. Either value skips detection.",
-@@ -5848,25 +5876,25 @@
+@@ -5914,25 +5942,25 @@
          },
          "show_server_version_notice": {
            "default": true,
@@ -1635,7 +1662,7 @@ index 940c3386a7..e4664d8e0e 100644
            "items": {
              "type": "string"
            },
-@@ -5882,19 +5910,19 @@
+@@ -5948,19 +5976,19 @@
          },
          "status_line_use_colors": {
            "default": true,
@@ -1659,7 +1686,7 @@ index 940c3386a7..e4664d8e0e 100644
            "items": {
              "type": "string"
            },
-@@ -5902,12 +5930,12 @@
+@@ -5968,12 +5996,12 @@
          },
          "theme": {
            "default": null,
@@ -1674,7 +1701,7 @@ index 940c3386a7..e4664d8e0e 100644
            "type": "boolean"
          }
        },
-@@ -6706,7 +6734,7 @@
+@@ -6788,7 +6816,7 @@
      },
      "TuiKeymap": {
        "additionalProperties": false,
@@ -1683,7 +1710,7 @@ index 940c3386a7..e4664d8e0e 100644
        "properties": {
          "agents": {
            "allOf": [
-@@ -7236,7 +7264,7 @@
+@@ -7320,7 +7348,7 @@
      },
      "TuiVimNormalKeymap": {
        "additionalProperties": false,
@@ -1692,7 +1719,7 @@ index 940c3386a7..e4664d8e0e 100644
        "properties": {
          "append_after_cursor": {
            "allOf": [
-@@ -7531,7 +7559,7 @@
+@@ -7615,7 +7643,7 @@
      },
      "TuiVimOperatorKeymap": {
        "additionalProperties": false,
@@ -1701,7 +1728,7 @@ index 940c3386a7..e4664d8e0e 100644
        "properties": {
          "cancel": {
            "allOf": [
-@@ -7845,7 +7873,7 @@
+@@ -7929,7 +7957,7 @@
        ]
      },
      "Verbosity": {
@@ -1710,7 +1737,7 @@ index 940c3386a7..e4664d8e0e 100644
        "enum": [
          "low",
          "medium",
-@@ -7948,6 +7976,9 @@
+@@ -8032,6 +8060,9 @@
        ]
      },
      "WorkspaceRootsToml": {
@@ -1720,7 +1747,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "object"
      }
    },
-@@ -7962,11 +7993,11 @@
+@@ -8046,11 +8077,11 @@
        "description": "Agent-related settings (thread limits, etc.)."
      },
      "allow_login_shell": {
@@ -1734,7 +1761,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "boolean"
      },
      "analytics": {
-@@ -7975,7 +8006,7 @@
+@@ -8059,7 +8090,7 @@
            "$ref": "#/definitions/AnalyticsConfigToml"
          }
        ],
@@ -1743,7 +1770,7 @@ index 940c3386a7..e4664d8e0e 100644
      },
      "approval_policy": {
        "allOf": [
-@@ -7991,7 +8022,7 @@
+@@ -8075,7 +8106,7 @@
            "$ref": "#/definitions/ApprovalsReviewer"
          }
        ],
@@ -1752,7 +1779,7 @@ index 940c3386a7..e4664d8e0e 100644
      },
      "apps": {
        "allOf": [
-@@ -8025,9 +8056,9 @@
+@@ -8109,9 +8140,9 @@
        "description": "Optional policy instructions for the guardian auto-reviewer."
      },
      "background_terminal_max_timeout": {
@@ -1764,7 +1791,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "integer"
      },
      "browser_use": {
-@@ -8038,7 +8069,7 @@
+@@ -8122,7 +8153,7 @@
        "type": "string"
      },
      "check_for_update_on_startup": {
@@ -1773,7 +1800,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "boolean"
      },
      "cli_auth_credentials_store": {
-@@ -8048,7 +8079,7 @@
+@@ -8132,7 +8163,7 @@
          }
        ],
        "default": null,
@@ -1782,7 +1809,7 @@ index 940c3386a7..e4664d8e0e 100644
      },
      "cloud": {
        "allOf": [
-@@ -8086,7 +8117,7 @@
+@@ -8170,7 +8201,7 @@
        "type": "boolean"
      },
      "default_permissions": {
@@ -1791,7 +1818,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "string"
      },
      "desktop": {
-@@ -8108,27 +8139,27 @@
+@@ -8192,27 +8223,27 @@
        "$ref": "#/definitions/AbsolutePathBuf"
      },
      "experimental_realtime_start_instructions": {
@@ -1825,7 +1852,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "string"
      },
      "experimental_thread_store": {
-@@ -8886,7 +8917,7 @@
+@@ -8976,7 +9007,7 @@
            "$ref": "#/definitions/FeedbackConfigToml"
          }
        ],
@@ -1834,7 +1861,7 @@ index 940c3386a7..e4664d8e0e 100644
      },
      "file_opener": {
        "allOf": [
-@@ -8894,7 +8925,7 @@
+@@ -8984,7 +9015,7 @@
            "$ref": "#/definitions/UriBasedFileOpener"
          }
        ],
@@ -1843,7 +1870,7 @@ index 940c3386a7..e4664d8e0e 100644
      },
      "forced_chatgpt_workspace_id": {
        "allOf": [
-@@ -8921,7 +8952,7 @@
+@@ -9011,7 +9042,7 @@
          }
        ],
        "default": null,
@@ -1852,7 +1879,7 @@ index 940c3386a7..e4664d8e0e 100644
      },
      "goals": {
        "allOf": [
-@@ -8933,7 +8964,7 @@
+@@ -9023,7 +9054,7 @@
      },
      "hide_agent_reasoning": {
        "default": false,
@@ -1861,7 +1888,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "boolean"
      },
      "history": {
-@@ -8986,7 +9017,7 @@
+@@ -9076,7 +9107,7 @@
            "$ref": "#/definitions/AbsolutePathBuf"
          }
        ],
@@ -1870,7 +1897,7 @@ index 940c3386a7..e4664d8e0e 100644
      },
      "marketplaces": {
        "additionalProperties": {
-@@ -9006,13 +9037,14 @@
+@@ -9096,13 +9127,14 @@
        "description": "Trusted enterprise IdP shared by EMA-enabled MCP servers and plugins."
      },
      "mcp_oauth_callback_port": {
@@ -1888,7 +1915,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "string"
      },
      "mcp_oauth_credentials_store": {
-@@ -9022,12 +9054,12 @@
+@@ -9112,12 +9144,12 @@
          }
        ],
        "default": null,
@@ -1904,7 +1931,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "integer"
      },
      "mcp_servers": {
-@@ -9061,7 +9093,7 @@
+@@ -9151,7 +9183,7 @@
            "$ref": "#/definitions/AutoCompactTokenLimitScope"
          }
        ],
@@ -1913,7 +1940,7 @@ index 940c3386a7..e4664d8e0e 100644
      },
      "model_catalog_json": {
        "allOf": [
-@@ -9069,7 +9101,7 @@
+@@ -9159,7 +9191,7 @@
            "$ref": "#/definitions/AbsolutePathBuf"
          }
        ],
@@ -1922,7 +1949,7 @@ index 940c3386a7..e4664d8e0e 100644
      },
      "model_context_window": {
        "description": "Size of the context window for the model, in tokens.",
-@@ -9082,13 +9114,13 @@
+@@ -9172,13 +9204,13 @@
            "$ref": "#/definitions/AbsolutePathBuf"
          }
        ],
@@ -1940,7 +1967,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "integer"
      },
      "model_provider": {
-@@ -9100,7 +9132,7 @@
+@@ -9190,7 +9222,7 @@
          "$ref": "#/definitions/ModelProviderInfo"
        },
        "default": {},
@@ -1949,7 +1976,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "object"
      },
      "model_reasoning_effort": {
-@@ -9123,7 +9155,7 @@
+@@ -9213,7 +9245,7 @@
            "$ref": "#/definitions/Notice"
          }
        ],
@@ -1958,7 +1985,7 @@ index 940c3386a7..e4664d8e0e 100644
      },
      "notify": {
        "default": null,
-@@ -9210,12 +9242,12 @@
+@@ -9300,12 +9332,12 @@
        "default": 32768,
        "description": "Maximum total bytes of project instruction content across all selected environments.",
        "format": "uint",
@@ -1973,7 +2000,7 @@ index 940c3386a7..e4664d8e0e 100644
        "items": {
          "type": "string"
        },
-@@ -9234,7 +9266,7 @@
+@@ -9324,7 +9356,7 @@
          }
        ],
        "default": null,
@@ -1982,7 +2009,7 @@ index 940c3386a7..e4664d8e0e 100644
      },
      "responses": {
        "allOf": [
-@@ -9280,7 +9312,7 @@
+@@ -9370,7 +9402,7 @@
        "description": "Sandbox configuration to apply if `sandbox` is `WorkspaceWrite`."
      },
      "service_tier": {
@@ -1991,7 +2018,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "string"
      },
      "shell_environment_policy": {
-@@ -9300,7 +9332,7 @@
+@@ -9390,7 +9422,7 @@
        }
      },
      "show_raw_agent_reasoning": {
@@ -2000,7 +2027,7 @@ index 940c3386a7..e4664d8e0e 100644
        "type": "boolean"
      },
      "skills": {
-@@ -9317,22 +9349,22 @@
+@@ -9407,22 +9439,22 @@
            "$ref": "#/definitions/AbsolutePathBuf"
          }
        ],
@@ -2095,7 +2122,7 @@ index a78e125a11..561bc27231 100644
    "title": "model-request.command.input",
    "type": "object"
 diff --git a/sdk/python/src/openai_codex/generated/v2_all.py b/sdk/python/src/openai_codex/generated/v2_all.py
-index 1157705ee4..0023a64554 100644
+index c5dce43a1e..4747f81efb 100644
 --- a/sdk/python/src/openai_codex/generated/v2_all.py
 +++ b/sdk/python/src/openai_codex/generated/v2_all.py
 @@ -3,7 +3,7 @@
@@ -2145,7 +2172,7 @@ index 1157705ee4..0023a64554 100644
  class AppReview(BaseModel):
      model_config = ConfigDict(
          populate_by_name=True,
-@@ -283,10 +277,8 @@ class AppToolSummary(BaseModel):
+@@ -275,12 +269,6 @@ class AppToolSummary(BaseModel):
      title: str | None = None
  
  
@@ -2153,12 +2180,12 @@ index 1157705ee4..0023a64554 100644
 -    model_config = ConfigDict(
 -        populate_by_name=True,
 -    )
-+class AppToolsConfig(RootModel[dict[str, AppToolConfig]]):
-+    root: dict[str, AppToolConfig]
- 
- 
+-
+-
  class ApprovalsReviewer(Enum):
-@@ -314,7 +306,7 @@ class AppsInstalledParams(BaseModel):
+     user = "user"
+     auto_review = "auto_review"
+@@ -306,7 +294,7 @@ class AppsInstalledParams(BaseModel):
          bool | None,
          Field(
              alias="forceRefresh",
@@ -2167,7 +2194,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      thread_id: Annotated[
-@@ -361,7 +353,7 @@ class AppsReadParams(BaseModel):
+@@ -353,7 +341,7 @@ class AppsReadParams(BaseModel):
          list[str],
          Field(
              alias="appIds",
@@ -2176,7 +2203,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      include_tools: Annotated[
-@@ -610,7 +602,7 @@ class HttpConnectionFailed(BaseModel):
+@@ -605,7 +593,7 @@ class HttpConnectionFailed(BaseModel):
      model_config = ConfigDict(
          populate_by_name=True,
      )
@@ -2185,7 +2212,7 @@ index 1157705ee4..0023a64554 100644
  
  
  class HttpConnectionFailedCodexErrorInfo(BaseModel):
-@@ -625,7 +617,7 @@ class ResponseStreamConnectionFailed(BaseModel):
+@@ -620,7 +608,7 @@ class ResponseStreamConnectionFailed(BaseModel):
      model_config = ConfigDict(
          populate_by_name=True,
      )
@@ -2194,7 +2221,7 @@ index 1157705ee4..0023a64554 100644
  
  
  class ResponseStreamConnectionFailedCodexErrorInfo(BaseModel):
-@@ -642,7 +634,7 @@ class ResponseStreamDisconnected(BaseModel):
+@@ -637,7 +625,7 @@ class ResponseStreamDisconnected(BaseModel):
      model_config = ConfigDict(
          populate_by_name=True,
      )
@@ -2203,7 +2230,7 @@ index 1157705ee4..0023a64554 100644
  
  
  class ResponseStreamDisconnectedCodexErrorInfo(BaseModel):
-@@ -659,7 +651,7 @@ class ResponseTooManyFailedAttempts(BaseModel):
+@@ -654,7 +642,7 @@ class ResponseTooManyFailedAttempts(BaseModel):
      model_config = ConfigDict(
          populate_by_name=True,
      )
@@ -2212,7 +2239,7 @@ index 1157705ee4..0023a64554 100644
  
  
  class ResponseTooManyFailedAttemptsCodexErrorInfo(BaseModel):
-@@ -768,8 +760,8 @@ class CommandExecTerminalSize(BaseModel):
+@@ -763,8 +751,8 @@ class CommandExecTerminalSize(BaseModel):
      model_config = ConfigDict(
          populate_by_name=True,
      )
@@ -2223,7 +2250,7 @@ index 1157705ee4..0023a64554 100644
  
  
  class CommandExecTerminateParams(BaseModel):
-@@ -780,7 +772,7 @@ class CommandExecTerminateParams(BaseModel):
+@@ -775,7 +763,7 @@ class CommandExecTerminateParams(BaseModel):
          str,
          Field(
              alias="processId",
@@ -2232,7 +2259,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
  
-@@ -809,7 +801,7 @@ class CommandExecWriteParams(BaseModel):
+@@ -804,7 +792,7 @@ class CommandExecWriteParams(BaseModel):
          str,
          Field(
              alias="processId",
@@ -2241,7 +2268,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
  
-@@ -921,7 +913,7 @@ class SystemConfigLayerSource(BaseModel):
+@@ -916,7 +904,7 @@ class SystemConfigLayerSource(BaseModel):
      file: Annotated[
          AbsolutePathBuf,
          Field(
@@ -2250,7 +2277,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      type: Annotated[Literal["system"], Field(title="SystemConfigLayerSourceType")]
-@@ -935,7 +927,7 @@ class EnterpriseManagedConfigLayerSource(BaseModel):
+@@ -930,7 +918,7 @@ class EnterpriseManagedConfigLayerSource(BaseModel):
      name: Annotated[
          str,
          Field(
@@ -2259,7 +2286,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      type: Annotated[
-@@ -950,13 +942,13 @@ class UserConfigLayerSource(BaseModel):
+@@ -945,13 +933,13 @@ class UserConfigLayerSource(BaseModel):
      file: Annotated[
          AbsolutePathBuf,
          Field(
@@ -2275,7 +2302,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      type: Annotated[Literal["user"], Field(title="UserConfigLayerSourceType")]
-@@ -1031,7 +1023,7 @@ class ConfigReadParams(BaseModel):
+@@ -1026,7 +1014,7 @@ class ConfigReadParams(BaseModel):
      cwd: Annotated[
          str | None,
          Field(
@@ -2284,7 +2311,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      include_layers: Annotated[bool | None, Field(alias="includeLayers")] = None
-@@ -1045,7 +1037,7 @@ class CommandConfiguredHookHandler(BaseModel):
+@@ -1040,7 +1028,7 @@ class CommandConfiguredHookHandler(BaseModel):
          int | None,
          Field(
              alias="additionalContextLimit",
@@ -2293,7 +2320,7 @@ index 1157705ee4..0023a64554 100644
              ge=0,
          ),
      ] = None
-@@ -1137,14 +1129,14 @@ class ConsumeAccountRateLimitResetCreditParams(BaseModel):
+@@ -1132,14 +1120,14 @@ class ConsumeAccountRateLimitResetCreditParams(BaseModel):
          str | None,
          Field(
              alias="creditId",
@@ -2310,7 +2337,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
  
-@@ -1349,7 +1341,7 @@ class ExperimentalFeatureEnablementSetParams(BaseModel):
+@@ -1360,7 +1348,7 @@ class ExperimentalFeatureEnablementSetParams(BaseModel):
      enablement: Annotated[
          dict[str, bool],
          Field(
@@ -2319,7 +2346,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
  
-@@ -1378,7 +1370,7 @@ class ExperimentalFeatureListParams(BaseModel):
+@@ -1389,7 +1377,7 @@ class ExperimentalFeatureListParams(BaseModel):
          str | None,
          Field(
              alias="threadId",
@@ -2328,7 +2355,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -1432,7 +1424,7 @@ class ExternalAgentConfigDetectParams(BaseModel):
+@@ -1443,7 +1431,7 @@ class ExternalAgentConfigDetectParams(BaseModel):
      source: Annotated[
          str | None,
          Field(
@@ -2337,7 +2364,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -1500,7 +1492,7 @@ class FeedbackUploadResponse(BaseModel):
+@@ -1511,7 +1499,7 @@ class FeedbackUploadResponse(BaseModel):
          str | None,
          Field(
              alias="promptHash",
@@ -2346,7 +2373,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      thread_id: Annotated[str, Field(alias="threadId")]
-@@ -1969,7 +1961,7 @@ class GetAccountParams(BaseModel):
+@@ -1980,7 +1968,7 @@ class GetAccountParams(BaseModel):
          bool | None,
          Field(
              alias="refreshToken",
@@ -2355,7 +2382,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -1982,14 +1974,14 @@ class GetAccountRateLimitsParams(BaseModel):
+@@ -1993,14 +1981,14 @@ class GetAccountRateLimitsParams(BaseModel):
          bool | None,
          Field(
              alias="excludeResetCreditDetails",
@@ -2372,7 +2399,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -2260,7 +2252,7 @@ class InitializeCapabilities(BaseModel):
+@@ -2271,7 +2259,7 @@ class InitializeCapabilities(BaseModel):
          bool | None,
          Field(
              alias="explicitGatewayOauth",
@@ -2381,7 +2408,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      extensions: Annotated[
-@@ -2278,7 +2270,7 @@ class InitializeCapabilities(BaseModel):
+@@ -2289,7 +2277,7 @@ class InitializeCapabilities(BaseModel):
          list[str] | None,
          Field(
              alias="optOutNotificationMethods",
@@ -2390,7 +2417,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      request_attestation: Annotated[
-@@ -2292,7 +2284,7 @@ class InitializeCapabilities(BaseModel):
+@@ -2303,7 +2291,7 @@ class InitializeCapabilities(BaseModel):
          bool | None,
          Field(
              alias="requiredHumanApproval",
@@ -2399,7 +2426,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -2318,13 +2310,13 @@ class InstalledApp(BaseModel):
+@@ -2329,13 +2317,13 @@ class InstalledApp(BaseModel):
      callable: Annotated[
          bool,
          Field(
@@ -2415,7 +2442,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      id: str
-@@ -2332,7 +2324,7 @@ class InstalledApp(BaseModel):
+@@ -2343,7 +2331,7 @@ class InstalledApp(BaseModel):
          str | None,
          Field(
              alias="runtimeName",
@@ -2424,7 +2451,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -2395,7 +2387,7 @@ class ChatgptAuthTokensLoginAccountParams(BaseModel):
+@@ -2406,7 +2394,7 @@ class ChatgptAuthTokensLoginAccountParams(BaseModel):
          str,
          Field(
              alias="accessToken",
@@ -2433,7 +2460,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      chatgpt_account_id: Annotated[
-@@ -2409,7 +2401,7 @@ class ChatgptAuthTokensLoginAccountParams(BaseModel):
+@@ -2420,7 +2408,7 @@ class ChatgptAuthTokensLoginAccountParams(BaseModel):
          str | None,
          Field(
              alias="chatgptPlanType",
@@ -2442,7 +2469,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      type: Annotated[
-@@ -2777,7 +2769,7 @@ class McpServerOauthLoginResponse(BaseModel):
+@@ -2796,7 +2784,7 @@ class McpServerOauthLoginResponse(BaseModel):
          str | None,
          Field(
              alias="loginId",
@@ -2451,7 +2478,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -3139,7 +3131,7 @@ class MultiAgentMode(RootModel[MultiAgentModeValue | CustomMultiAgentMode]):
+@@ -3165,7 +3153,7 @@ class MultiAgentMode(RootModel[MultiAgentModeValue | CustomMultiAgentMode]):
      root: Annotated[
          MultiAgentModeValue | CustomMultiAgentMode,
          Field(
@@ -2460,7 +2487,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
  
-@@ -3202,12 +3194,12 @@ class NetworkRequirements(BaseModel):
+@@ -3228,12 +3216,12 @@ class NetworkRequirements(BaseModel):
          dict[str, Any] | None, Field(description="Canonical managed network permission map.")
      ] = None
      enabled: bool | None = None
@@ -2475,7 +2502,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      review_domains: Annotated[
-@@ -3217,7 +3209,7 @@ class NetworkRequirements(BaseModel):
+@@ -3243,7 +3231,7 @@ class NetworkRequirements(BaseModel):
              description="Host patterns routed to network approval before ordinary allow rules.",
          ),
      ] = None
@@ -2484,7 +2511,7 @@ index 1157705ee4..0023a64554 100644
      unix_sockets: Annotated[
          dict[str, Any] | None,
          Field(alias="unixSockets", description="Canonical managed unix socket permission map."),
-@@ -3254,6 +3246,12 @@ class NullableGetAccountTokenUsageParams(RootModel[GetAccountTokenUsageParams |
+@@ -3280,6 +3268,12 @@ class NullableGetAccountTokenUsageParams(RootModel[GetAccountTokenUsageParams |
      ]
  
  
@@ -2497,7 +2524,7 @@ index 1157705ee4..0023a64554 100644
  class OtelExporterValue(Enum):
      none = "none"
      statsig = "statsig"
-@@ -3468,7 +3466,7 @@ class PluginInstalledParams(BaseModel):
+@@ -3494,7 +3488,7 @@ class PluginInstalledParams(BaseModel):
          list[str] | None,
          Field(
              alias="installSuggestionPluginNames",
@@ -2506,7 +2533,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -3497,7 +3495,7 @@ class PluginInterface(BaseModel):
+@@ -3523,7 +3517,7 @@ class PluginInterface(BaseModel):
          list[str] | None,
          Field(
              alias="defaultPrompt",
@@ -2515,7 +2542,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      developer_name: Annotated[str | None, Field(alias="developerName")] = None
-@@ -3554,7 +3552,7 @@ class PluginListParams(BaseModel):
+@@ -3580,7 +3574,7 @@ class PluginListParams(BaseModel):
      cwds: Annotated[
          list[AbsolutePathBuf] | None,
          Field(
@@ -2524,7 +2551,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      force_refetch: Annotated[
-@@ -3568,7 +3566,7 @@ class PluginListParams(BaseModel):
+@@ -3594,7 +3588,7 @@ class PluginListParams(BaseModel):
          list[PluginListMarketplaceKind] | None,
          Field(
              alias="marketplaceKinds",
@@ -2533,7 +2560,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -3621,14 +3619,14 @@ class PluginReconcileResponse(BaseModel):
+@@ -3647,14 +3641,14 @@ class PluginReconcileResponse(BaseModel):
          list[PluginReconcileChangedPlugin],
          Field(
              alias="changedPlugins",
@@ -2550,7 +2577,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      failed_remote_plugin_ids: Annotated[
-@@ -3818,7 +3816,7 @@ class ProcessExitedNotification(BaseModel):
+@@ -3844,7 +3838,7 @@ class ProcessExitedNotification(BaseModel):
          bool | None,
          Field(
              alias="outputDrainTimedOut",
@@ -2559,7 +2586,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      process_handle: Annotated[
-@@ -3838,7 +3836,7 @@ class ProcessExitedNotification(BaseModel):
+@@ -3864,7 +3858,7 @@ class ProcessExitedNotification(BaseModel):
          bool,
          Field(
              alias="stderrCapReached",
@@ -2568,7 +2595,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      stdout: Annotated[
-@@ -3851,7 +3849,7 @@ class ProcessExitedNotification(BaseModel):
+@@ -3877,7 +3871,7 @@ class ProcessExitedNotification(BaseModel):
          bool,
          Field(
              alias="stdoutCapReached",
@@ -2577,7 +2604,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
  
-@@ -3865,8 +3863,8 @@ class ProcessTerminalSize(BaseModel):
+@@ -3891,8 +3885,8 @@ class ProcessTerminalSize(BaseModel):
      model_config = ConfigDict(
          populate_by_name=True,
      )
@@ -2588,7 +2615,7 @@ index 1157705ee4..0023a64554 100644
  
  
  class ProjectChangeType(Enum):
-@@ -4168,7 +4166,7 @@ class ReasoningSummary(RootModel[ReasoningSummaryValue | Literal["none"]]):
+@@ -4194,7 +4188,7 @@ class ReasoningSummary(RootModel[ReasoningSummaryValue | Literal["none"]]):
      root: Annotated[
          ReasoningSummaryValue | Literal["none"],
          Field(
@@ -2597,7 +2624,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
  
-@@ -4310,7 +4308,7 @@ class AdditionalToolsResponseItem(BaseModel):
+@@ -4336,7 +4330,7 @@ class AdditionalToolsResponseItem(BaseModel):
      model_config = ConfigDict(
          populate_by_name=True,
      )
@@ -2606,7 +2633,7 @@ index 1157705ee4..0023a64554 100644
      role: str
      tools: list[Any]
      type: Annotated[Literal["additional_tools"], Field(title="AdditionalToolsResponseItemType")]
-@@ -4322,7 +4320,7 @@ class AgentMessageResponseItem(BaseModel):
+@@ -4348,7 +4342,7 @@ class AgentMessageResponseItem(BaseModel):
      )
      author: str
      content: list[AgentMessageInputContent]
@@ -2615,7 +2642,7 @@ index 1157705ee4..0023a64554 100644
      internal_chat_message_metadata_passthrough: InternalChatMessageMetadataPassthrough | None = None
      recipient: str
      type: Annotated[Literal["agent_message"], Field(title="AgentMessageResponseItemType")]
-@@ -4334,7 +4332,7 @@ class ReasoningResponseItem(BaseModel):
+@@ -4360,7 +4354,7 @@ class ReasoningResponseItem(BaseModel):
      )
      content: list[ReasoningItemContent] | None = None
      encrypted_content: str | None = None
@@ -2624,7 +2651,7 @@ index 1157705ee4..0023a64554 100644
      internal_chat_message_metadata_passthrough: InternalChatMessageMetadataPassthrough | None = None
      summary: list[ReasoningItemReasoningSummary]
      type: Annotated[Literal["reasoning"], Field(title="ReasoningResponseItemType")]
-@@ -4348,7 +4346,7 @@ class LocalShellCallResponseItem(BaseModel):
+@@ -4374,7 +4368,7 @@ class LocalShellCallResponseItem(BaseModel):
      call_id: Annotated[str | None, Field(description="Set when using the Responses API.")] = None
      encrypted_content: str | None = None
      id: Annotated[
@@ -2633,7 +2660,7 @@ index 1157705ee4..0023a64554 100644
          Field(description="Legacy id field retained for compatibility with older payloads."),
      ] = None
      internal_chat_message_metadata_passthrough: InternalChatMessageMetadataPassthrough | None = None
-@@ -4364,7 +4362,7 @@ class FunctionCallResponseItem(BaseModel):
+@@ -4390,7 +4384,7 @@ class FunctionCallResponseItem(BaseModel):
      call_id: str
      encrypted_content: str | None = None
      encrypted_function_args: list[str] | None = None
@@ -2642,7 +2669,7 @@ index 1157705ee4..0023a64554 100644
      internal_chat_message_metadata_passthrough: InternalChatMessageMetadataPassthrough | None = None
      name: str
      namespace: str | None = None
-@@ -4380,7 +4378,7 @@ class ToolSearchCallResponseItem(BaseModel):
+@@ -4406,7 +4400,7 @@ class ToolSearchCallResponseItem(BaseModel):
      call_id: str | None = None
      encrypted_content: str | None = None
      execution: str
@@ -2651,7 +2678,7 @@ index 1157705ee4..0023a64554 100644
      internal_chat_message_metadata_passthrough: InternalChatMessageMetadataPassthrough | None = None
      status: str | None = None
      type: Annotated[Literal["tool_search_call"], Field(title="ToolSearchCallResponseItemType")]
-@@ -4392,7 +4390,7 @@ class CustomToolCallResponseItem(BaseModel):
+@@ -4418,7 +4412,7 @@ class CustomToolCallResponseItem(BaseModel):
      )
      call_id: str
      encrypted_content: str | None = None
@@ -2660,7 +2687,7 @@ index 1157705ee4..0023a64554 100644
      input: str
      internal_chat_message_metadata_passthrough: InternalChatMessageMetadataPassthrough | None = None
      name: str
-@@ -4407,7 +4405,7 @@ class ToolSearchOutputResponseItem(BaseModel):
+@@ -4433,7 +4427,7 @@ class ToolSearchOutputResponseItem(BaseModel):
      )
      call_id: str | None = None
      execution: str
@@ -2669,7 +2696,7 @@ index 1157705ee4..0023a64554 100644
      internal_chat_message_metadata_passthrough: InternalChatMessageMetadataPassthrough | None = None
      status: str
      tools: list[Any]
-@@ -4419,7 +4417,7 @@ class ImageGenerationCallResponseItem(BaseModel):
+@@ -4445,7 +4439,7 @@ class ImageGenerationCallResponseItem(BaseModel):
          populate_by_name=True,
      )
      encrypted_content: str | None = None
@@ -2678,7 +2705,7 @@ index 1157705ee4..0023a64554 100644
      internal_chat_message_metadata_passthrough: InternalChatMessageMetadataPassthrough | None = None
      result: str
      revised_prompt: str | None = None
-@@ -4434,7 +4432,7 @@ class CompactionResponseItem(BaseModel):
+@@ -4460,7 +4454,7 @@ class CompactionResponseItem(BaseModel):
          populate_by_name=True,
      )
      encrypted_content: str
@@ -2687,7 +2714,7 @@ index 1157705ee4..0023a64554 100644
      internal_chat_message_metadata_passthrough: InternalChatMessageMetadataPassthrough | None = None
      type: Annotated[Literal["compaction"], Field(title="CompactionResponseItemType")]
  
-@@ -4451,7 +4449,7 @@ class ContextCompactionResponseItem(BaseModel):
+@@ -4477,7 +4471,7 @@ class ContextCompactionResponseItem(BaseModel):
          populate_by_name=True,
      )
      encrypted_content: str | None = None
@@ -2696,7 +2723,7 @@ index 1157705ee4..0023a64554 100644
      internal_chat_message_metadata_passthrough: InternalChatMessageMetadataPassthrough | None = None
      type: Annotated[Literal["context_compaction"], Field(title="ContextCompactionResponseItemType")]
  
-@@ -6164,7 +6162,7 @@ class ThreadItemsListParams(BaseModel):
+@@ -6190,7 +6184,7 @@ class ThreadItemsListParams(BaseModel):
      cursor: Annotated[
          ThreadItemsListCursor | None,
          Field(
@@ -2705,7 +2732,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      defer_output: Annotated[
-@@ -6219,7 +6217,7 @@ class ThreadLoadedListResponse(BaseModel):
+@@ -6245,7 +6239,7 @@ class ThreadLoadedListResponse(BaseModel):
          str | None,
          Field(
              alias="nextCursor",
@@ -2714,7 +2741,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -6236,20 +6234,20 @@ class ThreadMetadataGitInfoUpdateParams(BaseModel):
+@@ -6262,20 +6256,20 @@ class ThreadMetadataGitInfoUpdateParams(BaseModel):
      branch: Annotated[
          str | None,
          Field(
@@ -2738,7 +2765,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -6262,7 +6260,7 @@ class ThreadMetadataUpdateParams(BaseModel):
+@@ -6288,7 +6282,7 @@ class ThreadMetadataUpdateParams(BaseModel):
          ThreadMetadataGitInfoUpdateParams | None,
          Field(
              alias="gitInfo",
@@ -2747,7 +2774,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      thread_id: Annotated[str, Field(alias="threadId")]
-@@ -6329,7 +6327,7 @@ class ThreadReadParams(BaseModel):
+@@ -6355,7 +6349,7 @@ class ThreadReadParams(BaseModel):
          bool | None,
          Field(
              alias="includeTurns",
@@ -2756,7 +2783,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      thread_id: Annotated[str, Field(alias="threadId")]
-@@ -6361,7 +6359,7 @@ class ThreadRealtimeAudioChunk(BaseModel):
+@@ -6387,7 +6381,7 @@ class ThreadRealtimeAudioChunk(BaseModel):
      )
      data: str
      item_id: Annotated[str | None, Field(alias="itemId")] = None
@@ -2765,7 +2792,7 @@ index 1157705ee4..0023a64554 100644
      sample_rate: Annotated[int, Field(alias="sampleRate", ge=0)]
      samples_per_channel: Annotated[int | None, Field(alias="samplesPerChannel", ge=0)] = None
  
-@@ -6480,9 +6478,9 @@ class BemItemPromotedThreadRealtimeItem(BaseModel):
+@@ -6506,9 +6500,9 @@ class BemItemPromotedThreadRealtimeItem(BaseModel):
          ),
      ] = None
      realtime_session_id: Annotated[str, Field(alias="realtimeSessionId")]
@@ -2777,7 +2804,7 @@ index 1157705ee4..0023a64554 100644
      type: Annotated[
          Literal["bemItemPromoted"], Field(title="BemItemPromotedThreadRealtimeItemType")
      ]
-@@ -6501,12 +6499,12 @@ class TurnInputAcceptedThreadRealtimeItem(BaseModel):
+@@ -6527,12 +6521,12 @@ class TurnInputAcceptedThreadRealtimeItem(BaseModel):
          ),
      ] = None
      realtime_session_id: Annotated[str, Field(alias="realtimeSessionId")]
@@ -2794,18 +2821,7 @@ index 1157705ee4..0023a64554 100644
      type: Annotated[
          Literal["turnInputAccepted"], Field(title="TurnInputAcceptedThreadRealtimeItemType")
      ]
-@@ -6526,8 +6524,8 @@ class SessionEndInputSavedThreadRealtimeItem(BaseModel):
-     ] = None
-     realtime_session_id: Annotated[str, Field(alias="realtimeSessionId")]
-     input: str
--    input_item_id: str
--    source_event_ids: list[str]
-+    input_item_id: Annotated[str, Field(alias="inputItemId")]
-+    source_event_ids: Annotated[list[str], Field(alias="sourceEventIds")]
-     type: Annotated[
-         Literal["sessionEndInputSaved"], Field(title="SessionEndInputSavedThreadRealtimeItemType")
-     ]
-@@ -6590,7 +6588,7 @@ class WebrtcThreadRealtimeStartTransport(BaseModel):
+@@ -6600,7 +6594,7 @@ class WebrtcThreadRealtimeStartTransport(BaseModel):
      sdp: Annotated[
          str,
          Field(
@@ -2814,7 +2830,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      type: Annotated[Literal["webrtc"], Field(title="WebrtcThreadRealtimeStartTransportType")]
-@@ -6676,7 +6674,7 @@ class ThreadResumeParams(BaseModel):
+@@ -6686,7 +6680,7 @@ class ThreadResumeParams(BaseModel):
          ApprovalsReviewer | None,
          Field(
              alias="approvalsReviewer",
@@ -2823,7 +2839,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      base_instructions: Annotated[str | None, Field(alias="baseInstructions")] = None
-@@ -6687,7 +6685,7 @@ class ThreadResumeParams(BaseModel):
+@@ -6697,7 +6691,7 @@ class ThreadResumeParams(BaseModel):
          bool | None,
          Field(
              alias="excludeTurns",
@@ -2832,7 +2848,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      model: Annotated[
-@@ -6697,7 +6695,7 @@ class ThreadResumeParams(BaseModel):
+@@ -6707,7 +6701,7 @@ class ThreadResumeParams(BaseModel):
      personality: Annotated[
          Personality | None,
          Field(
@@ -2841,7 +2857,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      sandbox: SandboxMode | None = None
-@@ -6864,7 +6862,7 @@ class ThreadShellCommandParams(BaseModel):
+@@ -6874,7 +6868,7 @@ class ThreadShellCommandParams(BaseModel):
      command: Annotated[
          str,
          Field(
@@ -2850,7 +2866,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      thread_id: Annotated[str, Field(alias="threadId")]
-@@ -6872,7 +6870,7 @@ class ThreadShellCommandParams(BaseModel):
+@@ -6882,7 +6876,7 @@ class ThreadShellCommandParams(BaseModel):
          int | None,
          Field(
              alias="timeoutMs",
@@ -2859,7 +2875,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -6973,8 +6971,8 @@ class TurnStartedThreadTimelineEntry(BaseModel):
+@@ -6983,8 +6977,8 @@ class TurnStartedThreadTimelineEntry(BaseModel):
          populate_by_name=True,
      )
      position: Annotated[int, Field(ge=0)]
@@ -2870,7 +2886,7 @@ index 1157705ee4..0023a64554 100644
      type: Annotated[Literal["turnStarted"], Field(title="TurnStartedThreadTimelineEntryType")]
  
  
-@@ -7535,32 +7533,16 @@ class AnswerAnnotation(RootModel[AnswerAnnotation1]):
+@@ -7545,32 +7539,16 @@ class AnswerAnnotation(RootModel[AnswerAnnotation1]):
      root: AnswerAnnotation1
  
  
@@ -2906,7 +2922,18 @@ index 1157705ee4..0023a64554 100644
  
  
  class AppMetadata(BaseModel):
-@@ -7622,13 +7604,6 @@ class ApplicationStorageRequirements(BaseModel):
+@@ -7618,6 +7596,10 @@ class AppToolConfig(BaseModel):
+     enabled: bool | None = None
+ 
+ 
++class AppToolsConfig(RootModel[dict[str, AppToolConfig]]):
++    root: dict[str, AppToolConfig]
++
++
+ class ApplicationNetworkRequirements(BaseModel):
+     model_config = ConfigDict(
+         populate_by_name=True,
+@@ -7641,13 +7623,6 @@ class ApplicationStorageRequirements(BaseModel):
      ] = None
  
  
@@ -2920,7 +2947,7 @@ index 1157705ee4..0023a64554 100644
  class AppsInstalledResponse(BaseModel):
      model_config = ConfigDict(
          populate_by_name=True,
-@@ -8609,7 +8584,7 @@ class CodexErrorInfo(
+@@ -8628,7 +8603,7 @@ class CodexErrorInfo(
          | ActiveTurnNotSteerableCodexErrorInfo
          | dict[str, Any],
          Field(
@@ -2929,7 +2956,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
  
-@@ -8666,7 +8641,7 @@ class CommandExecOutputDeltaNotification(BaseModel):
+@@ -8685,7 +8660,7 @@ class CommandExecOutputDeltaNotification(BaseModel):
          bool,
          Field(
              alias="capReached",
@@ -2938,7 +2965,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      delta_base64: Annotated[
-@@ -8676,7 +8651,7 @@ class CommandExecOutputDeltaNotification(BaseModel):
+@@ -8695,7 +8670,7 @@ class CommandExecOutputDeltaNotification(BaseModel):
          str,
          Field(
              alias="processId",
@@ -2947,7 +2974,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      stream: Annotated[CommandExecOutputStream, Field(description="Output stream for this chunk.")]
-@@ -8709,14 +8684,14 @@ class CommandExecParams(BaseModel):
+@@ -8728,14 +8703,14 @@ class CommandExecParams(BaseModel):
      env: Annotated[
          dict[str, Any] | None,
          Field(
@@ -2964,7 +2991,7 @@ index 1157705ee4..0023a64554 100644
              ge=0,
          ),
      ] = None
-@@ -8724,20 +8699,20 @@ class CommandExecParams(BaseModel):
+@@ -8743,20 +8718,20 @@ class CommandExecParams(BaseModel):
          str | None,
          Field(
              alias="processId",
@@ -2988,7 +3015,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      stream_stdin: Annotated[
-@@ -8751,14 +8726,14 @@ class CommandExecParams(BaseModel):
+@@ -8770,14 +8745,14 @@ class CommandExecParams(BaseModel):
          bool | None,
          Field(
              alias="streamStdoutStderr",
@@ -3005,7 +3032,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      tty: Annotated[
-@@ -8777,7 +8752,7 @@ class CommandExecResizeParams(BaseModel):
+@@ -8796,7 +8771,7 @@ class CommandExecResizeParams(BaseModel):
          str,
          Field(
              alias="processId",
@@ -3014,7 +3041,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      size: Annotated[CommandExecTerminalSize, Field(description="New PTY size in character cells.")]
-@@ -8918,7 +8893,7 @@ class ExperimentalFeature(BaseModel):
+@@ -8937,7 +8912,7 @@ class ExperimentalFeature(BaseModel):
      announcement: Annotated[
          str | None,
          Field(
@@ -3023,7 +3050,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      default_enabled: Annotated[
-@@ -8928,14 +8903,14 @@ class ExperimentalFeature(BaseModel):
+@@ -8947,14 +8922,14 @@ class ExperimentalFeature(BaseModel):
      description: Annotated[
          str | None,
          Field(
@@ -3040,7 +3067,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      enabled: Annotated[
-@@ -8956,7 +8931,7 @@ class ExperimentalFeatureListResponse(BaseModel):
+@@ -8975,7 +8950,7 @@ class ExperimentalFeatureListResponse(BaseModel):
          str | None,
          Field(
              alias="nextCursor",
@@ -3049,7 +3076,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -9040,7 +9015,7 @@ class FeedbackSaveParams(BaseModel):
+@@ -9059,7 +9034,7 @@ class FeedbackSaveParams(BaseModel):
          LegacyAppPathString,
          Field(
              alias="savePath",
@@ -3058,7 +3085,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      tags: dict[str, Any] | None = None
-@@ -9156,7 +9131,7 @@ class FunctionCallOutputContentItem(
+@@ -9175,7 +9150,7 @@ class FunctionCallOutputContentItem(
          | FileIdFunctionCallOutputContentItem1
          | EncryptedContentFunctionCallOutputContentItem,
          Field(
@@ -3067,7 +3094,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
  
-@@ -9280,7 +9255,7 @@ class NetworkAccessGuardianApprovalReviewAction(BaseModel):
+@@ -9299,7 +9274,7 @@ class NetworkAccessGuardianApprovalReviewAction(BaseModel):
          populate_by_name=True,
      )
      host: str
@@ -3076,7 +3103,7 @@ index 1157705ee4..0023a64554 100644
      protocol: NetworkApprovalProtocol
      target: str
      type: Annotated[
-@@ -9296,7 +9271,7 @@ class HookMetadata1(BaseModel):
+@@ -9315,7 +9290,7 @@ class HookMetadata1(BaseModel):
          int | None,
          Field(
              alias="additionalContextLimit",
@@ -3085,7 +3112,7 @@ index 1157705ee4..0023a64554 100644
              ge=0,
          ),
      ] = None
-@@ -9333,7 +9308,7 @@ class HookMetadata2(BaseModel):
+@@ -9352,7 +9327,7 @@ class HookMetadata2(BaseModel):
          int | None,
          Field(
              alias="additionalContextLimit",
@@ -3094,7 +3121,7 @@ index 1157705ee4..0023a64554 100644
              ge=0,
          ),
      ] = None
-@@ -9370,7 +9345,7 @@ class PromptHookMetadata(BaseModel):
+@@ -9389,7 +9364,7 @@ class PromptHookMetadata(BaseModel):
          int | None,
          Field(
              alias="additionalContextLimit",
@@ -3103,7 +3130,7 @@ index 1157705ee4..0023a64554 100644
              ge=0,
          ),
      ] = None
-@@ -9405,7 +9380,7 @@ class AgentHookMetadata(BaseModel):
+@@ -9424,7 +9399,7 @@ class AgentHookMetadata(BaseModel):
          int | None,
          Field(
              alias="additionalContextLimit",
@@ -3112,7 +3139,7 @@ index 1157705ee4..0023a64554 100644
              ge=0,
          ),
      ] = None
-@@ -9502,14 +9477,14 @@ class ListMcpServerStatusParams(BaseModel):
+@@ -9521,14 +9496,14 @@ class ListMcpServerStatusParams(BaseModel):
      detail: Annotated[
          McpServerStatusDetail | None,
          Field(
@@ -3129,7 +3156,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      limit: Annotated[
-@@ -9617,14 +9592,14 @@ class McpServerStatus(BaseModel):
+@@ -9636,14 +9611,14 @@ class McpServerStatus(BaseModel):
          str | None,
          Field(
              alias="environmentId",
@@ -3146,7 +3173,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      name: str
-@@ -9658,7 +9633,7 @@ class McpServerStatus(BaseModel):
+@@ -9677,7 +9652,7 @@ class McpServerStatus(BaseModel):
          str | None,
          Field(
              alias="toolsError",
@@ -3155,7 +3182,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -9788,7 +9763,7 @@ class ModelListResponse(BaseModel):
+@@ -9807,7 +9782,7 @@ class ModelListResponse(BaseModel):
          str | None,
          Field(
              alias="nextCursor",
@@ -3164,7 +3191,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -9917,7 +9892,7 @@ class PermissionProfileListResponse(BaseModel):
+@@ -9936,7 +9911,7 @@ class PermissionProfileListResponse(BaseModel):
          str | None,
          Field(
              alias="nextCursor",
@@ -3173,7 +3200,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -9966,7 +9941,7 @@ class ProcessOutputDeltaNotification(BaseModel):
+@@ -9985,7 +9960,7 @@ class ProcessOutputDeltaNotification(BaseModel):
          bool,
          Field(
              alias="capReached",
@@ -3182,7 +3209,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      delta_base64: Annotated[
-@@ -10061,7 +10036,7 @@ class RateLimitResetCreditsSummary(BaseModel):
+@@ -10080,7 +10055,7 @@ class RateLimitResetCreditsSummary(BaseModel):
      credits: Annotated[
          list[RateLimitResetCredit] | None,
          Field(
@@ -3191,7 +3218,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -10115,7 +10090,7 @@ class MessageResponseItem(BaseModel):
+@@ -10134,7 +10109,7 @@ class MessageResponseItem(BaseModel):
      )
      content: list[ContentItem]
      encrypted_content: str | None = None
@@ -3200,7 +3227,7 @@ index 1157705ee4..0023a64554 100644
      internal_chat_message_metadata_passthrough: InternalChatMessageMetadataPassthrough | None = None
      phase: MessagePhase | None = None
      role: str
-@@ -10129,7 +10104,7 @@ class WebSearchCallResponseItem(BaseModel):
+@@ -10148,7 +10123,7 @@ class WebSearchCallResponseItem(BaseModel):
      )
      action: ResponsesApiWebSearchAction | None = None
      encrypted_content: str | None = None
@@ -3209,7 +3236,7 @@ index 1157705ee4..0023a64554 100644
      internal_chat_message_metadata_passthrough: InternalChatMessageMetadataPassthrough | None = None
      status: str | None = None
      type: Annotated[Literal["web_search_call"], Field(title="WebSearchCallResponseItemType")]
-@@ -10152,7 +10127,7 @@ class ReviewStartParams(BaseModel):
+@@ -10171,7 +10146,7 @@ class ReviewStartParams(BaseModel):
      delivery: Annotated[
          ReviewDelivery | None,
          Field(
@@ -3218,7 +3245,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      target: ReviewTarget
-@@ -10910,7 +10885,7 @@ class ThreadForkParams(BaseModel):
+@@ -10929,7 +10904,7 @@ class ThreadForkParams(BaseModel):
          ApprovalsReviewer | None,
          Field(
              alias="approvalsReviewer",
@@ -3227,7 +3254,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      base_instructions: Annotated[str | None, Field(alias="baseInstructions")] = None
-@@ -10922,14 +10897,14 @@ class ThreadForkParams(BaseModel):
+@@ -10941,14 +10916,14 @@ class ThreadForkParams(BaseModel):
          bool | None,
          Field(
              alias="excludeTurns",
@@ -3244,7 +3271,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      model: Annotated[
-@@ -11050,7 +11025,7 @@ class CommandExecutionThreadItem(BaseModel):
+@@ -11069,7 +11044,7 @@ class CommandExecutionThreadItem(BaseModel):
          list[CommandAction],
          Field(
              alias="commandActions",
@@ -3253,7 +3280,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      completed_at_ms: Annotated[
-@@ -11165,7 +11140,7 @@ class CollabAgentToolCallThreadItem(BaseModel):
+@@ -11184,7 +11159,7 @@ class CollabAgentToolCallThreadItem(BaseModel):
          list[str],
          Field(
              alias="receiverThreadIds",
@@ -3262,7 +3289,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      sender_thread_id: Annotated[
-@@ -11207,7 +11182,7 @@ class WebSearchThreadItem(BaseModel):
+@@ -11226,7 +11201,7 @@ class WebSearchThreadItem(BaseModel):
      results: Annotated[
          list[Any] | None,
          Field(
@@ -3271,7 +3298,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      started_at_ms: Annotated[
-@@ -11227,7 +11202,7 @@ class ThreadListParams(BaseModel):
+@@ -11246,7 +11221,7 @@ class ThreadListParams(BaseModel):
      archived: Annotated[
          bool | None,
          Field(
@@ -3280,7 +3307,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      current_account_only: Annotated[
-@@ -11243,21 +11218,21 @@ class ThreadListParams(BaseModel):
+@@ -11262,21 +11237,21 @@ class ThreadListParams(BaseModel):
      cwd: Annotated[
          ThreadListCwdFilter | None,
          Field(
@@ -3305,7 +3332,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      limit: Annotated[
-@@ -11268,13 +11243,13 @@ class ThreadListParams(BaseModel):
+@@ -11287,13 +11262,13 @@ class ThreadListParams(BaseModel):
          list[str] | None,
          Field(
              alias="modelProviders",
@@ -3321,7 +3348,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      search_term: Annotated[
-@@ -11288,7 +11263,7 @@ class ThreadListParams(BaseModel):
+@@ -11307,7 +11282,7 @@ class ThreadListParams(BaseModel):
          str | None,
          Field(
              alias="sectionId",
@@ -3330,7 +3357,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      sort_direction: Annotated[
-@@ -11306,14 +11281,14 @@ class ThreadListParams(BaseModel):
+@@ -11325,14 +11300,14 @@ class ThreadListParams(BaseModel):
          list[ThreadSourceKind] | None,
          Field(
              alias="sourceKinds",
@@ -3347,7 +3374,19 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -11553,7 +11528,7 @@ class ThreadStartParams(BaseModel):
+@@ -11430,9 +11405,9 @@ class SessionInputSavedThreadRealtimeItem(BaseModel):
+     ] = None
+     realtime_session_id: Annotated[str, Field(alias="realtimeSessionId")]
+     input: str
+-    input_item_id: str
++    input_item_id: Annotated[str, Field(alias="inputItemId")]
+     reason: ThreadRealtimeSessionInputReason
+-    source_event_ids: list[str]
++    source_event_ids: Annotated[list[str], Field(alias="sourceEventIds")]
+     type: Annotated[
+         Literal["sessionInputSaved"], Field(title="SessionInputSavedThreadRealtimeItemType")
+     ]
+@@ -11594,7 +11569,7 @@ class ThreadStartParams(BaseModel):
          ApprovalsReviewer | None,
          Field(
              alias="approvalsReviewer",
@@ -3356,7 +3395,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      base_instructions: Annotated[str | None, Field(alias="baseInstructions")] = None
-@@ -11710,7 +11685,7 @@ class TurnSteerParams(BaseModel):
+@@ -11751,7 +11726,7 @@ class TurnSteerParams(BaseModel):
          str,
          Field(
              alias="expectedTurnId",
@@ -3365,7 +3404,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      input: list[UserInput]
-@@ -11811,6 +11786,26 @@ class AgentMessageModeration(BaseModel):
+@@ -11852,6 +11827,26 @@ class AgentMessageModeration(BaseModel):
      moderated: bool
  
  
@@ -3392,7 +3431,7 @@ index 1157705ee4..0023a64554 100644
  class AppInfo(BaseModel):
      model_config = ConfigDict(
          populate_by_name=True,
-@@ -11828,7 +11823,7 @@ class AppInfo(BaseModel):
+@@ -11869,7 +11864,7 @@ class AppInfo(BaseModel):
          bool | None,
          Field(
              alias="isEnabled",
@@ -3401,7 +3440,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = True
      labels: dict[str, Any] | None = None
-@@ -11853,6 +11848,18 @@ class ApplicationRequirements(BaseModel):
+@@ -11894,6 +11889,18 @@ class ApplicationRequirements(BaseModel):
      storage: ApplicationStorageRequirements | None = None
  
  
@@ -3420,7 +3459,7 @@ index 1157705ee4..0023a64554 100644
  class AppsListResponse(BaseModel):
      model_config = ConfigDict(
          populate_by_name=True,
-@@ -11862,7 +11869,7 @@ class AppsListResponse(BaseModel):
+@@ -11903,7 +11910,7 @@ class AppsListResponse(BaseModel):
          str | None,
          Field(
              alias="nextCursor",
@@ -3429,7 +3468,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -12053,7 +12060,7 @@ class Config(BaseModel):
+@@ -12094,7 +12101,7 @@ class Config(BaseModel):
      approvals_reviewer: Annotated[
          ApprovalsReviewer | None,
          Field(
@@ -3438,7 +3477,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      browser_use: BrowserUseConfig | None = None
-@@ -12103,7 +12110,7 @@ class ConfigBatchWriteParams(BaseModel):
+@@ -12144,7 +12151,7 @@ class ConfigBatchWriteParams(BaseModel):
          bool | None,
          Field(
              alias="reloadUserConfig",
@@ -3447,7 +3486,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -12248,7 +12255,7 @@ class GetAccountRateLimitsResponse(BaseModel):
+@@ -12289,7 +12296,7 @@ class GetAccountRateLimitsResponse(BaseModel):
          bool | None,
          Field(
              alias="ordinaryUsageAllowed",
@@ -3456,7 +3495,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      rate_limit_reset_credits: Annotated[
-@@ -12258,7 +12265,7 @@ class GetAccountRateLimitsResponse(BaseModel):
+@@ -12299,7 +12306,7 @@ class GetAccountRateLimitsResponse(BaseModel):
          Any | None,
          Field(
              alias="rateLimitUpsell",
@@ -3465,7 +3504,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      rate_limits: Annotated[
-@@ -12329,7 +12336,7 @@ class ListMcpServerStatusResponse(BaseModel):
+@@ -12370,7 +12377,7 @@ class ListMcpServerStatusResponse(BaseModel):
          str | None,
          Field(
              alias="nextCursor",
@@ -3474,7 +3513,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -12464,7 +12471,7 @@ class FunctionCallOutputResponseItem(BaseModel):
+@@ -12505,7 +12512,7 @@ class FunctionCallOutputResponseItem(BaseModel):
          populate_by_name=True,
      )
      call_id: str | None = None
@@ -3483,7 +3522,7 @@ index 1157705ee4..0023a64554 100644
      internal_chat_message_metadata_passthrough: InternalChatMessageMetadataPassthrough | None = None
      name: str | None = None
      namespace: str | None = None
-@@ -12479,7 +12486,7 @@ class CustomToolCallOutputResponseItem(BaseModel):
+@@ -12520,7 +12527,7 @@ class CustomToolCallOutputResponseItem(BaseModel):
          populate_by_name=True,
      )
      call_id: str
@@ -3492,7 +3531,7 @@ index 1157705ee4..0023a64554 100644
      internal_chat_message_metadata_passthrough: InternalChatMessageMetadataPassthrough | None = None
      name: str | None = None
      output: FunctionCallOutputBody
-@@ -12938,7 +12945,7 @@ class ThreadItemsListResponse(BaseModel):
+@@ -12979,7 +12986,7 @@ class ThreadItemsListResponse(BaseModel):
          str | None,
          Field(
              alias="backwardsCursor",
@@ -3501,7 +3540,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      data: list[ThreadItemEntry]
-@@ -12946,7 +12953,7 @@ class ThreadItemsListResponse(BaseModel):
+@@ -12987,7 +12994,7 @@ class ThreadItemsListResponse(BaseModel):
          str | None,
          Field(
              alias="nextCursor",
@@ -3510,7 +3549,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -12973,13 +12980,13 @@ class TurnCompletedThreadTimelineEntry(BaseModel):
+@@ -13014,13 +13021,13 @@ class TurnCompletedThreadTimelineEntry(BaseModel):
      model_config = ConfigDict(
          populate_by_name=True,
      )
@@ -3528,7 +3567,7 @@ index 1157705ee4..0023a64554 100644
      type: Annotated[Literal["turnCompleted"], Field(title="TurnCompletedThreadTimelineEntryType")]
  
  
-@@ -13037,7 +13044,7 @@ class Turn(BaseModel):
+@@ -13078,7 +13085,7 @@ class Turn(BaseModel):
          str | None,
          Field(
              alias="rootTurnId",
@@ -3537,7 +3576,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      started_at: Annotated[
-@@ -13147,7 +13154,7 @@ class ConfigRequirements(BaseModel):
+@@ -13188,7 +13195,7 @@ class ConfigRequirements(BaseModel):
          list[ForcedLoginMethod] | None,
          Field(
              alias="allowedLoginMethods",
@@ -3546,7 +3585,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      allowed_permission_profiles: Annotated[
-@@ -13217,7 +13224,7 @@ class ConfigRequirementsReadResponse(BaseModel):
+@@ -13258,7 +13265,7 @@ class ConfigRequirementsReadResponse(BaseModel):
          bool | None,
          Field(
              alias="supportsIndependentSpeedModes",
@@ -3555,7 +3594,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -13270,14 +13277,14 @@ class ExternalAgentConfigImportParams(BaseModel):
+@@ -13311,14 +13318,14 @@ class ExternalAgentConfigImportParams(BaseModel):
          str | None,
          Field(
              alias="migrationSource",
@@ -3572,7 +3611,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      source: Annotated[
-@@ -13301,7 +13308,7 @@ class ItemCompletedNotification(BaseModel):
+@@ -13342,7 +13349,7 @@ class ItemCompletedNotification(BaseModel):
          int | None,
          Field(
              alias="contentTokenCount",
@@ -3581,7 +3620,7 @@ index 1157705ee4..0023a64554 100644
              ge=0,
          ),
      ] = None
-@@ -13361,7 +13368,7 @@ class PluginMarketplaceEntry(BaseModel):
+@@ -13402,7 +13409,7 @@ class PluginMarketplaceEntry(BaseModel):
      path: Annotated[
          AbsolutePathBuf | None,
          Field(
@@ -3590,7 +3629,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      plugins: list[PluginSummary]
-@@ -13548,7 +13555,7 @@ class Thread(BaseModel):
+@@ -13589,7 +13596,7 @@ class Thread(BaseModel):
      model: Annotated[
          str | None,
          Field(
@@ -3599,7 +3638,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      model_provider: Annotated[
-@@ -13562,7 +13569,7 @@ class Thread(BaseModel):
+@@ -13603,7 +13610,7 @@ class Thread(BaseModel):
      originator: Annotated[
          str | None,
          Field(
@@ -3608,7 +3647,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      parent_thread_id: Annotated[
-@@ -13589,7 +13596,7 @@ class Thread(BaseModel):
+@@ -13630,7 +13637,7 @@ class Thread(BaseModel):
          ReasoningEffort | None,
          Field(
              alias="reasoningEffort",
@@ -3617,7 +3656,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      recency_at: Annotated[
-@@ -13634,7 +13641,7 @@ class Thread(BaseModel):
+@@ -13675,7 +13682,7 @@ class Thread(BaseModel):
      turns: Annotated[
          list[Turn],
          Field(
@@ -3626,7 +3665,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      updated_at: Annotated[
-@@ -13680,7 +13687,7 @@ class ThreadForkResponse(BaseModel):
+@@ -13721,7 +13728,7 @@ class ThreadForkResponse(BaseModel):
      sandbox: Annotated[
          SandboxPolicy,
          Field(
@@ -3635,7 +3674,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      service_tier: Annotated[str | None, Field(alias="serviceTier")] = None
-@@ -13695,7 +13702,7 @@ class ThreadListResponse(BaseModel):
+@@ -13736,7 +13743,7 @@ class ThreadListResponse(BaseModel):
          str | None,
          Field(
              alias="backwardsCursor",
@@ -3644,7 +3683,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      data: list[Thread]
-@@ -13703,7 +13710,7 @@ class ThreadListResponse(BaseModel):
+@@ -13744,7 +13751,7 @@ class ThreadListResponse(BaseModel):
          str | None,
          Field(
              alias="nextCursor",
@@ -3653,7 +3692,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -13761,7 +13768,7 @@ class ThreadResumeResponse(BaseModel):
+@@ -13802,7 +13809,7 @@ class ThreadResumeResponse(BaseModel):
          str | None,
          Field(
              alias="itemsBackwardsCursor",
@@ -3662,7 +3701,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      model: str
-@@ -13770,7 +13777,7 @@ class ThreadResumeResponse(BaseModel):
+@@ -13811,7 +13818,7 @@ class ThreadResumeResponse(BaseModel):
      sandbox: Annotated[
          SandboxPolicy,
          Field(
@@ -3671,7 +3710,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      service_tier: Annotated[str | None, Field(alias="serviceTier")] = None
-@@ -13779,7 +13786,7 @@ class ThreadResumeResponse(BaseModel):
+@@ -13820,7 +13827,7 @@ class ThreadResumeResponse(BaseModel):
          str | None,
          Field(
              alias="turnsBackwardsCursor",
@@ -3680,7 +3719,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -13792,20 +13799,20 @@ class ThreadRevertResponse(BaseModel):
+@@ -13833,20 +13840,20 @@ class ThreadRevertResponse(BaseModel):
          str | None,
          Field(
              alias="itemsBackwardsCursor",
@@ -3704,7 +3743,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -13852,7 +13859,7 @@ class ThreadStartResponse(BaseModel):
+@@ -13893,7 +13900,7 @@ class ThreadStartResponse(BaseModel):
      sandbox: Annotated[
          SandboxPolicy,
          Field(
@@ -3713,7 +3752,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ]
      service_tier: Annotated[str | None, Field(alias="serviceTier")] = None
-@@ -13874,7 +13881,7 @@ class ThreadTurnsListResponse(BaseModel):
+@@ -13915,7 +13922,7 @@ class ThreadTurnsListResponse(BaseModel):
          str | None,
          Field(
              alias="backwardsCursor",
@@ -3722,7 +3761,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      data: list[Turn]
-@@ -13882,7 +13889,7 @@ class ThreadTurnsListResponse(BaseModel):
+@@ -13923,7 +13930,7 @@ class ThreadTurnsListResponse(BaseModel):
          str | None,
          Field(
              alias="nextCursor",
@@ -3731,7 +3770,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -13909,7 +13916,7 @@ class TurnStartParams(BaseModel):
+@@ -13950,7 +13957,7 @@ class TurnStartParams(BaseModel):
          ApprovalsReviewer | None,
          Field(
              alias="approvalsReviewer",
@@ -3740,7 +3779,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      client_user_message_id: Annotated[str | None, Field(alias="clientUserMessageId")] = None
-@@ -13921,7 +13928,7 @@ class TurnStartParams(BaseModel):
+@@ -13962,7 +13969,7 @@ class TurnStartParams(BaseModel):
          list[str] | None,
          Field(
              alias="disabledPluginIds",
@@ -3749,7 +3788,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      effort: Annotated[
-@@ -13936,27 +13943,27 @@ class TurnStartParams(BaseModel):
+@@ -13977,27 +13984,27 @@ class TurnStartParams(BaseModel):
          Any | None,
          Field(
              alias="outputSchema",
@@ -3781,7 +3820,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      sandbox_policy: Annotated[
-@@ -13977,7 +13984,7 @@ class TurnStartParams(BaseModel):
+@@ -14018,7 +14025,7 @@ class TurnStartParams(BaseModel):
          str | None,
          Field(
              alias="serviceTierForTurn",
@@ -3790,7 +3829,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      summary: Annotated[
-@@ -13990,7 +13997,7 @@ class TurnStartParams(BaseModel):
+@@ -14031,7 +14038,7 @@ class TurnStartParams(BaseModel):
          str | None,
          Field(
              alias="turnTrigger",
@@ -3799,7 +3838,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
  
-@@ -14319,7 +14326,7 @@ class ItemGuardianApprovalReviewCompletedNotification(BaseModel):
+@@ -14360,7 +14367,7 @@ class ItemGuardianApprovalReviewCompletedNotification(BaseModel):
          str | None,
          Field(
              alias="targetItemId",
@@ -3808,7 +3847,7 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      thread_id: Annotated[str, Field(alias="threadId")]
-@@ -14346,7 +14353,7 @@ class ItemGuardianApprovalReviewStartedNotification(BaseModel):
+@@ -14387,7 +14394,7 @@ class ItemGuardianApprovalReviewStartedNotification(BaseModel):
          str | None,
          Field(
              alias="targetItemId",
@@ -3817,3 +3856,6 @@ index 1157705ee4..0023a64554 100644
          ),
      ] = None
      thread_id: Annotated[str, Field(alias="threadId")]
+-- 
+2.43.0
+

@@ -21,10 +21,10 @@ code of the command itself is kept.
  create mode 100644 codex-rs/windows-sandbox-rs/src/capture_tests.rs
 
 diff --git a/codex-rs/core/src/exec.rs b/codex-rs/core/src/exec.rs
-index 65d7a6bdbb..2b97c3bb7c 100644
+index 252d3de41a..e6fa2be9bb 100644
 --- a/codex-rs/core/src/exec.rs
 +++ b/codex-rs/core/src/exec.rs
-@@ -69,6 +69,15 @@ const SIGKILL_CODE: i32 = 9;
+@@ -72,6 +72,15 @@ const SIGKILL_CODE: i32 = 9;
  const TIMEOUT_CODE: i32 = 64;
  const EXIT_CODE_SIGNAL_BASE: i32 = 128; // conventional shell: 128 + signal
  const EXEC_TIMEOUT_EXIT_CODE: i32 = 124; // conventional timeout exit code
@@ -40,7 +40,7 @@ index 65d7a6bdbb..2b97c3bb7c 100644
  const CANCELLATION_TERMINATION_GRACE_PERIOD: Duration = Duration::from_millis(50);
  
  // I/O buffer sizing
-@@ -724,26 +733,81 @@ async fn exec_windows_sandbox(
+@@ -706,26 +715,81 @@ async fn exec_windows_sandbox(
      })
      .await;
  
@@ -72,11 +72,11 @@ index 65d7a6bdbb..2b97c3bb7c 100644
 +        );
 +        CodexErr::Io(io::Error::other(format!("windows sandbox: {err}")))
 +    })?;
- 
--    let exit_status = synthetic_exit_status(capture.exit_code);
++
 +    Ok(capture)
 +}
-+
+ 
+-    let exit_status = synthetic_exit_status(capture.exit_code);
 +#[cfg(any(test, target_os = "windows"))]
 +fn windows_capture_output(
 +    capture_result: anyhow::Result<codex_windows_sandbox::CaptureResult>,
@@ -135,7 +135,7 @@ index 65d7a6bdbb..2b97c3bb7c 100644
      let mut stdout_text = capture.stdout;
      if let Some(max_bytes) = capture_policy.retained_bytes_cap()
          && stdout_text.len() > max_bytes
-@@ -772,6 +836,7 @@ async fn exec_windows_sandbox(
+@@ -754,6 +818,7 @@ async fn exec_windows_sandbox(
          stderr,
          aggregated_output,
          timed_out: capture.timed_out,
@@ -143,7 +143,7 @@ index 65d7a6bdbb..2b97c3bb7c 100644
      })
  }
  
-@@ -798,13 +863,31 @@ fn finalize_exec_result(
+@@ -780,13 +845,31 @@ fn finalize_exec_result(
              }
  
              let mut exit_code = raw_output.exit_status.code().unwrap_or(-1);
@@ -176,7 +176,7 @@ index 65d7a6bdbb..2b97c3bb7c 100644
              let exec_output = ExecToolCallOutput {
                  exit_code,
                  stdout,
-@@ -814,6 +897,13 @@ fn finalize_exec_result(
+@@ -796,6 +879,13 @@ fn finalize_exec_result(
                  timed_out,
              };
  
@@ -190,7 +190,7 @@ index 65d7a6bdbb..2b97c3bb7c 100644
              if timed_out {
                  return Err(CodexErr::Sandbox(SandboxErr::Timeout {
                      output: Box::new(exec_output),
-@@ -839,6 +929,27 @@ fn finalize_exec_result(
+@@ -821,6 +911,27 @@ fn finalize_exec_result(
      }
  }
  
@@ -218,7 +218,7 @@ index 65d7a6bdbb..2b97c3bb7c 100644
  #[derive(Debug)]
  struct RawExecToolCallOutput {
      pub exit_status: ExitStatus,
-@@ -846,6 +957,7 @@ struct RawExecToolCallOutput {
+@@ -828,6 +939,7 @@ struct RawExecToolCallOutput {
      pub stderr: StreamOutput<Vec<u8>>,
      pub aggregated_output: StreamOutput<Vec<u8>>,
      pub timed_out: bool,
@@ -226,7 +226,7 @@ index 65d7a6bdbb..2b97c3bb7c 100644
  }
  
  #[inline]
-@@ -1184,6 +1296,7 @@ async fn consume_output(
+@@ -1157,6 +1269,7 @@ async fn consume_output(
          stderr,
          aggregated_output,
          timed_out,
@@ -235,17 +235,18 @@ index 65d7a6bdbb..2b97c3bb7c 100644
  }
  
 diff --git a/codex-rs/core/src/exec_tests.rs b/codex-rs/core/src/exec_tests.rs
-index 971281f212..56c4c00f92 100644
+index d0ca131874..292afe4856 100644
 --- a/codex-rs/core/src/exec_tests.rs
 +++ b/codex-rs/core/src/exec_tests.rs
-@@ -1,5 +1,6 @@
+@@ -1,6 +1,7 @@
  use super::*;
+ use crate::sandboxing::ExecRequest;
  use codex_protocol::config_types::WindowsSandboxLevel;
 +use codex_protocol::error::CodexErrorDetails;
  use codex_protocol::models::PermissionProfile;
  use codex_protocol::permissions::FileSystemAccessMode;
  use codex_protocol::permissions::FileSystemPath;
-@@ -18,6 +19,383 @@ use test_case::test_case;
+@@ -19,6 +20,383 @@ use test_case::test_case;
  use tokio::io::AsyncWriteExt;
  use tokio::time::timeout;
  
@@ -729,7 +730,7 @@ index 2d5262ee9b..41fedd1467 100644
      async fn rejected_apply_patch_tracks_committed_delta() {
          assert_failed_apply_patch_tracks_committed_delta(
 diff --git a/codex-rs/protocol/src/error.rs b/codex-rs/protocol/src/error.rs
-index 6e3e342a92..49dc811a4c 100644
+index d27037140c..bdebbd077d 100644
 --- a/codex-rs/protocol/src/error.rs
 +++ b/codex-rs/protocol/src/error.rs
 @@ -42,6 +42,13 @@ const ERROR_MESSAGE_UI_MAX_BYTES: usize = 2 * 1024;

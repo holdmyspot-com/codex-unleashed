@@ -10,14 +10,14 @@ other children writable, so the protected path stays where it is while its sibli
 ancestors are still left ungranted, and a protected path that does not exist yet does not guard its ancestors.
 ---
  codex-rs/mxc-sandbox/src/policy.rs       | 118 +++++++++-
- codex-rs/mxc-sandbox/src/policy_tests.rs | 261 ++++++++++++++++++++++-
- 2 files changed, 369 insertions(+), 10 deletions(-)
+ codex-rs/mxc-sandbox/src/policy_tests.rs | 265 ++++++++++++++++++++++-
+ 2 files changed, 373 insertions(+), 10 deletions(-)
 
 diff --git a/codex-rs/mxc-sandbox/src/policy.rs b/codex-rs/mxc-sandbox/src/policy.rs
-index be227e1ced..7d0a98a948 100644
+index 82ca625d20..483610f798 100644
 --- a/codex-rs/mxc-sandbox/src/policy.rs
 +++ b/codex-rs/mxc-sandbox/src/policy.rs
-@@ -63,6 +63,12 @@ pub enum PolicyError {
+@@ -65,6 +65,12 @@ pub enum PolicyError {
          #[source]
          source: std::io::Error,
      },
@@ -30,7 +30,7 @@ index be227e1ced..7d0a98a948 100644
      #[error(transparent)]
      Path(#[from] std::io::Error),
      #[error(transparent)]
-@@ -271,8 +277,22 @@ pub(super) fn build_request(
+@@ -284,8 +290,22 @@ pub(super) fn build_request(
      // and inaccessible deny paths before the native API can evaluate them.
      // The hard-link and volume-root alias tradeoffs are intentional; see README.
      // Read-only roots already grant recursive access; only expand writable roots.
@@ -55,7 +55,7 @@ index be227e1ced..7d0a98a948 100644
      // Resolve equal-path write overrides before reaching MXC so the native
      // API receives one effective access mode for each path identity.
      read.retain(|key, _| !write.contains_key(key) && !deny.contains_key(key));
-@@ -465,6 +485,100 @@ fn expand_volume_roots(
+@@ -484,6 +504,100 @@ fn expand_volume_roots(
      Ok(expanded)
  }
  
@@ -157,7 +157,7 @@ index be227e1ced..7d0a98a948 100644
      paths
          .into_iter()
 diff --git a/codex-rs/mxc-sandbox/src/policy_tests.rs b/codex-rs/mxc-sandbox/src/policy_tests.rs
-index d7b13d6340..d68c4bf69f 100644
+index 0fd8d550b3..ff94220f42 100644
 --- a/codex-rs/mxc-sandbox/src/policy_tests.rs
 +++ b/codex-rs/mxc-sandbox/src/policy_tests.rs
 @@ -1,6 +1,7 @@
@@ -168,7 +168,7 @@ index d7b13d6340..d68c4bf69f 100644
  use std::path::Path;
  use std::path::PathBuf;
  
-@@ -30,6 +31,7 @@ use crate::create_command_args;
+@@ -29,6 +30,7 @@ use crate::create_command_args;
  use crate::policy::PolicyError;
  use crate::policy::build_request;
  use crate::policy::materialize_volume_roots;
@@ -176,16 +176,16 @@ index d7b13d6340..d68c4bf69f 100644
  
  #[test]
  fn symbolic_root_precedence_is_independent_of_drive_and_cwd() -> Result<()> {
-@@ -251,6 +253,7 @@ fn native_grants_preserve_denies_and_read_only_carveouts() -> Result<()> {
-         PermissionProfile::from_runtime_permissions(&fs, NetworkSandboxPolicy::Restricted);
+@@ -255,6 +257,7 @@ fn native_grants_preserve_denies_and_read_only_carveouts() -> Result<()> {
      let request = build_request(&command(&profile, root), root, Vec::new(), &[], &[])?;
+     let request = request.filesystem.unwrap();
      let mut expected_read = [
 +        root.to_owned(),
          root.join(".agents"),
          root.join(".aws"),
          root.join(".codex"),
-@@ -269,10 +272,8 @@ fn native_grants_preserve_denies_and_read_only_carveouts() -> Result<()> {
-             request.policy.denied_paths
+@@ -273,10 +276,8 @@ fn native_grants_preserve_denies_and_read_only_carveouts() -> Result<()> {
+             request.denied_paths
          ),
          (
 -            vec![
@@ -197,10 +197,10 @@ index d7b13d6340..d68c4bf69f 100644
              expected_read
                  .iter()
                  .map(|path| path.to_str().unwrap().to_owned())
-@@ -309,9 +310,10 @@ fn volume_expansion_does_not_turn_read_only_child_writable() -> Result<()> {
-         &[root.to_owned()],
+@@ -313,9 +314,10 @@ fn volume_expansion_does_not_turn_read_only_child_writable() -> Result<()> {
          &[],
      )?;
+     let request = request.filesystem.unwrap();
 -    let mut expected_write_paths = vec![root.to_str().unwrap(), writable.to_str().unwrap()];
 +    // The existing read-only directory guards the root: only its other children stay writable.
 +    let mut expected_write_paths = vec![writable.to_str().unwrap()];
@@ -210,27 +210,27 @@ index d7b13d6340..d68c4bf69f 100644
          assert!(denied.parent().unwrap().is_dir());
          assert!(!denied.exists());
          for directory in [&missing, &missing.join("parent")] {
-@@ -326,6 +328,7 @@ fn volume_expansion_does_not_turn_read_only_child_writable() -> Result<()> {
+@@ -330,6 +332,7 @@ fn volume_expansion_does_not_turn_read_only_child_writable() -> Result<()> {
      assert_eq!(
-         request.policy.readonly_paths,
+         request.readonly_paths,
          vec![
 +            root.to_str().unwrap(),
              root.join(".agents").to_str().unwrap(),
              root.join(".aws").to_str().unwrap(),
              root.join(".codex").to_str().unwrap(),
-@@ -367,7 +370,6 @@ fn volume_expansion_skips_broken_links_and_preserves_other_grants() -> Result<()
-         (request.policy.readwrite_paths, request.policy.denied_paths),
+@@ -372,7 +375,6 @@ fn volume_expansion_skips_broken_links_and_preserves_other_grants() -> Result<()
+         (request.readwrite_paths, request.denied_paths),
          (
              vec![
 -                root.to_str().unwrap().to_owned(),
                  alias.to_str().unwrap().to_owned(),
                  readable.to_str().unwrap().to_owned()
              ],
-@@ -541,7 +543,19 @@ fn deny_globs_expand_files_and_directories_before_launch() -> Result<()> {
+@@ -539,7 +541,19 @@ fn deny_globs_expand_files_and_directories_before_launch() -> Result<()> {
          assert!(missing.parent().unwrap().is_dir());
          assert!(!missing.exists());
      }
--    assert_eq!(request.policy.readwrite_paths, vec![root.to_str().unwrap()]);
+-    assert_eq!(request.readwrite_paths, vec![root.to_str().unwrap()]);
 +    // The denied files guard root and nested, so only their other children stay writable.
 +    let mut expected_write = vec![nested.join("allowed.txt")];
 +    if cfg!(windows) {
@@ -238,7 +238,7 @@ index d7b13d6340..d68c4bf69f 100644
 +    }
 +    expected_write.sort();
 +    assert_eq!(
-+        request.policy.readwrite_paths,
++        request.readwrite_paths,
 +        expected_write
 +            .iter()
 +            .map(|path| path.to_str().unwrap().to_owned())
@@ -247,7 +247,7 @@ index d7b13d6340..d68c4bf69f 100644
      let mut expected = [file, directory, missing];
      expected.sort();
      assert_eq!(
-@@ -998,3 +1012,234 @@ fn non_unicode_paths_fail_before_launch() -> Result<()> {
+@@ -993,3 +1007,238 @@ fn non_unicode_paths_fail_before_launch() -> Result<()> {
      }
      Ok(())
  }
@@ -294,14 +294,15 @@ index d7b13d6340..d68c4bf69f 100644
 +        &[],
 +        &[],
 +    )?;
++    let request = request.filesystem.unwrap();
 +    let metadata = metadata_carveouts(&workspace);
 +    let mut readonly = vec![workspace.as_path(), upper.as_path(), inner.as_path()];
 +    readonly.extend(metadata.iter().map(PathBuf::as_path));
 +    assert_eq!(
 +        (
-+            request.policy.readwrite_paths,
-+            request.policy.readonly_paths,
-+            request.policy.denied_paths
++            request.readwrite_paths,
++            request.readonly_paths,
++            request.denied_paths
 +        ),
 +        (
 +            sorted_strings(&[&allowed, &sibling]),
@@ -342,6 +343,7 @@ index d7b13d6340..d68c4bf69f 100644
 +        &[],
 +        &[],
 +    )?;
++    let request = request.filesystem.unwrap();
 +    let metadata = metadata_carveouts(&workspace);
 +    let mut readonly = vec![
 +        workspace.as_path(),
@@ -353,9 +355,9 @@ index d7b13d6340..d68c4bf69f 100644
 +    readonly.extend(metadata.iter().map(PathBuf::as_path));
 +    assert_eq!(
 +        (
-+            request.policy.readwrite_paths,
-+            request.policy.readonly_paths,
-+            request.policy.denied_paths
++            request.readwrite_paths,
++            request.readonly_paths,
++            request.denied_paths
 +        ),
 +        (
 +            sorted_strings(&[&allowed, &neighbor, &sibling]),
@@ -401,6 +403,7 @@ index d7b13d6340..d68c4bf69f 100644
 +        &[],
 +        &[],
 +    )?;
++    let request = request.filesystem.unwrap();
 +    let workspace_metadata = metadata_carveouts(&workspace);
 +    let nested_metadata = metadata_carveouts(&nested);
 +    let mut readonly = vec![
@@ -412,9 +415,9 @@ index d7b13d6340..d68c4bf69f 100644
 +    readonly.extend(nested_metadata.iter().map(PathBuf::as_path));
 +    assert_eq!(
 +        (
-+            request.policy.readwrite_paths,
-+            request.policy.readonly_paths,
-+            request.policy.denied_paths
++            request.readwrite_paths,
++            request.readonly_paths,
++            request.denied_paths
 +        ),
 +        (
 +            sorted_strings(&[&top_file, &sibling, &free]),
@@ -445,13 +448,14 @@ index d7b13d6340..d68c4bf69f 100644
 +        &[],
 +        &[],
 +    )?;
++    let request = request.filesystem.unwrap();
 +    let metadata = metadata_carveouts(&workspace);
 +    let mut readonly = vec![missing_read_only.as_path()];
 +    readonly.extend(metadata.iter().map(PathBuf::as_path));
 +    assert_eq!(
 +        (
-+            request.policy.readwrite_paths,
-+            request.policy.readonly_paths,
++            request.readwrite_paths,
++            request.readonly_paths,
 +        ),
 +        (sorted_strings(&[&workspace]), sorted_strings(&readonly))
 +    );

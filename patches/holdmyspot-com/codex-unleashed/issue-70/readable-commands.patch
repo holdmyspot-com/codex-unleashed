@@ -26,20 +26,20 @@ Collapsed command previews keep executable names and arguments visible, shorteni
  codex-rs/tui/src/transcript_view/commands.rs  |  92 +++++
  .../tui/src/transcript_view/disclosure.rs     |   2 +-
  codex-rs/tui/src/transcript_view/footer.rs    |   7 +
- codex-rs/tui/src/transcript_view/input.rs     |   8 +
+ codex-rs/tui/src/transcript_view/input.rs     |  12 +-
  codex-rs/tui/src/transcript_view/layout.rs    |  40 +-
  codex-rs/tui/src/transcript_view/text.rs      |  36 ++
  codex-rs/tui/src/transcript_view_tests.rs     | 389 ++++++++++++++++++
- 25 files changed, 1265 insertions(+), 12 deletions(-)
+ 25 files changed, 1268 insertions(+), 13 deletions(-)
  create mode 100644 codex-rs/tui/src/exec_cell/preview.rs
  create mode 100644 codex-rs/tui/src/exec_cell/readable.rs
  create mode 100644 codex-rs/tui/src/transcript_view/commands.rs
 
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index a245996d6c..21cfc3b903 100644
+index fceceedc8a..88ecb1b4cc 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1511,6 +1511,9 @@
+@@ -1525,6 +1525,9 @@
              "unleashed_expanded_diff_previews": {
                "type": "boolean"
              },
@@ -49,7 +49,7 @@ index a245996d6c..21cfc3b903 100644
              "untrusted_as_tool_output": {
                "type": "boolean"
              },
-@@ -8823,6 +8826,9 @@
+@@ -8913,6 +8916,9 @@
          "unleashed_expanded_diff_previews": {
            "type": "boolean"
          },
@@ -60,10 +60,10 @@ index a245996d6c..21cfc3b903 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 8c98f44ebb..893c9e7165 100644
+index ccac95587e..3ea5df331a 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -98,6 +98,8 @@ impl Stage {
+@@ -100,6 +100,8 @@ impl Stage {
  /// Unique features toggled via configuration.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
  pub enum Feature {
@@ -72,7 +72,7 @@ index 8c98f44ebb..893c9e7165 100644
      /// Expand patch diffs in the owned fullscreen transcript.
      UnleashedExpandedDiffPreviews,
      /// Preview consumer five-hour and weekly allowance history.
-@@ -1145,6 +1147,12 @@ pub struct FeatureSpec {
+@@ -1161,6 +1163,12 @@ pub struct FeatureSpec {
  }
  
  pub const FEATURES: &[FeatureSpec] = &[
@@ -86,10 +86,10 @@ index 8c98f44ebb..893c9e7165 100644
          id: Feature::UnleashedExpandedDiffPreviews,
          key: "unleashed_expanded_diff_previews",
 diff --git a/codex-rs/features/src/tests.rs b/codex-rs/features/src/tests.rs
-index 37fe6a732e..26e6437d90 100644
+index 3c71e58711..9ef7dc35d4 100644
 --- a/codex-rs/features/src/tests.rs
 +++ b/codex-rs/features/src/tests.rs
-@@ -1018,3 +1018,18 @@ fn unleashed_collapsed_tool_activity_is_enabled_by_default_and_can_be_disabled()
+@@ -1080,3 +1080,18 @@ fn unleashed_collapsed_tool_activity_is_enabled_by_default_and_can_be_disabled()
      )]));
      assert!(!features.enabled(feature));
  }
@@ -871,7 +871,7 @@ index b4142a3130..9536616477 100644
              styles: Arc::clone(&self.styles),
              line_style: self.line_style,
 diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
-index be36751dc6..8f64baeeb6 100644
+index 18dc79d716..b9f1dfd1d8 100644
 --- a/codex-rs/tui/src/thread_transcript.rs
 +++ b/codex-rs/tui/src/thread_transcript.rs
 @@ -148,6 +148,11 @@ pub(crate) fn thread_items_to_transcript_cells(
@@ -1210,10 +1210,10 @@ index 0000000000..b342ac4ded
 +    }
 +}
 diff --git a/codex-rs/tui/src/transcript_view/disclosure.rs b/codex-rs/tui/src/transcript_view/disclosure.rs
-index 020fd9571f..084d243d3d 100644
+index eba2ed8f22..df1946997c 100644
 --- a/codex-rs/tui/src/transcript_view/disclosure.rs
 +++ b/codex-rs/tui/src/transcript_view/disclosure.rs
-@@ -386,7 +386,7 @@ impl TranscriptView {
+@@ -411,7 +411,7 @@ impl TranscriptView {
          true
      }
  
@@ -1241,10 +1241,10 @@ index bbf20e44b7..bdec02a064 100644
              return self.disclosure_footer(width);
          }
 diff --git a/codex-rs/tui/src/transcript_view/input.rs b/codex-rs/tui/src/transcript_view/input.rs
-index 0ee120e6db..8edac1917b 100644
+index 4a0e95668e..c4717d59d2 100644
 --- a/codex-rs/tui/src/transcript_view/input.rs
 +++ b/codex-rs/tui/src/transcript_view/input.rs
-@@ -393,6 +393,11 @@ impl TranscriptView {
+@@ -394,6 +394,11 @@ impl TranscriptView {
          cells: &[Arc<dyn HistoryCell>],
          mode: MouseMode<'_>,
      ) -> Option<ViewAction> {
@@ -1256,16 +1256,20 @@ index 0ee120e6db..8edac1917b 100644
          let pointer_changed =
              if mode == MouseMode::Interactive && event.kind == MouseEventKind::Moved {
                  let point = (event.column, event.row);
-@@ -626,6 +631,9 @@ impl TranscriptView {
+@@ -625,7 +630,12 @@ impl TranscriptView {
+         mode: MouseMode<'_>,
+     ) -> Option<ViewAction> {
          let was_following = self.is_following();
-         if !self.is_select_mode()
-             && event.modifiers.is_empty()
+-        if event.modifiers.is_empty() && self.toggle_disclosure_at(cells, event.column, event.row) {
++        if event.modifiers.is_empty()
 +            && self
 +                .command_at(ScreenPosition::new(event.column, event.row))
 +                .is_none()
-             && self.toggle_disclosure_at(cells, event.column, event.row)
-         {
++            && self.toggle_disclosure_at(cells, event.column, event.row)
++        {
              // Keep the patch anchored for inspection, then follow again when the prompt closes.
+             if was_following && let MouseMode::Selection(Some((thread_id, id))) = mode {
+                 self.disclosure.resume_after_approval = Some((thread_id, id.to_owned()));
 diff --git a/codex-rs/tui/src/transcript_view/layout.rs b/codex-rs/tui/src/transcript_view/layout.rs
 index ae40005743..0fb8f07859 100644
 --- a/codex-rs/tui/src/transcript_view/layout.rs

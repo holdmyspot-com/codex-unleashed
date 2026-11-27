@@ -1,6 +1,6 @@
 # Deterministic release tar archives
 
-- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`, after the 60 patches selected before this patch.
+- Applies to: upstream `openai/codex` tag `rust-v0.172.0`, commit `3d86e43b075adeba2193ec5c22ac92f55afd82e6`, after the 60 patches selected before this patch.
 - Prerequisites: all 60 earlier patches in `patches/README.md`.
 - Patch: `deterministic-archives.patch` (queue entry 61).
 
@@ -18,7 +18,7 @@ The focused tests compare gzip and zstd SHA-256 for separately staged equivalent
 
 ## Shared package operations
 
-- Applies after upstream tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`, the 60 earlier selected patches, and queue entry 61 (`deterministic-archives.patch`).
+- Applies after upstream tag `rust-v0.172.0`, commit `3d86e43b075adeba2193ec5c22ac92f55afd82e6`, the 60 earlier selected patches, and queue entry 61 (`deterministic-archives.patch`).
 - Patch: `shared-package-builder.patch` (queue entry 62).
 
 The Cargo package action and package assembly action use `.github/scripts/codex-package-operations.sh` for binary selection, profile setup, Cargo builds, symbol/PDB preparation, and both package variants. The standalone caller can invoke the same operations and receives the same fixed binary list, ordered Cargo arguments, platform branches, and package arguments. Rust setup, platform tool setup, Bazel builds, Python/uv setup, and smoke tests remain in their existing action steps.
@@ -71,7 +71,7 @@ CODEX_REPO_ROOT="$PWD" python3 scripts/codex_package/test_archive.py ArchiveModu
 ## Code-mode symbol validation
 
 `code-mode-symbol-validation.patch` is queue entry 70 and requires entries 1–69 on upstream
-tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
+tag `rust-v0.172.0`, commit `3d86e43b075adeba2193ec5c22ac92f55afd82e6`.
 
 Before stripping `codex-code-mode-host` on Linux or macOS, the symbols archive command requires exactly one defined,
 exact demangled `codex_code_mode_host::main` symbol. A failed symbol-tool invocation stops packaging with its failure

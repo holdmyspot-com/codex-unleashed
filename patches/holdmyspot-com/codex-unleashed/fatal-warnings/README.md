@@ -1,6 +1,6 @@
 # Fatal rustc warnings in Codex crates
 
-- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`, after patches 1–21.
+- Applies to: upstream `openai/codex` tag `rust-v0.172.0`, commit `3d86e43b075adeba2193ec5c22ac92f55afd82e6`, after patches 1–21.
 - Prerequisites: none. The patch changes the workspace lint table, `.bazelrc`, the x86-64 musl C and C++ flags in `.github/scripts/install-musl-build-tools.sh`, and removes three unused imports from `codex-rs/app-server/tests/suite/v2/sleep.rs`.
 - Patches, in queue order:
   1. `deny-workspace-warnings.patch`: denies rustc lint warnings and linker messages in every workspace crate.

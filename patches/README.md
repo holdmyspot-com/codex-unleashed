@@ -4,7 +4,7 @@ Downstream patches to upstream `openai/codex`, generated with `git format-patch`
 
 A patch never contains a copy of a dependency, whole or vendored, even one changed by a single line. When a fix needs a dependency changed and no release provides it, the dependency stays at its released version and the finding is recorded as accepted (see "Deferred dependency concerns" in [restart-scope.md](../docs/plans/restart-scope.md)).
 
-The queue sits on upstream `openai/codex` tag `rust-v0.171.0` (commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`). The patches in `regenerated-outputs` come last and hold the generators' output for the whole queue (schemas, TypeScript bindings, `config.schema.json`, the Python SDK models, `MODULE.bazel.lock`); see [regenerated-outputs/README.md](holdmyspot-com/codex-unleashed/regenerated-outputs/README.md).
+The queue sits on upstream `openai/codex` tag `rust-v0.172.0` (commit `3d86e43b075adeba2193ec5c22ac92f55afd82e6`). The patches in `regenerated-outputs` come last and hold the generators' output for the whole queue (schemas, TypeScript bindings, `config.schema.json`, the Python SDK models, `MODULE.bazel.lock`); see [regenerated-outputs/README.md](holdmyspot-com/codex-unleashed/regenerated-outputs/README.md).
 
 `MODULE.bazel.lock` is stale from `rust-toolchain/rust-1.99.patch` onward: that patch and the `dependency-upgrades` patches change `codex-rs/Cargo.lock`, and `dependency-upgrades/compatible-updates.patch`, `dependency-upgrades/transitive-updates.patch` and `release-reproduction/aws-lc-c-standard.patch` change `MODULE.bazel`, without regenerating it. The `regenerated-outputs/regenerate-module-bazel-lock-*.patch` patches, at the end of the queue, now regenerate it from the full queue.
 
@@ -135,7 +135,7 @@ The release applies these patches in this order:
 121. [issue-63/protect-root-metadata-fixture-launcher.patch](holdmyspot-com/codex-unleashed/issue-63/protect-root-metadata-fixture-launcher.patch)
 122. [flaky-tests/slow-host-test-waits.patch](holdmyspot-com/codex-unleashed/flaky-tests/slow-host-test-waits.patch)
 
-These patches from the `rust-v0.167.0` queue are not applied on `rust-v0.171.0`:
+These patches from the `rust-v0.167.0` queue are not applied on `rust-v0.171.0` or `rust-v0.172.0`:
 
 - `issue-34776/defer-implicit-skill-index.patch` is dropped. Upstream #59280 builds the implicit skill index asynchronously, once per cached skill snapshot, from paths the loader already canonicalizes. Deferring it would need asynchronous lookups or retained environment access, and the patch's benefit was never measured.
 - `rama-0.4/rama-0.4.patch` is dropped. Every rama release after `0.3.0-alpha.4` depends on `rama-crypto`, which pins `time =0.3.47`, while the upstream `sqlx-core` git override needs `time ^0.3.48`. The network proxy stays on upstream's rama `0.3.0-alpha.4` with upstream's Hickory advisory exceptions, and the lockfile keeps `time` 0.3.55. Reassess when rama 0.5 is released.

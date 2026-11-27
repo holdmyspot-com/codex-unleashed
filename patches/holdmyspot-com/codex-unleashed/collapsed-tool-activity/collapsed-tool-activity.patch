@@ -37,13 +37,13 @@ and the feature to enabled, so both must allow it.
  .../thread_transcript/exploration_groups.rs   |  17 +-
  .../tui/src/thread_transcript/tools_tests.rs  |  67 ++++++
  codex-rs/tui/src/transcript_view.rs           |  17 +-
- .../tui/src/transcript_view/disclosure.rs     |  25 ++-
+ .../tui/src/transcript_view/disclosure.rs     |  31 ++-
  codex-rs/tui/src/transcript_view/input.rs     |  17 ++
  codex-rs/tui/src/transcript_view/layout.rs    |  20 +-
  codex-rs/tui/src/transcript_view/text.rs      |   4 +
  .../tui/src/transcript_view/tool_activity.rs  | 113 ++++++++++
  codex-rs/tui/src/transcript_view_tests.rs     | 195 ++++++++++++++++++
- 31 files changed, 1116 insertions(+), 37 deletions(-)
+ 31 files changed, 1125 insertions(+), 34 deletions(-)
  create mode 100644 codex-rs/tui/src/exec_cell/tool_activity.rs
  create mode 100644 codex-rs/tui/src/transcript_view/tool_activity.rs
 
@@ -61,10 +61,10 @@ index 354378235c..1999710f4a 100644
      pub expanded_diff_previews: Option<bool>,
  }
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index b72fee2123..8cd26b1bc7 100644
+index fc17d6094a..fb4c3dd0c2 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -726,6 +726,10 @@
+@@ -734,6 +734,10 @@
        "additionalProperties": false,
        "description": "Project settings for Codex Unleashed features.",
        "properties": {
@@ -75,7 +75,7 @@ index b72fee2123..8cd26b1bc7 100644
          "expanded_diff_previews": {
            "description": "Expand patch diffs in the owned fullscreen transcript when the matching feature is enabled.",
            "type": "boolean"
-@@ -1495,6 +1499,9 @@
+@@ -1509,6 +1513,9 @@
              "unified_image_budget": {
                "type": "boolean"
              },
@@ -85,7 +85,7 @@ index b72fee2123..8cd26b1bc7 100644
              "unleashed_expanded_diff_previews": {
                "type": "boolean"
              },
-@@ -8798,6 +8805,9 @@
+@@ -8888,6 +8895,9 @@
          "unified_image_budget": {
            "type": "boolean"
          },
@@ -96,7 +96,7 @@ index b72fee2123..8cd26b1bc7 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
-index ec7bd5df5b..efe0149882 100644
+index fdf65126c8..74df4c86f5 100644
 --- a/codex-rs/core/src/config/config_loader_tests.rs
 +++ b/codex-rs/core/src/config/config_loader_tests.rs
 @@ -146,6 +146,66 @@ command = "{command}"
@@ -167,10 +167,10 @@ index ec7bd5df5b..efe0149882 100644
  async fn cli_overrides_resolve_relative_paths_against_cwd() -> std::io::Result<()> {
      let codex_home = tempdir().expect("tempdir");
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 7c0a80659a..fe3821d57f 100644
+index d18c88c607..e57f77fb99 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -873,6 +873,9 @@ pub struct Config {
+@@ -876,6 +876,9 @@ pub struct Config {
      /// Whether to deselect read-only transcript or footer text after confirmed automatic copy.
      pub tui_copy_on_select_clear_selection: bool,
  
@@ -180,7 +180,7 @@ index 7c0a80659a..fe3821d57f 100644
      /// Right-click text paste fallback for the fullscreen TUI.
      pub tui_right_click_paste: codex_config::types::RightClickPaste,
  
-@@ -1743,6 +1746,12 @@ impl Config {
+@@ -1746,6 +1749,12 @@ impl Config {
          }
      }
  
@@ -193,7 +193,7 @@ index 7c0a80659a..fe3821d57f 100644
      pub fn sqlite_config(&self) -> &codex_state::SqliteConfig {
          &self.sqlite
      }
-@@ -4950,6 +4959,11 @@ impl Config {
+@@ -5028,6 +5037,11 @@ impl Config {
                  .tui
                  .as_ref()
                  .is_some_and(|tui| tui.copy_on_select_clear_selection),
@@ -206,10 +206,10 @@ index 7c0a80659a..fe3821d57f 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index f9a9481129..bfe0554eaf 100644
+index d0b17c7bb2..bb4b3ff969 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -121,6 +121,8 @@ pub enum Feature {
+@@ -123,6 +123,8 @@ pub enum Feature {
      ViewImage,
      /// Allow registration of the built-in sleep tool.
      SleepTool,
@@ -218,7 +218,7 @@ index f9a9481129..bfe0554eaf 100644
      /// Enable Claude-style lifecycle hooks loaded from hooks.json files.
      CodexHooks,
      /// Store CLI auth in the encrypted local secrets backend when keyring storage is selected.
-@@ -1548,6 +1550,12 @@ pub const FEATURES: &[FeatureSpec] = &[
+@@ -1576,6 +1578,12 @@ pub const FEATURES: &[FeatureSpec] = &[
          stage: Stage::UnderDevelopment,
          default_enabled: false,
      },
@@ -232,10 +232,10 @@ index f9a9481129..bfe0554eaf 100644
          id: Feature::WriteStdinApproval,
          key: "write_stdin_approval",
 diff --git a/codex-rs/features/src/tests.rs b/codex-rs/features/src/tests.rs
-index 7b2975aff5..37fe6a732e 100644
+index 37133a9195..3c71e58711 100644
 --- a/codex-rs/features/src/tests.rs
 +++ b/codex-rs/features/src/tests.rs
-@@ -1005,3 +1005,16 @@ fn model_change_suppression_config_preserves_omission_and_explicit_values() {
+@@ -1067,3 +1067,16 @@ fn model_change_suppression_config_preserves_omission_and_explicit_values() {
          );
      }
  }
@@ -253,10 +253,10 @@ index 7b2975aff5..37fe6a732e 100644
 +    assert!(!features.enabled(feature));
 +}
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index 6509d9bb94..20de9998fb 100644
+index 95d09874e8..06a20c0979 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -296,6 +296,7 @@ async fn new_config(
+@@ -297,6 +297,7 @@ async fn new_config(
          notify: None,
          tui_notifications: TuiNotificationSettings::default(),
          animations: true,
@@ -265,7 +265,7 @@ index 6509d9bb94..20de9998fb 100644
          tui_effects: Default::default(),
          tui_rendering: Default::default(),
 diff --git a/codex-rs/tui/src/app/history_ui.rs b/codex-rs/tui/src/app/history_ui.rs
-index 653c2e5620..1c27fda4bc 100644
+index 8228d9b8b7..f91b113663 100644
 --- a/codex-rs/tui/src/app/history_ui.rs
 +++ b/codex-rs/tui/src/app/history_ui.rs
 @@ -67,6 +67,9 @@ impl App {
@@ -279,7 +279,7 @@ index 653c2e5620..1c27fda4bc 100644
          let cell: Arc<dyn HistoryCell> = cell.into();
          if let Some(Overlay::Transcript(t)) = &mut self.overlay {
 diff --git a/codex-rs/tui/src/app/owned_transcript.rs b/codex-rs/tui/src/app/owned_transcript.rs
-index dcba2af4bd..be9b10a2a9 100644
+index c9f00cc3ba..ac24b5a172 100644
 --- a/codex-rs/tui/src/app/owned_transcript.rs
 +++ b/codex-rs/tui/src/app/owned_transcript.rs
 @@ -230,6 +230,7 @@ impl App {
@@ -291,10 +291,10 @@ index dcba2af4bd..be9b10a2a9 100644
          let search_changed = view.sync_search_live_tail(transcript_width, active_key, |width| {
              chat_widget.active_cell_transcript_hyperlink_lines(width)
 diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
-index 93f8f00023..a97a8412cb 100644
+index aff47004aa..c607ac9d69 100644
 --- a/codex-rs/tui/src/app/owned_transcript_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
-@@ -2490,3 +2490,110 @@ async fn footer_selection_defers_warning_clicks_and_preserves_the_draft() -> Res
+@@ -2618,3 +2618,110 @@ async fn footer_selection_defers_warning_clicks_and_preserves_the_draft() -> Res
      tui.set_owned_screen(/*owned*/ false)?;
      Ok(())
  }
@@ -406,10 +406,10 @@ index 93f8f00023..a97a8412cb 100644
 +    assert!(buffer_text(&buffer).contains("completion output"));
 +}
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 22205141b8..849b44de13 100644
+index bbc8ca19fd..5cebf0afee 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -1814,9 +1814,13 @@ impl ChatWidget {
+@@ -1816,9 +1816,13 @@ impl ChatWidget {
          self.bottom_pane.composer_is_vim_enabled()
      }
  
@@ -510,7 +510,7 @@ index 68455112a8..00ec4050a4 100644
                      // Replayed commands have completion events without matching starts.
                      active.group.calls.extend(cell.group.calls);
 diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-index 838363ffc2..aeac261154 100644
+index f2cabb6d07..a17da83333 100644
 --- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 @@ -2058,3 +2058,192 @@ async fn apply_patch_request_omits_diff_summary_from_modal() -> anyhow::Result<(
@@ -1036,7 +1036,7 @@ index 0a8ade1e15..8cadf54876 100644
      /// Retained output lines not fully visible in the preview, excluding storage omissions.
      OutputLines(usize),
 diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
-index 060d4a9c41..1ba8a4cc4e 100644
+index 761317c8e2..1e24bdbb7f 100644
 --- a/codex-rs/tui/src/thread_transcript.rs
 +++ b/codex-rs/tui/src/thread_transcript.rs
 @@ -189,7 +189,9 @@ pub(crate) fn thread_items_to_transcript_cells(
@@ -1252,7 +1252,7 @@ index f511851f4e..d586d41581 100644
  
      pub(crate) fn sync_live_layout(
 diff --git a/codex-rs/tui/src/transcript_view/disclosure.rs b/codex-rs/tui/src/transcript_view/disclosure.rs
-index ab4fa1c408..020fd9571f 100644
+index b8bb634161..eba2ed8f22 100644
 --- a/codex-rs/tui/src/transcript_view/disclosure.rs
 +++ b/codex-rs/tui/src/transcript_view/disclosure.rs
 @@ -17,6 +17,9 @@ use super::*;
@@ -1285,34 +1285,46 @@ index ab4fa1c408..020fd9571f 100644
          let focused = self
              .disclosure
              .focused
-@@ -195,10 +204,18 @@ impl TranscriptView {
-         else {
+@@ -206,13 +215,33 @@ impl TranscriptView {
+         area.contains(point).then_some((visible, area))
+     }
+ 
++    /// Returns the visible row of the tool-activity section under `point`, excluding its separator row.
++    fn tool_activity_at(&self, point: ratatui::layout::Position) -> Option<&VisibleRow> {
++        if self.is_select_mode()
++            || self.detailed
++            || self.mode != HistoryRenderMode::Rich
++            || !self.area.contains(point)
++        {
++            return None;
++        }
++        let visible = self.visible.get(usize::from(point.y - self.area.y))?;
++        let presentation = visible.layout.tool_activity?;
++        (visible.layout.position_at(visible.row, /*column*/ 0) <= presentation.source_end()
++            && !(visible.layout.separated && visible.row == 0))
++            .then_some(visible)
++    }
++
+     pub(super) fn toggle_disclosure_at(
+         &mut self,
+         cells: &[Arc<dyn HistoryCell>],
+         column: u16,
+         row: u16,
+     ) -> bool {
+-        let Some((visible, _)) = self.disclosure_at((column, row).into()) else {
++        let point = (column, row).into();
++        let Some(visible) = self
++            .tool_activity_at(point)
++            .or_else(|| self.disclosure_at(point).map(|(visible, _)| visible))
++        else {
              return false;
          };
--        if visible.layout.disclosure_row() != Some(visible.row)
--            || column
--                .checked_sub(self.area.x)
--                .is_none_or(|column| !visible.layout.disclosure_columns().contains(&column))
-+        let in_section = column
-+            .checked_sub(self.area.x)
-+            .is_some_and(|column| column < self.area.width)
-+            && !(visible.layout.separated && visible.row == 0);
-+        let tool_activity = visible.layout.tool_activity.is_some_and(|presentation| {
-+            visible.layout.position_at(visible.row, /*column*/ 0) <= presentation.source_end()
-+        }) && in_section;
-+        if !tool_activity
-+            && (visible.layout.disclosure_row() != Some(visible.row)
-+                || column
-+                    .checked_sub(self.area.x)
-+                    .is_none_or(|column| !visible.layout.disclosure_columns().contains(&column)))
-         {
-             return false;
-         }
+         let Some(index) = self.canonical_activity_index(cells, &visible.activity_ids) else {
 diff --git a/codex-rs/tui/src/transcript_view/input.rs b/codex-rs/tui/src/transcript_view/input.rs
-index db22f8b885..0ee120e6db 100644
+index e5ef02ed65..4a0e95668e 100644
 --- a/codex-rs/tui/src/transcript_view/input.rs
 +++ b/codex-rs/tui/src/transcript_view/input.rs
-@@ -393,6 +393,20 @@ impl TranscriptView {
+@@ -394,6 +394,20 @@ impl TranscriptView {
          cells: &[Arc<dyn HistoryCell>],
          mode: MouseMode<'_>,
      ) -> Option<ViewAction> {
@@ -1333,7 +1345,7 @@ index db22f8b885..0ee120e6db 100644
          if mode == MouseMode::Interactive
              && let Some(action) = self.handle_follow_control_mouse(event)
          {
-@@ -414,6 +428,9 @@ impl TranscriptView {
+@@ -415,6 +429,9 @@ impl TranscriptView {
              }
              return Some(ViewAction::Changed);
          }

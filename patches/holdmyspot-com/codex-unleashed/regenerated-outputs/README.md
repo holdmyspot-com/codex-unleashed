@@ -1,12 +1,12 @@
 # Regenerated outputs
 
-- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
+- Applies to: upstream `openai/codex` tag `rust-v0.172.0`, commit `3d86e43b075adeba2193ec5c22ac92f55afd82e6`.
 - Prerequisites: every other patch in the queue; these patches go last.
 - Patches, in order: `regenerate-module-bazel-lock-1.patch` to `-4`, `regenerate-app-server-json-1.patch` to `-4`, `regenerate-app-server-exports-1.patch` and `-2`, `regenerate-bindings-and-config-schemas.patch`.
 
 ## Intent
 
-The earlier patches change what upstream's generators read (`codex-rs/Cargo.lock`, `MODULE.bazel`, schemars and ts-rs output) without regenerating the files the generators write. These patches are the generators' output for the whole queue on `rust-v0.171.0`, so the committed schemas, bindings and lock file match the sources.
+The earlier patches change what upstream's generators read (`codex-rs/Cargo.lock`, `MODULE.bazel`, schemars and ts-rs output) without regenerating the files the generators write. These patches are the generators' output for the whole queue on `rust-v0.172.0`, so the committed schemas, bindings and lock file match the sources.
 
 | Patches | Regenerated files |
 | --- | --- |
@@ -19,4 +19,4 @@ The repository rejects a blob over 512000 bytes, and each patch is a blob, so th
 
 ## Regenerating
 
-Run the `baseline-platform-lints.yml` workflow with `generators="app-server-schema config-schema hooks-schema bazel-lock"` on the queue's tree with all patches before these applied. The run that produced these patches is `45114435647`. Download its diff and split it by file group, and split `MODULE.bazel.lock` by hunk, to keep each patch under the size limit. Replace these patches with the new ones and keep the order above. A change to any earlier patch that touches a generator input needs a new run.
+Run the `baseline-platform-lints.yml` workflow with `generators="app-server-schema config-schema hooks-schema bazel-lock"` on the queue's tree with all patches before these applied, or run the same generator commands locally with the workspace version at `0.0.0`, as the workflow's generators job does. These patches for `rust-v0.172.0` were generated locally (Bazel 9.2.0, Rust 1.99.1, `uv`) on the tree of the first 108 patches; the later queue entries 120 to 122 change test code only. No workflow run has produced them yet. Split the diff by file group, and `MODULE.bazel.lock` by hunk, to keep each patch under the size limit. Replace these patches with the new ones and keep the order above. A change to any earlier patch that touches a generator input needs a new run.

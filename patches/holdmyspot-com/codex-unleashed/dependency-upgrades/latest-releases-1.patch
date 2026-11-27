@@ -9,7 +9,7 @@ Raise every direct dependency requirement to its latest stable release under Rus
 The patch is split in two to stay under the repository's blob size limit. Part 1 carries Cargo.lock, the manifests and the source adaptations; part 2 carries the regenerated schema and binding outputs. The tree after part 1 alone has stale generated schemas, so it need not pass the schema checks; the tree after both parts matches the unsplit patch.
 ---
  codex-rs/.cargo/audit.toml                    |    1 -
- codex-rs/Cargo.lock                           | 1869 ++++++++++-------
+ codex-rs/Cargo.lock                           | 1876 ++++++++++-------
  codex-rs/Cargo.toml                           |   87 +-
  codex-rs/agent-identity/src/lib.rs            |    6 +-
  codex-rs/analytics/Cargo.toml                 |    1 +
@@ -39,6 +39,7 @@ The patch is split in two to stay under the repository's blob size limit. Part 1
  codex-rs/build-info/Cargo.toml                |    1 +
  codex-rs/build-info/src/lib.rs                |    4 +-
  codex-rs/cli/Cargo.toml                       |    1 +
+ codex-rs/cli/src/shared_sandbox_launcher.rs   |   13 +-
  .../cli/tests/app_server_daemon_windows.rs    |    2 +-
  codex-rs/cli/tests/daemon_startup.rs          |    4 +-
  .../cli/tests/exec_server_websocket_auth.rs   |    7 +-
@@ -166,7 +167,7 @@ The patch is split in two to stay under the repository's blob size limit. Part 1
  .../rmcp-client/src/oauth/refresh_lock.rs     |    2 +-
  codex-rs/rollout-trace/Cargo.toml             |    1 +
  codex-rs/rollout-trace/src/capture_tests.rs   |    2 +-
- .../src/reducer/conversation/normalize.rs     |    6 +-
+ .../src/reducer/conversation/normalize.rs     |    8 +-
  .../runtime-agent-instance/src/runtime.rs     |    6 +-
  codex-rs/secrets/Cargo.toml                   |    1 +
  codex-rs/secrets/src/lib.rs                   |    6 +-
@@ -224,7 +225,7 @@ The patch is split in two to stay under the repository's blob size limit. Part 1
  .../src/setup_provisioning.rs                 |    2 +-
  .../src/setup_provisioning/sandbox_users.rs   |   11 +-
  .../src/uninstall_windows/principals_tests.rs |    6 +-
- 216 files changed, 2080 insertions(+), 1515 deletions(-)
+ 217 files changed, 2085 insertions(+), 1532 deletions(-)
  create mode 100644 codex-rs/ext/extension-api/src/json_schema.rs
 
 diff --git a/codex-rs/.cargo/audit.toml b/codex-rs/.cargo/audit.toml
@@ -240,7 +241,7 @@ index df586c3c09..4dbdad2b8a 100644
      "RUSTSEC-2024-0436", # paste 1.0.15 via starlark/v8; upstream crate is unmaintained
      "RUSTSEC-2023-0089", # atomic-polyfill via postcard/heapless/pagable; upstream crate is unmaintained
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 32632c8aed..d77454e7da 100644
+index 153b51188b..dffd019f5f 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -94,7 +94,7 @@ dependencies = [
@@ -463,7 +464,7 @@ index 32632c8aed..d77454e7da 100644
   "bytes",
   "chrono",
   "codex-client",
-@@ -2139,7 +2146,7 @@ dependencies = [
+@@ -2140,7 +2147,7 @@ dependencies = [
   "rcgen",
   "regex-lite",
   "rustls",
@@ -472,7 +473,7 @@ index 32632c8aed..d77454e7da 100644
   "serde",
   "serde_json",
   "tempfile",
-@@ -2162,7 +2169,7 @@ dependencies = [
+@@ -2163,7 +2170,7 @@ dependencies = [
   "anyhow",
   "app_test_support",
   "axum",
@@ -481,7 +482,7 @@ index 32632c8aed..d77454e7da 100644
   "chrono",
   "clap",
   "codex-agent-message-board-host",
-@@ -2240,7 +2247,8 @@ dependencies = [
+@@ -2241,7 +2248,8 @@ dependencies = [
   "core_test_support",
   "flate2",
   "futures",
@@ -491,7 +492,7 @@ index 32632c8aed..d77454e7da 100644
   "http",
   "insta",
   "keyring",
-@@ -2253,8 +2261,8 @@ dependencies = [
+@@ -2254,8 +2262,8 @@ dependencies = [
   "serde",
   "serde_json",
   "serial_test",
@@ -502,7 +503,7 @@ index 32632c8aed..d77454e7da 100644
   "sqlx",
   "tar",
   "tempfile",
-@@ -2266,8 +2274,8 @@ dependencies = [
+@@ -2267,8 +2275,8 @@ dependencies = [
   "tokio-rustls",
   "tokio-tungstenite 0.28.0",
   "tokio-util",
@@ -513,7 +514,7 @@ index 32632c8aed..d77454e7da 100644
   "tracing",
   "tracing-opentelemetry",
   "tracing-subscriber",
-@@ -2308,7 +2316,7 @@ dependencies = [
+@@ -2309,7 +2317,7 @@ dependencies = [
   "thiserror 2.0.21",
   "tokio",
   "tokio-tungstenite 0.28.0",
@@ -522,7 +523,7 @@ index 32632c8aed..d77454e7da 100644
   "tracing",
   "url",
   "wiremock",
-@@ -2365,18 +2373,18 @@ dependencies = [
+@@ -2366,18 +2374,18 @@ dependencies = [
   "inventory",
   "pretty_assertions",
   "rmcp",
@@ -545,7 +546,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -2412,7 +2420,7 @@ version = "0.0.0"
+@@ -2413,7 +2421,7 @@ version = "0.0.0"
  dependencies = [
   "anyhow",
   "axum",
@@ -554,7 +555,7 @@ index 32632c8aed..d77454e7da 100644
   "chrono",
   "codex-api",
   "codex-app-server-protocol",
-@@ -2433,15 +2441,16 @@ dependencies = [
+@@ -2434,15 +2442,16 @@ dependencies = [
   "core_test_support",
   "futures",
   "gethostname",
@@ -574,7 +575,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "time",
   "tokio",
-@@ -2451,7 +2460,7 @@ dependencies = [
+@@ -2452,7 +2461,7 @@ dependencies = [
   "url",
   "uuid",
   "wiremock",
@@ -583,7 +584,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -2466,7 +2475,7 @@ dependencies = [
+@@ -2467,7 +2476,7 @@ dependencies = [
   "codex-utils-cargo-bin",
   "codex-utils-path-uri",
   "pretty_assertions",
@@ -592,7 +593,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "thiserror 2.0.21",
   "tokio",
-@@ -2502,7 +2511,7 @@ name = "codex-async-utils"
+@@ -2503,7 +2512,7 @@ name = "codex-async-utils"
  version = "0.0.0"
  dependencies = [
   "pretty_assertions",
@@ -601,7 +602,7 @@ index 32632c8aed..d77454e7da 100644
   "tokio",
   "tokio-util",
  ]
-@@ -2548,7 +2557,7 @@ name = "codex-backend-client"
+@@ -2549,7 +2558,7 @@ name = "codex-backend-client"
  version = "0.0.0"
  dependencies = [
   "anyhow",
@@ -610,7 +611,7 @@ index 32632c8aed..d77454e7da 100644
   "codex-api",
   "codex-backend-openapi-models",
   "codex-features",
-@@ -2584,11 +2593,12 @@ name = "codex-build-info"
+@@ -2585,11 +2594,12 @@ name = "codex-build-info"
  version = "0.0.0"
  dependencies = [
   "codex-install-context",
@@ -624,7 +625,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
  ]
  
-@@ -2606,7 +2616,7 @@ name = "codex-chatgpt"
+@@ -2607,7 +2617,7 @@ name = "codex-chatgpt"
  version = "0.0.0"
  dependencies = [
   "anyhow",
@@ -633,7 +634,16 @@ index 32632c8aed..d77454e7da 100644
   "clap",
   "codex-connectors",
   "codex-core",
-@@ -2700,6 +2710,7 @@ dependencies = [
+@@ -2638,7 +2648,7 @@ dependencies = [
+  "app_test_support",
+  "assert_cmd",
+  "assert_matches",
+- "base64 0.22.1",
++ "base64 0.23.1",
+  "chrono",
+  "clap",
+  "clap_complete",
+@@ -2702,6 +2712,7 @@ dependencies = [
   "crossterm",
   "flate2",
   "futures",
@@ -641,7 +651,7 @@ index 32632c8aed..d77454e7da 100644
   "http",
   "insta",
   "jsonwebtoken",
-@@ -2711,7 +2722,7 @@ dependencies = [
+@@ -2713,7 +2724,7 @@ dependencies = [
   "regex-lite",
   "serde",
   "serde_json",
@@ -650,7 +660,7 @@ index 32632c8aed..d77454e7da 100644
   "sqlx",
   "supports-color 3.0.2",
   "sys-locale",
-@@ -2720,7 +2731,7 @@ dependencies = [
+@@ -2722,7 +2733,7 @@ dependencies = [
   "tikv-jemallocator",
   "tokio",
   "tokio-tungstenite 0.28.0",
@@ -659,7 +669,7 @@ index 32632c8aed..d77454e7da 100644
   "tracing",
   "tracing-appender",
   "tracing-subscriber",
-@@ -2730,7 +2741,7 @@ dependencies = [
+@@ -2732,7 +2743,7 @@ dependencies = [
   "which 8.0.6",
   "windows-sys 0.61.2",
   "wiremock",
@@ -668,7 +678,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -2741,7 +2752,7 @@ dependencies = [
+@@ -2743,7 +2754,7 @@ dependencies = [
   "eventsource-stream",
   "futures",
   "http",
@@ -677,7 +687,7 @@ index 32632c8aed..d77454e7da 100644
   "tokio",
   "tracing",
   "url",
-@@ -2777,7 +2788,7 @@ dependencies = [
+@@ -2779,7 +2790,7 @@ dependencies = [
  name = "codex-cloud-config"
  version = "0.0.0"
  dependencies = [
@@ -686,10 +696,10 @@ index 32632c8aed..d77454e7da 100644
   "chrono",
   "codex-agent-identity",
   "codex-async-utils",
-@@ -2789,11 +2800,12 @@ dependencies = [
-  "codex-login",
+@@ -2793,11 +2804,12 @@ dependencies = [
   "codex-otel",
   "codex-protocol",
+  "codex-rmcp-client",
 - "hmac 0.12.1",
 + "hex",
 + "hmac 0.13.0",
@@ -701,7 +711,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "thiserror 2.0.21",
   "tokio",
-@@ -2806,7 +2818,7 @@ name = "codex-cloud-tasks"
+@@ -2810,7 +2822,7 @@ name = "codex-cloud-tasks"
  version = "0.0.0"
  dependencies = [
   "anyhow",
@@ -710,8 +720,8 @@ index 32632c8aed..d77454e7da 100644
   "chrono",
   "clap",
   "codex-agent-identity",
-@@ -2880,8 +2892,8 @@ dependencies = [
-  "http-body-util",
+@@ -2884,8 +2896,8 @@ dependencies = [
+  "opentelemetry",
   "pretty_assertions",
   "prost",
 - "rand 0.9.5",
@@ -721,7 +731,7 @@ index 32632c8aed..d77454e7da 100644
   "serde_json",
   "tokio",
   "tokio-util",
-@@ -2944,7 +2956,7 @@ dependencies = [
+@@ -2949,7 +2961,7 @@ dependencies = [
  name = "codex-code-mode-runtime"
  version = "0.0.0"
  dependencies = [
@@ -730,7 +740,7 @@ index 32632c8aed..d77454e7da 100644
   "codex-code-mode-protocol",
   "codex-plugin-host",
   "codex-protocol",
-@@ -2971,7 +2983,7 @@ name = "codex-config"
+@@ -2976,7 +2988,7 @@ name = "codex-config"
  version = "0.0.0"
  dependencies = [
   "anyhow",
@@ -739,7 +749,7 @@ index 32632c8aed..d77454e7da 100644
   "codex-execpolicy",
   "codex-features",
   "codex-file-system",
-@@ -2985,7 +2997,7 @@ dependencies = [
+@@ -2990,7 +3002,7 @@ dependencies = [
   "codex-utils-path-uri",
   "codex-utils-redacted-string",
   "codex-windows-sandbox",
@@ -748,7 +758,7 @@ index 32632c8aed..d77454e7da 100644
   "dns-lookup",
   "dunce",
   "futures",
-@@ -2996,20 +3008,20 @@ dependencies = [
+@@ -3001,20 +3013,20 @@ dependencies = [
   "pretty_assertions",
   "prost",
   "regex-lite",
@@ -773,7 +783,7 @@ index 32632c8aed..d77454e7da 100644
   "tonic",
   "tonic-prost",
   "tonic-prost-build",
-@@ -3017,7 +3029,7 @@ dependencies = [
+@@ -3022,7 +3034,7 @@ dependencies = [
   "wildmatch",
   "winapi-util",
   "windows-sys 0.61.2",
@@ -782,7 +792,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -3040,11 +3052,12 @@ dependencies = [
+@@ -3045,11 +3057,12 @@ dependencies = [
   "codex-otel",
   "codex-plugin",
   "codex-protocol",
@@ -796,7 +806,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "tokio",
   "tracing",
-@@ -3085,7 +3098,7 @@ dependencies = [
+@@ -3090,7 +3103,7 @@ dependencies = [
   "assert_cmd",
   "assert_matches",
   "async-channel",
@@ -805,7 +815,7 @@ index 32632c8aed..d77454e7da 100644
   "bm25",
   "chrono",
   "codex-agent-graph-store",
-@@ -3176,11 +3189,12 @@ dependencies = [
+@@ -3181,11 +3194,12 @@ dependencies = [
   "codex-windows-sandbox",
   "codex-windows-sandbox-test-support",
   "core_test_support",
@@ -819,7 +829,7 @@ index 32632c8aed..d77454e7da 100644
   "http",
   "hyper-util",
   "iana-time-zone",
-@@ -3195,16 +3209,16 @@ dependencies = [
+@@ -3200,16 +3214,16 @@ dependencies = [
   "opentelemetry_sdk",
   "predicates",
   "pretty_assertions",
@@ -840,7 +850,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "test-case",
   "test-log",
-@@ -3213,8 +3227,8 @@ dependencies = [
+@@ -3218,8 +3232,8 @@ dependencies = [
   "tokio-rustls",
   "tokio-tungstenite 0.28.0",
   "tokio-util",
@@ -851,7 +861,7 @@ index 32632c8aed..d77454e7da 100644
   "tonic",
   "tower",
   "tracing",
-@@ -3225,10 +3239,10 @@ dependencies = [
+@@ -3230,10 +3244,10 @@ dependencies = [
   "uuid",
   "walkdir",
   "which 8.0.6",
@@ -864,7 +874,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -3271,7 +3285,7 @@ name = "codex-core-plugins"
+@@ -3276,7 +3290,7 @@ name = "codex-core-plugins"
  version = "0.0.0"
  dependencies = [
   "anyhow",
@@ -873,7 +883,7 @@ index 32632c8aed..d77454e7da 100644
   "chrono",
   "codex-analytics",
   "codex-api",
-@@ -3304,20 +3318,21 @@ dependencies = [
+@@ -3309,20 +3323,21 @@ dependencies = [
   "dirs",
   "flate2",
   "futures",
@@ -898,7 +908,7 @@ index 32632c8aed..d77454e7da 100644
   "tracing",
   "tracing-subscriber",
   "tracing-test",
-@@ -3397,7 +3412,7 @@ dependencies = [
+@@ -3402,7 +3417,7 @@ dependencies = [
   "uuid",
   "walkdir",
   "wiremock",
@@ -907,7 +917,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -3407,7 +3422,7 @@ dependencies = [
+@@ -3412,7 +3427,7 @@ dependencies = [
   "anyhow",
   "arc-swap",
   "axum",
@@ -916,7 +926,7 @@ index 32632c8aed..d77454e7da 100644
   "bytes",
   "clatter",
   "codex-api",
-@@ -3440,7 +3455,7 @@ dependencies = [
+@@ -3445,7 +3460,7 @@ dependencies = [
   "codex-websocket-auth",
   "codex-websocket-client",
   "codex-windows-sandbox-test-support",
@@ -925,7 +935,7 @@ index 32632c8aed..d77454e7da 100644
   "dirs",
   "futures",
   "http",
-@@ -3462,7 +3477,7 @@ dependencies = [
+@@ -3467,7 +3482,7 @@ dependencies = [
   "tokio",
   "tokio-tungstenite 0.28.0",
   "tokio-util",
@@ -934,7 +944,7 @@ index 32632c8aed..d77454e7da 100644
   "tracing",
   "tracing-opentelemetry",
   "tracing-subscriber",
-@@ -3509,7 +3524,7 @@ dependencies = [
+@@ -3514,7 +3529,7 @@ dependencies = [
   "tempfile",
   "tikv-jemallocator",
   "tokio",
@@ -943,7 +953,7 @@ index 32632c8aed..d77454e7da 100644
   "tracing",
   "tracing-subscriber",
   "url",
-@@ -3520,7 +3535,7 @@ dependencies = [
+@@ -3525,7 +3540,7 @@ dependencies = [
  name = "codex-exec-server-protocol"
  version = "0.0.0"
  dependencies = [
@@ -952,7 +962,7 @@ index 32632c8aed..d77454e7da 100644
   "codex-file-system",
   "codex-install-context",
   "codex-mxc-sandbox",
-@@ -3561,7 +3576,7 @@ dependencies = [
+@@ -3566,7 +3581,7 @@ dependencies = [
   "pretty_assertions",
   "serde",
   "serde_json",
@@ -961,7 +971,7 @@ index 32632c8aed..d77454e7da 100644
   "starlark",
   "tempfile",
   "thiserror 2.0.21",
-@@ -3575,7 +3590,7 @@ version = "0.0.0"
+@@ -3580,7 +3595,7 @@ version = "0.0.0"
  dependencies = [
   "proc-macro2",
   "quote",
@@ -970,7 +980,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -3607,7 +3622,7 @@ version = "0.0.0"
+@@ -3612,7 +3627,7 @@ version = "0.0.0"
  dependencies = [
   "codex-utils-absolute-path",
   "pretty_assertions",
@@ -979,7 +989,7 @@ index 32632c8aed..d77454e7da 100644
   "serde",
   "serde_json",
   "ts-rs",
-@@ -3632,15 +3647,16 @@ dependencies = [
+@@ -3637,15 +3652,16 @@ dependencies = [
   "codex-rollout",
   "codex-thread-store",
   "codex-utils-output-truncation",
@@ -999,7 +1009,7 @@ index 32632c8aed..d77454e7da 100644
   "tracing",
  ]
  
-@@ -3652,9 +3668,9 @@ dependencies = [
+@@ -3657,9 +3673,9 @@ dependencies = [
   "codex-protocol",
   "codex-utils-redacted-string",
   "pretty_assertions",
@@ -1011,7 +1021,7 @@ index 32632c8aed..d77454e7da 100644
   "tracing",
  ]
  
-@@ -3761,9 +3777,9 @@ dependencies = [
+@@ -3766,9 +3782,9 @@ dependencies = [
   "once_cell",
   "pretty_assertions",
   "regex",
@@ -1023,7 +1033,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "thiserror 2.0.21",
   "tokio",
-@@ -3837,7 +3853,7 @@ dependencies = [
+@@ -3842,7 +3858,7 @@ dependencies = [
   "opentelemetry",
   "opentelemetry_sdk",
   "pretty_assertions",
@@ -1032,7 +1042,7 @@ index 32632c8aed..d77454e7da 100644
   "rmcp",
   "serde",
   "serde_json",
-@@ -3852,7 +3868,7 @@ name = "codex-guardian-v2"
+@@ -3857,7 +3873,7 @@ name = "codex-guardian-v2"
  version = "0.0.0"
  dependencies = [
   "anyhow",
@@ -1041,7 +1051,7 @@ index 32632c8aed..d77454e7da 100644
   "codex-agent-identity",
   "codex-analytics",
   "codex-api",
-@@ -3887,7 +3903,7 @@ dependencies = [
+@@ -3892,7 +3908,7 @@ dependencies = [
   "tracing",
   "uuid",
   "wiremock",
@@ -1050,7 +1060,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -3941,7 +3957,7 @@ dependencies = [
+@@ -3946,7 +3962,7 @@ dependencies = [
   "codex-utils-absolute-path",
   "codex-utils-model-facing-id",
   "pretty_assertions",
@@ -1059,7 +1069,7 @@ index 32632c8aed..d77454e7da 100644
   "serde",
   "serde_json",
  ]
-@@ -3966,7 +3982,7 @@ dependencies = [
+@@ -3971,7 +3987,7 @@ dependencies = [
   "http",
   "insta",
   "pretty_assertions",
@@ -1068,7 +1078,7 @@ index 32632c8aed..d77454e7da 100644
   "serde",
   "serde_json",
   "tempfile",
-@@ -4002,14 +4018,15 @@ dependencies = [
+@@ -4007,14 +4023,15 @@ dependencies = [
   "codex-utils-process",
   "codex-utils-pty",
   "futures",
@@ -1086,7 +1096,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "tokio",
   "tracing",
-@@ -4025,6 +4042,7 @@ dependencies = [
+@@ -4030,6 +4047,7 @@ dependencies = [
   "codex-utils-rustls-provider",
   "curl",
   "futures",
@@ -1094,7 +1104,7 @@ index 32632c8aed..d77454e7da 100644
   "http",
   "http-body",
   "httpdate",
-@@ -4033,7 +4051,7 @@ dependencies = [
+@@ -4038,7 +4056,7 @@ dependencies = [
   "opentelemetry_sdk",
   "pretty_assertions",
   "rcgen",
@@ -1103,7 +1113,7 @@ index 32632c8aed..d77454e7da 100644
   "rustls",
   "rustls-native-certs",
   "rustls-pki-types",
-@@ -4041,9 +4059,9 @@ dependencies = [
+@@ -4046,9 +4064,9 @@ dependencies = [
   "serde",
   "serde_json",
   "serde_urlencoded",
@@ -1115,7 +1125,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "thiserror 2.0.21",
   "tokio",
-@@ -4053,7 +4071,7 @@ dependencies = [
+@@ -4058,7 +4076,7 @@ dependencies = [
   "tracing-subscriber",
   "url",
   "windows-sys 0.61.2",
@@ -1124,7 +1134,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -4073,7 +4091,7 @@ dependencies = [
+@@ -4078,7 +4096,7 @@ dependencies = [
  name = "codex-image-generation-extension"
  version = "0.0.0"
  dependencies = [
@@ -1133,7 +1143,7 @@ index 32632c8aed..d77454e7da 100644
   "codex-api",
   "codex-attachment-store",
   "codex-core",
-@@ -4089,13 +4107,14 @@ dependencies = [
+@@ -4094,13 +4112,14 @@ dependencies = [
   "codex-utils-absolute-path",
   "codex-utils-image",
   "codex-utils-path-uri",
@@ -1150,7 +1160,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "tokio",
   "tracing",
-@@ -4147,12 +4166,12 @@ dependencies = [
+@@ -4152,12 +4171,12 @@ dependencies = [
   "landlock",
   "libc",
   "pretty_assertions",
@@ -1165,7 +1175,7 @@ index 32632c8aed..d77454e7da 100644
   "smoltcp",
   "socks5-protocol",
   "tempfile",
-@@ -4180,7 +4199,7 @@ name = "codex-login"
+@@ -4185,7 +4204,7 @@ name = "codex-login"
  version = "0.0.0"
  dependencies = [
   "anyhow",
@@ -1174,7 +1184,7 @@ index 32632c8aed..d77454e7da 100644
   "chrono",
   "codex-agent-identity",
   "codex-config",
-@@ -4197,6 +4216,7 @@ dependencies = [
+@@ -4202,6 +4221,7 @@ dependencies = [
   "codex-utils-template",
   "codex-workload-identity",
   "core_test_support",
@@ -1182,7 +1192,7 @@ index 32632c8aed..d77454e7da 100644
   "http",
   "jsonwebtoken",
   "keyring",
-@@ -4205,12 +4225,12 @@ dependencies = [
+@@ -4210,12 +4230,12 @@ dependencies = [
   "opentelemetry_sdk",
   "os_info",
   "pretty_assertions",
@@ -1197,7 +1207,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "thiserror 2.0.21",
   "tiny_http",
-@@ -4232,7 +4252,7 @@ dependencies = [
+@@ -4237,7 +4257,7 @@ dependencies = [
   "arc-swap",
   "assert_matches",
   "async-channel",
@@ -1206,7 +1216,7 @@ index 32632c8aed..d77454e7da 100644
   "codex-api",
   "codex-async-utils",
   "codex-config",
-@@ -4256,15 +4276,16 @@ dependencies = [
+@@ -4261,15 +4281,16 @@ dependencies = [
   "codex-utils-plugins",
   "codex-utils-process",
   "futures",
@@ -1225,7 +1235,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "thiserror 2.0.21",
   "tokio",
-@@ -4322,7 +4343,7 @@ dependencies = [
+@@ -4327,7 +4348,7 @@ dependencies = [
   "codex-utils-output-truncation",
   "codex-utils-template",
   "pretty_assertions",
@@ -1234,7 +1244,7 @@ index 32632c8aed..d77454e7da 100644
   "serde",
   "serde_json",
   "tempfile",
-@@ -4345,7 +4366,7 @@ name = "codex-memories-write"
+@@ -4350,7 +4371,7 @@ name = "codex-memories-write"
  version = "0.0.0"
  dependencies = [
   "anyhow",
@@ -1243,7 +1253,7 @@ index 32632c8aed..d77454e7da 100644
   "chrono",
   "codex-backend-client",
   "codex-config",
-@@ -4392,7 +4413,7 @@ dependencies = [
+@@ -4397,7 +4418,7 @@ dependencies = [
  name = "codex-message-board"
  version = "0.0.0"
  dependencies = [
@@ -1252,7 +1262,7 @@ index 32632c8aed..d77454e7da 100644
   "caseless",
   "chrono",
   "codex-attachment-store",
-@@ -4460,7 +4481,7 @@ name = "codex-model-provider"
+@@ -4465,7 +4486,7 @@ name = "codex-model-provider"
  version = "0.0.0"
  dependencies = [
   "anyhow",
@@ -1261,7 +1271,7 @@ index 32632c8aed..d77454e7da 100644
   "chrono",
   "codex-agent-identity",
   "codex-api",
-@@ -4481,13 +4502,14 @@ dependencies = [
+@@ -4486,13 +4507,14 @@ dependencies = [
   "codex-utils-process",
   "codex-utils-redacted-string",
   "codex-utils-rustls-provider",
@@ -1277,7 +1287,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "tokio",
   "tracing",
-@@ -4507,10 +4529,10 @@ dependencies = [
+@@ -4512,10 +4534,10 @@ dependencies = [
   "http",
   "maplit",
   "pretty_assertions",
@@ -1290,7 +1300,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -4586,7 +4608,7 @@ dependencies = [
+@@ -4590,7 +4612,7 @@ dependencies = [
   "anyhow",
   "aws-credential-types",
   "aws-sigv4",
@@ -1299,7 +1309,7 @@ index 32632c8aed..d77454e7da 100644
   "chrono",
   "clap",
   "codex-utils-absolute-path",
-@@ -4595,6 +4617,7 @@ dependencies = [
+@@ -4599,6 +4621,7 @@ dependencies = [
   "codex-utils-rustls-provider",
   "codex-windows-sandbox",
   "globset",
@@ -1307,7 +1317,7 @@ index 32632c8aed..d77454e7da 100644
   "libc",
   "opentelemetry",
   "pretty_assertions",
-@@ -4607,19 +4630,19 @@ dependencies = [
+@@ -4611,19 +4634,19 @@ dependencies = [
   "rama-tcp",
   "rama-tls-rustls",
   "rama-unix",
@@ -1330,7 +1340,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "thiserror 2.0.21",
   "time",
-@@ -4677,11 +4700,11 @@ dependencies = [
+@@ -4681,11 +4704,11 @@ dependencies = [
   "os_info",
   "pretty_assertions",
   "rcgen",
@@ -1344,7 +1354,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "thiserror 2.0.21",
   "tokio",
-@@ -4757,7 +4780,7 @@ dependencies = [
+@@ -4761,7 +4784,7 @@ dependencies = [
   "codex-utils-template",
   "pretty_assertions",
   "tracing",
@@ -1353,7 +1363,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -4789,14 +4812,14 @@ dependencies = [
+@@ -4793,14 +4816,14 @@ dependencies = [
   "landlock",
   "libc",
   "pretty_assertions",
@@ -1372,7 +1382,7 @@ index 32632c8aed..d77454e7da 100644
   "sys-locale",
   "tempfile",
   "thiserror 2.0.21",
-@@ -4846,7 +4869,7 @@ dependencies = [
+@@ -4850,7 +4873,7 @@ dependencies = [
   "codex-install-context",
   "codex-utils-cargo-bin",
   "codex-utils-pty",
@@ -1381,7 +1391,7 @@ index 32632c8aed..d77454e7da 100644
   "futures",
   "libc",
   "pretty_assertions",
-@@ -4860,7 +4883,7 @@ dependencies = [
+@@ -4864,7 +4887,7 @@ dependencies = [
  name = "codex-response-debug-context"
  version = "0.0.0"
  dependencies = [
@@ -1390,7 +1400,7 @@ index 32632c8aed..d77454e7da 100644
   "codex-api",
   "http",
   "pretty_assertions",
-@@ -4876,11 +4899,11 @@ dependencies = [
+@@ -4880,11 +4903,11 @@ dependencies = [
   "clap",
   "codex-http-client",
   "codex-process-hardening",
@@ -1404,7 +1414,7 @@ index 32632c8aed..d77454e7da 100644
   "serde",
   "serde_json",
   "tiny_http",
-@@ -4897,7 +4920,7 @@ version = "0.0.0"
+@@ -4901,7 +4924,7 @@ version = "0.0.0"
  dependencies = [
   "anyhow",
   "axum",
@@ -1413,7 +1423,7 @@ index 32632c8aed..d77454e7da 100644
   "bytes",
   "codex-api",
   "codex-config",
-@@ -4914,6 +4937,7 @@ dependencies = [
+@@ -4918,6 +4941,7 @@ dependencies = [
   "codex-utils-path-uri",
   "codex-utils-pty",
   "futures",
@@ -1421,7 +1431,7 @@ index 32632c8aed..d77454e7da 100644
   "http",
   "keyring",
   "libc",
-@@ -4925,7 +4949,7 @@ dependencies = [
+@@ -4929,7 +4953,7 @@ dependencies = [
   "serde",
   "serde_json",
   "serial_test",
@@ -1430,7 +1440,7 @@ index 32632c8aed..d77454e7da 100644
   "sse-stream",
   "tempfile",
   "thiserror 2.0.21",
-@@ -4975,7 +4999,7 @@ dependencies = [
+@@ -4979,7 +5003,7 @@ dependencies = [
   "tokio",
   "tracing",
   "uuid",
@@ -1439,7 +1449,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -4985,22 +5009,23 @@ dependencies = [
+@@ -4989,22 +5013,23 @@ dependencies = [
   "anyhow",
   "codex-code-mode",
   "codex-protocol",
@@ -1466,7 +1476,7 @@ index 32632c8aed..d77454e7da 100644
   "bytes",
   "codex-agent-identity",
   "codex-api",
-@@ -5013,7 +5038,7 @@ dependencies = [
+@@ -5017,7 +5042,7 @@ dependencies = [
   "futures",
   "http",
   "pretty_assertions",
@@ -1475,7 +1485,7 @@ index 32632c8aed..d77454e7da 100644
   "serde",
   "serde_json",
   "tempfile",
-@@ -5059,17 +5084,18 @@ version = "0.0.0"
+@@ -5062,17 +5087,18 @@ version = "0.0.0"
  dependencies = [
   "age",
   "anyhow",
@@ -1498,7 +1508,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "tracing",
  ]
-@@ -5079,7 +5105,7 @@ name = "codex-shell-command"
+@@ -5082,7 +5108,7 @@ name = "codex-shell-command"
  version = "0.0.0"
  dependencies = [
   "anyhow",
@@ -1507,7 +1517,7 @@ index 32632c8aed..d77454e7da 100644
   "codex-protocol",
   "codex-utils-absolute-path",
   "libc",
-@@ -5088,7 +5114,7 @@ dependencies = [
+@@ -5091,7 +5117,7 @@ dependencies = [
   "regex",
   "serde",
   "serde_json",
@@ -1516,7 +1526,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "tree-sitter",
   "tree-sitter-bash",
-@@ -5108,8 +5134,8 @@ dependencies = [
+@@ -5111,8 +5137,8 @@ dependencies = [
   "include_dir",
   "pretty_assertions",
   "serde",
@@ -1527,7 +1537,7 @@ index 32632c8aed..d77454e7da 100644
   "thiserror 2.0.21",
   "tracing",
  ]
-@@ -5144,12 +5170,12 @@ dependencies = [
+@@ -5147,12 +5173,12 @@ dependencies = [
   "insta",
   "opentelemetry_sdk",
   "pretty_assertions",
@@ -1542,7 +1552,7 @@ index 32632c8aed..d77454e7da 100644
   "tracing",
   "tracing-subscriber",
  ]
-@@ -5170,14 +5196,14 @@ dependencies = [
+@@ -5173,14 +5199,14 @@ dependencies = [
   "libsqlite3-sys",
   "log",
   "pretty_assertions",
@@ -1559,7 +1569,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "tokio",
   "tracing",
-@@ -5266,7 +5292,7 @@ dependencies = [
+@@ -5269,7 +5295,7 @@ dependencies = [
   "tokio",
   "tracing",
   "uuid",
@@ -1568,7 +1578,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -5304,7 +5330,7 @@ dependencies = [
+@@ -5307,7 +5333,7 @@ dependencies = [
   "arboard",
   "assert_matches",
   "axum",
@@ -1577,7 +1587,7 @@ index 32632c8aed..d77454e7da 100644
   "chrono",
   "clap",
   "codex-ansi-escape",
-@@ -5374,10 +5400,11 @@ dependencies = [
+@@ -5377,10 +5403,11 @@ dependencies = [
   "dirs",
   "dunce",
   "futures",
@@ -1590,7 +1600,7 @@ index 32632c8aed..d77454e7da 100644
   "lazy_static",
   "libc",
   "objc2",
-@@ -5387,7 +5414,7 @@ dependencies = [
+@@ -5390,7 +5417,7 @@ dependencies = [
   "pathdiff",
   "pretty_assertions",
   "pulldown-cmark",
@@ -1599,7 +1609,7 @@ index 32632c8aed..d77454e7da 100644
   "ratatui",
   "ratatui-macros",
   "regex-lite",
-@@ -5396,10 +5423,10 @@ dependencies = [
+@@ -5399,10 +5426,10 @@ dependencies = [
   "serde",
   "serde_json",
   "serial_test",
@@ -1614,7 +1624,7 @@ index 32632c8aed..d77454e7da 100644
   "supports-color 3.0.2",
   "syntect",
   "tempfile",
-@@ -5409,8 +5436,8 @@ dependencies = [
+@@ -5412,8 +5439,8 @@ dependencies = [
   "tokio-stream",
   "tokio-tungstenite 0.28.0",
   "tokio-util",
@@ -1625,7 +1635,7 @@ index 32632c8aed..d77454e7da 100644
   "tracing",
   "tracing-appender",
   "tracing-subscriber",
-@@ -5430,7 +5457,7 @@ dependencies = [
+@@ -5433,7 +5460,7 @@ dependencies = [
   "windows-sys 0.61.2",
   "winsplit",
   "wiremock",
@@ -1634,7 +1644,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -5465,18 +5492,18 @@ dependencies = [
+@@ -5468,18 +5495,18 @@ dependencies = [
  name = "codex-user-verification"
  version = "0.0.0"
  dependencies = [
@@ -1656,7 +1666,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "thiserror 2.0.21",
   "tracing",
-@@ -5489,7 +5516,7 @@ dependencies = [
+@@ -5492,7 +5519,7 @@ dependencies = [
   "dirs",
   "dunce",
   "pretty_assertions",
@@ -1665,7 +1675,7 @@ index 32632c8aed..d77454e7da 100644
   "serde",
   "serde_json",
   "tempfile",
-@@ -5507,7 +5534,7 @@ dependencies = [
+@@ -5510,7 +5537,7 @@ dependencies = [
  name = "codex-utils-audio"
  version = "0.0.0"
  dependencies = [
@@ -1674,7 +1684,7 @@ index 32632c8aed..d77454e7da 100644
   "codex-protocol",
   "codex-utils-cache",
   "codex-utils-string",
-@@ -5521,8 +5548,8 @@ dependencies = [
+@@ -5524,8 +5551,8 @@ dependencies = [
  name = "codex-utils-cache"
  version = "0.0.0"
  dependencies = [
@@ -1685,7 +1695,7 @@ index 32632c8aed..d77454e7da 100644
   "tokio",
  ]
  
-@@ -5544,7 +5571,7 @@ dependencies = [
+@@ -5547,7 +5574,7 @@ dependencies = [
   "codex-shell-command",
   "pretty_assertions",
   "serde",
@@ -1694,7 +1704,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -5596,7 +5623,7 @@ dependencies = [
+@@ -5599,7 +5626,7 @@ dependencies = [
  name = "codex-utils-image"
  version = "0.0.0"
  dependencies = [
@@ -1703,7 +1713,7 @@ index 32632c8aed..d77454e7da 100644
   "codex-utils-cache",
   "divan",
   "image",
-@@ -5613,7 +5640,7 @@ version = "0.0.0"
+@@ -5616,7 +5643,7 @@ version = "0.0.0"
  dependencies = [
   "pretty_assertions",
   "serde_json",
@@ -1712,7 +1722,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -5622,7 +5649,7 @@ version = "0.0.0"
+@@ -5625,7 +5652,7 @@ version = "0.0.0"
  dependencies = [
   "blake3",
   "pretty_assertions",
@@ -1721,7 +1731,7 @@ index 32632c8aed..d77454e7da 100644
   "serde",
   "serde_json",
   "thiserror 2.0.21",
-@@ -5664,10 +5691,10 @@ dependencies = [
+@@ -5667,10 +5694,10 @@ dependencies = [
  name = "codex-utils-path-uri"
  version = "0.0.0"
  dependencies = [
@@ -1734,7 +1744,7 @@ index 32632c8aed..d77454e7da 100644
   "serde",
   "serde_json",
   "thiserror 2.0.21",
-@@ -5704,7 +5731,7 @@ version = "0.0.0"
+@@ -5707,7 +5734,7 @@ version = "0.0.0"
  dependencies = [
   "anyhow",
   "codex-utils-cargo-bin",
@@ -1743,7 +1753,7 @@ index 32632c8aed..d77454e7da 100644
   "filedescriptor",
   "lazy_static",
   "libc",
-@@ -5732,7 +5759,7 @@ dependencies = [
+@@ -5735,7 +5762,7 @@ dependencies = [
  name = "codex-utils-redacted-string"
  version = "0.0.0"
  dependencies = [
@@ -1752,7 +1762,7 @@ index 32632c8aed..d77454e7da 100644
   "serde",
  ]
  
-@@ -5757,7 +5784,7 @@ dependencies = [
+@@ -5760,7 +5787,7 @@ dependencies = [
  name = "codex-utils-sleep-inhibitor"
  version = "0.0.0"
  dependencies = [
@@ -1761,7 +1771,7 @@ index 32632c8aed..d77454e7da 100644
   "libc",
   "tracing",
   "windows-sys 0.61.2",
-@@ -5810,10 +5837,10 @@ dependencies = [
+@@ -5813,10 +5840,10 @@ dependencies = [
   "gstreamer",
   "gstreamer-app",
   "gstreamer-audio",
@@ -1774,7 +1784,7 @@ index 32632c8aed..d77454e7da 100644
   "rtc",
   "rubato",
   "sonora",
-@@ -5839,7 +5866,7 @@ dependencies = [
+@@ -5842,7 +5869,7 @@ dependencies = [
   "codex-tools",
   "http",
   "pretty_assertions",
@@ -1783,7 +1793,7 @@ index 32632c8aed..d77454e7da 100644
   "serde_json",
   "tempfile",
   "tokio",
-@@ -5851,17 +5878,17 @@ name = "codex-websocket-auth"
+@@ -5854,17 +5881,17 @@ name = "codex-websocket-auth"
  version = "0.0.0"
  dependencies = [
   "anyhow",
@@ -1805,7 +1815,7 @@ index 32632c8aed..d77454e7da 100644
   "time",
  ]
  
-@@ -5886,7 +5913,7 @@ name = "codex-windows-sandbox"
+@@ -5889,7 +5916,7 @@ name = "codex-windows-sandbox"
  version = "0.0.0"
  dependencies = [
   "anyhow",
@@ -1814,7 +1824,7 @@ index 32632c8aed..d77454e7da 100644
   "chrono",
   "codex-http-client",
   "codex-otel",
-@@ -5902,13 +5929,13 @@ dependencies = [
+@@ -5905,13 +5932,13 @@ dependencies = [
   "glob",
   "ignore",
   "pretty_assertions",
@@ -1830,7 +1840,7 @@ index 32632c8aed..d77454e7da 100644
   "windows-sys 0.61.2",
  ]
  
-@@ -5925,7 +5952,7 @@ dependencies = [
+@@ -5928,7 +5955,7 @@ dependencies = [
   "serde_json",
   "tempfile",
   "tokio",
@@ -1839,7 +1849,7 @@ index 32632c8aed..d77454e7da 100644
   "windows 0.58.0",
   "windows-sys 0.61.2",
  ]
-@@ -5941,7 +5968,7 @@ dependencies = [
+@@ -5944,7 +5971,7 @@ dependencies = [
  name = "codex-workload-identity"
  version = "0.0.0"
  dependencies = [
@@ -1848,7 +1858,7 @@ index 32632c8aed..d77454e7da 100644
   "codex-http-client",
   "hyper",
   "hyper-util",
-@@ -6245,7 +6272,7 @@ version = "0.0.0"
+@@ -6248,7 +6275,7 @@ version = "0.0.0"
  dependencies = [
   "anyhow",
   "assert_cmd",
@@ -1857,7 +1867,7 @@ index 32632c8aed..d77454e7da 100644
   "codex-agent-graph-store",
   "codex-agent-message-board-host",
   "codex-analytics",
-@@ -6271,7 +6298,7 @@ dependencies = [
+@@ -6274,7 +6301,7 @@ dependencies = [
   "codex-utils-cargo-bin",
   "codex-utils-path-uri",
   "codex-utils-rustls-provider",
@@ -1866,7 +1876,7 @@ index 32632c8aed..d77454e7da 100644
   "futures",
   "notify",
   "opentelemetry",
-@@ -6280,18 +6307,18 @@ dependencies = [
+@@ -6283,18 +6310,18 @@ dependencies = [
   "rcgen",
   "regex-lite",
   "serde_json",
@@ -1888,7 +1898,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -6454,9 +6481,9 @@ dependencies = [
+@@ -6457,9 +6484,9 @@ dependencies = [
   "derive_more 2.1.1",
   "futures-core",
   "mio",
@@ -1900,7 +1910,7 @@ index 32632c8aed..d77454e7da 100644
   "signal-hook-mio",
   "winapi",
  ]
-@@ -6488,6 +6515,22 @@ dependencies = [
+@@ -6491,6 +6518,22 @@ dependencies = [
   "zeroize",
  ]
  
@@ -1923,7 +1933,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "crypto-common"
  version = "0.1.7"
-@@ -6505,7 +6548,9 @@ version = "0.2.2"
+@@ -6508,7 +6551,9 @@ version = "0.2.2"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "ce6e4c961d6cd6c9a86db418387425e8bdeaf05b3c8bc1411e6dca4c252f1453"
  dependencies = [
@@ -1934,7 +1944,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -6517,7 +6562,7 @@ dependencies = [
+@@ -6520,7 +6565,7 @@ dependencies = [
   "aead",
   "blake2",
   "crypto_secretbox",
@@ -1943,7 +1953,7 @@ index 32632c8aed..d77454e7da 100644
   "salsa20",
   "subtle",
   "zeroize",
-@@ -6571,30 +6616,14 @@ dependencies = [
+@@ -6574,30 +6619,14 @@ dependencies = [
  
  [[package]]
  name = "ctor"
@@ -1976,7 +1986,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "ctr"
  version = "0.9.2"
-@@ -6606,11 +6635,12 @@ dependencies = [
+@@ -6609,11 +6638,12 @@ dependencies = [
  
  [[package]]
  name = "ctutils"
@@ -1991,7 +2001,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -6625,7 +6655,7 @@ dependencies = [
+@@ -6628,7 +6658,7 @@ dependencies = [
   "openssl-sys",
   "schannel",
   "socket2 0.6.5",
@@ -2000,7 +2010,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -6640,7 +6670,7 @@ dependencies = [
+@@ -6643,7 +6673,7 @@ dependencies = [
   "openssl-sys",
   "pkg-config",
   "vcpkg",
@@ -2009,7 +2019,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -6652,8 +6682,23 @@ dependencies = [
+@@ -6655,8 +6685,23 @@ dependencies = [
   "cfg-if",
   "cpufeatures 0.2.17",
   "curve25519-dalek-derive",
@@ -2035,7 +2045,7 @@ index 32632c8aed..d77454e7da 100644
   "rustc_version",
   "subtle",
   "zeroize",
-@@ -6737,7 +6782,7 @@ dependencies = [
+@@ -6740,7 +6785,7 @@ dependencies = [
   "proc-macro2",
   "quote",
   "strsim 0.11.1",
@@ -2044,7 +2054,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -6770,7 +6815,7 @@ checksum = "68f5792fa0d41cd2325ce0ffa64f0a340eaebd4971a3a0c5e1ffd2cc488a355e"
+@@ -6773,7 +6818,7 @@ checksum = "68f5792fa0d41cd2325ce0ffa64f0a340eaebd4971a3a0c5e1ffd2cc488a355e"
  dependencies = [
   "darling_core 0.24.0",
   "quote",
@@ -2053,7 +2063,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -6782,9 +6827,9 @@ dependencies = [
+@@ -6785,9 +6830,9 @@ dependencies = [
   "cfg-if",
   "crossbeam-utils",
   "hashbrown 0.14.5",
@@ -2065,24 +2075,25 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -6932,6 +6977,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -6935,7 +6980,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
  dependencies = [
   "const-oid 0.9.6",
-+ "zeroize",
-+]
-+
-+[[package]]
-+name = "der"
-+version = "0.8.3"
-+source = "registry+https://github.com/rust-lang/crates.io-index"
-+checksum = "6a996a108feb8b427a6e12fcf6af4aa83409b79d72c15337d7741368131ee004"
-+dependencies = [
-+ "const-oid 0.10.2",
-  "pem-rfc7468",
+- "pem-rfc7468 0.7.0",
   "zeroize",
  ]
-@@ -7049,11 +7104,11 @@ checksum = "6184e33543162437515c2e2b48714794e37845ec9851711914eec9d308f6ebe8"
+ 
+@@ -6945,7 +6989,8 @@ version = "0.8.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "6a996a108feb8b427a6e12fcf6af4aa83409b79d72c15337d7741368131ee004"
+ dependencies = [
+- "pem-rfc7468 1.0.0",
++ "const-oid 0.10.2",
++ "pem-rfc7468",
+  "zeroize",
+ ]
+ 
+@@ -7062,11 +7107,11 @@ checksum = "6184e33543162437515c2e2b48714794e37845ec9851711914eec9d308f6ebe8"
  
  [[package]]
  name = "diffy"
@@ -2097,7 +2108,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -7063,7 +7118,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -7076,7 +7121,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
  dependencies = [
   "block-buffer 0.10.4",
@@ -2105,7 +2116,7 @@ index 32632c8aed..d77454e7da 100644
   "crypto-common 0.1.7",
   "subtle",
  ]
-@@ -7115,9 +7169,9 @@ dependencies = [
+@@ -7128,9 +7172,9 @@ dependencies = [
  
  [[package]]
  name = "dirs"
@@ -2117,7 +2128,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "dirs-sys",
  ]
-@@ -7141,7 +7195,7 @@ dependencies = [
+@@ -7154,7 +7198,7 @@ dependencies = [
   "libc",
   "option-ext",
   "redox_users 0.5.2",
@@ -2126,7 +2137,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -7213,14 +7267,14 @@ dependencies = [
+@@ -7226,14 +7270,14 @@ dependencies = [
  
  [[package]]
  name = "dns-lookup"
@@ -2145,15 +2156,14 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -7245,25 +7299,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -7257,21 +7301,6 @@ version = "1.2.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
  
- [[package]]
+-[[package]]
 -name = "dtor"
 -version = "0.1.1"
-+name = "dunce"
-+version = "1.0.5"
- source = "registry+https://github.com/rust-lang/crates.io-index"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
 -checksum = "404d02eeb088a82cfd873006cb713fe411306c7d182c344905e101fb1167d301"
 -dependencies = [
 - "dtor-proc-macro",
@@ -2165,16 +2175,10 @@ index 32632c8aed..d77454e7da 100644
 -source = "registry+https://github.com/rust-lang/crates.io-index"
 -checksum = "f678cf4a922c215c63e0de95eb1ff08a958a81d47e485cf9da1e27bf6305cfa5"
 -
--[[package]]
--name = "dunce"
--version = "1.0.5"
--source = "registry+https://github.com/rust-lang/crates.io-index"
--checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
-+checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
- 
  [[package]]
- name = "dupe"
-@@ -7293,38 +7332,40 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
+ name = "dunce"
+ version = "1.0.5"
+@@ -7306,38 +7335,40 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
  
  [[package]]
  name = "ecdsa"
@@ -2184,7 +2188,7 @@ index 32632c8aed..d77454e7da 100644
 -checksum = "ee27f32b5c5292967d2d4a9d7f1e0b0aed2c15daded5a60300e4abb9d8020bca"
 +checksum = "c0681a4fc24c767085329728d8dfba959af91228aa4610cca4f8ce317ba46ae0"
  dependencies = [
-- "der",
+- "der 0.7.10",
 - "digest 0.10.7",
 - "elliptic-curve",
 + "der 0.8.3",
@@ -2228,7 +2232,7 @@ index 32632c8aed..d77454e7da 100644
   "subtle",
   "zeroize",
  ]
-@@ -7344,17 +7385,36 @@ version = "0.13.8"
+@@ -7357,17 +7388,36 @@ version = "0.13.8"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "b5e6043086bf7973472e0c7dff2142ea0b680d30e18d9cc40f267efbf222bd47"
  dependencies = [
@@ -2243,7 +2247,10 @@ index 32632c8aed..d77454e7da 100644
 - "group",
 + "group 0.13.0",
   "hkdf 0.12.4",
-+ "rand_core 0.6.4",
+- "pem-rfc7468 0.7.0",
+- "pkcs8",
+  "rand_core 0.6.4",
+- "sec1",
 + "sec1 0.7.3",
 + "subtle",
 + "zeroize",
@@ -2262,16 +2269,14 @@ index 32632c8aed..d77454e7da 100644
 + "ff 0.14.0",
 + "group 0.14.0",
 + "hybrid-array 0.4.15",
-  "pem-rfc7468",
-  "pkcs8",
-- "rand_core 0.6.4",
-- "sec1",
++ "pem-rfc7468",
++ "pkcs8",
 + "rand_core 0.10.1",
 + "sec1 0.8.1",
   "subtle",
   "zeroize",
  ]
-@@ -7497,7 +7557,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -7510,7 +7560,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
  dependencies = [
   "libc",
@@ -2280,7 +2285,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -7658,7 +7718,7 @@ checksum = "0ce92ff622d6dadf7349484f42c93271a0d49b7cc4d466a936405bacbe10aa78"
+@@ -7671,7 +7721,7 @@ checksum = "0ce92ff622d6dadf7349484f42c93271a0d49b7cc4d466a936405bacbe10aa78"
  dependencies = [
   "cfg-if",
   "rustix 1.1.6",
@@ -2289,7 +2294,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -7680,12 +7740,28 @@ dependencies = [
+@@ -7693,12 +7743,28 @@ dependencies = [
   "subtle",
  ]
  
@@ -2318,7 +2323,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "file-id"
  version = "0.2.3"
-@@ -7964,8 +8040,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -7977,8 +8043,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "1d930c203dd0b6ff06e0201a4a2fe9149b43c684fd4420555b26d21b1a02956f"
  dependencies = [
   "futures-core",
@@ -2329,7 +2334,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -7995,7 +8071,7 @@ checksum = "9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44"
+@@ -8008,7 +8074,7 @@ checksum = "9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44"
  dependencies = [
   "proc-macro2",
   "quote",
@@ -2338,7 +2343,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -8081,7 +8157,7 @@ dependencies = [
+@@ -8094,7 +8160,7 @@ dependencies = [
   "cfg-if",
   "js-sys",
   "libc",
@@ -2347,7 +2352,7 @@ index 32632c8aed..d77454e7da 100644
   "wasm-bindgen",
  ]
  
-@@ -8149,14 +8225,14 @@ dependencies = [
+@@ -8162,14 +8228,14 @@ dependencies = [
   "gobject-sys",
   "libc",
   "system-deps",
@@ -2365,7 +2370,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "gix-actor",
   "gix-commitgraph",
-@@ -8198,9 +8274,9 @@ dependencies = [
+@@ -8211,9 +8277,9 @@ dependencies = [
  
  [[package]]
  name = "gix-actor"
@@ -2377,7 +2382,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "gix-date",
-@@ -8209,9 +8285,9 @@ dependencies = [
+@@ -8222,9 +8288,9 @@ dependencies = [
  
  [[package]]
  name = "gix-attributes"
@@ -2389,7 +2394,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "gix-error",
-@@ -8226,18 +8302,18 @@ dependencies = [
+@@ -8239,18 +8305,18 @@ dependencies = [
  
  [[package]]
  name = "gix-chunk"
@@ -2412,7 +2417,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "gix-error",
-@@ -8248,9 +8324,9 @@ dependencies = [
+@@ -8261,9 +8327,9 @@ dependencies = [
  
  [[package]]
  name = "gix-commitgraph"
@@ -2424,7 +2429,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "gix-chunk",
-@@ -8262,9 +8338,9 @@ dependencies = [
+@@ -8275,9 +8341,9 @@ dependencies = [
  
  [[package]]
  name = "gix-config"
@@ -2436,7 +2441,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "gix-config-value",
-@@ -8282,9 +8358,9 @@ dependencies = [
+@@ -8295,9 +8361,9 @@ dependencies = [
  
  [[package]]
  name = "gix-config-value"
@@ -2448,7 +2453,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bitflags 2.13.2",
   "bstr",
-@@ -8296,9 +8372,9 @@ dependencies = [
+@@ -8309,9 +8375,9 @@ dependencies = [
  
  [[package]]
  name = "gix-date"
@@ -2460,7 +2465,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "gix-error",
-@@ -8308,9 +8384,9 @@ dependencies = [
+@@ -8321,9 +8387,9 @@ dependencies = [
  
  [[package]]
  name = "gix-diff"
@@ -2472,7 +2477,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "gix-error",
-@@ -8320,9 +8396,9 @@ dependencies = [
+@@ -8333,9 +8399,9 @@ dependencies = [
  
  [[package]]
  name = "gix-discover"
@@ -2484,7 +2489,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "dunce",
-@@ -8344,9 +8420,9 @@ dependencies = [
+@@ -8357,9 +8423,9 @@ dependencies = [
  
  [[package]]
  name = "gix-filter"
@@ -2496,7 +2501,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "encoding_rs",
-@@ -8365,9 +8441,9 @@ dependencies = [
+@@ -8378,9 +8444,9 @@ dependencies = [
  
  [[package]]
  name = "gix-fs"
@@ -2508,7 +2513,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "gix-error",
-@@ -8380,9 +8456,9 @@ dependencies = [
+@@ -8393,9 +8459,9 @@ dependencies = [
  
  [[package]]
  name = "gix-glob"
@@ -2520,7 +2525,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bitflags 2.13.2",
   "bstr",
-@@ -8394,9 +8470,9 @@ dependencies = [
+@@ -8407,9 +8473,9 @@ dependencies = [
  
  [[package]]
  name = "gix-hash"
@@ -2532,7 +2537,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "faster-hex",
   "gix-error",
-@@ -8412,7 +8488,7 @@ checksum = "916cb6b2ec42ffaca624e7867bb382a4673015cb4ffcd7330b48085d02e4c615"
+@@ -8425,7 +8491,7 @@ checksum = "916cb6b2ec42ffaca624e7867bb382a4673015cb4ffcd7330b48085d02e4c615"
  dependencies = [
   "gix-hash",
   "hashbrown 0.17.1",
@@ -2541,7 +2546,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -8440,9 +8516,9 @@ dependencies = [
+@@ -8453,9 +8519,9 @@ dependencies = [
  
  [[package]]
  name = "gix-note"
@@ -2553,7 +2558,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "gix-error",
   "gix-hash",
-@@ -8451,9 +8527,9 @@ dependencies = [
+@@ -8464,9 +8530,9 @@ dependencies = [
  
  [[package]]
  name = "gix-object"
@@ -2565,7 +2570,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "gix-actor",
-@@ -8469,9 +8545,9 @@ dependencies = [
+@@ -8482,9 +8548,9 @@ dependencies = [
  
  [[package]]
  name = "gix-odb"
@@ -2577,7 +2582,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "arc-swap",
   "crc32fast",
-@@ -8488,15 +8564,15 @@ dependencies = [
+@@ -8501,15 +8567,15 @@ dependencies = [
   "gix-utils",
   "gix-zlib",
   "memmap2",
@@ -2596,7 +2601,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "clru",
   "crc32fast",
-@@ -8516,9 +8592,9 @@ dependencies = [
+@@ -8529,9 +8595,9 @@ dependencies = [
  
  [[package]]
  name = "gix-packetline"
@@ -2608,7 +2613,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "faster-hex",
-@@ -8528,14 +8604,14 @@ dependencies = [
+@@ -8541,14 +8607,14 @@ dependencies = [
  
  [[package]]
  name = "gix-parallel"
@@ -2626,7 +2631,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -8552,9 +8628,9 @@ dependencies = [
+@@ -8565,9 +8631,9 @@ dependencies = [
  
  [[package]]
  name = "gix-protocol"
@@ -2638,7 +2643,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "gix-date",
-@@ -8570,9 +8646,9 @@ dependencies = [
+@@ -8583,9 +8649,9 @@ dependencies = [
  
  [[package]]
  name = "gix-quote"
@@ -2650,7 +2655,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "gix-error",
-@@ -8581,9 +8657,9 @@ dependencies = [
+@@ -8594,9 +8660,9 @@ dependencies = [
  
  [[package]]
  name = "gix-ref"
@@ -2662,7 +2667,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "gix-actor",
   "gix-error",
-@@ -8601,9 +8677,9 @@ dependencies = [
+@@ -8614,9 +8680,9 @@ dependencies = [
  
  [[package]]
  name = "gix-refspec"
@@ -2674,7 +2679,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "gix-error",
-@@ -8614,9 +8690,9 @@ dependencies = [
+@@ -8627,9 +8693,9 @@ dependencies = [
  
  [[package]]
  name = "gix-revision"
@@ -2686,7 +2691,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "gix-commitgraph",
-@@ -8630,9 +8706,9 @@ dependencies = [
+@@ -8643,9 +8709,9 @@ dependencies = [
  
  [[package]]
  name = "gix-revwalk"
@@ -2698,7 +2703,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "gix-commitgraph",
   "gix-date",
-@@ -8645,9 +8721,9 @@ dependencies = [
+@@ -8658,9 +8724,9 @@ dependencies = [
  
  [[package]]
  name = "gix-sec"
@@ -2710,7 +2715,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bitflags 2.13.2",
   "gix-path",
-@@ -8657,9 +8733,9 @@ dependencies = [
+@@ -8670,9 +8736,9 @@ dependencies = [
  
  [[package]]
  name = "gix-shallow"
@@ -2722,7 +2727,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "gix-error",
-@@ -8676,7 +8752,7 @@ checksum = "e9275c8ae0646d840ae0156d3f90d39b7beea6e31a398afb9ee72feb293a269c"
+@@ -8689,7 +8755,7 @@ checksum = "e9275c8ae0646d840ae0156d3f90d39b7beea6e31a398afb9ee72feb293a269c"
  dependencies = [
   "gix-fs",
   "libc",
@@ -2731,7 +2736,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "windows-sys 0.61.2",
  ]
-@@ -8689,9 +8765,9 @@ checksum = "1c96f84d731a96780e6a7ad5ee70b4ecc398499946b62617945fbaeb6ab878f8"
+@@ -8702,9 +8768,9 @@ checksum = "1c96f84d731a96780e6a7ad5ee70b4ecc398499946b62617945fbaeb6ab878f8"
  
  [[package]]
  name = "gix-transport"
@@ -2743,7 +2748,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bstr",
   "gix-command",
-@@ -8707,9 +8783,9 @@ dependencies = [
+@@ -8720,9 +8786,9 @@ dependencies = [
  
  [[package]]
  name = "gix-traverse"
@@ -2755,7 +2760,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bitflags 2.13.2",
   "gix-commitgraph",
-@@ -8762,9 +8838,9 @@ dependencies = [
+@@ -8775,9 +8841,9 @@ dependencies = [
  
  [[package]]
  name = "gix-worktree-stream"
@@ -2767,7 +2772,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "gix-attributes",
   "gix-error",
-@@ -8777,14 +8853,14 @@ dependencies = [
+@@ -8790,14 +8856,14 @@ dependencies = [
   "gix-trace",
   "gix-traverse",
   "gix-utils",
@@ -2785,7 +2790,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "gix-error",
   "zlib-rs",
-@@ -8869,11 +8945,22 @@ version = "0.13.0"
+@@ -8882,11 +8948,22 @@ version = "0.13.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "f0f9ef7462f7c099f518d754361858f86d8a07af53ba9af0fe635bbccb151a63"
  dependencies = [
@@ -2809,7 +2814,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "gstreamer"
  version = "0.25.3"
-@@ -9245,7 +9332,7 @@ dependencies = [
+@@ -9258,7 +9335,7 @@ dependencies = [
   "ipnet",
   "jni",
   "once_cell",
@@ -2818,7 +2823,7 @@ index 32632c8aed..d77454e7da 100644
   "ring",
   "thiserror 2.0.21",
   "tinyvec",
-@@ -9265,7 +9352,7 @@ dependencies = [
+@@ -9278,7 +9355,7 @@ dependencies = [
   "ipconfig",
   "moka",
   "once_cell",
@@ -2827,7 +2832,7 @@ index 32632c8aed..d77454e7da 100644
   "rand 0.9.5",
   "resolv-conf",
   "smallvec",
-@@ -9332,7 +9419,7 @@ dependencies = [
+@@ -9345,7 +9422,7 @@ dependencies = [
   "generic-array",
   "hkdf 0.12.4",
   "hmac 0.12.1",
@@ -2836,7 +2841,7 @@ index 32632c8aed..d77454e7da 100644
   "rand_core 0.6.4",
   "sha2 0.10.9",
   "subtle",
-@@ -9401,11 +9488,13 @@ dependencies = [
+@@ -9414,11 +9491,13 @@ dependencies = [
  
  [[package]]
  name = "hybrid-array"
@@ -2852,7 +2857,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -9483,7 +9572,7 @@ version = "0.1.21"
+@@ -9496,7 +9575,7 @@ version = "0.1.21"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "ddc03d96684f9226b8a787cdb71488417b53ab5ea8fdb1dac946cb9431cc8bff"
  dependencies = [
@@ -2861,7 +2866,7 @@ index 32632c8aed..d77454e7da 100644
   "bytes",
   "futures-channel",
   "futures-util",
-@@ -9496,7 +9585,7 @@ dependencies = [
+@@ -9509,7 +9588,7 @@ dependencies = [
   "percent-encoding",
   "pin-project-lite",
   "socket2 0.6.5",
@@ -2870,7 +2875,7 @@ index 32632c8aed..d77454e7da 100644
   "tokio",
   "tower-service",
   "tracing",
-@@ -9530,7 +9619,7 @@ dependencies = [
+@@ -9543,7 +9622,7 @@ dependencies = [
   "i18n-embed-impl",
   "intl-memoizer",
   "log",
@@ -2879,7 +2884,7 @@ index 32632c8aed..d77454e7da 100644
   "rust-embed",
   "thiserror 1.0.69",
   "unic-langid",
-@@ -9581,7 +9670,7 @@ dependencies = [
+@@ -9594,7 +9673,7 @@ dependencies = [
   "js-sys",
   "log",
   "wasm-bindgen",
@@ -2888,7 +2893,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -9954,7 +10043,7 @@ version = "0.2.2"
+@@ -9967,7 +10046,7 @@ version = "0.2.2"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "4250ce6452e92010fdf7268ccc5d14faa80bb12fc741938534c58f16804e03c7"
  dependencies = [
@@ -2897,7 +2902,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -9967,7 +10056,7 @@ dependencies = [
+@@ -9980,7 +10059,7 @@ dependencies = [
   "once_cell",
   "regex",
   "serde",
@@ -2906,7 +2911,7 @@ index 32632c8aed..d77454e7da 100644
   "strip-ansi-escapes",
   "tempfile",
  ]
-@@ -10055,7 +10144,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
+@@ -10068,7 +10147,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
  dependencies = [
   "hermit-abi",
   "libc",
@@ -2915,7 +2920,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -10099,9 +10188,9 @@ dependencies = [
+@@ -10112,9 +10191,9 @@ dependencies = [
  
  [[package]]
  name = "itoa"
@@ -2927,7 +2932,7 @@ index 32632c8aed..d77454e7da 100644
  
  [[package]]
  name = "ixdtf"
-@@ -10243,23 +10332,25 @@ dependencies = [
+@@ -10256,23 +10335,25 @@ dependencies = [
  
  [[package]]
  name = "jsonptr"
@@ -2958,7 +2963,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -10306,7 +10397,7 @@ dependencies = [
+@@ -10319,7 +10400,7 @@ dependencies = [
   "security-framework 2.11.1",
   "security-framework 3.7.0",
   "windows-sys 0.60.2",
@@ -2967,7 +2972,7 @@ index 32632c8aed..d77454e7da 100644
   "zeroize",
  ]
  
-@@ -10399,6 +10490,16 @@ dependencies = [
+@@ -10412,6 +10493,16 @@ dependencies = [
   "windows-link",
  ]
  
@@ -2984,7 +2989,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "libm"
  version = "0.2.16"
-@@ -10407,13 +10508,14 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
+@@ -10420,13 +10511,14 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
  
  [[package]]
  name = "libredox"
@@ -3002,7 +3007,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -10450,9 +10552,9 @@ dependencies = [
+@@ -10463,9 +10555,9 @@ dependencies = [
  
  [[package]]
  name = "link-section"
@@ -3014,7 +3019,7 @@ index 32632c8aed..d77454e7da 100644
  
  [[package]]
  name = "linkify"
-@@ -10465,9 +10567,9 @@ dependencies = [
+@@ -10478,9 +10570,9 @@ dependencies = [
  
  [[package]]
  name = "linktime-proc-macro"
@@ -3026,7 +3031,7 @@ index 32632c8aed..d77454e7da 100644
  
  [[package]]
  name = "linux-keyutils"
-@@ -10512,6 +10614,15 @@ dependencies = [
+@@ -10525,6 +10617,15 @@ dependencies = [
   "scopeguard",
  ]
  
@@ -3042,7 +3047,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "lock_free_hashtable"
  version = "0.1.4"
-@@ -10519,7 +10630,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -10532,7 +10633,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "ebf3631712f5b790675292ff827af269f5d9f920c920b77dc41d0485e3719612"
  dependencies = [
   "atomic 0.5.3",
@@ -3051,7 +3056,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -10587,6 +10698,15 @@ dependencies = [
+@@ -10600,6 +10701,15 @@ dependencies = [
   "hashbrown 0.17.1",
  ]
  
@@ -3067,7 +3072,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "lru-slab"
  version = "0.1.2"
-@@ -10612,7 +10732,7 @@ version = "0.25.0"
+@@ -10625,7 +10735,7 @@ version = "0.25.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "ef1d73c59a56771343712b22ea5615092c612c16ba291c0979e3105dfeec4890"
  dependencies = [
@@ -3076,7 +3081,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -10770,7 +10890,7 @@ checksum = "1788edb87fdc09c7e26304471e2f5be8cdefb1b6930d6e3985fc02ff53bf86ee"
+@@ -10783,7 +10893,7 @@ checksum = "1788edb87fdc09c7e26304471e2f5be8cdefb1b6930d6e3985fc02ff53bf86ee"
  dependencies = [
   "libc",
   "log",
@@ -3085,7 +3090,7 @@ index 32632c8aed..d77454e7da 100644
   "windows-sys 0.61.2",
  ]
  
-@@ -10797,7 +10917,7 @@ dependencies = [
+@@ -10810,7 +10920,7 @@ dependencies = [
   "crossbeam-epoch",
   "crossbeam-utils",
   "equivalent",
@@ -3094,7 +3099,7 @@ index 32632c8aed..d77454e7da 100644
   "portable-atomic",
   "smallvec",
   "tagptr",
-@@ -10874,7 +10994,7 @@ dependencies = [
+@@ -10888,7 +10998,7 @@ dependencies = [
   "serde",
   "serde_json",
   "serde_path_to_error",
@@ -3103,7 +3108,7 @@ index 32632c8aed..d77454e7da 100644
   "tempfile",
   "thiserror 2.0.21",
   "tokio",
-@@ -11047,7 +11167,7 @@ version = "0.50.3"
+@@ -11062,7 +11172,7 @@ version = "0.50.3"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
  dependencies = [
@@ -3112,7 +3117,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -11056,7 +11176,7 @@ version = "0.5.0"
+@@ -11071,7 +11181,7 @@ version = "0.5.0"
  source = "git+https://github.com/helix-editor/nucleo.git?rev=4253de9faabb4e5c6d81d946a5e35a90f87347ee#4253de9faabb4e5c6d81d946a5e35a90f87347ee"
  dependencies = [
   "nucleo-matcher",
@@ -3121,7 +3126,7 @@ index 32632c8aed..d77454e7da 100644
   "rayon",
  ]
  
-@@ -11451,6 +11571,15 @@ dependencies = [
+@@ -11466,6 +11576,15 @@ dependencies = [
   "objc2-core-foundation",
  ]
  
@@ -3137,7 +3142,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "objc2-ui-kit"
  version = "0.3.2"
-@@ -11614,9 +11743,9 @@ dependencies = [
+@@ -11629,9 +11748,9 @@ dependencies = [
  
  [[package]]
  name = "opentelemetry"
@@ -3149,7 +3154,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "futures-core",
   "futures-sink",
-@@ -11628,9 +11757,9 @@ dependencies = [
+@@ -11643,9 +11762,9 @@ dependencies = [
  
  [[package]]
  name = "opentelemetry-appender-tracing"
@@ -3161,7 +3166,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "opentelemetry",
   "tracing",
-@@ -11640,43 +11769,44 @@ dependencies = [
+@@ -11655,43 +11774,44 @@ dependencies = [
  
  [[package]]
  name = "opentelemetry-http"
@@ -3215,7 +3220,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "base64 0.22.1",
   "const-hex",
-@@ -11684,28 +11814,28 @@ dependencies = [
+@@ -11699,28 +11819,28 @@ dependencies = [
   "opentelemetry_sdk",
   "prost",
   "serde",
@@ -3249,7 +3254,7 @@ index 32632c8aed..d77454e7da 100644
   "rand 0.9.5",
   "thiserror 2.0.21",
   "tokio",
-@@ -11787,7 +11917,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -11802,7 +11922,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
  dependencies = [
   "libc",
@@ -3258,7 +3263,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -11812,22 +11942,21 @@ version = "0.13.2"
+@@ -11827,22 +11947,21 @@ version = "0.13.2"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "c9863ad85fa8f4460f9c48cb909d38a0d689dba1f6f6988a5e3e0d31071bcd4b"
  dependencies = [
@@ -3290,7 +3295,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -11851,7 +11980,7 @@ dependencies = [
+@@ -11866,7 +11985,7 @@ dependencies = [
   "num-bigint",
   "once_cell",
   "pagable_derive",
@@ -3299,7 +3304,7 @@ index 32632c8aed..d77454e7da 100644
   "postcard",
   "regex",
   "sequence_trie",
-@@ -11913,8 +12042,18 @@ version = "0.12.5"
+@@ -11928,8 +12047,18 @@ version = "0.12.5"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "93857453250e3077bd71ff98b6a65ea6621a19bb0f559a85248955ac12c45a1a"
  dependencies = [
@@ -3320,7 +3325,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -11930,6 +12069,18 @@ dependencies = [
+@@ -11945,6 +12074,18 @@ dependencies = [
   "windows-link",
  ]
  
@@ -3339,7 +3344,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "paste"
  version = "1.0.15"
-@@ -11984,15 +12135,15 @@ version = "4.0.0"
+@@ -11999,19 +12140,10 @@ version = "4.0.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "d354a98a3d1251555de99e8fdd8afda05573c31b82f59063a7b0a29b5527f120"
  dependencies = [
@@ -3348,17 +3353,19 @@ index 32632c8aed..d77454e7da 100644
   "serde_core",
  ]
  
+-[[package]]
+-name = "pem-rfc7468"
+-version = "0.7.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "88b39c9bfcfc231068454382784bb460aae594343fb030d46e9f50a645418412"
+-dependencies = [
+- "base64ct",
+-]
+-
  [[package]]
  name = "pem-rfc7468"
--version = "0.7.0"
-+version = "1.0.0"
- source = "registry+https://github.com/rust-lang/crates.io-index"
--checksum = "88b39c9bfcfc231068454382784bb460aae594343fb030d46e9f50a645418412"
-+checksum = "a6305423e0e7738146434843d1694d621cce767262b2a86910beab705e4493d9"
- dependencies = [
-  "base64ct",
- ]
-@@ -12153,11 +12304,11 @@ dependencies = [
+ version = "1.0.0"
+@@ -12177,11 +12309,11 @@ dependencies = [
  
  [[package]]
  name = "pkcs8"
@@ -3368,12 +3375,12 @@ index 32632c8aed..d77454e7da 100644
 -checksum = "f950b2377845cebe5cf8b5165cb3cc1a5e0fa5cfa3e1f7f55707d8fd82e0a7b7"
 +checksum = "451913da69c775a56034ea8d9003d27ee8948e12443eae7c038ba100a4f21cb7"
  dependencies = [
-- "der",
+- "der 0.7.10",
 + "der 0.8.3",
   "spki",
  ]
  
-@@ -12167,6 +12318,12 @@ version = "0.3.34"
+@@ -12191,6 +12323,12 @@ version = "0.3.34"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
  
@@ -3386,7 +3393,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "plist"
  version = "1.10.0"
-@@ -12175,7 +12332,7 @@ checksum = "7da1d65da6dd5d1e44199ac0f58712d241c0f439f80adea8924d832384087f85"
+@@ -12199,7 +12337,7 @@ checksum = "7da1d65da6dd5d1e44199ac0f58712d241c0f439f80adea8924d832384087f85"
  dependencies = [
   "base64 0.22.1",
   "indexmap 2.14.2",
@@ -3395,7 +3402,7 @@ index 32632c8aed..d77454e7da 100644
   "serde",
   "time",
  ]
-@@ -12356,13 +12513,40 @@ dependencies = [
+@@ -12380,13 +12518,40 @@ dependencies = [
   "syn 2.0.119",
  ]
  
@@ -3437,7 +3444,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -12393,7 +12577,7 @@ dependencies = [
+@@ -12417,7 +12582,7 @@ dependencies = [
   "proc-macro-error-attr3",
   "proc-macro2",
   "quote",
@@ -3446,7 +3453,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -12425,7 +12609,7 @@ version = "31.0.1"
+@@ -12449,7 +12614,7 @@ version = "31.0.1"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "cf52d87428247c5aa3760ac8e7d8b13ec7b3579b955a8c3f311668b6860acba5"
  dependencies = [
@@ -3455,7 +3462,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -12460,7 +12644,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -12484,7 +12649,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "343d3bd7056eda839b03204e68deff7d1b13aba7af2b2fd16890697274262ee7"
  dependencies = [
   "heck",
@@ -3464,7 +3471,7 @@ index 32632c8aed..d77454e7da 100644
   "log",
   "multimap",
   "petgraph",
-@@ -12479,7 +12663,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -12503,7 +12668,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "1ad9c5423459fa2f729b8d9235fab810aa29628b171467744fc86d21460ad70d"
  dependencies = [
   "anyhow",
@@ -3473,7 +3480,7 @@ index 32632c8aed..d77454e7da 100644
   "proc-macro2",
   "quote",
   "syn 2.0.119",
-@@ -12590,7 +12774,7 @@ checksum = "1c8d9ca532f185d5d4db7a7c9d51420b452168ea1c2b913953281bd6fe1fcbd0"
+@@ -12614,7 +12779,7 @@ checksum = "1c8d9ca532f185d5d4db7a7c9d51420b452168ea1c2b913953281bd6fe1fcbd0"
  dependencies = [
   "proc-macro2",
   "quote",
@@ -3482,7 +3489,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -12605,9 +12789,9 @@ dependencies = [
+@@ -12629,9 +12794,9 @@ dependencies = [
  
  [[package]]
  name = "pulldown-cmark"
@@ -3494,7 +3501,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bitflags 2.13.2",
   "memchr",
-@@ -12617,9 +12801,9 @@ dependencies = [
+@@ -12641,9 +12806,9 @@ dependencies = [
  
  [[package]]
  name = "pulldown-cmark-escape"
@@ -3506,7 +3513,7 @@ index 32632c8aed..d77454e7da 100644
  
  [[package]]
  name = "pxfm"
-@@ -12641,6 +12825,15 @@ name = "quick-xml"
+@@ -12665,6 +12830,15 @@ name = "quick-xml"
  version = "0.41.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
@@ -3522,7 +3529,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "memchr",
   "serde",
-@@ -12654,7 +12847,7 @@ checksum = "95c589f335db0f6aaa168a7cd27b1fc6920f5e1470c804f814d9cd6e62a0f70b"
+@@ -12678,7 +12852,7 @@ checksum = "95c589f335db0f6aaa168a7cd27b1fc6920f5e1470c804f814d9cd6e62a0f70b"
  dependencies = [
   "env_logger",
   "log",
@@ -3531,7 +3538,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -12684,10 +12877,11 @@ version = "0.11.19"
+@@ -12708,10 +12882,11 @@ version = "0.11.19"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "0e750cca55fe4f0439a15d0bb529da9651e79993e8e72c61a899a36d462befbe"
  dependencies = [
@@ -3544,7 +3551,7 @@ index 32632c8aed..d77454e7da 100644
   "rand_pcg",
   "ring",
   "rustc-hash",
-@@ -12711,7 +12905,7 @@ dependencies = [
+@@ -12735,7 +12910,7 @@ dependencies = [
   "once_cell",
   "socket2 0.5.10",
   "tracing",
@@ -3553,7 +3560,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -12724,7 +12918,7 @@ dependencies = [
+@@ -12748,7 +12923,7 @@ dependencies = [
   "libc",
   "log",
   "socket2 0.5.10",
@@ -3562,7 +3569,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -12778,7 +12972,7 @@ dependencies = [
+@@ -12802,7 +12977,7 @@ dependencies = [
   "asynk-strim",
   "bytes",
   "futures",
@@ -3571,7 +3578,7 @@ index 32632c8aed..d77454e7da 100644
   "pin-project-lite",
   "rama-error",
   "rama-macros",
-@@ -12829,7 +13023,7 @@ dependencies = [
+@@ -12853,7 +13028,7 @@ dependencies = [
   "httpdate",
   "iri-string",
   "matchit 0.9.1",
@@ -3580,7 +3587,7 @@ index 32632c8aed..d77454e7da 100644
   "percent-encoding",
   "pin-project-lite",
   "radix_trie 0.3.0",
-@@ -12880,7 +13074,7 @@ dependencies = [
+@@ -12904,7 +13079,7 @@ dependencies = [
   "httpdate",
   "indexmap 2.14.2",
   "itoa",
@@ -3589,7 +3596,7 @@ index 32632c8aed..d77454e7da 100644
   "pin-project-lite",
   "rama-core",
   "rama-http",
-@@ -12970,7 +13164,7 @@ dependencies = [
+@@ -12994,7 +13169,7 @@ dependencies = [
   "itertools 0.14.0",
   "md5",
   "nom 8.0.0",
@@ -3598,7 +3605,7 @@ index 32632c8aed..d77454e7da 100644
   "pin-project-lite",
   "psl",
   "radix_trie 0.3.0",
-@@ -13067,7 +13261,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -13091,7 +13266,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "bf28b18ba4a57f8334d7992d3f8020194ea359b246ae6f8f98b8df524c7a14ef"
  dependencies = [
   "const_format",
@@ -3607,7 +3614,7 @@ index 32632c8aed..d77454e7da 100644
   "pin-project-lite",
   "rama-macros",
   "regex",
-@@ -13110,9 +13304,9 @@ dependencies = [
+@@ -13134,9 +13309,9 @@ dependencies = [
  
  [[package]]
  name = "rand"
@@ -3619,7 +3626,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "chacha20 0.10.2",
   "getrandom 0.4.2",
-@@ -13174,11 +13368,11 @@ dependencies = [
+@@ -13198,11 +13373,11 @@ dependencies = [
  
  [[package]]
  name = "rand_regex"
@@ -3634,7 +3641,7 @@ index 32632c8aed..d77454e7da 100644
   "regex-syntax",
  ]
  
-@@ -13219,10 +13413,10 @@ dependencies = [
+@@ -13243,10 +13418,10 @@ dependencies = [
   "hashbrown 0.17.1",
   "itertools 0.14.0",
   "kasuari",
@@ -3647,7 +3654,7 @@ index 32632c8aed..d77454e7da 100644
   "thiserror 2.0.21",
   "unicode-segmentation",
   "unicode-truncate",
-@@ -13297,7 +13491,7 @@ dependencies = [
+@@ -13321,7 +13496,7 @@ dependencies = [
   "line-clipping",
   "ratatui-core",
   "serde",
@@ -3656,7 +3663,7 @@ index 32632c8aed..d77454e7da 100644
   "time",
   "unicode-segmentation",
   "unicode-width 0.2.3",
-@@ -13349,9 +13543,9 @@ dependencies = [
+@@ -13373,9 +13548,9 @@ dependencies = [
  
  [[package]]
  name = "redox_syscall"
@@ -3668,7 +3675,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bitflags 2.13.2",
  ]
-@@ -13450,72 +13644,75 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
+@@ -13474,72 +13649,75 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
  dependencies = [
   "base64 0.22.1",
   "bytes",
@@ -3760,7 +3767,7 @@ index 32632c8aed..d77454e7da 100644
   "tokio-util",
   "tower",
   "tower-http",
-@@ -13523,7 +13720,7 @@ dependencies = [
+@@ -13547,7 +13725,7 @@ dependencies = [
   "url",
   "wasm-bindgen",
   "wasm-bindgen-futures",
@@ -3769,7 +3776,7 @@ index 32632c8aed..d77454e7da 100644
   "web-sys",
  ]
  
-@@ -13545,12 +13742,12 @@ checksum = "1e061d1b48cb8d38042de4ae0a7a6401009d6143dc80d2e2d6f31f0bdd6470c7"
+@@ -13569,12 +13747,12 @@ checksum = "1e061d1b48cb8d38042de4ae0a7a6401009d6143dc80d2e2d6f31f0bdd6470c7"
  
  [[package]]
  name = "rfc6979"
@@ -3786,7 +3793,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -13594,7 +13791,7 @@ checksum = "1c25ef604ac7dd839d44d64648952ea23c97866f124ff671b0ed2cf3ad9bb06e"
+@@ -13618,7 +13796,7 @@ checksum = "1c25ef604ac7dd839d44d64648952ea23c97866f124ff671b0ed2cf3ad9bb06e"
  dependencies = [
   "proc-macro2",
   "quote",
@@ -3795,7 +3802,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -13603,7 +13800,7 @@ version = "3.6.0"
+@@ -13627,7 +13805,7 @@ version = "3.6.0"
  source = "git+https://github.com/modelcontextprotocol/rust-sdk?rev=b11a40d889e022087d7f2b8cd23aa28e19ceaf5b#b11a40d889e022087d7f2b8cd23aa28e19ceaf5b"
  dependencies = [
   "async-trait",
@@ -3804,7 +3811,7 @@ index 32632c8aed..d77454e7da 100644
   "bytes",
   "chrono",
   "futures",
-@@ -13616,10 +13813,10 @@ dependencies = [
+@@ -13640,10 +13818,10 @@ dependencies = [
   "pastey",
   "pin-project-lite",
   "process-wrap",
@@ -3818,7 +3825,7 @@ index 32632c8aed..d77454e7da 100644
   "serde",
   "serde_json",
   "sse-stream",
-@@ -13642,21 +13839,22 @@ dependencies = [
+@@ -13666,21 +13844,22 @@ dependencies = [
   "proc-macro2",
   "quote",
   "serde_json",
@@ -3846,7 +3853,7 @@ index 32632c8aed..d77454e7da 100644
   "rtc-datachannel",
   "rtc-dtls",
   "rtc-ice",
-@@ -13675,16 +13873,35 @@ dependencies = [
+@@ -13699,16 +13878,35 @@ dependencies = [
   "sansio",
   "serde",
   "serde_json",
@@ -3885,7 +3892,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bytes",
   "log",
-@@ -13695,47 +13912,34 @@ dependencies = [
+@@ -13719,47 +13917,34 @@ dependencies = [
  
  [[package]]
  name = "rtc-dtls"
@@ -3940,7 +3947,7 @@ index 32632c8aed..d77454e7da 100644
   "rtc-mdns",
   "rtc-shared",
   "rtc-stun",
-@@ -13747,35 +13951,23 @@ dependencies = [
+@@ -13771,35 +13956,23 @@ dependencies = [
  
  [[package]]
  name = "rtc-interceptor"
@@ -3981,7 +3988,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bytes",
   "log",
-@@ -13786,13 +13978,13 @@ dependencies = [
+@@ -13810,13 +13983,13 @@ dependencies = [
  
  [[package]]
  name = "rtc-media"
@@ -3998,7 +4005,7 @@ index 32632c8aed..d77454e7da 100644
   "rtc-rtp",
   "rtc-shared",
   "thiserror 2.0.21",
-@@ -13800,9 +13992,9 @@ dependencies = [
+@@ -13824,9 +13997,9 @@ dependencies = [
  
  [[package]]
  name = "rtc-rtcp"
@@ -4010,7 +4017,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bytes",
   "rtc-shared",
-@@ -13810,27 +14002,27 @@ dependencies = [
+@@ -13834,27 +14007,27 @@ dependencies = [
  
  [[package]]
  name = "rtc-rtp"
@@ -4044,7 +4051,7 @@ index 32632c8aed..d77454e7da 100644
   "rtc-shared",
   "rustc-hash",
   "slab",
-@@ -13839,30 +14031,25 @@ dependencies = [
+@@ -13863,30 +14036,25 @@ dependencies = [
  
  [[package]]
  name = "rtc-sdp"
@@ -4081,7 +4088,7 @@ index 32632c8aed..d77454e7da 100644
   "serde",
   "substring",
   "thiserror 2.0.21",
-@@ -13872,50 +14059,44 @@ dependencies = [
+@@ -13896,50 +14064,44 @@ dependencies = [
  
  [[package]]
  name = "rtc-srtp"
@@ -4142,7 +4149,7 @@ index 32632c8aed..d77454e7da 100644
   "rtc-shared",
   "rtc-stun",
   "sansio",
-@@ -14024,7 +14205,7 @@ dependencies = [
+@@ -14048,7 +14210,7 @@ dependencies = [
   "errno",
   "libc",
   "linux-raw-sys 0.4.15",
@@ -4151,7 +4158,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -14037,7 +14218,7 @@ dependencies = [
+@@ -14061,7 +14223,7 @@ dependencies = [
   "errno",
   "libc",
   "linux-raw-sys 0.12.1",
@@ -4160,7 +4167,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -14096,7 +14277,7 @@ dependencies = [
+@@ -14120,7 +14282,7 @@ dependencies = [
   "security-framework 3.7.0",
   "security-framework-sys",
   "webpki-root-certs",
@@ -4169,7 +4176,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -14226,18 +14407,6 @@ dependencies = [
+@@ -14250,18 +14412,6 @@ dependencies = [
   "syn 1.0.109",
  ]
  
@@ -4188,7 +4195,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "schemars"
  version = "0.9.0"
-@@ -14252,40 +14421,28 @@ dependencies = [
+@@ -14276,40 +14426,28 @@ dependencies = [
  
  [[package]]
  name = "schemars"
@@ -4235,14 +4242,13 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -14317,10 +14474,23 @@ version = "0.7.3"
+@@ -14341,10 +14479,23 @@ version = "0.7.3"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "d3e97a565f76233a6003f9f5c54be1d9c5bdfa3eccfb189469f11ec4901c47dc"
  dependencies = [
 - "base16ct",
-- "der",
 + "base16ct 0.2.0",
-+ "der 0.7.10",
+  "der 0.7.10",
   "generic-array",
 - "pkcs8",
 + "subtle",
@@ -4262,7 +4268,7 @@ index 32632c8aed..d77454e7da 100644
   "subtle",
   "zeroize",
  ]
-@@ -14359,7 +14529,7 @@ dependencies = [
+@@ -14383,7 +14534,7 @@ dependencies = [
   "rand 0.8.8",
   "serde",
   "sha2 0.10.9",
@@ -4271,7 +4277,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -14416,9 +14586,9 @@ dependencies = [
+@@ -14440,9 +14591,9 @@ dependencies = [
  
  [[package]]
  name = "sentry"
@@ -4283,7 +4289,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "cfg_aliases 0.2.1",
   "sentry-core",
-@@ -14426,26 +14596,25 @@ dependencies = [
+@@ -14450,26 +14601,25 @@ dependencies = [
  
  [[package]]
  name = "sentry-core"
@@ -4316,7 +4322,7 @@ index 32632c8aed..d77454e7da 100644
   "serde",
   "serde_json",
   "thiserror 2.0.21",
-@@ -14487,18 +14656,18 @@ checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
+@@ -14511,18 +14661,18 @@ checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
  dependencies = [
   "proc-macro2",
   "quote",
@@ -4339,7 +4345,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -14539,6 +14708,19 @@ dependencies = [
+@@ -14563,6 +14713,19 @@ dependencies = [
   "zmij",
  ]
  
@@ -4359,7 +4365,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "serde_path_to_error"
  version = "0.1.20"
-@@ -14563,9 +14745,9 @@ dependencies = [
+@@ -14587,9 +14750,9 @@ dependencies = [
  
  [[package]]
  name = "serde_spanned"
@@ -4371,7 +4377,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "serde_core",
  ]
-@@ -14584,11 +14766,11 @@ dependencies = [
+@@ -14608,11 +14771,11 @@ dependencies = [
  
  [[package]]
  name = "serde_with"
@@ -4386,7 +4392,7 @@ index 32632c8aed..d77454e7da 100644
   "bs58",
   "chrono",
   "hex",
-@@ -14596,7 +14778,7 @@ dependencies = [
+@@ -14620,7 +14783,7 @@ dependencies = [
   "indexmap 2.14.2",
   "jiff",
   "schemars 0.9.0",
@@ -4395,7 +4401,7 @@ index 32632c8aed..d77454e7da 100644
   "serde_core",
   "serde_json",
   "serde_with_macros",
-@@ -14605,27 +14787,24 @@ dependencies = [
+@@ -14629,27 +14792,24 @@ dependencies = [
  
  [[package]]
  name = "serde_with_macros"
@@ -4431,7 +4437,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -14641,27 +14820,27 @@ dependencies = [
+@@ -14665,27 +14825,27 @@ dependencies = [
  
  [[package]]
  name = "serial_test"
@@ -4465,7 +4471,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -14711,9 +14890,9 @@ dependencies = [
+@@ -14735,9 +14895,9 @@ dependencies = [
  
  [[package]]
  name = "sha2"
@@ -4477,7 +4483,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "cfg-if",
   "cpufeatures 0.3.0",
-@@ -14777,6 +14956,16 @@ dependencies = [
+@@ -14801,6 +14961,16 @@ dependencies = [
   "signal-hook-registry",
  ]
  
@@ -4494,7 +4500,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "signal-hook-mio"
  version = "0.2.5"
-@@ -14785,7 +14974,7 @@ checksum = "b75a19a7a740b25bc7944bdee6172368f988763b744e3d4dfe753f6b4ece40cc"
+@@ -14809,7 +14979,7 @@ checksum = "b75a19a7a740b25bc7944bdee6172368f988763b744e3d4dfe753f6b4ece40cc"
  dependencies = [
   "libc",
   "mio",
@@ -4503,7 +4509,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -14804,10 +14993,19 @@ version = "2.2.0"
+@@ -14828,10 +14998,19 @@ version = "2.2.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
  dependencies = [
@@ -4524,7 +4530,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "simd-adler32"
  version = "0.3.8"
-@@ -14836,6 +15034,15 @@ version = "2.7.0"
+@@ -14860,6 +15039,15 @@ version = "2.7.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
  
@@ -4540,7 +4546,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "simple_asn1"
  version = "0.6.4"
-@@ -14862,9 +15069,9 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
+@@ -14886,9 +15074,9 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
  
  [[package]]
  name = "smallvec"
@@ -4552,7 +4558,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "serde",
  ]
-@@ -14932,9 +15139,9 @@ dependencies = [
+@@ -14956,9 +15144,9 @@ dependencies = [
  
  [[package]]
  name = "sonora"
@@ -4564,7 +4570,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "sonora-aec3",
   "sonora-agc2",
-@@ -14946,9 +15153,9 @@ dependencies = [
+@@ -14970,9 +15158,9 @@ dependencies = [
  
  [[package]]
  name = "sonora-aec3"
@@ -4576,7 +4582,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "sonora-common-audio",
   "sonora-fft",
-@@ -14957,9 +15164,9 @@ dependencies = [
+@@ -14981,9 +15169,9 @@ dependencies = [
  
  [[package]]
  name = "sonora-agc2"
@@ -4588,7 +4594,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "bytemuck",
   "derive_more 2.1.1",
-@@ -14971,9 +15178,9 @@ dependencies = [
+@@ -14995,9 +15183,9 @@ dependencies = [
  
  [[package]]
  name = "sonora-common-audio"
@@ -4600,7 +4606,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "derive_more 2.1.1",
   "sonora-simd",
-@@ -14981,24 +15188,27 @@ dependencies = [
+@@ -15005,24 +15193,27 @@ dependencies = [
  
  [[package]]
  name = "sonora-fft"
@@ -4634,7 +4640,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "cpufeatures 0.3.0",
  ]
-@@ -15033,17 +15243,17 @@ version = "0.9.8"
+@@ -15057,17 +15248,17 @@ version = "0.9.8"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
  dependencies = [
@@ -4651,12 +4657,12 @@ index 32632c8aed..d77454e7da 100644
 +checksum = "7ef958a98b9d5da290cfc78946e9f3e61e1e62a18db0d92cac0b83cc161491a9"
  dependencies = [
   "base64ct",
-- "der",
+- "der 0.7.10",
 + "der 0.8.3",
  ]
  
  [[package]]
-@@ -15085,7 +15295,7 @@ dependencies = [
+@@ -15109,7 +15300,7 @@ dependencies = [
   "rustls",
   "serde",
   "serde_json",
@@ -4665,7 +4671,7 @@ index 32632c8aed..d77454e7da 100644
   "smallvec",
   "thiserror 2.0.21",
   "time",
-@@ -15156,7 +15366,7 @@ dependencies = [
+@@ -15180,7 +15371,7 @@ dependencies = [
   "percent-encoding",
   "serde",
   "sha1 0.11.0",
@@ -4674,7 +4680,7 @@ index 32632c8aed..d77454e7da 100644
   "sqlx-core",
   "thiserror 2.0.21",
   "time",
-@@ -15188,10 +15398,10 @@ dependencies = [
+@@ -15212,10 +15403,10 @@ dependencies = [
   "log",
   "md-5 0.11.0",
   "memchr",
@@ -4687,7 +4693,7 @@ index 32632c8aed..d77454e7da 100644
   "smallvec",
   "sqlx-core",
   "stringprep",
-@@ -15199,7 +15409,7 @@ dependencies = [
+@@ -15223,7 +15414,7 @@ dependencies = [
   "time",
   "tracing",
   "uuid",
@@ -4696,7 +4702,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -15435,34 +15645,13 @@ version = "0.11.1"
+@@ -15459,34 +15650,13 @@ version = "0.11.1"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
  
@@ -4732,7 +4738,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -15654,9 +15843,9 @@ dependencies = [
+@@ -15678,9 +15848,9 @@ dependencies = [
  
  [[package]]
  name = "syn"
@@ -4744,7 +4750,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "proc-macro2",
   "quote",
-@@ -15691,7 +15880,7 @@ checksum = "901704edd0dfe137f1987838ee4f259e4e063c31371bdb423f7ae38ec6f77f02"
+@@ -15715,7 +15885,7 @@ checksum = "901704edd0dfe137f1987838ee4f259e4e063c31371bdb423f7ae38ec6f77f02"
  dependencies = [
   "proc-macro2",
   "quote",
@@ -4753,7 +4759,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -15734,6 +15923,17 @@ dependencies = [
+@@ -15758,6 +15928,17 @@ dependencies = [
   "system-configuration-sys",
  ]
  
@@ -4771,7 +4777,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "system-configuration-sys"
  version = "0.6.0"
-@@ -15753,7 +15953,7 @@ dependencies = [
+@@ -15777,7 +15958,7 @@ dependencies = [
   "cfg-expr",
   "heck",
   "pkg-config",
@@ -4780,7 +4786,7 @@ index 32632c8aed..d77454e7da 100644
   "version-compare",
  ]
  
-@@ -15795,7 +15995,7 @@ dependencies = [
+@@ -15819,7 +16000,7 @@ dependencies = [
   "getrandom 0.4.2",
   "once_cell",
   "rustix 1.1.6",
@@ -4789,7 +4795,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -15848,9 +16048,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -15872,9 +16053,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "9048a889effe34a5cddee0af7f53285198b16dca3be510858d38dfdb3e62a04e"
  dependencies = [
   "bitflags 2.13.2",
@@ -4801,7 +4807,7 @@ index 32632c8aed..d77454e7da 100644
   "windows-sys 0.61.2",
  ]
  
-@@ -15927,7 +16127,7 @@ dependencies = [
+@@ -15951,7 +16132,7 @@ dependencies = [
   "pest_derive",
   "phf",
   "sha2 0.10.9",
@@ -4810,7 +4816,7 @@ index 32632c8aed..d77454e7da 100644
   "siphasher",
   "terminfo",
   "termios",
-@@ -15961,7 +16161,7 @@ dependencies = [
+@@ -15985,7 +16166,7 @@ dependencies = [
   "cfg-if",
   "proc-macro2",
   "quote",
@@ -4819,7 +4825,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -15972,7 +16172,7 @@ checksum = "802d6165a14df1598b7290a8c546df402940d3cfbe82d15c0fd35de176771693"
+@@ -15996,7 +16177,7 @@ checksum = "802d6165a14df1598b7290a8c546df402940d3cfbe82d15c0fd35de176771693"
  dependencies = [
   "proc-macro2",
   "quote",
@@ -4828,7 +4834,7 @@ index 32632c8aed..d77454e7da 100644
   "test-case-core",
  ]
  
-@@ -16065,7 +16265,7 @@ checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
+@@ -16089,7 +16270,7 @@ checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
  dependencies = [
   "proc-macro2",
   "quote",
@@ -4837,7 +4843,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -16223,11 +16423,12 @@ dependencies = [
+@@ -16247,11 +16428,12 @@ dependencies = [
   "bytes",
   "libc",
   "mio",
@@ -4851,17 +4857,19 @@ index 32632c8aed..d77454e7da 100644
   "windows-sys 0.61.2",
  ]
  
-@@ -16353,32 +16554,17 @@ dependencies = [
+@@ -16377,32 +16559,17 @@ dependencies = [
  
  [[package]]
  name = "toml"
 -version = "0.9.12+spec-1.1.0"
--source = "registry+https://github.com/rust-lang/crates.io-index"
++version = "1.2.2+spec-1.1.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
 -checksum = "cf92845e79fc2e2def6a5d828f0801e29a2f8acc037becc5ab08595c7d5e9863"
--dependencies = [
-- "indexmap 2.14.2",
-- "serde_core",
-- "serde_spanned",
++checksum = "5426cb1b964690d913f6c5c1a1ae0b42f428ec506bb4d452876d7a209c9bca3b"
+ dependencies = [
+  "indexmap 2.14.2",
+  "serde_core",
+  "serde_spanned",
 - "toml_datetime 0.7.5+spec-1.1.0",
 - "toml_parser",
 - "toml_writer",
@@ -4871,14 +4879,12 @@ index 32632c8aed..d77454e7da 100644
 -[[package]]
 -name = "toml"
 -version = "1.0.6+spec-1.1.0"
-+version = "1.2.2+spec-1.1.0"
- source = "registry+https://github.com/rust-lang/crates.io-index"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
 -checksum = "399b1124a3c9e16766831c6bba21e50192572cdd98706ea114f9502509686ffc"
-+checksum = "5426cb1b964690d913f6c5c1a1ae0b42f428ec506bb4d452876d7a209c9bca3b"
- dependencies = [
-  "indexmap 2.14.2",
-  "serde_core",
-  "serde_spanned",
+-dependencies = [
+- "indexmap 2.14.2",
+- "serde_core",
+- "serde_spanned",
 - "toml_datetime 1.1.1+spec-1.1.0",
 + "toml_datetime 1.1.3+spec-1.1.0",
   "toml_parser",
@@ -4888,7 +4894,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -16392,9 +16578,9 @@ dependencies = [
+@@ -16416,9 +16583,9 @@ dependencies = [
  
  [[package]]
  name = "toml_datetime"
@@ -4900,7 +4906,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "serde_core",
  ]
-@@ -16413,31 +16599,31 @@ dependencies = [
+@@ -16437,31 +16604,31 @@ dependencies = [
  
  [[package]]
  name = "toml_edit"
@@ -4940,7 +4946,7 @@ index 32632c8aed..d77454e7da 100644
  
  [[package]]
  name = "tonic"
-@@ -16511,6 +16697,17 @@ dependencies = [
+@@ -16535,6 +16702,17 @@ dependencies = [
   "tonic-build",
  ]
  
@@ -4958,7 +4964,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "tower"
  version = "0.5.3"
-@@ -16649,9 +16846,9 @@ dependencies = [
+@@ -16673,9 +16851,9 @@ dependencies = [
  
  [[package]]
  name = "tracing-opentelemetry"
@@ -4970,7 +4976,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "js-sys",
   "opentelemetry",
-@@ -16717,13 +16914,12 @@ dependencies = [
+@@ -16741,13 +16919,12 @@ dependencies = [
  
  [[package]]
  name = "tree-sitter"
@@ -4986,7 +4992,7 @@ index 32632c8aed..d77454e7da 100644
   "serde_json",
   "streaming-iterator",
   "tree-sitter-language",
-@@ -16741,9 +16937,9 @@ dependencies = [
+@@ -16765,9 +16942,9 @@ dependencies = [
  
  [[package]]
  name = "tree-sitter-language"
@@ -4998,7 +5004,7 @@ index 32632c8aed..d77454e7da 100644
  
  [[package]]
  name = "tree-sitter-powershell"
-@@ -16784,9 +16980,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+@@ -16808,9 +16985,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
  
  [[package]]
  name = "ts-rs"
@@ -5010,7 +5016,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "serde_json",
   "thiserror 2.0.21",
-@@ -16796,9 +16992,9 @@ dependencies = [
+@@ -16820,9 +16997,9 @@ dependencies = [
  
  [[package]]
  name = "ts-rs-macros"
@@ -5022,7 +5028,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "proc-macro2",
   "quote",
-@@ -16894,7 +17090,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
+@@ -16918,7 +17095,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
  dependencies = [
   "memoffset",
   "tempfile",
@@ -5031,7 +5037,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -17019,10 +17215,10 @@ dependencies = [
+@@ -17043,10 +17220,10 @@ dependencies = [
  ]
  
  [[package]]
@@ -5045,7 +5051,37 @@ index 32632c8aed..d77454e7da 100644
  
  [[package]]
  name = "untrusted"
-@@ -17146,9 +17342,9 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
+@@ -17062,11 +17239,11 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
+ 
+ [[package]]
+ name = "ureq"
+-version = "3.3.0"
++version = "3.5.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "dea7109cdcd5864d4eeb1b58a1648dc9bf520360d7af16ec26d0a9354bafcfc0"
++checksum = "3ac5cecf619ca81f66a96482db09687c9f7465af65f4300a8c30cca05bd5a59d"
+ dependencies = [
+- "base64 0.22.1",
++ "base64 0.23.1",
+  "der 0.8.3",
+  "log",
+  "native-tls",
+@@ -17079,11 +17256,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "ureq-proto"
+-version = "0.6.0"
++version = "0.7.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e994ba84b0bd1b1b0cf92878b7ef898a5c1760108fe7b6010327e274917a808c"
++checksum = "622dce33c252115466d83f63e9744a18f12b4406aae51a01c15ad8fcf1185eb3"
+ dependencies = [
+- "base64 0.22.1",
++ "base64 0.23.1",
+  "http",
+  "httparse",
+  "log",
+@@ -17205,9 +17382,9 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
  
  [[package]]
  name = "vt100"
@@ -5057,7 +5093,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "itoa",
   "unicode-width 0.2.3",
-@@ -17217,6 +17413,15 @@ version = "0.11.1+wasi-snapshot-preview1"
+@@ -17276,6 +17453,15 @@ version = "0.11.1+wasi-snapshot-preview1"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
  
@@ -5073,7 +5109,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "wasip2"
  version = "1.0.2+wasi-0.2.9"
-@@ -17237,9 +17442,12 @@ dependencies = [
+@@ -17296,9 +17482,12 @@ dependencies = [
  
  [[package]]
  name = "wasite"
@@ -5088,7 +5124,7 @@ index 32632c8aed..d77454e7da 100644
  
  [[package]]
  name = "wasm-bindgen"
-@@ -17322,19 +17530,6 @@ dependencies = [
+@@ -17381,19 +17570,6 @@ dependencies = [
   "wasmparser",
  ]
  
@@ -5108,7 +5144,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "wasm-streams"
  version = "0.5.0"
-@@ -17417,7 +17612,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -17476,7 +17652,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "338e30461b3a2b67d70eb30a6d89f8e0c93a833e07d2ae89085cd070c4a00ac0"
  dependencies = [
   "proc-macro2",
@@ -5117,7 +5153,7 @@ index 32632c8aed..d77454e7da 100644
   "quote",
  ]
  
-@@ -17486,9 +17681,9 @@ dependencies = [
+@@ -17545,9 +17721,9 @@ dependencies = [
  
  [[package]]
  name = "webrtc"
@@ -5129,7 +5165,7 @@ index 32632c8aed..d77454e7da 100644
  dependencies = [
   "async-broadcast",
   "async-channel",
-@@ -17603,21 +17798,17 @@ dependencies = [
+@@ -17662,21 +17838,17 @@ dependencies = [
  
  [[package]]
  name = "whoami"
@@ -5155,7 +5191,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "widestring"
  version = "1.2.1"
-@@ -17661,7 +17852,7 @@ version = "0.1.11"
+@@ -17720,7 +17892,7 @@ version = "0.1.11"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
  dependencies = [
@@ -5164,7 +5200,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -18109,6 +18300,9 @@ name = "winnow"
+@@ -18168,6 +18340,9 @@ name = "winnow"
  version = "1.0.4"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
@@ -5174,7 +5210,7 @@ index 32632c8aed..d77454e7da 100644
  
  [[package]]
  name = "winreg"
-@@ -18139,6 +18333,16 @@ dependencies = [
+@@ -18198,6 +18373,16 @@ dependencies = [
   "windows-sys 0.59.0",
  ]
  
@@ -5191,7 +5227,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "winresource"
  version = "0.1.34"
-@@ -18289,6 +18493,18 @@ dependencies = [
+@@ -18348,6 +18533,18 @@ dependencies = [
   "wayland-protocols-wlr",
  ]
  
@@ -5210,7 +5246,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "writeable"
  version = "0.6.4"
-@@ -18318,7 +18534,7 @@ version = "2.0.1"
+@@ -18377,7 +18574,7 @@ version = "2.0.1"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "c7e468321c81fb07fa7f4c636c3972b9100f0346e5b6a9f2bd0603a52f7ed277"
  dependencies = [
@@ -5219,7 +5255,7 @@ index 32632c8aed..d77454e7da 100644
   "rand_core 0.6.4",
   "serde",
   "zeroize",
-@@ -18411,7 +18627,7 @@ checksum = "ec8ebde2db3681e8c9980cc27822030e68752690ddfa9473e739aeb4dbde6d71"
+@@ -18470,7 +18667,7 @@ checksum = "ec8ebde2db3681e8c9980cc27822030e68752690ddfa9473e739aeb4dbde6d71"
  dependencies = [
   "proc-macro2",
   "quote",
@@ -5228,7 +5264,7 @@ index 32632c8aed..d77454e7da 100644
   "synstructure 0.14.0",
  ]
  
-@@ -18448,11 +18664,40 @@ dependencies = [
+@@ -18507,11 +18704,40 @@ dependencies = [
   "uds_windows",
   "windows-sys 0.52.0",
   "xdg-home",
@@ -5270,7 +5306,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "zbus_macros"
  version = "4.4.0"
-@@ -18466,6 +18711,18 @@ dependencies = [
+@@ -18525,6 +18751,18 @@ dependencies = [
   "zvariant_utils",
  ]
  
@@ -5289,7 +5325,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "zbus_names"
  version = "3.0.0"
-@@ -18477,6 +18734,28 @@ dependencies = [
+@@ -18536,6 +18774,28 @@ dependencies = [
   "zvariant",
  ]
  
@@ -5318,7 +5354,7 @@ index 32632c8aed..d77454e7da 100644
  [[package]]
  name = "zerocopy"
  version = "0.8.37"
-@@ -18571,7 +18850,7 @@ checksum = "c3743ddbf47738d929cd1ae2e199d40d0162979dfe31aef8ae646d2bf00bf97a"
+@@ -18630,7 +18890,7 @@ checksum = "c3743ddbf47738d929cd1ae2e199d40d0162979dfe31aef8ae646d2bf00bf97a"
  dependencies = [
   "proc-macro2",
   "quote",
@@ -5327,7 +5363,7 @@ index 32632c8aed..d77454e7da 100644
  ]
  
  [[package]]
-@@ -18640,6 +18919,20 @@ dependencies = [
+@@ -18699,6 +18959,20 @@ dependencies = [
   "simd-adler32",
  ]
  
@@ -5349,7 +5385,7 @@ index 32632c8aed..d77454e7da 100644
  name = "zstd"
  version = "0.13.4"
 diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
-index 5d4de8d3e8..1e61a4e6c2 100644
+index 9a21d2dede..eadc45e79f 100644
 --- a/codex-rs/Cargo.toml
 +++ b/codex-rs/Cargo.toml
 @@ -363,13 +363,13 @@ aws-smithy-runtime-api = { version = "1", features = ["client", "http-1x"] }
@@ -5368,7 +5404,7 @@ index 5d4de8d3e8..1e61a4e6c2 100644
  chrono = "0.4.43"
  clap = "4"
  clap_complete = "4"
-@@ -382,20 +382,20 @@ clatter = { version = "2.2.0", default-features = false, features = [
+@@ -382,31 +382,32 @@ clatter = { version = "2.2.0", default-features = false, features = [
      "use-sha",
  ] }
  color-eyre = "0.6.3"
@@ -5395,7 +5431,6 @@ index 5d4de8d3e8..1e61a4e6c2 100644
  encoding_rs = "0.8.35"
  eventsource-stream = "0.2.3"
  file-id = "0.2.3"
-@@ -403,11 +403,12 @@ flatbuffers = "25"
  flate2 = "1.1.8"
  futures = { version = "0.3", default-features = false }
  gethostname = "1.1.0"
@@ -5410,7 +5445,7 @@ index 5d4de8d3e8..1e61a4e6c2 100644
  http = "1.3.1"
  httpdate = "1.0.3"
  hyper = { version = "1.8.1", features = ["http2", "server"] }
-@@ -422,9 +423,9 @@ include_dir = "0.7.4"
+@@ -421,9 +422,9 @@ include_dir = "0.7.4"
  indexmap = "2.12.0"
  insta = "1.46.3"
  inventory = "0.3.19"
@@ -5423,7 +5458,7 @@ index 5d4de8d3e8..1e61a4e6c2 100644
  keyring = { version = "3.6", default-features = false }
  landlock = "0.4.4"
  lazy_static = "1"
-@@ -435,7 +436,7 @@ libc = "0.2.182"
+@@ -434,7 +435,7 @@ libc = "0.2.182"
  libsqlite3-sys = { version = "0.39.1", default-features = false }
  linkify = "0.11"
  log = "0.4"
@@ -5432,7 +5467,7 @@ index 5d4de8d3e8..1e61a4e6c2 100644
  maplit = "1.0.2"
  memchr = "2.7.6"
  mime_guess = "2.0.5"
-@@ -445,21 +446,21 @@ notify = "8.2.0"
+@@ -444,21 +445,21 @@ notify = "8.2.0"
  nucleo = { git = "https://github.com/helix-editor/nucleo.git", rev = "4253de9faabb4e5c6d81d946a5e35a90f87347ee" }
  once_cell = "1.20.2"
  openssl-sys = "*"
@@ -5463,7 +5498,7 @@ index 5d4de8d3e8..1e61a4e6c2 100644
  ratatui = { version = "0.30.2", default-features = false, features = [
      "crossterm",
      "layout-cache",
-@@ -474,7 +475,7 @@ regex = "1.12.3"
+@@ -473,7 +474,7 @@ regex = "1.12.3"
  regex-automata = { version = "0.4.13", default-features = false, features = ["std", "syntax", "unicode", "nfa-pikevm"] }
  regex-lite = "0.1.8"
  regex-syntax = "0.8.8"
@@ -5472,7 +5507,7 @@ index 5d4de8d3e8..1e61a4e6c2 100644
  rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", rev = "b11a40d889e022087d7f2b8cd23aa28e19ceaf5b", version = "=3.6.0", default-features = false }
  runfiles = { git = "https://github.com/dzbarsky/rules_rust", rev = "b56cbaa8465e74127f1ea216f813cd377295ad81" }
  rustix = { version = "1.1.4", features = ["net"] }
-@@ -484,7 +485,7 @@ rustls = { version = "0.23.46", default-features = false, features = [
+@@ -483,7 +484,7 @@ rustls = { version = "0.23.46", default-features = false, features = [
  ] }
  rustls-native-certs = "0.8.3"
  rustls-pki-types = "1.14.0"
@@ -5481,7 +5516,7 @@ index 5d4de8d3e8..1e61a4e6c2 100644
  seccompiler = "0.5.0"
  semver = "1.0"
  serde = { version = "1", features = ["rc"] }
-@@ -492,14 +493,14 @@ serde_ignored = "0.1.14"
+@@ -491,14 +492,14 @@ serde_ignored = "0.1.14"
  serde_json = "1"
  serde_path_to_error = "0.1.20"
  serde_with = "3.17"
@@ -5503,7 +5538,7 @@ index 5d4de8d3e8..1e61a4e6c2 100644
  spiffe = { version = "0.18.0", default-features = false, features = ["transport-grpc"] }
  symphonia = { version = "0.6.0", default-features = false, features = [
      "isomp4",
-@@ -524,11 +525,11 @@ sqlx-macros = { version = "=0.9.0", default-features = false, features = ["deriv
+@@ -523,11 +524,11 @@ sqlx-macros = { version = "=0.9.0", default-features = false, features = ["deriv
  # Preserve the target driver's query-description support without building it on the host.
  sqlx-sqlite = { version = "=0.9.0", default-features = false, features = ["offline"] }
  starlark = { version = "0.14.2", default-features = false }
@@ -5517,7 +5552,7 @@ index 5d4de8d3e8..1e61a4e6c2 100644
  tar = { version = "=0.4.45", default-features = false }
  tempfile = "3.23.0"
  test-log = "0.2.19"
-@@ -546,19 +547,19 @@ tokio-tungstenite = { version = "0.28.0", features = [
+@@ -545,19 +546,19 @@ tokio-tungstenite = { version = "0.28.0", features = [
      "rustls-tls-native-roots",
  ] }
  tokio-util = "0.7.18"
@@ -5542,7 +5577,7 @@ index 5d4de8d3e8..1e61a4e6c2 100644
  tungstenite = { version = "0.27.0", features = ["deflate", "proxy"] }
  uds_windows = "1.1.0"
  unicode-bidi = "0.3.18"
-@@ -570,16 +571,16 @@ url = "2"
+@@ -569,16 +570,16 @@ url = "2"
  urlencoding = "2.1"
  uuid = "1"
  v8 = "=152.2.0"
@@ -5562,7 +5597,7 @@ index 5d4de8d3e8..1e61a4e6c2 100644
  # Keep the zip 2.x feature set. In zip 9, `bzip2-rs` selects the bzip2-sys
  # backend we already build; the default selects libbz2-rs-sys instead.
  zip = { version = "9.0.0", default-features = false, features = [
-@@ -592,7 +593,7 @@ zip = { version = "9.0.0", default-features = false, features = [
+@@ -591,7 +592,7 @@ zip = { version = "9.0.0", default-features = false, features = [
      "xz",
      "zstd",
  ] }
@@ -5621,7 +5656,7 @@ index 8bb9185963..f88085622e 100644
  
  pub(crate) fn accepted_line_fingerprint_event_requests(
 diff --git a/codex-rs/analytics/src/reducer.rs b/codex-rs/analytics/src/reducer.rs
-index 3d2b32e1c3..2a5277c306 100644
+index d4d5bc90b3..dfcbfa1907 100644
 --- a/codex-rs/analytics/src/reducer.rs
 +++ b/codex-rs/analytics/src/reducer.rs
 @@ -1501,8 +1501,8 @@ impl AnalyticsReducer {
@@ -5635,7 +5670,7 @@ index 3d2b32e1c3..2a5277c306 100644
                      let skill_scope = scope
                          .map(|scope| match scope {
                              SkillScope::User => "user",
-@@ -4183,7 +4183,7 @@ pub(crate) fn skill_id_for_local_skill(
+@@ -4184,7 +4184,7 @@ pub(crate) fn skill_id_for_local_skill(
      let raw_id = format!("{prefix}_{path}_{skill_name}");
      let mut hasher = sha1::Sha1::new();
      sha1::Digest::update(&mut hasher, raw_id.as_bytes());
@@ -5854,7 +5889,7 @@ index e09e1b53f5..e8f2baa9e0 100644
  #[path = "lib_tests.rs"]
  mod tests;
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 524d0083e2..c2408ef6ce 100644
+index 762ce14576..72a9f55de6 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
 @@ -426,8 +426,9 @@ macro_rules! client_request_definitions {
@@ -5907,10 +5942,10 @@ index 2602c20b91..0af982e596 100644
      pub moderated: bool,
      pub display: Option<AgentMessageDisplay>,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/permissions.rs b/codex-rs/app-server-protocol/src/protocol/v2/permissions.rs
-index fd13791112..96c7a9c30d 100644
+index 6ba20500f7..92e7835a66 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/permissions.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/permissions.rs
-@@ -717,6 +717,8 @@ impl From<codex_protocol::protocol::SandboxPolicy> for SandboxPolicy {
+@@ -790,6 +790,8 @@ impl From<codex_protocol::protocol::SandboxPolicy> for SandboxPolicy {
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
  #[serde(transparent)]
  #[ts(type = "Array<string>", export_to = "v2/")]
@@ -5920,7 +5955,7 @@ index fd13791112..96c7a9c30d 100644
      pub command: Vec<String>,
  }
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/shared.rs b/codex-rs/app-server-protocol/src/protocol/v2/shared.rs
-index c095e45b20..38bde3e368 100644
+index 554e1eb49d..e325cfb810 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/shared.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/shared.rs
 @@ -8,15 +8,9 @@ use codex_protocol::protocol::CodexErrorInfo as CoreCodexErrorInfo;
@@ -5941,7 +5976,7 @@ index c095e45b20..38bde3e368 100644
  use serde::Deserialize;
  use serde::Serialize;
  use serde_json::Value as JsonValue;
-@@ -291,8 +285,8 @@ pub enum ApprovalsReviewer {
+@@ -303,8 +297,8 @@ pub enum ApprovalsReviewer {
  
  #[cfg(test)]
  impl JsonSchema for ApprovalsReviewer {
@@ -5952,7 +5987,7 @@ index c095e45b20..38bde3e368 100644
      }
  
      fn json_schema(_generator: &mut SchemaGenerator) -> Schema {
-@@ -305,21 +299,11 @@ impl JsonSchema for ApprovalsReviewer {
+@@ -317,21 +311,11 @@ impl JsonSchema for ApprovalsReviewer {
  
  #[cfg(test)]
  fn string_enum_schema_with_description(values: &[&str], description: &str) -> Schema {
@@ -5980,12 +6015,12 @@ index c095e45b20..38bde3e368 100644
  
  impl ApprovalsReviewer {
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs
-index 62f560850f..c2dfa1f96a 100644
+index 8b697d271a..90853f9147 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs
 @@ -16,9 +16,9 @@ use codex_protocol::protocol::ThreadHistoryMode as CoreThreadHistoryMode;
  use codex_protocol::protocol::ThreadSource as CoreThreadSource;
- use codex_utils_absolute_path::AbsolutePathBuf;
+ use codex_utils_path_uri::LegacyAppPathString;
  #[cfg(test)]
 -use schemars::r#gen::SchemaGenerator;
 +use schemars::Schema;
@@ -6277,10 +6312,10 @@ index 619918b15c..97299a837f 100644
  
  impl fmt::Display for BuildInfo {
 diff --git a/codex-rs/cli/Cargo.toml b/codex-rs/cli/Cargo.toml
-index 2c34729482..676ac1227f 100644
+index 0a90b46866..134eeae192 100644
 --- a/codex-rs/cli/Cargo.toml
 +++ b/codex-rs/cli/Cargo.toml
-@@ -135,6 +135,7 @@ codex-utils-cargo-bin = { workspace = true }
+@@ -137,6 +137,7 @@ codex-utils-cargo-bin = { workspace = true }
  codex-utils-pty = { workspace = true }
  core_test_support = { workspace = true }
  flate2 = { workspace = true }
@@ -6288,6 +6323,30 @@ index 2c34729482..676ac1227f 100644
  insta = { workspace = true }
  jsonwebtoken = { workspace = true }
  predicates = { workspace = true }
+diff --git a/codex-rs/cli/src/shared_sandbox_launcher.rs b/codex-rs/cli/src/shared_sandbox_launcher.rs
+index 2c2bee0305..cdcc651a2b 100644
+--- a/codex-rs/cli/src/shared_sandbox_launcher.rs
++++ b/codex-rs/cli/src/shared_sandbox_launcher.rs
+@@ -96,10 +96,15 @@ struct Finished {
+ pub async fn run(codex_linux_sandbox_exe: Option<PathBuf>) -> anyhow::Result<()> {
+     let (out_tx, mut out_rx) = mpsc::channel::<Value>(32);
+     let stdin = controller_stdin()?;
+-    let disconnect = AsyncFd::with_interest(
+-        std::io::stdin().as_fd().try_clone_to_owned()?,
+-        Interest::READABLE,
+-    )?;
++    // SAFETY: the AsyncFd owns the cloned descriptor, so it stays open and unchanged until the
++    // AsyncFd drops it.
++    let disconnect = unsafe {
++        AsyncFd::register_with_interest(
++            std::io::stdin().as_fd().try_clone_to_owned()?,
++            Interest::READABLE,
++        )
++    }
++    .map_err(std::io::Error::from)?;
+     let mut stdout = controller_stdout()?;
+     let writer = tokio::spawn(async move {
+         while let Some(value) = out_rx.recv().await {
 diff --git a/codex-rs/cli/tests/app_server_daemon_windows.rs b/codex-rs/cli/tests/app_server_daemon_windows.rs
 index 21608564b4..5b8becc656 100644
 --- a/codex-rs/cli/tests/app_server_daemon_windows.rs
@@ -6349,13 +6408,13 @@ index d759de2df5..5dc0436eb9 100644
              }
              let mut executor = command
 diff --git a/codex-rs/cloud-config/Cargo.toml b/codex-rs/cloud-config/Cargo.toml
-index ad8a75212b..f20a1fd072 100644
+index 5e07636cba..716adb9a3b 100644
 --- a/codex-rs/cloud-config/Cargo.toml
 +++ b/codex-rs/cloud-config/Cargo.toml
-@@ -18,7 +18,8 @@ codex-keyring-store = { workspace = true }
- codex-login = { workspace = true }
+@@ -20,7 +20,8 @@ codex-login = { workspace = true }
  codex-otel = { workspace = true }
  codex-protocol = { workspace = true }
+ codex-rmcp-client = { workspace = true }
 -hmac = "0.12.1"
 +hex = { workspace = true }
 +hmac = "0.13.0"
@@ -6375,10 +6434,10 @@ index a08573500d..e8b014111d 100644
  use serde::Deserialize;
  use serde::Serialize;
 diff --git a/codex-rs/cloud-config/src/config_server.rs b/codex-rs/cloud-config/src/config_server.rs
-index 2dba54adf2..041e9ca97c 100644
+index 9248419d90..ba5387677f 100644
 --- a/codex-rs/cloud-config/src/config_server.rs
 +++ b/codex-rs/cloud-config/src/config_server.rs
-@@ -140,7 +140,7 @@ impl ConfigServerSource {
+@@ -245,7 +245,7 @@ impl ConfigServerSource {
          .map_err(|_| auth_failure())?;
          Ok(Self {
              client,
@@ -6388,7 +6447,7 @@ index 2dba54adf2..041e9ca97c 100644
          })
      }
 diff --git a/codex-rs/code-mode/src/grpc_session/mod.rs b/codex-rs/code-mode/src/grpc_session/mod.rs
-index 07ddf4c8cf..5ec3508ae8 100644
+index 670eb2db18..c31a315242 100644
 --- a/codex-rs/code-mode/src/grpc_session/mod.rs
 +++ b/codex-rs/code-mode/src/grpc_session/mod.rs
 @@ -28,7 +28,7 @@ use codex_code_mode_protocol::grpc::code_mode_host_client::CodeModeHostClient;
@@ -6439,10 +6498,10 @@ index ab46c5fec0..4e146e8d32 100644
  lru = { workspace = true }
  regex-lite = { workspace = true }
 diff --git a/codex-rs/codex-mcp/src/tools.rs b/codex-rs/codex-mcp/src/tools.rs
-index 5202b5f116..6f8a05ee96 100644
+index e0b8a57b89..09593052b9 100644
 --- a/codex-rs/codex-mcp/src/tools.rs
 +++ b/codex-rs/codex-mcp/src/tools.rs
-@@ -277,7 +277,7 @@ fn sha1_hex(s: &str) -> String {
+@@ -278,7 +278,7 @@ fn sha1_hex(s: &str) -> String {
      let mut hasher = Sha1::new();
      hasher.update(s.as_bytes());
      let sha1 = hasher.finalize();
@@ -6861,10 +6920,10 @@ index 345f994183..ff2da0a376 100644
  
  pub(crate) fn deserialize<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
 diff --git a/codex-rs/config/src/types.rs b/codex-rs/config/src/types.rs
-index 72d4afae28..c01874e317 100644
+index 95c094cd16..157d790c2b 100644
 --- a/codex-rs/config/src/types.rs
 +++ b/codex-rs/config/src/types.rs
-@@ -502,8 +502,9 @@ pub struct AppToolConfig {
+@@ -506,8 +506,9 @@ pub struct AppToolConfig {
  }
  
  /// Tool settings for a single app.
@@ -6875,7 +6934,7 @@ index 72d4afae28..c01874e317 100644
  pub struct AppToolsConfig {
      /// Per-tool overrides keyed by tool name (for example `repos/list`).
      #[serde(default, flatten)]
-@@ -524,8 +525,9 @@ pub struct AppLinkConfig {
+@@ -537,8 +538,9 @@ pub struct AppLinkConfig {
  }
  
  /// Account settings for a single app.
@@ -6886,7 +6945,7 @@ index 72d4afae28..c01874e317 100644
  pub struct AppLinksConfig {
      /// Per-account approval settings keyed by link ID.
      #[serde(default, flatten)]
-@@ -576,8 +578,9 @@ pub struct AppConfig {
+@@ -589,8 +591,9 @@ pub struct AppConfig {
  }
  
  /// App/connector settings loaded from `config.toml`.
@@ -6897,7 +6956,7 @@ index 72d4afae28..c01874e317 100644
  pub struct AppsConfigToml {
      /// Default settings for all apps.
      #[serde(default, rename = "_default", skip_serializing_if = "Option::is_none")]
-@@ -843,8 +846,9 @@ pub struct TuiNotificationSettings {
+@@ -856,8 +859,9 @@ pub struct TuiNotificationSettings {
      pub condition: NotificationCondition,
  }
  
@@ -6908,7 +6967,7 @@ index 72d4afae28..c01874e317 100644
  pub struct ModelAvailabilityNuxConfig {
      /// Number of times a startup availability NUX has been shown per model slug.
      #[serde(default, flatten)]
-@@ -1152,8 +1156,9 @@ pub struct PluginsDefaultConfig {
+@@ -1165,8 +1169,9 @@ pub struct PluginsDefaultConfig {
  }
  
  /// Plugin activation and capability settings loaded from configuration layers.
@@ -7023,7 +7082,7 @@ index b7df811968..2f55771fd1 100644
  }
  
 diff --git a/codex-rs/core/Cargo.toml b/codex-rs/core/Cargo.toml
-index 7e78f7fb3d..6208f51e8c 100644
+index f3b137e1fb..3f8f643747 100644
 --- a/codex-rs/core/Cargo.toml
 +++ b/codex-rs/core/Cargo.toml
 @@ -94,6 +94,7 @@ dirs = { workspace = true }
@@ -7057,7 +7116,7 @@ index 481c20c57c..5219fa53c6 100644
  }
  
 diff --git a/codex-rs/core/src/mcp_tool_call_tests.rs b/codex-rs/core/src/mcp_tool_call_tests.rs
-index 5fbbf8e427..a1239ece33 100644
+index 871b999a0f..46d132ca0d 100644
 --- a/codex-rs/core/src/mcp_tool_call_tests.rs
 +++ b/codex-rs/core/src/mcp_tool_call_tests.rs
 @@ -76,7 +76,7 @@ struct McpPermissionRequestHookFixture {
@@ -7109,7 +7168,7 @@ index a276a69af4..34ccba38f8 100644
  use tokio::sync::Mutex;
  use tokio_util::sync::CancellationToken;
 diff --git a/codex-rs/core/src/unified_exec/process_manager.rs b/codex-rs/core/src/unified_exec/process_manager.rs
-index 1b8e339ab4..93305f8273 100644
+index e5b8933793..aaa9d5bb1a 100644
 --- a/codex-rs/core/src/unified_exec/process_manager.rs
 +++ b/codex-rs/core/src/unified_exec/process_manager.rs
 @@ -1,5 +1,5 @@
@@ -7159,7 +7218,7 @@ index cf86b062cc..167d9f37fd 100644
  use rand::rngs::StdRng;
  use serde_json::json;
 diff --git a/codex-rs/core/tests/suite/mod.rs b/codex-rs/core/tests/suite/mod.rs
-index 756524d6c5..717ac4ada1 100644
+index 8403ded4a5..cc93577815 100644
 --- a/codex-rs/core/tests/suite/mod.rs
 +++ b/codex-rs/core/tests/suite/mod.rs
 @@ -13,7 +13,7 @@ use ctor::ctor;
@@ -7172,10 +7231,10 @@ index 756524d6c5..717ac4ada1 100644
      configure_test_binary_dispatch("codex-core-tests", |exe_name, argv1| {
          if argv1 == Some(CODEX_CORE_APPLY_PATCH_ARG1) {
 diff --git a/codex-rs/core/tests/suite/realtime_conversation.rs b/codex-rs/core/tests/suite/realtime_conversation.rs
-index ed5b22cfc9..eb27978827 100644
+index 97492c9df8..b0d128ecaa 100644
 --- a/codex-rs/core/tests/suite/realtime_conversation.rs
 +++ b/codex-rs/core/tests/suite/realtime_conversation.rs
-@@ -172,8 +172,10 @@ fn expected_realtime_backend_prompt() -> String {
+@@ -178,8 +178,10 @@ fn expected_realtime_backend_prompt() -> String {
  }
  
  fn test_user_first_name() -> String {
@@ -7256,7 +7315,7 @@ index 77be7992b0..a8e4f51d90 100644
              |error| tracing::debug!(%error, "mount changes unavailable for missing-path watch"),
          )
 diff --git a/codex-rs/exec-server/tests/common/mod.rs b/codex-rs/exec-server/tests/common/mod.rs
-index f1b18a154c..6f0cedc23c 100644
+index 10e1022f18..3b72c2319f 100644
 --- a/codex-rs/exec-server/tests/common/mod.rs
 +++ b/codex-rs/exec-server/tests/common/mod.rs
 @@ -43,7 +43,7 @@ macro_rules! skip_if_mxc_unavailable {
@@ -7348,7 +7407,7 @@ index 5d87b363e9..ad7c08e5ec 100644
  pub use registry::ExtensionRegistryBuilder;
  pub use registry::empty_extension_registry;
 diff --git a/codex-rs/ext/guardian-reviewer/src/retry.rs b/codex-rs/ext/guardian-reviewer/src/retry.rs
-index 819e28c46a..6c872e8b62 100644
+index 5f6339f0fa..1463c80995 100644
 --- a/codex-rs/ext/guardian-reviewer/src/retry.rs
 +++ b/codex-rs/ext/guardian-reviewer/src/retry.rs
 @@ -7,7 +7,7 @@ use crate::GuardianReviewOutcome;
@@ -7839,10 +7898,10 @@ index 949079936e..6c122a452d 100644
          Err(err) => return (BTreeMap::new(), Some(err.to_string())),
      };
 diff --git a/codex-rs/features/src/feature_configs.rs b/codex-rs/features/src/feature_configs.rs
-index f7d7335151..01302cdcd3 100644
+index 19c4ed6f3a..c9243e8b9d 100644
 --- a/codex-rs/features/src/feature_configs.rs
 +++ b/codex-rs/features/src/feature_configs.rs
-@@ -483,12 +483,10 @@ pub struct RolloutBudgetConfigToml {
+@@ -513,12 +513,10 @@ pub struct RolloutBudgetConfigToml {
      pub prefill_token_weight: Option<f64>,
  }
  
@@ -7860,10 +7919,10 @@ index f7d7335151..01302cdcd3 100644
  
  impl FeatureConfig for RolloutBudgetConfigToml {
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 893c9e7165..f15bd3f977 100644
+index 3ea5df331a..cc8c724db6 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -1117,6 +1117,8 @@ impl From<BTreeMap<String, bool>> for FeaturesToml {
+@@ -1133,6 +1133,8 @@ impl From<BTreeMap<String, bool>> for FeaturesToml {
  // require a custom config struct under `[features]`.
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]
  #[serde(untagged)]
@@ -7944,10 +8003,10 @@ index e077afdf27..241f0d918c 100644
      }
  }
 diff --git a/codex-rs/history/src/lib.rs b/codex-rs/history/src/lib.rs
-index 769b2562b8..71bd194e59 100644
+index e74c89a926..4324dfcac2 100644
 --- a/codex-rs/history/src/lib.rs
 +++ b/codex-rs/history/src/lib.rs
-@@ -350,15 +350,15 @@ impl<'de> Deserialize<'de> for RolloutItem {
+@@ -504,15 +504,15 @@ impl<'de> Deserialize<'de> for RolloutItem {
  }
  
  impl JsonSchema for RolloutItem {
@@ -7966,7 +8025,7 @@ index 769b2562b8..71bd194e59 100644
          rollout_payload::RolloutItemWire::json_schema(generator)
      }
  }
-@@ -435,15 +435,15 @@ impl<'de> Deserialize<'de> for CompactedItem {
+@@ -589,15 +589,15 @@ impl<'de> Deserialize<'de> for CompactedItem {
  }
  
  impl JsonSchema for CompactedItem {
@@ -8012,10 +8071,10 @@ index bebb049358..11db5af18a 100644
      #[serde(flatten)]
      item: Cow<'a, T>,
 diff --git a/codex-rs/history/src/tests.rs b/codex-rs/history/src/tests.rs
-index 267a732fb3..bcd29ec3f8 100644
+index dee6147caf..dfdcd8663d 100644
 --- a/codex-rs/history/src/tests.rs
 +++ b/codex-rs/history/src/tests.rs
-@@ -1090,7 +1090,11 @@ fn rollout_item_variants_preserve_existing_payload_shapes() -> Result<()> {
+@@ -1182,7 +1182,11 @@ fn rollout_item_variants_preserve_existing_payload_shapes() -> Result<()> {
  #[test]
  /// Keeps the generated schema aligned with each variant's actual persisted shape.
  fn rollout_item_schema_matches_tagged_payload_and_sibling_metadata() -> Result<()> {
@@ -8028,7 +8087,7 @@ index 267a732fb3..bcd29ec3f8 100644
      let variants = schema["oneOf"].as_array().expect("rollout variants");
      assert_eq!(variants.len(), 13);
  
-@@ -1102,7 +1106,7 @@ fn rollout_item_schema_matches_tagged_payload_and_sibling_metadata() -> Result<(
+@@ -1194,7 +1198,7 @@ fn rollout_item_schema_matches_tagged_payload_and_sibling_metadata() -> Result<(
  
      let response_item = variants
          .iter()
@@ -8335,10 +8394,10 @@ index 6b706b9478..86c2a2d701 100644
          return match builder.build() {
              Ok(client) => Ok(client),
 diff --git a/codex-rs/http-client/src/outbound_proxy.rs b/codex-rs/http-client/src/outbound_proxy.rs
-index 81e2b1fea2..e7854e5e31 100644
+index 7e385bcfd3..f1b2598afc 100644
 --- a/codex-rs/http-client/src/outbound_proxy.rs
 +++ b/codex-rs/http-client/src/outbound_proxy.rs
-@@ -687,7 +687,7 @@ fn system_proxy_cache_key(request_url: &str) -> String {
+@@ -690,7 +690,7 @@ fn system_proxy_cache_key(request_url: &str) -> String {
      let mut hasher = Sha256::new();
      hasher.update(b"system-proxy-cache-v1\0");
      hasher.update(request_url.as_bytes());
@@ -8348,10 +8407,10 @@ index 81e2b1fea2..e7854e5e31 100644
  
  #[cfg(any(test, target_os = "windows"))]
 diff --git a/codex-rs/http-client/src/route_aware_tls_fallback_tests.rs b/codex-rs/http-client/src/route_aware_tls_fallback_tests.rs
-index be6f9b1c9f..9b2d599a35 100644
+index e5e6cfca16..be6f2bf466 100644
 --- a/codex-rs/http-client/src/route_aware_tls_fallback_tests.rs
 +++ b/codex-rs/http-client/src/route_aware_tls_fallback_tests.rs
-@@ -382,10 +382,10 @@ fn spawn_successful_tls_fallback_server() -> io::Result<SuccessfulTlsFallbackSer
+@@ -408,10 +408,10 @@ fn spawn_successful_tls_fallback_server() -> io::Result<SuccessfulTlsFallbackSer
      );
      let trusted_rustls_client = TransportClient::new(
          reqwest::Client::builder()
@@ -8518,10 +8577,10 @@ index 05e164f135..d927f4f187 100644
          let key = aws_sigv4::sign::v4::generate_signing_key(
              "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
 diff --git a/codex-rs/network-proxy/src/certs.rs b/codex-rs/network-proxy/src/certs.rs
-index 2f4ce49453..b205542e75 100644
+index 48a3564124..f6c189b3df 100644
 --- a/codex-rs/network-proxy/src/certs.rs
 +++ b/codex-rs/network-proxy/src/certs.rs
-@@ -601,7 +601,7 @@ fn is_generated_managed_ca_artifact_path(path: &Path, proxy_dir: &Path, prefix:
+@@ -602,7 +602,7 @@ fn is_generated_managed_ca_artifact_path(path: &Path, proxy_dir: &Path, prefix:
      let Ok(trust_bundle) = fs::read(path) else {
          return false;
      };
@@ -8529,8 +8588,8 @@ index 2f4ce49453..b205542e75 100644
 +    hex::encode(Sha256::digest(trust_bundle)) == expected_hash
  }
  
- /// Returns whether `path` points at a current Codex-generated MITM CA bundle.
-@@ -617,10 +617,9 @@ pub fn is_managed_mitm_ca_trust_bundle_path(path: &str) -> bool {
+ /// Find a generated CA in the environment prepared for a managed route on this host.
+@@ -632,10 +632,9 @@ pub fn is_managed_mitm_ca_trust_bundle_path(path: &str) -> bool {
  fn persist_managed_ca_trust_bundle(proxy_dir: &Path, trust_bundle: &str) -> Result<PathBuf> {
      fs::create_dir_all(proxy_dir)
          .with_context(|| format!("failed to create {}", proxy_dir.display()))?;
@@ -8544,7 +8603,7 @@ index 2f4ce49453..b205542e75 100644
      write_atomic_create_new_or_reuse(
          &trust_bundle_path,
          trust_bundle.as_bytes(),
-@@ -646,8 +645,8 @@ fn push_certificate_pem(bundle: &mut String, der: &[u8]) {
+@@ -661,8 +660,8 @@ fn push_certificate_pem(bundle: &mut String, der: &[u8]) {
  }
  
  fn persist_managed_ca_certificate(proxy_dir: &Path, cert_pem: &str) -> Result<PathBuf> {
@@ -8953,10 +9012,10 @@ index 18a5c4bc6a..0b0080e2f8 100644
  }
  
 diff --git a/codex-rs/protocol/src/models.rs b/codex-rs/protocol/src/models.rs
-index df73548bd1..2fe8b9b6c5 100644
+index 6537d94191..b775d935f2 100644
 --- a/codex-rs/protocol/src/models.rs
 +++ b/codex-rs/protocol/src/models.rs
-@@ -2185,6 +2185,8 @@ pub enum LocalShellAction {
+@@ -2186,6 +2186,8 @@ pub enum LocalShellAction {
  }
  
  #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, TS)]
@@ -8966,7 +9025,7 @@ index df73548bd1..2fe8b9b6c5 100644
      pub command: Vec<String>,
      pub timeout_ms: Option<u64>,
 diff --git a/codex-rs/protocol/src/openai_models.rs b/codex-rs/protocol/src/openai_models.rs
-index 12cea206a4..14e31eacf4 100644
+index 83e771ff2f..0011f1fe21 100644
 --- a/codex-rs/protocol/src/openai_models.rs
 +++ b/codex-rs/protocol/src/openai_models.rs
 @@ -10,12 +10,8 @@ use std::sync::Arc;
@@ -8984,7 +9043,7 @@ index 12cea206a4..14e31eacf4 100644
  use serde::Deserialize;
  use serde::Deserializer;
  use serde::Serialize;
-@@ -111,24 +107,15 @@ impl fmt::Display for ReasoningEffort {
+@@ -112,24 +108,15 @@ impl fmt::Display for ReasoningEffort {
  }
  
  impl JsonSchema for ReasoningEffort {
@@ -9015,7 +9074,7 @@ index 12cea206a4..14e31eacf4 100644
          })
      }
  }
-@@ -1697,19 +1684,10 @@ mod tests {
+@@ -1698,19 +1685,10 @@ mod tests {
  
          assert_eq!(
              ReasoningEffort::json_schema(&mut effort_generator),
@@ -9040,10 +9099,10 @@ index 12cea206a4..14e31eacf4 100644
          );
      }
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 192d3187af..3fd902b941 100644
+index a5eb3ad02e..90d3881019 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -2432,6 +2432,7 @@ pub struct ModelVerificationEvent {
+@@ -2455,6 +2455,7 @@ pub struct ModelVerificationEvent {
  
  #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
  #[serde(from = "StoredTargetedModeration")]
@@ -9051,7 +9110,7 @@ index 192d3187af..3fd902b941 100644
  pub struct TargetedAnswerModeration {
      pub item_id: String,
      pub moderated: bool,
-@@ -5053,7 +5054,7 @@ mod tests {
+@@ -5076,7 +5077,7 @@ mod tests {
                  .expect("hook properties")
                  .contains_key("builtin")
          );
@@ -9246,10 +9305,10 @@ index ebcb676f1c..541553cb23 100644
  serde = { workspace = true, features = ["derive"] }
  serde_json = { workspace = true, features = ["raw_value"] }
 diff --git a/codex-rs/rollout-trace/src/capture_tests.rs b/codex-rs/rollout-trace/src/capture_tests.rs
-index cd12f60e4d..de39c21494 100644
+index 2eb309b101..4e191f95dc 100644
 --- a/codex-rs/rollout-trace/src/capture_tests.rs
 +++ b/codex-rs/rollout-trace/src/capture_tests.rs
-@@ -75,7 +75,7 @@ fn compressed_budget_admits_small_later_events_after_an_omission() -> Result<()>
+@@ -112,7 +112,7 @@ fn compressed_budget_admits_small_later_events_after_an_omission() -> Result<()>
          writer.write_json_payload(RawPayloadKind::ProtocolEvent, &"x".repeat(8192))?;
      assert!(compressible.is_complete());
      let noisy: String = (0u32..256)
@@ -9259,25 +9318,35 @@ index cd12f60e4d..de39c21494 100644
      let omitted = writer.write_json_payload(RawPayloadKind::ProtocolEvent, &noisy)?;
      assert_eq!(
 diff --git a/codex-rs/rollout-trace/src/reducer/conversation/normalize.rs b/codex-rs/rollout-trace/src/reducer/conversation/normalize.rs
-index 47ea7b96e2..83da564e7d 100644
+index f8675cb298..6e6798fbee 100644
 --- a/codex-rs/rollout-trace/src/reducer/conversation/normalize.rs
 +++ b/codex-rs/rollout-trace/src/reducer/conversation/normalize.rs
-@@ -450,15 +450,15 @@ fn content_parts(
-                 // content without copying large image bodies into the reduced graph.
+@@ -180,7 +180,8 @@ pub(super) fn normalize_model_item(
+                 .filter(|(key, _)| item.get(key).is_some())
+                 .collect();
+             let mut hash = Sha256::new();
+-            serde_json::to_writer(&mut hash, &(&*item, gaps))?;
++            // digest 0.11 hashers no longer implement `io::Write`.
++            hash.update(serde_json::to_vec(&(&*item, gaps))?);
+             Ok(NormalizedConversationItem {
+                 responses_item_id: None,
+                 structured_output_hash: Some(hash.finalize().into()),
+@@ -487,7 +488,8 @@ fn content_parts(
                  let mut canonical = part.clone();
                  canonical.sort_all_objects();
--                let mut digest = Sha256::new();
+                 let mut digest = Sha256::new();
 -                serde_json::to_writer(&mut digest, &canonical)?;
 +                // digest 0.11 hashers no longer implement `io::Write`.
-+                let digest = Sha256::digest(serde_json::to_vec(&canonical)?);
-                 parts.push(ConversationPart::PayloadRef {
-                     label: other.unwrap_or("content").to_string(),
-                     raw_payload_id: unavailable_ref(&part["image_url"], raw_payload)
-                         .unwrap_or(raw_payload)
-                         .raw_payload_id
-                         .clone(),
++                digest.update(serde_json::to_vec(&canonical)?);
+                 let missing_image = missing[index]["image_url"].as_str();
+                 if let Some(id) = missing_image {
+                     digest.update([0]); // Include the shared child's identity in a partial observation.
+@@ -498,7 +500,7 @@ fn content_parts(
+                     raw_payload_id: missing_image
+                         .unwrap_or(&raw_payload.raw_payload_id)
+                         .to_owned(),
 -                    content_sha256: Some(format!("{:x}", digest.finalize())),
-+                    content_sha256: Some(hex::encode(digest)),
++                    content_sha256: Some(hex::encode(digest.finalize())),
                  });
              }
          }
@@ -9655,7 +9724,7 @@ index 9673c72605..d495733543 100644
                  if quote_depth == 0 {
                      quote = None;
 diff --git a/codex-rs/tui/src/markdown_render.rs b/codex-rs/tui/src/markdown_render.rs
-index 8412cd4dbd..29b2151236 100644
+index c7c0c65576..75453bc6e3 100644
 --- a/codex-rs/tui/src/markdown_render.rs
 +++ b/codex-rs/tui/src/markdown_render.rs
 @@ -685,6 +685,7 @@ impl<'a, 'policy> Writer<'a, 'policy> {
@@ -9784,10 +9853,10 @@ index 79bdeed875..8130e17ac7 100644
          .build()
          .await
 diff --git a/codex-rs/tui/src/status/remote_connection.rs b/codex-rs/tui/src/status/remote_connection.rs
-index 4f4b610330..f8ab9dead9 100644
+index 6e4dc9b6b5..fb03fee221 100644
 --- a/codex-rs/tui/src/status/remote_connection.rs
 +++ b/codex-rs/tui/src/status/remote_connection.rs
-@@ -169,7 +169,10 @@ pub(crate) fn server_version_notice_key(
+@@ -161,7 +161,10 @@ pub(crate) fn server_version_notice_key(
          }
          None => hash_identity_part(&mut hasher, b"embedded:", b""),
      }
@@ -10105,10 +10174,10 @@ index 4aa3326366..2126046380 100644
      )
      .expect("encode public key");
 diff --git a/codex-rs/utils/path-uri/src/api_path_string.rs b/codex-rs/utils/path-uri/src/api_path_string.rs
-index db4d8b664f..0941cd3605 100644
+index 21d6f1b356..e161673f59 100644
 --- a/codex-rs/utils/path-uri/src/api_path_string.rs
 +++ b/codex-rs/utils/path-uri/src/api_path_string.rs
-@@ -303,11 +303,11 @@ impl Serialize for LegacyAppPathString {
+@@ -319,11 +319,11 @@ impl Serialize for LegacyAppPathString {
  }
  
  impl JsonSchema for LegacyAppPathString {

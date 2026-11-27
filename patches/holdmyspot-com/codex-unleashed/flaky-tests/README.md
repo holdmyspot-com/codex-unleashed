@@ -1,6 +1,6 @@
 # Flaky test fixes
 
-- Applies to: the queue through `dependency-upgrades/transitive-updates.patch` (patch 30), which sits on upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
+- Applies to: the queue through `dependency-upgrades/transitive-updates.patch` (patch 30), which sits on upstream `openai/codex` tag `rust-v0.172.0`, commit `3d86e43b075adeba2193ec5c22ac92f55afd82e6`.
 - Prerequisites: every earlier patch in the queue, through `dependency-upgrades/transitive-updates.patch`. The patches below apply in this order and do not depend on each other.
 - Patches: `wine-pty-timeout.patch`, `rollout-trace.patch`, `otel-policy-export.patch`, `focus-palette.patch`, `compaction-request-parsing.patch`, `file-watcher-paused-time.patch` (patches 31–36), `subagent-stop-hook-wait.patch` (patch 52), `app-server-client-leak-timeout.patch` (patch 53), `startup-probe-da1-last.patch` (patch 54), `windows-slow-e2e-timeouts.patch` (patch 56), `feedback-upload-timeout.patch` (patch 57), `windows-sandbox-helper-sharing-violation.patch` (patch 58) and `windows-arm64-load-timeouts.patch` (patch 59), which apply after every earlier patch.
 

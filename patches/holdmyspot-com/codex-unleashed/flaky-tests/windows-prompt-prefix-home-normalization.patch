@@ -9,7 +9,7 @@ The app server canonicalizes CODEX_HOME before writing skills roots, so the same
  1 file changed, 28 insertions(+), 1 deletion(-)
 
 diff --git a/codex-rs/app-server/tests/prompt_prefix.rs b/codex-rs/app-server/tests/prompt_prefix.rs
-index ee8dbd3f01..b1cc3568ec 100644
+index ac3134c555..68cd5dd67c 100644
 --- a/codex-rs/app-server/tests/prompt_prefix.rs
 +++ b/codex-rs/app-server/tests/prompt_prefix.rs
 @@ -13,10 +13,12 @@ use codex_app_server_protocol::ThreadStartParams;
@@ -48,7 +48,7 @@ index ee8dbd3f01..b1cc3568ec 100644
 +        prefix = normalize_codex_home(prefix, canonical_home.as_path())?;
          for (value, replacement) in [
              (environment.cwd.as_str(), "<ENVIRONMENT_CWD>"),
-             (thread.cwd.to_string_lossy().as_ref(), "<CWD>"),
+             (thread.cwd.as_str(), "<CWD>"),
 -            (home.path().to_string_lossy().as_ref(), "<CODEX_HOME>"),
              (thread.id.as_str(), "<THREAD_ID>"),
              (thread.session_id.as_str(), "<SESSION_ID>"),

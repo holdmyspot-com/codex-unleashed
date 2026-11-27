@@ -14,12 +14,12 @@ deny.toml and every other crate version stay as the earlier patches left them.
 - zbus 6 turns on zruntime features that the Bazel crate resolver leaves
   off, so a Linux-only annotation_select adds them.
 ---
- MODULE.bazel                                | 24 ++++++++++++++++++++-
+ MODULE.bazel                                | 22 +++++++++++++++++++++
  third_party/openssl/openssl_sys.BUILD.bazel |  6 +++---
- 2 files changed, 26 insertions(+), 4 deletions(-)
+ 2 files changed, 25 insertions(+), 3 deletions(-)
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index f476a9cda7..73c5c7a676 100644
+index 833561d22b..eca285bcac 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -418,6 +418,28 @@ crate.annotation(
@@ -51,15 +51,6 @@ index f476a9cda7..73c5c7a676 100644
  
  # Match the CodeModeHost response-compression benchmark's zstd level.
  crate.annotation(
-@@ -519,7 +541,7 @@ crate.annotation(
- # MXC's resource compiler lookup needs an explicit path for Windows GNU targets.
- crate.annotation(
-     build_script_deps = [
--        "@crates//cc-1.2.55",
-+        "@crates//cc-1.11.1",
-         "@crates//winresource-0.1.34",
-     ],
-     build_script_env = {
 diff --git a/third_party/openssl/openssl_sys.BUILD.bazel b/third_party/openssl/openssl_sys.BUILD.bazel
 index 723428fc7c..f328419fea 100644
 --- a/third_party/openssl/openssl_sys.BUILD.bazel

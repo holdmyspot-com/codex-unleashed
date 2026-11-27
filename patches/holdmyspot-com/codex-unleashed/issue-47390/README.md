@@ -1,7 +1,7 @@
 # Expanded diff previews in the fullscreen transcript
 
 - Issue: [openai/codex#47390](https://github.com/openai/codex/issues/47390)
-- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
+- Applies to: upstream `openai/codex` tag `rust-v0.172.0`, commit `3d86e43b075adeba2193ec5c22ac92f55afd82e6`.
 - Prerequisite: [base-configuration/codex-unleashed-configuration.patch](../base-configuration/codex-unleashed-configuration.patch).
 
 ## Intent

@@ -1,6 +1,6 @@
 # Voice runtime packaging
 
-Apply these patches to upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`, after queue entries 1–64, in the order listed in the parent [README.md](../../../README.md).
+Apply these patches to upstream `openai/codex` tag `rust-v0.172.0`, commit `3d86e43b075adeba2193ec5c22ac92f55afd82e6`, after queue entries 1–64, in the order listed in the parent [README.md](../../../README.md).
 
 `producer.patch` adds `.github/scripts/codex-voice-runtime.sh` and its focused fixture test to the selected upstream source. The producer builds the helper, native runtime, and both runtime test binaries for one supported application target, stages and seals the runtime through upstream voice tooling, then writes a completed result directory with identity and hash evidence.
 

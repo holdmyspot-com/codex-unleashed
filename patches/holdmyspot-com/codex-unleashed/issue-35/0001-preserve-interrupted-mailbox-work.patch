@@ -6,6 +6,7 @@ Subject: [PATCH] Preserve mailbox work across interrupted task starts
 Interrupting or replacing an automatic parent turn before its task registers no longer drops mail the turn had taken. Unobserved child results and unrelated input return to the session queue, and an interrupt keeps background results from waking the parent again.
 ---
  codex-rs/core/src/agent_communication.rs      |   5 +
+ codex-rs/core/src/codex_thread.rs             |   1 +
  codex-rs/core/src/session/handlers.rs         |   4 +-
  codex-rs/core/src/session/input_queue.rs      | 142 ++++++++--
  .../src/session/mailbox_retention_tests.rs    |  65 +++++
@@ -19,7 +20,7 @@ Interrupting or replacing an automatic parent turn before its task registers no 
  codex-rs/protocol/src/mailbox_wake.rs         |  19 ++
  codex-rs/protocol/src/mailbox_wake_tests.rs   |  45 ++++
  codex-rs/protocol/src/protocol.rs             |   9 +
- 14 files changed, 616 insertions(+), 48 deletions(-)
+ 15 files changed, 617 insertions(+), 48 deletions(-)
  create mode 100644 codex-rs/core/src/session/mailbox_retention_tests.rs
  create mode 100644 codex-rs/core/src/tasks/mailbox_wake_tests.rs
  create mode 100644 codex-rs/protocol/src/mailbox_wake.rs
@@ -41,8 +42,20 @@ index ebcd23cfe5..083ae7072f 100644
  }
  
  /// Only a confirmed append releases a terminal result. Dropping this receipt
+diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+index 4b8e0b3c31..e7fbddeab8 100644
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -1176,6 +1176,7 @@ impl CodexThread {
+                         internal_chat_message_metadata_passthrough:
+                             internal_chat_message_metadata_passthrough.clone(),
+                         trigger_turn: false,
++                        wake_policy: codex_protocol::MailboxWakePolicy::Always,
+                     })
+                 })
+                 .collect::<Option<Vec<_>>>()
 diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
-index 40b9fad8c3..b61385f88e 100644
+index 4487e071ac..114b8bddea 100644
 --- a/codex-rs/core/src/session/handlers.rs
 +++ b/codex-rs/core/src/session/handlers.rs
 @@ -62,7 +62,9 @@ use tracing::info;
@@ -57,10 +70,10 @@ index 40b9fad8c3..b61385f88e 100644
  
  pub async fn clean_background_terminals(sess: &Arc<Session>) {
 diff --git a/codex-rs/core/src/session/input_queue.rs b/codex-rs/core/src/session/input_queue.rs
-index e395ec74c8..3c91945974 100644
+index 3e76288c90..a1c1c11dbe 100644
 --- a/codex-rs/core/src/session/input_queue.rs
 +++ b/codex-rs/core/src/session/input_queue.rs
-@@ -141,6 +141,11 @@ pub(crate) struct PendingMailboxCommunication {
+@@ -144,6 +144,11 @@ pub(crate) struct PendingMailboxCommunication {
      _diagnostics_guard: GaugeGuard,
  }
  
@@ -72,7 +85,7 @@ index e395ec74c8..3c91945974 100644
  impl InputQueue {
      pub(crate) fn new() -> Self {
          let (activity_tx, _) = watch::channel(InputQueueActivity::Mailbox);
-@@ -271,6 +276,27 @@ impl InputQueue {
+@@ -272,6 +277,27 @@ impl InputQueue {
          pending.drain(..).collect()
      }
  
@@ -100,7 +113,7 @@ index e395ec74c8..3c91945974 100644
      pub(crate) async fn pending_wake_options(&self) -> Option<TurnStartOptions> {
          let mut mails = self.mailbox_pending_mails.lock().await;
          self.read_mailbox(&mut mails);
-@@ -360,36 +386,86 @@ impl InputQueue {
+@@ -361,36 +387,86 @@ impl InputQueue {
          })))
      }
  
@@ -212,7 +225,7 @@ index e395ec74c8..3c91945974 100644
      }
  
      pub(crate) async fn defer_mailbox_delivery_to_next_turn(
-@@ -550,6 +626,18 @@ impl TurnInputQueue {
+@@ -551,6 +627,18 @@ impl TurnInputQueue {
          self.items.is_empty()
      }
  
@@ -231,7 +244,7 @@ index e395ec74c8..3c91945974 100644
      fn pending_activity(&self) -> Option<InputQueueActivity> {
          if self.notified_activity == Some(InputQueueActivity::Steer) {
              return self.notified_activity;
-@@ -563,6 +651,10 @@ impl TurnInputQueue {
+@@ -564,6 +652,10 @@ impl TurnInputQueue {
      }
  }
  
@@ -338,10 +351,10 @@ index 261edaabb4..f54333c850 100644
          };
          match action {
 diff --git a/codex-rs/core/src/session/turn_input.rs b/codex-rs/core/src/session/turn_input.rs
-index 8f9eb5e600..4073047a51 100644
+index ab79e36053..1c5d2cab39 100644
 --- a/codex-rs/core/src/session/turn_input.rs
 +++ b/codex-rs/core/src/session/turn_input.rs
-@@ -848,6 +848,9 @@ impl Session {
+@@ -897,6 +897,9 @@ impl Session {
          if active_turn.is_some() || self.turn_starts_closed() {
              return None;
          }
@@ -623,7 +636,7 @@ index 0000000000..9ec4165a2a
 +    );
 +}
 diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
-index f437135856..4b68285074 100644
+index 70348c858c..9cd5218519 100644
 --- a/codex-rs/core/src/tasks/mod.rs
 +++ b/codex-rs/core/src/tasks/mod.rs
 @@ -309,16 +309,34 @@ impl Session {
@@ -689,7 +702,7 @@ index f437135856..4b68285074 100644
              return TurnInputSubmission::NotSubmitted {
                  reason: NotSubmittedReason::Superseded,
              };
-@@ -613,6 +643,8 @@ impl Session {
+@@ -623,6 +653,8 @@ impl Session {
          let wake_options = self.input_queue.pending_wake_options().await;
          let triggered = wake_options.is_some();
          let start_options = wake_options.unwrap_or(previous_options);
@@ -698,7 +711,7 @@ index f437135856..4b68285074 100644
          let options = NewTurnContextOptions {
              direct_only_tool_namespaces: start_options.direct_only_tool_namespaces,
              final_output_json_schema: start_options.final_output_json_schema,
-@@ -651,28 +683,42 @@ impl Session {
+@@ -661,28 +693,42 @@ impl Session {
              );
          self.maybe_emit_model_warnings_for_turn(turn_context.as_ref())
              .await;
@@ -754,7 +767,7 @@ index f437135856..4b68285074 100644
          let session = Arc::clone(self);
          async move {
              let had_active_turn = turn.is_some();
-@@ -686,7 +732,9 @@ impl Session {
+@@ -696,7 +742,9 @@ impl Session {
      }
  
      pub async fn abort_all_tasks(self: &Arc<Self>, reason: TurnAbortReason) {
@@ -765,7 +778,7 @@ index f437135856..4b68285074 100644
          self.abort_taken_tasks(active, reason).await;
      }
  
-@@ -711,6 +759,10 @@ impl Session {
+@@ -721,6 +769,10 @@ impl Session {
              }
              if aborted_turn {
                  active_turn_to_clear = Some(active_turn);
@@ -776,7 +789,7 @@ index f437135856..4b68285074 100644
              }
          }
  
-@@ -719,6 +771,9 @@ impl Session {
+@@ -729,6 +781,9 @@ impl Session {
              // in-flight approval wait can surface as a model-visible rejection before TurnAborted.
              self.input_queue.clear_pending(&active_turn).await;
          }
@@ -786,7 +799,7 @@ index f437135856..4b68285074 100644
          if reason == TurnAbortReason::Interrupted && aborted_turn {
              self.maybe_start_turn_for_pending_work().await;
          }
-@@ -1129,21 +1184,38 @@ impl Session {
+@@ -1141,21 +1196,38 @@ impl Session {
          }
      }
  
@@ -831,10 +844,10 @@ index f437135856..4b68285074 100644
          }
          active.take()
 diff --git a/codex-rs/core/src/tasks/mod_tests.rs b/codex-rs/core/src/tasks/mod_tests.rs
-index 049de5196b..8ba51c4778 100644
+index 0cd3a163bd..88608b61c8 100644
 --- a/codex-rs/core/src/tasks/mod_tests.rs
 +++ b/codex-rs/core/src/tasks/mod_tests.rs
-@@ -808,3 +808,6 @@ async fn turn_critical_path_metrics_count_each_capture_once() {
+@@ -838,3 +838,6 @@ async fn turn_critical_path_metrics_count_each_capture_once() {
          }
      }
  }
@@ -938,10 +951,10 @@ index 0000000000..4f294a2d2c
 +    assert!(serde_json::from_value::<InterAgentCommunication>(value).is_err());
 +}
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 6218afce13..192d3187af 100644
+index 2172f6389b..a5eb3ad02e 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -1025,6 +1025,8 @@ pub struct InterAgentCommunication {
+@@ -1031,6 +1031,8 @@ pub struct InterAgentCommunication {
      #[ts(optional)]
      pub internal_chat_message_metadata_passthrough: Option<InternalChatMessageMetadataPassthrough>,
      pub trigger_turn: bool,
@@ -950,7 +963,7 @@ index 6218afce13..192d3187af 100644
  }
  
  impl InterAgentCommunication {
-@@ -1044,6 +1046,7 @@ impl InterAgentCommunication {
+@@ -1050,6 +1052,7 @@ impl InterAgentCommunication {
              encrypted_content: None,
              internal_chat_message_metadata_passthrough: None,
              trigger_turn,
@@ -958,7 +971,7 @@ index 6218afce13..192d3187af 100644
          }
      }
  
-@@ -1063,6 +1066,7 @@ impl InterAgentCommunication {
+@@ -1069,6 +1072,7 @@ impl InterAgentCommunication {
              encrypted_content: Some(encrypted_content),
              internal_chat_message_metadata_passthrough: None,
              trigger_turn,
@@ -966,7 +979,7 @@ index 6218afce13..192d3187af 100644
          }
      }
  
-@@ -4957,6 +4961,10 @@ pub struct CollabResumeEndEvent {
+@@ -4980,6 +4984,10 @@ pub struct CollabResumeEndEvent {
  #[path = "conversation_start_params_tests.rs"]
  mod conversation_start_params_tests;
  
@@ -977,7 +990,7 @@ index 6218afce13..192d3187af 100644
  #[cfg(test)]
  mod tests {
      use super::*;
-@@ -5169,6 +5177,7 @@ mod tests {
+@@ -5192,6 +5200,7 @@ mod tests {
              encrypted_content: None,
              internal_chat_message_metadata_passthrough: None,
              trigger_turn: true,

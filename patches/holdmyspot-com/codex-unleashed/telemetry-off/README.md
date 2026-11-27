@@ -1,6 +1,6 @@
 # Turn feedback and analytics off by default and point the update check at our releases
 
-- Applies to: upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`. It is
+- Applies to: upstream `openai/codex` tag `rust-v0.172.0`, commit `3d86e43b075adeba2193ec5c22ac92f55afd82e6`. It is
   queue entry 87 and is listed last. It changes `codex-rs/core`, `config`, `cli`, `tui` and the `app-server`, `cli`
   and `core` tests, and no earlier entry's changes conflict with it.
 
@@ -33,7 +33,7 @@ cargo test -p codex-tui --lib slash_command update_ terminal_size feedback
 cargo test -p codex-app-server --test all feedback analytics plugin_install plugin_uninstall
 ```
 
-The TUI snapshot tests need the workspace version at `0.0.0`; the repository holds `0.171.0` until the release step.
+The TUI snapshot tests need the workspace version at `0.0.0`; the repository holds `0.172.0` until the release step.
 The new and changed tests cover the three defaults (`feedback_and_analytics_default_to_off`), the unlisted
 `/feedback`, the build-number comparison, and the update actions for each install method. Tests that observed
 feedback uploads or analytics events now enable them explicitly.

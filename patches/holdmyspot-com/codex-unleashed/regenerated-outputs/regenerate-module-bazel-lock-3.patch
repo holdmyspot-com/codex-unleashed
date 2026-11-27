@@ -4,13 +4,13 @@ Date: Mon, 23 Nov 2026 01:00:00 -0500
 Subject: [PATCH] Regenerate MODULE.bazel.lock for the patch queue (part 3 of
  4)
 
-Generator output for the whole patch queue on rust-v0.171.0, produced by upstream's app-server-schema, config-schema, hooks-schema and bazel-lock generators (baseline-platform-lints.yml, run 45114435647). See regenerated-outputs/README.md. The lock file's diff is split into consecutive hunk groups to stay under the repository's blob size limit; the lock file is complete after part 4.
+Generator output for the whole patch queue on rust-v0.172.0, produced by running upstream's app-server-schema, config-schema, hooks-schema and bazel-lock generators locally with the commands of baseline-platform-lints.yml. See regenerated-outputs/README.md. The lock file's diff is split into consecutive hunk groups to stay under the repository's blob size limit; the lock file is complete after part 4.
 ---
  MODULE.bazel.lock | 163 +++++++++++++++++++++++++---------------------
  1 file changed, 89 insertions(+), 74 deletions(-)
 
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index 7909728ed5..5ebba8b45e 100644
+index 528c8d9271..86de32f4c1 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
 @@ -1930,49 +1930,49 @@
@@ -325,3 +325,6 @@ index 7909728ed5..5ebba8b45e 100644
        "thread_local_1.1.9": "{\"dependencies\":[{\"name\":\"cfg-if\",\"req\":\"^1.0.0\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5.1\"}],\"features\":{\"nightly\":[]}}",
        "threadpool_1.8.1": "{\"dependencies\":[{\"name\":\"num_cpus\",\"req\":\"^1.13\"}],\"features\":{}}",
        "tiff_0.10.3": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"crc32fast\",\"req\":\"^1.5\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.3.1\"},{\"name\":\"fax34\",\"optional\":true,\"package\":\"fax\",\"req\":\"^0.2.6\"},{\"name\":\"flate2\",\"optional\":true,\"req\":\"^1.0.20\"},{\"name\":\"half\",\"req\":\"^2.4.1\"},{\"name\":\"quick-error\",\"req\":\"^2.0.1\"},{\"name\":\"weezl\",\"optional\":true,\"req\":\"^0.1.10\"},{\"name\":\"zstd\",\"optional\":true,\"req\":\"^0.13\"},{\"name\":\"zune-jpeg\",\"optional\":true,\"req\":\"^0.4.17\"}],\"features\":{\"default\":[\"deflate\",\"fax\",\"jpeg\",\"lzw\"],\"deflate\":[\"dep:flate2\"],\"fax\":[\"dep:fax34\"],\"jpeg\":[\"dep:zune-jpeg\"],\"lzw\":[\"dep:weezl\"],\"zstd\":[\"dep:zstd\"]}}",
+-- 
+2.43.0
+

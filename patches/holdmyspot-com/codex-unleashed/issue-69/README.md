@@ -1,6 +1,6 @@
 # Integration test compiler environment
 
-- Applies to: the queue through `rmcp-stdio/close-after-oversized-line.patch` (entry 104), on upstream `openai/codex` tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e`.
+- Applies to: the queue through `rmcp-stdio/close-after-oversized-line.patch` (entry 104), on upstream `openai/codex` tag `rust-v0.172.0`, commit `3d86e43b075adeba2193ec5c22ac92f55afd82e6`.
 - Prerequisites: every earlier patch in the queue; it changes `defs.bzl` and `codex-rs/linux-sandbox/tests/suite/managed_proxy.rs`.
 - Patch: `integration-compiler-environment.patch` (entry 108, owner-approved on 2026-11-25).
 - Tracking: https://github.com/holdmyspot-com/codex-unleashed/issues/69
