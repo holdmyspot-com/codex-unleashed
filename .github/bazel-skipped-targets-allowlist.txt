@@ -1,0 +1,4 @@
+# Bazel targets that --skip_incompatible_explicit_targets may skip as incompatible in the Windows Bazel test shards.
+# One label per line; blank lines and lines starting with # are ignored. The skip set of today's runs could not be
+# determined without a CI run, so the list starts empty: the first run's coverage job prints every skipped target,
+# and each one that is expected to be incompatible must be added here with a comment naming the reason.

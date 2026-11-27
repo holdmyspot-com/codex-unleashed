@@ -12,6 +12,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -49,6 +51,8 @@ public final class CompareTestBaseline
 	private static final Pattern CASE_PREFIX = Pattern.compile("(?<=::)(?:test_case_[0-9]+_)?_*");
 	/** Default location for upstream baseline files. */
 	private static final String DEFAULT_BASELINE_DIRECTORY = "docs/test-baselines";
+	/** Default minimum percentage of the baseline's executed tests that the patched run must execute. */
+	public static final double DEFAULT_MIN_EXECUTED_PERCENT = 98.0;
 
 	/** Prevents construction. */
 	private CompareTestBaseline()
@@ -208,6 +212,41 @@ public final class CompareTestBaseline
 	}
 
 	/**
+	 * Reads the number of tests the baseline run executed.
+	 *
+	 * @param scope configured JSON mapper scope
+	 * @param path baseline document
+	 * @return the recorded count, or empty if the baseline predates the field
+	 * @throws IOException if the document is malformed or unreadable
+	 */
+	public static OptionalLong readExecutedCount(ToolingScope scope, Path path) throws IOException
+	{
+		Object raw = scope.getJsonMapper().readValue(Files.readString(path), Object.class);
+		if (!(raw instanceof Map<?, ?> document))
+			throw new IOException("Invalid baseline at " + path);
+		Object value = document.get("tests_executed");
+		if (value == null) return OptionalLong.empty();
+		if (!(value instanceof Number number))
+			throw new IOException("Invalid baseline field tests_executed at " + path);
+		return OptionalLong.of(number.longValue());
+	}
+
+	/**
+	 * Checks that the patched run did not silently execute far fewer tests than the baseline.
+	 *
+	 * @param baselineCount tests executed by the baseline run
+	 * @param executedCount tests executed by this run
+	 * @param minPercent minimum percentage of the baseline count that this run must execute
+	 * @return the failure message with both counts, or empty if the count is acceptable
+	 */
+	public static Optional<String> checkExecutedCount(long baselineCount, long executedCount, double minPercent)
+	{
+		if (executedCount * 100.0 >= baselineCount * minPercent) return Optional.empty();
+		return Optional.of("Executed " + executedCount + " test(s), fewer than " + minPercent +
+			"% of the baseline's " + baselineCount + " executed test(s).");
+	}
+
+	/**
 	 * Writes the exact external schema using the project's canonical artifact JSON formatter.
 	 *
 	 * @param scope configured JSON formatter scope
@@ -251,6 +290,7 @@ public final class CompareTestBaseline
 		String runner = "nextest";
 		String baselineDirectory = DEFAULT_BASELINE_DIRECTORY;
 		String output = null;
+		double minExecutedPercent = DEFAULT_MIN_EXECUTED_PERCENT;
 		List<String> relatedPlatforms = new ArrayList<>();
 		List<String> paths = new ArrayList<>();
 		boolean write = false;
@@ -293,6 +333,18 @@ public final class CompareTestBaseline
 						baselineDirectory = value;
 					}
 					case "--output" -> output = value;
+					case "--min-executed-percent" ->
+					{
+						try
+						{
+							minExecutedPercent = Double.parseDouble(value);
+						}
+						catch (NumberFormatException _)
+						{
+							return usage(err);
+						}
+						if (!(minExecutedPercent >= 0.0 && minExecutedPercent <= 100.0)) return usage(err);
+					}
 					default ->
 					{
 						return usage(err);
@@ -341,13 +393,26 @@ public final class CompareTestBaseline
 		for (Path path : related)
 			relatedFailures.addAll(readFailures(scope, path));
 		Sections sections = compare(readFailures(scope, primary), report, relatedFailures);
-		List<String> lines = render(sections, report);
+		List<String> lines = new ArrayList<>(render(sections, report));
+		int status = 0;
+		if (!sections.newFailures().isEmpty())
+			status = 1;
+		OptionalLong baselineCount = readExecutedCount(scope, primary);
+		Optional<String> shortfall = Optional.empty();
+		if (baselineCount.isPresent())
+		{
+			lines.add("Executed tests: " + report.executed().size() + " in this run, " + baselineCount.getAsLong() +
+				" in the baseline.");
+			shortfall = checkExecutedCount(baselineCount.getAsLong(), report.executed().size(), minExecutedPercent);
+			shortfall.ifPresent(lines::add);
+			if (shortfall.isPresent())
+				status = 1;
+		}
 		lines.forEach(out::println);
 		if (summary != null)
 			appendSummary(summary, "Test baseline comparison", lines);
-		if (sections.newFailures().isEmpty())
-			return 0;
-		return 1;
+		shortfall.ifPresent(err::println);
+		return status;
 	}
 
 	/**
@@ -401,7 +466,7 @@ public final class CompareTestBaseline
 	private static int usage(PrintStream err)
 	{
 		err.println("Usage: compare-test-baseline --platform P [--related-platform R]... " +
-			"--upstream-commit C [--runner nextest|bazel] [--baseline-dir D] " +
+			"--upstream-commit C [--runner nextest|bazel] [--baseline-dir D] [--min-executed-percent P] " +
 			"[--write-baseline [--output FILE]] PATH...");
 		return 2;
 	}

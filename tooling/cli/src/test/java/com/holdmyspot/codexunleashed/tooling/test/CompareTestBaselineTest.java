@@ -147,7 +147,51 @@ public final class CompareTestBaselineTest
 				"[fixed relative to the baseline] 1\n" +
 				"    bin old\n" +
 				"[unchanged baseline failures] 0\n" +
-				"[in the baseline but not run] 0\n```\n");
+				"[in the baseline but not run] 0\n" +
+				"Executed tests: 2 in this run, 1 in the baseline.\n```\n");
+		}
+	}
+
+	/** Fails a patched run that executed fewer than the threshold share of the baseline's tests. */
+	@Test public void failsWhenFarFewerTestsExecuted()
+	{
+		requireThat(CompareTestBaseline.checkExecutedCount(100, 98, 98.0).isPresent(), "atThreshold").isFalse();
+		requireThat(CompareTestBaseline.checkExecutedCount(100, 97, 98.0).orElseThrow(), "below").contains("97").
+			contains("100");
+		requireThat(CompareTestBaseline.checkExecutedCount(100, 50, 40.0).isPresent(), "configurable").isFalse();
+	}
+
+	/**
+	 * The command exits nonzero and prints both counts when the executed count falls below the threshold.
+	 *
+	 * @throws IOException if fixture IO fails
+	 */
+	@Test public void commandFailsOnShortfallAndHonorsThreshold() throws IOException
+	{
+		try (Fixture fixture = new Fixture(); var scope = new DefaultToolingScope())
+		{
+			Path original = fixture.write("original.xml", "<testsuites><testcase name='a' classname='bin'/>" +
+				"<testcase name='b' classname='bin'/><testcase name='c' classname='bin'/></testsuites>");
+			Path patched = fixture.write("patched.xml", "<testsuites><testcase name='a' classname='bin'/>" +
+				"</testsuites>");
+			Path baselines = fixture.root.resolve("baselines");
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+			ByteArrayOutputStream errors = new ByteArrayOutputStream();
+			try (PrintStream out = new PrintStream(output, true, StandardCharsets.UTF_8);
+				PrintStream err = new PrintStream(errors, true, StandardCharsets.UTF_8))
+			{
+				CompareTestBaseline.run(scope, new String[]{"--platform", "linux", "--upstream-commit", "commit",
+					"--baseline-dir", baselines.toString(), "--write-baseline", original.toString()}, null, out, err);
+				int status = CompareTestBaseline.run(scope, new String[]{"--platform", "linux", "--upstream-commit",
+					"commit", "--baseline-dir", baselines.toString(), patched.toString()}, null, out, err);
+				requireThat(status, "shortfallStatus").isEqualTo(1);
+				requireThat(output.toString(StandardCharsets.UTF_8), "counts").contains(
+					"Executed tests: 1 in this run, 3 in the baseline.");
+				status = CompareTestBaseline.run(scope, new String[]{"--platform", "linux", "--upstream-commit",
+					"commit", "--baseline-dir", baselines.toString(), "--min-executed-percent", "30",
+					patched.toString()}, null, out, err);
+				requireThat(status, "relaxedStatus").isEqualTo(0);
+			}
 		}
 	}
 

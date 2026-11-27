@@ -273,6 +273,8 @@ public final class Main
 					Arrays.copyOfRange(arguments, 1, arguments.length), out, err);
 				case SelectWindowsBazelTargets.NAME -> SelectWindowsBazelTargets.run(
 					Arrays.copyOfRange(arguments, 1, arguments.length), in, out, err);
+				case BazelShardCoverage.NAME -> BazelShardCoverage.run(scope,
+					Arrays.copyOfRange(arguments, 1, arguments.length), out, err);
 				case PackageZstd.NAME -> PackageZstd.run(scope, Arrays.copyOfRange(arguments, 1, arguments.length),
 					Path.of("").toAbsolutePath(), environment, out, err);
 				default -> usage(err);
@@ -442,6 +444,7 @@ public final class Main
 			"--output-directory <directory> [--clippy-targets <file>] --shard <number> --shard-count <number>");
 		err.println("       codex-tooling " + SelectWindowsBazelTargets.NAME +
 			" --shard <number> --shard-count <number> --durations <file>");
+		err.println("       codex-tooling " + BazelShardCoverage.NAME + " <skipped|check> [options]");
 		err.println("       codex-tooling " + PackageZstd.NAME + " --upstream-root <directory>");
 		return 2;
 	}

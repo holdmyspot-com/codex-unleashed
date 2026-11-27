@@ -221,6 +221,26 @@ jobs:
           LC_ALL=C sort "$evidence/candidate-targets.txt" > "$evidence/expected-targets.txt"
           cmp "$evidence/expected-targets.txt" "$evidence/expanded-package-targets.txt"
 
+      - name: Record the shard's candidate and selected lists
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
+          out="$RUNNER_TEMP/shard-coverage-out"
+          mkdir -p "$out"
+          sed -e 's/^set(//' -e 's/)$//' "$evidence/all-package-patterns.query" | tr ' ' '\n' | LC_ALL=C sort > "$out/candidates.txt"
+          LC_ALL=C sort "$evidence/selected-targets.txt" > "$out/selected.txt"
+          printf '%s\n' "$TARGET" > "$out/group.txt"
+          printf '%s\n' "$BAZEL_TEST_SHARD" > "$out/shard.txt"
+          printf '%s\n' "$BAZEL_TEST_SHARD_COUNT" > "$out/shard-count.txt"
+
+      - name: Upload this shard's coverage lists
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: bazel-shard-coverage-macos-${{ matrix.platform.target }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-coverage-out
+          retention-days: 3
+          if-no-files-found: error
+
       - name: Retain prepared host evidence before compilation
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
@@ -395,3 +415,45 @@ jobs:
         if: always()
         shell: bash
         run: rm -rf -- "$RUNNER_TEMP/codex-tooling"
+
+  coverage:
+    # Fails unless every shard uploaded, all saw the same candidate list, the selections partition it exactly, and every
+    # incompatible skip is allowlisted.
+    needs: test
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve the tooling source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Select the maintained tooling JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Build the tooling runtime
+        shell: bash
+        env:
+          TOOLING_ROOT: .
+        run: bash .github/scripts/setup-tooling.sh
+
+      - name: Download every shard's coverage
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: bazel-shard-coverage-macos-*
+          path: ${{ runner.temp }}/shard-coverage
+
+      - name: Check shard coverage
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/shard-coverage"
+          bash "$CODEX_TOOLING" bazel-shard-coverage check --directory "$RUNNER_TEMP/shard-coverage" \
+            --expect aarch64-apple-darwin=2 --expect x86_64-apple-darwin=4
