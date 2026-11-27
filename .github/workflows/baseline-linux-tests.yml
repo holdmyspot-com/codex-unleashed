@@ -411,12 +411,12 @@ jobs:
         working-directory: codex-rs
         run: |
           set -euo pipefail
-          cargo build -p codex-cli --bin codex
+          # The ci-test profile inherits the test profile, so the binary keeps upstream's debug assertions. Building it
+          # there shares the test build's dependencies and the compiled-state cache; a separate debug build was
+          # deleted to save disk and so rebuilt from scratch on every run.
+          cargo build --target x86_64-unknown-linux-gnu --profile ci-test -p codex-cli --bin codex
           mkdir -p "$RUNNER_TEMP/baseline-test-inputs/helpers"
-          cp "$CARGO_TARGET_DIR/debug/codex" "$RUNNER_TEMP/baseline-test-inputs/helpers/codex"
-          # Only the codex binary is needed. The debug build of its dependency graph filled the runner's disk before
-          # the ci-test build of the test binaries, so drop it now.
-          rm -rf "$CARGO_TARGET_DIR/debug"
+          cp "$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex" "$RUNNER_TEMP/baseline-test-inputs/helpers/codex"
           df -h / | tee -a "$RUNNER_TEMP/baseline-test-evidence/disk-after-remote-env.txt"
       # Every run, whatever its mode, builds its test binaries once into this archive and runs from it. Stress and
       # comparison runs reuse it instead of compiling again.
