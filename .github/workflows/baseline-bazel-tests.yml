@@ -472,7 +472,7 @@ jobs:
           # With a committed baseline (or when recording one) the comparison step decides pass or fail from the test
           # logs; otherwise any failing target fails the run.
           commit="$(cat "$evidence/upstream-commit")"
-          if [[ "$GATED" == true && ( "$WRITE_BASELINE" == true || -f "$RUNNER_TEMP/test-baselines/$commit/linux-bazel-shard$BAZEL_TEST_SHARD.json" ) ]]; then
+          if [[ "$GATED" == true && ( "$WRITE_BASELINE" == true || compgen -G "$RUNNER_TEMP/test-baselines/$commit/linux-bazel-shard*.json" > /dev/null ) ]]; then
             exit 0
           fi
           exit "$result"
@@ -539,7 +539,7 @@ jobs:
           du -sh "$RUNNER_TEMP/bazel-disk-cache" | tee "$evidence/disk-cache-save.log"
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "$CACHE_REPOSITORY" "$CACHE_TAG" "$RUNNER_TEMP/bazel-disk-cache" "$(cat "$evidence/upstream-ref")" 2>&1 | tee -a "$evidence/disk-cache-save.log"
 
-      - name: Compare failures with the unpatched baseline
+      - name: Record this shard's results
         if: ${{ !cancelled() && steps.bazel_tests.outcome == 'success' && steps.bazel_tests.outputs['bep-complete'] == 'true' && !inputs.exec_server_shells && !inputs.trace_empty_workspace_roots && !inputs.bundle_empty_workspace_bwrap && inputs.stress_count == '' }}
         env:
           WRITE_BASELINE: ${{ inputs.write_baseline }}
@@ -559,11 +559,10 @@ jobs:
               --output "$evidence/test-baselines/$commit/$platform.json" "$(realpath bazel-testlogs)"
             exit 0
           fi
-          if [[ ! -f "$RUNNER_TEMP/test-baselines/$commit/$platform.json" ]]; then
-            exit 0 # the test step already failed the run on its own status when there is no baseline
-          fi
-          bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" "$(realpath bazel-testlogs)" \
-            2>&1 | tee "$evidence/baseline-comparison.log"
+          # The merged comparison runs once per platform group in the coverage job.
+          mkdir -p "$RUNNER_TEMP/shard-coverage-out"
+          bash "$CODEX_TOOLING" compare-test-baseline --runner bazel \
+            --write-results "$RUNNER_TEMP/shard-coverage-out/results.json" "$(realpath bazel-testlogs)"
 
       - name: Verify upstream source and tests remain unmodified
         if: always()
@@ -590,6 +589,7 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-bazel-evidence"
           out="$RUNNER_TEMP/shard-coverage-out"
           mkdir -p "$out"
+          cp "$evidence/upstream-commit" "$out/upstream-commit"
           if [[ -s "$evidence/bazel-tests.bep.json" ]]; then
             bash "$CODEX_TOOLING" bazel-shard-coverage record --bep "$evidence/bazel-tests.bep.json" \
               --executed "$out/executed.txt" --skipped "$out/skipped.txt"
@@ -662,3 +662,42 @@ jobs:
           bash "$CODEX_TOOLING" bazel-shard-coverage check --directory "$RUNNER_TEMP/shard-coverage" \
             --expect linux="$SHARD_COUNT" \
             --allowlist .github/bazel-skipped-targets-allowlist.txt
+
+      - name: Compare the merged results with the unpatched baseline
+        # Shard assignment can change between runs, so no shard is compared on its own: this job merges every shard's
+        # results per group and compares each group once with the union of that group's shard baselines.
+        if: ${{ !cancelled() && !inputs.write_baseline && !inputs.trace_empty_workspace_roots && !inputs.bundle_empty_workspace_bwrap && inputs.stress_count == '' }}
+        run: |
+          set -euo pipefail
+          cov="$RUNNER_TEMP/shard-coverage"
+          merged="$RUNNER_TEMP/merged-results"
+          rm -rf "$merged"
+          mkdir -p "$merged"
+          for dir in "$cov"/*/; do
+            [[ -f "${dir}results.json" ]] || continue
+            group="$(cat "${dir}group.txt")"
+            mkdir -p "$merged/$group"
+            cp -R "${dir%/}" "$merged/$group/"
+          done
+          commit="$(cat "$cov"/*/upstream-commit | sort -u)"
+          if [[ -z "$commit" || "$commit" == *$'\n'* ]]; then
+            printf 'The shards did not report exactly one upstream commit.\n' >&2
+            exit 1
+          fi
+          found=0
+          status=0
+          for group_dir in "$merged"/*/; do
+            found=1
+            group="$(basename "$group_dir")"
+            prefix=linux-bazel-shard
+            if ! bash "$CODEX_TOOLING" compare-test-baseline --runner bazel --upstream-commit "$commit" \
+              --baseline-dir docs/test-baselines --baseline-prefix "$prefix" --merge-results "$group_dir" 2>&1 \
+              | tee -a "$RUNNER_TEMP/baseline-comparison.log"; then
+              status=1
+            fi
+          done
+          if ((found == 0)); then
+            printf 'No shard results were uploaded to compare.\n' >&2
+            exit 1
+          fi
+          exit "$status"

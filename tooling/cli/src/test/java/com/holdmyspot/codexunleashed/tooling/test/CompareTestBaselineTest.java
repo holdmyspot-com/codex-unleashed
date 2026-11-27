@@ -70,6 +70,51 @@ public final class CompareTestBaselineTest
 	}
 
 	/**
+	 * Shard results merge into one comparison against the union of the shard baselines, so a target that moved
+	 * between shards is neither new nor not run, and write-baseline output stays readable by the merged reader.
+	 *
+	 * @throws IOException if fixture IO fails
+	 */
+	@Test public void mergedShardResultsCompareAgainstUnionOfShardBaselines() throws IOException
+	{
+		try (Fixture fixture = new Fixture(); var scope = new DefaultToolingScope())
+		{
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+			ByteArrayOutputStream errors = new ByteArrayOutputStream();
+			PrintStream out = new PrintStream(output, true, StandardCharsets.UTF_8);
+			PrintStream err = new PrintStream(errors, true, StandardCharsets.UTF_8);
+			Path baselines = fixture.root.resolve("baselines");
+			// Baseline run: target //p:a fails in shard 1, //p:b passes in shard 2.
+			Path logs1 = Files.createDirectories(fixture.root.resolve("b1/bazel-testlogs/p/a"));
+			Files.writeString(logs1.resolve("test.xml"), "<testsuites><testcase name='t'><failure type='x'/></testcase></testsuites>");
+			Path logs2 = Files.createDirectories(fixture.root.resolve("b2/bazel-testlogs/p/b"));
+			Files.writeString(logs2.resolve("test.xml"), "<testsuites><testcase name='t'/></testsuites>");
+			CompareTestBaseline.run(scope, new String[]{"--platform", "g-shard1", "--runner", "bazel", "--upstream-commit",
+				"c", "--baseline-dir", baselines.toString(), "--write-baseline", fixture.root.resolve("b1").toString()},
+				null, out, err);
+			CompareTestBaseline.run(scope, new String[]{"--platform", "g-shard2", "--runner", "bazel", "--upstream-commit",
+				"c", "--baseline-dir", baselines.toString(), "--write-baseline", fixture.root.resolve("b2").toString()},
+				null, out, err);
+			// Patched run with a different assignment: //p:a is now in shard 2 and still fails.
+			Path r1 = Files.createDirectories(fixture.root.resolve("p1/bazel-testlogs/p/b"));
+			Files.writeString(r1.resolve("test.xml"), "<testsuites><testcase name='t'/></testsuites>");
+			Path r2 = Files.createDirectories(fixture.root.resolve("p2/bazel-testlogs/p/a"));
+			Files.writeString(r2.resolve("test.xml"), "<testsuites><testcase name='t'><failure type='x'/></testcase></testsuites>");
+			for (String shard : List.of("1", "2"))
+				requireThat(CompareTestBaseline.run(scope, new String[]{"--runner", "bazel", "--write-results",
+					fixture.root.resolve("results/shard-" + shard + "/results.json").toString(),
+					fixture.root.resolve("p" + shard).toString()}, null, out, err), "shard" + shard).isEqualTo(0);
+			int status = CompareTestBaseline.run(scope, new String[]{"--runner", "bazel", "--upstream-commit", "c",
+				"--baseline-dir", baselines.toString(), "--baseline-prefix", "g-shard", "--merge-results",
+				fixture.root.resolve("results").toString()}, null, out, err);
+			requireThat(status, "mergedStatus").isEqualTo(0);
+			String text = output.toString(StandardCharsets.UTF_8);
+			requireThat(text, "text").contains("[new (fail the run)] 0").contains("[unchanged baseline failures] 1").
+				contains("[in the baseline but not run] 0").contains("Executed tests: 2 in this run, 2 in the baseline.");
+		}
+	}
+
+	/**
 	 * Related failures are known without adding them to the primary baseline's not-run section.
 	 *
 	 * @throws IOException if a fixture report cannot be written

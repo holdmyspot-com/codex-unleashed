@@ -291,6 +291,9 @@ public final class CompareTestBaseline
 		String runner = "nextest";
 		String baselineDirectory = DEFAULT_BASELINE_DIRECTORY;
 		String output = null;
+		String writeResults = null;
+		String mergeResults = null;
+		String baselinePrefix = null;
 		double minExecutedPercent = DEFAULT_MIN_EXECUTED_PERCENT;
 		List<String> relatedPlatforms = new ArrayList<>();
 		List<String> paths = new ArrayList<>();
@@ -334,6 +337,9 @@ public final class CompareTestBaseline
 						baselineDirectory = value;
 					}
 					case "--output" -> output = value;
+					case "--write-results" -> writeResults = value;
+					case "--merge-results" -> mergeResults = value;
+					case "--baseline-prefix" -> baselinePrefix = value;
 					case "--min-executed-percent" ->
 					{
 						try
@@ -354,14 +360,37 @@ public final class CompareTestBaseline
 			}
 			else paths.add(argument);
 		}
-		if (platform == null || commit == null || paths.isEmpty() || (write && !relatedPlatforms.isEmpty()) ||
-			(!write && output != null)) return usage(err);
 		TestReports.Runner reportRunner;
 		if (runner.equals("bazel"))
 			reportRunner = TestReports.Runner.BAZEL;
 		else
 			reportRunner = TestReports.Runner.NEXTEST;
-		TestReports.Report report = TestReports.collect(paths.stream().map(Path::of).toList(), reportRunner);
+		if (writeResults != null)
+		{
+			if (paths.isEmpty() || write || mergeResults != null) return usage(err);
+			TestReports.Report collected = TestReports.collect(paths.stream().map(Path::of).toList(), reportRunner);
+			if (collected.files().isEmpty() || collected.executed().isEmpty())
+			{
+				err.println("No test results were found; the tests must keep their reports.");
+				return 1;
+			}
+			writeResults(scope, Path.of(writeResults), collected);
+			out.println("Wrote " + writeResults + ": " + collected.executed().size() + " executed.");
+			return 0;
+		}
+		boolean merge = mergeResults != null;
+		if (merge)
+		{
+			if (commit == null || baselinePrefix == null || !paths.isEmpty() || write || output != null ||
+				!relatedPlatforms.isEmpty()) return usage(err);
+		}
+		else if (platform == null || commit == null || paths.isEmpty() || (write && !relatedPlatforms.isEmpty()) ||
+			(!write && output != null) || baselinePrefix != null) return usage(err);
+		TestReports.Report report;
+		if (merge)
+			report = mergeResults(scope, Path.of(mergeResults));
+		else
+			report = TestReports.collect(paths.stream().map(Path::of).toList(), reportRunner);
 		if (report.files().isEmpty() || report.executed().isEmpty())
 		{
 			err.println("No test results were found to compare; the tests must keep their reports.");
@@ -380,11 +409,25 @@ public final class CompareTestBaseline
 			return 0;
 		}
 		Path base = Path.of(baselineDirectory);
-		Path primary = baselinePath(base, commit, platform);
+		List<Path> primaries = new ArrayList<>();
 		List<Path> related = new ArrayList<>();
-		for (String value : relatedPlatforms)
-			related.add(baselinePath(base, commit, value));
-		for (Path path : concat(primary, related))
+		if (merge)
+		{
+			primaries.addAll(baselineFiles(base.resolve(commit), baselinePrefix));
+			if (primaries.isEmpty())
+			{
+				err.println("No baseline matching " + base.resolve(commit).resolve(baselinePrefix + "*.json") +
+					"; record them from an unpatched run with --write-baseline.");
+				return 2;
+			}
+		}
+		else
+		{
+			primaries.add(baselinePath(base, commit, platform));
+			for (String value : relatedPlatforms)
+				related.add(baselinePath(base, commit, value));
+		}
+		for (Path path : concat(primaries.getFirst(), related))
 			if (!Files.isRegularFile(path))
 			{
 				err.println("No baseline at " + path + "; record one from an unpatched run with --write-baseline.");
@@ -393,12 +436,26 @@ public final class CompareTestBaseline
 		Set<String> relatedFailures = new LinkedHashSet<>();
 		for (Path path : related)
 			relatedFailures.addAll(readFailures(scope, path));
-		Sections sections = compare(readFailures(scope, primary), report, relatedFailures);
+		Set<String> baselineFailures = new LinkedHashSet<>();
+		long countTotal = 0;
+		boolean countKnown = true;
+		for (Path path : primaries)
+		{
+			baselineFailures.addAll(readFailures(scope, path));
+			OptionalLong count = readExecutedCount(scope, path);
+			if (count.isPresent())
+				countTotal += count.getAsLong();
+			else
+				countKnown = false;
+		}
+		Sections sections = compare(baselineFailures, report, relatedFailures);
 		List<String> lines = new ArrayList<>(render(sections, report));
 		int status = 0;
 		if (!sections.newFailures().isEmpty())
 			status = 1;
-		OptionalLong baselineCount = readExecutedCount(scope, primary);
+		OptionalLong baselineCount = OptionalLong.empty();
+		if (countKnown)
+			baselineCount = OptionalLong.of(countTotal);
 		Optional<String> shortfall = Optional.empty();
 		if (baselineCount.isPresent())
 		{
@@ -414,6 +471,97 @@ public final class CompareTestBaseline
 			appendSummary(summary, "Test baseline comparison", lines);
 		shortfall.ifPresent(err::println);
 		return status;
+	}
+
+	/**
+	 * Lists the baseline files of one commit whose names start with a prefix.
+	 *
+	 * @param directory the commit's baseline directory
+	 * @param prefix the file name prefix
+	 * @return the matching {@code .json} files in name order
+	 * @throws IOException if the directory cannot be listed
+	 */
+	private static List<Path> baselineFiles(Path directory, String prefix) throws IOException
+	{
+		if (!Files.isDirectory(directory)) return List.of();
+		try (java.util.stream.Stream<Path> children = Files.list(directory))
+		{
+			return children.filter(path -> path.getFileName().toString().startsWith(prefix) &&
+				path.getFileName().toString().endsWith(".json")).sorted().toList();
+		}
+	}
+
+	/**
+	 * Writes one shard's collected results so that a later job can merge them.
+	 *
+	 * @param scope configured JSON formatter scope
+	 * @param path destination file
+	 * @param report the shard's collected outcomes
+	 * @throws IOException if the file cannot be written
+	 */
+	public static void writeResults(ToolingScope scope, Path path, TestReports.Report report) throws IOException
+	{
+		Map<String, Object> data = new LinkedHashMap<>();
+		data.put("executed", report.executed().stream().sorted().toList());
+		data.put("failed", report.failed().stream().sorted().toList());
+		data.put("timed_out", report.timedOut().stream().sorted().toList());
+		data.put("passed_cases", report.passedCases().stream().sorted().toList());
+		if (path.getParent() != null) Files.createDirectories(path.getParent());
+		Files.writeString(path, ArtifactJson.format(scope, data));
+	}
+
+	/**
+	 * Merges every {@code results.json} below a directory into one report.
+	 *
+	 * @param scope configured JSON mapper scope
+	 * @param directory directory holding the shards' result files, at any depth
+	 * @return the union of the shards' outcomes; its files are the merged result files
+	 * @throws IOException if a result file is malformed or unreadable
+	 */
+	public static TestReports.Report mergeResults(ToolingScope scope, Path directory) throws IOException
+	{
+		List<Path> files;
+		if (!Files.isDirectory(directory))
+			files = List.of();
+		else
+			try (java.util.stream.Stream<Path> walk = Files.walk(directory))
+			{
+				files = walk.filter(path -> path.getFileName().toString().equals("results.json")).sorted().toList();
+			}
+		Set<String> executed = new LinkedHashSet<>();
+		Set<String> failed = new LinkedHashSet<>();
+		Set<String> timedOut = new LinkedHashSet<>();
+		Set<String> passed = new LinkedHashSet<>();
+		for (Path file : files)
+		{
+			Object raw = scope.getJsonMapper().readValue(Files.readString(file), Object.class);
+			if (!(raw instanceof Map<?, ?> document))
+				throw new IOException("Invalid results at " + file);
+			readStrings(document, "executed", file, executed);
+			readStrings(document, "failed", file, failed);
+			readStrings(document, "timed_out", file, timedOut);
+			readStrings(document, "passed_cases", file, passed);
+		}
+		return new TestReports.Report(files, executed, failed, timedOut, List.of(), passed);
+	}
+
+	/**
+	 * Adds a string array of a results document to a destination.
+	 *
+	 * @param document the results document
+	 * @param key the array's name
+	 * @param file the document's path, for diagnostics
+	 * @param destination receives the strings
+	 * @throws IOException if the field is not an array of strings
+	 */
+	private static void readStrings(Map<?, ?> document, String key, Path file, Set<String> destination)
+		throws IOException
+	{
+		Object values = document.get(key);
+		if (values == null) return;
+		if (!(values instanceof List<?> list) || list.stream().anyMatch(value -> !(value instanceof String)))
+			throw new IOException("Invalid results field " + key + " at " + file);
+		list.forEach(value -> destination.add((String) value));
 	}
 
 	/**
@@ -467,7 +615,7 @@ public final class CompareTestBaseline
 	private static int usage(PrintStream err)
 	{
 		err.println("Usage: compare-test-baseline --platform P [--related-platform R]... " +
-			"--upstream-commit C [--runner nextest|bazel] [--baseline-dir D] [--min-executed-percent P] " +
+			"--upstream-commit C [--runner nextest|bazel] [--baseline-dir D] [--min-executed-percent P] [--write-results FILE | --merge-results DIR --baseline-prefix P] " +
 			"[--write-baseline [--output FILE]] PATH...");
 		return 2;
 	}
