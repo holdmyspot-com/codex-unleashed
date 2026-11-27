@@ -46,6 +46,17 @@ public final class CheckTestSkipsTest
 			CheckTestSkips.Environment.REMOTE).verdict(), "wslPrecedesBwrap").isEqualTo(CheckTestSkips.Verdict.ALLOWED);
 	}
 
+	/** The system-bwrap fallback skip that Bazel builds always take is allowed, not missing setup. */
+	@Test public void allowsBundledBwrapDigestSkip()
+	{
+		var skip = new CheckTestSkips.Skip(Path.of("test.log"), "test",
+			"skipping system bwrap fallback test: bundled binaries require a release digest");
+		CheckTestSkips.ClassifiedSkip classification = CheckTestSkips.classify(skip, CheckTestSkips.Platform.LINUX,
+			CheckTestSkips.Runner.BAZEL, CheckTestSkips.Environment.LOCAL);
+		requireThat(classification.verdict(), "verdict").isEqualTo(CheckTestSkips.Verdict.ALLOWED);
+		requireThat(classification.reason(), "reason").contains("CODEX_BWRAP_SHA256");
+	}
+
 	/** The checker rejects missing Windows tools despite skip wording naming ConPTY. */
 	@Test public void rejectsMissingWindowsTools()
 	{

@@ -449,6 +449,47 @@ public final class BazelTestEvidenceTest
 	}
 
 	/**
+	 * Accepts a sharded target whose failed shard passed on retry (a FLAKY summary), and rejects the same shape when
+	 * the retry chain ends in a terminal timeout.
+	 *
+	 * @throws IOException if the fixture files cannot be created or removed
+	 */
+	@Test
+	public void shardedFlakyChainIsCompleteButTerminalTimeoutIsNot() throws IOException
+	{
+		String firstShard = testResultId("//:pass", "configuration-1", 1, 1, 1);
+		String secondShard = testResultId("//:pass", "configuration-1", 1, 2, 1);
+		String retry = testResultId("//:pass", "configuration-1", 1, 2, 2);
+		String firstResult = "{\"id\":" + firstShard + ",\"testResult\":{\"status\":\"PASSED\"}}";
+		for (String retryStatus : List.of("PASSED", "TIMEOUT"))
+		{
+			String summaryStatus = retryStatus.equals("PASSED") ? "FLAKY" : "TIMEOUT";
+			String secondResult = "{\"id\":" + secondShard + ",\"children\":[" + retry +
+				"],\"testResult\":{\"status\":\"" + (retryStatus.equals("PASSED") ? "FAILED" : "TIMEOUT") + "\"}}";
+			String retryResult = "{\"id\":" + retry + ",\"testResult\":{\"status\":\"" + retryStatus + "\"}}";
+			String evidence = BASE.replace("\"children\":[" + firstShard,
+				"\"children\":[" + firstShard + "," + secondShard).
+				replace(firstResult, firstResult + "\n" + secondResult + "\n" + retryResult).
+				replace("\"shardCount\":1", "\"shardCount\":2").
+				replace("\"totalRunCount\":1", "\"totalRunCount\":3").
+				replace("\"attemptCount\":1", "\"attemptCount\":2").
+				replace("\"overallStatus\":\"PASSED\"", "\"overallStatus\":\"" + summaryStatus + "\"").
+				replace("\"code\":0", "\"code\":3");
+			try (Fixture fixture = new Fixture())
+			{
+				Result result = invoke(fixture, evidence, "//:pass\n", "3");
+				if (retryStatus.equals("PASSED"))
+				{
+					requireThat(result.output, "flakyReport").contains("\"coverage\":\"complete\"");
+					requireThat(result.status, "flakyStatus").isEqualTo(0);
+				}
+				else
+					requireThat(result.status, "timeoutStatus").isEqualTo(1);
+			}
+		}
+	}
+
+	/**
 	 * Treats explicit controller interruption as authoritative rejection evidence.
 	 *
 	 * @throws IOException if the fixture files cannot be created or removed

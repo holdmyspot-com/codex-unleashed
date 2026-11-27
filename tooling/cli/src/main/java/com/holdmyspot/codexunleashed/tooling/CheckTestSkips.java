@@ -487,6 +487,10 @@ public final class CheckTestSkips
 		rules.add(rule("python3? (?:not found|is unavailable)|python not found", Verdict.MISSING_SETUP,
 			"python is not installed", platforms(Platform.LINUX, Platform.MACOS), null, null));
 		rules.add(rule("git or python3 is unavailable", Verdict.MISSING_SETUP, "git or python3 is not installed"));
+		// Listed before the generic bubblewrap rule below, which would classify this deliberate skip as missing setup.
+		rules.add(rule("skipping system bwrap fallback test: bundled binaries require a release digest",
+			Verdict.ALLOWED, "upstream's managed_proxy test skips whenever CODEX_BWRAP_SHA256 is a real nonzero digest, " +
+			"which Bazel builds provide; such a build bundles bwrap and never takes the system-bwrap fallback"));
 		rules.add(rule("bwrap|bubblewrap|user/mount namespaces|unprivileged user namespaces|/dev/shm|" +
 			"unshare is unavailable|namespaced proc mount|sandbox proc is unavailable|skipping sandbox test",
 			Verdict.MISSING_SETUP, "bubblewrap, user namespaces or another Linux sandbox prerequisite is missing",
@@ -517,8 +521,6 @@ public final class CheckTestSkips
 			"test does not apply to Windows"));
 		rules.add(rule("Linux symlink grant regression on another host OS", Verdict.ALLOWED,
 			"test applies only to a Linux host"));
-		rules.add(rule("bundled binaries require a release digest", Verdict.ALLOWED,
-			"the test covers the system-bwrap fallback, which a build with a bundled bwrap does not take"));
 		rules.add(rule("no alternate supplementary group", Verdict.ALLOWED,
 			"the host has no alternate supplementary group for this test"));
 		rules.add(rule("Landlock is not enforceable|the Linux sandbox could not run the read-only probe", Verdict.ALLOWED,
