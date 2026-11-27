@@ -19,6 +19,7 @@ on:
           - aarch64-pc-windows-msvc
 permissions:
   contents: read
+  attestations: read
 jobs:
   # A release whose receipt records a separate compile host compiled its executables there. This job repeats that
   # compile on the same kind of machine, and the reproduce job packages the handoff on the packaging host's kind.
@@ -138,7 +139,7 @@ jobs:
   reproduce:
     needs: compile
     if: ${{ !cancelled() && (needs.compile.result == 'success' || needs.compile.result == 'skipped') }}
-    runs-on: ${{ fromJSON('{"x86_64-unknown-linux-musl":"ubuntu-24.04","aarch64-unknown-linux-musl":"ubuntu-24.04-arm","aarch64-apple-darwin":"macos-15-arm64","x86_64-apple-darwin":"macos-15-intel","x86_64-pc-windows-msvc":"windows-2025","aarch64-pc-windows-msvc":"windows-11-arm"}')[inputs.target] }}
+    runs-on: ${{ fromJSON('{"x86_64-unknown-linux-musl":"ubuntu-24.04","aarch64-unknown-linux-musl":"ubuntu-24.04-arm","aarch64-apple-darwin":"macos-15","x86_64-apple-darwin":"macos-15-intel","x86_64-pc-windows-msvc":"windows-2025","aarch64-pc-windows-msvc":"windows-11-arm"}')[inputs.target] }}
     defaults:
       run:
         shell: bash

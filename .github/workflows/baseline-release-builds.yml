@@ -979,7 +979,7 @@ jobs:
     # partial state, so a cold build that needs more than one job's time finishes over several runs. Two continuations
     # bound the chain; a build that still has not finished needs investigation.
     needs: [select, build]
-    if: ${{ !cancelled() && needs.build.result == 'failure' && inputs.cache && inputs.packages == '' && inputs.continuation < 2 }}
+    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && needs.build.result == 'failure' && inputs.cache && inputs.packages == '' && inputs.continuation < 2 }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

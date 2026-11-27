@@ -6,6 +6,8 @@
 # holds the patches, with the upstream checkout in its upstream directory).
 set -euo pipefail
 
+# A pasted multi-line input may carry CRs, which would end up in the last path of each line.
+DOWNSTREAM_PATCHES=${DOWNSTREAM_PATCHES//$'\r'/}
 read -r -d '' -a patch_paths <<< "$DOWNSTREAM_PATCHES" || true
 # Snapshot files and nested patch files contain intended trailing spaces; tell git am they are not whitespace errors.
 printf '%s\n' '*.snap -whitespace' '*.patch -whitespace' >> "$(git rev-parse --git-path info/attributes)"

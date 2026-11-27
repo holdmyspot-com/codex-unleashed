@@ -719,6 +719,7 @@ jobs:
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: compiled-outputs-x86_64-apple-darwin
+          overwrite: true
           path: ${{ runner.temp }}/compiled-outputs/*
           retention-days: 3
           if-no-files-found: error
@@ -1076,6 +1077,7 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: package-final-output-key-${{ matrix.target }}
+          overwrite: true
           path: ${{ runner.temp }}/package-final-output-key.txt
           retention-days: 3
           if-no-files-found: error
@@ -1283,6 +1285,7 @@ jobs:
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: assets-${{ matrix.target }}
+          overwrite: true
           path: ${{ runner.temp }}/assets/*
           retention-days: 3
           if-no-files-found: error
@@ -1537,6 +1540,7 @@ jobs:
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: voice-runtime-x86_64-apple-darwin
+          overwrite: true
           path: ${{ runner.temp }}/voice-runtime-handoff/voice-runtime.tar
           retention-days: 3
           if-no-files-found: error
@@ -1966,6 +1970,7 @@ jobs:
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: assets-x86_64-apple-darwin
+          overwrite: true
           path: ${{ runner.temp }}/assets/*
           retention-days: 3
           if-no-files-found: error
@@ -2285,7 +2290,7 @@ jobs:
             ${{ runner.temp }}/npm-release-archives/SHA256SUMS
           retention-days: 3
           if-no-files-found: warn
-          overwrite: ${{ inputs.draft_rehearsal == true }}
+          overwrite: true
 
       - name: Remove the downloaded npm inputs
         if: always()
@@ -2378,7 +2383,7 @@ jobs:
           compression-level: 0
           retention-days: 3
           if-no-files-found: error
-          overwrite: ${{ inputs.draft_rehearsal == true }}
+          overwrite: true
 
       - name: Hand off verified draft installers and app-server archives
         if: inputs.draft_rehearsal

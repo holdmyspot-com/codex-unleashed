@@ -458,7 +458,7 @@ jobs:
           build-succeeded: ${{ steps.archive.outcome == 'success' }}
 
       - name: Save Cargo download state
-        if: ${{ always() && steps.cache.outcome == 'success' }}
+        if: ${{ always() && steps.cache.outcome == 'success' && steps.archive.outcome == 'success' }}
         uses: ./restart-metadata/.github/actions/cargo-home-cache
         with:
           mode: save
