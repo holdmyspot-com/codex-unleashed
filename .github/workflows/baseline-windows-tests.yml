@@ -509,10 +509,9 @@ jobs:
           mkdir -p "$build_root/cargo-target" "$build_root/tmp"
           {
             printf 'CARGO_TARGET_DIR=%s\n' "$build_root/cargo-target"
-            printf 'TEMP=%s\n' "$build_root/tmp"
-            printf 'TMP=%s\n' "$build_root/tmp"
-            printf 'TMPDIR=%s\n' "$build_root/tmp"
           } >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/tmp"
+          { printf 'TEMP=%s\n' "$RUNNER_TEMP/tmp"; printf 'TMP=%s\n' "$RUNNER_TEMP/tmp"; printf 'TMPDIR=%s\n' "$RUNNER_TEMP/tmp"; } >> "$GITHUB_ENV"
 
       - name: Warn when no Dev Drive is available
         if: inputs.package != '' && steps.dev-drive.outcome != 'success'
