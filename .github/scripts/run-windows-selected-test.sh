@@ -38,8 +38,28 @@ case "$mode" in
     fi
     mkdir -p "$(dirname "$archive")"
     "${build_args[@]}" --archive-file "$archive_windows"
+    # The test binaries embed this checkout's absolute path (insta snapshots and fixtures resolve from it), so the
+    # run mode needs it when a shard's runner places its workspace elsewhere.
+    cygpath -w "$GITHUB_WORKSPACE" > "$(dirname "$archive")/build-workspace.txt"
     ;;
   run)
+    # Hosted Windows runners put the workspace on C: or D:. Make the archive builder's path resolve to this checkout:
+    # map the drive letter when the builder's drive is absent, else link the builder's directory.
+    build_workspace_file="$(dirname "$archive")/build-workspace.txt"
+    if [[ -f "$build_workspace_file" ]]; then
+      build_workspace=$(tr -d '\r\n' < "$build_workspace_file")
+      current_workspace=$(cygpath -w "$GITHUB_WORKSPACE")
+      if [[ "${build_workspace,,}" != "${current_workspace,,}" && ! -e "$(cygpath -u "$build_workspace")" ]]; then
+        build_drive=${build_workspace:0:2}
+        if [[ "${build_workspace:2}" == "${current_workspace:2}" && ! -d "$(cygpath -u "$build_drive\\")" ]]; then
+          MSYS_NO_PATHCONV=1 subst "$build_drive" "${current_workspace:0:2}\\"
+        else
+          mkdir -p "$(dirname "$(cygpath -u "$build_workspace")")"
+          MSYS_NO_PATHCONV=1 cmd /c mklink /J "$build_workspace" "$current_workspace"
+        fi
+        printf 'Mapped the archive build workspace %s to %s.\n' "$build_workspace" "$current_workspace"
+      fi
+    fi
     # Keep passing tests' output in the JUnit report, where the skip check reads it.
     printf '%s\n' '[profile.default.junit]' 'store-success-output = true' 'store-failure-output = true' \
       > "$RUNNER_TEMP/nextest-keep-output.toml"
