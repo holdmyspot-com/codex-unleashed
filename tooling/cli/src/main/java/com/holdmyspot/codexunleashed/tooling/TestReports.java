@@ -53,9 +53,11 @@ public final class TestReports
 	 * @param failed failed test or target IDs
 	 * @param timedOut timed out test or target IDs
 	 * @param streams captured testcase and suite output
+	 * @param passedCases individual cases that a Bazel log reports as passing, as {@code "<label> <case>"}; they are
+	 *                    kept apart from {@code executed}, which counts targets
 	 */
 	public record Report(List<Path> files, Set<String> executed, Set<String> failed, Set<String> timedOut,
-		List<Stream> streams)
+		List<Stream> streams, Set<String> passedCases)
 	{
 		/**
 		 * Freezes collection values at the report boundary.
@@ -65,9 +67,11 @@ public final class TestReports
 		 * @param failed failed test or target IDs
 		 * @param timedOut timed out test or target IDs
 		 * @param streams captured testcase and suite output
+		 * @param passedCases individual cases reported as passing
 		 */
 		public Report
 		{
+			passedCases = Set.copyOf(passedCases);
 			files = List.copyOf(files);
 			executed = Set.copyOf(executed);
 			failed = Set.copyOf(failed);
@@ -90,6 +94,8 @@ public final class TestReports
 
 	/** Removes terminal color escapes from runner output. */
 	private static final Pattern ANSI_ESCAPE = Pattern.compile("[\\x1b\\ufffd?]\\[[0-9;]*[A-Za-z]");
+	/** Matches a libtest passing record. */
+	private static final Pattern LIBTEST_OK = Pattern.compile("^test (\\S+) \\.\\.\\. ok\\s*$");
 	/** Captures an exact libtest failure line. */
 	private static final Pattern LIBTEST_FAILED = Pattern.compile("^test (\\S+) \\.\\.\\. FAILED\\s*$");
 	/** Recognizes timeout descriptions in a failure type. */
@@ -119,6 +125,7 @@ public final class TestReports
 		Set<String> failed = new LinkedHashSet<>();
 		Set<String> timedOut = new LinkedHashSet<>();
 		List<Stream> streams = new ArrayList<>();
+		Set<String> passedCases = new LinkedHashSet<>();
 		for (Path path : files)
 		{
 			if (runner == Runner.BAZEL)
@@ -131,12 +138,12 @@ public final class TestReports
 					parseXml(path, target, true, executed, failed,
 						timedOut, streams);
 				else
-					scanBazelLog(path, target, failed);
+					scanBazelLog(path, target, failed, passedCases);
 			}
 			else if (path.toString().endsWith(".xml"))
 				parseXml(path, null, false, executed, failed, timedOut, streams);
 		}
-		return new Report(files, executed, failed, timedOut, streams);
+		return new Report(files, executed, failed, timedOut, streams, passedCases);
 	}
 
 	/**
@@ -446,16 +453,20 @@ public final class TestReports
 	 * @param path Bazel test log
 	 * @param label Bazel target label
 	 * @param failed destination for failed case IDs
+	 * @param passed destination for passing case IDs
 	 * @throws IOException if the log cannot be read
 	 */
-	private static void scanBazelLog(Path path, String label, Set<String> failed) throws IOException
+	private static void scanBazelLog(Path path, String label, Set<String> failed, Set<String> passed) throws IOException
 	{
 		try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8))
 		{
 			for (String line = reader.readLine(); line != null; line = reader.readLine())
 			{
-				Matcher match = LIBTEST_FAILED.matcher(ANSI_ESCAPE.matcher(line).replaceAll("").strip());
+				String text = ANSI_ESCAPE.matcher(line).replaceAll("").strip();
+				Matcher match = LIBTEST_FAILED.matcher(text);
 				if (match.matches()) failed.add(label + " " + match.group(1));
+				Matcher ok = LIBTEST_OK.matcher(text);
+				if (ok.matches()) passed.add(label + " " + ok.group(1));
 			}
 		}
 	}

@@ -74,6 +74,7 @@ public final class CompareTestBaseline
 		Objects.requireNonNull(related, "related");
 		Map<String, String> failing = normalize(report.failing());
 		Set<String> executed = normalizeKeys(report.executed());
+		executed.addAll(normalizeKeys(report.passedCases()));
 		Map<String, String> own = normalize(baseline);
 		Map<String, String> recorded = normalize(related);
 		recorded.putAll(own);

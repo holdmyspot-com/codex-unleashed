@@ -48,6 +48,28 @@ public final class CompareTestBaselineTest
 	}
 
 	/**
+	 * A baseline-failing Bazel case that passes in a passing target is fixed; one absent from the log is not run.
+	 *
+	 * @throws IOException if fixture IO fails
+	 */
+	@Test public void bazelPassingCaseCountsAsFixedButAbsentCaseDoesNot() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path root = Files.createDirectories(fixture.root.resolve("bazel-testlogs/pkg/app/runner"));
+			Files.writeString(root.resolve("test.xml"), "<testsuites><testsuite><testcase name='t'/></testsuite></testsuites>");
+			Files.writeString(root.resolve("test.log"), "test suite::passes ... ok\n");
+			TestReports.Report report = TestReports.collect(List.of(fixture.root.resolve("bazel-testlogs")),
+				TestReports.Runner.BAZEL);
+			CompareTestBaseline.Sections sections = CompareTestBaseline.compare(
+				Set.of("//pkg/app:runner suite::passes", "//pkg/app:runner suite::absent"), report, Set.of());
+			requireThat(sections.fixed(), "fixed").isEqualTo(List.of("//pkg/app:runner suite::passes"));
+			requireThat(sections.notRun(), "notRun").isEqualTo(List.of("//pkg/app:runner suite::absent"));
+			requireThat(report.executed().size(), "targetCount").isEqualTo(1);
+		}
+	}
+
+	/**
 	 * Related failures are known without adding them to the primary baseline's not-run section.
 	 *
 	 * @throws IOException if a fixture report cannot be written
