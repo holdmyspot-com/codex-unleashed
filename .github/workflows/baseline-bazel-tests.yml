@@ -45,11 +45,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: ${{ fromJSON(((inputs.exec_server_shells || inputs.targets != '') && '[1]') || '[1,2]') }}
+        shard: ${{ fromJSON(((inputs.exec_server_shells || inputs.targets != '') && '[1]') || '[1,2,3]') }}
     runs-on: ubuntu-24.04
     env:
       BAZEL_TEST_SHARD: ${{ matrix.shard }}
-      BAZEL_TEST_SHARD_COUNT: '2'
+      # Two shards left about 16 GB free on the 145 GB root disk on rust-v0.172.0, and shard 2 lost its runner
+      # twice (run 45949565279); a third shard cuts each shard's Bazel outputs.
+      BAZEL_TEST_SHARD_COUNT: '3'
     defaults:
       run:
         shell: bash
