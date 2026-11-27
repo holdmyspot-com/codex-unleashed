@@ -1,4 +1,15 @@
-# Bazel targets that --skip_incompatible_explicit_targets may skip as incompatible in the Windows Bazel test shards.
-# One label per line; blank lines and lines starting with # are ignored. The skip set of today's runs could not be
-# determined without a CI run, so the list starts empty: the first run's coverage job prints every skipped target,
-# and each one that is expected to be incompatible must be added here with a comment naming the reason.
+# Bazel targets that Bazel may skip as incompatible (--skip_incompatible_explicit_targets) without failing coverage.
+# Format: GROUP<space>REGEX. GROUP is the shard group (linux, aarch64-apple-darwin, x86_64-apple-darwin,
+# x86_64-pc-windows-gnullvm, x86_64-pc-windows-msvc); REGEX must match the whole label. Blank lines and lines starting
+# with # are ignored.
+
+# Upstream's Windows cross-compilation test variants are incompatible with Linux and macOS hosts.
+linux .*-windows-cross
+aarch64-apple-darwin .*-windows-cross
+x86_64-apple-darwin .*-windows-cross
+# The Windows sandbox crates' unit-test binaries only build for Windows.
+linux //codex-rs/windows-sandbox(-rs|-service):.*-bin-unit-tests
+aarch64-apple-darwin //codex-rs/windows-sandbox(-rs|-service):.*-bin-unit-tests
+x86_64-apple-darwin //codex-rs/windows-sandbox(-rs|-service):.*-bin-unit-tests
+
+# The Windows groups start empty until a run shows what they skip.

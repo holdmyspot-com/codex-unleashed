@@ -14,6 +14,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import java.util.stream.Stream;
 import tools.jackson.databind.JsonNode;
 
@@ -114,9 +116,19 @@ public final class BazelShardCoverage
 						return 2;
 					}
 				}
-				Set<String> allowlist = new TreeSet<>();
+				List<AllowedSkip> allowlist = new ArrayList<>();
 				if (options.containsKey("--allowlist"))
-					allowlist.addAll(readTargets(Path.of(options.get("--allowlist").getFirst())));
+				{
+					try
+					{
+						allowlist = readAllowlist(Path.of(options.get("--allowlist").getFirst()));
+					}
+					catch (IllegalArgumentException e)
+					{
+						err.println(e.getMessage());
+						return 2;
+					}
+				}
 				List<String> failures = check(Path.of(options.get("--directory").getFirst()), expected, allowlist, out);
 				failures.forEach(err::println);
 				return failures.isEmpty() ? 0 : 1;
@@ -233,6 +245,46 @@ public final class BazelShardCoverage
 	}
 
 	/**
+	 * A skip allowlist entry.
+	 *
+	 * @param group the shard group that the entry applies to
+	 * @param pattern the regular expression that must match a whole target label
+	 */
+	public record AllowedSkip(String group, Pattern pattern)
+	{
+	}
+
+	/**
+	 * Reads the skip allowlist: lines of {@code GROUP REGEX}, ignoring blank and {@code #} lines.
+	 *
+	 * @param file the allowlist
+	 * @return the entries
+	 * @throws IOException if the file cannot be read
+	 * @throws IllegalArgumentException if a line has no regex or its regex is invalid
+	 */
+	public static List<AllowedSkip> readAllowlist(Path file) throws IOException
+	{
+		List<AllowedSkip> result = new ArrayList<>();
+		for (String line : Files.readAllLines(file, StandardCharsets.UTF_8))
+		{
+			String trimmed = line.strip();
+			if (trimmed.isEmpty() || trimmed.startsWith("#")) continue;
+			int space = trimmed.indexOf(' ');
+			if (space < 1 || trimmed.substring(space + 1).isBlank())
+				throw new IllegalArgumentException("Allowlist line must be 'GROUP REGEX': " + trimmed);
+			try
+			{
+				result.add(new AllowedSkip(trimmed.substring(0, space), Pattern.compile(trimmed.substring(space + 1).strip())));
+			}
+			catch (PatternSyntaxException e)
+			{
+				throw new IllegalArgumentException("Invalid allowlist regex in '" + trimmed + "': " + e.getDescription());
+			}
+		}
+		return result;
+	}
+
+	/**
 	 * Reads a target list that may be absent.
 	 *
 	 * @param file the list
@@ -282,12 +334,13 @@ public final class BazelShardCoverage
 	 *
 	 * @param directory directory of downloaded shard artifacts, one subdirectory each
 	 * @param expected the expected shard count of every group
-	 * @param allowlist targets that may be skipped
+	 * @param allowlist per-group patterns of targets that may be skipped
 	 * @param out where the skipped targets are printed
 	 * @return the failure messages, empty when coverage is complete
 	 * @throws IOException if a present artifact cannot be read
 	 */
-	public static List<String> check(Path directory, Map<String, Integer> expected, Set<String> allowlist,
+	public static List<String> check(Path directory, Map<String, Integer> expected,
+		List<AllowedSkip> allowlist,
 		PrintStream out) throws IOException
 	{
 		List<String> failures = new ArrayList<>();
@@ -385,10 +438,10 @@ public final class BazelShardCoverage
 		allSkipped.forEach(value -> out.println("    " + value));
 		for (String value : allSkipped)
 		{
+			String group = value.substring(0, value.indexOf(' '));
 			String target = value.substring(value.indexOf(' ') + 1);
-			if (!allowlist.contains(target))
-				failures.add("Skipped target " + target + " (" + value.substring(0, value.indexOf(' ')) +
-					") is not on the skip allowlist.");
+			if (allowlist.stream().noneMatch(entry -> entry.group.equals(group) && entry.pattern.matcher(target).matches()))
+				failures.add("Skipped target " + target + " (" + group + ") is not on the skip allowlist.");
 		}
 		return failures;
 	}

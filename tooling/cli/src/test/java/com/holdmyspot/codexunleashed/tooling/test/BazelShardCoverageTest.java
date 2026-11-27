@@ -77,7 +77,7 @@ public final class BazelShardCoverageTest
 	{
 		Path root = Files.createTempDirectory("coverage-");
 		shard(root, "g", 1, 1, "//a\n//b\n", "//a\n//b\n", "//a\n", "//b\n");
-		Path allowlist = Files.writeString(Files.createTempDirectory("allow-").resolve("allow.txt"), "# none\n");
+		Path allowlist = Files.writeString(Files.createTempDirectory("allow-").resolve("allow.txt"), "# none\nother //b\n");
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		ByteArrayOutputStream err = new ByteArrayOutputStream();
 		int status = BazelShardCoverage.run(new DefaultToolingScope(), new String[]{"check", "--directory",
@@ -86,12 +86,39 @@ public final class BazelShardCoverageTest
 		requireThat(status, "status").isEqualTo(1);
 		requireThat(out.toString(StandardCharsets.UTF_8), "out").contains("g //b");
 		requireThat(err.toString(StandardCharsets.UTF_8), "err").contains("Skipped target //b");
-		Files.writeString(allowlist, "//b\n");
+		Files.writeString(allowlist, "# reason\ng //.*\n");
 		err.reset();
 		status = BazelShardCoverage.run(new DefaultToolingScope(), new String[]{"check", "--directory",
 			root.toString(), "--expect", "g=1", "--allowlist", allowlist.toString()},
 			new PrintStream(out, true, StandardCharsets.UTF_8), new PrintStream(err, true, StandardCharsets.UTF_8));
 		requireThat(status, "allowedStatus").isEqualTo(0);
+	}
+
+	/**
+	 * Matches allowlist regexes against the whole label, per group, and rejects malformed lines.
+	 *
+	 * @throws IOException if fixture IO fails
+	 */
+	@Test public void allowlistRegexesFullMatchPerGroup() throws IOException
+	{
+		Path root = Files.createTempDirectory("coverage-");
+		shard(root, "g", 1, 1, "//a:x-windows-cross\n//a:x-windows-cross-extra\n", "//a:x-windows-cross\n" +
+			"//a:x-windows-cross-extra\n", "//a:x-windows-cross\n", "//a:x-windows-cross-extra\n");
+		Path allowlist = Files.writeString(Files.createTempDirectory("allow-").resolve("allow.txt"),
+			"g .*-windows-cross\nother .*\n");
+		ByteArrayOutputStream err = new ByteArrayOutputStream();
+		PrintStream out = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+		int status = BazelShardCoverage.run(new DefaultToolingScope(), new String[]{"check", "--directory",
+			root.toString(), "--expect", "g=1", "--allowlist", allowlist.toString()}, out,
+			new PrintStream(err, true, StandardCharsets.UTF_8));
+		requireThat(status, "status").isEqualTo(1);
+		String text = err.toString(StandardCharsets.UTF_8);
+		requireThat(text, "text").contains("Skipped target //a:x-windows-cross-extra (g)");
+		requireThat(text.contains("Skipped target //a:x-windows-cross ("), "firstAllowed").isFalse();
+		Files.writeString(allowlist, "noregex\n");
+		status = BazelShardCoverage.run(new DefaultToolingScope(), new String[]{"check", "--directory",
+			root.toString(), "--expect", "g=1", "--allowlist", allowlist.toString()}, out, out);
+		requireThat(status, "malformedStatus").isEqualTo(2);
 	}
 
 	/**
