@@ -16,31 +16,28 @@ permissions:
   contents: read
 
 jobs:
+  plan:
+    # Each target's shard count is defined here once; the shard matrix and the coverage job derive from it.
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      expect: ${{ steps.plan.outputs.expect }}
+    steps:
+      - name: Define the shards
+        id: plan
+        run: |
+          set -euo pipefail
+          # One msvc shard built 100 GB of outputs for //... and filled a 133 GB Dev Drive (run 45949570933); halving the
+          # selection keeps each shard near the 60-75 GB that the gnullvm shards use.
+          targets='[{"target":"x86_64-pc-windows-gnullvm","shard_count":4},{"target":"x86_64-pc-windows-msvc","shard_count":2}]'
+          printf 'matrix=%s\n' "$(jq -c '{include: [.[] | . as $entry | range(1; $entry.shard_count + 1) | {target: $entry.target, shard: ., shard_count: $entry.shard_count}]}' <<< "$targets")" >> "$GITHUB_OUTPUT"
+          printf 'expect=%s\n' "$(jq -r '[.[] | "--expect \(.target)=\(.shard_count)"] | join(" ")' <<< "$targets")" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: plan
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-pc-windows-gnullvm
-            shard: 1
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 2
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 3
-            shard_count: 4
-          - target: x86_64-pc-windows-gnullvm
-            shard: 4
-            shard_count: 4
-          # One shard built 100 GB of outputs for //... and filled a 133 GB Dev Drive (run 45949570933); halving the
-          # selection keeps each shard near the 60-75 GB that the gnullvm shards use.
-          - target: x86_64-pc-windows-msvc
-            shard: 1
-            shard_count: 2
-          - target: x86_64-pc-windows-msvc
-            shard: 2
-            shard_count: 2
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: windows-2025
     timeout-minutes: 360
     env:
@@ -356,7 +353,7 @@ jobs:
           fi
           exit "$result"
 
-      - name: Record the shard's candidate, selected and skipped lists
+      - name: Record the shard's candidate, selected, executed and skipped lists
         if: always() && steps.bazel_tests.outcome != 'skipped'
         run: |
           set -euo pipefail
@@ -369,7 +366,8 @@ jobs:
           printf '%s\n' "$BAZEL_TEST_SHARD" > "$out/shard.txt"
           printf '%s\n' "$BAZEL_TEST_SHARD_COUNT" > "$out/shard-count.txt"
           if [[ -s "$evidence/bazel-tests.bep.json" ]]; then
-            bash "$CODEX_TOOLING" bazel-shard-coverage skipped --bep "$evidence/bazel-tests.bep.json" --output "$out/skipped.txt"
+            bash "$CODEX_TOOLING" bazel-shard-coverage record --bep "$evidence/bazel-tests.bep.json" \
+              --executed "$out/executed.txt" --skipped "$out/skipped.txt"
           fi
 
       - name: Upload this shard's coverage lists
@@ -498,7 +496,7 @@ jobs:
   coverage:
     # Fails unless every shard uploaded, all saw the same candidate list, the selections partition it exactly, and every
     # incompatible skip is allowlisted.
-    needs: test
+    needs: [plan, test]
     if: always()
     runs-on: ubuntu-24.04
     permissions:
@@ -531,9 +529,12 @@ jobs:
           path: ${{ runner.temp }}/shard-coverage
 
       - name: Check shard coverage
+        env:
+          EXPECT: ${{ needs.plan.outputs.expect }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/shard-coverage"
+          read -r -a expect <<< "$EXPECT"
           bash "$CODEX_TOOLING" bazel-shard-coverage check --directory "$RUNNER_TEMP/shard-coverage" \
-            --expect x86_64-pc-windows-gnullvm=4 --expect x86_64-pc-windows-msvc=2 \
+            "${expect[@]}" \
             --allowlist .github/bazel-skipped-targets-allowlist.txt

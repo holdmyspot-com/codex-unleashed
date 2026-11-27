@@ -29,8 +29,8 @@ public final class BazelShardCoverageTest
 	@Test public void acceptsCompletePartition() throws IOException
 	{
 		Path root = Files.createTempDirectory("coverage-");
-		shard(root, "g", 1, 2, "//a\n//b\n//c\n", "//a\n//c\n", null);
-		shard(root, "g", 2, 2, "//a\n//b\n//c\n", "//b\n", null);
+		shard(root, "g", 1, 2, "//a\n//b\n//c\n", "//a\n//c\n", null, null);
+		shard(root, "g", 2, 2, "//a\n//b\n//c\n", "//b\n", null, null);
 		ByteArrayOutputStream err = new ByteArrayOutputStream();
 		int status = run(root, err, "g=2");
 		requireThat(status, "status").isEqualTo(0);
@@ -45,14 +45,14 @@ public final class BazelShardCoverageTest
 	@Test public void rejectsEveryCoverageDefect() throws IOException
 	{
 		Path root = Files.createTempDirectory("coverage-");
-		shard(root, "g", 1, 3, "//a\n//b\n//c\n", "//a\n//b\n", null);
-		shard(root, "g", 2, 3, "//a\n//b\n", "//b\n", null);
+		shard(root, "g", 1, 3, "//a\n//b\n//c\n", "//a\n//b\n", null, null);
+		shard(root, "g", 2, 3, "//a\n//b\n", "//b\n", null, null);
 		ByteArrayOutputStream err = new ByteArrayOutputStream();
 		int status = run(root, err, "g=3");
 		String text = err.toString(StandardCharsets.UTF_8);
 		requireThat(status, "status").isEqualTo(1);
 		requireThat(text, "text").contains("shard 3 of 3 did not upload").contains("different candidate list").
-			contains("target //b was selected by shards 1 and 2").contains("candidate //c was selected by no shard");
+			contains("target //b was selected by shards 1 and 2").contains("1 candidate(s) selected by no shard: //c");
 	}
 
 	/**
@@ -76,7 +76,7 @@ public final class BazelShardCoverageTest
 	@Test public void enforcesSkipAllowlist() throws IOException
 	{
 		Path root = Files.createTempDirectory("coverage-");
-		shard(root, "g", 1, 1, "//a\n//b\n", "//a\n//b\n", "//b\n");
+		shard(root, "g", 1, 1, "//a\n//b\n", "//a\n//b\n", "//a\n", "//b\n");
 		Path allowlist = Files.writeString(Files.createTempDirectory("allow-").resolve("allow.txt"), "# none\n");
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		ByteArrayOutputStream err = new ByteArrayOutputStream();
@@ -95,23 +95,41 @@ public final class BazelShardCoverageTest
 	}
 
 	/**
-	 * Extracts skipped labels from build events.
+	 * Rejects a selected target that neither executed nor was skipped.
 	 *
 	 * @throws IOException if fixture IO fails
 	 */
-	@Test public void readsSkippedTargetsFromBuildEvents() throws IOException
+	@Test public void rejectsSelectedTargetThatDidNotRun() throws IOException
+	{
+		Path root = Files.createTempDirectory("coverage-");
+		shard(root, "g", 1, 1, "//a\n//b\n", "//a\n//b\n", "//a\n", null);
+		ByteArrayOutputStream err = new ByteArrayOutputStream();
+		requireThat(run(root, err, "g=1"), "status").isEqualTo(1);
+		requireThat(err.toString(StandardCharsets.UTF_8), "err").contains(
+			"1 selected target(s) neither executed nor skipped: //b");
+	}
+
+	/**
+	 * Extracts executed and skipped labels from build events.
+	 *
+	 * @throws IOException if fixture IO fails
+	 */
+	@Test public void readsExecutedAndSkippedTargetsFromBuildEvents() throws IOException
 	{
 		Path bep = Files.writeString(Files.createTempFile("bep", ".json"),
 			"{\"id\":{\"targetCompleted\":{\"label\":\"//x:t\"}},\"aborted\":{\"reason\":\"SKIPPED\"}}\n" +
-			"{\"id\":{\"targetCompleted\":{\"label\":\"//y:t\"}},\"completed\":{\"success\":true}}\n" +
+			"{\"id\":{\"testSummary\":{\"label\":\"//y:t\"}},\"testSummary\":{\"overallStatus\":\"PASSED\"}}\n" +
 			"{\"id\":{\"targetCompleted\":{\"label\":\"//z:t\"}},\"aborted\":{\"reason\":\"USER_INTERRUPTED\"}}\n");
-		requireThat(BazelShardCoverage.skippedTargets(new DefaultToolingScope(), bep), "skipped").
-			isEqualTo(Set.of("//x:t"));
-		Path output = bep.resolveSibling(bep.getFileName() + ".out");
+		BazelShardCoverage.Events events = BazelShardCoverage.events(new DefaultToolingScope(), bep);
+		requireThat(events.skipped(), "skipped").isEqualTo(Set.of("//x:t"));
+		requireThat(events.executed(), "executed").isEqualTo(Set.of("//y:t"));
+		Path executed = bep.resolveSibling(bep.getFileName() + ".executed");
+		Path skipped = bep.resolveSibling(bep.getFileName() + ".skipped");
 		PrintStream out = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
-		requireThat(BazelShardCoverage.run(new DefaultToolingScope(), new String[]{"skipped", "--bep", bep.toString(),
-			"--output", output.toString()}, out, out), "status").isEqualTo(0);
-		requireThat(Files.readString(output), "file").isEqualTo("//x:t\n");
+		requireThat(BazelShardCoverage.run(new DefaultToolingScope(), new String[]{"record", "--bep", bep.toString(),
+			"--executed", executed.toString(), "--skipped", skipped.toString()}, out, out), "status").isEqualTo(0);
+		requireThat(Files.readString(executed), "executedFile").isEqualTo("//y:t\n");
+		requireThat(Files.readString(skipped), "skippedFile").isEqualTo("//x:t\n");
 	}
 
 	/**
@@ -139,11 +157,12 @@ public final class BazelShardCoverageTest
 	 * @param count shard count
 	 * @param candidates candidate list text
 	 * @param selected selected list text
+	 * @param executed executed list text, or null to execute every selected target
 	 * @param skipped skipped list text or null
 	 * @throws IOException if writing fails
 	 */
 	private static void shard(Path root, String group, int number, int count, String candidates, String selected,
-		String skipped) throws IOException
+		String executed, String skipped) throws IOException
 	{
 		Path directory = Files.createDirectories(root.resolve("art-" + group + "-" + number));
 		Files.writeString(directory.resolve("group.txt"), group + "\n");
@@ -151,6 +170,7 @@ public final class BazelShardCoverageTest
 		Files.writeString(directory.resolve("shard-count.txt"), count + "\n");
 		Files.writeString(directory.resolve("candidates.txt"), candidates);
 		Files.writeString(directory.resolve("selected.txt"), selected);
+		Files.writeString(directory.resolve("executed.txt"), executed == null ? selected : executed);
 		if (skipped != null) Files.writeString(directory.resolve("skipped.txt"), skipped);
 	}
 }

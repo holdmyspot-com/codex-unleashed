@@ -41,17 +41,36 @@ permissions:
   packages: write # Bazel disk cache in GHCR
 
 jobs:
+  plan:
+    # The shard count is defined here once; the shard matrix, each shard's selection and the coverage job derive from it.
+    runs-on: ubuntu-24.04
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      shard_count: ${{ steps.plan.outputs.shard_count }}
+    steps:
+      - name: Define the shards
+        id: plan
+        env:
+          SINGLE_SHARD: ${{ inputs.exec_server_shells || inputs.targets != '' }}
+        run: |
+          set -euo pipefail
+          # Two shards left about 16 GB free on the 145 GB root disk on rust-v0.172.0, and shard 2 lost its runner
+          # twice (run 45949565279); a third shard cuts each shard's Bazel outputs.
+          shard_count=3
+          printf 'shard_count=%s\n' "$shard_count" >> "$GITHUB_OUTPUT"
+          printf 'shards=%s\n' "$(jq -cn --argjson count "$shard_count" --arg single "$SINGLE_SHARD" \
+            'if $single == "true" then [1] else [range(1; $count + 1)] end')" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: plan
     strategy:
       fail-fast: false
       matrix:
-        shard: ${{ fromJSON(((inputs.exec_server_shells || inputs.targets != '') && '[1]') || '[1,2,3]') }}
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
     runs-on: ubuntu-24.04
     env:
       BAZEL_TEST_SHARD: ${{ matrix.shard }}
-      # Two shards left about 16 GB free on the 145 GB root disk on rust-v0.172.0, and shard 2 lost its runner
-      # twice (run 45949565279); a third shard cuts each shard's Bazel outputs.
-      BAZEL_TEST_SHARD_COUNT: '3'
+      BAZEL_TEST_SHARD_COUNT: ${{ needs.plan.outputs.shard_count }}
     defaults:
       run:
         shell: bash
@@ -281,27 +300,24 @@ jobs:
           LC_ALL=C sort "$evidence/candidate-targets.txt" > "$evidence/expected-targets.txt"
           cmp "$evidence/expected-targets.txt" "$evidence/expanded-package-targets.txt"
 
-      - name: Record the shard's candidate and selected lists
+
+      - name: Record the shard's candidate and selected test targets
         if: ${{ !inputs.exec_server_shells && inputs.targets == '' }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-evidence"
           out="$RUNNER_TEMP/shard-coverage-out"
           mkdir -p "$out"
-          sed -e 's/^set(//' -e 's/)$//' "$evidence/all-package-patterns.query" | tr ' ' '\n' | LC_ALL=C sort > "$out/candidates.txt"
-          LC_ALL=C sort "$evidence/selected-targets.txt" > "$out/selected.txt"
-          printf 'linux\n' > "$out/group.txt"
+          # The candidates are every test target of the workspace after the exclusions the shards apply; the selected
+          # targets are the tests inside this shard's packages, under the same exclusions.
+          exclusions='except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...)) except //codex-rs/v8-poc:v8-poc-unit-tests'
+          .github/scripts/run-bazel-query-ci.sh --output=label -- "tests(//...) $exclusions" \
+            | LC_ALL=C sort > "$out/candidates.txt"
+          .github/scripts/run-bazel-query-ci.sh --output=label -- "tests(set($(tr '\n' ' ' < "$evidence/selected-targets.txt"))) $exclusions" \
+            | LC_ALL=C sort > "$out/selected.txt"
+          printf '%s\n' linux > "$out/group.txt"
           printf '%s\n' "$BAZEL_TEST_SHARD" > "$out/shard.txt"
           printf '%s\n' "$BAZEL_TEST_SHARD_COUNT" > "$out/shard-count.txt"
-
-      - name: Upload this shard's coverage lists
-        if: ${{ !inputs.exec_server_shells && inputs.targets == '' }}
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
-        with:
-          name: bazel-shard-coverage-linux-${{ matrix.shard }}
-          path: ${{ runner.temp }}/shard-coverage-out
-          retention-days: 3
-          if-no-files-found: error
 
       # Bazel's content-addressed disk cache is kept in GHCR (the Actions cache is nearly full), keyed on the Bazel and
       # module lock files, the upstream commit, the applied patches, the shard and the target selection. A hit replays
@@ -567,6 +583,27 @@ jobs:
         if: always()
         run: cp "$RUNNER_TEMP/memory-samples.log" "$RUNNER_TEMP/baseline-bazel-evidence/" 2>/dev/null || true
 
+      - name: Record the executed and skipped test targets and upload the shard's coverage lists
+        if: always() && steps.bazel_tests.outcome != 'skipped' && !inputs.exec_server_shells && inputs.targets == ''
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-evidence"
+          out="$RUNNER_TEMP/shard-coverage-out"
+          mkdir -p "$out"
+          if [[ -s "$evidence/bazel-tests.bep.json" ]]; then
+            bash "$CODEX_TOOLING" bazel-shard-coverage record --bep "$evidence/bazel-tests.bep.json" \
+              --executed "$out/executed.txt" --skipped "$out/skipped.txt"
+          fi
+
+      - name: Upload this shard's coverage lists
+        if: always() && steps.bazel_tests.outcome != 'skipped' && !inputs.exec_server_shells && inputs.targets == ''
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: bazel-shard-coverage-linux-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-coverage-out
+          retention-days: 3
+          if-no-files-found: error
+
       - name: Retain test evidence for one day
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
@@ -584,7 +621,7 @@ jobs:
   coverage:
     # Fails unless every shard uploaded, all saw the same candidate list, the selections partition it exactly, and every
     # incompatible skip is allowlisted.
-    needs: test
+    needs: [plan, test]
     if: ${{ always() && !inputs.exec_server_shells && inputs.targets == '' }}
     runs-on: ubuntu-24.04
     permissions:
@@ -617,8 +654,11 @@ jobs:
           path: ${{ runner.temp }}/shard-coverage
 
       - name: Check shard coverage
+        env:
+          SHARD_COUNT: ${{ needs.plan.outputs.shard_count }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/shard-coverage"
           bash "$CODEX_TOOLING" bazel-shard-coverage check --directory "$RUNNER_TEMP/shard-coverage" \
-            --expect linux=3
+            --expect linux="$SHARD_COUNT" \
+            --allowlist .github/bazel-skipped-targets-allowlist.txt

@@ -26,31 +26,31 @@ permissions:
   contents: read
 
 jobs:
+  plan:
+    # Each platform's shard count is defined here once; the shard matrix and the coverage job derive from it.
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      expect: ${{ steps.plan.outputs.expect }}
+    steps:
+      - name: Define the shards
+        id: plan
+        run: |
+          set -euo pipefail
+          # The 4-CPU Intel runner ran 25 tests at once, so tests missed their 10-second startup deadlines, and
+          # shard 2 of 2 hit the 290-minute limit (run 45573260043). Upstream tests x86_64 on macos-15-xlarge.
+          platforms='[
+            {"runner":"macos-15","target":"aarch64-apple-darwin","bazel_arch":"arm64","bazel_sha256":"dd466352a3e4d3581b8898740ee1ff208866ccbe25f8d367c5dcb950219587e6","shard_count":2,"test_jobs":""},
+            {"runner":"macos-15-intel","target":"x86_64-apple-darwin","bazel_arch":"x86_64","bazel_sha256":"14c9bcb01303b38192e0e2895051c1bcf19bf89d7e416f5aeeeb48b6b624cfbf","shard_count":4,"test_jobs":"4"}
+          ]'
+          printf 'matrix=%s\n' "$(jq -c '{include: [.[] | . as $platform | range(1; $platform.shard_count + 1) | {shard: ., platform: $platform}]}' <<< "$platforms")" >> "$GITHUB_OUTPUT"
+          printf 'expect=%s\n' "$(jq -r '[.[] | "--expect \(.target)=\(.shard_count)"] | join(" ")' <<< "$platforms")" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: plan
     strategy:
       fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
-        platform:
-          - runner: macos-15
-            target: aarch64-apple-darwin
-            bazel_arch: arm64
-            bazel_sha256: dd466352a3e4d3581b8898740ee1ff208866ccbe25f8d367c5dcb950219587e6
-            shard_count: 2
-            test_jobs: ''
-          - runner: macos-15-intel
-            target: x86_64-apple-darwin
-            bazel_arch: x86_64
-            bazel_sha256: 14c9bcb01303b38192e0e2895051c1bcf19bf89d7e416f5aeeeb48b6b624cfbf
-            # The 4-CPU Intel runner ran 25 tests at once, so tests missed their 10-second startup deadlines, and
-            # shard 2 of 2 hit the 290-minute limit (run 45573260043). Upstream tests x86_64 on macos-15-xlarge.
-            shard_count: 4
-            test_jobs: '4'
-        exclude:
-          - shard: 3
-            platform: {runner: macos-15, target: aarch64-apple-darwin, bazel_arch: arm64, bazel_sha256: dd466352a3e4d3581b8898740ee1ff208866ccbe25f8d367c5dcb950219587e6, shard_count: 2, test_jobs: ''}
-          - shard: 4
-            platform: {runner: macos-15, target: aarch64-apple-darwin, bazel_arch: arm64, bazel_sha256: dd466352a3e4d3581b8898740ee1ff208866ccbe25f8d367c5dcb950219587e6, shard_count: 2, test_jobs: ''}
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
@@ -221,25 +221,23 @@ jobs:
           LC_ALL=C sort "$evidence/candidate-targets.txt" > "$evidence/expected-targets.txt"
           cmp "$evidence/expected-targets.txt" "$evidence/expanded-package-targets.txt"
 
-      - name: Record the shard's candidate and selected lists
+
+      - name: Record the shard's candidate and selected test targets
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
           out="$RUNNER_TEMP/shard-coverage-out"
           mkdir -p "$out"
-          sed -e 's/^set(//' -e 's/)$//' "$evidence/all-package-patterns.query" | tr ' ' '\n' | LC_ALL=C sort > "$out/candidates.txt"
-          LC_ALL=C sort "$evidence/selected-targets.txt" > "$out/selected.txt"
+          # The candidates are every test target of the workspace after the exclusions the shards apply; the selected
+          # targets are the tests inside this shard's packages, under the same exclusions.
+          exclusions='except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...)) except //codex-rs/v8-poc:v8-poc-unit-tests'
+          .github/scripts/run-bazel-query-ci.sh --output=label -- "tests(//...) $exclusions" \
+            | LC_ALL=C sort > "$out/candidates.txt"
+          .github/scripts/run-bazel-query-ci.sh --output=label -- "tests(set($(tr '\n' ' ' < "$evidence/selected-targets.txt"))) $exclusions" \
+            | LC_ALL=C sort > "$out/selected.txt"
           printf '%s\n' "$TARGET" > "$out/group.txt"
           printf '%s\n' "$BAZEL_TEST_SHARD" > "$out/shard.txt"
           printf '%s\n' "$BAZEL_TEST_SHARD_COUNT" > "$out/shard-count.txt"
-
-      - name: Upload this shard's coverage lists
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
-        with:
-          name: bazel-shard-coverage-macos-${{ matrix.platform.target }}-${{ matrix.shard }}
-          path: ${{ runner.temp }}/shard-coverage-out
-          retention-days: 3
-          if-no-files-found: error
 
       - name: Retain prepared host evidence before compilation
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
@@ -402,6 +400,27 @@ jobs:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" finish "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-macos-bazel-evidence"
 
+      - name: Record the executed and skipped test targets and upload the shard's coverage lists
+        if: always() && steps.bazel_tests.outcome != 'skipped'
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
+          out="$RUNNER_TEMP/shard-coverage-out"
+          mkdir -p "$out"
+          if [[ -s "$evidence/bazel-tests.bep.json" ]]; then
+            bash "$CODEX_TOOLING" bazel-shard-coverage record --bep "$evidence/bazel-tests.bep.json" \
+              --executed "$out/executed.txt" --skipped "$out/skipped.txt"
+          fi
+
+      - name: Upload this shard's coverage lists
+        if: always() && steps.bazel_tests.outcome != 'skipped'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: bazel-shard-coverage-macos-${{ matrix.platform.target }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-coverage-out
+          retention-days: 3
+          if-no-files-found: error
+
       - name: Retain test evidence for one day
         if: always() && steps.scrub-evidence.outcome == 'success'
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
@@ -419,7 +438,7 @@ jobs:
   coverage:
     # Fails unless every shard uploaded, all saw the same candidate list, the selections partition it exactly, and every
     # incompatible skip is allowlisted.
-    needs: test
+    needs: [plan, test]
     if: always()
     runs-on: ubuntu-24.04
     permissions:
@@ -452,8 +471,12 @@ jobs:
           path: ${{ runner.temp }}/shard-coverage
 
       - name: Check shard coverage
+        env:
+          EXPECT: ${{ needs.plan.outputs.expect }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/shard-coverage"
+          read -r -a expect <<< "$EXPECT"
           bash "$CODEX_TOOLING" bazel-shard-coverage check --directory "$RUNNER_TEMP/shard-coverage" \
-            --expect aarch64-apple-darwin=2 --expect x86_64-apple-darwin=4
+            "${expect[@]}" \
+            --allowlist .github/bazel-skipped-targets-allowlist.txt

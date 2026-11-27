@@ -29,7 +29,7 @@ public final class BazelShardCoverage
 	/** Command name. */
 	public static final String NAME = "bazel-shard-coverage";
 	/** Usage text. */
-	private static final String USAGE = "Usage: codex-tooling " + NAME + " skipped --bep PATH --output PATH\n" +
+	private static final String USAGE = "Usage: codex-tooling " + NAME + " record --bep PATH --executed PATH --skipped PATH\n" +
 		"       codex-tooling " + NAME + " check --directory PATH --expect GROUP=SHARD_COUNT... [--allowlist PATH]\n";
 
 	/** Prevents construction. */
@@ -68,18 +68,19 @@ public final class BazelShardCoverage
 		}
 		switch (arguments[0])
 		{
-			case "skipped" ->
+			case "record" ->
 			{
-				if (!options.keySet().equals(Set.of("--bep", "--output")) || options.get("--bep").size() != 1 ||
-					options.get("--output").size() != 1)
+				if (!options.keySet().equals(Set.of("--bep", "--executed", "--skipped")) ||
+					options.values().stream().anyMatch(values -> values.size() != 1))
 				{
 					err.print(USAGE);
 					return 2;
 				}
-				Path output = Path.of(options.get("--output").getFirst());
-				SortedLines skipped = new SortedLines(skippedTargets(scope, Path.of(options.get("--bep").getFirst())));
-				Files.writeString(output, skipped.text());
-				out.println("Recorded " + skipped.values.size() + " skipped incompatible target(s).");
+				Events events = events(scope, Path.of(options.get("--bep").getFirst()));
+				Files.writeString(Path.of(options.get("--executed").getFirst()), new SortedLines(events.executed).text());
+				Files.writeString(Path.of(options.get("--skipped").getFirst()), new SortedLines(events.skipped).text());
+				out.println("Recorded " + events.executed.size() + " executed and " + events.skipped.size() +
+					" skipped incompatible target(s).");
 				return 0;
 			}
 			case "check" ->
@@ -157,16 +158,27 @@ public final class BazelShardCoverage
 	}
 
 	/**
-	 * Finds the targets Bazel skipped as incompatible in a build event protocol file.
+	 * The test targets that a Bazel invocation executed and skipped.
+	 *
+	 * @param executed targets with a test summary
+	 * @param skipped targets skipped as incompatible
+	 */
+	public record Events(Set<String> executed, Set<String> skipped)
+	{
+	}
+
+	/**
+	 * Finds the targets Bazel executed and the targets it skipped as incompatible in a build event protocol file.
 	 *
 	 * @param scope shared mapper owner
 	 * @param bep newline-delimited JSON build events
-	 * @return the skipped target labels
+	 * @return the executed and skipped target labels
 	 * @throws IOException if the file cannot be read or contains malformed JSON
 	 */
-	public static Set<String> skippedTargets(ToolingScope scope, Path bep) throws IOException
+	public static Events events(ToolingScope scope, Path bep) throws IOException
 	{
-		Set<String> result = new TreeSet<>();
+		Set<String> executed = new TreeSet<>();
+		Set<String> skipped = new TreeSet<>();
 		try (Stream<String> lines = Files.lines(bep, StandardCharsets.UTF_8))
 		{
 			for (String line : (Iterable<String>) lines::iterator)
@@ -181,21 +193,25 @@ public final class BazelShardCoverage
 				{
 					throw new IOException("Malformed build event in " + bep + ": " + e.getMessage(), e);
 				}
+				JsonNode id = event.path("id");
+				String summary = id.path("testSummary").path("label").asString("");
+				if (!summary.isEmpty())
+					executed.add(summary);
 				if (!"SKIPPED".equals(event.path("aborted").path("reason").asString("")))
 					continue;
-				JsonNode id = event.path("id");
 				for (String kind : List.of("targetCompleted", "targetConfigured", "testSummary", "testResult"))
 				{
 					String label = id.path(kind).path("label").asString("");
 					if (!label.isEmpty())
 					{
-						result.add(label);
+						skipped.add(label);
 						break;
 					}
 				}
 			}
 		}
-		return result;
+		executed.removeAll(skipped);
+		return new Events(executed, skipped);
 	}
 
 	/**
@@ -217,6 +233,33 @@ public final class BazelShardCoverage
 	}
 
 	/**
+	 * Reads a target list that may be absent.
+	 *
+	 * @param file the list
+	 * @return the targets, empty if the file does not exist
+	 * @throws IOException if the file cannot be read
+	 */
+	private static Set<String> optionalTargets(Path file) throws IOException
+	{
+		if (!Files.isRegularFile(file)) return Set.of();
+		return readTargets(file);
+	}
+
+	/**
+	 * Describes a possibly long target set.
+	 *
+	 * @param targets the targets
+	 * @return up to twenty targets, then the remaining count
+	 */
+	private static String preview(Set<String> targets)
+	{
+		List<String> shown = targets.stream().limit(20).toList();
+		String text = String.join(", ", shown);
+		if (targets.size() > shown.size()) text += ", and " + (targets.size() - shown.size()) + " more";
+		return text;
+	}
+
+	/**
 	 * Reads a single-line value file.
 	 *
 	 * @param file the file
@@ -230,7 +273,7 @@ public final class BazelShardCoverage
 
 	/** One downloaded shard artifact. */
 	private record Shard(Path directory, int number, int count, Set<String> candidates, Set<String> selected,
-		Set<String> skipped)
+		Set<String> executed, Set<String> skipped)
 	{
 	}
 
@@ -267,8 +310,7 @@ public final class BazelShardCoverage
 				Shard shard = new Shard(artifact, Integer.parseInt(readValue(artifact.resolve("shard.txt"))),
 					Integer.parseInt(readValue(artifact.resolve("shard-count.txt"))),
 					readTargets(artifact.resolve("candidates.txt")), readTargets(artifact.resolve("selected.txt")),
-					Files.isRegularFile(artifact.resolve("skipped.txt")) ? readTargets(artifact.resolve("skipped.txt")) :
-						Set.of());
+					optionalTargets(artifact.resolve("executed.txt")), optionalTargets(artifact.resolve("skipped.txt")));
 				groups.computeIfAbsent(group, _ -> new ArrayList<>()).add(shard);
 			}
 			catch (IOException | NumberFormatException e)
@@ -323,10 +365,19 @@ public final class BazelShardCoverage
 			missing.removeAll(union);
 			Set<String> extra = new TreeSet<>(union);
 			extra.removeAll(first.candidates);
-			for (String target : missing)
-				failures.add(group + " candidate " + target + " was selected by no shard.");
-			for (String target : extra)
-				failures.add(group + " target " + target + " was selected but is not a candidate.");
+			if (!missing.isEmpty())
+				failures.add(group + ": " + missing.size() + " candidate(s) selected by no shard: " + preview(missing));
+			if (!extra.isEmpty())
+				failures.add(group + ": " + extra.size() + " selected target(s) are not candidates: " + preview(extra));
+			for (Shard shard : byNumber.values())
+			{
+				Set<String> unrun = new TreeSet<>(shard.selected);
+				unrun.removeAll(shard.executed);
+				unrun.removeAll(shard.skipped);
+				if (!unrun.isEmpty())
+					failures.add(group + " shard " + shard.number + ": " + unrun.size() +
+						" selected target(s) neither executed nor skipped: " + preview(unrun));
+			}
 			out.println(group + ": " + byNumber.size() + "/" + count + " shards, " + first.candidates.size() +
 				" candidate(s), " + union.size() + " selected.");
 		}
