@@ -48,7 +48,7 @@ public final class CompareTestBaselineTest
 	}
 
 	/**
-	 * A baseline-failing Bazel case that passes in a passing target is fixed; one absent from the log is not run.
+	 * A baseline-failing Bazel case of a target that ran is fixed unless it fails now; only cases of targets that did not run are not run.
 	 *
 	 * @throws IOException if fixture IO fails
 	 */
@@ -62,9 +62,11 @@ public final class CompareTestBaselineTest
 			TestReports.Report report = TestReports.collect(List.of(fixture.root.resolve("bazel-testlogs")),
 				TestReports.Runner.BAZEL);
 			CompareTestBaseline.Sections sections = CompareTestBaseline.compare(
-				Set.of("//pkg/app:runner suite::passes", "//pkg/app:runner suite::absent"), report, Set.of());
-			requireThat(sections.fixed(), "fixed").isEqualTo(List.of("//pkg/app:runner suite::passes"));
-			requireThat(sections.notRun(), "notRun").isEqualTo(List.of("//pkg/app:runner suite::absent"));
+				Set.of("//pkg/app:runner suite::passes", "//pkg/app:runner suite::absent",
+					"//pkg/gone:runner suite::absent"), report, Set.of());
+			requireThat(sections.fixed(), "fixed").isEqualTo(List.of("//pkg/app:runner suite::absent",
+				"//pkg/app:runner suite::passes"));
+			requireThat(sections.notRun(), "notRun").isEqualTo(List.of("//pkg/gone:runner suite::absent"));
 			requireThat(report.executed().size(), "targetCount").isEqualTo(1);
 		}
 	}
@@ -112,6 +114,23 @@ public final class CompareTestBaselineTest
 			requireThat(text, "text").contains("[new (fail the run)] 0").contains("[unchanged baseline failures] 1").
 				contains("[in the baseline but not run] 0").contains("Executed tests: 2 in this run, 2 in the baseline.");
 		}
+	}
+
+	/**
+	 * rstest case numbers normalize on both sides, a still-failing baseline case is unchanged rather than not run, and
+	 * a differently named case stays new.
+	 */
+	@Test public void normalizesRstestCasesOnBothSidesAndKeepsStillFailingCasesOutOfNotRun()
+	{
+		TestReports.Report report = new TestReports.Report(List.of(Path.of("results.json")),
+			Set.of("//a:t", "//b:t"), Set.of("//a:t x::test_case_2_same",
+				"//a:t x::test_case_1_other"), Set.of(), List.of(), Set.of("//b:t y::test_case_4_ok"));
+		CompareTestBaseline.Sections sections = CompareTestBaseline.compare(
+			Set.of("//a:t x::same", "//b:t y::ok", "//c:t z::never"), report, Set.of());
+		requireThat(sections.newFailures(), "new").isEqualTo(List.of("//a:t x::test_case_1_other"));
+		requireThat(sections.unchanged(), "unchanged").isEqualTo(List.of("//a:t x::test_case_2_same"));
+		requireThat(sections.fixed(), "fixed").isEqualTo(List.of("//b:t y::ok"));
+		requireThat(sections.notRun(), "notRun").isEqualTo(List.of("//c:t z::never"));
 	}
 
 	/**

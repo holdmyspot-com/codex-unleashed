@@ -88,7 +88,7 @@ public final class CompareTestBaseline
 		});
 		recorded.forEach((key, value) ->
 		{
-			if (executed.contains(key) && !failing.containsKey(key)) fixed.add(value);
+			if ((executed.contains(key) || targetRan(key, executed)) && !failing.containsKey(key)) fixed.add(value);
 		});
 		recorded.keySet().forEach(key ->
 		{
@@ -96,11 +96,24 @@ public final class CompareTestBaseline
 		});
 		own.forEach((key, value) ->
 		{
-			if (!executed.contains(key)) notRun.add(value);
+			if (!executed.contains(key) && !targetRan(key, executed) && !failing.containsKey(key)) notRun.add(value);
 		});
 		Comparator<String> order = Comparator.naturalOrder();
 		newItems.sort(order); fixed.sort(order); unchanged.sort(order); notRun.sort(order);
 		return new Sections(newItems, fixed, unchanged, notRun);
+	}
+
+	/**
+	 * Tells whether a Bazel case ID {@code "<label> <case>"} belongs to a target that ran in some shard.
+	 *
+	 * @param key normalized baseline ID
+	 * @param executed normalized executed IDs
+	 * @return true for a Bazel case ID whose target label is executed
+	 */
+	private static boolean targetRan(String key, Set<String> executed)
+	{
+		int space = key.indexOf(' ');
+		return key.startsWith("//") && space > 0 && executed.contains(key.substring(0, space));
 	}
 
 	/**
