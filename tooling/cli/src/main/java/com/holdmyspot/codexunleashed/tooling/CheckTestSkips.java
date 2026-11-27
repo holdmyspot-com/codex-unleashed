@@ -521,7 +521,7 @@ public final class CheckTestSkips
 			"the test covers the system-bwrap fallback, which a build with a bundled bwrap does not take"));
 		rules.add(rule("no alternate supplementary group", Verdict.ALLOWED,
 			"the host has no alternate supplementary group for this test"));
-		rules.add(rule("Landlock is not enforceable", Verdict.ALLOWED,
+		rules.add(rule("Landlock is not enforceable|the Linux sandbox could not run the read-only probe", Verdict.ALLOWED,
 			"the runner kernel does not enforce Landlock; no installable package changes that"));
 		rules.add(rule("procfs is unavailable|pidfd_open is unavailable", Verdict.ALLOWED,
 			"host kernel feature is unavailable; the skip is logged for review"));

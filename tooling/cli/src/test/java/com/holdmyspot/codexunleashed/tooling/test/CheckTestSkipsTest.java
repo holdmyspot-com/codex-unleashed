@@ -143,6 +143,15 @@ public final class CheckTestSkipsTest
 			CheckTestSkips.Environment.REMOTE).verdict(), "allowedByKernelPolicy").isEqualTo(CheckTestSkips.Verdict.ALLOWED);
 	}
 
+	/** Upstream rust-v0.172.0 rewords the Landlock probe skip; the rewording keeps the same verdict. */
+	@Test public void rewordedSandboxProbeSkipIsAllowed()
+	{
+		var skip = new CheckTestSkips.Skip(Path.of("junit.xml"), "test",
+			"Skipping test: the Linux sandbox could not run the read-only probe.");
+		requireThat(CheckTestSkips.classify(skip, CheckTestSkips.Platform.LINUX, CheckTestSkips.Runner.NEXTEST,
+			CheckTestSkips.Environment.REMOTE).verdict(), "allowedByKernelPolicy").isEqualTo(CheckTestSkips.Verdict.ALLOWED);
+	}
+
 	/** Only the namespace-UID-0 pass of the root metadata test may skip on a nested UID-map refusal. */
 	@Test public void rootIdentityUidMapSkipIsAllowedButWholeTestSkipIsNot()
 	{
