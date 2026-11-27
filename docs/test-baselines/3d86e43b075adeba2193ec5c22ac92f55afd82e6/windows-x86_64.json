@@ -1,0 +1,20 @@
+{
+  "failed": [
+    "codex-core::all suite::subagent_notifications::subagent_stop_replaces_stop_and_skips_internal_subagents",
+    "codex-exec-server::capabilities_v2 v2_rpc_refreshes_metadata_and_enforces_sandbox",
+    "codex-tui app::sidebar_subagents::status::tests::opens_agent_transcript_beside_parent_and_returns_to_chooser",
+    "codex-tui markdown_render::inline_directives::tests::file_citation_after_local_link_soft_break_starts_a_new_line_snapshot",
+    "codex-tui pets::tests::kitty_local_file_pet_image_uses_file_reference_without_inline_payload",
+    "codex-v8-poc tests::sandbox_feature_matches_linked_v8",
+    "codex-windows-sandbox unified_exec::tests::legacy_workspace_write_delete_is_limited_to_writable_roots"
+  ],
+  "platform": "windows-x86_64",
+  "runner": "nextest",
+  "tests_executed": 23981,
+  "timed_out": [
+    "codex-cli::worktree interactive_worktree_start_and_fork_bind_owner_before_turn",
+    "codex-core client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits",
+    "codex-core::all suite::code_mode::code_mode_excludes_mcp_servers_using_their_configured_identity"
+  ],
+  "upstream_commit": "3d86e43b075adeba2193ec5c22ac92f55afd82e6"
+}
