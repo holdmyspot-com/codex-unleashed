@@ -367,6 +367,7 @@ jobs:
           fi
 
       - name: Save compiled dependencies and test outputs
+        continue-on-error: true
         if: ${{ always() && inputs.archive_run_id == '' && steps.cache.outcome == 'success' }}
         uses: ./restart-metadata/.github/actions/test-compiled-cache-save
         with:

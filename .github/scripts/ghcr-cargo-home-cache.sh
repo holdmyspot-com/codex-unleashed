@@ -36,6 +36,13 @@ if command -v sha256sum > /dev/null 2>&1; then
 else
   lock_digest="$(shasum -a 256 "$CODEX_REPO_ROOT/codex-rs/Cargo.lock" | cut -d ' ' -f 1)"
 fi
+# Save reuses the key restore computed: the build can rewrite Cargo.lock in between.
+key_file="$RUNNER_TEMP/cargo-home-cache.lock-digest"
+if [[ "$operation" == save && -s "$key_file" ]]; then
+  lock_digest="$(cat "$key_file")"
+else
+  printf '%s\n' "$lock_digest" > "$key_file"
+fi
 family="cargo-home-v1-$(printf '%s-%s' "$RUNNER_OS" "$RUNNER_ARCH" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
 exact="$family-$lock_digest"
 latest="$family-latest"

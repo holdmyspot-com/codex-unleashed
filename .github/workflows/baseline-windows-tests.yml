@@ -374,6 +374,7 @@ jobs:
           fi
 
       - name: Save compiled dependencies and test outputs
+        continue-on-error: true
         if: ${{ always() && steps.cache.outcome == 'success' }}
         uses: ./.github/actions/test-compiled-cache-save
         with:
