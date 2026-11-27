@@ -7,6 +7,18 @@ on:
         description: Space-separated repository paths of downstream patches to apply with git am, in order; empty tests pristine upstream
         type: string
         default: ""
+      targets:
+        description: Space-separated Bazel test labels to run on one runner per platform instead of partitioning every package
+        type: string
+        default: ""
+      stress_count:
+        description: Optional repeat count; each selected test runs this many times under CPU load, with no retries, to measure flakiness
+        type: string
+        default: ""
+      platforms:
+        description: Platforms to test
+        type: string
+        default: both
   workflow_call:
     inputs:
       patches:
@@ -17,6 +29,18 @@ on:
         description: Optional upstream commit to test instead of .github/upstream-commit
         type: string
         default: ""
+      targets:
+        description: Space-separated Bazel test labels to run on one runner per platform instead of partitioning every package
+        type: string
+        default: ""
+      stress_count:
+        description: Optional repeat count; each selected test runs this many times under CPU load, with no retries, to measure flakiness
+        type: string
+        default: ""
+      platforms:
+        description: Platforms to test
+        type: string
+        default: both
     secrets:
       BUILDBUDDY_API_KEY:
         description: BuildBuddy key for the remote cache; callers pass it only on trusted runs, and jobs run without it when it is absent
@@ -35,6 +59,9 @@ jobs:
     steps:
       - name: Define the shards
         id: plan
+        env:
+          SINGLE_SHARD: ${{ inputs.targets != '' }}
+          PLATFORMS: ${{ inputs.platforms }}
         run: |
           set -euo pipefail
           # The 4-CPU Intel runner ran 25 tests at once, so tests missed their 10-second startup deadlines, and
@@ -43,6 +70,15 @@ jobs:
             {"runner":"macos-15","target":"aarch64-apple-darwin","bazel_arch":"arm64","bazel_sha256":"dd466352a3e4d3581b8898740ee1ff208866ccbe25f8d367c5dcb950219587e6","shard_count":2,"test_jobs":""},
             {"runner":"macos-15-intel","target":"x86_64-apple-darwin","bazel_arch":"x86_64","bazel_sha256":"14c9bcb01303b38192e0e2895051c1bcf19bf89d7e416f5aeeeb48b6b624cfbf","shard_count":4,"test_jobs":"4"}
           ]'
+          case "$PLATFORMS" in
+            both) ;;
+            aarch64|x86_64) platforms=$(jq -c --arg arch "$PLATFORMS" '[.[] | select(.target | startswith($arch + "-"))]' <<< "$platforms") ;;
+            *) printf 'Unknown platforms input: %s\n' "$PLATFORMS" >&2; exit 1 ;;
+          esac
+          if [[ "$SINGLE_SHARD" == true ]]; then
+            # Named targets run on one runner per platform.
+            platforms=$(jq -c '[.[] | .shard_count = 1]' <<< "$platforms")
+          fi
           printf 'matrix=%s\n' "$(jq -c '{include: [.[] | . as $platform | range(1; $platform.shard_count + 1) | {shard: ., platform: $platform}]}' <<< "$platforms")" >> "$GITHUB_OUTPUT"
           printf 'expect=%s\n' "$(jq -r '[.[] | "--expect \(.target)=\(.shard_count)"] | join(" ")' <<< "$platforms")" >> "$GITHUB_OUTPUT"
 
@@ -207,7 +243,17 @@ jobs:
           "$tools/bazel" --version | tee "$RUNNER_TEMP/baseline-macos-bazel-evidence/bazel-version.txt"
           printf '%s\n' "$tools" >> "$GITHUB_PATH"
 
+      - name: Select the requested test targets
+        if: ${{ inputs.targets != '' }}
+        env:
+          BASELINE_TARGETS: ${{ inputs.targets }}
+        run: |
+          set -euo pipefail
+          read -r -a requested <<< "$BASELINE_TARGETS"
+          printf '%s\n' "${requested[@]}" > "$RUNNER_TEMP/baseline-macos-bazel-evidence/selected-targets.txt"
+
       - name: Partition the complete package selection across free runners
+        if: ${{ inputs.targets == '' }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
@@ -223,6 +269,7 @@ jobs:
 
 
       - name: Record the shard's candidate and selected test targets
+        if: ${{ inputs.targets == '' }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
@@ -283,6 +330,8 @@ jobs:
         # A cold build that would reach the job's six-hour limit stops here instead, so the steps below still save the
         # C++ actions it compiled and the next run starts warm.
         timeout-minutes: 290
+        env:
+          STRESS_COUNT: ${{ inputs.stress_count }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
@@ -324,6 +373,12 @@ jobs:
             # Native Intel only. Its contention failures differ every run (runs 45729006472 and 45788476235), so retry a
             # failed test once, as upstream's nextest profile does with retries = 1.
             cache_args+=("--local_test_jobs=$BAZEL_LOCAL_TEST_JOBS" --flaky_test_attempts=2)
+          fi
+          if [[ -n "$STRESS_COUNT" ]]; then
+            # Repeat each test without retries while every core is busy, to measure flakiness. Bazel keeps the last
+            # --flaky_test_attempts. The load runs at the lowest priority so it cannot starve the runner agent.
+            cache_args+=(--runs_per_test="$STRESS_COUNT" --flaky_test_attempts=1)
+            for _ in $(seq "$(sysctl -n hw.ncpu)"); do nice -n 19 yes > /dev/null & done
           fi
           set +e
           .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- \
@@ -400,7 +455,7 @@ jobs:
         run: bash "$RUNNER_TEMP/buildbuddy-cache.sh" finish "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-macos-bazel-evidence"
 
       - name: Record the executed and skipped test targets and upload the shard's coverage lists
-        if: always() && steps.bazel_tests.outcome != 'skipped'
+        if: always() && steps.bazel_tests.outcome != 'skipped' && inputs.targets == ''
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
@@ -413,7 +468,7 @@ jobs:
           fi
 
       - name: Upload this shard's coverage lists
-        if: always() && steps.bazel_tests.outcome != 'skipped'
+        if: always() && steps.bazel_tests.outcome != 'skipped' && inputs.targets == ''
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: bazel-shard-coverage-macos-${{ matrix.platform.target }}-${{ matrix.shard }}
@@ -439,7 +494,7 @@ jobs:
     # Fails unless every shard uploaded, all saw the same candidate list, the selections partition it exactly, and every
     # incompatible skip is allowlisted.
     needs: [plan, test]
-    if: always()
+    if: ${{ always() && inputs.targets == '' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read

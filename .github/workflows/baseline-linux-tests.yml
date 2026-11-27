@@ -521,7 +521,8 @@ jobs:
             # nextest 0.9.103 exits with only the last stress iteration's status when fail-fast is off, so a stress
             # run keeps fail-fast: the first failing iteration ends the run with a failing status.
             stress_args=(--stress-count "$STRESS_COUNT" --retries 0)
-            for _ in $(seq "$(nproc)"); do yes > /dev/null & done
+            # Lowest priority, so the load competes with the tests but cannot starve the runner agent.
+            for _ in $(seq "$(nproc)"); do nice -n 19 yes > /dev/null & done
             trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
           fi
           if env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
@@ -863,7 +864,8 @@ jobs:
           fi
           if [[ -n "$STRESS_COUNT" ]]; then
             nextest_args+=(--stress-count "$STRESS_COUNT" --retries 0)
-            for _ in $(seq "$(nproc)"); do yes > /dev/null & done
+            # Lowest priority, so the load competes with the tests but cannot starve the runner agent.
+            for _ in $(seq "$(nproc)"); do nice -n 19 yes > /dev/null & done
           fi
           printf '%s\n' "${nextest_args[@]}" > "$RUNNER_TEMP/baseline-test-evidence/nextest-arguments.txt"
           lanes=()
