@@ -33,9 +33,14 @@ jobs:
           - target: x86_64-pc-windows-gnullvm
             shard: 4
             shard_count: 4
+          # One shard built 100 GB of outputs for //... and filled a 133 GB Dev Drive (run 45949570933); halving the
+          # selection keeps each shard near the 60-75 GB that the gnullvm shards use.
           - target: x86_64-pc-windows-msvc
             shard: 1
-            shard_count: 1
+            shard_count: 2
+          - target: x86_64-pc-windows-msvc
+            shard: 2
+            shard_count: 2
     runs-on: windows-2025
     timeout-minutes: 360
     env:
@@ -273,23 +278,25 @@ jobs:
             test_args+=(
               "--test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::,suite::code_mode::code_mode_can_call_hidden_dynamic_tools,tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child"
             )
-            query='tests(//...) except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...))'
-            .github/scripts/run-bazel-query-ci.sh --output=label -- "$query" \
-              | LC_ALL=C sort > "$evidence/candidate-targets.txt"
-            bash "$CODEX_TOOLING" select-windows-bazel-targets \
-              --shard "$BAZEL_TEST_SHARD" --shard-count "$BAZEL_TEST_SHARD_COUNT" \
-              --durations "$GITHUB_WORKSPACE/.github/scripts/windows_bazel_test_durations.tsv" \
-              < "$evidence/candidate-targets.txt" > "$evidence/selected-targets.txt"
-            test -s "$evidence/selected-targets.txt"
-            while IFS= read -r target; do
-              targets+=("$target")
-            done < "$evidence/selected-targets.txt"
           else
             wrapper_args+=(--windows-msvc-host-platform)
             test_args+=(--config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --build_metadata=TAG_windows_native_main=true)
-            targets=(//... -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests)
-            printf '%s\n' "${targets[@]}" > "$evidence/selected-targets.txt"
+            test_args+=(--skip_incompatible_explicit_targets)
           fi
+          query='tests(//...) except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...))'
+          if [[ "$TARGET" == x86_64-pc-windows-msvc ]]; then
+            query+=' except //codex-rs/v8-poc:v8-poc-unit-tests'
+          fi
+          .github/scripts/run-bazel-query-ci.sh --output=label -- "$query" \
+            | LC_ALL=C sort > "$evidence/candidate-targets.txt"
+          bash "$CODEX_TOOLING" select-windows-bazel-targets \
+            --shard "$BAZEL_TEST_SHARD" --shard-count "$BAZEL_TEST_SHARD_COUNT" \
+            --durations "$GITHUB_WORKSPACE/.github/scripts/windows_bazel_test_durations.tsv" \
+            < "$evidence/candidate-targets.txt" > "$evidence/selected-targets.txt"
+          test -s "$evidence/selected-targets.txt"
+          while IFS= read -r target; do
+            targets+=("$target")
+          done < "$evidence/selected-targets.txt"
           if [[ "$RUNNER_OS" == Windows ]]; then
             test_args+=(
               "--extra_toolchains=//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain"
