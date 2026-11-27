@@ -1,0 +1,16 @@
+{
+  "failed": [
+    "codex-exec-server::exec_process shell_snapshot::shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path",
+    "codex-exec-server::exec_process shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_pipe_recovery",
+    "codex-exec-server::exec_process shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_tty_recovery",
+    "codex-exec-server::exec_process shell_snapshot_v2_filters_profile_exports_and_stays_in_memory::remote_sandbox",
+    "codex-tui app::sidebar_subagents::status::tests::opens_agent_transcript_beside_parent_and_returns_to_chooser",
+    "codex-v8-poc tests::reads_typed_array_contents_with_the_compiled_binding_size",
+    "codex-v8-poc tests::sandbox_feature_matches_linked_v8"
+  ],
+  "platform": "linux",
+  "runner": "nextest",
+  "tests_executed": 25392,
+  "timed_out": [],
+  "upstream_commit": "3d86e43b075adeba2193ec5c22ac92f55afd82e6"
+}
