@@ -344,6 +344,14 @@ jobs:
           workflow: .github/workflows/baseline-linux-tests.yml
           command-line: cargo nextest archive --target x86_64-unknown-linux-gnu --cargo-profile ci-test ${{ inputs.package }}
 
+      # Cargo's download state is cached apart from the compiled state: without it the build fetches every crate
+      # and git dependency into an empty CARGO_HOME. Failures never fail the job.
+      - name: Restore Cargo download state
+        uses: ./restart-metadata/.github/actions/cargo-home-cache
+        with:
+          mode: restore
+          restart-root: ${{ github.workspace }}/restart-metadata
+
       - name: Build the maintained Linux test helper and bundled executable
         working-directory: codex-rs
         run: |
@@ -448,6 +456,13 @@ jobs:
           tag: ${{ steps.cache.outputs.tag }}
           seed-tag: ${{ steps.cache.outputs.seed-tag }}
           build-succeeded: ${{ steps.archive.outcome == 'success' }}
+
+      - name: Save Cargo download state
+        if: ${{ always() && steps.cache.outcome == 'success' }}
+        uses: ./restart-metadata/.github/actions/cargo-home-cache
+        with:
+          mode: save
+          restart-root: ${{ github.workspace }}/restart-metadata
 
       - name: Regenerate the precomputed stable app-server exports
         if: inputs.regenerate_app_server_schema

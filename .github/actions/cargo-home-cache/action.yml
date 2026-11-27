@@ -1,0 +1,23 @@
+name: Cargo home download cache
+description: >
+  Restore or save Cargo's download state (registry index, downloaded crates and git database) in GHCR, keyed by
+  the hash of codex-rs/Cargo.lock, so a run does not fetch every dependency into an empty CARGO_HOME. Run it after
+  the patches are applied. A failure never fails the job. Requires oras to be logged in, CARGO_CACHE_REPOSITORY and
+  CODEX_REPO_ROOT in the environment.
+inputs:
+  mode:
+    description: restore, or save (which pushes only when no entry exists for the current Cargo.lock)
+    required: true
+  restart-root:
+    description: Checkout that holds .github/scripts
+    default: ${{ github.workspace }}
+runs:
+  using: composite
+  steps:
+    - name: Transfer Cargo download state
+      shell: bash
+      continue-on-error: true
+      env:
+        MODE: ${{ inputs.mode }}
+        RESTART_ROOT: ${{ inputs.restart-root }}
+      run: bash "$RESTART_ROOT/.github/scripts/ghcr-cargo-home-cache.sh" "$MODE"

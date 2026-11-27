@@ -302,6 +302,13 @@ jobs:
           workflow: .github/workflows/baseline-windows-tests.yml
           command-line: cargo nextest archive --target ${{ inputs.target }} --cargo-profile ci-test ${{ inputs.package }}
 
+      # Cargo's download state is cached apart from the compiled state: without it the build fetches every crate
+      # and git dependency into an empty CARGO_HOME. Failures never fail the job.
+      - name: Restore Cargo download state
+        uses: ./.github/actions/cargo-home-cache
+        with:
+          mode: restore
+
       # The shards run the archive beside these helpers, built from the same source for the same target.
       - name: Build the Windows sandbox helper binaries and export their paths
         run: |
@@ -373,6 +380,12 @@ jobs:
           tag: ${{ steps.cache.outputs.tag }}
           seed-tag: ${{ steps.cache.outputs.seed-tag }}
           build-succeeded: ${{ steps.build-result.outputs.succeeded == 'true' }}
+
+      - name: Save Cargo download state
+        if: ${{ always() && steps.cache.outcome == 'success' }}
+        uses: ./.github/actions/cargo-home-cache
+        with:
+          mode: save
 
       - name: Remove the job-owned tooling runtime
         if: always()

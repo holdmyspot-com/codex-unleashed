@@ -307,6 +307,14 @@ jobs:
           workflow: .github/workflows/baseline-macos-tests.yml
           command-line: cargo nextest archive --target ${{ matrix.target }} --cargo-profile ci-test ${{ inputs.package }}
 
+      # Cargo's download state is cached apart from the compiled state: without it the build fetches every crate
+      # and git dependency into an empty CARGO_HOME. Failures never fail the job.
+      - name: Restore Cargo download state
+        uses: ./restart-metadata/.github/actions/cargo-home-cache
+        with:
+          mode: restore
+          restart-root: ${{ github.workspace }}/restart-metadata
+
       - name: Require the selection to fail without the production changes
         if: inputs.red_restore != ''
         run: |
@@ -366,6 +374,13 @@ jobs:
           tag: ${{ steps.cache.outputs.tag }}
           seed-tag: ${{ steps.cache.outputs.seed-tag }}
           build-succeeded: ${{ steps.build-result.outputs.succeeded == 'true' }}
+
+      - name: Save Cargo download state
+        if: ${{ always() && inputs.archive_run_id == '' && steps.cache.outcome == 'success' }}
+        uses: ./restart-metadata/.github/actions/cargo-home-cache
+        with:
+          mode: save
+          restart-root: ${{ github.workspace }}/restart-metadata
 
       - name: Retain archive evidence for three days
         if: always()
