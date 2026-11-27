@@ -15,6 +15,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 
 /** Compares a patched test report with known upstream failures and writes canonical baseline records. */
@@ -307,6 +308,7 @@ public final class CompareTestBaseline
 		String writeResults = null;
 		String mergeResults = null;
 		String baselinePrefix = null;
+		String bep = null;
 		double minExecutedPercent = DEFAULT_MIN_EXECUTED_PERCENT;
 		List<String> relatedPlatforms = new ArrayList<>();
 		List<String> paths = new ArrayList<>();
@@ -353,6 +355,7 @@ public final class CompareTestBaseline
 					case "--write-results" -> writeResults = value;
 					case "--merge-results" -> mergeResults = value;
 					case "--baseline-prefix" -> baselinePrefix = value;
+					case "--bep" -> bep = value;
 					case "--min-executed-percent" ->
 					{
 						try
@@ -381,7 +384,8 @@ public final class CompareTestBaseline
 		if (writeResults != null)
 		{
 			if (paths.isEmpty() || write || mergeResults != null) return usage(err);
-			TestReports.Report collected = TestReports.collect(paths.stream().map(Path::of).toList(), reportRunner);
+			TestReports.Report collected = withBep(scope, TestReports.collect(paths.stream().map(Path::of).toList(),
+				reportRunner), bep);
 			if (collected.files().isEmpty() || collected.executed().isEmpty())
 			{
 				err.println("No test results were found; the tests must keep their reports.");
@@ -403,7 +407,7 @@ public final class CompareTestBaseline
 		if (merge)
 			report = mergeResults(scope, Path.of(mergeResults));
 		else
-			report = TestReports.collect(paths.stream().map(Path::of).toList(), reportRunner);
+			report = withBep(scope, TestReports.collect(paths.stream().map(Path::of).toList(), reportRunner), bep);
 		if (report.files().isEmpty() || report.executed().isEmpty())
 		{
 			err.println("No test results were found to compare; the tests must keep their reports.");
@@ -502,6 +506,26 @@ public final class CompareTestBaseline
 			return children.filter(path -> path.getFileName().toString().startsWith(prefix) &&
 				path.getFileName().toString().endsWith(".json")).sorted().toList();
 		}
+	}
+
+	/**
+	 * Adds every target that has a test summary in the build events, cached or not, to the executed set.
+	 * Targets skipped as incompatible are excluded.
+	 *
+	 * @param scope shared mapper owner
+	 * @param report collected report
+	 * @param bep build event protocol file, or null to leave the report unchanged
+	 * @return the report with executed targets from the build events
+	 * @throws IOException if the build events cannot be read
+	 */
+	private static TestReports.Report withBep(ToolingScope scope, TestReports.Report report, String bep)
+		throws IOException
+	{
+		if (bep == null) return report;
+		Set<String> executed = new TreeSet<>(report.executed());
+		executed.addAll(BazelShardCoverage.events(scope, Path.of(bep)).executed());
+		return new TestReports.Report(report.files(), executed, report.failed(), report.timedOut(),
+			report.streams(), report.passedCases());
 	}
 
 	/**
@@ -628,7 +652,7 @@ public final class CompareTestBaseline
 	private static int usage(PrintStream err)
 	{
 		err.println("Usage: compare-test-baseline --platform P [--related-platform R]... " +
-			"--upstream-commit C [--runner nextest|bazel] [--baseline-dir D] [--min-executed-percent P] [--write-results FILE | --merge-results DIR --baseline-prefix P] " +
+			"--upstream-commit C [--runner nextest|bazel] [--baseline-dir D] [--min-executed-percent P] [--bep FILE] [--write-results FILE | --merge-results DIR --baseline-prefix P] " +
 			"[--write-baseline [--output FILE]] PATH...");
 		return 2;
 	}

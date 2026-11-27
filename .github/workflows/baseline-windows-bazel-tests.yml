@@ -490,12 +490,12 @@ jobs:
           common=(--runner bazel --platform "$platform" --upstream-commit "$commit")
           if [[ -z "${PATCHES// /}" ]]; then
             bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" --write-baseline \
-              --output "$evidence/$platform.json" "$(realpath bazel-testlogs)"
+              --bep "$evidence/bazel-tests.bep.json" --output "$evidence/$platform.json" "$(realpath bazel-testlogs)"
           else
             # The merged comparison runs once per platform group in the coverage job.
             mkdir -p "$RUNNER_TEMP/shard-coverage-out"
             bash "$CODEX_TOOLING" compare-test-baseline --runner bazel \
-              --write-results "$RUNNER_TEMP/shard-coverage-out/results.json" "$(realpath bazel-testlogs)"
+              --bep "$evidence/bazel-tests.bep.json" --write-results "$RUNNER_TEMP/shard-coverage-out/results.json" "$(realpath bazel-testlogs)"
           fi
 
       - name: Upload this shard's coverage lists

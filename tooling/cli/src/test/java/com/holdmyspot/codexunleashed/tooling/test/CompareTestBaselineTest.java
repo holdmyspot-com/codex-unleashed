@@ -281,6 +281,29 @@ public final class CompareTestBaselineTest
 		}
 	}
 
+	/** Cached targets with a BEP test summary but no materialized report count as executed; skipped ones do not. */
+	@Test public void bepCountsCachedTargetsAsExecutedAndExcludesSkipped() throws IOException
+	{
+		try (Fixture fixture = new Fixture(); var scope = new DefaultToolingScope())
+		{
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+			PrintStream out = new PrintStream(output, true, StandardCharsets.UTF_8);
+			Path logs = Files.createDirectories(fixture.root.resolve("bazel-testlogs/p/a"));
+			Files.writeString(logs.resolve("test.xml"), "<testsuites><testcase name='t'/></testsuites>");
+			Path bep = fixture.write("bep.json",
+				"{\"id\":{\"testSummary\":{\"label\":\"//p:a\"}}}\n" +
+				"{\"id\":{\"testSummary\":{\"label\":\"//p:cached\"}}}\n" +
+				"{\"id\":{\"testSummary\":{\"label\":\"//p:skip\"}},\"aborted\":{\"reason\":\"SKIPPED\"}}\n");
+			Path results = fixture.root.resolve("results.json");
+			int status = CompareTestBaseline.run(scope, new String[]{"--runner", "bazel", "--bep", bep.toString(),
+				"--write-results", results.toString(), fixture.root.resolve("bazel-testlogs").toString()}, null, out,
+				out);
+			requireThat(status, "status").isEqualTo(0);
+			String text = Files.readString(results);
+			requireThat(text, "results").contains("//p:cached").contains("//p:a").doesNotContain("//p:skip");
+		}
+	}
+
 	/** Owns one temporary report. */
 	private static final class Fixture implements AutoCloseable
 	{

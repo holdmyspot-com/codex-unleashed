@@ -557,13 +557,13 @@ jobs:
               exit 1
             fi
             bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" --write-baseline \
-              --output "$evidence/test-baselines/$commit/$platform.json" "$(realpath bazel-testlogs)"
+              --bep "$evidence/bazel-tests.bep.json" --output "$evidence/test-baselines/$commit/$platform.json" "$(realpath bazel-testlogs)"
             exit 0
           fi
           # The merged comparison runs once per platform group in the coverage job.
           mkdir -p "$RUNNER_TEMP/shard-coverage-out"
           bash "$CODEX_TOOLING" compare-test-baseline --runner bazel \
-            --write-results "$RUNNER_TEMP/shard-coverage-out/results.json" "$(realpath bazel-testlogs)"
+            --bep "$evidence/bazel-tests.bep.json" --write-results "$RUNNER_TEMP/shard-coverage-out/results.json" "$(realpath bazel-testlogs)"
 
       - name: Verify upstream source and tests remain unmodified
         if: always()
