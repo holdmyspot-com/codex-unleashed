@@ -1,0 +1,11 @@
+{
+  "failed": [
+    "//codex-rs/linux-sandbox:linux-sandbox-all-test",
+    "//codex-rs/linux-sandbox:linux-sandbox-all-test suite::managed_proxy::unsupported_system_bwrap_falls_back_to_bundled_bwrap"
+  ],
+  "platform": "linux-bazel-shard2",
+  "runner": "bazel",
+  "tests_executed": 67,
+  "timed_out": [],
+  "upstream_commit": "3d86e43b075adeba2193ec5c22ac92f55afd82e6"
+}

@@ -9,3 +9,4 @@
 | `windows-bazel-gnullvm-shard-2.json` | 45949570933 (unpatched) | 85/0 |
 | `windows-bazel-gnullvm-shard-3.json` | 45949570933 (unpatched) | 99/13 |
 | `windows-bazel-gnullvm-shard-4.json` | 45949570933 (unpatched) | 98/0 |
+| `linux-bazel-shard{1,2,3}.json` | 45987467362 (unpatched, write_baseline, three shards) | 114/0, 67/2, 197/6 |

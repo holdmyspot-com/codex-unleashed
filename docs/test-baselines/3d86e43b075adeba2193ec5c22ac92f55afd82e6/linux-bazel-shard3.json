@@ -1,0 +1,15 @@
+{
+  "failed": [
+    "//codex-rs/code-mode-host:code-mode-host-ui_plugin_wire-test",
+    "//codex-rs/code-mode-host:code-mode-host-ui_plugin_wire-test sync_dispatch_settles_pending_invocations",
+    "//codex-rs/code-mode-host:code-mode-host-unit-tests",
+    "//codex-rs/code-mode-host:code-mode-host-unit-tests grpc::robustness_tests::dropping_an_unread_buffered_execution_outcome_retires_its_cell",
+    "//codex-rs/code-mode-host:code-mode-host-unit-tests grpc::robustness_tests::dropping_subscriptions_only_retires_sessions_with_unread_calls",
+    "//codex-rs/exec-server:exec-server-exec_process-test"
+  ],
+  "platform": "linux-bazel-shard3",
+  "runner": "bazel",
+  "tests_executed": 197,
+  "timed_out": [],
+  "upstream_commit": "3d86e43b075adeba2193ec5c22ac92f55afd82e6"
+}
