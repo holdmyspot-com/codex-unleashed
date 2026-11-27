@@ -1,0 +1,26 @@
+{
+  "failed": [
+    "codex-app-server::all suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::optional_batched",
+    "codex-app-server::all suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::optional_direct",
+    "codex-app-server::all suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::plugin_link_batched",
+    "codex-app-server::all suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::plugin_link_direct",
+    "codex-app-server::all suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::structured_mention_batched",
+    "codex-app-server::all suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::structured_mention_direct",
+    "codex-core::all suite::scenarios::multi_environment_mcp::same_named_executor_mcps_keep_calls_and_approvals_separate",
+    "codex-multi-env-copy-file::copy_file suite::copy_file_uses_each_environments_permissions::turn_and_session_grants",
+    "codex-tui app::sidebar_subagents::status::tests::opens_agent_transcript_beside_parent_and_returns_to_chooser",
+    "codex-v8-poc tests::reads_typed_array_contents_with_the_compiled_binding_size",
+    "codex-v8-poc tests::sandbox_feature_matches_linked_v8"
+  ],
+  "platform": "macos-x86_64",
+  "runner": "nextest",
+  "tests_executed": 25235,
+  "timed_out": [
+    "codex-core client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits",
+    "codex-core compact::tests::local_compaction_retries_preserve_instructions_and_tool_metadata::metadata_enabled",
+    "codex-core shell_snapshot::tests::snapshot_discovers_and_restores_inherited_credential_aliases",
+    "codex-tui analytics::client::runtime_auth_tests::analytics_runtime_covers_regional_account_and_report_requests",
+    "codex-tui app::tests::handle_start_side_seeds_navigation_before_thread_started"
+  ],
+  "upstream_commit": "3d86e43b075adeba2193ec5c22ac92f55afd82e6"
+}

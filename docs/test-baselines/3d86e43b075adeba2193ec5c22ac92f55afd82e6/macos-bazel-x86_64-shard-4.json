@@ -1,0 +1,27 @@
+{
+  "failed": [
+    "//codex-rs/core:core-all-test",
+    "//codex-rs/core:core-all-test suite::code_mode::code_mode_node_repl_text_evidence_is_visible_only_to_guardian::images_resume_after_prompt_pressure",
+    "//codex-rs/core:core-all-test suite::code_mode::code_mode_node_repl_text_evidence_is_visible_only_to_guardian::text_fallback_without_context_bound",
+    "//codex-rs/core:core-all-test suite::guardian_authorization::guardian_revalidates_owning_session_before_allow::migration_verified_answer",
+    "//codex-rs/core:core-all-test suite::guardian_authorization::guardian_revalidates_owning_session_before_allow::new_user_instruction",
+    "//codex-rs/core:core-all-test suite::guardian_cached_score::serving_assessment_replaces_async_scoring::code_cell_low",
+    "//codex-rs/core:core-all-test suite::guardian_cached_score::serving_assessment_replaces_async_scoring::code_cell_review",
+    "//codex-rs/core:core-all-test suite::guardian_context_budget::review_respects_complete_context_budget::oversized_tool_continuation_compacts",
+    "//codex-rs/core:core-all-test suite::guardian_review_cancellation::cancelling_tool_aborts_its_guardian_review::code_mode_turn",
+    "//codex-rs/core:core-all-test suite::guardian_subagent_authorization::guardian_subagent_review_preserves_late_root_user_authorization::code_mode_user_message_connector",
+    "//codex-rs/core:core-all-test suite::guardian_subagent_authorization::guardian_subagent_review_preserves_late_root_user_authorization::code_mode_user_message_connector_blocked_post_hook",
+    "//codex-rs/core:core-all-test suite::guardian_subagent_authorization::guardian_subagent_review_preserves_late_root_user_authorization::code_mode_user_message_flat_cancelled_before_confirmation",
+    "//codex-rs/core:core-all-test suite::mcp_tool_exposure::code_mode_discovered_apps_tool_survives_startup_failure_and_recovers",
+    "//codex-rs/core:core-all-test suite::scenarios::multi_environment_mcp::same_named_executor_mcps_keep_calls_and_approvals_separate",
+    "//codex-rs/core:core-all-test suite::tool_lifecycle::observations::code_mode_reports_host_timing_without_nested_dispatch_timing",
+    "//codex-rs/ext/multi-env-copy-file:multi-env-copy-file-copy_file-test",
+    "//codex-rs/ext/multi-env-copy-file:multi-env-copy-file-copy_file-test suite::copy_file_uses_each_environments_permissions::environment_profiles",
+    "//codex-rs/ext/multi-env-copy-file:multi-env-copy-file-copy_file-test suite::copy_file_uses_each_environments_permissions::turn_and_session_grants"
+  ],
+  "platform": "macos-bazel-x86_64-shard-4",
+  "runner": "bazel",
+  "tests_executed": 125,
+  "timed_out": [],
+  "upstream_commit": "3d86e43b075adeba2193ec5c22ac92f55afd82e6"
+}

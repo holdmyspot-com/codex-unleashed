@@ -1,0 +1,11 @@
+{
+  "failed": [
+    "//codex-rs/utils/pty:pty-unit-tests",
+    "//codex-rs/utils/pty:pty-unit-tests child_command::descriptor_tests::high_stdio_descriptors_use_compatible_fallback"
+  ],
+  "platform": "macos-bazel-arm64-shard-1",
+  "runner": "bazel",
+  "tests_executed": 175,
+  "timed_out": [],
+  "upstream_commit": "3d86e43b075adeba2193ec5c22ac92f55afd82e6"
+}

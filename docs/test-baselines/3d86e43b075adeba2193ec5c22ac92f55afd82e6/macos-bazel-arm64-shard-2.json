@@ -1,0 +1,11 @@
+{
+  "failed": [
+    "//codex-rs/tui:tui-all-test",
+    "//codex-rs/tui:tui-all-test suite::focus_palette::gov_cloud_guidance::gov_cloud_startup_persists_only_acknowledgment"
+  ],
+  "platform": "macos-bazel-arm64-shard-2",
+  "runner": "bazel",
+  "tests_executed": 186,
+  "timed_out": [],
+  "upstream_commit": "3d86e43b075adeba2193ec5c22ac92f55afd82e6"
+}

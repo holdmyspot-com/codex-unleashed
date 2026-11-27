@@ -1,0 +1,16 @@
+{
+  "failed": [
+    "codex-tui app::sidebar_subagents::status::tests::opens_agent_transcript_beside_parent_and_returns_to_chooser",
+    "codex-v8-poc tests::reads_typed_array_contents_with_the_compiled_binding_size",
+    "codex-v8-poc tests::sandbox_feature_matches_linked_v8"
+  ],
+  "platform": "macos-aarch64",
+  "runner": "nextest",
+  "tests_executed": 25235,
+  "timed_out": [
+    "codex-cli::app_server_daemon managed_daemon_restarts_from_deleted_working_directory",
+    "codex-cli::app_server_daemon managed_starts_ensure_one_updater_and_recover_a_missing_one",
+    "codex-cli::app_server_daemon restart_applies_saved_updater_preference"
+  ],
+  "upstream_commit": "3d86e43b075adeba2193ec5c22ac92f55afd82e6"
+}

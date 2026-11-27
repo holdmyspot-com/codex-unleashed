@@ -1,0 +1,16 @@
+{
+  "failed": [
+    "//codex-rs/app-server:app-server-all-test",
+    "//codex-rs/app-server:app-server-all-test suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::optional_batched",
+    "//codex-rs/app-server:app-server-all-test suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::optional_direct",
+    "//codex-rs/app-server:app-server-all-test suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::plugin_link_batched",
+    "//codex-rs/app-server:app-server-all-test suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::plugin_link_direct",
+    "//codex-rs/app-server:app-server-all-test suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::structured_mention_batched",
+    "//codex-rs/app-server:app-server-all-test suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::structured_mention_direct"
+  ],
+  "platform": "macos-bazel-x86_64-shard-1",
+  "runner": "bazel",
+  "tests_executed": 114,
+  "timed_out": [],
+  "upstream_commit": "3d86e43b075adeba2193ec5c22ac92f55afd82e6"
+}
