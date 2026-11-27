@@ -371,15 +371,6 @@ jobs:
               --executed "$out/executed.txt" --skipped "$out/skipped.txt"
           fi
 
-      - name: Upload this shard's coverage lists
-        if: always() && steps.bazel_tests.outcome != 'skipped'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
-        with:
-          name: bazel-shard-coverage-windows-${{ matrix.target }}-${{ matrix.shard }}
-          path: ${{ runner.temp }}/shard-coverage-out
-          retention-days: 3
-          if-no-files-found: error
-
       - name: Record the page file use
         # The Dev Drive sizing keeps nothing back for page file growth, so record whether a page file grew past its
         # minimum and how much of it was used.
@@ -456,6 +447,15 @@ jobs:
             bash "$CODEX_TOOLING" compare-test-baseline --runner bazel \
               --write-results "$RUNNER_TEMP/shard-coverage-out/results.json" "$(realpath bazel-testlogs)"
           fi
+
+      - name: Upload this shard's coverage lists
+        if: always() && steps.bazel_tests.outcome != 'skipped'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: bazel-shard-coverage-windows-${{ matrix.target }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-coverage-out
+          retention-days: 3
+          if-no-files-found: error
 
       - name: Verify upstream source and tests remain unmodified
         if: always()

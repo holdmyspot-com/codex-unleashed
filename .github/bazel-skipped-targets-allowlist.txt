@@ -12,4 +12,10 @@ linux //codex-rs/windows-sandbox(-rs|-service):.*-bin-unit-tests
 aarch64-apple-darwin //codex-rs/windows-sandbox(-rs|-service):.*-bin-unit-tests
 x86_64-apple-darwin //codex-rs/windows-sandbox(-rs|-service):.*-bin-unit-tests
 
-# The Windows groups start empty until a run shows what they skip.
+
+# On Windows, Bazel skips upstream's Linux-hosted variants: Windows cross-compiled and Wine-executed tests, the Wine
+# test support, and the package, remote-environment and release-compatibility tests. Linux shards run all of them.
+x86_64-pc-windows-gnullvm .*-(windows-cross|wine-exec-test)
+x86_64-pc-windows-msvc .*-(windows-cross|wine-exec-test)
+x86_64-pc-windows-gnullvm //bazel/rules/testing/wine:wine-test-support-unit-tests|//codex-rs/cli:cli-app_server_daemon_package-test|//codex-rs/core/tests/remote_env_windows:smoke-test|//codex-rs/exec-server:exec-server-(current-version|historical-release|stable-release)-test
+x86_64-pc-windows-msvc //bazel/rules/testing/wine:wine-test-support-unit-tests|//codex-rs/cli:cli-app_server_daemon_package-test|//codex-rs/core/tests/remote_env_windows:smoke-test|//codex-rs/exec-server:exec-server-(current-version|historical-release|stable-release)-test
