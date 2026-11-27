@@ -604,7 +604,7 @@ jobs:
             mkdir -p "$merged/$group"
             cp -R "${dir%/}" "$merged/$group/"
           done
-          commit="$(cat "$cov"/*/upstream-commit | sort -u)"
+          commit="$(cat "$cov"/*/upstream-commit | tr -d '\r' | sort -u)"
           if [[ -z "$commit" || "$commit" == *$'\n'* ]]; then
             printf 'The shards did not report exactly one upstream commit.\n' >&2
             exit 1
