@@ -472,7 +472,8 @@ jobs:
           # With a committed baseline (or when recording one) the comparison step decides pass or fail from the test
           # logs; otherwise any failing target fails the run.
           commit="$(cat "$evidence/upstream-commit")"
-          if [[ "$GATED" == true && ( "$WRITE_BASELINE" == true || compgen -G "$RUNNER_TEMP/test-baselines/$commit/linux-bazel-shard*.json" > /dev/null ) ]]; then
+          if [[ "$GATED" == true ]] && { [[ "$WRITE_BASELINE" == true ]] ||
+            compgen -G "$RUNNER_TEMP/test-baselines/$commit/linux-bazel-shard*.json" > /dev/null; }; then
             exit 0
           fi
           exit "$result"
