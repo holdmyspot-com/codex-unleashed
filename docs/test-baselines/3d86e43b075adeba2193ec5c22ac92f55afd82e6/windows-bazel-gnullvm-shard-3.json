@@ -1,0 +1,22 @@
+{
+  "failed": [
+    "//codex-rs/app-server:app-server-all-test",
+    "//codex-rs/app-server:app-server-all-test suite::v2::code_mode_host::code_mode_model_output_uses_structured_host_timing::exec_grpc_with_overhead",
+    "//codex-rs/app-server:app-server-all-test suite::v2::code_mode_host::code_mode_model_output_uses_structured_host_timing::exec_stdio_with_overhead",
+    "//codex-rs/app-server:app-server-all-test suite::v2::request_permissions::background_cell_uses_permissions_requested_after_next_turn_starts::strict_review",
+    "//codex-rs/app-server:app-server-all-test suite::v2::request_permissions::background_cell_uses_permissions_requested_after_next_turn_starts::turn_grant",
+    "//codex-rs/app-server:app-server-all-test suite::v2::request_permissions::code_mode_uses_permissions_approved_in_the_same_cell::session",
+    "//codex-rs/app-server:app-server-all-test suite::v2::request_permissions::code_mode_uses_permissions_approved_in_the_same_cell::strict_review",
+    "//codex-rs/app-server:app-server-all-test suite::v2::request_permissions::code_mode_uses_permissions_approved_in_the_same_cell::turn",
+    "//codex-rs/file-watcher:file-watcher-unit-tests",
+    "//codex-rs/file-watcher:file-watcher-unit-tests tests::debounced_receiver_coalesces_each_event_batch",
+    "//codex-rs/file-watcher:file-watcher-unit-tests tests::throttled_receiver_coalesces_within_interval",
+    "//codex-rs/windows-sandbox-rs:windows-sandbox-rs-unit-tests",
+    "//codex-rs/windows-sandbox-rs:windows-sandbox-rs-unit-tests unified_exec::tests::legacy_workspace_write_delete_is_limited_to_writable_roots"
+  ],
+  "platform": "windows-bazel-gnullvm-shard-3",
+  "runner": "bazel",
+  "tests_executed": 99,
+  "timed_out": [],
+  "upstream_commit": "3d86e43b075adeba2193ec5c22ac92f55afd82e6"
+}
