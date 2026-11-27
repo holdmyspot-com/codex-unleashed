@@ -326,7 +326,8 @@ jobs:
           if [[ -n "$STRESS_COUNT" ]]; then
             # Repeat each test without retries while every core is busy, to measure flakiness.
             test_args+=(--runs_per_test="$STRESS_COUNT" --flaky_test_attempts=1)
-            for _ in $(seq "$(nproc)"); do yes > /dev/null & done
+            # Lowest priority, so the load competes with the tests but cannot starve the runner agent.
+            for _ in $(seq "$(nproc)"); do nice -n 19 yes > /dev/null & done
           fi
           if [[ "$RUNNER_OS" == Windows ]]; then
             test_args+=(
