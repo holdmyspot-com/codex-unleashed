@@ -1645,6 +1645,36 @@ index 0f7605b353..44a2edfa37 100644
  
    Visit https://chatgpt.com/settings/usage for up-to-date
    information on rate limits and credits
+diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cloud_server.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cloud_server.snap
+index ce1efb6969..581b334f8a 100644
+--- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cloud_server.snap
++++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cloud_server.snap
+@@ -4,7 +4,9 @@
+ ---
+ /status
+ 
+-  >_ OpenAI Codex (v0.0.0)
++  >_ OpenAI Codex (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+ 
+   Visit https://chatgpt.com/settings/usage for up-to-date
+   information on rate limits and credits
+diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cloud_server_with_version.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cloud_server_with_version.snap
+index 8a3f71505d..af009b03c0 100644
+--- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cloud_server_with_version.snap
++++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cloud_server_with_version.snap
+@@ -4,7 +4,9 @@
+ ---
+ /status
+ 
+-  >_ OpenAI Codex (v0.0.0)
++  >_ OpenAI Codex (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+ 
+   Visit https://chatgpt.com/settings/usage for up-to-date
+   information on rate limits and credits
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_credits_and_limits.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_credits_and_limits.snap
 index 6783811c53..a9b43907cf 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_credits_and_limits.snap
@@ -1740,6 +1770,21 @@ index 57c04829f5..0012bd6325 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_remote_server.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_remote_server.snap
 @@ -4,7 +4,9 @@ expression: sanitized
+ ---
+ /status
+ 
+-  >_ OpenAI Codex (v0.0.0)
++  >_ OpenAI Codex (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+ 
+   Visit https://chatgpt.com/settings/usage for up-to-date
+   information on rate limits and credits
+diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_remote_server_without_version.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_remote_server_without_version.snap
+index 832b4ce6a9..c380c4bc1a 100644
+--- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_remote_server_without_version.snap
++++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_remote_server_without_version.snap
+@@ -4,7 +4,9 @@
  ---
  /status
  
