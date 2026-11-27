@@ -122,7 +122,14 @@ case "$operation" in
       fi
       exit "$result"
     fi
-    oras pull "$repository@$digest" --output "$archive_directory"
+    # GHCR occasionally resets a blob stream mid-download (HTTP/2 PROTOCOL_ERROR, run 45930574103).
+    for attempt in 1 2 3; do
+      if oras pull "$repository@$digest" --output "$archive_directory"; then break; fi
+      rm -f "$archive"
+      if [[ "$attempt" == 3 ]]; then exit 1; fi
+      printf 'Pull attempt %s failed; retrying.\n' "$attempt" >&2
+      sleep $((attempt * 10))
+    done
     du -sk "$archive"
     "$archive_tar" --zstd -xf - -C "$target_directory" < "$archive"
     printf 'cache_result=hit digest=%s\n' "$digest"

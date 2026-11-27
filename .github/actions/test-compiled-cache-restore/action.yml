@@ -105,7 +105,12 @@ runs:
                 mkdir -p "$CARGO_TARGET_DIR"
                 ;;
               3) ;;
-              *) exit "$result" ;;
+              *)
+                # A failed transfer or extraction costs a rebuild, not the job; clear what it left behind.
+                printf 'Cache %s of %s failed with %s; trying the next candidate.\n' "$operation" "$tag" "$result" | tee -a "$evidence/restore.log"
+                rm -rf "$CARGO_TARGET_DIR"
+                mkdir -p "$CARGO_TARGET_DIR"
+                ;;
             esac
           done
         done
