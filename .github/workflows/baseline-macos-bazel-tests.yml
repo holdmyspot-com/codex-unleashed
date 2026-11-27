@@ -45,7 +45,7 @@ jobs:
             # The 4-CPU Intel runner ran 25 tests at once, so tests missed their 10-second startup deadlines, and
             # shard 2 of 2 hit the 290-minute limit (run 45573260043). Upstream tests x86_64 on macos-15-xlarge.
             shard_count: 4
-            test_jobs: '4'
+            test_jobs: '2'
         exclude:
           - shard: 3
             platform: {runner: macos-15, target: aarch64-apple-darwin, bazel_arch: arm64, bazel_sha256: dd466352a3e4d3581b8898740ee1ff208866ccbe25f8d367c5dcb950219587e6, shard_count: 2, test_jobs: ''}
