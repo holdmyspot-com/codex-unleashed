@@ -78,6 +78,7 @@ schemas copy these doc comments, so they are regenerated with upstream's generat
  codex-rs/protocol/src/review_format.rs        |  2 +-
  codex-rs/responses-api-proxy/src/lib.rs       |  2 +-
  codex-rs/rollout/src/lib.rs                   |  4 +--
+ codex-rs/sandboxing/src/manager.rs            |  2 +-
  codex-rs/state/src/lib.rs                     | 10 +++---
  codex-rs/thread-store/src/live_thread.rs      |  2 +-
  codex-rs/tools/src/tool_spec.rs               |  2 +-
@@ -88,7 +89,7 @@ schemas copy these doc comments, so they are regenerated with upstream's generat
  codex-rs/utils/cli/src/shared_options.rs      |  2 +-
  .../utils/plugins/src/plugin_namespace.rs     |  2 +-
  .../src/openai_codex/generated/v2_all.py      | 10 +++---
- 81 files changed, 178 insertions(+), 177 deletions(-)
+ 82 files changed, 179 insertions(+), 178 deletions(-)
 
 diff --git a/codex-rs/app-server-protocol/schema/json/ClientRequest.json b/codex-rs/app-server-protocol/schema/json/ClientRequest.json
 index c55670c6ce..6e1f234e6c 100644
@@ -1746,6 +1747,19 @@ index 123f22532b..ef4854938d 100644
  ///
  /// Keep this JSON-specific workaround at the persistence boundary so history
  /// remains format-neutral and resume and projection use the same item decoder.
+diff --git a/codex-rs/sandboxing/src/manager.rs b/codex-rs/sandboxing/src/manager.rs
+index 37235ec2ca..5632e1cf14 100644
+--- a/codex-rs/sandboxing/src/manager.rs
++++ b/codex-rs/sandboxing/src/manager.rs
+@@ -167,7 +167,7 @@ impl<'a> SandboxNetwork<'a> {
+ pub enum SandboxExecutables<'a> {
+     /// A caller supplies its backend launcher and needs no additional executable grants.
+     Launcher(Option<&'a Path>),
+-    /// Paths from executor startup and the optional argv[0] used by its command helper.
++    /// Paths from executor startup and the optional `argv[0]` used by its command helper.
+     Executor {
+         codex: &'a AbsolutePathBuf,
+         linux_sandbox: Option<&'a AbsolutePathBuf>,
 diff --git a/codex-rs/state/src/lib.rs b/codex-rs/state/src/lib.rs
 index 4ae3394ed6..bff3d19680 100644
 --- a/codex-rs/state/src/lib.rs
