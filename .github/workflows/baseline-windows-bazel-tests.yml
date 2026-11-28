@@ -421,6 +421,24 @@ jobs:
           disk_monitor=$!
           trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
           set +e
+          # Upstream builds its Windows test binaries remotely, so its runners carry only the tests. This runner compiles
+          # locally, and compiling while tests ran made event-wait tests time out that pass upstream
+          # (code_mode_recovers_complete_inventory_after_orphaned_mapping_pressure, unpatched run 46102159910 against
+          # upstream run 45281799203). Build every selected target first, so the tests then run with the runner to
+          # themselves. The build keeps the test command's options, so both share one configuration and the tests rebuild
+          # nothing; it drops only --test_verbose_timeout_warnings, which `bazel build` rejects. A build failure is reported
+          # again by the test command below, which decides the step's outcome.
+          build_args=(build)
+          for arg in "${test_args[@]:1}"; do
+            case "$arg" in
+              --test_verbose_timeout_warnings | --build_event_json_file=*) ;;
+              *) build_args+=("$arg") ;;
+            esac
+          done
+          .github/scripts/run-bazel-ci.sh --print-failed-action-summary "${wrapper_args[@]}" -- \
+            "${build_args[@]}" --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
+            "${targets[@]}" 2>&1 | tee "$evidence/bazel-build.log"
+          printf 'build_exit_code=%s\n' "${PIPESTATUS[0]}" > "$evidence/bazel-build.receipt"
           .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs "${wrapper_args[@]}" -- \
             "${test_args[@]}" --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
             "${targets[@]}" 2>&1 | tee "$evidence/bazel-tests.log"
