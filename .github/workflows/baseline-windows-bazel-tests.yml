@@ -142,6 +142,7 @@ jobs:
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           cp restart-metadata/.github/scripts/buildbuddy-cache.sh "$RUNNER_TEMP/"
+          cp restart-metadata/.github/bazel-skipped-targets-allowlist.txt "$RUNNER_TEMP/"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
@@ -355,9 +356,21 @@ jobs:
             fi
             .github/scripts/run-bazel-query-ci.sh --output=label -- "$query" \
               | LC_ALL=C sort > "$evidence/candidate-targets.txt"
+            # Targets this platform may skip as incompatible keep only the default one-second weight. Upstream's
+            # durations come from hosts that run them, so their full weight could give a shard nothing but skipped
+            # targets, which runs no test (run 46094102594, shards 1-3).
+            durations="$evidence/windows-bazel-test-durations.tsv"
+            skippable=$(awk -v group="$TARGET" '$1 == group { print "^(" $2 ")\t" }' \
+              "$RUNNER_TEMP/bazel-skipped-targets-allowlist.txt")
+            if [[ -n "$skippable" ]]; then
+              grep -Ev -f <(printf '%s\n' "$skippable") "$GITHUB_WORKSPACE/.github/scripts/windows_bazel_test_durations.tsv" \
+                > "$durations" || true
+            else
+              cp "$GITHUB_WORKSPACE/.github/scripts/windows_bazel_test_durations.tsv" "$durations"
+            fi
             bash "$CODEX_TOOLING" select-windows-bazel-targets \
               --shard "$BAZEL_TEST_SHARD" --shard-count "$BAZEL_TEST_SHARD_COUNT" \
-              --durations "$GITHUB_WORKSPACE/.github/scripts/windows_bazel_test_durations.tsv" \
+              --durations "$durations" \
               < "$evidence/candidate-targets.txt" > "$evidence/selected-targets.txt"
           fi
           test -s "$evidence/selected-targets.txt"
