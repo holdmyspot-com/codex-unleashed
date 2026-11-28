@@ -8,13 +8,17 @@ on:
         type: string
         default: ""
       targets:
-        description: Space-separated Bazel test labels to run on one runner per platform instead of partitioning every package
+        description: Space-separated Bazel test labels to run on one runner per platform instead of partitioning every package; with stress_count, one job per target and chunk of repetitions
         type: string
         default: ""
       stress_count:
         description: Optional repeat count; each selected test runs this many times under CPU load, with no retries, to measure flakiness
         type: string
         default: ""
+      stress_runs_per_job:
+        description: With targets and stress_count, repetitions that each job runs; every target gets ceil(stress_count / this) jobs per platform, the last taking the remainder
+        type: string
+        default: "1"
       platforms:
         description: Platforms to test
         type: string
@@ -30,13 +34,17 @@ on:
         type: string
         default: ""
       targets:
-        description: Space-separated Bazel test labels to run on one runner per platform instead of partitioning every package
+        description: Space-separated Bazel test labels to run on one runner per platform instead of partitioning every package; with stress_count, one job per target and chunk of repetitions
         type: string
         default: ""
       stress_count:
         description: Optional repeat count; each selected test runs this many times under CPU load, with no retries, to measure flakiness
         type: string
         default: ""
+      stress_runs_per_job:
+        description: With targets and stress_count, repetitions that each job runs; every target gets ceil(stress_count / this) jobs per platform, the last taking the remainder
+        type: string
+        default: "1"
       platforms:
         description: Platforms to test
         type: string
@@ -62,24 +70,58 @@ jobs:
         env:
           SINGLE_SHARD: ${{ inputs.targets != '' }}
           PLATFORMS: ${{ inputs.platforms }}
+          TARGETS: ${{ inputs.targets }}
+          STRESS_COUNT: ${{ inputs.stress_count }}
+          RUNS_PER_JOB: ${{ inputs.stress_runs_per_job }}
         run: |
           set -euo pipefail
           # The 4-CPU Intel runner ran 25 tests at once, so tests missed their 10-second startup deadlines, and
           # shard 2 of 2 hit the 290-minute limit (run 45573260043). Upstream tests x86_64 on macos-15-xlarge.
+          # A job should finish within 30 minutes, but on these runners setup and the Bazel build of even the lightest
+          # shard take about 52 minutes (arm64) and 74 minutes (x86_64) before the tests add their time (run
+          # 46037743996: 120 and 179 minutes on two arm64 shards, 134, 126, 75 and 126 on four x86_64), so no shard
+          # count reaches 30 minutes. Each count is the smallest that comes within 5% of the best projected longest
+          # job at up to 16 shards. The hash of the package names places //codex-rs/core and //codex-rs/app-server,
+          # whose tests add about 40 to 90 minutes, on separate shards, and a package is never split across shards.
           platforms='[
-            {"runner":"macos-15","target":"aarch64-apple-darwin","bazel_arch":"arm64","bazel_sha256":"dd466352a3e4d3581b8898740ee1ff208866ccbe25f8d367c5dcb950219587e6","shard_count":2,"test_jobs":""},
-            {"runner":"macos-15-intel","target":"x86_64-apple-darwin","bazel_arch":"x86_64","bazel_sha256":"14c9bcb01303b38192e0e2895051c1bcf19bf89d7e416f5aeeeb48b6b624cfbf","shard_count":4,"test_jobs":"4"}
+            {"runner":"macos-15","target":"aarch64-apple-darwin","bazel_arch":"arm64","bazel_sha256":"dd466352a3e4d3581b8898740ee1ff208866ccbe25f8d367c5dcb950219587e6","shard_count":3,"test_jobs":""},
+            {"runner":"macos-15-intel","target":"x86_64-apple-darwin","bazel_arch":"x86_64","bazel_sha256":"14c9bcb01303b38192e0e2895051c1bcf19bf89d7e416f5aeeeb48b6b624cfbf","shard_count":5,"test_jobs":"4"}
           ]'
           case "$PLATFORMS" in
             both) ;;
             aarch64|x86_64) platforms=$(jq -c --arg arch "$PLATFORMS" '[.[] | select(.target | startswith($arch + "-"))]' <<< "$platforms") ;;
             *) printf 'Unknown platforms input: %s\n' "$PLATFORMS" >&2; exit 1 ;;
           esac
-          if [[ "$SINGLE_SHARD" == true ]]; then
+          # One job per target and chunk of repetitions, on each platform, when stress_count names the repetitions.
+          stress_jobs='[]'
+          if [[ -n "$STRESS_COUNT" && -n "${TARGETS// /}" ]]; then
+            RUNS_PER_JOB="${RUNS_PER_JOB:-1}"
+            for name in STRESS_COUNT RUNS_PER_JOB; do
+              if [[ ! "${!name}" =~ ^[1-9][0-9]{0,8}$ ]]; then
+                printf '%s must be a positive integer, not "%s".\n' "$name" "${!name}" >&2
+                exit 1
+              fi
+            done
+            read -r -a requested <<< "$TARGETS"
+            stress_jobs="$(jq -cn --argjson count "$STRESS_COUNT" --argjson per "$RUNS_PER_JOB" '
+              [$ARGS.positional[] as $target | range(0; $count; $per) as $start
+                | {target: $target, runs: ([$per, $count - $start] | min)}]' --args "${requested[@]}")"
+            total=$(( $(jq -r length <<< "$stress_jobs") * $(jq -r length <<< "$platforms") ))
+            if ((total > 256)); then
+              printf 'The stress run needs %s jobs; a matrix holds at most 256. Raise stress_runs_per_job.\n' "$total" >&2
+              exit 1
+            fi
+            platforms=$(jq -c --argjson jobs "$stress_jobs" '[.[] | .shard_count = ($jobs | length)]' <<< "$platforms")
+          elif [[ "$SINGLE_SHARD" == true ]]; then
             # Named targets run on one runner per platform.
             platforms=$(jq -c '[.[] | .shard_count = 1]' <<< "$platforms")
           fi
-          printf 'matrix=%s\n' "$(jq -c '{include: [.[] | . as $platform | range(1; $platform.shard_count + 1) | {shard: ., platform: $platform}]}' <<< "$platforms")" >> "$GITHUB_OUTPUT"
+          printf 'matrix=%s\n' "$(jq -c --argjson jobs "$stress_jobs" '
+            {include: [.[] | . as $platform
+              | if ($jobs | length) > 0
+                then ($jobs | to_entries[] | {shard: (.key + 1), stress_target: .value.target, stress_runs: (.value.runs | tostring), platform: $platform})
+                else (range(1; $platform.shard_count + 1) | {shard: ., stress_target: "", stress_runs: "", platform: $platform})
+                end]}' <<< "$platforms")" >> "$GITHUB_OUTPUT"
           printf 'expect=%s\n' "$(jq -r '[.[] | "--expect \(.target)=\(.shard_count)"] | join(" ")' <<< "$platforms")" >> "$GITHUB_OUTPUT"
 
   test:
@@ -99,7 +141,8 @@ jobs:
       BAZEL_TEST_SHARD: ${{ matrix.shard }}
       BAZEL_TEST_SHARD_COUNT: ${{ matrix.platform.shard_count }}
       BAZEL_LOCAL_TEST_JOBS: ${{ matrix.platform.test_jobs }}
-      CC_CACHE_LANE: bazel-test-${{ matrix.platform.target }}-${{ matrix.shard }}
+      # Stress jobs share the first shard's lane, which earlier named-target runs warmed.
+      CC_CACHE_LANE: bazel-test-${{ matrix.platform.target }}-${{ matrix.stress_target != '' && 1 || matrix.shard }}
     defaults:
       run:
         shell: bash
@@ -246,7 +289,8 @@ jobs:
       - name: Select the requested test targets
         if: ${{ inputs.targets != '' }}
         env:
-          BASELINE_TARGETS: ${{ inputs.targets }}
+          # A stress job runs only its own target.
+          BASELINE_TARGETS: ${{ matrix.stress_target || inputs.targets }}
         run: |
           set -euo pipefail
           read -r -a requested <<< "$BASELINE_TARGETS"
@@ -331,7 +375,8 @@ jobs:
         # C++ actions it compiled and the next run starts warm.
         timeout-minutes: 290
         env:
-          STRESS_COUNT: ${{ inputs.stress_count }}
+          # A stress job repeats its own chunk of the repetitions.
+          STRESS_COUNT: ${{ matrix.stress_runs || inputs.stress_count }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"

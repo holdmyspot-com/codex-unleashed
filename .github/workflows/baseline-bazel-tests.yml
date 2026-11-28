@@ -35,6 +35,10 @@ on:
         description: Optional repeat count; each selected test runs this many times under CPU load, with no retries, to measure flakiness
         type: string
         default: ""
+      stress_runs_per_job:
+        description: With targets and stress_count, repetitions that each job runs; every target gets ceil(stress_count / this) jobs, the last taking the remainder
+        type: string
+        default: "1"
 
 permissions:
   contents: read
@@ -45,28 +49,61 @@ jobs:
     # The shard count is defined here once; the shard matrix, each shard's selection and the coverage job derive from it.
     runs-on: ubuntu-24.04
     outputs:
-      shards: ${{ steps.plan.outputs.shards }}
+      matrix: ${{ steps.plan.outputs.matrix }}
       shard_count: ${{ steps.plan.outputs.shard_count }}
     steps:
       - name: Define the shards
         id: plan
         env:
           SINGLE_SHARD: ${{ inputs.exec_server_shells || inputs.targets != '' }}
+          EXEC_SERVER_SHELLS: ${{ inputs.exec_server_shells }}
+          TARGETS: ${{ inputs.targets }}
+          STRESS_COUNT: ${{ inputs.stress_count }}
+          RUNS_PER_JOB: ${{ inputs.stress_runs_per_job }}
         run: |
           set -euo pipefail
           # Two shards left about 16 GB free on the 145 GB root disk on rust-v0.172.0, and shard 2 lost its runner
-          # twice (run 45949565279); a third shard cuts each shard's Bazel outputs.
-          shard_count=3
+          # twice (run 45949565279); a third shard cuts each shard's Bazel outputs. A job should finish within 30
+          # minutes, and run 46036933518 took 28, 70 and 46 minutes on three shards. About 23 minutes of each job go to
+          # setup and the cached build, and the tests add about 0.4 s of job time per test-second. The packages' hashes
+          # place //codex-rs/core and //codex-rs/app-server on separate shards at six shards (projected 42 and 40
+          # minutes, because a package is never split across shards); the other four projected under 30. More shards
+          # leave the two heavy shards unchanged.
+          shard_count=6
+          if [[ -n "$STRESS_COUNT" && -n "${TARGETS// /}" && "$EXEC_SERVER_SHELLS" != true ]]; then
+            # A stress run gets one job per target and chunk of repetitions, so that each job finishes within 30 minutes.
+            RUNS_PER_JOB="${RUNS_PER_JOB:-1}"
+            for name in STRESS_COUNT RUNS_PER_JOB; do
+              if [[ ! "${!name}" =~ ^[1-9][0-9]{0,8}$ ]]; then
+                printf '%s must be a positive integer, not "%s".\n' "$name" "${!name}" >&2
+                exit 1
+              fi
+            done
+            read -r -a requested <<< "$TARGETS"
+            matrix="$(jq -cn --argjson count "$STRESS_COUNT" --argjson per "$RUNS_PER_JOB" '
+              {include: ([$ARGS.positional[] as $target | range(0; $count; $per) as $start
+                  | {target: $target, runs: ([$per, $count - $start] | min)}]
+                | to_entries
+                | map({shard: (.key + 1), stress_target: .value.target, stress_runs: (.value.runs | tostring)}))}' \
+              --args "${requested[@]}")"
+            shard_count="$(jq -r '.include | length' <<< "$matrix")"
+            if ((shard_count > 256)); then
+              printf 'The stress run needs %s jobs; a matrix holds at most 256. Raise stress_runs_per_job.\n' "$shard_count" >&2
+              exit 1
+            fi
+          else
+            matrix="$(jq -cn --argjson count "$shard_count" --arg single "$SINGLE_SHARD" '
+              {include: [range(1; (if $single == "true" then 1 else $count end) + 1)
+                | {shard: ., stress_target: "", stress_runs: ""}]}')"
+          fi
           printf 'shard_count=%s\n' "$shard_count" >> "$GITHUB_OUTPUT"
-          printf 'shards=%s\n' "$(jq -cn --argjson count "$shard_count" --arg single "$SINGLE_SHARD" \
-            'if $single == "true" then [1] else [range(1; $count + 1)] end')" >> "$GITHUB_OUTPUT"
+          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
 
   test:
     needs: plan
     strategy:
       fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ubuntu-24.04
     env:
       BAZEL_TEST_SHARD: ${{ matrix.shard }}
@@ -278,7 +315,8 @@ jobs:
       - name: Select the requested Bazel test labels
         if: ${{ !inputs.exec_server_shells && inputs.targets != '' }}
         env:
-          BASELINE_TARGETS: ${{ inputs.targets }}
+          # A stress job runs only its own target.
+          BASELINE_TARGETS: ${{ matrix.stress_target || inputs.targets }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-evidence"
@@ -332,7 +370,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_OWNER: ${{ github.repository_owner }}
-          SELECTED_TARGETS: ${{ inputs.targets }}
+          SELECTED_TARGETS: ${{ matrix.stress_target || inputs.targets }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-evidence"
@@ -388,7 +426,8 @@ jobs:
           BASELINE_EXEC_SERVER_FILTER: ${{ inputs.exec_server_filter }}
           BUNDLE_BWRAP: ${{ inputs.bundle_empty_workspace_bwrap }}
           TRACE_SELECTED: ${{ inputs.trace_empty_workspace_roots }}
-          STRESS_COUNT: ${{ inputs.stress_count }}
+          # A stress job repeats its own chunk of the repetitions.
+          STRESS_COUNT: ${{ matrix.stress_runs || inputs.stress_count }}
           GATED: ${{ inputs.stress_count == '' && !inputs.exec_server_shells && !inputs.trace_empty_workspace_roots && !inputs.bundle_empty_workspace_bwrap }}
           WRITE_BASELINE: ${{ inputs.write_baseline }}
         run: |

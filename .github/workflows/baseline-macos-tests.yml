@@ -2,10 +2,10 @@ name: Stable upstream macOS tests
 
 # Runs upstream's Cargo nextest suite on native macOS (aarch64 and x86_64) against the pinned upstream with downstream
 # patches applied, the way upstream's rust-ci-full-nextest-platform.yml does: one job per architecture builds the test
-# archive once and uploads it, four shard jobs per architecture run `--partition hash:N/4` of it, and one job per
-# architecture merges the shards' JUnit reports and runs the skip check and the baseline comparison once. Hosted macOS
-# runner capacity is limited, so the suite is not split further. A selection by package or filter, and a stress run, use
-# a single shard. A red phase, in the archive job, can first restore production files to their state before the patches
+# archive once and uploads it, nine shard jobs per architecture run `--partition hash:N/9` of it, and one job per
+# architecture merges the shards' JUnit reports and runs the skip check and the baseline comparison once. The shard
+# count keeps each shard job near 30 minutes; the archive build is one compilation and cannot be split this way. A
+# selection by package or filter, and a stress run, use a single shard. A red phase, in the archive job, can first restore production files to their state before the patches
 # under test and require the same selection to fail, so the patched pass proves the patches fix it.
 
 on:
@@ -114,13 +114,17 @@ jobs:
             exit 1
           fi
           printf 'commit=%s\n' "${UPSTREAM_COMMIT:-$(cat .github/upstream-commit)}" >> "$GITHUB_OUTPUT"
-          # The whole suite is split into four partitions of nextest's stable test hash; any narrower selection is
-          # small enough for one job, and a stress run must see all of its selected tests in one run.
+          # The whole suite is split into partitions of nextest's stable test hash; any narrower selection is small
+          # enough for one job, and a stress run must see all of its selected tests in one run. A shard job should
+          # finish within 30 minutes. Run 46037739755 took 25 to 46 minutes on four shards, of which about 16 minutes
+          # (the Xcode reclaim and the archive download) do not shrink with the shard count and the longest test step
+          # ran 30 minutes on x86_64 and 25 on aarch64; the sum of the x86_64 test steps (104 minutes, with the
+          # slowest shard 17% above the mean) needs nine shards to bring the longest job to 30 minutes.
+          shard_count=1
           if [[ ( -z "$TEST_PACKAGE" || "$TEST_PACKAGE" == --workspace ) && -z "$TEST_FILTER" ]]; then
-            printf 'shards=[1,2,3,4]\nshard_count=4\n' >> "$GITHUB_OUTPUT"
-          else
-            printf 'shards=[1]\nshard_count=1\n' >> "$GITHUB_OUTPUT"
+            shard_count=9
           fi
+          printf 'shard_count=%s\nshards=[%s]\n' "$shard_count" "$(seq -s, 1 "$shard_count")" >> "$GITHUB_OUTPUT"
 
   # Builds each architecture's test archive once for its shards. A rerun that names an earlier run's archive skips the
   # build, but a red phase still needs this job, which builds its own archive from the withheld sources.

@@ -369,9 +369,11 @@ jobs:
       # tests built for one environment fail in the other (a local stdio MCP server needs a local environment that a
       # remote run does not register), so each shard runs its part of the archive twice, once per lane.
       #
-      # A full-suite run is split into six shards, as upstream splits its nextest platform jobs. Every run that selects
-      # packages or tests, repeats them under load, withholds production changes, or rewrites snapshots or compares
-      # environments runs as one shard: those modes record a single tree's changes or a bounded selection.
+      # A full-suite run is split into nine shards, so that each shard job finishes within 30 minutes: run 45973459607
+      # took 31 to 37 minutes on six shards, about 6 to 9 minutes of each of which do not shrink with the shard count.
+      # Every run that selects packages or tests, repeats them under load, withholds production changes, or rewrites
+      # snapshots or compares environments runs as one shard: those modes record a single tree's changes or a bounded
+      # selection.
       - name: Select the test lanes and shards
         id: lanes
         env:
@@ -404,7 +406,7 @@ jobs:
               *) printf 'Unknown test lane: %s\n' "$lane" >&2; exit 1 ;;
             esac
           done
-          shard_count=6
+          shard_count=9
           if [[ "$SINGLE_LANE_MODE" == true || -n "$SELECTED_PACKAGE$SELECTED_FILTER$SELECTED_STRESS_COUNT$SELECTED_RED_RESTORE" ]]; then
             shard_count=1
           fi

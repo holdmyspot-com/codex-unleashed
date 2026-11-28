@@ -6,7 +6,7 @@ name: Stable upstream Windows tests
 #
 # As upstream's rust-ci-full-nextest-platform.yml, a Cargo selection builds its nextest archive once, on x64 for both
 # targets, and a shard matrix runs it natively. Only a whole-workspace run is sharded, into hash partitions: 4 on x64 and
-# 6 on arm64. Every other selection runs as the single shard 1. The last job merges the shards' JUnit reports and
+# 11 on arm64. Every other selection runs as the single shard 1. The last job merges the shards' JUnit reports and
 # judges them once: the skip check, then the comparison with the committed unpatched baseline.
 
 on:
@@ -120,11 +120,13 @@ jobs:
             exit 1
           fi
           printf 'commit=%s\n' "${UPSTREAM_COMMIT:-$(cat .github/upstream-commit)}" >> "$GITHUB_OUTPUT"
-          # Only the whole workspace is partitioned, as in upstream: 4 shards on x64 and 6 on arm64, about 20 minutes each.
-          # Every other selection is one shard that runs it all.
+          # Only the whole workspace is partitioned: 4 shards on x64 and 11 on arm64. A shard job should finish within 30
+          # minutes. Run 45971466028 took 16 to 20 minutes on the four x64 shards. Run 45949562710 took 26 to 47 minutes
+          # on six arm64 shards: its test steps sum to 131 minutes, the slowest shard is 26% above the mean, and about
+          # 15 minutes of each job do not shrink with the shard count. Every other selection is one shard that runs it all.
           shard_count=1
           if [[ "$TEST_PACKAGE" == --workspace && -z "$TEST_FILTER" && -z "$STRESS_COUNT" ]]; then
-            if [[ "$TARGET" == aarch64-pc-windows-msvc ]]; then shard_count=6; else shard_count=4; fi
+            if [[ "$TARGET" == aarch64-pc-windows-msvc ]]; then shard_count=11; else shard_count=4; fi
           fi
           printf 'shard_count=%s\nshards=[%s]\n' "$shard_count" "$(seq -s, 1 "$shard_count")" >> "$GITHUB_OUTPUT"
 
@@ -397,7 +399,7 @@ jobs:
     needs: [plan, archive]
     if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.archive.result == 'success' || needs.archive.result == 'skipped') }}
     runs-on: ${{ (inputs.target == 'aarch64-pc-windows-msvc' && 'windows-11-arm') || 'windows-2025' }}
-    # A whole-workspace shard targets about 20 minutes; any other selection runs everything in its one shard.
+    # A whole-workspace shard targets 30 minutes; any other selection runs everything in its one shard.
     timeout-minutes: ${{ needs.plan.outputs.shard_count == '1' && 240 || 90 }}
     permissions:
       actions: read

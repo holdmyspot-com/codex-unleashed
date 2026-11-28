@@ -8,13 +8,17 @@ on:
         type: string
         default: ""
       targets:
-        description: Space-separated Bazel test labels to run on one runner per selected toolchain instead of partitioning every target; skips the coverage and baseline comparison
+        description: Space-separated Bazel test labels to run on one runner per selected toolchain instead of partitioning every target (with stress_count, one job per target and chunk of repetitions); skips the coverage and baseline comparison
         type: string
         default: ""
       stress_count:
         description: Optional repeat count; each selected test runs this many times under CPU load, with no retries, to measure flakiness; skips the baseline comparison
         type: string
         default: ""
+      stress_runs_per_job:
+        description: With targets and stress_count, repetitions that each job runs; every target gets ceil(stress_count / this) jobs per toolchain, the last taking the remainder
+        type: string
+        default: "1"
       toolchains:
         description: Which Windows toolchains to run
         type: choice
@@ -41,17 +45,53 @@ jobs:
         env:
           TOOLCHAINS: ${{ inputs.toolchains }}
           FOCUSED_TARGETS: ${{ inputs.targets }}
+          STRESS_COUNT: ${{ inputs.stress_count }}
+          RUNS_PER_JOB: ${{ inputs.stress_runs_per_job }}
         run: |
           set -euo pipefail
           # One msvc shard built 100 GB of outputs for //... and filled a 133 GB Dev Drive (run 45949570933); halving the
           # selection keeps each shard near the 60-75 GB that the gnullvm shards use.
-          targets='[{"target":"x86_64-pc-windows-gnullvm","shard_count":4},{"target":"x86_64-pc-windows-msvc","shard_count":2}]'
-          # A focused run (explicit targets) uses one shard per selected toolchain, and the toolchains input narrows the groups.
-          targets="$(jq -c --arg toolchains "$TOOLCHAINS" --arg focused "${FOCUSED_TARGETS// /}" '
-            [.[] | select($toolchains == "both" or ($toolchains == "gnullvm" and (.target | endswith("gnullvm"))) or ($toolchains == "msvc" and (.target | endswith("msvc"))))
-              | if $focused != "" then .shard_count = 1 else . end]' <<< "$targets")"
+          # A job should finish within 30 minutes. Run 46042477761 took 27, 30, 69 and 21 minutes on four gnullvm shards
+          # and 91 and 38 on two msvc shards. About 12 minutes of each job go to setup, and the tests add about 0.2
+          # (gnullvm) and 0.26 (msvc) seconds of job time per test-second. Upstream's duration table puts each target
+          # on the lightest shard, and replaying that assignment on the run's measured test times projects 28 minutes
+          # for the longest of 17 gnullvm shards. The longest msvc shard stays near 46 minutes at 11 shards and beyond,
+          # because //codex-rs/core:core-all-test alone runs for about 110 minutes of test time and a target is never
+          # split across shards.
+          targets='[{"target":"x86_64-pc-windows-gnullvm","shard_count":17},{"target":"x86_64-pc-windows-msvc","shard_count":11}]'
+          targets="$(jq -c --arg toolchains "$TOOLCHAINS" '
+            [.[] | select($toolchains == "both" or ($toolchains == "gnullvm" and (.target | endswith("gnullvm"))) or ($toolchains == "msvc" and (.target | endswith("msvc"))))]' <<< "$targets")"
           test "$targets" != '[]'
-          printf 'matrix=%s\n' "$(jq -c '{include: [.[] | . as $entry | range(1; $entry.shard_count + 1) | {target: $entry.target, shard: ., shard_count: $entry.shard_count}]}' <<< "$targets")" >> "$GITHUB_OUTPUT"
+          # A focused run (explicit targets) uses one shard per selected toolchain. With stress_count it uses one job per
+          # target and chunk of repetitions on each toolchain.
+          stress_jobs='[]'
+          if [[ -n "${FOCUSED_TARGETS// /}" && -n "$STRESS_COUNT" ]]; then
+            RUNS_PER_JOB="${RUNS_PER_JOB:-1}"
+            for name in STRESS_COUNT RUNS_PER_JOB; do
+              if [[ ! "${!name}" =~ ^[1-9][0-9]{0,8}$ ]]; then
+                printf '%s must be a positive integer, not "%s".\n' "$name" "${!name}" >&2
+                exit 1
+              fi
+            done
+            read -r -a requested <<< "$FOCUSED_TARGETS"
+            stress_jobs="$(jq -cn --argjson count "$STRESS_COUNT" --argjson per "$RUNS_PER_JOB" '
+              [$ARGS.positional[] as $target | range(0; $count; $per) as $start
+                | {target: $target, runs: ([$per, $count - $start] | min)}]' --args "${requested[@]}")"
+            total=$(( $(jq -r length <<< "$stress_jobs") * $(jq -r length <<< "$targets") ))
+            if ((total > 256)); then
+              printf 'The stress run needs %s jobs; a matrix holds at most 256. Raise stress_runs_per_job.\n' "$total" >&2
+              exit 1
+            fi
+            targets="$(jq -c --argjson jobs "$stress_jobs" '[.[] | .shard_count = ($jobs | length)]' <<< "$targets")"
+          elif [[ -n "${FOCUSED_TARGETS// /}" ]]; then
+            targets="$(jq -c '[.[] | .shard_count = 1]' <<< "$targets")"
+          fi
+          printf 'matrix=%s\n' "$(jq -c --argjson jobs "$stress_jobs" '
+            {include: [.[] | . as $entry
+              | if ($jobs | length) > 0
+                then ($jobs | to_entries[] | {target: $entry.target, shard: (.key + 1), shard_count: $entry.shard_count, stress_target: .value.target, stress_runs: (.value.runs | tostring)})
+                else (range(1; $entry.shard_count + 1) | {target: $entry.target, shard: ., shard_count: $entry.shard_count, stress_target: "", stress_runs: ""})
+                end]}' <<< "$targets")" >> "$GITHUB_OUTPUT"
           printf 'expect=%s\n' "$(jq -r '[.[] | "--expect \(.target)=\(.shard_count)"] | join(" ")' <<< "$targets")" >> "$GITHUB_OUTPUT"
 
   test:
@@ -263,8 +303,9 @@ jobs:
       - name: Run the maintained Windows Bazel test selection
         id: bazel_tests
         env:
-          FOCUSED_TARGETS: ${{ inputs.targets }}
-          STRESS_COUNT: ${{ inputs.stress_count }}
+          # A stress job runs only its own target and its own chunk of the repetitions.
+          FOCUSED_TARGETS: ${{ matrix.stress_target || inputs.targets }}
+          STRESS_COUNT: ${{ matrix.stress_runs || inputs.stress_count }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
