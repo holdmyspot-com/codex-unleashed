@@ -3,9 +3,9 @@ From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 7 Nov 2026 09:04:02 -0500
 Subject: [PATCH] Make resumed conversations available during skill discovery
 
-Preserve the existing background skill discovery and watch-registration behavior. Keep a second tracing dispatch alive in the five observer tests so concurrent untraced calls cannot disable their shared span callsites. Assertions and deadlines remain unchanged.
+Preserve the existing background skill discovery and watch-registration behavior. Keep a second tracing dispatch alive in the five observer tests and the history-injection test so concurrent untraced calls cannot disable their shared span callsites. Assertions and deadlines remain unchanged.
 
-The original independent patch tree differs only by the 15 tracing-guard lines. The authoring queue and a fresh candidate checkout pass maintained just fmt-check. Native validation and emitted queue acceptance are tracked separately by the CI repair task.
+The original independent patch tree differs only by the 18 tracing-guard lines. The authoring queue and a fresh candidate checkout pass maintained just fmt-check. Native validation and emitted queue acceptance are tracked separately by the CI repair task.
 ---
  .../request_processors/thread_lifecycle.rs    |  78 +++++-
  .../request_processors/thread_processor.rs    |  11 +-
@@ -18,8 +18,9 @@ The original independent patch tree differs only by the 15 tracing-guard lines. 
  codex-rs/core/src/session/session.rs          |  82 ++++--
  codex-rs/core/src/session/tests.rs            |   4 +
  codex-rs/core/src/session/turn_context.rs     |  60 ++++-
+ codex-rs/core/tests/suite/skills.rs           |   3 +
  codex-rs/core/tests/suite/skills_extension.rs |  25 ++
- 12 files changed, 580 insertions(+), 53 deletions(-)
+ 13 files changed, 583 insertions(+), 53 deletions(-)
  create mode 100644 codex-rs/core/src/session/resume_warmup_tests.rs
 
 diff --git a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
@@ -997,6 +998,20 @@ index 0d44cbdbbe..ed101cbb6b 100644
      /// Captures current recording settings without discovering skills.
      /// This context must not be used to capture or execute a step.
      pub(crate) async fn new_inject_items_context(&self) -> Arc<TurnContext> {
+diff --git a/codex-rs/core/tests/suite/skills.rs b/codex-rs/core/tests/suite/skills.rs
+index 4708ae0ec2..c2ddb546e5 100644
+--- a/codex-rs/core/tests/suite/skills.rs
++++ b/codex-rs/core/tests/suite/skills.rs
+@@ -207,6 +207,9 @@ async fn history_injection_skips_skill_discovery_after_initial_context() -> Resu
+     const FIRST_INSTRUCTIONS: &str = "First injected developer instructions.";
+     const SECOND_INSTRUCTIONS: &str = "Second injected developer instructions.";
+ 
++    // Keep a second dispatch alive so concurrent untraced tests cannot cache shared callsites as disabled.
++    let _interest_cache_guard =
++        tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+     let buffer: &'static Mutex<Vec<u8>> = Box::leak(Box::new(Mutex::new(Vec::new())));
+     let subscriber = tracing_subscriber::fmt()
+         .with_ansi(false)
 diff --git a/codex-rs/core/tests/suite/skills_extension.rs b/codex-rs/core/tests/suite/skills_extension.rs
 index bb68c4be1d..c915c4f8d3 100644
 --- a/codex-rs/core/tests/suite/skills_extension.rs
