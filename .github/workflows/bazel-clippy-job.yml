@@ -294,6 +294,10 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-bazel-lint-evidence"
           # macOS runs /bin/bash 3.2, which lacks the ${name,,} lowercase expansion.
           owner=$(printf '%s' "$GH_OWNER" | tr '[:upper:]' '[:lower:]')
+          if grep -q -- '--remote_cache=' "$GITHUB_WORKSPACE/user.bazelrc" 2>/dev/null; then
+            printf 'The BuildBuddy remote cache is configured; the C++ disk cache is not used.\n'
+            exit 0
+          fi
           bash "$RUNNER_TEMP/bazel-cc-disk-cache.sh" restore "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bazel-cc-cache" \
             "ghcr.io/$owner/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" "$CC_CACHE_LANE" \
             ${CC_SHARED_LANE:+"$CC_SHARED_LANE"} 2>&1 | tee "$evidence/cc-cache-restore.log"
@@ -316,13 +320,17 @@ jobs:
           fi
           wrapper_args=(--print-failed-action-summary)
           clippy_args=(--config=clippy --disk_cache=)
-          if [[ -f "$RUNNER_TEMP/bazel-cc-cache.restored" ]]; then
+          if grep -q -- '--remote_cache=' "$GITHUB_WORKSPACE/user.bazelrc" 2>/dev/null; then
+            # The BuildBuddy remote cache serves every action. Bazel's no-cache tag, which the disk cache below needs,
+            # also bypasses the remote cache, so the two are not combined.
+            printf 'Using the BuildBuddy remote cache for every action; the C++ disk cache is not used.\n'
+          elif [[ -f "$RUNNER_TEMP/bazel-cc-cache.restored" ]]; then
             cc_cache="$RUNNER_TEMP/bazel-cc-cache"
             if [[ "$RUNNER_OS" == Windows ]]; then
               cc_cache="$(cygpath -m "$cc_cache")"
             fi
             # Only C++ compiles, archives and links (chiefly V8, built for both the target and the exec configuration)
-            # reach the disk cache; every other action is marked no-cache, which keeps it out of the disk cache only.
+            # reach the disk cache; every other action is marked no-cache, which Bazel applies to every cache.
             # The whole cache of a lint job would be 34-110 GB.
             clippy_args=(
               --config=clippy "--disk_cache=$cc_cache"
@@ -444,6 +452,10 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-bazel-lint-evidence"
           # macOS runs /bin/bash 3.2, which lacks the ${name,,} lowercase expansion.
           owner=$(printf '%s' "$GH_OWNER" | tr '[:upper:]' '[:lower:]')
+          if grep -q -- '--remote_cache=' "$GITHUB_WORKSPACE/user.bazelrc" 2>/dev/null; then
+            printf 'The BuildBuddy remote cache is configured; the C++ disk cache is not used.\n'
+            exit 0
+          fi
           bash "$RUNNER_TEMP/bazel-cc-disk-cache.sh" save "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bazel-cc-cache" \
             "ghcr.io/$owner/$(cat "$evidence/cargo-cache-package")" "$(cat "$evidence/upstream-ref")" "$CC_CACHE_LANE" \
             ${CC_SHARED_LANE:+"$CC_SHARED_LANE"} 2>&1 | tee "$evidence/cc-cache-save.log"
