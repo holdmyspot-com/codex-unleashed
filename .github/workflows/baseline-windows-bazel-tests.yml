@@ -550,18 +550,30 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/baseline-windows-bazel-evidence/skip-check.log"
 
       - name: Record this shard's results
+        # A shard whose test step failed, such as one with a target that never completed, still records the results it
+        # has, so the merged comparison reports its real failures instead of only a low executed-test count. A baseline
+        # is written only from a complete run.
         # An unpatched run is pristine upstream, so its failures are the baseline that patched runs are compared with;
         # the evidence artifact carries the file for committing under docs/test-baselines.
-        if: ${{ !cancelled() && steps.bazel_tests.outcome == 'success' && steps.bazel_tests.outputs['bep-complete'] == 'true' && inputs.targets == '' && inputs.stress_count == '' }}
+        if: ${{ !cancelled() && steps.bazel_tests.outcome != 'skipped' && inputs.targets == '' && inputs.stress_count == '' }}
         env:
+          BEP_COMPLETE: ${{ steps.bazel_tests.outputs['bep-complete'] }}
           PATCHES: ${{ inputs.patches }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
+          if [[ ! -s "$evidence/bazel-tests.bep.json" ]]; then
+            printf 'Bazel wrote no build events, so this shard has no results to record.\n'
+            exit 0
+          fi
           commit="${{ steps.inputs.outputs.commit }}"
           platform="windows-bazel-${TARGET##*-}-shard-${BAZEL_TEST_SHARD}"
           common=(--runner bazel --platform "$platform" --upstream-commit "$commit")
           if [[ -z "${PATCHES// /}" ]]; then
+            if [[ "$BEP_COMPLETE" != true ]]; then
+              printf 'The test step did not complete, so no baseline is written.\n' >&2
+              exit 1
+            fi
             bash "$CODEX_TOOLING" compare-test-baseline "${common[@]}" --write-baseline \
               --bep "$evidence/bazel-tests.bep.json" --output "$evidence/$platform.json" "$(realpath bazel-testlogs)"
           else

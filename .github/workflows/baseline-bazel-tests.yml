@@ -581,17 +581,29 @@ jobs:
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "$CACHE_REPOSITORY" "$CACHE_TAG" "$RUNNER_TEMP/bazel-disk-cache" "$(cat "$evidence/upstream-ref")" 2>&1 | tee -a "$evidence/disk-cache-save.log"
 
       - name: Record this shard's results
-        if: ${{ !cancelled() && steps.bazel_tests.outcome == 'success' && steps.bazel_tests.outputs['bep-complete'] == 'true' && !inputs.exec_server_shells && !inputs.trace_empty_workspace_roots && !inputs.bundle_empty_workspace_bwrap && inputs.stress_count == '' }}
+        # A shard whose test step failed, such as one with a target that never completed, still records the results it
+        # has, so the merged comparison reports its real failures instead of only a low executed-test count. A baseline
+        # is written only from a complete run.
+        if: ${{ !cancelled() && steps.bazel_tests.outcome != 'skipped' && !inputs.exec_server_shells && !inputs.trace_empty_workspace_roots && !inputs.bundle_empty_workspace_bwrap && inputs.stress_count == '' }}
         env:
+          BEP_COMPLETE: ${{ steps.bazel_tests.outputs['bep-complete'] }}
           WRITE_BASELINE: ${{ inputs.write_baseline }}
           PATCHES: ${{ inputs.patches }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-evidence"
+          if [[ ! -s "$evidence/bazel-tests.bep.json" ]]; then
+            printf 'Bazel wrote no build events, so this shard has no results to record.\n'
+            exit 0
+          fi
           commit="$(cat "$evidence/upstream-commit")"
           platform="linux-bazel-shard$BAZEL_TEST_SHARD"
           common=(--platform "$platform" --runner bazel --upstream-commit "$commit" --baseline-dir "$RUNNER_TEMP/test-baselines")
           if [[ "$WRITE_BASELINE" == true ]]; then
+            if [[ "$BEP_COMPLETE" != true ]]; then
+              printf 'The test step did not complete, so no baseline is written.\n' >&2
+              exit 1
+            fi
             if [[ -n "${PATCHES// /}" ]]; then
               printf 'A baseline must come from an unpatched run.\n' >&2
               exit 1
